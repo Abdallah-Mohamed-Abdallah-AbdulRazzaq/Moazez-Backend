@@ -400,7 +400,7 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       data: {
         schoolId: schoolAId,
         schoolName: `Sprint 7D Academy ${suffix}`,
-        logoUrl: `${testMarker}-raw-logo-url`,
+        logoUrl: null,
         formattedAddress: `Sprint 7D Address ${suffix}`,
       },
     });

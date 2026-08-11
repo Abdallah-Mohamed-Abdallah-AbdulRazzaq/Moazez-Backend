@@ -23,7 +23,10 @@ and PRD0-Q026 option A at `2026-08-07T00:22:00+03:00` for PRD3-G04.
 Abdallah approved PRD0-Q005, PRD0-Q008, PRD0-Q018, PRD0-Q019, and
 PRD0-Q044–PRD0-Q048 at `2026-08-09T15:20:43+03:00` for the Phase 4/5A cloud
 and GCS governance boundary. The Phase 0B document-control values above remain
-the historical 2026-07-27 closeout record.
+the historical 2026-07-27 closeout record. On 2026-08-11 (Africa/Cairo),
+Abdallah approved PRD0-Q041 and PRD0-Q042 for the final storage application
+cutover source candidate. This amendment does not rewrite the historical Phase
+0B facts or authorize production data, uploads, traffic, or launch.
 
 ## Authority statement
 
@@ -44,6 +47,8 @@ the separate production/non-production project boundary, GCS production with
 MinIO local/test, per-role service accounts, dedicated per-project signers,
 the zero-object clean-start branch, private bucket topology, and the seven-day
 GCS recovery baseline recorded in Q005, Q008, Q018, Q019, and Q044–Q048.
+On 2026-08-11 Abdallah approved Q041 option D and the Q042 managed/read-only
+compatibility policy exactly as recorded in the register below.
 Every question not named in the current approved set below remains pending.
 A pending disposition does not select its recommended default, cannot unblock
 its dependent phase, and authorizes no implementation or cloud provisioning
@@ -53,8 +58,9 @@ through silence.
 
 PR #46 merged the ten approved answers, and those answers remain binding. The
 other 38 answers were pending at that historical closeout. The nine
-post-Phase-0B approvals through 2026-08-07 and the nine 2026-08-09 approvals
-reduce the current pending set to 20 without changing the PR #46 evidence.
+post-Phase-0B approvals through 2026-08-07, the nine 2026-08-09 approvals, and
+the two 2026-08-11 storage-policy approvals reduce the current pending set to
+18 without changing the PR #46 evidence.
 Silence selects no recommendation.
 Authoritative Phase 0B post-merge evidence remains in
 `07-phase-0b-post-merge-closeout.md`.
@@ -105,8 +111,8 @@ Each row is the sole disposition entry for that question.
 | PRD0-Q038 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 5B retention and hold approval,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
 | PRD0-Q039 | PENDING | `PENDING(owner=Abdallah,deadline=before any Phase 5B destructive-cleanup decision,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
 | PRD0-Q040 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 5B report-only reconciliation,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
-| PRD0-Q041 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 5B direct-URL remediation,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
-| PRD0-Q042 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 5A inventory and Phase 5B remediation,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
+| PRD0-Q041 | APPROVED | `PRD0-Q041: option=D; allowlist=HTTPS external URLs only, with all direct GCS/Google Cloud Storage/MinIO/S3-compatible provider URLs forbidden for new writes; compatibility_window=NONE; legacy_owner=Abdallah; approver=Abdallah` |
+| PRD0-Q042 | APPROVED | `PRD0-Q042: managed=ALLOW managed File-backed branding for new writes and reads; external_https=READ_ONLY compatibility only where an already-persisted safe HTTPS value exists, with no new legacy URL writes; provider_url=BLOCK_NEW and treat any discovered legacy provider URL as a cutover blocker requiring explicit inventory/review; unsafe=REJECT; null=ALLOW; approver=Abdallah` |
 | PRD0-Q043 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 5B load acceptance,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
 | PRD0-Q044 | APPROVED | `PRD0-Q044: option=A; source_buckets=NONE; source_object_count=0; provider_url_count=0; data_owner=Abdallah; approver=Abdallah` |
 | PRD0-Q045 | APPROVED | `PRD0-Q045: mode=N/A_WITH_EVIDENCE; read_only=N/A; delta=N/A; cutback_authority=N/A; approver=Abdallah` |
@@ -119,19 +125,20 @@ Each row is the sole disposition entry for that question.
 | Disposition | Count |
 | --- | ---: |
 | Total | 48 |
-| APPROVED | 28 |
-| PENDING | 20 |
+| APPROVED | 30 |
+| PENDING | 18 |
 | Omitted | 0 |
 | Duplicated | 0 |
 
 The current approved IDs are exactly PRD0-Q001, PRD0-Q002, PRD0-Q003,
 PRD0-Q004, PRD0-Q005, PRD0-Q006, PRD0-Q008, PRD0-Q010, PRD0-Q011, PRD0-Q012,
 PRD0-Q013, PRD0-Q014, PRD0-Q015, PRD0-Q017, PRD0-Q018, PRD0-Q019, PRD0-Q022,
-PRD0-Q024, PRD0-Q026, PRD0-Q028, PRD0-Q029, PRD0-Q030, PRD0-Q032, PRD0-Q044,
-PRD0-Q045, PRD0-Q046, PRD0-Q047, and PRD0-Q048. The Phase 0B snapshot was
+PRD0-Q024, PRD0-Q026, PRD0-Q028, PRD0-Q029, PRD0-Q030, PRD0-Q032, PRD0-Q041,
+PRD0-Q042, PRD0-Q044, PRD0-Q045, PRD0-Q046, PRD0-Q047, and PRD0-Q048. The Phase 0B snapshot was
 exactly 10 approved and 38 pending; later amendments through 2026-08-07 added
 Q003, Q004, Q006, Q012, Q013, Q014, Q015, Q017, and Q026, and the 2026-08-09
-amendment added Q005, Q008, Q018, Q019, and Q044–Q048. All other PRD0-Q001
+amendment added Q005, Q008, Q018, Q019, and Q044–Q048. The 2026-08-11
+amendment added Q041 and Q042. All other PRD0-Q001
 through PRD0-Q048 entries are explicitly pending as shown.
 
 ## Scope and non-authorization

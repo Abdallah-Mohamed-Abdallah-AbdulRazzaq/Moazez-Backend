@@ -3,6 +3,7 @@ import {
   LessonContentInvalidTypePayloadException,
   LessonContentInvalidUrlException,
 } from './lesson-content.exceptions';
+import { classifyPersistedUrl } from '../../../../infrastructure/storage/provider-url.policy';
 
 export type NormalizedLessonContentPayload = {
   type: LessonContentItemType;
@@ -199,24 +200,40 @@ function normalizeNullableId(value: string | null | undefined): string | null {
 
 function normalizeSafeUrl(value: string): string {
   const normalized = value.trim();
+  const classification = classifyPersistedUrl(normalized).classification;
+  if (
+    classification === 'gcs_provider_url' ||
+    classification === 's3_compatible_provider_url'
+  ) {
+    throw new LessonContentInvalidUrlException({
+      field: 'url',
+      reasonCode: 'storage_provider_url_forbidden',
+    });
+  }
   let parsed: URL;
 
   try {
     parsed = new URL(normalized);
   } catch {
-    throw new LessonContentInvalidUrlException({ url: value });
+    throw new LessonContentInvalidUrlException({
+      field: 'url',
+      reasonCode: 'malformed_url',
+    });
   }
 
   const protocol = parsed.protocol.toLowerCase();
   if (protocol !== 'https:' && protocol !== 'http:') {
     throw new LessonContentInvalidUrlException({
-      url: value,
-      protocol,
+      field: 'url',
+      reasonCode: 'unsupported_protocol',
     });
   }
 
   if (!parsed.hostname) {
-    throw new LessonContentInvalidUrlException({ url: value });
+    throw new LessonContentInvalidUrlException({
+      field: 'url',
+      reasonCode: 'missing_hostname',
+    });
   }
 
   return parsed.toString();

@@ -1269,7 +1269,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       data: {
         schoolId: schoolAId,
         schoolName: `${testSuffix} Parent Academy`,
-        logoUrl: 'raw-parent-logo-should-not-be-returned',
+        logoUrl: null,
       },
     });
 

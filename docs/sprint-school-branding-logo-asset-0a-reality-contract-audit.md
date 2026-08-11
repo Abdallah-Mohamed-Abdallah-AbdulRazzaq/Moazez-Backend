@@ -1243,7 +1243,7 @@ implementation.
 prisma/schema.prisma
 prisma/migrations/<generated_timestamp>_school_branding_logo_legacy_closeout/migration.sql
 
-scripts/audits/classify-school-branding-logo-values.ts
+scripts/audits/pre-real-data-provider-url-audit.ts
 docs/sprint-school-branding-logo-legacy-closeout.md
 
 src/modules/settings/branding/application/resolve-school-logo-url.service.ts

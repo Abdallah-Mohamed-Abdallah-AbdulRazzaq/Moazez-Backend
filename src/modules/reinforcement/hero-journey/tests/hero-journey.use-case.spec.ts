@@ -87,7 +87,10 @@ describe('Hero Journey use cases', () => {
         isActive: true,
       }),
     );
-    expect(result).toMatchObject({ slug: 'speed-runner', nameEn: 'Speed Runner' });
+    expect(result).toMatchObject({
+      slug: 'speed-runner',
+      nameEn: 'Speed Runner',
+    });
     expect(auth.createAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'reinforcement.hero.badge.create',
@@ -96,6 +99,81 @@ describe('Hero Journey use cases', () => {
       }),
     );
   });
+
+  it('preserves normal badge asset paths and ordinary HTTPS assets', async () => {
+    const repository = baseRepository();
+    const useCase = new CreateHeroBadgeUseCase(repository, authRepository());
+
+    await withScope(() =>
+      useCase.execute({
+        slug: 'local-asset',
+        nameEn: 'Local asset',
+        assetPath: '/badges/local.svg',
+      }),
+    );
+    await withScope(() =>
+      useCase.execute({
+        slug: 'external-asset',
+        nameEn: 'External asset',
+        assetPath: 'https://cdn.example.org/badges/external.svg',
+      }),
+    );
+
+    expect(repository.createBadge).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ assetPath: '/badges/local.svg' }),
+    );
+    expect(repository.createBadge).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        assetPath: 'https://cdn.example.org/badges/external.svg',
+      }),
+    );
+  });
+
+  it.each([
+    'https://storage.googleapis.com/bucket/badge.svg?X-Goog-Signature=do-not-leak',
+    'http://localhost:9000/bucket/badge.svg',
+    'https://bucket.s3.amazonaws.com/badge.svg',
+    'gs://bucket/badge.svg',
+    's3://bucket/badge.svg',
+  ])(
+    'blocks a provider URL from badge create and update: %s',
+    async (assetPath) => {
+      const repository = baseRepository();
+      const auth = authRepository();
+
+      await expect(
+        withScope(() =>
+          new CreateHeroBadgeUseCase(repository, auth).execute({
+            slug: 'provider-asset',
+            nameEn: 'Provider asset',
+            assetPath,
+          }),
+        ),
+      ).rejects.toMatchObject({
+        code: 'validation.failed',
+        details: {
+          field: 'assetPath',
+          reasonCode: 'storage_provider_url_forbidden',
+        },
+      });
+      await expect(
+        withScope(() =>
+          new UpdateHeroBadgeUseCase(repository, auth).execute(BADGE_ID, {
+            assetPath,
+          }),
+        ),
+      ).rejects.toMatchObject({
+        code: 'validation.failed',
+        details: expect.objectContaining({
+          reasonCode: 'storage_provider_url_forbidden',
+        }),
+      });
+      expect(repository.createBadge).not.toHaveBeenCalled();
+      expect(repository.updateBadge).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects badge creation without a name and duplicate slugs', async () => {
     const repository = baseRepository();
@@ -149,7 +227,9 @@ describe('Hero Journey use cases', () => {
     const auth = authRepository();
 
     await withScope(() => new ListHeroBadgesUseCase(repository).execute({}));
-    await withScope(() => new GetHeroBadgeUseCase(repository).execute(BADGE_ID));
+    await withScope(() =>
+      new GetHeroBadgeUseCase(repository).execute(BADGE_ID),
+    );
     await withScope(() => new ListHeroMissionsUseCase(repository).execute({}));
     await withScope(() =>
       new GetHeroMissionUseCase(repository).execute(MISSION_ID),
@@ -160,10 +240,7 @@ describe('Hero Journey use cases', () => {
 
   it('requires mission title and non-empty objectives on create', async () => {
     const repository = baseRepository();
-    const useCase = new CreateHeroMissionUseCase(
-      repository,
-      authRepository(),
-    );
+    const useCase = new CreateHeroMissionUseCase(repository, authRepository());
 
     await expect(
       withScope(() =>
@@ -191,10 +268,7 @@ describe('Hero Journey use cases', () => {
 
   it('normalizes mission objective ordering and rejects duplicates', async () => {
     const repository = baseRepository();
-    const useCase = new CreateHeroMissionUseCase(
-      repository,
-      authRepository(),
-    );
+    const useCase = new CreateHeroMissionUseCase(repository, authRepository());
 
     await withScope(() =>
       useCase.execute({
@@ -249,7 +323,10 @@ describe('Hero Journey use cases', () => {
     };
 
     const cases: Array<[string, Partial<Record<string, jest.Mock>>]> = [
-      ['academic year', { findAcademicYear: jest.fn().mockResolvedValue(null) }],
+      [
+        'academic year',
+        { findAcademicYear: jest.fn().mockResolvedValue(null) },
+      ],
       [
         'term',
         {
@@ -262,10 +339,7 @@ describe('Hero Journey use cases', () => {
       ['stage', { findStage: jest.fn().mockResolvedValue(null) }],
       ['subject', { findSubject: jest.fn().mockResolvedValue(null) }],
       ['assessment', { findAssessment: jest.fn().mockResolvedValue(null) }],
-      [
-        'badge',
-        { findBadgeById: jest.fn().mockResolvedValue(null) },
-      ],
+      ['badge', { findBadgeById: jest.fn().mockResolvedValue(null) }],
     ];
 
     for (const [, overrides] of cases) {
@@ -321,7 +395,9 @@ describe('Hero Journey use cases', () => {
           baseRepository({
             findMissionById: jest
               .fn()
-              .mockResolvedValue(missionRecord({ status: HeroMissionStatus.ARCHIVED })),
+              .mockResolvedValue(
+                missionRecord({ status: HeroMissionStatus.ARCHIVED }),
+              ),
           }),
           auth,
         ).execute(MISSION_ID, { titleEn: 'Nope' }),
@@ -479,7 +555,9 @@ describe('Hero Journey use cases', () => {
           baseRepository({
             findMissionById: jest
               .fn()
-              .mockResolvedValue(missionRecord({ status: HeroMissionStatus.ARCHIVED })),
+              .mockResolvedValue(
+                missionRecord({ status: HeroMissionStatus.ARCHIVED }),
+              ),
           }),
           authRepository(),
         ).execute(MISSION_ID, {}),
@@ -525,7 +603,9 @@ describe('Hero Journey use cases', () => {
           baseRepository({
             findMissionById: jest
               .fn()
-              .mockResolvedValue(missionRecord({ status: HeroMissionStatus.ARCHIVED })),
+              .mockResolvedValue(
+                missionRecord({ status: HeroMissionStatus.ARCHIVED }),
+              ),
             countMissionProgress: jest.fn().mockResolvedValue(1),
           }),
           authRepository(),
@@ -554,7 +634,8 @@ describe('Hero Journey use cases', () => {
         Promise.resolve(
           badgeRecord({
             slug: String(data.slug ?? 'speed-runner'),
-            nameEn: (data.nameEn as string | null | undefined) ?? 'Speed Runner',
+            nameEn:
+              (data.nameEn as string | null | undefined) ?? 'Speed Runner',
           }),
         ),
       ),
@@ -646,7 +727,9 @@ describe('Hero Journey use cases', () => {
       findStage: jest.fn().mockResolvedValue({ id: STAGE_ID }),
       findSubject: jest.fn().mockResolvedValue({ id: SUBJECT_ID }),
       findAssessment: jest.fn().mockResolvedValue({ id: ASSESSMENT_ID }),
-      findFile: jest.fn().mockResolvedValue({ id: 'file-1', schoolId: SCHOOL_ID }),
+      findFile: jest
+        .fn()
+        .mockResolvedValue({ id: 'file-1', schoolId: SCHOOL_ID }),
       createMissionProgress: jest.fn(),
       createXpLedger: jest.fn(),
       createHeroStudentBadge: jest.fn(),

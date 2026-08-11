@@ -32,6 +32,13 @@ describe('StorageModule provider selection', () => {
     expect(config.getOrThrow).not.toHaveBeenCalledWith('STORAGE_ENDPOINT');
   });
 
+  it('fails closed for an unsupported provider', () => {
+    const config = providerConfig({ STORAGE_PROVIDER: 'unsupported' });
+    expect(() => createObjectStoragePort(config)).toThrow(
+      'storage_provider_unsupported',
+    );
+  });
+
   it('keeps feature/application code independent of provider selection', () => {
     const moduleRoot = join(process.cwd(), 'src', 'modules');
     const productionSources = walkTypeScriptFiles(moduleRoot).filter(

@@ -20,6 +20,7 @@ import {
   normalizeDeliveryMode,
 } from '../../shared/domain/grade-workflow';
 import { toGradeNumber } from '../../shared/domain/grade-calculation';
+import { classifyPersistedUrl } from '../../../../infrastructure/storage/provider-url.policy';
 
 export interface QuestionAssessmentLike {
   id: string;
@@ -113,6 +114,19 @@ export class GradeAnswerInvalidOptionException extends DomainException {
       message: 'Answer references an invalid option',
       httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
       details,
+    });
+  }
+}
+
+export class GradeQuestionMediaUrlRejectedException extends DomainException {
+  constructor(
+    reasonCode: 'external_https_required' | 'provider_url_forbidden',
+  ) {
+    super({
+      code: 'grades.question.media_url_rejected',
+      message: 'Question media URL is not allowed',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details: { field: 'mediaUrl', reasonCode },
     });
   }
 }
@@ -605,7 +619,9 @@ function buildQuestionMetadata(command: QuestionCommandLike): unknown {
     extras.matchingPairs = command.matchingPairs;
   if (hasOwn(command, 'mediaMode')) extras.mediaMode = command.mediaMode;
   if (hasOwn(command, 'mediaTitle')) extras.mediaTitle = command.mediaTitle;
-  if (hasOwn(command, 'mediaUrl')) extras.mediaUrl = command.mediaUrl;
+  if (hasOwn(command, 'mediaUrl')) {
+    extras.mediaUrl = normalizeGradeMediaUrl(command.mediaUrl);
+  }
   if (hasOwn(command, 'mediaFileName'))
     extras.mediaFileName = command.mediaFileName;
   if (hasOwn(command, 'mediaMimeType'))
@@ -629,4 +645,21 @@ function buildQuestionMetadata(command: QuestionCommandLike): unknown {
   }
 
   return Object.keys(extras).length > 0 ? extras : undefined;
+}
+
+function normalizeGradeMediaUrl(
+  value: string | null | undefined,
+): string | null {
+  const result = classifyPersistedUrl(value);
+  if (result.classification === 'absent') return null;
+  if (result.classification === 'external_https') {
+    return result.normalizedValue as string;
+  }
+
+  const provider =
+    result.classification === 'gcs_provider_url' ||
+    result.classification === 's3_compatible_provider_url';
+  throw new GradeQuestionMediaUrlRejectedException(
+    provider ? 'provider_url_forbidden' : 'external_https_required',
+  );
 }

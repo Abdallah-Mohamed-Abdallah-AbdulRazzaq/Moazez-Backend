@@ -12,7 +12,10 @@ import { ObjectStorageError } from '../../../../infrastructure/storage/object-st
 import { GetPublicSchoolBrandingLogoUseCase } from '../application/get-public-school-branding-logo.use-case';
 import { ResolveSchoolLogoUrlService } from '../application/resolve-school-logo-url.service';
 import { PublicSchoolBrandingController } from '../controller/public-school-branding.controller';
-import { PublicBrandingLogoServiceUnavailableException } from '../domain/branding-logo.errors';
+import {
+  BrandingLegacyLogoValueRejectedException,
+  PublicBrandingLogoServiceUnavailableException,
+} from '../domain/branding-logo.errors';
 import { BrandingRepository } from '../infrastructure/branding.repository';
 
 const SCHOOL_ID = '11111111-1111-4111-8111-111111111111';
@@ -64,7 +67,7 @@ describe('school branding logo resolver', () => {
     await expect(resolver.resolveForSchool(SCHOOL_ID)).resolves.toBeNull();
   });
 
-  it('uses a safe HTTPS legacy fallback and rejects protected legacy values', async () => {
+  it('uses a safe HTTPS legacy fallback and allows null', async () => {
     const safe = createResolver({
       managed: false,
       legacyUrl: 'https://cdn.example.com/logo.png',
@@ -73,13 +76,51 @@ describe('school branding logo resolver', () => {
       'https://cdn.example.com/logo.png',
     );
 
+    const absent = createResolver({ managed: false, legacyUrl: null });
+    await expect(absent.resolveForSchool(SCHOOL_ID)).resolves.toBeNull();
+  });
+
+  it('fails closed for managed Files routes, provider URLs, and malformed legacy values', async () => {
     const protectedValue = createResolver({
       managed: false,
       legacyUrl: `https://api.example.com/api/v1/files/${FILE_ID}/download`,
     });
     await expect(
       protectedValue.resolveForSchool(SCHOOL_ID),
-    ).resolves.toBeNull();
+    ).rejects.toBeInstanceOf(BrandingLegacyLogoValueRejectedException);
+
+    const values = [
+      'https://storage.googleapis.com/private/logo.png?X-Goog-Signature=do-not-leak',
+      'http://127.0.0.1:9000/private/logo.png?X-Amz-Signature=do-not-leak',
+      'https://bucket.s3.amazonaws.com/logo.png',
+      'malformed do-not-leak',
+      'http://cdn.example.com/logo.png',
+    ];
+    for (const legacyUrl of values) {
+      const resolver = createResolver({ managed: false, legacyUrl });
+      let rejected: unknown;
+      try {
+        await resolver.resolveForSchool(SCHOOL_ID);
+      } catch (error: unknown) {
+        rejected = error;
+      }
+
+      expect(rejected).toMatchObject({
+        code: 'settings.branding.logo.legacy_value_rejected',
+        details: expect.objectContaining({ field: 'logoUrl' }),
+      });
+      expect(JSON.stringify(rejected)).not.toContain(legacyUrl);
+    }
+  });
+
+  it('prefers an eligible managed File without evaluating a legacy provider URL', async () => {
+    const resolver = createResolver({
+      legacyUrl:
+        'https://storage.googleapis.com/private/logo.png?X-Goog-Signature=do-not-leak',
+    });
+    await expect(resolver.resolveForSchool(SCHOOL_ID)).resolves.toMatch(
+      /\/api\/v1\/public\/schools\//,
+    );
   });
 
   it('rejects a non-HTTPS production APP_URL rather than deriving a request host', async () => {

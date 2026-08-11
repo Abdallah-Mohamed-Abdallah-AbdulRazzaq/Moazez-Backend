@@ -45,6 +45,10 @@ const PHASE_2_CLOSEOUT_TOKENS = Object.freeze([
   '- Successful Universal Regression confirmation run: `30820391152`',
   '- Learning Media completion remains HTTP 200.',
 ]);
+const Q041_APPROVED_ANSWER =
+  'PRD0-Q041: option=D; allowlist=HTTPS external URLs only, with all direct GCS/Google Cloud Storage/MinIO/S3-compatible provider URLs forbidden for new writes; compatibility_window=NONE; legacy_owner=Abdallah; approver=Abdallah';
+const Q042_APPROVED_ANSWER =
+  'PRD0-Q042: managed=ALLOW managed File-backed branding for new writes and reads; external_https=READ_ONLY compatibility only where an already-persisted safe HTTPS value exists, with no new legacy URL writes; provider_url=BLOCK_NEW and treat any discovered legacy provider URL as a cutover blocker requiring explicit inventory/review; unsafe=REJECT; null=ALLOW; approver=Abdallah';
 
 function parseAcceptanceMatrix(matrixText) {
   const gates = new Map();
@@ -153,6 +157,121 @@ function validateProductionReadinessGovernance(matrixText, phase2CloseoutText) {
   });
 }
 
+function validateStorageCutoverGovernance(documents) {
+  const problems = [];
+  let checkCount = 0;
+  const requireToken = (name, text, token) => {
+    checkCount += 1;
+    if (!text.includes(token)) problems.push(`${name} is missing: ${token}`);
+  };
+
+  requireToken(
+    'Owner disposition register',
+    documents.disposition,
+    Q041_APPROVED_ANSWER,
+  );
+  requireToken(
+    'Owner disposition register',
+    documents.disposition,
+    Q042_APPROVED_ANSWER,
+  );
+  requireToken(
+    'Owner disposition register',
+    documents.disposition,
+    '| APPROVED | 30 |',
+  );
+  requireToken(
+    'Owner disposition register',
+    documents.disposition,
+    '| PENDING | 18 |',
+  );
+  requireToken(
+    'Owner disposition register',
+    documents.disposition,
+    'amendment added Q041 and Q042',
+  );
+  requireToken('Acceptance matrix', documents.matrix, '| PRD5A-G03 |');
+  const gates = parseAcceptanceMatrix(documents.matrix);
+  checkCount += 2;
+  if (gates.get('PRD5A-G03')?.status !== 'COMPLETE') {
+    problems.push('PRD5A-G03 must be COMPLETE after accepted Batch 2 closure');
+  }
+  if (gates.get('PRD5A-G07')?.status !== 'IN_PROGRESS') {
+    problems.push(
+      'PRD5A-G07 must remain IN_PROGRESS pending production audit evidence',
+    );
+  }
+
+  for (const token of [
+    'BATCH_2=CLOSED',
+    'PRD5A-G03=COMPLETE',
+    'NONPROD_GCS_OBJECT_CONTRACT_PROOF=PASS',
+    'PRODUCTION_GCS_PROVISIONING=PASS',
+    'PRODUCTION_GCS_READONLY_PROOF=PASS',
+    'PRODUCTION_PRIVATE_LIVE=0',
+    'PRODUCTION_PRIVATE_NONCURRENT=0',
+    'PRODUCTION_PRIVATE_SOFT_DELETED=0',
+    'PRODUCTION_PUBLISHED_LIVE=0',
+    'PRODUCTION_PUBLISHED_NONCURRENT=0',
+    'PRODUCTION_PUBLISHED_SOFT_DELETED=0',
+    'PRODUCTION_OBJECT_WRITES_DURING_BATCH2=0',
+    'PHASE_5A=NOT_COMPLETE',
+    'REAL_DATA_ALLOWED=NO',
+  ]) {
+    requireToken('Phase 5A runbook', documents.runbook, token);
+  }
+
+  requireToken(
+    'ADR-0013',
+    documents.adr0013,
+    '| PRD0-D046 | PRD0-Q041 | Accepted |',
+  );
+  requireToken(
+    'ADR-0013',
+    documents.adr0013,
+    '| PRD0-D047 | PRD0-Q042 | Accepted |',
+  );
+  requireToken(
+    'Decision register',
+    documents.decisionRegister,
+    '33\n`LOCKED_FROM_APPROVED_CONTEXT`, 20 `OWNER_DECISION_REQUIRED`',
+  );
+  requireToken(
+    'Batch 3 inventory',
+    documents.batch3Inventory,
+    'Current count: **22 consumer classes across 21 files**.',
+  );
+  requireToken(
+    'Batch 3 inventory',
+    documents.batch3Inventory,
+    'Current count: **16 functional families**',
+  );
+  requireToken(
+    'Batch 3 inventory',
+    documents.batch3Inventory,
+    'UNRESOLVED_PROVIDER_URL_SURFACE=NONE',
+  );
+
+  checkCount += 1;
+  const combined = Object.values(documents).join('\n');
+  if (
+    combined.includes('STORAGE_CUTOVER_READY_FOR_REAL_DATA=YES') ||
+    documents.runbook.includes('PHASE_5A=COMPLETE') ||
+    documents.runbook.includes('REAL_DATA_ALLOWED=YES')
+  ) {
+    problems.push(
+      'Storage governance prematurely authorizes Phase 5A or real data',
+    );
+  }
+
+  if (problems.length > 0) {
+    throw new Error(
+      `Storage-cutover governance validation failed:\n- ${problems.join('\n- ')}`,
+    );
+  }
+  return Object.freeze({ checkCount });
+}
+
 function validateRepository(repositoryRoot) {
   const matrixPath = path.join(
     repositoryRoot,
@@ -168,21 +287,59 @@ function validateRepository(repositoryRoot) {
     'phase-2',
     '02-runtime-role-separation-closeout.md',
   );
-  return validateProductionReadinessGovernance(
+  const governance = validateProductionReadinessGovernance(
     fs.readFileSync(matrixPath, 'utf8'),
     fs.readFileSync(closeoutPath, 'utf8'),
   );
+  const read = (...segments) =>
+    fs.readFileSync(path.join(repositoryRoot, ...segments), 'utf8');
+  const storageCutover = validateStorageCutoverGovernance({
+    matrix: fs.readFileSync(matrixPath, 'utf8'),
+    disposition: read(
+      'docs',
+      'production-readiness',
+      'phase-0',
+      '05-owner-decision-disposition-register.md',
+    ),
+    runbook: read(
+      'docs',
+      'production-readiness',
+      'phase-5a',
+      '01-gcs-iac-and-real-proof-runbook.md',
+    ),
+    adr0013: read(
+      'adr',
+      'ADR-0013-file-security-retention-and-reference-aware-lifecycle.md',
+    ),
+    decisionRegister: read(
+      'docs',
+      'production-readiness',
+      'phase-0',
+      '02-production-decision-register.md',
+    ),
+    batch3Inventory: read(
+      'docs',
+      'production-readiness',
+      'phase-5a',
+      '02-storage-batch-3-source-cutover.md',
+    ),
+  });
+  return Object.freeze({
+    ...governance,
+    storageCutoverCheckCount: storageCutover.checkCount,
+  });
 }
 
 if (require.main === module) {
   const result = validateRepository(path.resolve(__dirname, '..', '..'));
   process.stdout.write(
-    `Production-readiness governance verified: gates=${result.gateCount}\n`,
+    `Production-readiness governance verified: gates=${result.gateCount} storageCutoverChecks=${result.storageCutoverCheckCount}\n`,
   );
 }
 
 module.exports = {
   parseAcceptanceMatrix,
   validateProductionReadinessGovernance,
+  validateStorageCutoverGovernance,
   validateRepository,
 };

@@ -287,6 +287,30 @@ describe('bootstrap environment validation', () => {
     expect(env.STORAGE_SECRET_KEY).toBeUndefined();
   });
 
+  it.each(['staging', 'production'])(
+    'accepts API GCS with a signing principal in %s',
+    (nodeEnvironment) => {
+      const env = validateEnv(
+        productionEnv({
+          NODE_ENV: nodeEnvironment,
+          APP_CORS_ORIGINS:
+            nodeEnvironment === 'production'
+              ? APPROVED_PRODUCTION_APPLICATION_ORIGINS.join(',')
+              : APPROVED_STAGING_APPLICATION_ORIGINS.join(','),
+          GCP_PROJECT_ID: `moazez-${nodeEnvironment}`,
+          GCS_SIGNING_SERVICE_ACCOUNT: `moazez-gcs-signer@moazez-${nodeEnvironment}.iam.gserviceaccount.com`,
+        }),
+      );
+
+      expect(env).toMatchObject({
+        NODE_ENV: nodeEnvironment,
+        STORAGE_PROVIDER: 'gcs',
+        GCP_PROJECT_ID: `moazez-${nodeEnvironment}`,
+      });
+      expect(env.GCS_SIGNING_SERVICE_ACCOUNT).toContain('moazez-gcs-signer@');
+    },
+  );
+
   it.each([
     ['minio', 'staging'],
     ['s3', 'staging'],
@@ -340,6 +364,19 @@ describe('bootstrap environment validation', () => {
         }),
       ),
     ).toThrow(/GCS_SIGNING_SERVICE_ACCOUNT/u);
+  });
+
+  it('fails closed for an unsupported provider and for production default fallback', () => {
+    expect(() =>
+      validateEnv(baseEnv({ STORAGE_PROVIDER: 'unsupported' })),
+    ).toThrow(/STORAGE_PROVIDER/u);
+    expect(() =>
+      validateEnv(
+        productionEnv({
+          STORAGE_PROVIDER: undefined,
+        }),
+      ),
+    ).toThrow(/STORAGE_PROVIDER must be gcs/u);
   });
 });
 

@@ -1,5 +1,10 @@
 # Current Storage Cutover Inventory
 
+> Historical Batch 0 baseline. The Batch 3 recomputation and current cutover
+> implementation inventory are recorded in
+> `02-storage-batch-3-source-cutover.md`; the counts remain 22 consumer classes
+> across 21 files and 16 functional families.
+
 ## Document control and scope
 
 | Field | Value |

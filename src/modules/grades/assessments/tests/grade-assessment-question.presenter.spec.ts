@@ -98,4 +98,22 @@ describe('grade assessment question presenter', () => {
       questions: [expect.objectContaining({ id: 'question-1' })],
     });
   });
+
+  it('preserves the existing metadata-backed MEDIA read shape', () => {
+    const question = questionRecord();
+    question.type = GradeQuestionType.MEDIA;
+    question.metadata = {
+      mediaMode: 'video',
+      mediaTitle: 'Legacy external media',
+      mediaUrl: 'https://media.example.org/legacy.mp4',
+      mediaFileName: 'legacy.mp4',
+      mediaMimeType: 'video/mp4',
+      mediaSize: 2048,
+    };
+
+    expect(presentGradeAssessmentQuestion(question)).toMatchObject({
+      type: 'media',
+      metadata: question.metadata,
+    });
+  });
 });

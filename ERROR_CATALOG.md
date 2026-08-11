@@ -169,6 +169,7 @@ does not change that global behavior.
 | `settings.branding.logo.mime_mismatch`                   | 400  | Declared image type does not match file content                 |
 | `settings.branding.logo.invalid_structure`               | 400  | School logo file structure is invalid or incomplete             |
 | `settings.branding.logo.size_exceeded`                   | 413  | School logo exceeds the maximum allowed size                    |
+| `settings.branding.logo.legacy_value_rejected`           | 422  | Persisted legacy logo value is not an accepted branding source |
 
 ### Admissions
 
@@ -312,6 +313,7 @@ tenant, actor, content, File, or timestamp values are exposed.
 | `grades.question.points_mismatch`             | 422  | Total question points do not match assessment total  |
 | `grades.question.structure_locked`            | 409  | Question structure cannot be changed                 |
 | `grades.question.last_question`               | 409  | Assessment must keep at least one question           |
+| `grades.question.media_url_rejected`           | 422  | Question media URL is not allowed                    |
 | `grades.answer.invalid_question`              | 422  | Answer references an invalid question                |
 | `grades.answer.invalid_option`                | 422  | Answer references an invalid option                  |
 | `grades.submission.already_submitted`         | 409  | Submission is already submitted                      |

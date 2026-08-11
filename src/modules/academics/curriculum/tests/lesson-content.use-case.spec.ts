@@ -14,6 +14,7 @@ import {
 import {
   CreateLessonContentUseCase,
   ReorderLessonContentUseCase,
+  UpdateLessonContentUseCase,
 } from '../application/lesson-content.use-cases';
 import type {
   LessonContentTransactionContext,
@@ -278,6 +279,69 @@ describe('Lesson content use cases', () => {
         url: 'https://example.test/reference',
       });
     });
+  });
+
+  it.each([
+    'https://storage.googleapis.com/bucket/object?X-Goog-Signature=do-not-leak',
+    'http://127.0.0.1:9000/bucket/object',
+    'https://bucket.s3.amazonaws.com/object',
+    'gs://bucket/object',
+    's3://bucket/object',
+  ])(
+    'blocks a provider URL on create without persisting or echoing it: %s',
+    async (url) => {
+      const repository = createRepository();
+      const useCase = new CreateLessonContentUseCase(
+        createUnitOfWork(repository),
+      );
+
+      await withScope(async () => {
+        await expect(
+          useCase.execute(path, {
+            type: LessonContentItemType.EXTERNAL_LINK,
+            title: 'Provider URL',
+            url,
+          }),
+        ).rejects.toMatchObject({
+          code: 'academics.lesson_content.invalid_url',
+          details: {
+            field: 'url',
+            reasonCode: 'storage_provider_url_forbidden',
+          },
+        });
+      });
+      expect(repository.createContentItem).not.toHaveBeenCalled();
+    },
+  );
+
+  it('blocks a provider URL on update while preserving ordinary URL behavior', async () => {
+    const repository = createRepository({
+      findLessonContentItemById: jest.fn().mockResolvedValue(
+        contentItem({
+          type: LessonContentItemType.EXTERNAL_LINK,
+          url: 'https://external.example.test/old',
+        }),
+      ),
+    });
+    const useCase = new UpdateLessonContentUseCase(
+      repository,
+      createUnitOfWork(repository),
+    );
+
+    await withScope(async () => {
+      await expect(
+        useCase.execute(
+          { ...path, contentItemId: 'content-1' },
+          { url: 'https://bucket.storage.googleapis.com/object' },
+        ),
+      ).rejects.toMatchObject({
+        code: 'academics.lesson_content.invalid_url',
+        details: expect.objectContaining({
+          reasonCode: 'storage_provider_url_forbidden',
+        }),
+      });
+    });
+    expect(repository.updateContentItemConditionally).not.toHaveBeenCalled();
   });
 
   it.each([

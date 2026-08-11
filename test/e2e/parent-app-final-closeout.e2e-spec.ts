@@ -452,7 +452,7 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
       data: {
         schoolId: schoolAId,
         schoolName: `${testSuffix} Parent Academy`,
-        logoUrl: 'raw-parent-logo-should-not-be-returned',
+        logoUrl: null,
       },
     });
 

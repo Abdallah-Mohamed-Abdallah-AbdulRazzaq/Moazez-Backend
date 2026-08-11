@@ -64,7 +64,7 @@ describe('Applicant Portal school discovery (e2e)', () => {
       addressLine: `East Road ${suffix}`,
       city: 'Cairo',
       country: 'Egypt',
-      logoUrl: `raw-storage-key/${marker}/east-logo.png`,
+      logoUrl: null,
     });
     activeNorthSchoolId = await createSchoolWithProfile({
       organizationId: activeOrganization.id,

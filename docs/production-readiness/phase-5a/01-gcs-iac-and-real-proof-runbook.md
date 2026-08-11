@@ -4,20 +4,22 @@
 
 ```text
 BATCH_1=CLOSED
+BATCH_2=CLOSED
 PRD5A-G02=COMPLETE
+PRD5A-G03=COMPLETE
 
-BATCH_2A_SOURCE_PREPARED=YES
-BATCH_2A_REPAIR=REPAIRED_PENDING_INDEPENDENT_REVIEW_AND_TERRAFORM_VALIDATION
-TERRAFORM_VALIDATE=NOT_RUN
-TERRAFORM_FMT=NOT_RUN_CLI_UNAVAILABLE
-TERRAFORM_INIT_VALIDATE=NOT_RUN_CLI_UNAVAILABLE
-BATCH_2_READY_FOR_OPERATOR_EXECUTION=NO
-PRD5A-G03=IN_PROGRESS
-
-NONPROD_PROJECT_ACCESS=UNRESOLVED_UNTIL_OPERATOR_PREFLIGHT
-REAL_GCS_PROOF=NOT_RUN
+NONPROD_GCS_OBJECT_CONTRACT_PROOF=PASS
+PRODUCTION_GCS_PROVISIONING=PASS
+PRODUCTION_GCS_READONLY_PROOF=PASS
 REAL_OBJECT_PROOF_ENVIRONMENT=NONPROD_ONLY
-PRODUCTION_GCS_OBJECT_WRITES=0
+
+PRODUCTION_PRIVATE_LIVE=0
+PRODUCTION_PRIVATE_NONCURRENT=0
+PRODUCTION_PRIVATE_SOFT_DELETED=0
+PRODUCTION_PUBLISHED_LIVE=0
+PRODUCTION_PUBLISHED_NONCURRENT=0
+PRODUCTION_PUBLISHED_SOFT_DELETED=0
+PRODUCTION_OBJECT_WRITES_DURING_BATCH2=0
 
 PHASE_4=NOT_COMPLETE
 PHASE_5A=NOT_COMPLETE
@@ -28,9 +30,10 @@ PRODUCTION_UPLOADS_ALLOWED=NO
 PRODUCTION_TRAFFIC_ALLOWED=NO
 ```
 
-This runbook is for the Owner/operator after independent review. Codex Batch
-2A does not execute any command in this document that contacts Google Cloud or
-changes cloud state.
+Batch 2 is accepted closed as of the 2026-08-11 Owner amendment. Sections A–J
+are retained as the historical operator procedure and may be rerun only under
+separate Owner change control. This Batch 3 source work does not execute any
+command in this document, contact Google Cloud, or change cloud state.
 
 The four application buckets are not Terraform-state buckets. Both Terraform
 roots temporarily use local state. State and plan files are ignored and must
@@ -122,9 +125,9 @@ terraform init
 terraform validate
 ```
 
-Batch 2A source preparation did not run these commands because Terraform CLI
-was unavailable. Until independent review and Terraform validation succeed,
-`BATCH_2_READY_FOR_OPERATOR_EXECUTION=NO`.
+At the Batch 2A source-preparation checkpoint these commands had not yet run.
+They were subsequently covered by the independently accepted Batch 2 evidence;
+this paragraph is retained only to preserve the historical operator sequence.
 
 ## B. Nonprod Terraform plan
 
@@ -168,8 +171,9 @@ nonprod plan:
 terraform apply nonprod.tfplan
 ```
 
-This approval and execution are outside Codex Batch 2A. Preserve the local
-state securely; do not place it in an application bucket or commit it.
+This approval and execution were outside Codex Batch 2A. Preserve the local
+state securely; do not place it in an application bucket or commit it. Rerun
+only under separate Owner change control.
 
 ## D. Nonprod real GCS proof
 
@@ -316,7 +320,7 @@ exact saved production plan:
 terraform apply production.tfplan
 ```
 
-This is outside Codex Batch 2A and does not authorize application deployment,
+This was outside Codex Batch 2A and does not authorize application deployment,
 traffic, uploads, or real data.
 
 ## I. Production read-only configuration and IAM proof
@@ -377,5 +381,7 @@ outcomes. It contains no object payloads, access tokens, credentials, ADC
 material, private keys, complete signed URLs, or signed query strings. Proof
 failures emit stable codes rather than provider error text.
 
-Completion of this runbook's preparation does not complete PRD5A-G03. Only
-reviewed operator provisioning and real-provider evidence can do that.
+The reviewed Batch 2 operator provisioning and real-provider evidence completed
+PRD5A-G03. Phase 5A as a whole remains incomplete, production launch is not
+authorized, and real production data remains prohibited pending the later
+source-candidate, audit, deployment, and smoke gates.

@@ -105,6 +105,7 @@
     "verify:prd3-g06-tests": "node --test scripts/tests/prd3-g06-phase3-regression.test.cjs",
     "verify:prd3-g06-final": "node scripts/ci/prd3-g06-phase3-regression.cjs",
     "verify:legacy-learning-media": "node scripts/classify-legacy-learning-media.cjs",
+    "audit:storage-provider-urls": "node --require ts-node/register scripts/audits/pre-real-data-provider-url-audit.ts",
     "test:learning-media": "jest --runInBand --runTestsByPath src/modules/files/uploads/tests/file-upload-session.contract.spec.ts src/modules/files/uploads/tests/learning-media-upload.use-case.spec.ts",
     "verify:sprint1b:preflight": "node scripts/check-local-readiness.cjs",
     "verify:sprint1b": "npm run verify:sprint1b:preflight && npm run db:migrate && npm run seed && npm run build && npm run test -- --runInBand && npm run test:security -- --runInBand",

@@ -64,8 +64,8 @@ No recommendation is represented as owner approval. Evidence IDs resolve to
 | PRD0-D043 | Admissions/audit/legal hold | OWNER_DECISION_REQUIRED | D041–D042 | superseded evidence retention and hold precedence |
 | PRD0-D044 | Physical deletion approval/enablement | OWNER_DECISION_REQUIRED | D041–D043 | report-only first; destructive production deletion separately enabled |
 | PRD0-D045 | Orphan-candidate reconciliation ownership | OWNER_DECISION_REQUIRED | D041 | named owner, review cadence, false-positive disposition |
-| PRD0-D046 | Grade MEDIA URL policy | OWNER_DECISION_REQUIRED | D002, D029, D038 | managed `fileId`, approved external HTTPS, compatibility window, or block new provider URLs |
-| PRD0-D047 | Legacy branding URL treatment | OWNER_DECISION_REQUIRED | D029, D038 | classify managed/external/provider/unsafe/null without removing safe fallback prematurely |
+| PRD0-D046 | Grade MEDIA URL policy | LOCKED_FROM_APPROVED_CONTEXT | D002, D029, D038 | Q041 option D: ordinary external HTTPS only for new writes; provider/HTTP/malformed blocked; no compatibility window |
+| PRD0-D047 | Legacy branding URL treatment | LOCKED_FROM_APPROVED_CONTEXT | D029, D038 | Q042: managed File writes/reads; safe external HTTPS read-only legacy compatibility; provider/unsafe fail closed; null allowed |
 | PRD0-D048 | Multipart edge limits and upload concurrency | OWNER_DECISION_REQUIRED | D030–D031, D038 | route/edge caps, instance memory/concurrency, rate limits, large-file direct PUT |
 | PRD0-D049 | Object-preservation branch | LOCKED_FROM_APPROVED_CONTEXT | D029 | Q044 option A: clean-start object branch; zero source buckets, objects, and provider URLs |
 | PRD0-D050 | Source MinIO read-only rollback window | LOCKED_FROM_APPROVED_CONTEXT | D049 | Q045: `N/A_WITH_EVIDENCE` for the zero-source branch |
@@ -73,9 +73,8 @@ No recommendation is represented as owner approval. Evidence IDs resolve to
 | PRD0-D052 | Storage bucket/privacy topology | LOCKED_FROM_APPROVED_CONTEXT | D009, D017–D019 | Q047: four private per-project buckets in `me-central2`; UBLA, PAP, exact Q022 CORS, private Learning Media prefixes |
 | PRD0-D053 | GCS versioning/lifecycle/deletion protection | LOCKED_FROM_APPROVED_CONTEXT | D042, D044, D052 | Q048: versioning, seven-day Soft Delete, Terraform `prevent_destroy`, no Bucket Lock or Phase 5A automatic transition/deletion |
 
-Current status totals after the 2026-08-10 D010 acceptance and reconciliation
-of the 2026-08-09 cloud/storage approvals: 31
-`LOCKED_FROM_APPROVED_CONTEXT`, 22 `OWNER_DECISION_REQUIRED`, 0
+Current status totals after the 2026-08-11 Q041/Q042 amendment: 33
+`LOCKED_FROM_APPROVED_CONTEXT`, 20 `OWNER_DECISION_REQUIRED`, 0
 `PROPOSED_RECOMMENDATION`, 0
 `DEFERRED_WITH_CONSTRAINT`, and 0 `REJECTED`. The Phase 0B closeout snapshot on
 2026-07-27 correctly recorded 14 locked, 38 owner-required, and 1 proposed at
@@ -846,6 +845,31 @@ validation counts. Phase 4 and Phase 5A are not complete.
   broader regression ownership. Reopen for a new proof type, supported MIME, detector
   policy, or approved client-compatibility change.
 
+### PRD0-D046 — Block provider URLs from Grade MEDIA writes
+
+- **Status / authority:** `LOCKED_FROM_APPROVED_CONTEXT`; PRD0-Q041 option D
+  approved by Abdallah on 2026-08-11 (Africa/Cairo); owning ADR ADR-0013.
+- **Decision:** new `mediaUrl` writes allow only ordinary external HTTPS, plus
+  absent/null where already allowed. Direct GCS/Google Cloud Storage/MinIO/
+  S3-compatible URLs, `gs://`, `s3://`, HTTP, and malformed/unsafe URLs are
+  blocked. `compatibility_window=NONE`.
+- **Compatibility / reopen:** preserve DTO and historical read shapes; perform
+  no schema migration or silent rewrite. Reopen only through an explicit owner
+  amendment to Q041.
+
+### PRD0-D047 — Govern branding logo writes and legacy reads
+
+- **Status / authority:** `LOCKED_FROM_APPROVED_CONTEXT`; PRD0-Q042 approved by
+  Abdallah on 2026-08-11 (Africa/Cairo); owning ADR ADR-0013.
+- **Decision:** new writes remain managed File-backed only. Reads allow an
+  eligible managed File, an already-persisted safe ordinary external HTTPS URL
+  as read-only compatibility, or null. Provider and unsafe/malformed legacy
+  values fail closed; provider discovery blocks cutover pending inventory and
+  review.
+- **Compatibility / reopen:** no server-side external fetch, raw legacy write,
+  schema migration, or signed/provider URL exposure. Reopen only through an
+  explicit owner amendment to Q042.
+
 ### PRD0-D049 — Lock the zero-object clean-start branch
 
 - **Status / authority:** `LOCKED_FROM_APPROVED_CONTEXT`; PRD0-Q044 option A
@@ -909,8 +933,6 @@ recommendation column in the summary is advice only; silence selects nothing.
 | PRD0-D041–PRD0-D043 Retention and holds | Decide policy authority, feature periods, superseded admissions evidence, legal/audit hold precedence, and deletion eligibility. | before any destructive cleanup; reopen on law/product policy |
 | PRD0-D044 Physical deletion | Report-only first. Decide approval roles, enable flag, retry/audit/recovery, and whether cleanup remains deferred under a cost constraint. | destructive cleanup remains separately blocked after Phase 5B foundation |
 | PRD0-D045 Reconciliation ownership | Name producer/reviewer, cadence, inventory retention, false-positive disposition, and escalation. | Phase 5B report-only gate; reopen on reference graph change |
-| PRD0-D046 Grade MEDIA URLs | Choose managed File, approved external HTTPS, compatibility window, or disable new direct provider URLs while retaining approved legacy reads. | Phase 5B; row remediation conditional on PRD0-Q004 |
-| PRD0-D047 Branding legacy URLs | Classify managed File, approved HTTPS, legacy provider, invalid/unsafe, and null; retain current safe fallback until migration/retirement approval. | Phase 5A inventory / Phase 5B policy |
 | PRD0-D048 Multipart controls | Approve edge/app route limits, memory, Cloud Run concurrency, simultaneous upload budget, rates, and large-file direct PUT threshold. | provisional capacity input; close with Phase 5B load evidence |
 
 ## Canonical delivery-phase ownership
@@ -970,7 +992,7 @@ does not accept a pending decision.
 | ADR-0010 | Production Health and Observability Contract | owns D024–D025, D035 | created; accepts D024/Q024 and D035/Q030; D025/Q025 remains pending |
 | ADR-0011 | Artifact, Runtime Version, Staging, and Promotion | owns D032–D034 | created; accepts D033/Q028 and D034/Q029; D032/Q027 remains pending |
 | ADR-0012 | Capacity, Backup, RTO/RPO, and Recovery Objectives | owns D016, D028 | reserved; autoscaling and backup/RTO/RPO answers remain pending |
-| ADR-0013 | File Security, Retention, and Reference-Aware Lifecycle | owns D036–D048 | created; accepts D037/Q032 only; all other owned decisions remain pending |
+| ADR-0013 | File Security, Retention, and Reference-Aware Lifecycle | owns D036–D048 | accepts D037/Q032, D046/Q041, and D047/Q042; other owned decisions remain pending |
 | ADR-0014 | Learning Media Asynchronous Completion Compatibility | owns D008 | reserved; Q009 remains pending |
 | ADR-0015 | GCP Environment, Workload Identity, Secrets, and Crypto | owns D017–D021, D023 | created; accepts D017/Q005 and D018/Q018; D020/Q020, D021/Q021, and D023/Q023 remain pending |
 
@@ -983,11 +1005,12 @@ backup/RTO/RPO policy.
 The Phase 0B closeout recorded ten approved owner-question dispositions on
 2026-07-27. Later amendments through 2026-08-07 added Q003, Q004, Q006, Q012,
 Q013, Q014, Q015, Q017, and Q026. The 2026-08-09 cloud/storage amendment added
-Q005, Q008, Q018, Q019, and Q044–Q048, for 28 approved and 20 pending
-owner-question dispositions in the current register.
+Q005, Q008, Q018, Q019, and Q044–Q048. The 2026-08-11 amendment added Q041
+and Q042, for 30 approved and 18 pending owner-question dispositions in the
+current register.
 
-D009, D010, D017–D019, and D049–D053 are now
-`LOCKED_FROM_APPROVED_CONTEXT`. D020, D021, D023, D041–D048, and every other
+D009, D010, D017–D019, D046–D047, and D049–D053 are now
+`LOCKED_FROM_APPROVED_CONTEXT`. D020, D021, D023, D041–D045, D048, and every other
 `OWNER_DECISION_REQUIRED` record remain open until exact owner answers, impact
 reconciliation, and owning-ADR acceptance are recorded. Absence of an answer
 does not select a recommendation or authorize implementation.

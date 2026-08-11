@@ -231,7 +231,7 @@ describe('Sprint 11F Identity/Credentials/Email final closeout (e2e)', () => {
         schoolId: schoolAId,
         schoolName: `Sprint 11F Academy ${suffix}`,
         shortName: `S11F ${suffix}`,
-        logoUrl: `https://assets.example.test/${testMarker}/logo.png`,
+        logoUrl: `https://assets.example.com/${testMarker}/logo.png`,
       },
     });
     await prisma.schoolProfile.create({

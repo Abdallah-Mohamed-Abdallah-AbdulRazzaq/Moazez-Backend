@@ -68,3 +68,17 @@ export class PublicBrandingLogoServiceUnavailableException extends DomainExcepti
     });
   }
 }
+
+export class BrandingLegacyLogoValueRejectedException extends DomainException {
+  constructor(
+    reasonCode: 'provider_url_requires_review' | 'unsafe_legacy_url',
+  ) {
+    super({
+      code: 'settings.branding.logo.legacy_value_rejected',
+      message:
+        'The persisted school logo value is not an accepted branding source',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details: { field: 'logoUrl', reasonCode },
+    });
+  }
+}

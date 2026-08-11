@@ -25,6 +25,7 @@ import { ReorderGradeAssessmentQuestionsUseCase } from '../application/reorder-g
 import { UpdateGradeAssessmentQuestionUseCase } from '../application/update-grade-assessment-question.use-case';
 import {
   GradeAnswerInvalidOptionException,
+  GradeQuestionMediaUrlRejectedException,
   GradeQuestionStructureLockedException,
 } from '../domain/grade-question-domain';
 import {
@@ -315,6 +316,83 @@ describe('grade assessment question use cases', () => {
     );
   });
 
+  it('allows an ordinary HTTPS media URL on create without changing the response contract', async () => {
+    const repository = baseRepository();
+    const useCase = new CreateGradeAssessmentQuestionUseCase(
+      repository,
+      authRepository(),
+    );
+
+    const result = await withGradesScope(() =>
+      useCase.execute(ASSESSMENT_ID, {
+        type: GradeQuestionType.MEDIA,
+        prompt: 'Watch and answer',
+        points: 2,
+        mediaMode: 'video',
+        mediaTitle: 'External lesson',
+        mediaUrl: 'https://media.example.org/lesson.mp4',
+        mediaFileName: 'lesson.mp4',
+        mediaMimeType: 'video/mp4',
+        mediaSize: 1024,
+      }),
+    );
+
+    expect(repository.createQuestionWithOptions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          mediaMode: 'video',
+          mediaTitle: 'External lesson',
+          mediaUrl: 'https://media.example.org/lesson.mp4',
+          mediaFileName: 'lesson.mp4',
+          mediaMimeType: 'video/mp4',
+          mediaSize: 1024,
+        }),
+      }),
+    );
+    expect(result).toEqual(expect.objectContaining({ id: QUESTION_ID }));
+  });
+
+  it.each([
+    'https://storage.googleapis.com/private-bucket/object?X-Goog-Signature=do-not-leak',
+    'http://127.0.0.1:9000/private-bucket/object?X-Amz-Signature=do-not-leak',
+    's3://private-bucket/object',
+    'http://media.example.org/lesson.mp4',
+    'not a valid URL do-not-leak',
+  ])(
+    'rejects a forbidden media URL on create without leaking it: %s',
+    async (mediaUrl) => {
+      const repository = baseRepository({
+        createQuestionWithOptions: jest.fn(),
+      });
+      const useCase = new CreateGradeAssessmentQuestionUseCase(
+        repository,
+        authRepository(),
+      );
+
+      let rejected: unknown;
+      try {
+        await withGradesScope(() =>
+          useCase.execute(ASSESSMENT_ID, {
+            type: GradeQuestionType.MEDIA,
+            prompt: 'Watch and answer',
+            points: 2,
+            mediaUrl,
+          }),
+        );
+      } catch (error: unknown) {
+        rejected = error;
+      }
+
+      expect(rejected).toBeInstanceOf(GradeQuestionMediaUrlRejectedException);
+      expect(rejected).toMatchObject({
+        code: 'grades.question.media_url_rejected',
+        details: expect.objectContaining({ field: 'mediaUrl' }),
+      });
+      expect(JSON.stringify(rejected)).not.toContain(mediaUrl);
+      expect(repository.createQuestionWithOptions).not.toHaveBeenCalled();
+    },
+  );
+
   it('rejects MCQ_SINGLE with multiple correct options', async () => {
     const repository = baseRepository({ createQuestionWithOptions: jest.fn() });
     const useCase = new CreateGradeAssessmentQuestionUseCase(
@@ -472,13 +550,11 @@ describe('grade assessment question use cases', () => {
 
     await expectCreateRejected(
       baseRepository({
-        findAssessmentForQuestionManagement: jest
-          .fn()
-          .mockResolvedValue(
-            assessmentRecord({
-              lockedAt: new Date('2026-09-10T08:00:00.000Z'),
-            }),
-          ),
+        findAssessmentForQuestionManagement: jest.fn().mockResolvedValue(
+          assessmentRecord({
+            lockedAt: new Date('2026-09-10T08:00:00.000Z'),
+          }),
+        ),
       }),
       GradeAssessmentLockedException,
     );
@@ -535,6 +611,58 @@ describe('grade assessment question use cases', () => {
       }),
     );
   });
+
+  it('allows an ordinary HTTPS media URL on update', async () => {
+    const repository = baseRepository();
+    const useCase = new UpdateGradeAssessmentQuestionUseCase(
+      repository,
+      authRepository(),
+    );
+
+    await withGradesScope(() =>
+      useCase.execute(QUESTION_ID, {
+        mediaUrl: 'https://media.example.org/revised.mp4',
+      }),
+    );
+
+    expect(repository.updateQuestionAndReplaceOptions).toHaveBeenCalledWith(
+      QUESTION_ID,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          metadata: {
+            mediaUrl: 'https://media.example.org/revised.mp4',
+          },
+        }),
+      }),
+    );
+  });
+
+  it.each([
+    'https://bucket.storage.googleapis.com/object',
+    'http://localhost:9000/private-bucket/object',
+    'https://bucket.s3.amazonaws.com/object',
+    'http://media.example.org/lesson.mp4',
+    'malformed do-not-leak',
+  ])(
+    'rejects a forbidden media URL on update without persisting it: %s',
+    async (mediaUrl) => {
+      const repository = baseRepository({
+        updateQuestionAndReplaceOptions: jest.fn(),
+      });
+      const useCase = new UpdateGradeAssessmentQuestionUseCase(
+        repository,
+        authRepository(),
+      );
+
+      await expect(
+        withGradesScope(() => useCase.execute(QUESTION_ID, { mediaUrl })),
+      ).rejects.toMatchObject({
+        code: 'grades.question.media_url_rejected',
+        details: expect.objectContaining({ field: 'mediaUrl' }),
+      });
+      expect(repository.updateQuestionAndReplaceOptions).not.toHaveBeenCalled();
+    },
+  );
 
   it('returns not found for missing or cross-school question updates', async () => {
     const repository = baseRepository({
