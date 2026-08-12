@@ -1704,6 +1704,15 @@ async function runMediaRuntime(context, files) {
     0,
   );
 
+  const healthDatabaseUrl = new URL(context.testEnvironment.DATABASE_URL);
+  healthDatabaseUrl.hostname = context.identity.postgres;
+  healthDatabaseUrl.port = '5432';
+  const healthDatabaseUrlValue = healthDatabaseUrl.toString();
+  const healthStorageEndpoint = `http://${context.identity.minio}:9000`;
+  context.sensitiveValues.push(
+    healthDatabaseUrlValue,
+    healthStorageEndpoint,
+  );
   const healthEnvironment = {
     ...context.testEnvironment,
     GITHUB_RUN_ID: context.identity.runId,
@@ -1711,7 +1720,10 @@ async function runMediaRuntime(context, files) {
     GITHUB_WORKSPACE: context.repositoryRoot,
     RUNNER_TEMP: process.env.RUNNER_TEMP ?? os.tmpdir(),
     HEALTH_RUNTIME_IMAGE: context.identity.runtimeImage,
+    HEALTH_POSTGRES_CONTAINER: context.identity.postgres,
+    HEALTH_DATABASE_URL: healthDatabaseUrlValue,
     HEALTH_MINIO_CONTAINER: context.identity.minio,
+    HEALTH_STORAGE_ENDPOINT: healthStorageEndpoint,
     HEALTH_MINIO_READY_URL: `${context.testEnvironment.STORAGE_ENDPOINT}/minio/health/ready`,
   };
   const healthFailures = [];
