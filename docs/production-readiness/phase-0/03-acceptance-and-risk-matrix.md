@@ -67,6 +67,41 @@ production launch, traffic, uploads, or real data. The Batch 3 source candidate
 and the production read-only pre-real-data database audit still require Owner
 review and later release evidence.
 
+### 2026-08-12 Owner recovery-policy amendment
+
+Abdallah approved PRD0-Q007 with RTO 30 minutes, RPO 15 minutes, PITR
+retention 14 days, backup retention 30 days, quarterly restore drills, and no
+cross-region DR. The approval date is 2026-08-12 in Africa/Cairo; the exact
+approval clock time was not recorded.
+
+This closes the recovery-policy owner decision only. It does not complete or
+prove any infrastructure or operational recovery gate:
+
+```text
+RECOVERY_POLICY_APPROVED=YES
+RECOVERY_IMPLEMENTATION_COMPLETE=NO
+PRODUCTION_CLOUD_SQL_EXISTS=NO
+STAGING_CLOUD_SQL_EXISTS=NO
+BACKUPS_CONFIGURED=NO
+PITR_CONFIGURED=NO
+RESTORE_DRILL_COMPLETE=NO
+RTO_PROVEN=NO
+RPO_PROVEN=NO
+HA_FAILOVER_PROVEN_FOR_FINAL_PRODUCTION=NO
+CROSS_REGION_DR_AUTHORIZED=NO
+STORAGE_CUTOVER_READY_FOR_REAL_DATA=NO
+REAL_DATA=FORBIDDEN
+PRODUCTION_DATA_ALLOWED=NO
+PRODUCTION_UPLOADS_ALLOWED=NO
+PRODUCTION_TRAFFIC_ALLOWED=NO
+PRODUCTION_LAUNCH_AUTHORIZED=NO
+```
+
+Phase 8 Cloud SQL/backup/PITR configuration evidence and Phase 9 restore and
+objective proof remain incomplete. No gate requiring actual configuration,
+provider evidence, a restore drill, runtime measurement, or launch approval is
+marked complete by this amendment.
+
 ### 2026-08-11 Storage Cutover GitHub CI runtime deferral
 
 The authoritative release-governance decision is
@@ -313,7 +348,7 @@ risk that still requires later-gate evidence:
 | RSK-015 Encryption envelope lacks key ID and shares one key family                             | EVD-054–EVD-055                            | High                      | High                | device tokens and SMTP secrets; compromise/rotation can affect all rows                 | 4           | Yes                                                     | Low/Medium: key migration operational risk remains                               |
 | RSK-016 Production CORS is disabled while public origins are undecided                         | EVD-011, EVD-014, EVD-051                  | High                      | High                | browser HTTP, WebSocket, signed upload/download/playback                                | 1, 5A, 7    | Yes for browser launch                                  | Low: origin changes and CDN behavior need ongoing tests                          |
 | RSK-017 Public diagnostics/Swagger expose unnecessary topology/schema detail                   | EVD-011, EVD-046–EVD-047                   | High                      | Medium              | `/api/v1/docs`, root, health; reconnaissance and information disclosure                 | 1, 7, 8     | Yes unless explicitly accepted                          | Low after restriction; authorized users still need controlled access             |
-| RSK-018 No approved backup/PITR/RTO/RPO or production data-source plan                         | LIM-003–LIM-004, EVD-039                   | Medium/High               | Critical            | all relational data, object metadata/content, encrypted secrets                         | 3, 5A, 8, 9 | Yes                                                     | Medium: disasters can exceed tested envelope                                     |
+| RSK-018 Approved backup/PITR/RTO/RPO policy is not yet implemented or proven                   | PRD0-Q007, LIM-003–LIM-004, EVD-039        | Medium/High               | Critical            | all relational data, object metadata/content, encrypted secrets                         | 3, 5A, 8, 9 | Yes                                                     | Medium: disasters can exceed the unproven recovery envelope                       |
 | RSK-019 Playback signed-URL latency can pressure DB transactions or invalidate authorization snapshots | EVD-029, EVD-044, PRD3-G01-B3 | Medium | High | student/parent/teacher playback, DB pool under storage latency | 3, 5A | Local B3 proof complete; real-provider and production load evidence remain | Low/Medium: two short authorization/snapshot transactions surround signing and final revalidation rejects changed state; real-provider behavior remains deferred |
 | RSK-020 No implemented runtime rate limiter/abuse budget                                       | EVD-049–EVD-050, EVD-064                   | High                      | High                | auth/public routes, media intent/complete, health/docs, DB/Redis/provider cost          | 7           | Yes                                                     | Medium: distributed attacks and false positives require tuning                   |
 | RSK-021 Request/trace IDs trust unbounded inbound values and are disconnected                  | EVD-048                                    | Medium                    | Medium              | log integrity/correlation and potential high-cardinality cost                           | 1, 7        | No if bounded before launch telemetry                   | Low                                                                              |
@@ -356,7 +391,7 @@ risk that still requires later-gate evidence:
 | RSK-015 | envelope/key distribution audit and decrypt canary                               | separate key IDs, multi-key read, write-new                              | retain old decrypt keys and batch re-encrypt                         | stop writer; restore prior key set; never delete old key before zero-row proof     |
 | RSK-016 | external browser/WebSocket/upload/Range origin matrix                            | explicit HTTPS allowlists in app and bucket                              | emergency remove origin or temporarily approved client path          | versioned allowlist/IaC rollback                                                   |
 | RSK-017 | unauthenticated endpoint scan and response snapshot                              | restrict docs/details; minimal public status                             | edge rule/rate control                                               | restore compatible minimal response while monitors update                          |
-| RSK-018 | scheduled backup/restore audit and reconciliation                                | approved PITR/retention and rehearsals                                   | invoke incident data-recovery plan                                   | isolated restore, validate, controlled cutover/cutback                             |
+| RSK-018 | scheduled backup/restore audit and reconciliation                                | approved Q007 objectives plus implemented PITR/backups and quarterly rehearsals | invoke incident data-recovery plan                                   | isolated restore, validate, controlled cutover/cutback                             |
 | RSK-019 | B3 transaction/pool tracing during controlled signer latency; later real-provider tracing | authorize/lock/snapshot, sign after commit, then reauthorize and require identical snapshot | timeout signing; never expose a capability after changed authorization/media state | restore old coordinator only under conservative concurrency; no schema rollback |
 | RSK-020 | WAF/app rate metrics, cost/anomaly and abuse tests                               | layered identity/IP/tenant/operation quotas                              | shed/rate-limit abusive traffic; protect critical queues/DB          | tune policy with recorded exceptions; no global disable without incident owner     |
 | RSK-021 | log schema/cardinality tests and malicious header input                          | validate length/charset; generate/normalize correlated IDs               | drop invalid values and cap labels                                   | revert correlation format while retaining generated IDs                            |
