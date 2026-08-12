@@ -28,11 +28,15 @@ test('API receives the exact bounded database runtime wiring', () => {
   const apiLauncher = functionBody('start_runtime');
   assert.match(apiLauncher, /--env NODE_ENV=test/u);
   assert.match(apiLauncher, /--env MEDIA_RUNTIME_ENFORCE_IN_TEST=true/u);
-  assert.match(apiLauncher, /--env DATABASE_URL="\$runtime_database_url"/u);
+  assert.match(apiLauncher, /--env DATABASE_URL="\$HEALTH_DATABASE_URL"/u);
   assert.match(apiLauncher, /--env DATABASE_RUNTIME_ROLE=api/u);
   assert.match(apiLauncher, /--env DATABASE_CONNECTION_LIMIT=5/u);
   assert.match(apiLauncher, /--env DATABASE_POOL_TIMEOUT_SECONDS=5/u);
   assert.match(apiLauncher, /--env DATABASE_CONNECT_TIMEOUT_SECONDS=5/u);
+  assert.match(
+    apiLauncher,
+    /--env STORAGE_ENDPOINT="\$HEALTH_STORAGE_ENDPOINT"/u,
+  );
 });
 
 test('Core and Media receive their exact role-specific bounded settings', () => {
@@ -47,7 +51,10 @@ test('Core and Media receive their exact role-specific bounded settings', () => 
 
   assert.match(workerLauncher, /--env NODE_ENV=test/u);
   assert.doesNotMatch(workerLauncher, /MEDIA_RUNTIME_ENFORCE_IN_TEST/u);
-  assert.match(workerLauncher, /--env DATABASE_URL="\$runtime_database_url"/u);
+  assert.match(
+    workerLauncher,
+    /--env DATABASE_URL="\$HEALTH_DATABASE_URL"/u,
+  );
   assert.match(workerLauncher, /--env DATABASE_RUNTIME_ROLE="\$role"/u);
   assert.match(
     workerLauncher,
@@ -58,6 +65,89 @@ test('Core and Media receive their exact role-specific bounded settings', () => 
     /--env DATABASE_POOL_TIMEOUT_SECONDS="\$database_pool_timeout_seconds"/u,
   );
   assert.match(workerLauncher, /--env DATABASE_CONNECT_TIMEOUT_SECONDS=5/u);
+  assert.match(
+    workerLauncher,
+    /--env STORAGE_ENDPOINT="\$HEALTH_STORAGE_ENDPOINT"/u,
+  );
+});
+
+test('canonical health dependencies use direct container DNS on the probe network', () => {
+  const inputValidation = functionBody('validate_canonical_health_inputs');
+  const networkCreation = functionBody('create_network');
+  const commonRuntime = functionBody('start_common_runtime');
+
+  assert.match(inputValidation, /HEALTH_POSTGRES_CONTAINER/u);
+  assert.match(inputValidation, /HEALTH_DATABASE_URL/u);
+  assert.match(inputValidation, /HEALTH_MINIO_CONTAINER/u);
+  assert.match(inputValidation, /HEALTH_STORAGE_ENDPOINT/u);
+  assert.match(inputValidation, /databaseUrl\.port === '5432'/u);
+  assert.match(inputValidation, /storageEndpoint\.port === '9000'/u);
+
+  const createIndex = networkCreation.indexOf(
+    'docker network create "$PROBE_NETWORK"',
+  );
+  const postgresIndex = networkCreation.indexOf(
+    'docker network connect "$PROBE_NETWORK" "$POSTGRES_CONTAINER"',
+  );
+  const minioIndex = networkCreation.indexOf(
+    'docker network connect "$PROBE_NETWORK" "$MINIO_CONTAINER"',
+  );
+  assert.ok(createIndex >= 0 && createIndex < postgresIndex);
+  assert.ok(postgresIndex < minioIndex);
+
+  const commonCreateIndex = commonRuntime.indexOf('create_network');
+  const commonRedisIndex = commonRuntime.indexOf('start_redis');
+  const commonApiIndex = commonRuntime.indexOf('start_runtime');
+  assert.ok(commonCreateIndex >= 0 && commonCreateIndex < commonRedisIndex);
+  assert.ok(commonRedisIndex < commonApiIndex);
+  assert.doesNotMatch(script, /host\.docker\.internal/u);
+});
+
+test('scenario Redis keeps its owned identity with bounded network-local DNS', () => {
+  const redisLauncher = functionBody('start_redis');
+  const redisRecovery = functionBody('scenario_redis_recovery');
+
+  assert.match(redisLauncher, /--name "\$REDIS_CONTAINER"/u);
+  assert.match(redisLauncher, /--network "\$PROBE_NETWORK"/u);
+  assert.match(redisLauncher, /--network-alias "\$REDIS_NETWORK_ALIAS"/u);
+  assert.match(script, /readonly REDIS_NETWORK_ALIAS='redis'/u);
+  assert.match(
+    script,
+    /QUEUE_REDIS_URL="redis:\/\/\$\{REDIS_NETWORK_ALIAS\}:6379"/u,
+  );
+  assert.match(
+    script,
+    /REALTIME_REDIS_URL="redis:\/\/\$\{REDIS_NETWORK_ALIAS\}:6379"/u,
+  );
+  assert.match(redisRecovery, /docker pause "\$REDIS_CONTAINER"/u);
+  assert.match(redisRecovery, /docker unpause "\$REDIS_CONTAINER"/u);
+  assert.doesNotMatch(script, /HEALTH_REDIS_CONTAINER/u);
+});
+
+test('cleanup detaches parent dependencies before verified probe-network removal', () => {
+  const cleanup = functionBody('cleanup_resources');
+  const ownedRemoval = cleanup.match(
+    /docker rm --force\s+([\s\S]*?)\s+>\/dev\/null 2>&1 \|\| true/u,
+  );
+  assert.ok(ownedRemoval);
+  assert.doesNotMatch(ownedRemoval[1], /POSTGRES_CONTAINER|MINIO_CONTAINER/u);
+
+  const postgresDisconnectIndex = cleanup.indexOf(
+    '"$PROBE_NETWORK" "$POSTGRES_CONTAINER"',
+  );
+  const minioDisconnectIndex = cleanup.indexOf(
+    '"$PROBE_NETWORK" "$MINIO_CONTAINER"',
+  );
+  const networkRemovalIndex = cleanup.indexOf(
+    'docker network rm "$PROBE_NETWORK"',
+  );
+  assert.ok(postgresDisconnectIndex >= 0);
+  assert.ok(minioDisconnectIndex > postgresDisconnectIndex);
+  assert.ok(networkRemovalIndex > minioDisconnectIndex);
+  assert.match(
+    cleanup,
+    /if docker network inspect "\$PROBE_NETWORK"[\s\S]*?cleanup_status=1/u,
+  );
 });
 
 test('API test-mode media verification cannot take the ffprobe bypass', () => {
@@ -105,6 +195,8 @@ test('Maintenance Scheduler cannot enter the database-backed launcher', () => {
 test('diagnostics redact the sole database URL contract', () => {
   const safeOutput = functionBody('safe_output');
   assert.match(safeOutput, /"DATABASE_URL"/u);
+  assert.match(safeOutput, /"HEALTH_DATABASE_URL"/u);
+  assert.match(safeOutput, /"HEALTH_STORAGE_ENDPOINT"/u);
   assert.doesNotMatch(
     script,
     /API_DATABASE_URL|CORE_DATABASE_URL|MEDIA_DATABASE_URL/u,

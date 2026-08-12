@@ -319,8 +319,12 @@ readonly APP_CONTAINER="${RESOURCE_PREFIX}-app"
 readonly CORE_WORKER_CONTAINER="${RESOURCE_PREFIX}-core-worker"
 readonly MEDIA_WORKER_CONTAINER="${RESOURCE_PREFIX}-media-worker"
 readonly REDIS_CONTAINER="${RESOURCE_PREFIX}-redis"
+readonly REDIS_NETWORK_ALIAS='redis'
 readonly PROBE_NETWORK="${RESOURCE_PREFIX}-net"
-readonly MINIO_CONTAINER="${HEALTH_MINIO_CONTAINER:-moazez-learning-media-minio}"
+readonly POSTGRES_CONTAINER="${HEALTH_POSTGRES_CONTAINER:-}"
+readonly MINIO_CONTAINER="${HEALTH_MINIO_CONTAINER:-}"
+readonly HEALTH_DATABASE_URL="${HEALTH_DATABASE_URL:-}"
+readonly HEALTH_STORAGE_ENDPOINT="${HEALTH_STORAGE_ENDPOINT:-}"
 readonly RUNTIME_IMAGE="${HEALTH_RUNTIME_IMAGE:-moazez-learning-media:${GITHUB_SHA:-local}}"
 readonly PUBLIC_CONTAINER_PORT="${APP_PORT:-3000}"
 readonly MANAGEMENT_CONTAINER_PORT="${APP_PROBE_PORT:-9090}"
@@ -334,6 +338,59 @@ PUBLIC_BASE_URL=''
 OBSERVED_STATUS='not-observed'
 OBSERVED_BODY='{}'
 MINIO_PAUSED_BY_SCENARIO='false'
+
+validate_canonical_health_inputs() {
+  if [[ -z "$POSTGRES_CONTAINER" || -z "$MINIO_CONTAINER" ||
+    -z "$HEALTH_DATABASE_URL" || -z "$HEALTH_STORAGE_ENDPOINT" ||
+    "${#POSTGRES_CONTAINER}" -gt 128 || "${#MINIO_CONTAINER}" -gt 128 ||
+    "${#HEALTH_DATABASE_URL}" -gt 2048 ||
+    "${#HEALTH_STORAGE_ENDPOINT}" -gt 2048 ]]; then
+    printf 'health-runtime: canonical health input contract is invalid\n' >&2
+    return 64
+  fi
+
+  if ! node <<'NODE'
+const containerNamePattern = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/u;
+
+try {
+  const postgresContainer = process.env.HEALTH_POSTGRES_CONTAINER;
+  const minioContainer = process.env.HEALTH_MINIO_CONTAINER;
+  const databaseUrl = new URL(process.env.HEALTH_DATABASE_URL);
+  const storageEndpoint = new URL(process.env.HEALTH_STORAGE_ENDPOINT);
+  const databaseParameters = [...databaseUrl.searchParams.entries()];
+  const valid =
+    containerNamePattern.test(postgresContainer) &&
+    containerNamePattern.test(minioContainer) &&
+    databaseUrl.protocol === 'postgresql:' &&
+    databaseUrl.username.length > 0 &&
+    databaseUrl.password.length > 0 &&
+    databaseUrl.hostname === postgresContainer &&
+    databaseUrl.port === '5432' &&
+    /^\/[A-Za-z0-9_]+$/u.test(databaseUrl.pathname) &&
+    databaseParameters.length === 1 &&
+    databaseParameters[0][0] === 'schema' &&
+    databaseParameters[0][1] === 'public' &&
+    databaseUrl.hash === '' &&
+    storageEndpoint.protocol === 'http:' &&
+    storageEndpoint.username === '' &&
+    storageEndpoint.password === '' &&
+    storageEndpoint.hostname === minioContainer &&
+    storageEndpoint.port === '9000' &&
+    storageEndpoint.pathname === '/' &&
+    storageEndpoint.search === '' &&
+    storageEndpoint.hash === '';
+  if (!valid) process.exitCode = 1;
+} catch {
+  process.exitCode = 1;
+}
+NODE
+  then
+    printf 'health-runtime: canonical health input contract is invalid\n' >&2
+    return 64
+  fi
+}
+
+validate_canonical_health_inputs
 
 rm -rf -- "$ARTIFACT_DIR"
 mkdir -p "$ARTIFACT_DIR" "$TEMP_ROOT"
@@ -351,8 +408,10 @@ safe_output() {
       "JWT_REFRESH_SECRET",
       "SETTINGS_SECRET_ENCRYPTION_KEY",
       "DATABASE_URL",
+      "HEALTH_DATABASE_URL",
       "QUEUE_REDIS_URL",
-      "REALTIME_REDIS_URL"
+      "REALTIME_REDIS_URL",
+      "HEALTH_STORAGE_ENDPOINT"
     ];
     const values = [...new Set(
       sensitiveNames
@@ -429,6 +488,7 @@ collect_diagnostics() {
 }
 
 cleanup_resources() {
+  local cleanup_status=0
   if [[ "$MINIO_PAUSED_BY_SCENARIO" == 'true' ]]; then
     docker unpause "$MINIO_CONTAINER" >/dev/null 2>&1 || true
     MINIO_PAUSED_BY_SCENARIO='false'
@@ -437,16 +497,34 @@ cleanup_resources() {
     "$APP_CONTAINER" "$CORE_WORKER_CONTAINER" "$MEDIA_WORKER_CONTAINER" \
     "$REDIS_CONTAINER" \
     >/dev/null 2>&1 || true
-  docker network rm "$PROBE_NETWORK" >/dev/null 2>&1 || true
+  if docker network inspect "$PROBE_NETWORK" >/dev/null 2>&1; then
+    docker network disconnect --force \
+      "$PROBE_NETWORK" "$POSTGRES_CONTAINER" >/dev/null 2>&1 || true
+    docker network disconnect --force \
+      "$PROBE_NETWORK" "$MINIO_CONTAINER" >/dev/null 2>&1 || true
+    docker network rm "$PROBE_NETWORK" >/dev/null 2>&1 || cleanup_status=1
+  fi
+  if docker network inspect "$PROBE_NETWORK" >/dev/null 2>&1; then
+    cleanup_status=1
+  fi
   rm -rf -- "$TEMP_ROOT" || true
+  return "$cleanup_status"
 }
 
 finish_scenario() {
   local original_status="$?"
+  local cleanup_status
   trap - EXIT INT TERM
   set +e
   collect_diagnostics "$original_status"
   cleanup_resources
+  cleanup_status="$?"
+  if [[ "$cleanup_status" -ne 0 ]]; then
+    printf 'health-runtime scenario=%s cleanup=failed\n' "$SCENARIO" >&2
+    if [[ "$original_status" -eq 0 ]]; then
+      exit "$cleanup_status"
+    fi
+  fi
   exit "$original_status"
 }
 
@@ -471,11 +549,15 @@ record_observation() {
 
 create_network() {
   docker network create "$PROBE_NETWORK" >/dev/null
+  docker network connect "$PROBE_NETWORK" "$POSTGRES_CONTAINER"
+  docker network connect "$PROBE_NETWORK" "$MINIO_CONTAINER"
 }
 
 start_redis() {
   docker run --detach --name "$REDIS_CONTAINER" \
-    --network "$PROBE_NETWORK" redis:7-alpine >/dev/null
+    --network "$PROBE_NETWORK" \
+    --network-alias "$REDIS_NETWORK_ALIAS" \
+    redis:7-alpine >/dev/null
   wait_for_redis
 }
 
@@ -492,29 +574,22 @@ wait_for_redis() {
 }
 
 start_runtime() {
-  local runtime_database_url
-  local runtime_storage_endpoint
-
-  runtime_database_url="${DATABASE_URL/127.0.0.1/host.docker.internal}"
-  runtime_storage_endpoint="${STORAGE_ENDPOINT/127.0.0.1/host.docker.internal}"
-
   docker image inspect "$RUNTIME_IMAGE" >/dev/null
   docker run --detach --name "$APP_CONTAINER" \
     --network "$PROBE_NETWORK" \
-    --add-host host.docker.internal:host-gateway \
     --publish "127.0.0.1::${PUBLIC_CONTAINER_PORT}" \
     --env NODE_ENV=test \
     --env MEDIA_RUNTIME_ENFORCE_IN_TEST=true \
     --env APP_PORT="$PUBLIC_CONTAINER_PORT" \
     --env APP_PROBE_PORT="$MANAGEMENT_CONTAINER_PORT" \
     --env APP_URL="${APP_URL:-http://127.0.0.1:${PUBLIC_CONTAINER_PORT}}" \
-    --env DATABASE_URL="$runtime_database_url" \
+    --env DATABASE_URL="$HEALTH_DATABASE_URL" \
     --env DATABASE_RUNTIME_ROLE=api \
     --env DATABASE_CONNECTION_LIMIT=5 \
     --env DATABASE_POOL_TIMEOUT_SECONDS=5 \
     --env DATABASE_CONNECT_TIMEOUT_SECONDS=5 \
-    --env QUEUE_REDIS_URL="redis://${REDIS_CONTAINER}:6379" \
-    --env REALTIME_REDIS_URL="redis://${REDIS_CONTAINER}:6379" \
+    --env QUEUE_REDIS_URL="redis://${REDIS_NETWORK_ALIAS}:6379" \
+    --env REALTIME_REDIS_URL="redis://${REDIS_NETWORK_ALIAS}:6379" \
     --env APP_CORS_ORIGINS="${APP_CORS_ORIGINS:-https://schools.moazez.cloud,https://admin.moazez.cloud}" \
     --env SWAGGER_ENABLED=false \
     --env APP_SHUTDOWN_TIMEOUT_MS=15000 \
@@ -524,7 +599,7 @@ start_runtime() {
     --env JWT_REFRESH_TTL \
     --env SETTINGS_SECRET_ENCRYPTION_KEY \
     --env STORAGE_PROVIDER \
-    --env STORAGE_ENDPOINT="$runtime_storage_endpoint" \
+    --env STORAGE_ENDPOINT="$HEALTH_STORAGE_ENDPOINT" \
     --env STORAGE_ACCESS_KEY \
     --env STORAGE_SECRET_KEY \
     --env STORAGE_BUCKET \
@@ -549,13 +624,8 @@ start_application_context_runtime() {
   local role="$1"
   local container="$2"
   local entrypoint="$3"
-  local runtime_database_url
-  local runtime_storage_endpoint
   local database_connection_limit
   local database_pool_timeout_seconds
-
-  runtime_database_url="${DATABASE_URL/127.0.0.1/host.docker.internal}"
-  runtime_storage_endpoint="${STORAGE_ENDPOINT/127.0.0.1/host.docker.internal}"
 
   case "$role" in
     core-worker)
@@ -574,21 +644,20 @@ start_application_context_runtime() {
 
   docker run --detach --name "$container" \
     --network "$PROBE_NETWORK" \
-    --add-host host.docker.internal:host-gateway \
     --env NODE_ENV=test \
     --env APP_PROBE_PORT="$MANAGEMENT_CONTAINER_PORT" \
     --env APP_SHUTDOWN_TIMEOUT_MS=15000 \
     --env APP_URL="${APP_URL:-http://127.0.0.1:${PUBLIC_CONTAINER_PORT}}" \
-    --env DATABASE_URL="$runtime_database_url" \
+    --env DATABASE_URL="$HEALTH_DATABASE_URL" \
     --env DATABASE_RUNTIME_ROLE="$role" \
     --env DATABASE_CONNECTION_LIMIT="$database_connection_limit" \
     --env DATABASE_POOL_TIMEOUT_SECONDS="$database_pool_timeout_seconds" \
     --env DATABASE_CONNECT_TIMEOUT_SECONDS=5 \
-    --env QUEUE_REDIS_URL="redis://${REDIS_CONTAINER}:6379" \
-    --env REALTIME_REDIS_URL="redis://${REDIS_CONTAINER}:6379" \
+    --env QUEUE_REDIS_URL="redis://${REDIS_NETWORK_ALIAS}:6379" \
+    --env REALTIME_REDIS_URL="redis://${REDIS_NETWORK_ALIAS}:6379" \
     --env SETTINGS_SECRET_ENCRYPTION_KEY \
     --env STORAGE_PROVIDER \
-    --env STORAGE_ENDPOINT="$runtime_storage_endpoint" \
+    --env STORAGE_ENDPOINT="$HEALTH_STORAGE_ENDPOINT" \
     --env STORAGE_ACCESS_KEY \
     --env STORAGE_SECRET_KEY \
     --env STORAGE_BUCKET \
@@ -1195,7 +1264,7 @@ scenario_realtime_reconciliation() {
 
   timeout 45s docker run --name "$APP_CONTAINER" --interactive \
     --network "$PROBE_NETWORK" \
-    --env "TARGET_REALTIME_REDIS_URL=redis://${REDIS_CONTAINER}:6379" \
+    --env "TARGET_REALTIME_REDIS_URL=redis://${REDIS_NETWORK_ALIAS}:6379" \
     --entrypoint node "$RUNTIME_IMAGE" - <<'NODE'
 const { randomUUID } = require('node:crypto');
 const { createConnection, createServer } = require('node:net');
