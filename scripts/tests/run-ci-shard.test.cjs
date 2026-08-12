@@ -30,6 +30,10 @@ const {
 const CANDIDATE = 'a'.repeat(40);
 const BASE = 'b'.repeat(40);
 const REPOSITORY_ROOT = path.resolve(__dirname, '../..');
+const RUN_CI_SHARD_SOURCE = fs.readFileSync(
+  path.join(REPOSITORY_ROOT, 'scripts', 'ci', 'run-ci-shard.cjs'),
+  'utf8',
+);
 
 function samplePlan(overrides = {}) {
   const file = 'src/example.spec.ts';
@@ -126,20 +130,87 @@ test('every self-contained Phase 3 profile preloads its exact fresh-run images',
 
 test('evidence redaction removes explicit values, credential URLs, and secret fields', () => {
   const explicit = 'do-not-print-this';
+  const healthDatabaseUrl =
+    'postgresql://health-user:health-password@owned-postgres:5432/health?schema=public';
   const safe = sanitizeEvidence(
     {
-      message: `value=${explicit} postgresql://user:pass@127.0.0.1:5432/db`,
+      message: `value=${explicit} ${healthDatabaseUrl}`,
       nested: { jwtSecret: 'unsafe', ordinary: 'kept' },
     },
-    [explicit],
+    [explicit, healthDatabaseUrl],
   );
   const serialized = JSON.stringify(safe);
-  assert.doesNotMatch(serialized, /do-not-print-this|user:pass|unsafe/u);
+  assert.doesNotMatch(
+    serialized,
+    /do-not-print-this|health-user|health-password|unsafe/u,
+  );
   assert.match(serialized, /\[REDACTED/u);
   assert.equal(safe.nested.ordinary, 'kept');
   assert.equal(
     redactText('redis://user:pass@127.0.0.1:6379/0'),
     '[REDACTED_URL]',
+  );
+});
+
+test('media health endpoints use owned container DNS while host fixtures stay loopback-only', () => {
+  const mediaRuntimeStart = RUN_CI_SHARD_SOURCE.indexOf(
+    'async function runMediaRuntime',
+  );
+  const mediaRuntimeEnd = RUN_CI_SHARD_SOURCE.indexOf(
+    'async function cleanupHealthResources',
+    mediaRuntimeStart,
+  );
+  assert.ok(mediaRuntimeStart >= 0 && mediaRuntimeEnd > mediaRuntimeStart);
+  const mediaRuntime = RUN_CI_SHARD_SOURCE.slice(
+    mediaRuntimeStart,
+    mediaRuntimeEnd,
+  );
+
+  assert.match(
+    RUN_CI_SHARD_SOURCE,
+    /--publish',\s*'127\.0\.0\.1::5432'/u,
+  );
+  assert.match(
+    RUN_CI_SHARD_SOURCE,
+    /minioPublish\s*=\s*[\s\S]*?'127\.0\.0\.1::9000'/u,
+  );
+  assert.match(
+    RUN_CI_SHARD_SOURCE,
+    /postgresql:\/\/moazez_ci:ci-only-postgres-password@127\.0\.0\.1:\$\{postgresPort\}/u,
+  );
+  assert.match(
+    RUN_CI_SHARD_SOURCE,
+    /const storageEndpoint = minioPort[\s\S]*?`http:\/\/127\.0\.0\.1:\$\{minioPort\}`/u,
+  );
+
+  assert.match(
+    mediaRuntime,
+    /healthDatabaseUrl\.hostname = context\.identity\.postgres/u,
+  );
+  assert.match(mediaRuntime, /healthDatabaseUrl\.port = '5432'/u);
+  assert.match(
+    mediaRuntime,
+    /healthStorageEndpoint = `http:\/\/\$\{context\.identity\.minio\}:9000`/u,
+  );
+  assert.match(
+    mediaRuntime,
+    /HEALTH_POSTGRES_CONTAINER: context\.identity\.postgres/u,
+  );
+  assert.match(
+    mediaRuntime,
+    /HEALTH_DATABASE_URL: healthDatabaseUrlValue/u,
+  );
+  assert.match(
+    mediaRuntime,
+    /HEALTH_MINIO_CONTAINER: context\.identity\.minio/u,
+  );
+  assert.match(
+    mediaRuntime,
+    /HEALTH_STORAGE_ENDPOINT: healthStorageEndpoint/u,
+  );
+  assert.match(
+    mediaRuntime,
+    /context\.sensitiveValues\.push\([\s\S]*?healthDatabaseUrlValue/u,
   );
 });
 
