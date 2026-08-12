@@ -26,7 +26,11 @@ and GCS governance boundary. The Phase 0B document-control values above remain
 the historical 2026-07-27 closeout record. On 2026-08-11 (Africa/Cairo),
 Abdallah approved PRD0-Q041 and PRD0-Q042 for the final storage application
 cutover source candidate. This amendment does not rewrite the historical Phase
-0B facts or authorize production data, uploads, traffic, or launch.
+0B facts or authorize production data, uploads, traffic, or launch. On
+2026-08-12 (Africa/Cairo), Abdallah approved PRD0-Q007 for the production
+recovery objectives and policy recorded below. The exact approval clock time
+was not recorded. This recovery-policy approval is not implementation or
+operational recovery evidence.
 
 ## Authority statement
 
@@ -49,6 +53,9 @@ the zero-object clean-start branch, private bucket topology, and the seven-day
 GCS recovery baseline recorded in Q005, Q008, Q018, Q019, and Q044–Q048.
 On 2026-08-11 Abdallah approved Q041 option D and the Q042 managed/read-only
 compatibility policy exactly as recorded in the register below.
+On 2026-08-12 Abdallah approved Q007 with RTO 30 minutes, RPO 15 minutes,
+PITR retention 14 days, backup retention 30 days, quarterly restore drills,
+and no cross-region DR authorization. The exact approval time was not recorded.
 Every question not named in the current approved set below remains pending.
 A pending disposition does not select its recommended default, cannot unblock
 its dependent phase, and authorizes no implementation or cloud provisioning
@@ -60,7 +67,8 @@ PR #46 merged the ten approved answers, and those answers remain binding. The
 other 38 answers were pending at that historical closeout. The nine
 post-Phase-0B approvals through 2026-08-07, the nine 2026-08-09 approvals, and
 the two 2026-08-11 storage-policy approvals reduce the current pending set to
-18 without changing the PR #46 evidence.
+18. The one 2026-08-12 recovery-policy approval reduces the current pending
+set to 17 without changing the PR #46 evidence.
 Silence selects no recommendation.
 Authoritative Phase 0B post-merge evidence remains in
 `07-phase-0b-post-merge-closeout.md`.
@@ -77,7 +85,7 @@ Each row is the sole disposition entry for that question.
 | PRD0-Q004 | APPROVED | `PRD0-Q004: option=A; production_data_branch=CLEAN_START; persisted_postgresql_migration=N/A_WITH_EVIDENCE; object_migration=N/A_WITH_EVIDENCE_FOR_CURRENT_PRODUCTION_SOURCE; redis_migration=PROHIBITED_AS_COPY_SOURCE; redis_recovery=drain/reconcile/re-enqueue from persisted truth and rebuild ephemeral realtime state; authoritative_postgresql_source_count=0; authoritative_object_source_count=0; evidence_classification=OWNER_DATA_AUTHORITY_ATTESTATION; reopen_on_data_discovery=YES; approver=Abdallah; data_authority=Abdallah; approved_at=2026-08-07T04:46:00+03:00` |
 | PRD0-Q005 | APPROVED | `PRD0-Q005: option=A; projects=production:moazez-production,staging:moazez-nonprod-91001421934,cloud_test:moazez-nonprod-91001421934,development:LOCAL_ONLY,ci:LOCAL_MINIO,dr:NONE; billing_owner=Abdallah; org_policy_owner=Abdallah` |
 | PRD0-Q006 | APPROVED | `PRD0-Q006: option=A; primary_region=me-central2; dr_region=NONE; residency_constraint=Initial production data and primary managed services remain in Saudi Arabia; cross-region DR requires separate residency approval; approver=Abdallah` |
-| PRD0-Q007 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 3 implementation,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
+| PRD0-Q007 | APPROVED | `PRD0-Q007: rto=30m; rpo=15m; pitr=14d; backup_retention=30d; restore_drill=quarterly; cross_region=NO; approver=Abdallah; approval_date=2026-08-12; timezone=Africa/Cairo` |
 | PRD0-Q008 | APPROVED | `PRD0-Q008: option=A; prod_provider=GCS; local_provider=MinIO; test_provider=MinIO; bucket_region=me-central2; approver=Abdallah` |
 | PRD0-Q009 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 6,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
 | PRD0-Q010 | APPROVED | `PRD0-Q010: option=A; exceptions=NONE; approver=Abdallah` |
@@ -125,20 +133,20 @@ Each row is the sole disposition entry for that question.
 | Disposition | Count |
 | --- | ---: |
 | Total | 48 |
-| APPROVED | 30 |
-| PENDING | 18 |
+| APPROVED | 31 |
+| PENDING | 17 |
 | Omitted | 0 |
 | Duplicated | 0 |
 
 The current approved IDs are exactly PRD0-Q001, PRD0-Q002, PRD0-Q003,
-PRD0-Q004, PRD0-Q005, PRD0-Q006, PRD0-Q008, PRD0-Q010, PRD0-Q011, PRD0-Q012,
+PRD0-Q004, PRD0-Q005, PRD0-Q006, PRD0-Q007, PRD0-Q008, PRD0-Q010, PRD0-Q011, PRD0-Q012,
 PRD0-Q013, PRD0-Q014, PRD0-Q015, PRD0-Q017, PRD0-Q018, PRD0-Q019, PRD0-Q022,
 PRD0-Q024, PRD0-Q026, PRD0-Q028, PRD0-Q029, PRD0-Q030, PRD0-Q032, PRD0-Q041,
 PRD0-Q042, PRD0-Q044, PRD0-Q045, PRD0-Q046, PRD0-Q047, and PRD0-Q048. The Phase 0B snapshot was
 exactly 10 approved and 38 pending; later amendments through 2026-08-07 added
 Q003, Q004, Q006, Q012, Q013, Q014, Q015, Q017, and Q026, and the 2026-08-09
 amendment added Q005, Q008, Q018, Q019, and Q044–Q048. The 2026-08-11
-amendment added Q041 and Q042. All other PRD0-Q001
+amendment added Q041 and Q042. The 2026-08-12 amendment added Q007. All other PRD0-Q001
 through PRD0-Q048 entries are explicitly pending as shown.
 
 ## Scope and non-authorization
@@ -149,4 +157,6 @@ was selected. The storage approvals unblock only their gated design and
 implementation work; every cloud mutation still requires reviewed IaC,
 least-privilege IAM, phase evidence, and the applicable release gate. This
 documentation amendment performs no source, schema, migration, dependency,
-Docker, CI, database, Redis, object-storage, or cloud mutation.
+Docker, CI, database, Redis, object-storage, or cloud mutation. Q007 approves
+recovery objectives and policy only; it does not prove or complete Cloud SQL,
+backups, PITR, restore drills, RTO, RPO, failover, or production launch.

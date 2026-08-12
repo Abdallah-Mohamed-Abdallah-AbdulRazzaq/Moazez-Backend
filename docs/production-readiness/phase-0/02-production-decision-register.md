@@ -46,7 +46,7 @@ No recommendation is represented as owner approval. Evidence IDs resolve to
 | PRD0-D025 | Logs, metrics, SLOs, alerts | OWNER_DECISION_REQUIRED | D005, D024 | structured/redacted telemetry and service/queue/media SLOs |
 | PRD0-D026 | Migration job and deploy ordering | LOCKED_FROM_APPROVED_CONTEXT | D003, D005, D011, D018 | Q026 option A; same-image governed Migration Job before compatible runtime promotion |
 | PRD0-D027 | Backward-compatible rollback constraints | LOCKED_FROM_APPROVED_CONTEXT | D003, D026 | immutable migrations and compatible rollback are locked; expand/contract is the recommended technique, not a separately locked mandate |
-| PRD0-D028 | Backups, PITR, RTO, RPO | OWNER_DECISION_REQUIRED | D011 | PITR plus restore drills against approved objectives |
+| PRD0-D028 | Backups, PITR, RTO, RPO | LOCKED_FROM_APPROVED_CONTEXT | D011 | PRD0-Q007 approved: RTO 30m, RPO 15m, PITR 14d, backup retention 30d, quarterly restore drill, and no cross-region DR; implementation and evidence remain required |
 | PRD0-D029 | Production data migration/clean start | LOCKED_FROM_APPROVED_CONTEXT | D009, D011, D028 | Q004 option A: `CLEAN_START`; PostgreSQL/object migration are N/A for the current owner-attested zero-source state; Redis copy is prohibited and recovery reconciles persisted truth/rebuilds ephemeral realtime state; later data discovery reopens D029 |
 | PRD0-D030 | Initial max instances/concurrency | LOCKED_FROM_APPROVED_CONTEXT | D012–D016 | approved conservative pilot caps; saturation and failover evidence still required |
 | PRD0-D031 | Workload/file-size assumptions | LOCKED_FROM_APPROVED_CONTEXT | D008, D016, D030 | approved owner-delegated pilot envelope; not final load-tested capacity |
@@ -73,8 +73,8 @@ No recommendation is represented as owner approval. Evidence IDs resolve to
 | PRD0-D052 | Storage bucket/privacy topology | LOCKED_FROM_APPROVED_CONTEXT | D009, D017–D019 | Q047: four private per-project buckets in `me-central2`; UBLA, PAP, exact Q022 CORS, private Learning Media prefixes |
 | PRD0-D053 | GCS versioning/lifecycle/deletion protection | LOCKED_FROM_APPROVED_CONTEXT | D042, D044, D052 | Q048: versioning, seven-day Soft Delete, Terraform `prevent_destroy`, no Bucket Lock or Phase 5A automatic transition/deletion |
 
-Current status totals after the 2026-08-11 Q041/Q042 amendment: 33
-`LOCKED_FROM_APPROVED_CONTEXT`, 20 `OWNER_DECISION_REQUIRED`, 0
+Current status totals after the 2026-08-12 Q007 amendment: 34
+`LOCKED_FROM_APPROVED_CONTEXT`, 19 `OWNER_DECISION_REQUIRED`, 0
 `PROPOSED_RECOMMENDATION`, 0
 `DEFERRED_WITH_CONSTRAINT`, and 0 `REJECTED`. The Phase 0B closeout snapshot on
 2026-07-27 correctly recorded 14 locked, 38 owner-required, and 1 proposed at
@@ -647,19 +647,24 @@ validation counts. Phase 4 and Phase 5A are not complete.
 
 ### PRD0-D028 — Approve backups, PITR, RTO, and RPO
 
-- **Status / evidence:** `OWNER_DECISION_REQUIRED`; no production objectives or
-  restore evidence exists (LIM-003, LIM-004).
-- **Options / recommendation:** provider defaults; PITR plus scheduled backups;
-  cross-region copy. Enable PITR and retention sufficient for approved RPO/RTO,
-  then prove restores; cross-region based on D011.
+- **Status / authority:** `LOCKED_FROM_APPROVED_CONTEXT`; PRD0-Q007 was
+  approved by Abdallah on 2026-08-12 in Africa/Cairo. The exact approval clock
+  time was not recorded. No production configuration or restore evidence exists
+  (LIM-003, LIM-004).
+- **Approved policy:** RTO 30 minutes; RPO 15 minutes; PITR retention target 14
+  days; backup retention target 30 days; restore drill quarterly;
+  `cross_region=NO`.
 - **Reasoning / alternatives:** backup configuration without restore drills is
-  insufficient evidence.
+  insufficient evidence. Approval of objectives is not proof that backups,
+  PITR, restores, RTO, RPO, or failover have been implemented or achieved.
 - **Impacts:** no API/schema; contains all production data and privacy/retention
   obligations.
 - **Operations / rollback:** restore into isolated environment, validate
-  migrations/checksums/tenancy, document cutover.
-- **Phase / approval / reopen:** Phase 8 and Phase 9; RTO/RPO/retention/residency
-  missing. Reopen after drills/business impact review.
+  migrations/checksums/tenancy, document cutover, and measure recovery against
+  the approved objectives.
+- **Phase / approval / reopen:** policy is approved for Phase 8 and Phase 9;
+  infrastructure configuration and recovery proof remain required. Reopen after
+  drills/business impact review or before any cross-region DR proposal.
 
 ### PRD0-D029 — Decide clean start versus production data migration
 
@@ -991,7 +996,7 @@ does not accept a pending decision.
 | ADR-0009 | Critical Job Recovery and Reconciliation                               | owns D015                                   | created and accepted through Q017; PRD3-G03 implementation evidence recorded                                                                  |
 | ADR-0010 | Production Health and Observability Contract | owns D024–D025, D035 | created; accepts D024/Q024 and D035/Q030; D025/Q025 remains pending |
 | ADR-0011 | Artifact, Runtime Version, Staging, and Promotion | owns D032–D034 | created; accepts D033/Q028 and D034/Q029; D032/Q027 remains pending |
-| ADR-0012 | Capacity, Backup, RTO/RPO, and Recovery Objectives | owns D016, D028 | reserved; autoscaling and backup/RTO/RPO answers remain pending |
+| ADR-0012 | Capacity, Backup, RTO/RPO, and Recovery Objectives | owns D016, D028 | reserved; D028 is locked through PRD0-Q007 while D016 autoscaling remains pending; no ADR or implementation evidence is created by this amendment |
 | ADR-0013 | File Security, Retention, and Reference-Aware Lifecycle | owns D036–D048 | accepts D037/Q032, D046/Q041, and D047/Q042; other owned decisions remain pending |
 | ADR-0014 | Learning Media Asynchronous Completion Compatibility | owns D008 | reserved; Q009 remains pending |
 | ADR-0015 | GCP Environment, Workload Identity, Secrets, and Crypto | owns D017–D021, D023 | created; accepts D017/Q005 and D018/Q018; D020/Q020, D021/Q021, and D023/Q023 remain pending |
@@ -1006,10 +1011,10 @@ The Phase 0B closeout recorded ten approved owner-question dispositions on
 2026-07-27. Later amendments through 2026-08-07 added Q003, Q004, Q006, Q012,
 Q013, Q014, Q015, Q017, and Q026. The 2026-08-09 cloud/storage amendment added
 Q005, Q008, Q018, Q019, and Q044–Q048. The 2026-08-11 amendment added Q041
-and Q042, for 30 approved and 18 pending owner-question dispositions in the
-current register.
+and Q042. The 2026-08-12 amendment added Q007, for 31 approved and 17 pending
+owner-question dispositions in the current register.
 
-D009, D010, D017–D019, D046–D047, and D049–D053 are now
+D009, D010, D017–D019, D028, D046–D047, and D049–D053 are now
 `LOCKED_FROM_APPROVED_CONTEXT`. D020, D021, D023, D041–D045, D048, and every other
 `OWNER_DECISION_REQUIRED` record remain open until exact owner answers, impact
 reconciliation, and owning-ADR acceptance are recorded. Absence of an answer

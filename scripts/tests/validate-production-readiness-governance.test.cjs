@@ -8,6 +8,7 @@ const {
   parseAcceptanceMatrix,
   validateCurrentPhase3Governance,
   validateProductionReadinessGovernance,
+  validateQ007Governance,
   validateStorageCutoverGovernance,
   validateRepository,
 } = require('../ci/validate-production-readiness-governance.cjs');
@@ -56,6 +57,11 @@ test('current production-readiness governance reconciles Phase 2 completion', ()
     'UNCLASSIFIED',
   );
   assert.ok(result.storageCutoverCheckCount > 0);
+  assert.ok(result.q007GovernanceCheckCount > 0);
+  assert.equal(result.lockedDecisionCount, 34);
+  assert.equal(result.ownerDecisionRequiredCount, 19);
+  assert.equal(result.approvedOwnerQuestionCount, 31);
+  assert.equal(result.pendingOwnerQuestionCount, 17);
   assert.deepEqual(
     result.authoritativeCompleted.filter((gate) => gate.startsWith('PRD2-')),
     ['PRD2-G01', 'PRD2-G02', 'PRD2-G03', 'PRD2-G04'],
@@ -104,6 +110,77 @@ test('storage-cutover release decision remains discoverable from the matrix', ()
   assert.throws(
     () => validateStorageCutoverGovernance(documents),
     /Acceptance matrix is missing: phase-5a\/03-storage-cutover-release-decision\.md/u,
+  );
+});
+
+test('Q007 governance rejects regression to pending', () => {
+  const documents = q007GovernanceDocuments();
+  documents.disposition = documents.disposition.replace(
+    '| PRD0-Q007 | APPROVED |',
+    '| PRD0-Q007 | PENDING |',
+  );
+  assert.throws(
+    () => validateQ007Governance(documents),
+    /PRD0-Q007 must be APPROVED/u,
+  );
+});
+
+test('Q007 governance rejects D028 returning to owner-decision-required', () => {
+  const documents = q007GovernanceDocuments();
+  documents.decisionRegister = documents.decisionRegister.replace(
+    '| PRD0-D028 | Backups, PITR, RTO, RPO | LOCKED_FROM_APPROVED_CONTEXT |',
+    '| PRD0-D028 | Backups, PITR, RTO, RPO | OWNER_DECISION_REQUIRED |',
+  );
+  assert.throws(
+    () => validateQ007Governance(documents),
+    /PRD0-D028 must be LOCKED_FROM_APPROVED_CONTEXT/u,
+  );
+});
+
+test('Q007 governance rejects false backup or restore completion', () => {
+  const documents = q007GovernanceDocuments();
+  documents.matrix = documents.matrix
+    .replace('BACKUPS_CONFIGURED=NO', 'BACKUPS_CONFIGURED=YES')
+    .replace('RESTORE_DRILL_COMPLETE=NO', 'RESTORE_DRILL_COMPLETE=YES');
+  assert.throws(
+    () => validateQ007Governance(documents),
+    /BACKUPS_CONFIGURED=YES|RESTORE_DRILL_COMPLETE=YES/u,
+  );
+});
+
+test('Q007 governance rejects cross-region DR authorization', () => {
+  const documents = q007GovernanceDocuments();
+  documents.disposition = documents.disposition.replace(
+    'cross_region=NO',
+    'cross_region=YES',
+  );
+  assert.throws(
+    () => validateQ007Governance(documents),
+    /exact approved answer|cross_region=YES/u,
+  );
+});
+
+test('Q007 governance rejects production launch authorization', () => {
+  const documents = q007GovernanceDocuments();
+  documents.releaseDecision = documents.releaseDecision.replace(
+    'PRODUCTION_LAUNCH_AUTHORIZED=NO',
+    'PRODUCTION_LAUNCH_AUTHORIZED=YES',
+  );
+  assert.throws(
+    () => validateQ007Governance(documents),
+    /PRODUCTION_LAUNCH_AUTHORIZED=YES/u,
+  );
+});
+
+test('Q007 governance rejects disposition totals that do not match rows', () => {
+  const documents = q007GovernanceDocuments();
+  documents.disposition = documents.disposition.replace(
+    '| APPROVED | 31 |',
+    '| APPROVED | 30 |',
+  );
+  assert.throws(
+    () => validateQ007Governance(documents),
+    /Published owner disposition totals must match/u,
   );
 });
 
@@ -292,5 +369,16 @@ function storageGovernanceDocuments() {
       'phase-5a',
       '03-storage-cutover-release-decision.md',
     ),
+  };
+}
+
+function q007GovernanceDocuments() {
+  const documents = storageGovernanceDocuments();
+  return {
+    decisionRegister: documents.decisionRegister,
+    disposition: documents.disposition,
+    matrix: documents.matrix,
+    releaseDecision: documents.releaseDecision,
+    runbook: documents.runbook,
   };
 }

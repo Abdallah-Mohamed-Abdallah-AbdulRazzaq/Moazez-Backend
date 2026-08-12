@@ -52,6 +52,8 @@ const Q041_APPROVED_ANSWER =
   'PRD0-Q041: option=D; allowlist=HTTPS external URLs only, with all direct GCS/Google Cloud Storage/MinIO/S3-compatible provider URLs forbidden for new writes; compatibility_window=NONE; legacy_owner=Abdallah; approver=Abdallah';
 const Q042_APPROVED_ANSWER =
   'PRD0-Q042: managed=ALLOW managed File-backed branding for new writes and reads; external_https=READ_ONLY compatibility only where an already-persisted safe HTTPS value exists, with no new legacy URL writes; provider_url=BLOCK_NEW and treat any discovered legacy provider URL as a cutover blocker requiring explicit inventory/review; unsafe=REJECT; null=ALLOW; approver=Abdallah';
+const Q007_APPROVED_ANSWER =
+  'PRD0-Q007: rto=30m; rpo=15m; pitr=14d; backup_retention=30d; restore_drill=quarterly; cross_region=NO; approver=Abdallah; approval_date=2026-08-12; timezone=Africa/Cairo';
 const STORAGE_RELEASE_DECISION_PATH =
   'docs/production-readiness/phase-5a/03-storage-cutover-release-decision.md';
 const PHASE_3_GATE_IDS = Object.freeze([
@@ -244,6 +246,193 @@ function validateCurrentPhase3Governance(
   });
 }
 
+function parseGovernanceRows(source, prefix) {
+  return source
+    .split(/\r?\n/gu)
+    .filter((line) => line.startsWith(`| ${prefix}`))
+    .map((line) =>
+      line
+        .split('|')
+        .slice(1, -1)
+        .map((cell) => cell.trim()),
+    )
+    .filter(([id]) => new RegExp(`^${prefix}\\d{3}$`, 'u').test(id));
+}
+
+function validateQ007Governance(documents) {
+  const problems = [];
+  let checkCount = 0;
+  const normalizedDecisionRegister = documents.decisionRegister.replace(
+    /\r\n/gu,
+    '\n',
+  );
+  const requireToken = (name, text, token) => {
+    checkCount += 1;
+    if (!text.includes(token)) problems.push(`${name} is missing: ${token}`);
+  };
+  const dispositionRows = parseGovernanceRows(
+    documents.disposition,
+    'PRD0-Q',
+  );
+  const q007 = dispositionRows.find(([id]) => id === 'PRD0-Q007');
+  const approvedCount = dispositionRows.filter(
+    ([, status]) => status === 'APPROVED',
+  ).length;
+  const pendingCount = dispositionRows.filter(
+    ([, status]) => status === 'PENDING',
+  ).length;
+  const dispositionIdCount = new Set(dispositionRows.map(([id]) => id)).size;
+
+  checkCount += 4;
+  if (q007?.[1] !== 'APPROVED') {
+    problems.push('PRD0-Q007 must be APPROVED');
+  }
+  if (q007?.[2] !== `\`${Q007_APPROVED_ANSWER}\``) {
+    problems.push('PRD0-Q007 must preserve the exact approved answer');
+  }
+  if (q007?.[2]?.includes('approved_at=')) {
+    problems.push('PRD0-Q007 must not invent an approved_at timestamp');
+  }
+  if (
+    dispositionRows.length !== 48 ||
+    dispositionIdCount !== 48 ||
+    approvedCount !== 31 ||
+    pendingCount !== 17
+  ) {
+    problems.push(
+      'Owner disposition rows must total 48 with 31 APPROVED and 17 PENDING',
+    );
+  }
+  for (const token of [
+    `| Total | ${dispositionRows.length} |`,
+    `| APPROVED | ${approvedCount} |`,
+    `| PENDING | ${pendingCount} |`,
+    '| Omitted | 0 |',
+    '| Duplicated | 0 |',
+  ]) {
+    requireToken(
+      'Published owner disposition totals must match rows',
+      documents.disposition,
+      token,
+    );
+  }
+
+  const decisionRows = parseGovernanceRows(
+    documents.decisionRegister,
+    'PRD0-D',
+  );
+  const d028 = decisionRows.find(([id]) => id === 'PRD0-D028');
+  const lockedCount = decisionRows.filter(
+    ([, , status]) => status === 'LOCKED_FROM_APPROVED_CONTEXT',
+  ).length;
+  const ownerRequiredCount = decisionRows.filter(
+    ([, , status]) => status === 'OWNER_DECISION_REQUIRED',
+  ).length;
+  const decisionIdCount = new Set(decisionRows.map(([id]) => id)).size;
+
+  checkCount += 3;
+  if (d028?.[2] !== 'LOCKED_FROM_APPROVED_CONTEXT') {
+    problems.push('PRD0-D028 must be LOCKED_FROM_APPROVED_CONTEXT');
+  }
+  if (!d028?.[4]?.includes('PRD0-Q007')) {
+    problems.push('PRD0-D028 must be explicitly bound to PRD0-Q007');
+  }
+  if (
+    decisionRows.length !== 53 ||
+    decisionIdCount !== 53 ||
+    lockedCount !== 34 ||
+    ownerRequiredCount !== 19
+  ) {
+    problems.push(
+      'Decision rows must total 53 with 34 LOCKED_FROM_APPROVED_CONTEXT and 19 OWNER_DECISION_REQUIRED',
+    );
+  }
+  requireToken(
+    'Published decision totals must match rows',
+    normalizedDecisionRegister,
+    `${lockedCount}\n\`LOCKED_FROM_APPROVED_CONTEXT\`, ${ownerRequiredCount} \`OWNER_DECISION_REQUIRED\`, 0\n\`PROPOSED_RECOMMENDATION\`, 0\n\`DEFERRED_WITH_CONSTRAINT\`, and 0 \`REJECTED\``,
+  );
+
+  requireToken(
+    'Decision register',
+    normalizedDecisionRegister,
+    'PRD0-Q007 was\n  approved by Abdallah on 2026-08-12 in Africa/Cairo',
+  );
+  requireToken(
+    'Decision register',
+    normalizedDecisionRegister,
+    '`cross_region=NO`',
+  );
+  for (const token of [
+    'RECOVERY_POLICY_APPROVED=YES',
+    'RECOVERY_IMPLEMENTATION_COMPLETE=NO',
+    'PRODUCTION_CLOUD_SQL_EXISTS=NO',
+    'STAGING_CLOUD_SQL_EXISTS=NO',
+    'BACKUPS_CONFIGURED=NO',
+    'PITR_CONFIGURED=NO',
+    'RESTORE_DRILL_COMPLETE=NO',
+    'RTO_PROVEN=NO',
+    'RPO_PROVEN=NO',
+    'HA_FAILOVER_PROVEN_FOR_FINAL_PRODUCTION=NO',
+    'CROSS_REGION_DR_AUTHORIZED=NO',
+    'PRODUCTION_DATA_ALLOWED=NO',
+  ]) {
+    requireToken('Acceptance matrix', documents.matrix, token);
+  }
+  for (const token of [
+    'STORAGE_CUTOVER_READY_FOR_REAL_DATA=NO',
+    'REAL_DATA=FORBIDDEN',
+    'PRODUCTION_UPLOADS_ALLOWED=NO',
+    'PRODUCTION_TRAFFIC_ALLOWED=NO',
+    'PRODUCTION_LAUNCH_AUTHORIZED=NO',
+  ]) {
+    requireToken('Storage release decision', documents.releaseDecision, token);
+  }
+  requireToken(
+    'Phase 5A runbook',
+    documents.runbook,
+    'PRODUCTION_DATA_ALLOWED=NO',
+  );
+
+  checkCount += 1;
+  const combined = Object.values(documents).join('\n');
+  for (const forbidden of [
+    'RECOVERY_IMPLEMENTATION_COMPLETE=YES',
+    'PRODUCTION_CLOUD_SQL_EXISTS=YES',
+    'STAGING_CLOUD_SQL_EXISTS=YES',
+    'BACKUPS_CONFIGURED=YES',
+    'PITR_CONFIGURED=YES',
+    'RESTORE_DRILL_COMPLETE=YES',
+    'RTO_PROVEN=YES',
+    'RPO_PROVEN=YES',
+    'HA_FAILOVER_PROVEN_FOR_FINAL_PRODUCTION=YES',
+    'CROSS_REGION_DR_AUTHORIZED=YES',
+    'cross_region=YES',
+    'PRODUCTION_DATA_ALLOWED=YES',
+    'STORAGE_CUTOVER_READY_FOR_REAL_DATA=YES',
+    'PRODUCTION_UPLOADS_ALLOWED=YES',
+    'PRODUCTION_TRAFFIC_ALLOWED=YES',
+    'PRODUCTION_LAUNCH_AUTHORIZED=YES',
+  ]) {
+    if (combined.includes(forbidden)) {
+      problems.push(`Q007 governance must not claim or authorize: ${forbidden}`);
+    }
+  }
+
+  if (problems.length > 0) {
+    throw new Error(
+      `PRD0-Q007 governance validation failed:\n- ${problems.join('\n- ')}`,
+    );
+  }
+  return Object.freeze({
+    approvedOwnerQuestionCount: approvedCount,
+    checkCount,
+    lockedDecisionCount: lockedCount,
+    ownerDecisionRequiredCount: ownerRequiredCount,
+    pendingOwnerQuestionCount: pendingCount,
+  });
+}
+
 function validateStorageCutoverGovernance(documents) {
   const problems = [];
   let checkCount = 0;
@@ -265,12 +454,12 @@ function validateStorageCutoverGovernance(documents) {
   requireToken(
     'Owner disposition register',
     documents.disposition,
-    '| APPROVED | 30 |',
+    '| APPROVED | 31 |',
   );
   requireToken(
     'Owner disposition register',
     documents.disposition,
-    '| PENDING | 18 |',
+    '| PENDING | 17 |',
   );
   requireToken(
     'Owner disposition register',
@@ -321,7 +510,7 @@ function validateStorageCutoverGovernance(documents) {
   requireToken(
     'Decision register',
     documents.decisionRegister,
-    '33\n`LOCKED_FROM_APPROVED_CONTEXT`, 20 `OWNER_DECISION_REQUIRED`',
+    '34\n`LOCKED_FROM_APPROVED_CONTEXT`, 19 `OWNER_DECISION_REQUIRED`',
   );
   requireToken(
     'Batch 3 inventory',
@@ -413,14 +602,15 @@ function validateRepository(repositoryRoot) {
     'phase-2',
     '02-runtime-role-separation-closeout.md',
   );
-  const governance = validateProductionReadinessGovernance(
-    fs.readFileSync(matrixPath, 'utf8'),
-    fs.readFileSync(closeoutPath, 'utf8'),
-  );
   const read = (...segments) =>
     fs.readFileSync(path.join(repositoryRoot, ...segments), 'utf8');
+  const matrix = fs.readFileSync(matrixPath, 'utf8');
+  const governance = validateProductionReadinessGovernance(
+    matrix,
+    fs.readFileSync(closeoutPath, 'utf8'),
+  );
   const phase3 = validateCurrentPhase3Governance(
-    fs.readFileSync(matrixPath, 'utf8'),
+    matrix,
     read('docs', 'production-readiness', 'phase-3', '10-phase-3-closeout.md'),
     JSON.parse(
       read(
@@ -431,8 +621,8 @@ function validateRepository(repositoryRoot) {
       ),
     ),
   );
-  const storageCutover = validateStorageCutoverGovernance({
-    matrix: fs.readFileSync(matrixPath, 'utf8'),
+  const documents = {
+    matrix,
     disposition: read(
       'docs',
       'production-readiness',
@@ -467,10 +657,14 @@ function validateRepository(repositoryRoot) {
       'phase-5a',
       '03-storage-cutover-release-decision.md',
     ),
-  });
+  };
+  const storageCutover = validateStorageCutoverGovernance(documents);
+  const q007 = validateQ007Governance(documents);
   return Object.freeze({
     ...governance,
     ...phase3,
+    ...q007,
+    q007GovernanceCheckCount: q007.checkCount,
     storageCutoverCheckCount: storageCutover.checkCount,
   });
 }
@@ -478,7 +672,7 @@ function validateRepository(repositoryRoot) {
 if (require.main === module) {
   const result = validateRepository(path.resolve(__dirname, '..', '..'));
   process.stdout.write(
-    `Production-readiness governance verified: gates=${result.gateCount} phase3Gates=${result.phase3GateCount} storageCutoverChecks=${result.storageCutoverCheckCount}\n`,
+    `Production-readiness governance verified: gates=${result.gateCount} phase3Gates=${result.phase3GateCount} storageCutoverChecks=${result.storageCutoverCheckCount} q007Checks=${result.q007GovernanceCheckCount}\n`,
   );
 }
 
@@ -486,6 +680,7 @@ module.exports = {
   parseAcceptanceMatrix,
   validateCurrentPhase3Governance,
   validateProductionReadinessGovernance,
+  validateQ007Governance,
   validateStorageCutoverGovernance,
   validateRepository,
 };
