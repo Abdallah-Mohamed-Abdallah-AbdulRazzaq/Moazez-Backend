@@ -1,6 +1,11 @@
 terraform {
   required_version = ">= 1.6.0, < 2.0.0"
 
+  backend "gcs" {
+    bucket = "moazez-nonprod-91001421934-tfstate"
+    prefix = "network/staging"
+  }
+
   required_providers {
     google = {
       source  = "hashicorp/google"
