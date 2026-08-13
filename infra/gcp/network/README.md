@@ -50,16 +50,27 @@ monitoring resource, logging sink, budget, or remote-state resource.
 
 ## State and execution governance
 
-Terraform state is local; no remote backend is configured or approved.
+Staging network Terraform state uses the dedicated GCS backend at
+`gs://moazez-nonprod-91001421934-tfstate` with the exact backend prefix
+`network/staging`. The state bucket was bootstrapped out-of-band by the
+approved DevOps workflow. It is deliberately not created or managed by this
+network stack, which avoids a backend bootstrap dependency cycle. The GCS
+remote backend supports Terraform state locking.
 
 ```text
-REMOTE_STATE_DECISION=PENDING_SEPARATE_OWNER_APPROVAL
+REMOTE_STATE_MODEL=GCS
+REMOTE_STATE_BUCKET=moazez-nonprod-91001421934-tfstate
+REMOTE_STATE_PREFIX=network/staging
+REMOTE_STATE_BUCKET_MANAGED_BY_THIS_STACK=NO
 ```
 
 The application buckets `moazez-nonprod-91001421934-private` and
 `moazez-nonprod-91001421934-published` are forbidden as Terraform state
-stores. No `terraform.tfvars` file is required, and credentials or
-impersonation are not configured in this source.
+stores. No credentials are stored in Terraform source. Authentication is
+operational and external through the approved execution identity and ADC
+model. This approved source configuration does not claim that the real GCS
+backend has been initialized, that remote state has been created or migrated,
+or that the network has been applied or any network resource created.
 
 Stage 4A permits formatting and static validation only. It forbids
 `terraform plan`, `apply`, `destroy`, `import`, `refresh`, and all Terraform
