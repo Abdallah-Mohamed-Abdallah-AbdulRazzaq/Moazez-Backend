@@ -12,6 +12,7 @@ import {
   redisUrlSchema,
   refineRedisEndpointSeparation,
 } from './redis-env.validation';
+import { validateSecretEncryptionEnvironment } from '../shared/crypto/versioned-secret-crypto';
 
 const booleanFromString = z
   .enum(['true', 'false'])
@@ -72,8 +73,15 @@ export const envSchema = z
       .default('ffprobe-5.1.9-debian12-learning-media-v1'),
     MEDIA_RUNTIME_ENFORCE_IN_TEST: booleanFromString.default('false'),
 
-    // 32 decoded bytes. Supported formats: base64:<value> or hex:<value>.
-    SETTINGS_SECRET_ENCRYPTION_KEY: z.string().optional(),
+    SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY_ID: optionalNonEmptyString,
+    SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY: optionalNonEmptyString,
+    SETTINGS_EMAIL_SECRET_ENCRYPTION_PREVIOUS_KEY_ID: optionalNonEmptyString,
+    SETTINGS_EMAIL_SECRET_ENCRYPTION_PREVIOUS_KEY: optionalNonEmptyString,
+    APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY_ID: optionalNonEmptyString,
+    APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY: optionalNonEmptyString,
+    APP_DEVICE_TOKEN_ENCRYPTION_PREVIOUS_KEY_ID: optionalNonEmptyString,
+    APP_DEVICE_TOKEN_ENCRYPTION_PREVIOUS_KEY: optionalNonEmptyString,
+    SETTINGS_SECRET_ENCRYPTION_KEY: optionalNonEmptyString,
 
     FCM_ENABLED: booleanFromString.default('false'),
     FCM_DRY_RUN: booleanFromString.default('true'),
@@ -91,6 +99,16 @@ export const envSchema = z
     refineDatabaseRuntimeEnvironment(env, ctx);
     refineRedisEndpointSeparation(env, ctx);
     refineStorageEnvironment(env, ctx, { requireSigner: true });
+    for (const error of validateSecretEncryptionEnvironment(
+      env,
+      env.NODE_ENV,
+    )) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [error.configurationField],
+        message: error.message,
+      });
+    }
 
     try {
       parseApplicationCorsOrigins(env.NODE_ENV, env.APP_CORS_ORIGINS);

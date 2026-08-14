@@ -15,6 +15,28 @@ decision uses
 `PENDING(owner=<name>,deadline=<phase/date>,constraint=<text>)`; silence never
 selects a recommended default.
 
+## 2026-08-14 Q020/Q021 approval amendment
+
+Abdallah approved PRD0-Q020 option A and PRD0-Q021 option A at
+`2026-08-14T06:37:00+03:00` in Africa/Cairo in the security, operations, and
+release capacities. The historical question text, options, recommendations,
+and machine-readable templates below remain unchanged.
+
+```text
+PRD0-Q020: option=A; cadence=90d; overlap=7d; emergency_owner=Abdallah; release_owner=Abdallah
+PRD0-Q021: option=A; envelope_version=v2; key_families=smtp-secret,app-device-token; rotation_cadence=90d; security_approver=Abdallah
+```
+
+Q020 selects release-pinned immutable Secret Manager versions, a 90-day
+normal cadence, a seven-day staged active/previous overlap, retained rollback
+availability, and explicitly pinned emergency replacements without dynamic
+runtime refresh. Q021 selects separate `smtp-secret` and `app-device-token`
+families, active plus optional previous decryption, active-only v2 writes,
+legacy v1 decrypt compatibility, a decrypt-only shared legacy key, and no
+Cloud KMS. This approval supplies architecture/repository authority only; it
+does not prove cloud resources, keys, IAM delivery, rehearsal, deployment,
+Phase 4 completion, or production traffic authorization.
+
 ## Dependency batches
 
 The detailed records retain stable numeric IDs; owners should answer them in

@@ -38,8 +38,8 @@ No recommendation is represented as owner approval. Evidence IDs resolve to
 | PRD0-D017 | GCP project/environment separation | LOCKED_FROM_APPROVED_CONTEXT | D004 | Q005 option A: production-only `moazez-production`; staging/cloud test `moazez-nonprod-91001421934`; local development/CI |
 | PRD0-D018 | Service-account boundaries | LOCKED_FROM_APPROVED_CONTEXT | D005, D017 | Q018 option A: separate per-project API/Core/Media/Migration/Maintenance/deployer/signer identities |
 | PRD0-D019 | GCS signed-URL identity | LOCKED_FROM_APPROVED_CONTEXT | D009, D018 | Q019 option A: dedicated per-project keyless signer, own-project bucket limits, maximum TTL one hour |
-| PRD0-D020 | Secret Manager pinning/rotation | OWNER_DECISION_REQUIRED | D017, D018 | explicit versions for release, staged rotation |
-| PRD0-D021 | Encryption key separation/key-ID envelope | OWNER_DECISION_REQUIRED | D020 | separate key families and key ID with multi-key decrypt |
+| PRD0-D020 | Secret Manager pinning/rotation | LOCKED_FROM_APPROVED_CONTEXT | D017, D018 | Q020 option A: release-pinned immutable versions, 90-day cadence, seven-day staged overlap |
+| PRD0-D021 | Encryption key separation/key-ID envelope | LOCKED_FROM_APPROVED_CONTEXT | D020 | Q021 option A: v2 separate SMTP/device key families, active/optional-previous decrypt, legacy v1 decrypt-only |
 | PRD0-D022 | Frontend origins and production CORS | LOCKED_FROM_APPROVED_CONTEXT | D002, D009, D017 | approved exact production/staging HTTPS origins and credential/WebSocket/direct-storage requirements through Q022 |
 | PRD0-D023 | Ingress/domain/LB/Cloud Armor | OWNER_DECISION_REQUIRED | D017, D022 | authenticated/private where possible; edge controls by threat model |
 | PRD0-D024 | Liveness/startup/readiness semantics | LOCKED_FROM_APPROVED_CONTEXT | D005, D013 | approved protected role-specific probes and minimum dependency semantics through Q024 |
@@ -73,8 +73,9 @@ No recommendation is represented as owner approval. Evidence IDs resolve to
 | PRD0-D052 | Storage bucket/privacy topology | LOCKED_FROM_APPROVED_CONTEXT | D009, D017–D019 | Q047: four private per-project buckets in `me-central2`; UBLA, PAP, exact Q022 CORS, private Learning Media prefixes |
 | PRD0-D053 | GCS versioning/lifecycle/deletion protection | LOCKED_FROM_APPROVED_CONTEXT | D042, D044, D052 | Q048: versioning, seven-day Soft Delete, Terraform `prevent_destroy`, no Bucket Lock or Phase 5A automatic transition/deletion |
 
-Current status totals after the 2026-08-12 Q007 amendment: 34
-`LOCKED_FROM_APPROVED_CONTEXT`, 19 `OWNER_DECISION_REQUIRED`, 0
+Current status totals across all 53 decisions after the 2026-08-14 Q020/Q021
+amendment: 36
+`LOCKED_FROM_APPROVED_CONTEXT`, 17 `OWNER_DECISION_REQUIRED`, 0
 `PROPOSED_RECOMMENDATION`, 0
 `DEFERRED_WITH_CONSTRAINT`, and 0 `REJECTED`. The Phase 0B closeout snapshot on
 2026-07-27 correctly recorded 14 locked, 38 owner-required, and 1 proposed at
@@ -482,35 +483,55 @@ validation counts. Phase 4 and Phase 5A are not complete.
 
 ### PRD0-D020 — Pin and rotate Secret Manager versions
 
-- **Status / evidence:** `OWNER_DECISION_REQUIRED`; secrets are env-driven and
-  rotation policy is absent (EVD-051–EVD-055).
-- **Options / recommendation:** `latest`; immutable version per release; dynamic
-  refresh. Recommend release-pinned versions, staged overlap, then promotion;
-  dynamic refresh only where tested.
-- **Reasoning / alternatives:** `latest` can mutate a running/restarted release
-  without artifact change. Permanent unrotated secrets are rejected.
-- **Impacts:** no API/schema except encryption-key migration in D021. Secret
-  access audit and least privilege required.
-- **Operations / rollback:** retain prior version through rollback window and
-  test both before disabling old.
-- **Phase / approval / reopen:** Phase 4; rotation cadence/owners missing. Reopen
-  per secret based on provider capabilities.
+- **Status / authority:** `LOCKED_FROM_APPROVED_CONTEXT`; PRD0-Q020 option A
+  was approved by Abdallah at `2026-08-14T06:37:00+03:00`
+  (Africa/Cairo) as emergency and release owner; owning ADR ADR-0015.
+- **Approved decision:** releases pin explicit immutable Secret Manager
+  versions. The mutable `latest` alias and dynamic runtime refresh are
+  prohibited. Normal rotation cadence is 90 days with a seven-day staged
+  active/previous overlap. The prior version remains available for the tested
+  overlap and rollback window. Emergency rotation creates and explicitly pins
+  a replacement version.
+- **Reasoning / alternatives:** immutable release selection makes startup and
+  rollback reproducible; mutable selection can change a restarted release
+  without an artifact or release-policy change.
+- **Impacts:** no public API or database schema change. Deployment must map each
+  release to explicit versions and retain redacted access/audit evidence.
+- **Operations / rollback:** validate active/previous overlap before promotion,
+  retain the prior version through rollback, and disable it only after the
+  tested window and completeness checks.
+- **Phase / approval / reopen:** Phase 4 repository authority is approved.
+  Cloud Secret Manager implementation, IAM delivery, version provisioning,
+  access logs, and rotation rehearsal remain later acceptance evidence. This
+  record does not claim any Secret Manager resource currently exists.
 
 ### PRD0-D021 — Separate encryption keys and add key IDs
 
-- **Status / evidence:** `OWNER_DECISION_REQUIRED`; device tokens and SMTP
-  passwords use one `v1` format and one key without key ID (EVD-054–EVD-055).
-- **Options / recommendation:** retain shared key; separate keys only; separate
-  keys plus key-ID envelope/multi-key decrypt and staged re-encryption. Recommend
-  the last.
-- **Reasoning / alternatives:** shared key couples compromise and rotation;
-  format version alone cannot select an old key.
-- **Impacts:** additive envelope/data migration with dual read and write-new;
-  no public API change. Keys must not enter logs/jobs.
-- **Operations / rollback:** keep old decrypt key until completeness audit;
-  never roll back writer after retiring its key.
-- **Phase / approval / reopen:** Phase 4; security owner approval missing.
-  Reopen if Cloud KMS envelope encryption is selected.
+- **Status / authority:** `LOCKED_FROM_APPROVED_CONTEXT`; PRD0-Q021 option A
+  was approved by Abdallah at `2026-08-14T06:37:00+03:00`
+  (Africa/Cairo) as security approver; owning ADR ADR-0015.
+- **Approved decision:** use envelope v2 and exactly two separate key families,
+  `smtp-secret` and `app-device-token`, on the existing AES-256-GCM primitive.
+  Ciphertext contains an explicit key ID. Each family decrypts with its active
+  key plus an optional previous key, while every new write uses only that
+  family's active key and emits `v2:<keyId>:<iv>:<tag>:<ciphertext>`.
+- **Legacy compatibility:** `v1:<iv>:<tag>:<ciphertext>` remains readable during
+  the compatibility/migration window. `SETTINGS_SECRET_ENCRYPTION_KEY` is
+  optional legacy v1 decrypt-only material. No new v1 writer is allowed, and
+  active v2 keys never substitute for a missing legacy key.
+- **Reasoning / alternatives:** family separation limits compromise/rotation
+  blast radius, and explicit IDs select only the intended active/previous key.
+  Shared keys, arbitrary key iteration, and Cloud KMS are not approved.
+- **Impacts:** repository configuration, internal ciphertext, and focused tests
+  change; public HTTP/API contracts and the database schema do not. The normal
+  family-key rotation cadence is 90 days.
+- **Operations / rollback:** retain old decrypt-only material until an
+  authoritative zero-row audit or governed re-encryption completeness proof.
+  Never automatically rewrite ciphertext during a read.
+- **Phase / approval / reopen:** repository implementation is authorized, but
+  real key provisioning, deployed key delivery, legacy-row inventory, and live
+  compatibility proof remain required. This record does not claim real
+  encryption keys have been provisioned.
 
 ### PRD0-D022 — Approve frontend origins and CORS
 
@@ -999,7 +1020,7 @@ does not accept a pending decision.
 | ADR-0012 | Capacity, Backup, RTO/RPO, and Recovery Objectives | owns D016, D028 | reserved; D028 is locked through PRD0-Q007 while D016 autoscaling remains pending; no ADR or implementation evidence is created by this amendment |
 | ADR-0013 | File Security, Retention, and Reference-Aware Lifecycle | owns D036–D048 | accepts D037/Q032, D046/Q041, and D047/Q042; other owned decisions remain pending |
 | ADR-0014 | Learning Media Asynchronous Completion Compatibility | owns D008 | reserved; Q009 remains pending |
-| ADR-0015 | GCP Environment, Workload Identity, Secrets, and Crypto | owns D017–D021, D023 | created; accepts D017/Q005 and D018/Q018; D020/Q020, D021/Q021, and D023/Q023 remain pending |
+| ADR-0015 | GCP Environment, Workload Identity, Secrets, and Crypto | owns D017–D021, D023 | accepts D017/Q005, D018/Q018, D020/Q020, and D021/Q021; D023/Q023 remains pending |
 
 Each listed major decision has exactly one owning ADR. Other ADRs may cite the
 owning record but must not redefine it, especially for capacity and
@@ -1011,11 +1032,12 @@ The Phase 0B closeout recorded ten approved owner-question dispositions on
 2026-07-27. Later amendments through 2026-08-07 added Q003, Q004, Q006, Q012,
 Q013, Q014, Q015, Q017, and Q026. The 2026-08-09 cloud/storage amendment added
 Q005, Q008, Q018, Q019, and Q044–Q048. The 2026-08-11 amendment added Q041
-and Q042. The 2026-08-12 amendment added Q007, for 31 approved and 17 pending
-owner-question dispositions in the current register.
+and Q042. The 2026-08-12 amendment added Q007, and the 2026-08-14 amendment
+added Q020 and Q021, for 33 approved and 15 pending owner-question
+dispositions in the current register.
 
-D009, D010, D017–D019, D028, D046–D047, and D049–D053 are now
-`LOCKED_FROM_APPROVED_CONTEXT`. D020, D021, D023, D041–D045, D048, and every other
+D009, D010, D017–D021, D028, D046–D047, and D049–D053 are now
+`LOCKED_FROM_APPROVED_CONTEXT`. D023, D041–D045, D048, and every other
 `OWNER_DECISION_REQUIRED` record remain open until exact owner answers, impact
 reconciliation, and owning-ADR acceptance are recorded. Absence of an answer
 does not select a recommendation or authorize implementation.

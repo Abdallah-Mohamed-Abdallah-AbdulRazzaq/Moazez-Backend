@@ -1316,7 +1316,7 @@ From a clean local setup:
 ```bash
 cp .env.example .env
 # Update JWT_ACCESS_SECRET and JWT_REFRESH_SECRET to 16+ characters
-# Set SETTINGS_SECRET_ENCRYPTION_KEY for non-test/local environments when needed
+# Set both family-specific active encryption key ID/key pairs for staging/production
 
 npm run infra:up
 npm run verify:sprint11f
@@ -1356,6 +1356,35 @@ Safety rules:
 - Temporary passwords are one-time response values only.
 - SMTP/API secrets are encrypted and never returned.
 - Delivery is queue-backed.
+
+SMTP secrets and app device tokens use separate AES-256-GCM key families.
+Every new write uses the family-specific active key and emits
+`v2:<keyId>:<iv>:<tag>:<ciphertext>`. AES-GCM authenticates
+`v2:<family>:<keyId>` as AAD, using exactly `smtp-secret` or
+`app-device-token`; family is implicit in the domain keyring and is not another
+persisted envelope field. Cross-family v2 key material reuse is invalid, while
+active/previous bytes within one family may match. Staging and production
+API/Core Worker configuration must provide both of these active pairs:
+
+- `SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY_ID` and
+  `SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY`
+- `APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY_ID` and
+  `APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY`
+
+The corresponding `PREVIOUS_KEY_ID`/`PREVIOUS_KEY` pairs are optional and are
+used only for controlled rotation overlap. `SETTINGS_SECRET_ENCRYPTION_KEY` is
+optional legacy `v1` decrypt-only compatibility and is never a new-write key.
+
+Deployment releases must map key IDs to explicitly pinned immutable Secret
+Manager versions. For example, active key ID `2` can map to secret version `2`
+and previous key ID `1` to retained secret version `1`; numeric key IDs are
+examples, not a runtime restriction. The normal cadence is 90 days with a
+7-day approved staged active/previous overlap and retained rollback
+availability. That overlap must be tested and rehearsed in the later
+cloud/deployment gate; no rotation rehearsal is currently claimed. Emergency
+replacement also selects an explicit immutable version. Secret Manager
+resources, version provisioning, IAM delivery, and rotation rehearsal belong
+to that later gate and are not performed by repository configuration.
 
 Deferred beyond Sprint 11F:
 

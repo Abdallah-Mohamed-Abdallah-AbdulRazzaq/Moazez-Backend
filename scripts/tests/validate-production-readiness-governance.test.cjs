@@ -9,6 +9,7 @@ const {
   validateCurrentPhase3Governance,
   validateProductionReadinessGovernance,
   validateQ007Governance,
+  validateQ020Q021Governance,
   validateStorageCutoverGovernance,
   validateRepository,
 } = require('../ci/validate-production-readiness-governance.cjs');
@@ -58,10 +59,11 @@ test('current production-readiness governance reconciles Phase 2 completion', ()
   );
   assert.ok(result.storageCutoverCheckCount > 0);
   assert.ok(result.q007GovernanceCheckCount > 0);
-  assert.equal(result.lockedDecisionCount, 34);
-  assert.equal(result.ownerDecisionRequiredCount, 19);
-  assert.equal(result.approvedOwnerQuestionCount, 31);
-  assert.equal(result.pendingOwnerQuestionCount, 17);
+  assert.ok(result.q020Q021GovernanceCheckCount > 0);
+  assert.equal(result.lockedDecisionCount, 36);
+  assert.equal(result.ownerDecisionRequiredCount, 17);
+  assert.equal(result.approvedOwnerQuestionCount, 33);
+  assert.equal(result.pendingOwnerQuestionCount, 15);
   assert.deepEqual(
     result.authoritativeCompleted.filter((gate) => gate.startsWith('PRD2-')),
     ['PRD2-G01', 'PRD2-G02', 'PRD2-G03', 'PRD2-G04'],
@@ -175,12 +177,154 @@ test('Q007 governance rejects production launch authorization', () => {
 test('Q007 governance rejects disposition totals that do not match rows', () => {
   const documents = q007GovernanceDocuments();
   documents.disposition = documents.disposition.replace(
-    '| APPROVED | 31 |',
-    '| APPROVED | 30 |',
+    '| APPROVED | 33 |',
+    '| APPROVED | 32 |',
   );
   assert.throws(
     () => validateQ007Governance(documents),
     /Published owner disposition totals must match/u,
+  );
+});
+
+test('Q020 governance cannot regress to PENDING', () => {
+  const documents = q020Q021GovernanceDocuments();
+  documents.disposition = documents.disposition.replace(
+    '| PRD0-Q020 | APPROVED |',
+    '| PRD0-Q020 | PENDING |',
+  );
+  assert.throws(
+    () => validateQ020Q021Governance(documents),
+    /PRD0-Q020 must be APPROVED/u,
+  );
+});
+
+test('Q021 governance cannot regress to PENDING', () => {
+  const documents = q020Q021GovernanceDocuments();
+  documents.disposition = documents.disposition.replace(
+    '| PRD0-Q021 | APPROVED |',
+    '| PRD0-Q021 | PENDING |',
+  );
+  assert.throws(
+    () => validateQ020Q021Governance(documents),
+    /PRD0-Q021 must be APPROVED/u,
+  );
+});
+
+test('D020 and D021 cannot return to OWNER_DECISION_REQUIRED', () => {
+  for (const decisionId of ['PRD0-D020', 'PRD0-D021']) {
+    const documents = q020Q021GovernanceDocuments();
+    documents.decisionRegister = documents.decisionRegister.replace(
+      new RegExp(
+        `(\\| ${decisionId} \\|[^\\r\\n]*?\\| )LOCKED_FROM_APPROVED_CONTEXT( \\|)`,
+        'u',
+      ),
+      '$1OWNER_DECISION_REQUIRED$2',
+    );
+    assert.throws(
+      () => validateQ020Q021Governance(documents),
+      new RegExp(`${decisionId} must be LOCKED_FROM_APPROVED_CONTEXT`, 'u'),
+    );
+  }
+});
+
+test('D023 cannot be silently accepted', () => {
+  const documents = q020Q021GovernanceDocuments();
+  documents.decisionRegister = documents.decisionRegister.replace(
+    /(\| PRD0-D023 \|[^\r\n]*?\| )OWNER_DECISION_REQUIRED( \|)/u,
+    '$1LOCKED_FROM_APPROVED_CONTEXT$2',
+  );
+  assert.throws(
+    () => validateQ020Q021Governance(documents),
+    /PRD0-D023 must remain OWNER_DECISION_REQUIRED/u,
+  );
+});
+
+test('Q023 cannot be silently approved', () => {
+  const documents = q020Q021GovernanceDocuments();
+  documents.disposition = documents.disposition.replace(
+    '| PRD0-Q023 | PENDING |',
+    '| PRD0-Q023 | APPROVED |',
+  );
+  assert.throws(
+    () => validateQ020Q021Governance(documents),
+    /PRD0-Q023 must remain PENDING/u,
+  );
+});
+
+test('Q020 and Q021 exact approved answers cannot drift', () => {
+  for (const [original, replacement, expected] of [
+    ['cadence=90d', 'cadence=91d', 'PRD0-Q020'],
+    ['envelope_version=v2', 'envelope_version=v3', 'PRD0-Q021'],
+  ]) {
+    const documents = q020Q021GovernanceDocuments();
+    documents.disposition = documents.disposition.replace(
+      original,
+      replacement,
+    );
+    assert.throws(
+      () => validateQ020Q021Governance(documents),
+      new RegExp(`${expected} must preserve the exact approved answer`, 'u'),
+    );
+  }
+});
+
+test('Q020/Q021 current row totals cannot drift', () => {
+  const documents = q020Q021GovernanceDocuments();
+  documents.disposition = documents.disposition.replace(
+    '| PRD0-Q009 | PENDING |',
+    '| PRD0-Q009 | APPROVED |',
+  );
+  documents.decisionRegister = documents.decisionRegister.replace(
+    /(\| PRD0-D008 \|[^\r\n]*?\| )OWNER_DECISION_REQUIRED( \|)/u,
+    '$1LOCKED_FROM_APPROVED_CONTEXT$2',
+  );
+  assert.throws(
+    () => validateQ020Q021Governance(documents),
+    /Owner disposition rows must total 48|Decision rows must total 53/u,
+  );
+});
+
+test('PRD4-G02 and PRD4-G03 cannot return to BLOCKED_BY_OWNER', () => {
+  for (const gateId of ['PRD4-G02', 'PRD4-G03']) {
+    const documents = q020Q021GovernanceDocuments();
+    documents.matrix = replaceGateStatus(
+      documents.matrix,
+      gateId,
+      'BASELINE_ONLY',
+      'BLOCKED_BY_OWNER',
+    );
+    assert.throws(
+      () => validateQ020Q021Governance(documents),
+      new RegExp(`${gateId} must be BASELINE_ONLY`, 'u'),
+    );
+  }
+});
+
+test('PRD4-G02 and PRD4-G03 cannot be falsely marked COMPLETE', () => {
+  for (const gateId of ['PRD4-G02', 'PRD4-G03']) {
+    const documents = q020Q021GovernanceDocuments();
+    documents.matrix = replaceGateStatus(
+      documents.matrix,
+      gateId,
+      'BASELINE_ONLY',
+      'COMPLETE',
+    );
+    assert.throws(
+      () => validateQ020Q021Governance(documents),
+      new RegExp(`${gateId} must be BASELINE_ONLY`, 'u'),
+    );
+  }
+});
+
+test('Q020/Q021 governance cannot claim Secret Manager or cloud implementation', () => {
+  const documents = q020Q021GovernanceDocuments();
+  documents.matrix = documents.matrix.replace(
+    'GCP_SECRET_MANAGER_SECRET_EXISTS=NO',
+    'GCP_SECRET_MANAGER_SECRET_EXISTS=YES',
+  );
+  assert.throws(
+    () => validateQ020Q021Governance(documents),
+    /GCP_SECRET_MANAGER_SECRET_EXISTS=NO|GCP_SECRET_MANAGER_SECRET_EXISTS=YES/u,
   );
 });
 
@@ -381,4 +525,35 @@ function q007GovernanceDocuments() {
     releaseDecision: documents.releaseDecision,
     runbook: documents.runbook,
   };
+}
+
+function q020Q021GovernanceDocuments() {
+  const documents = storageGovernanceDocuments();
+  const read = (...segments) =>
+    fs.readFileSync(path.join(REPOSITORY_ROOT, ...segments), 'utf8');
+  return {
+    decisionRegister: documents.decisionRegister,
+    disposition: documents.disposition,
+    matrix: documents.matrix,
+    questionnaire: read(
+      'docs',
+      'production-readiness',
+      'phase-0',
+      '04-owner-decision-questionnaire.md',
+    ),
+    adr0015: read(
+      'adr',
+      'ADR-0015-gcp-environment-workload-identity-secrets-and-crypto.md',
+    ),
+  };
+}
+
+function replaceGateStatus(matrix, gateId, currentStatus, nextStatus) {
+  const line = matrix
+    .split(/\r?\n/u)
+    .find((candidate) => candidate.startsWith(`| ${gateId} |`));
+  assert.ok(line, `missing ${gateId}`);
+  const alteredLine = line.replace(currentStatus, nextStatus);
+  assert.notEqual(alteredLine, line, `unchanged ${gateId}`);
+  return matrix.replace(line, alteredLine);
 }

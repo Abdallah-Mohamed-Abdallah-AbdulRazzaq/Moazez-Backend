@@ -37,6 +37,40 @@ governance and Prisma validate/generate when applicable; build;
 that phase's blast radius. Phase 8 additionally runs the full
 production-shaped release-candidate gate.
 
+### 2026-08-14 Q020/Q021 crypto-policy amendment
+
+Abdallah approved PRD0-Q020 option A and PRD0-Q021 option A at
+`2026-08-14T06:37:00+03:00` in Africa/Cairo. Stage 9A implements the
+repository-only release-pinned secret-version and separate v2 key-family
+contracts with focused configuration/crypto/governance tests. The owner-
+decision blocker is therefore removed from PRD4-G02 and PRD4-G03, and both
+gates move to `BASELINE_ONLY`; neither gate is complete.
+
+PRD4-G02 still requires Secret Manager implementation, explicit deployed
+release-version mapping, IAM/access-log evidence, and rotation/overlap/
+rollback rehearsal. PRD4-G03 still requires an authoritative legacy
+ciphertext inventory: either signed `N/A_WITH_EVIDENCE` zero-row proof or
+governed re-encryption completeness if legacy rows exist, plus deployed key
+delivery and live compatibility proof. PRD4-G01 and PRD4-G04 remain unchanged.
+Control-room Deployment Stage 9A is not PRD Phase 9, changes no PRD8/PRD9 gate,
+and authorizes no cloud or production action.
+
+```text
+Q020_STATUS=APPROVED
+Q021_STATUS=APPROVED
+Q023_STATUS=PENDING
+D020_STATUS=LOCKED_FROM_APPROVED_CONTEXT
+D021_STATUS=LOCKED_FROM_APPROVED_CONTEXT
+D023_STATUS=OWNER_DECISION_REQUIRED
+GCP_SECRET_MANAGER_SECRET_EXISTS=NO
+SECRET_MANAGER_VERSIONS_PROVISIONED=NO
+IAM_SECRET_ACCESS_CREATED=NO
+ROTATION_REHEARSAL_COMPLETE=NO
+RUNTIME_DEPLOYMENT_COMPLETE=NO
+PRODUCTION_TRAFFIC_AUTHORIZED=NO
+PHASE_4=NOT_COMPLETE
+```
+
 ### 2026-08-10 Owner-directed storage fast-path ordering
 
 The formally closed Phase 3 baseline remains authoritative. Batch 0 inventory
@@ -223,8 +257,8 @@ and no Phase 4, Phase 5A, or later gate is marked complete by this closeout.
 | Gate     | Requirement                                                                                                                                                                                                                                | Evidence/test required                                                                                                                | Block | Owner               | Current          | Prerequisites      | Rollback proof                                 | Exact completion evidence                                               |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------- | ---------------- | ------------------ | ---------------------------------------------- | ----------------------------------------------------------------------- |
 | PRD4-G01 | Separate projects and least-privilege identities exist for API/Core/Media/Migration/Maintenance/deployer/signer.                                                                                                                           | ADR-0015, policy review, and automated allow/deny tests                                                                                | Yes   | Security + platform | NOT_STARTED      | PRD3-G06           | IAM revision rollback without shared broad key | approved identity matrix and negative-access evidence                   |
-| PRD4-G02 | Secrets are explicitly versioned per release; JWT/provider/signer rotation and rollback are rehearsed with redacted logs.                                                                                                                  | promotion/overlap/rollback drill and access-log scan                                                                                  | Yes   | Security owner      | BLOCKED_BY_OWNER | PRD4-G01           | retained prior versions through rollback TTL   | signed rotation drill                                                   |
-| PRD4-G03 | Device-token and SMTP envelopes have separate key families/key IDs/multi-key read; under clean start require signed zero legacy ciphertext rows, otherwise complete governed re-encryption and retain old decrypt-only keys through audit. | old/new/invalid envelope tests plus Q004/D029-conditional DB audit                                                                    | Yes   | Security + data     | BLOCKED_BY_OWNER | PRD3-G05, PRD4-G02 | old decrypt-only keys and stop-writer plan     | `N/A_WITH_EVIDENCE` zero-row proof or signed re-encryption completeness |
+| PRD4-G02 | Secrets are explicitly versioned per release; JWT/provider/signer rotation and rollback are rehearsed with redacted logs.                                                                                                                  | promotion/overlap/rollback drill and access-log scan                                                                                  | Yes   | Security owner      | BASELINE_ONLY    | PRD4-G01           | retained prior versions through rollback TTL   | signed rotation drill                                                   |
+| PRD4-G03 | Device-token and SMTP envelopes have separate key families/key IDs/multi-key read; under clean start require signed zero legacy ciphertext rows, otherwise complete governed re-encryption and retain old decrypt-only keys through audit. | old/new/invalid envelope tests plus Q004/D029-conditional DB audit                                                                    | Yes   | Security + data     | BASELINE_ONLY    | PRD3-G05, PRD4-G02 | old decrypt-only keys and stop-writer plan     | `N/A_WITH_EVIDENCE` zero-row proof or signed re-encryption completeness |
 | PRD4-G04 | Phase 4 universal regression gate passes.                                                                                                                                                                                                  | affected unit/integration/security/tenancy/E2E; applicable migration/Prisma; build/diff/scope; IAM/secret/crypto canonical regression | Yes   | QA + security       | NOT_STARTED      | PRD4-G01–PRD4-G03  | prior IAM/secret/key version                   | phase-bound evidence bundle                                             |
 
 ### Phase 5A — Provider-Neutral Storage and GCS

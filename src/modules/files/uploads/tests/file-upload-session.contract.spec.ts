@@ -130,6 +130,10 @@ describe('learning media upload foundation contract', () => {
         'moazez-gcs-signer@moazez-test-project.iam.gserviceaccount.com',
       STORAGE_BUCKET: 'private',
       STORAGE_PUBLIC_BUCKET: 'public',
+      SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY_ID: 'email-active-v2',
+      SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY: `hex:${'11'.repeat(32)}`,
+      APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY_ID: 'device-active-v2',
+      APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY: `hex:${'22'.repeat(32)}`,
     };
 
     expect(() =>

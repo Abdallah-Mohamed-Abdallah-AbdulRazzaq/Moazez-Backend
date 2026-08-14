@@ -378,6 +378,157 @@ describe('bootstrap environment validation', () => {
       ),
     ).toThrow(/STORAGE_PROVIDER must be gcs/u);
   });
+
+  it('keeps development and test usable without configured encryption keys', () => {
+    expect(validateEnv(baseEnv())).toMatchObject({ NODE_ENV: 'development' });
+    expect(validateEnv(baseEnv({ NODE_ENV: 'test' }))).toMatchObject({
+      NODE_ENV: 'test',
+    });
+  });
+
+  it.each([
+    'SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY_ID',
+    'SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY',
+    'APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY_ID',
+    'APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY',
+  ])('requires strict-runtime active encryption field %s', (field) => {
+    expect(() => validateEnv(productionEnv({ [field]: undefined }))).toThrow(
+      new RegExp(field, 'u'),
+    );
+  });
+
+  it.each([
+    [
+      'SETTINGS_EMAIL_SECRET_ENCRYPTION_PREVIOUS_KEY_ID',
+      'SETTINGS_EMAIL_SECRET_ENCRYPTION_PREVIOUS_KEY',
+    ],
+    [
+      'APP_DEVICE_TOKEN_ENCRYPTION_PREVIOUS_KEY_ID',
+      'APP_DEVICE_TOKEN_ENCRYPTION_PREVIOUS_KEY',
+    ],
+  ])('requires previous pair %s and %s together', (idField, keyField) => {
+    expect(() =>
+      validateEnv(productionEnv({ [idField]: 'previous-key-id' })),
+    ).toThrow(new RegExp(keyField, 'u'));
+    expect(() =>
+      validateEnv(productionEnv({ [keyField]: `hex:${'33'.repeat(32)}` })),
+    ).toThrow(new RegExp(idField, 'u'));
+  });
+
+  it('requires each previous key ID to differ from its family active key ID', () => {
+    expect(() =>
+      validateEnv(
+        productionEnv({
+          SETTINGS_EMAIL_SECRET_ENCRYPTION_PREVIOUS_KEY_ID: 'email-active-v2',
+          SETTINGS_EMAIL_SECRET_ENCRYPTION_PREVIOUS_KEY: `hex:${'33'.repeat(32)}`,
+        }),
+      ),
+    ).toThrow(/SETTINGS_EMAIL_SECRET_ENCRYPTION_PREVIOUS_KEY_ID.*differ/u);
+    expect(() =>
+      validateEnv(
+        productionEnv({
+          APP_DEVICE_TOKEN_ENCRYPTION_PREVIOUS_KEY_ID: 'device-active-v2',
+          APP_DEVICE_TOKEN_ENCRYPTION_PREVIOUS_KEY: `hex:${'44'.repeat(32)}`,
+        }),
+      ),
+    ).toThrow(/APP_DEVICE_TOKEN_ENCRYPTION_PREVIOUS_KEY_ID.*differ/u);
+  });
+
+  it.each([
+    [
+      'email active and device active',
+      {
+        SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY: `hex:${'ab'.repeat(32)}`,
+        APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY: `hex:${'ab'.repeat(32)}`,
+      },
+      'APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY',
+    ],
+    [
+      'email active and device previous',
+      {
+        SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY: `hex:${'ab'.repeat(32)}`,
+        APP_DEVICE_TOKEN_ENCRYPTION_PREVIOUS_KEY_ID: 'device-previous-v2',
+        APP_DEVICE_TOKEN_ENCRYPTION_PREVIOUS_KEY: `hex:${'ab'.repeat(32)}`,
+      },
+      'APP_DEVICE_TOKEN_ENCRYPTION_PREVIOUS_KEY',
+    ],
+    [
+      'email previous and device active',
+      {
+        SETTINGS_EMAIL_SECRET_ENCRYPTION_PREVIOUS_KEY_ID: 'email-previous-v2',
+        SETTINGS_EMAIL_SECRET_ENCRYPTION_PREVIOUS_KEY: `hex:${'ab'.repeat(32)}`,
+        APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY: `hex:${'ab'.repeat(32)}`,
+      },
+      'APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY',
+    ],
+    [
+      'email previous and device previous',
+      {
+        SETTINGS_EMAIL_SECRET_ENCRYPTION_PREVIOUS_KEY_ID: 'email-previous-v2',
+        SETTINGS_EMAIL_SECRET_ENCRYPTION_PREVIOUS_KEY: `hex:${'ab'.repeat(32)}`,
+        APP_DEVICE_TOKEN_ENCRYPTION_PREVIOUS_KEY_ID: 'device-previous-v2',
+        APP_DEVICE_TOKEN_ENCRYPTION_PREVIOUS_KEY: `hex:${'ab'.repeat(32)}`,
+      },
+      'APP_DEVICE_TOKEN_ENCRYPTION_PREVIOUS_KEY',
+    ],
+  ])(
+    'rejects cross-family key reuse between %s without exposing material',
+    (_combination, overrides, affectedField) => {
+      const sensitiveKey = `hex:${'ab'.repeat(32)}`;
+      let message = '';
+      try {
+        validateEnv(productionEnv(overrides));
+      } catch (error) {
+        message = error instanceof Error ? error.message : String(error);
+      }
+
+      expect(message).toContain(affectedField);
+      expect(message).toContain(
+        'must not reuse encryption key material from the smtp-secret family',
+      );
+      expect(message).not.toContain(sensitiveKey);
+      expect(message).not.toContain('ab'.repeat(32));
+    },
+  );
+
+  it.each(['bad:key', 'bad key', 'bad/key', 'مفتاح', `a${'b'.repeat(64)}`])(
+    'rejects unsafe key ID %s',
+    (keyId) => {
+      expect(() =>
+        validateEnv(
+          productionEnv({
+            SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY_ID: keyId,
+          }),
+        ),
+      ).toThrow(/SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY_ID/u);
+    },
+  );
+
+  it('trims configured key IDs before validation', () => {
+    expect(
+      validateEnv(
+        productionEnv({
+          SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY_ID: '  email-active-v2  ',
+        }),
+      ).SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY_ID,
+    ).toBe('email-active-v2');
+  });
+
+  it('validates the optional legacy key without exposing supplied material', () => {
+    const sensitiveValue = 'base64:must-not-appear-in-the-error';
+    let message = '';
+    try {
+      validateEnv(
+        productionEnv({ SETTINGS_SECRET_ENCRYPTION_KEY: sensitiveValue }),
+      );
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+
+    expect(message).toContain('SETTINGS_SECRET_ENCRYPTION_KEY');
+    expect(message).not.toContain(sensitiveValue);
+    expect(message).not.toContain('must-not-appear-in-the-error');
+  });
 });
 
 function productionEnv(
@@ -398,6 +549,10 @@ function productionEnv(
       'postgresql://runtime-user:runtime-value@database.internal/moazez?sslmode=require',
     QUEUE_REDIS_URL: 'rediss://queue-cache.invalid:6379/0',
     REALTIME_REDIS_URL: 'rediss://realtime-cache.invalid:6379/0',
+    SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY_ID: 'email-active-v2',
+    SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY: `hex:${'11'.repeat(32)}`,
+    APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY_ID: 'device-active-v2',
+    APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY: `hex:${'22'.repeat(32)}`,
     ...overrides,
   });
 }
