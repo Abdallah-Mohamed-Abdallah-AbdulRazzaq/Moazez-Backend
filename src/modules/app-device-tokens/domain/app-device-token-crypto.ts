@@ -1,43 +1,39 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  randomBytes,
-} from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { Env } from '../../../config/env.validation';
+import {
+  APP_DEVICE_TOKEN_KEY_FAMILY,
+  decryptVersionedSecret,
+  encryptSecretV2,
+  LEGACY_SECRET_KEY_ENV_NAME,
+  resolveLegacySecretKey,
+  resolveSecretKeyring,
+  SecretKeyring,
+  SecretRuntimeEnvironment,
+} from '../../../shared/crypto/versioned-secret-crypto';
 import { normalizeAppDeviceToken } from './app-device-token-domain';
 
-const ALGORITHM = 'aes-256-gcm';
-const KEY_BYTES = 32;
-const IV_BYTES = 12;
-const VERSION = 'v1';
-const KEY_ENV_NAME = 'SETTINGS_SECRET_ENCRYPTION_KEY';
-const LOCAL_TEST_KEY_MATERIAL = 'moazez-local-test-app-device-token-secret';
+export function resolveAppDeviceTokenKeyring(
+  environment: Record<string, string | undefined>,
+  nodeEnvironment: SecretRuntimeEnvironment,
+): SecretKeyring {
+  return resolveSecretKeyring(
+    environment,
+    APP_DEVICE_TOKEN_KEY_FAMILY,
+    nodeEnvironment,
+  );
+}
 
 export function resolveAppDeviceTokenSecretKey(
   rawKey: string | undefined,
-  nodeEnv = process.env.NODE_ENV ?? 'development',
-): Buffer {
-  const trimmed = rawKey?.trim();
-
-  if (!trimmed) {
-    if (nodeEnv === 'production' || nodeEnv === 'staging') {
-      throw new Error(`${KEY_ENV_NAME} is required outside local/test runtime`);
-    }
-
-    return createHash('sha256').update(LOCAL_TEST_KEY_MATERIAL).digest();
-  }
-
-  const { value, encoding } = parseEncodedKey(trimmed);
-  const key = Buffer.from(value, encoding);
-
-  if (key.length !== KEY_BYTES) {
-    throw new Error(`${KEY_ENV_NAME} must decode to exactly 32 bytes`);
-  }
-
-  return key;
+  nodeEnvironment: SecretRuntimeEnvironment = 'development',
+): Buffer | undefined {
+  return resolveLegacySecretKey(
+    rawKey,
+    nodeEnvironment,
+    APP_DEVICE_TOKEN_KEY_FAMILY,
+  );
 }
 
 export function hashAppDeviceToken(token: string): string {
@@ -46,52 +42,35 @@ export function hashAppDeviceToken(token: string): string {
     .digest('hex');
 }
 
-export function encryptAppDeviceToken(token: string, key: Buffer): string {
-  const normalizedToken = normalizeAppDeviceToken(token);
-  const iv = randomBytes(IV_BYTES);
-  const cipher = createCipheriv(ALGORITHM, key, iv);
-  const encrypted = Buffer.concat([
-    cipher.update(normalizedToken, 'utf8'),
-    cipher.final(),
-  ]);
-  const tag = cipher.getAuthTag();
-
-  return [
-    VERSION,
-    iv.toString('base64url'),
-    tag.toString('base64url'),
-    encrypted.toString('base64url'),
-  ].join(':');
+export function encryptAppDeviceToken(
+  token: string,
+  keyring: SecretKeyring,
+): string {
+  return encryptSecretV2(normalizeAppDeviceToken(token), keyring);
 }
 
-export function decryptAppDeviceToken(cipherText: string, key: Buffer): string {
-  const parts = cipherText.split(':');
-  if (parts.length !== 4 || parts[0] !== VERSION) {
-    throw new Error('Invalid encrypted app device token format');
-  }
-
-  const [, ivText, tagText, encryptedText] = parts;
-  const decipher = createDecipheriv(
-    ALGORITHM,
-    key,
-    Buffer.from(ivText, 'base64url'),
-  );
-  decipher.setAuthTag(Buffer.from(tagText, 'base64url'));
-
-  return Buffer.concat([
-    decipher.update(Buffer.from(encryptedText, 'base64url')),
-    decipher.final(),
-  ]).toString('utf8');
+export function decryptAppDeviceToken(
+  cipherText: string,
+  keyring: SecretKeyring,
+  legacyKey?: Buffer,
+): string {
+  return decryptVersionedSecret(cipherText, keyring, legacyKey);
 }
 
 @Injectable()
 export class AppDeviceTokenCrypto {
-  private readonly key: Buffer;
+  private readonly keyring: SecretKeyring;
+  private readonly legacyKey: Buffer | undefined;
 
   constructor(private readonly configService: ConfigService<Env>) {
-    this.key = resolveAppDeviceTokenSecretKey(
-      this.configService.get<string>(KEY_ENV_NAME),
-      this.configService.get<string>('NODE_ENV') ?? process.env.NODE_ENV,
+    const nodeEnvironment = (this.configService.get<string>('NODE_ENV') ??
+      process.env.NODE_ENV ??
+      'development') as SecretRuntimeEnvironment;
+    const environment = readFamilyEnvironment(this.configService);
+    this.keyring = resolveAppDeviceTokenKeyring(environment, nodeEnvironment);
+    this.legacyKey = resolveAppDeviceTokenSecretKey(
+      environment[LEGACY_SECRET_KEY_ENV_NAME],
+      nodeEnvironment,
     );
   }
 
@@ -104,29 +83,36 @@ export class AppDeviceTokenCrypto {
   }
 
   encrypt(token: string): string {
-    return encryptAppDeviceToken(token, this.key);
+    return encryptAppDeviceToken(token, this.keyring);
   }
 
   decrypt(cipherText: string): string {
-    return decryptAppDeviceToken(cipherText, this.key);
+    return decryptAppDeviceToken(cipherText, this.keyring, this.legacyKey);
   }
 }
 
-function parseEncodedKey(rawKey: string): {
-  value: string;
-  encoding: 'base64' | 'hex';
-} {
-  if (rawKey.startsWith('base64:')) {
-    return { value: rawKey.slice('base64:'.length), encoding: 'base64' };
-  }
-
-  if (rawKey.startsWith('hex:')) {
-    return { value: rawKey.slice('hex:'.length), encoding: 'hex' };
-  }
-
-  if (/^[a-f0-9]{64}$/i.test(rawKey)) {
-    return { value: rawKey, encoding: 'hex' };
-  }
-
-  return { value: rawKey, encoding: 'base64' };
+function readFamilyEnvironment(
+  configService: ConfigService<Env>,
+): Record<string, string | undefined> {
+  return {
+    [APP_DEVICE_TOKEN_KEY_FAMILY.activeKeyIdEnvironmentName]:
+      configService.get<string>(
+        APP_DEVICE_TOKEN_KEY_FAMILY.activeKeyIdEnvironmentName,
+      ),
+    [APP_DEVICE_TOKEN_KEY_FAMILY.activeKeyEnvironmentName]:
+      configService.get<string>(
+        APP_DEVICE_TOKEN_KEY_FAMILY.activeKeyEnvironmentName,
+      ),
+    [APP_DEVICE_TOKEN_KEY_FAMILY.previousKeyIdEnvironmentName]:
+      configService.get<string>(
+        APP_DEVICE_TOKEN_KEY_FAMILY.previousKeyIdEnvironmentName,
+      ),
+    [APP_DEVICE_TOKEN_KEY_FAMILY.previousKeyEnvironmentName]:
+      configService.get<string>(
+        APP_DEVICE_TOKEN_KEY_FAMILY.previousKeyEnvironmentName,
+      ),
+    [LEGACY_SECRET_KEY_ENV_NAME]: configService.get<string>(
+      LEGACY_SECRET_KEY_ENV_NAME,
+    ),
+  };
 }

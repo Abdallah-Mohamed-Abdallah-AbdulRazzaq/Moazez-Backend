@@ -296,6 +296,103 @@ describe('runtime role database environment validation', () => {
     expect(scheduler).not.toHaveProperty('GCP_PROJECT_ID');
     expect(scheduler).not.toHaveProperty('GCS_SIGNING_SERVICE_ACCOUNT');
   });
+
+  it('keeps development and test Core Worker usable without configured encryption keys', () => {
+    const withoutKeys = {
+      SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY_ID: undefined,
+      SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY: undefined,
+      APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY_ID: undefined,
+      APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY: undefined,
+    };
+    expect(() =>
+      validateCoreWorkerEnv(coreEnvironment(withoutKeys)),
+    ).not.toThrow();
+    expect(() =>
+      validateCoreWorkerEnv(
+        coreEnvironment({ ...withoutKeys, NODE_ENV: 'development' }),
+      ),
+    ).not.toThrow();
+  });
+
+  it.each([
+    'SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY_ID',
+    'SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY',
+    'APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY_ID',
+    'APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY',
+  ])('requires strict-runtime Core Worker encryption field %s', (field) => {
+    expect(() =>
+      validateCoreWorkerEnv(
+        coreEnvironment({
+          ...secureWorkerStorageOverrides('production'),
+          [field]: undefined,
+        }),
+      ),
+    ).toThrow(new RegExp(field, 'u'));
+  });
+
+  it('validates Core Worker previous pairs and family-specific key IDs', () => {
+    expect(() =>
+      validateCoreWorkerEnv(
+        coreEnvironment({
+          SETTINGS_EMAIL_SECRET_ENCRYPTION_PREVIOUS_KEY_ID: 'email-previous',
+        }),
+      ),
+    ).toThrow(/SETTINGS_EMAIL_SECRET_ENCRYPTION_PREVIOUS_KEY/u);
+    expect(() =>
+      validateCoreWorkerEnv(
+        coreEnvironment({
+          APP_DEVICE_TOKEN_ENCRYPTION_PREVIOUS_KEY_ID: 'device-active-v2',
+          APP_DEVICE_TOKEN_ENCRYPTION_PREVIOUS_KEY: `hex:${'44'.repeat(32)}`,
+        }),
+      ),
+    ).toThrow(/APP_DEVICE_TOKEN_ENCRYPTION_PREVIOUS_KEY_ID.*differ/u);
+  });
+
+  it('rejects Core Worker cross-family key reuse without exposing material', () => {
+    const sensitiveKey = `hex:${'cc'.repeat(32)}`;
+    let message = '';
+    try {
+      validateCoreWorkerEnv(
+        coreEnvironment({
+          SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY_ID: 'email-key-id',
+          SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY: sensitiveKey,
+          APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY_ID: 'device-key-id',
+          APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY: sensitiveKey,
+        }),
+      );
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+
+    expect(message).toContain('APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY');
+    expect(message).toContain(
+      'must not reuse encryption key material from the smtp-secret family',
+    );
+    expect(message).not.toContain(sensitiveKey);
+    expect(message).not.toContain('cc'.repeat(32));
+  });
+
+  it('keeps Media Worker and Maintenance Scheduler free of crypto dependencies', () => {
+    const unrelatedCryptoFields = {
+      SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY_ID: 'ignored-email-key',
+      SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY: 'invalid-and-ignored',
+      APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY_ID: 'ignored-device-key',
+      APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY: 'invalid-and-ignored',
+      SETTINGS_SECRET_ENCRYPTION_KEY: 'invalid-and-ignored',
+    };
+    const media = validateMediaWorkerEnv(
+      mediaEnvironment(unrelatedCryptoFields),
+    );
+    const scheduler = validateMaintenanceSchedulerEnv({
+      QUEUE_REDIS_URL: 'redis://127.0.0.1:6379',
+      ...unrelatedCryptoFields,
+    });
+
+    for (const field of Object.keys(unrelatedCryptoFields)) {
+      expect(media).not.toHaveProperty(field);
+      expect(scheduler).not.toHaveProperty(field);
+    }
+  });
 });
 
 function coreEnvironment(
@@ -313,6 +410,10 @@ function coreEnvironment(
     STORAGE_SECRET_KEY: 'runtime-value',
     STORAGE_BUCKET: 'runtime-private',
     STORAGE_PUBLIC_BUCKET: 'runtime-public',
+    SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY_ID: 'email-active-v2',
+    SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY: `hex:${'11'.repeat(32)}`,
+    APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY_ID: 'device-active-v2',
+    APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY: `hex:${'22'.repeat(32)}`,
     ...overrides,
   });
 }

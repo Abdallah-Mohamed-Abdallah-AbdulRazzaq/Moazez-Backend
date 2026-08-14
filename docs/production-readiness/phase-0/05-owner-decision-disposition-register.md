@@ -30,7 +30,11 @@ cutover source candidate. This amendment does not rewrite the historical Phase
 2026-08-12 (Africa/Cairo), Abdallah approved PRD0-Q007 for the production
 recovery objectives and policy recorded below. The exact approval clock time
 was not recorded. This recovery-policy approval is not implementation or
-operational recovery evidence.
+operational recovery evidence. On 2026-08-14, Abdallah approved PRD0-Q020
+option A and PRD0-Q021 option A at `2026-08-14T06:37:00+03:00`
+(Africa/Cairo) in the security, operations, and release capacities. These
+approvals authorize the repository architecture and implementation contract;
+they do not prove cloud provisioning or deployment.
 
 ## Authority statement
 
@@ -56,6 +60,9 @@ compatibility policy exactly as recorded in the register below.
 On 2026-08-12 Abdallah approved Q007 with RTO 30 minutes, RPO 15 minutes,
 PITR retention 14 days, backup retention 30 days, quarterly restore drills,
 and no cross-region DR authorization. The exact approval time was not recorded.
+On 2026-08-14 Abdallah approved Q020 option A for release-pinned immutable
+Secret Manager versions with a 90-day cadence and seven-day overlap, and Q021
+option A for v2 separate `smtp-secret` and `app-device-token` key families.
 Every question not named in the current approved set below remains pending.
 A pending disposition does not select its recommended default, cannot unblock
 its dependent phase, and authorizes no implementation or cloud provisioning
@@ -69,6 +76,8 @@ post-Phase-0B approvals through 2026-08-07, the nine 2026-08-09 approvals, and
 the two 2026-08-11 storage-policy approvals reduce the current pending set to
 18. The one 2026-08-12 recovery-policy approval reduces the current pending
 set to 17 without changing the PR #46 evidence.
+The two 2026-08-14 crypto-policy approvals reduce the current pending set to
+15 without rewriting any historical closeout count.
 Silence selects no recommendation.
 Authoritative Phase 0B post-merge evidence remains in
 `07-phase-0b-post-merge-closeout.md`.
@@ -98,8 +107,8 @@ Each row is the sole disposition entry for that question.
 | PRD0-Q017 | APPROVED | `PRD0-Q017: option=A; critical_queues=communication-notifications,communication-notification-push,school-email-delivery,files-imports,dismissal-request-expiry,learning-media-cleanup,settings-branding-logo-cleanup; source_of_truth=PostgreSQL domain rows,object-storage existence or absence,approved deterministic job builders,current application policy; redis_copy=NONE; manual_replay=requires Abdallah as Operations and Release Owner plus audit and tenant/source scope and exclusion of known-success side effects; push_replay=non-SENT attempts only; email_outcome_unknown=never automatic; approver=Abdallah; approval_capacities=Operations Owner,Release Owner,Architecture Owner; approved_at=2026-08-06T10:30:34+03:00`                              |
 | PRD0-Q018 | APPROVED | `PRD0-Q018: option=A; identities=api:moazez-api-runtime,core:moazez-core-worker,media:moazez-media-worker,migration:moazez-migration-job,maintenance:moazez-maintenance-scheduler,deployer:moazez-iac-deployer,signed_url:moazez-gcs-signer; security_approver=Abdallah` |
 | PRD0-Q019 | APPROVED | `PRD0-Q019: option=A; signer=prod:moazez-gcs-signer@moazez-production.iam.gserviceaccount.com,staging:moazez-gcs-signer@moazez-nonprod-91001421934.iam.gserviceaccount.com; allowed_buckets=moazez-production-91001421934-private,moazez-production-91001421934-published,moazez-nonprod-91001421934-private,moazez-nonprod-91001421934-published; max_ttl=1h; approver=Abdallah` |
-| PRD0-Q020 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 4,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
-| PRD0-Q021 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 4,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
+| PRD0-Q020 | APPROVED | `PRD0-Q020: option=A; cadence=90d; overlap=7d; emergency_owner=Abdallah; release_owner=Abdallah` |
+| PRD0-Q021 | APPROVED | `PRD0-Q021: option=A; envelope_version=v2; key_families=smtp-secret,app-device-token; rotation_cadence=90d; security_approver=Abdallah` |
 | PRD0-Q022 | APPROVED | `PRD0-Q022: prod_origins=https://schools.moazez.cloud,https://admin.moazez.cloud; staging_origins=https://staging-schools.moazez.cloud,https://staging-admin.moazez.cloud; credentials=YES; websocket=YES; storage_direct=YES; approver=Abdallah` |
 | PRD0-Q023 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 7/8,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
 | PRD0-Q024 | APPROVED | `PRD0-Q024: option=A; api_required=validated configuration, HTTP startup, Prisma, queue-producer Redis, object storage for enabled file contracts, and realtime Redis when realtime is enabled; core_required=validated configuration, Prisma, queue Redis, and all assigned consumers; media_required=validated configuration, Prisma, queue Redis, object storage, temporary-disk capability, and verified ffprobe runtime; public_health=minimal status, version, and timestamp only, with protected role-specific startup, liveness, and readiness endpoints; approver=Abdallah` |
@@ -133,21 +142,23 @@ Each row is the sole disposition entry for that question.
 | Disposition | Count |
 | --- | ---: |
 | Total | 48 |
-| APPROVED | 31 |
-| PENDING | 17 |
+| APPROVED | 33 |
+| PENDING | 15 |
 | Omitted | 0 |
 | Duplicated | 0 |
 
 The current approved IDs are exactly PRD0-Q001, PRD0-Q002, PRD0-Q003,
 PRD0-Q004, PRD0-Q005, PRD0-Q006, PRD0-Q007, PRD0-Q008, PRD0-Q010, PRD0-Q011, PRD0-Q012,
 PRD0-Q013, PRD0-Q014, PRD0-Q015, PRD0-Q017, PRD0-Q018, PRD0-Q019, PRD0-Q022,
-PRD0-Q024, PRD0-Q026, PRD0-Q028, PRD0-Q029, PRD0-Q030, PRD0-Q032, PRD0-Q041,
+PRD0-Q020, PRD0-Q021, PRD0-Q024, PRD0-Q026, PRD0-Q028, PRD0-Q029,
+PRD0-Q030, PRD0-Q032, PRD0-Q041,
 PRD0-Q042, PRD0-Q044, PRD0-Q045, PRD0-Q046, PRD0-Q047, and PRD0-Q048. The Phase 0B snapshot was
 exactly 10 approved and 38 pending; later amendments through 2026-08-07 added
 Q003, Q004, Q006, Q012, Q013, Q014, Q015, Q017, and Q026, and the 2026-08-09
 amendment added Q005, Q008, Q018, Q019, and Q044–Q048. The 2026-08-11
-amendment added Q041 and Q042. The 2026-08-12 amendment added Q007. All other PRD0-Q001
-through PRD0-Q048 entries are explicitly pending as shown.
+amendment added Q041 and Q042. The 2026-08-12 amendment added Q007. The
+2026-08-14 amendment added Q020 and Q021. All other PRD0-Q001 through
+PRD0-Q048 entries are explicitly pending as shown.
 
 ## Scope and non-authorization
 
@@ -160,3 +171,6 @@ documentation amendment performs no source, schema, migration, dependency,
 Docker, CI, database, Redis, object-storage, or cloud mutation. Q007 approves
 recovery objectives and policy only; it does not prove or complete Cloud SQL,
 backups, PITR, restore drills, RTO, RPO, failover, or production launch.
+Q020/Q021 approve repository architecture and contracts only; they do not
+prove Secret Manager resources or versions, IAM access, rotation rehearsal,
+runtime deployment, Phase 4 completion, or production traffic authorization.

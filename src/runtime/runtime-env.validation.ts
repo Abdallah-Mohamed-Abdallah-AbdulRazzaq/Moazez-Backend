@@ -12,6 +12,7 @@ import {
   refineStorageEnvironment,
   storageEnvironmentShape,
 } from '../infrastructure/storage/storage-env.validation';
+import { validateSecretEncryptionEnvironment } from '../shared/crypto/versioned-secret-crypto';
 
 const booleanFromString = z
   .enum(['true', 'false'])
@@ -46,7 +47,15 @@ const coreWorkerSchema = z
     ...createDatabaseRuntimeEnvironmentShape('core-worker'),
     ...storageEnvironmentShape,
     APP_URL: z.string().url(),
-    SETTINGS_SECRET_ENCRYPTION_KEY: z.string().optional(),
+    SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY_ID: optionalNonEmptyString,
+    SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY: optionalNonEmptyString,
+    SETTINGS_EMAIL_SECRET_ENCRYPTION_PREVIOUS_KEY_ID: optionalNonEmptyString,
+    SETTINGS_EMAIL_SECRET_ENCRYPTION_PREVIOUS_KEY: optionalNonEmptyString,
+    APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY_ID: optionalNonEmptyString,
+    APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY: optionalNonEmptyString,
+    APP_DEVICE_TOKEN_ENCRYPTION_PREVIOUS_KEY_ID: optionalNonEmptyString,
+    APP_DEVICE_TOKEN_ENCRYPTION_PREVIOUS_KEY: optionalNonEmptyString,
+    SETTINGS_SECRET_ENCRYPTION_KEY: optionalNonEmptyString,
     FCM_ENABLED: booleanFromString.default('false'),
     FCM_DRY_RUN: booleanFromString.default('true'),
     GOOGLE_APPLICATION_CREDENTIALS: optionalNonEmptyString,
@@ -58,6 +67,16 @@ const coreWorkerSchema = z
     refineDatabaseRuntimeEnvironment(env, context);
     refineRedisEndpointSeparation(env, context);
     refineStorageEnvironment(env, context, { requireSigner: false });
+    for (const error of validateSecretEncryptionEnvironment(
+      env,
+      env.NODE_ENV,
+    )) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [error.configurationField],
+        message: error.message,
+      });
+    }
 
     const firebaseFields = [
       env.FIREBASE_PROJECT_ID,

@@ -54,6 +54,10 @@ const Q042_APPROVED_ANSWER =
   'PRD0-Q042: managed=ALLOW managed File-backed branding for new writes and reads; external_https=READ_ONLY compatibility only where an already-persisted safe HTTPS value exists, with no new legacy URL writes; provider_url=BLOCK_NEW and treat any discovered legacy provider URL as a cutover blocker requiring explicit inventory/review; unsafe=REJECT; null=ALLOW; approver=Abdallah';
 const Q007_APPROVED_ANSWER =
   'PRD0-Q007: rto=30m; rpo=15m; pitr=14d; backup_retention=30d; restore_drill=quarterly; cross_region=NO; approver=Abdallah; approval_date=2026-08-12; timezone=Africa/Cairo';
+const Q020_APPROVED_ANSWER =
+  'PRD0-Q020: option=A; cadence=90d; overlap=7d; emergency_owner=Abdallah; release_owner=Abdallah';
+const Q021_APPROVED_ANSWER =
+  'PRD0-Q021: option=A; envelope_version=v2; key_families=smtp-secret,app-device-token; rotation_cadence=90d; security_approver=Abdallah';
 const STORAGE_RELEASE_DECISION_PATH =
   'docs/production-readiness/phase-5a/03-storage-cutover-release-decision.md';
 const PHASE_3_GATE_IDS = Object.freeze([
@@ -296,11 +300,11 @@ function validateQ007Governance(documents) {
   if (
     dispositionRows.length !== 48 ||
     dispositionIdCount !== 48 ||
-    approvedCount !== 31 ||
-    pendingCount !== 17
+    approvedCount !== 33 ||
+    pendingCount !== 15
   ) {
     problems.push(
-      'Owner disposition rows must total 48 with 31 APPROVED and 17 PENDING',
+      'Owner disposition rows must total 48 with 33 APPROVED and 15 PENDING',
     );
   }
   for (const token of [
@@ -340,11 +344,11 @@ function validateQ007Governance(documents) {
   if (
     decisionRows.length !== 53 ||
     decisionIdCount !== 53 ||
-    lockedCount !== 34 ||
-    ownerRequiredCount !== 19
+    lockedCount !== 36 ||
+    ownerRequiredCount !== 17
   ) {
     problems.push(
-      'Decision rows must total 53 with 34 LOCKED_FROM_APPROVED_CONTEXT and 19 OWNER_DECISION_REQUIRED',
+      'Decision rows must total 53 with 36 LOCKED_FROM_APPROVED_CONTEXT and 17 OWNER_DECISION_REQUIRED',
     );
   }
   requireToken(
@@ -433,6 +437,173 @@ function validateQ007Governance(documents) {
   });
 }
 
+function validateQ020Q021Governance(documents) {
+  const problems = [];
+  let checkCount = 0;
+  const requireToken = (name, text, token) => {
+    checkCount += 1;
+    if (!text.includes(token)) problems.push(`${name} is missing: ${token}`);
+  };
+
+  const dispositionRows = parseGovernanceRows(
+    documents.disposition,
+    'PRD0-Q',
+  );
+  const questionById = new Map(dispositionRows.map((row) => [row[0], row]));
+  const approvedCount = dispositionRows.filter(
+    ([, status]) => status === 'APPROVED',
+  ).length;
+  const pendingCount = dispositionRows.filter(
+    ([, status]) => status === 'PENDING',
+  ).length;
+  const dispositionIdCount = new Set(dispositionRows.map(([id]) => id)).size;
+
+  for (const [questionId, approvedAnswer] of [
+    ['PRD0-Q020', Q020_APPROVED_ANSWER],
+    ['PRD0-Q021', Q021_APPROVED_ANSWER],
+  ]) {
+    checkCount += 2;
+    const row = questionById.get(questionId);
+    if (row?.[1] !== 'APPROVED') {
+      problems.push(`${questionId} must be APPROVED`);
+    }
+    if (row?.[2] !== `\`${approvedAnswer}\``) {
+      problems.push(`${questionId} must preserve the exact approved answer`);
+    }
+    requireToken('Owner questionnaire', documents.questionnaire, approvedAnswer);
+  }
+
+  checkCount += 2;
+  if (questionById.get('PRD0-Q023')?.[1] !== 'PENDING') {
+    problems.push('PRD0-Q023 must remain PENDING');
+  }
+  if (
+    dispositionRows.length !== 48 ||
+    dispositionIdCount !== 48 ||
+    approvedCount !== 33 ||
+    pendingCount !== 15
+  ) {
+    problems.push(
+      'Owner disposition rows must total 48 with 33 APPROVED and 15 PENDING',
+    );
+  }
+  for (const token of [
+    '| Total | 48 |',
+    '| APPROVED | 33 |',
+    '| PENDING | 15 |',
+    '| Omitted | 0 |',
+    '| Duplicated | 0 |',
+  ]) {
+    requireToken('Owner disposition totals', documents.disposition, token);
+  }
+
+  const decisionRows = parseGovernanceRows(
+    documents.decisionRegister,
+    'PRD0-D',
+  );
+  const decisionById = new Map(decisionRows.map((row) => [row[0], row]));
+  const lockedCount = decisionRows.filter(
+    ([, , status]) => status === 'LOCKED_FROM_APPROVED_CONTEXT',
+  ).length;
+  const ownerRequiredCount = decisionRows.filter(
+    ([, , status]) => status === 'OWNER_DECISION_REQUIRED',
+  ).length;
+  const decisionIdCount = new Set(decisionRows.map(([id]) => id)).size;
+
+  for (const decisionId of ['PRD0-D020', 'PRD0-D021']) {
+    checkCount += 1;
+    if (decisionById.get(decisionId)?.[2] !== 'LOCKED_FROM_APPROVED_CONTEXT') {
+      problems.push(`${decisionId} must be LOCKED_FROM_APPROVED_CONTEXT`);
+    }
+  }
+  checkCount += 2;
+  if (decisionById.get('PRD0-D023')?.[2] !== 'OWNER_DECISION_REQUIRED') {
+    problems.push('PRD0-D023 must remain OWNER_DECISION_REQUIRED');
+  }
+  if (
+    decisionRows.length !== 53 ||
+    decisionIdCount !== 53 ||
+    lockedCount !== 36 ||
+    ownerRequiredCount !== 17
+  ) {
+    problems.push(
+      'Decision rows must total 53 with 36 LOCKED_FROM_APPROVED_CONTEXT and 17 OWNER_DECISION_REQUIRED',
+    );
+  }
+  requireToken(
+    'Published decision totals',
+    documents.decisionRegister.replace(/\r\n/gu, '\n'),
+    '36\n`LOCKED_FROM_APPROVED_CONTEXT`, 17 `OWNER_DECISION_REQUIRED`, 0\n`PROPOSED_RECOMMENDATION`, 0\n`DEFERRED_WITH_CONSTRAINT`, and 0 `REJECTED`',
+  );
+
+  const gates = parseAcceptanceMatrix(documents.matrix);
+  checkCount += 3;
+  for (const gateId of ['PRD4-G02', 'PRD4-G03']) {
+    if (gates.get(gateId)?.status !== 'BASELINE_ONLY') {
+      problems.push(`${gateId} must be BASELINE_ONLY`);
+    }
+  }
+  if (gates.get('PRD4-G04')?.status === 'COMPLETE') {
+    problems.push('PRD4-G04 and Phase 4 must not be marked COMPLETE');
+  }
+
+  for (const token of [
+    '2026-08-14T06:37:00+03:00',
+    'GCP_SECRET_MANAGER_SECRET_EXISTS=NO',
+    'SECRET_MANAGER_VERSIONS_PROVISIONED=NO',
+    'IAM_SECRET_ACCESS_CREATED=NO',
+    'ROTATION_REHEARSAL_COMPLETE=NO',
+    'RUNTIME_DEPLOYMENT_COMPLETE=NO',
+    'PRODUCTION_TRAFFIC_AUTHORIZED=NO',
+    'PHASE_4=NOT_COMPLETE',
+  ]) {
+    requireToken('Acceptance matrix', documents.matrix, token);
+  }
+  for (const token of [
+    'Accepted for PRD0-D017, PRD0-D018, PRD0-D020, and PRD0-D021',
+    '| PRD0-D020 | PRD0-Q020 | Accepted |',
+    '| PRD0-D021 | PRD0-Q021 | Accepted |',
+    '| PRD0-D023 | PRD0-Q023 | Pending |',
+    'GCP_SECRET_MANAGER_SECRET_EXISTS=NO',
+    'SECRET_MANAGER_VERSIONS_PROVISIONED=NO',
+    'RUNTIME_DEPLOYMENT_COMPLETE=NO',
+    'PHASE_4=NOT_COMPLETE',
+  ]) {
+    requireToken('ADR-0015', documents.adr0015, token);
+  }
+
+  checkCount += 1;
+  const combined = Object.values(documents).join('\n');
+  for (const forbidden of [
+    'GCP_SECRET_MANAGER_SECRET_EXISTS=YES',
+    'SECRET_MANAGER_VERSIONS_PROVISIONED=YES',
+    'IAM_SECRET_ACCESS_CREATED=YES',
+    'ROTATION_REHEARSAL_COMPLETE=YES',
+    'RUNTIME_DEPLOYMENT_COMPLETE=YES',
+    'PRODUCTION_TRAFFIC_AUTHORIZED=YES',
+    'PHASE_4=COMPLETE',
+  ]) {
+    if (combined.includes(forbidden)) {
+      problems.push(
+        `Q020/Q021 governance must not claim implementation or authorization: ${forbidden}`,
+      );
+    }
+  }
+
+  if (problems.length > 0) {
+    throw new Error(
+      `PRD0-Q020/Q021 governance validation failed:\n- ${problems.join('\n- ')}`,
+    );
+  }
+  return Object.freeze({
+    approvedOwnerQuestionCount: approvedCount,
+    checkCount,
+    lockedDecisionCount: lockedCount,
+    ownerDecisionRequiredCount: ownerRequiredCount,
+    pendingOwnerQuestionCount: pendingCount,
+  });
+}
+
 function validateStorageCutoverGovernance(documents) {
   const problems = [];
   let checkCount = 0;
@@ -454,12 +625,12 @@ function validateStorageCutoverGovernance(documents) {
   requireToken(
     'Owner disposition register',
     documents.disposition,
-    '| APPROVED | 31 |',
+    '| APPROVED | 33 |',
   );
   requireToken(
     'Owner disposition register',
     documents.disposition,
-    '| PENDING | 17 |',
+    '| PENDING | 15 |',
   );
   requireToken(
     'Owner disposition register',
@@ -510,7 +681,7 @@ function validateStorageCutoverGovernance(documents) {
   requireToken(
     'Decision register',
     documents.decisionRegister,
-    '34\n`LOCKED_FROM_APPROVED_CONTEXT`, 19 `OWNER_DECISION_REQUIRED`',
+    '36\n`LOCKED_FROM_APPROVED_CONTEXT`, 17 `OWNER_DECISION_REQUIRED`',
   );
   requireToken(
     'Batch 3 inventory',
@@ -645,6 +816,16 @@ function validateRepository(repositoryRoot) {
       'phase-0',
       '02-production-decision-register.md',
     ),
+    questionnaire: read(
+      'docs',
+      'production-readiness',
+      'phase-0',
+      '04-owner-decision-questionnaire.md',
+    ),
+    adr0015: read(
+      'adr',
+      'ADR-0015-gcp-environment-workload-identity-secrets-and-crypto.md',
+    ),
     batch3Inventory: read(
       'docs',
       'production-readiness',
@@ -660,11 +841,14 @@ function validateRepository(repositoryRoot) {
   };
   const storageCutover = validateStorageCutoverGovernance(documents);
   const q007 = validateQ007Governance(documents);
+  const q020Q021 = validateQ020Q021Governance(documents);
   return Object.freeze({
     ...governance,
     ...phase3,
     ...q007,
+    ...q020Q021,
     q007GovernanceCheckCount: q007.checkCount,
+    q020Q021GovernanceCheckCount: q020Q021.checkCount,
     storageCutoverCheckCount: storageCutover.checkCount,
   });
 }
@@ -672,7 +856,7 @@ function validateRepository(repositoryRoot) {
 if (require.main === module) {
   const result = validateRepository(path.resolve(__dirname, '..', '..'));
   process.stdout.write(
-    `Production-readiness governance verified: gates=${result.gateCount} phase3Gates=${result.phase3GateCount} storageCutoverChecks=${result.storageCutoverCheckCount} q007Checks=${result.q007GovernanceCheckCount}\n`,
+    `Production-readiness governance verified: gates=${result.gateCount} phase3Gates=${result.phase3GateCount} storageCutoverChecks=${result.storageCutoverCheckCount} q007Checks=${result.q007GovernanceCheckCount} q020Q021Checks=${result.q020Q021GovernanceCheckCount}\n`,
   );
 }
 
@@ -681,6 +865,7 @@ module.exports = {
   validateCurrentPhase3Governance,
   validateProductionReadinessGovernance,
   validateQ007Governance,
+  validateQ020Q021Governance,
   validateStorageCutoverGovernance,
   validateRepository,
 };

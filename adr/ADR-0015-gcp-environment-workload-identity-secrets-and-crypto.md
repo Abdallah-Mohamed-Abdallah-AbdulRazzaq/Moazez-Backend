@@ -2,8 +2,8 @@
 
 ## Status
 
-Accepted for PRD0-D017 and PRD0-D018 only. PRD0-D020, PRD0-D021, and
-PRD0-D023 remain pending.
+Accepted for PRD0-D017, PRD0-D018, PRD0-D020, and PRD0-D021. PRD0-D023
+remains pending.
 
 ## Approval authority
 
@@ -11,8 +11,12 @@ PRD0-D023 remain pending.
 - Approved at: `2026-08-09T15:20:43+03:00`
 - Timezone: Africa/Cairo
 - Approval capacities: billing, organization policy, architecture, security, operations, release
-- Accepted owner questions: PRD0-Q005 option A and PRD0-Q018 option A
-- Pending owner questions: PRD0-Q020, PRD0-Q021, PRD0-Q023
+- Accepted owner questions: PRD0-Q005 option A, PRD0-Q018 option A,
+  PRD0-Q020 option A, and PRD0-Q021 option A
+- Q020/Q021 amendment approved at: `2026-08-14T06:37:00+03:00`
+- Q020/Q021 amendment timezone: Africa/Cairo
+- Q020/Q021 security, operations, and release approver: Abdallah
+- Pending owner question: PRD0-Q023
 
 ## Context
 
@@ -23,9 +27,9 @@ baseline contains no production GCP project/IAM implementation. Sharing one
 project or one broad runtime identity would combine production and test
 mutation, DDL, object, signing, scheduler, secret, and deploy blast radii.
 
-This ADR locks project and identity boundaries only. Secret versioning,
-application encryption-key envelopes, ingress/domain policy, and production
-resource provisioning remain separately gated.
+This ADR locks the project and identity boundaries, release-pinned secret
+version policy, and application encryption-key envelope contract. Ingress/
+domain policy and production resource provisioning remain separately gated.
 
 ## Decision
 
@@ -75,18 +79,64 @@ Workload identity/ADC is the deployment mechanism. Long-lived downloaded JSON
 service-account keys are not approved. The dedicated signed-URL mechanism and
 bucket limits are owned by ADR-0006/PRD0-D019.
 
+### Secret Manager version and rotation policy
+
+PRD0-Q020 option A requires each release to select explicit immutable Secret
+Manager versions. Runtime configuration must not use a mutable version alias.
+The normal rotation cadence is 90 days with an approved staged seven-day
+active/previous overlap. The prior version remains available throughout that
+overlap and rollback window. The overlap must be tested and rehearsed in the
+later cloud/deployment gate; no rotation rehearsal is currently claimed.
+Emergency rotation creates and explicitly selects a pinned replacement
+version; it does not introduce dynamic runtime refresh.
+
+Abdallah owns both emergency rotation and release selection. This policy is a
+deployment contract only: it does not claim a Secret Manager resource, secret
+version, access grant, or rotation rehearsal exists.
+
+### Encryption key families and envelope policy
+
+PRD0-Q021 option A approves exactly two independent AES-256-GCM key families:
+
+- `smtp-secret`;
+- `app-device-token`.
+
+Every new write uses only the active key for its family and emits exactly
+`v2:<keyId>:<iv>:<tag>:<ciphertext>`. The key ID is explicit metadata and
+matches `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`. Each family keyring contains its
+active key and an optional previous key for controlled multi-key decryption.
+Unknown key IDs fail closed, and one family never consults the other family's
+keyring.
+
+AES-GCM authenticates the exact context `v2:<family>:<keyId>`, where `family`
+is exactly `smtp-secret` or `app-device-token`. Family is implicit in the
+domain keyring and is not another persisted envelope field; key ID remains
+family-local metadata. Family and key ID are both authenticated through AAD.
+Reuse of any v2 SMTP active/previous key material by any app-device-token
+active/previous entry is invalid. Active and previous key bytes within one
+family are not required to differ. This authenticated protocol contract is
+being established before any production v2 ciphertext exists.
+
+Legacy `v1:<iv>:<tag>:<ciphertext>` remains decryptable during the governed
+compatibility/migration window. `SETTINGS_SECRET_ENCRYPTION_KEY` is optional,
+legacy-v1 decrypt-only material. It is never used for new writes or as a
+fallback for an absent family active key. New v1 writes are prohibited. The
+rotation cadence is 90 days, and this decision introduces no Cloud KMS,
+dynamic secret refresh, or automatic read-time re-encryption.
+
 ## Owned production decisions
 
 | Decision | Owner question | Decision-level status |
 | --- | --- | --- |
 | PRD0-D017 | PRD0-Q005 | Accepted |
 | PRD0-D018 | PRD0-Q018 | Accepted |
-| PRD0-D020 | PRD0-Q020 | Pending |
-| PRD0-D021 | PRD0-Q021 | Pending |
+| PRD0-D020 | PRD0-Q020 | Accepted |
+| PRD0-D021 | PRD0-Q021 | Accepted |
 | PRD0-D023 | PRD0-Q023 | Pending |
 
 This ADR is the sole authoritative owner of PRD0-D017 through PRD0-D021 and
-PRD0-D023. Acceptance applies only to PRD0-D017 and PRD0-D018.
+PRD0-D023. Acceptance applies to PRD0-D017, PRD0-D018, PRD0-D020, and
+PRD0-D021 only.
 
 ## Consequences
 
@@ -95,7 +145,11 @@ PRD0-D023. Acceptance applies only to PRD0-D017 and PRD0-D018.
 - Production mutation and data are isolated from staging/cloud tests.
 - API, workers, migration, scheduler, deployer, and signer can be proven with
   independent allow/deny IAM tests.
-- Static key distribution is removed from the target runtime model.
+- Static service-account key distribution is removed from the target runtime
+  model.
+- Release-pinned versions make secret selection reproducible and rollback-
+  aware.
+- Separate key families limit compromise and rotation blast radius.
 
 ### Costs and constraints
 
@@ -104,6 +158,7 @@ PRD0-D023. Acceptance applies only to PRD0-D017 and PRD0-D018.
 - Cross-project access is denied by default and must not be added for convenience.
 - The project and account names do not authorize permissions beyond the exact
   later-reviewed IAM matrix.
+- Rotation requires explicit release mapping and overlap/rollback rehearsal.
 
 ## Security and compatibility
 
@@ -112,6 +167,8 @@ PRD0-D023. Acceptance applies only to PRD0-D017 and PRD0-D018.
 - Production and non-production credentials, data, and buckets remain disjoint.
 - IAM errors and logs disclose no credential, token, key material, secret
   version, bucket/object coordinate, or foreign-project data.
+- SMTP and app-device-token encrypted values retain AES-256-GCM with 32-byte
+  keys and 12-byte random IVs; public API and database contracts do not change.
 - Negative tests must prove runtime identities cannot create buckets, change
   IAM, make objects public, impersonate unrelated accounts, or perform
   deployment administration.
@@ -133,19 +190,17 @@ REAL_GCS_NONPROD_PROOF=BLOCKED_UNTIL_RESOLVED
 
 ## Implementation status
 
-This ADR records authority only. No project, service account, IAM grant,
-Terraform state, workload binding, or cloud resource is claimed here.
-PRD4-G01 moves from owner-blocked to not started; implementation and real
-allow/deny evidence remain mandatory. The unresolved non-production project
-does not block local provider-neutral storage implementation, but it blocks
-real non-production GCS proof until resolved.
+This approval provides architectural and repository authority for D020/D021,
+and the Stage 9A repository baseline implements the versioned family contract
+and focused tests. It does not prove cloud delivery or runtime deployment.
+No project, service account, IAM grant, Secret Manager secret/version,
+Terraform state, workload binding, rotation rehearsal, deployment, or cloud
+resource is claimed here. PRD4-G01 remains not started; PRD4-G02 and PRD4-G03
+remain baseline-only pending their later cloud, data, and deployment evidence.
+Phase 4 is not complete.
 
-## Deferred owned decisions
+## Deferred owned decision
 
-- PRD0-D020/PRD0-Q020: Secret Manager pinning, rotation, overlap, emergency
-  access, and rollback.
-- PRD0-D021/PRD0-Q021: encryption-key families, key IDs, multi-key decrypt,
-  and re-encryption.
 - PRD0-D023/PRD0-Q023: domains, ingress, trusted proxies, load balancer, and
   Cloud Armor.
 
@@ -164,6 +219,16 @@ identity limitation, or a material responsibility change.
 ## Explicit non-authorization
 
 This ADR does not create a GCP project, service account, IAM binding, secret,
-key, network, bucket, database, Redis instance, Terraform state, deployment,
-or production launch. Pending decisions remain unapproved. Phase 4 is not
-complete.
+secret version, key, network, bucket, database, Redis instance, Terraform
+state, runtime deployment, or production launch. It does not authorize
+production traffic. PRD0-D023 remains unapproved, and Phase 4 is not complete.
+
+```text
+GCP_SECRET_MANAGER_SECRET_EXISTS=NO
+SECRET_MANAGER_VERSIONS_PROVISIONED=NO
+IAM_SECRET_ACCESS_CREATED=NO
+ROTATION_REHEARSAL_COMPLETE=NO
+RUNTIME_DEPLOYMENT_COMPLETE=NO
+PRODUCTION_TRAFFIC_AUTHORIZED=NO
+PHASE_4=NOT_COMPLETE
+```

@@ -112,7 +112,6 @@ NODE
     require_b2_value STORAGE_PUBLIC_BUCKET
     require_b2_value JWT_ACCESS_SECRET
     require_b2_value JWT_REFRESH_SECRET
-    require_b2_value SETTINGS_SECRET_ENCRYPTION_KEY
     if [[ -z "$container" ]]; then
       printf 'health-runtime: B2 runtime container is invalid\n' >&2
       return 64
@@ -164,7 +163,6 @@ NODE
       --env JWT_REFRESH_SECRET
       --env JWT_ACCESS_TTL=15m
       --env JWT_REFRESH_TTL=7d
-      --env SETTINGS_SECRET_ENCRYPTION_KEY
       --env STORAGE_PROVIDER=minio
       --env STORAGE_ENDPOINT
       --env STORAGE_ACCESS_KEY
@@ -406,6 +404,10 @@ safe_output() {
       "STORAGE_SECRET_KEY",
       "JWT_ACCESS_SECRET",
       "JWT_REFRESH_SECRET",
+      "SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY",
+      "SETTINGS_EMAIL_SECRET_ENCRYPTION_PREVIOUS_KEY",
+      "APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY",
+      "APP_DEVICE_TOKEN_ENCRYPTION_PREVIOUS_KEY",
       "SETTINGS_SECRET_ENCRYPTION_KEY",
       "DATABASE_URL",
       "HEALTH_DATABASE_URL",
@@ -597,7 +599,6 @@ start_runtime() {
     --env JWT_REFRESH_SECRET \
     --env JWT_ACCESS_TTL \
     --env JWT_REFRESH_TTL \
-    --env SETTINGS_SECRET_ENCRYPTION_KEY \
     --env STORAGE_PROVIDER \
     --env STORAGE_ENDPOINT="$HEALTH_STORAGE_ENDPOINT" \
     --env STORAGE_ACCESS_KEY \
@@ -655,7 +656,6 @@ start_application_context_runtime() {
     --env DATABASE_CONNECT_TIMEOUT_SECONDS=5 \
     --env QUEUE_REDIS_URL="redis://${REDIS_NETWORK_ALIAS}:6379" \
     --env REALTIME_REDIS_URL="redis://${REDIS_NETWORK_ALIAS}:6379" \
-    --env SETTINGS_SECRET_ENCRYPTION_KEY \
     --env STORAGE_PROVIDER \
     --env STORAGE_ENDPOINT="$HEALTH_STORAGE_ENDPOINT" \
     --env STORAGE_ACCESS_KEY \
