@@ -8,3 +8,6 @@ coverage/
 .claude/
 sprint*-diff.txt
 /artifacts/production-readiness/phase-5a/
+
+# Ignore generated credentials from google-github-actions/auth
+gha-creds-*.json

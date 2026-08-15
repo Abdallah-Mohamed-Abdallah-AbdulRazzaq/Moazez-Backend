@@ -1,0 +1,102 @@
+name: Staging WIF authentication proof
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  staging-wif-auth-proof:
+    name: Prove staging WIF read access
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      GCP_PROJECT_ID: moazez-nonprod-91001421934
+      GCP_REGION: me-central2
+      IAC_DEPLOYER_SERVICE_ACCOUNT: moazez-iac-deployer@moazez-nonprod-91001421934.iam.gserviceaccount.com
+      ARTIFACT_REPOSITORY: moazez-staging-containers
+      TERRAFORM_STATE_BUCKET: moazez-nonprod-91001421934-tfstate
+      TERRAFORM_STATE_PREFIX: deployment-identity/staging
+
+    steps:
+      - name: Check out the exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact candidate and allowed ref
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse --verify 'HEAD^{commit}')"
+          if [[ "$actual_sha" != "$EXPECTED_SHA" ]]; then
+            echo "Exact candidate SHA mismatch." >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Staging WIF proof is restricted to refs/heads/main." >&2
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud with WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          project_id: moazez-nonprod-91001421934
+          workload_identity_provider: projects/375161231141/locations/global/workloadIdentityPools/moazez-github-staging/providers/moazez-backend-main
+          service_account: moazez-iac-deployer@moazez-nonprod-91001421934.iam.gserviceaccount.com
+          create_credentials_file: true
+          cleanup_credentials: true
+          export_environment_variables: true
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          project_id: moazez-nonprod-91001421934
+
+      - name: Verify active authentication context
+        shell: bash
+        run: |
+          set -euo pipefail
+          active_account="$(gcloud auth list --filter='status:ACTIVE' --format='value(account)')"
+          if [[ "$active_account" != "$IAC_DEPLOYER_SERVICE_ACCOUNT" ]]; then
+            echo "Unexpected active Google Cloud account." >&2
+            exit 1
+          fi
+          printf 'Active account: %s\n' "$active_account"
+
+      - name: Read Artifact Registry repository metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud artifacts repositories describe "$ARTIFACT_REPOSITORY" \
+            --project="$GCP_PROJECT_ID" \
+            --location="$GCP_REGION" \
+            --format='yaml(name,format,mode,location)'
+
+      - name: List Terraform state prefix object metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud storage ls --long \
+            "gs://${TERRAFORM_STATE_BUCKET}/${TERRAFORM_STATE_PREFIX}/**"
+
+      - name: List staging Cloud Run services and jobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud run services list \
+            --project="$GCP_PROJECT_ID" \
+            --region="$GCP_REGION" \
+            --platform=managed \
+            --format='value(metadata.name)'
+          gcloud run jobs list \
+            --project="$GCP_PROJECT_ID" \
+            --region="$GCP_REGION" \
+            --format='value(name)'

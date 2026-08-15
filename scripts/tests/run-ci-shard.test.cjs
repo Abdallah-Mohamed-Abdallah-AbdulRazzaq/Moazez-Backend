@@ -621,12 +621,15 @@ test('all workflow actions are immutable official pins and historical Phase 3 is
   assert.deepEqual(files.sort(), [
     'ci.yml',
     'phase-3-production-readiness.yml',
+    'staging-wif-auth-proof.yml',
   ]);
   const expectedPins = new Set([
     'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
     'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
     'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
     'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c',
+    'google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093',
+    'google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db',
   ]);
   for (const file of files) {
     const source = fs.readFileSync(path.join(workflowDirectory, file), 'utf8');
@@ -651,4 +654,41 @@ test('all workflow actions are immutable official pins and historical Phase 3 is
   );
   assert.match(historical, /^\s*workflow_dispatch:\s*$/mu);
   assert.doesNotMatch(historical, /^\s*(?:pull_request|push):/mu);
+
+  const stagingWif = fs.readFileSync(
+    path.join(workflowDirectory, 'staging-wif-auth-proof.yml'),
+    'utf8',
+  );
+  assert.match(stagingWif, /^\s*workflow_dispatch:\s*$/mu);
+  assert.doesNotMatch(stagingWif, /^\s*(?:pull_request|push):/mu);
+
+  const stagingWifLines = stagingWif.split(/\r?\n/u);
+  const permissionsIndex = stagingWifLines.findIndex((line) =>
+    /^permissions:\s*$/u.test(line),
+  );
+  assert.notEqual(permissionsIndex, -1);
+  const permissions = [];
+  for (
+    let index = permissionsIndex + 1;
+    index < stagingWifLines.length;
+    index += 1
+  ) {
+    const line = stagingWifLines[index];
+    if (line.trim() === '' || line.trimStart().startsWith('#')) {
+      continue;
+    }
+    if (!/^\s/u.test(line)) {
+      break;
+    }
+    const permission = line
+      .trim()
+      .match(/^([a-z-]+):\s*(\S+?)(?:\s+#.*)?$/u);
+    assert.ok(permission, `invalid staging WIF permission: ${line.trim()}`);
+    permissions.push([permission[1], permission[2]]);
+  }
+  permissions.sort(([left], [right]) => left.localeCompare(right));
+  assert.deepEqual(permissions, [
+    ['contents', 'read'],
+    ['id-token', 'write'],
+  ]);
 });
