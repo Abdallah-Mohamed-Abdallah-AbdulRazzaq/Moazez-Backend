@@ -13,14 +13,25 @@ test('application and runtime validators enforce the split Redis matrix', () => 
   const api = read('src/config/env.validation.ts');
   const runtime = read('src/runtime/runtime-env.validation.ts');
   const shared = read('src/config/redis-env.validation.ts');
+  const connection = read('src/config/redis-connection.options.ts');
 
   assert.match(api, /QUEUE_REDIS_URL:\s*redisUrlSchema/u);
+  assert.match(api, /QUEUE_REDIS_TLS_CA_PEM:\s*redisTlsCaPemSchema/u);
   assert.match(api, /REALTIME_REDIS_URL:\s*redisUrlSchema/u);
+  assert.match(api, /REALTIME_REDIS_TLS_CA_PEM:\s*redisTlsCaPemSchema/u);
+  assert.match(api, /refineRedisConnectionSecurity/u);
   assert.match(api, /refineRedisEndpointSeparation/u);
   assert.match(runtime, /coreWorkerSchema/u);
   assert.match(runtime, /mediaWorkerSchema/u);
   assert.match(runtime, /maintenanceSchedulerSchema/u);
+  assert.match(runtime, /QUEUE_REDIS_TLS_CA_PEM:\s*redisTlsCaPemSchema/u);
+  assert.match(runtime, /REALTIME_REDIS_TLS_CA_PEM:\s*redisTlsCaPemSchema/u);
+  assert.match(runtime, /refineRedisConnectionSecurity/u);
   assert.match(shared, /must use different Redis endpoints/u);
+  assert.match(connection, /new X509Certificate\(block\)/u);
+  assert.match(connection, /rejectUnauthorized:\s*true/u);
+  assert.match(connection, /must not configure TLS options/u);
+  assert.doesNotMatch(connection, /rejectUnauthorized:\s*false/u);
   assert.doesNotMatch(api, /\bREDIS_URL\b/u);
   assert.doesNotMatch(runtime, /\bREDIS_URL\b/u);
 });
@@ -28,7 +39,11 @@ test('application and runtime validators enforce the split Redis matrix', () => 
 test('queue production separates bounded commands from Worker connections', () => {
   const source = read('src/infrastructure/queue/bullmq.service.ts');
 
-  assert.match(source, /getOrThrow<string>\('QUEUE_REDIS_URL'\)/u);
+  assert.match(
+    source,
+    /resolveRedisConnectionConfiguration\([\s\S]*?'queue',[\s\S]*?required:\s*true/u,
+  );
+  assert.match(source, /createRedisClientOptions/u);
   assert.doesNotMatch(source, /DATABASE_RUNTIME_ROLE/u);
   assert.match(
     source,
@@ -37,6 +52,14 @@ test('queue production separates bounded commands from Worker connections', () =
   assert.match(
     source,
     /class BullmqWorkerRedisClient[\s\S]*?enableOfflineQueue: true,[\s\S]*?autoResendUnfulfilledCommands: true,[\s\S]*?maxRetriesPerRequest: null/u,
+  );
+  assert.match(
+    source,
+    /class BullmqCommandRedisClient[\s\S]*?override duplicate\([\s\S]*?createRedisClientOptions\(this\.queueRedis,/u,
+  );
+  assert.match(
+    source,
+    /class BullmqWorkerRedisClient[\s\S]*?override duplicate\([\s\S]*?createRedisClientOptions\(this\.queueRedis,/u,
   );
   assert.match(source, /connection: this\.getWorkerConnection\(\)/u);
   assert.match(source, /skipWaitingForReady: true/u);
@@ -56,13 +79,20 @@ test('realtime adapter, state, and emitter use only Realtime Redis', () => {
   );
 
   for (const source of [gateway, state, emitter]) {
-    assert.match(source, /REALTIME_REDIS_URL/u);
+    assert.match(source, /resolveRedisConnectionConfiguration/u);
+    assert.match(source, /'realtime'/u);
+    assert.match(source, /createRedisClientOptions/u);
     assert.doesNotMatch(source, /QUEUE_REDIS_URL/u);
     assert.doesNotMatch(source, /\bREDIS_URL\b/u);
   }
   assert.match(state, /environment !== 'staging'/u);
   assert.match(state, /environment !== 'production'/u);
   assert.match(state, /realtime_state_redis_unavailable/u);
+  assert.doesNotMatch(
+    emitter,
+    /RedisConnectionConfiguration\s*\|\s*string/u,
+  );
+  assert.doesNotMatch(emitter, /nodeEnvironment:\s*'test'/u);
 });
 
 test('runtime role ownership stays at the completed Phase 2 graph', () => {
@@ -121,6 +151,17 @@ test('real evidence harness locks two instances, budgets, outages, and cleanup',
   assert.match(integration, /QUEUE_GOVERNED_MAXIMUM = 40/u);
   assert.match(integration, /REALTIME_GOVERNED_MAXIMUM = 30/u);
   assert.match(integration, /fallbackSuccessCount/u);
+  assert.match(integration, /NODE_ENV:\s*'test'/u);
+  assert.match(integration, /enforceStrictRealtimeFallbackPolicy/u);
+  assert.match(integration, /allowLocalFallback\s*=\s*false/u);
+  assert.match(
+    integration,
+    /createRedisConnectionConfiguration\([\s\S]*?family:\s*'realtime',[\s\S]*?nodeEnvironment:\s*'test'/u,
+  );
+  assert.match(
+    integration,
+    /createRealtimeEmitterRedisClient\(realtimeTestConnection\)/u,
+  );
   assert.match(integration, /failedProducerReplayCount/u);
   assert.match(integration, /apiProducerFailureMilliseconds/u);
   assert.match(integration, /coreProducerFailureMilliseconds/u);

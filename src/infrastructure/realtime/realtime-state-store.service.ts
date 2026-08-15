@@ -2,6 +2,11 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import IORedis from 'ioredis';
 import type { Env } from '../../config/env.validation';
+import {
+  createRedisClientOptions,
+  resolveRedisConnectionConfiguration,
+  type RedisConnectionConfiguration,
+} from '../../config/redis-connection.options';
 import type {
   RealtimePresenceSnapshotItem,
   RealtimePresenceStoreResult,
@@ -491,26 +496,37 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
   }
 
   private async connectAndReconcile(): Promise<IORedis | null> {
-    const redisUrl = this.configService.get('REALTIME_REDIS_URL', {
-      infer: true,
-    });
-    if (!redisUrl) {
+    let redisConnection: RedisConnectionConfiguration | null;
+    try {
+      redisConnection = resolveRedisConnectionConfiguration(
+        this.configService,
+        'realtime',
+      );
+    } catch {
+      this.setFallbackState();
+      this.logRedisFallbackWarning();
+      return null;
+    }
+    if (!redisConnection) {
       this.setFallbackState();
       this.logRedisFallbackWarning();
       return null;
     }
 
     const previous = this.redis;
-    const candidate = new IORedis(redisUrl, {
-      lazyConnect: true,
-      maxRetriesPerRequest: 0,
-      enableOfflineQueue: false,
-      autoResendUnfulfilledCommands: false,
-      connectTimeout: REDIS_STATE_CONNECT_TIMEOUT_MS,
-      disconnectTimeout: REDIS_STATE_STORE_CLOSE_TIMEOUT_MS,
-      commandTimeout: REDIS_STATE_COMMAND_TIMEOUT_MS,
-      retryStrategy: () => null,
-    });
+    const candidate = new IORedis(
+      redisConnection.url,
+      createRedisClientOptions(redisConnection, {
+        lazyConnect: true,
+        maxRetriesPerRequest: 0,
+        enableOfflineQueue: false,
+        autoResendUnfulfilledCommands: false,
+        connectTimeout: REDIS_STATE_CONNECT_TIMEOUT_MS,
+        disconnectTimeout: REDIS_STATE_STORE_CLOSE_TIMEOUT_MS,
+        commandTimeout: REDIS_STATE_COMMAND_TIMEOUT_MS,
+        retryStrategy: () => null,
+      }),
+    );
     candidate.on('error', () => this.logRedisFallbackWarning());
 
     try {

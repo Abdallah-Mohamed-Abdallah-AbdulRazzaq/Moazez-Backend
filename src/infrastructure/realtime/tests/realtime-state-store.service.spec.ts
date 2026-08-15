@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import IORedis from 'ioredis';
 import { EventEmitter } from 'node:events';
+import { rootCertificates } from 'node:tls';
 import type { Env } from '../../../config/env.validation';
 import { RealtimeStateStoreService } from '../realtime-state-store.service';
 
@@ -104,6 +105,52 @@ describe('RealtimeStateStoreService recovery lifecycle', () => {
 
     await service.onModuleDestroy();
     expect(clients[0].quit).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses only the Realtime CA for initial and recovered state-store clients', async () => {
+    const realtimeCaPem = rootCertificates[1];
+    const config = {
+      get: jest.fn((key: string) => {
+        if (key === 'NODE_ENV') return 'production';
+        if (key === 'REALTIME_REDIS_URL') {
+          return 'rediss://realtime-cache.invalid:6379';
+        }
+        if (key === 'REALTIME_REDIS_TLS_CA_PEM') return realtimeCaPem;
+        return undefined;
+      }),
+    } as unknown as ConfigService<Env, true>;
+    const service = new RealtimeStateStoreService(config);
+
+    await service.checkReadiness();
+    clients[0].ping.mockRejectedValueOnce(new Error('temporary outage'));
+    await expect(service.checkReadiness()).rejects.toThrow(
+      'realtime_state_redis_unavailable',
+    );
+    await service.checkReadiness();
+
+    expect(MockedIORedis).toHaveBeenCalledTimes(2);
+    const redisCalls = MockedIORedis.mock.calls as unknown as Array<
+      [string, Record<string, unknown>]
+    >;
+    for (const [url, options] of redisCalls) {
+      expect(url).toBe('rediss://realtime-cache.invalid:6379');
+      expect(options.tls).toEqual({
+        ca: [realtimeCaPem],
+        rejectUnauthorized: true,
+      });
+      expect(options).toMatchObject({
+        lazyConnect: true,
+        maxRetriesPerRequest: 0,
+        enableOfflineQueue: false,
+        autoResendUnfulfilledCommands: false,
+        connectTimeout: 1000,
+        disconnectTimeout: 1000,
+        commandTimeout: 1000,
+      });
+    }
+    expect(config.get).not.toHaveBeenCalledWith('QUEUE_REDIS_TLS_CA_PEM');
+
+    await service.onModuleDestroy();
   });
 
   it('retires a half-open owned client before the probe caller deadline and recovers with a fresh client', async () => {
@@ -1168,9 +1215,38 @@ describe('RealtimeStateStoreService recovery lifecycle', () => {
     },
   );
 
+  it.each([undefined, 'malformed-ca'])(
+    'never activates local fallback for missing or malformed strict Realtime CA configuration',
+    async (realtimeCaPem) => {
+      const config = {
+        get: jest.fn((key: string) => {
+          if (key === 'NODE_ENV') return 'production';
+          if (key === 'REALTIME_REDIS_URL') {
+            return 'rediss://realtime-cache.invalid:6379';
+          }
+          if (key === 'REALTIME_REDIS_TLS_CA_PEM') return realtimeCaPem;
+          return undefined;
+        }),
+      } as unknown as ConfigService<Env, true>;
+      const service = new RealtimeStateStoreService(config);
+
+      await expect(service.checkReadiness()).rejects.toThrow(
+        'realtime_state_redis_unavailable',
+      );
+      expect(MockedIORedis).not.toHaveBeenCalled();
+      expect(stateStoreInternals(service).lifecycleState).toBe('unavailable');
+
+      await service.onModuleDestroy();
+    },
+  );
+
   function createService(): RealtimeStateStoreService {
     const config = {
-      get: jest.fn(() => 'redis://state-user:state-secret@internal:6379'),
+      get: jest.fn((key: string) =>
+        key === 'REALTIME_REDIS_URL'
+          ? 'redis://state-user:state-secret@internal:6379'
+          : undefined,
+      ),
     } as unknown as ConfigService<Env, true>;
     return new RealtimeStateStoreService(config);
   }

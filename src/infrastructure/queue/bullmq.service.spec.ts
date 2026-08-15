@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Queue, Worker } from 'bullmq';
 import IORedis from 'ioredis';
+import { rootCertificates } from 'node:tls';
 import { BoundedProbeExecutor } from '../../modules/health/bounded-probe-executor';
 import { BullmqService } from './bullmq.service';
 
@@ -54,6 +55,7 @@ type RedisConnectionDouble = {
 const MockedWorker = jest.mocked(Worker);
 const MockedQueue = jest.mocked(Queue);
 const MockedIORedis = jest.mocked(IORedis);
+const QUEUE_CA_PEM = rootCertificates[0];
 
 describe('BullmqService lifecycle', () => {
   let redis: RedisDouble;
@@ -492,8 +494,12 @@ describe('BullmqService lifecycle', () => {
     'uses the bounded command policy independently of runtime role %s',
     async (runtimeRole) => {
       const config = {
-        getOrThrow: jest.fn(() => 'redis://test.invalid:6379'),
-        get: jest.fn(() => runtimeRole),
+        get: jest.fn((key: string) => {
+          if (key === 'NODE_ENV') return 'test';
+          if (key === 'QUEUE_REDIS_URL') return 'redis://test.invalid:6379';
+          if (key === 'DATABASE_RUNTIME_ROLE') return runtimeRole;
+          return undefined;
+        }),
       } as unknown as ConfigService;
       const service = new BullmqService(config);
       const redisCalls = MockedIORedis.mock.calls as unknown as Array<
@@ -511,7 +517,9 @@ describe('BullmqService lifecycle', () => {
       expect(
         (redisCalls[0][1].retryStrategy as (attempt: number) => number)(1),
       ).toBeGreaterThan(0);
-      expect(config.get).not.toHaveBeenCalled();
+      expect(config.get).toHaveBeenCalledWith('QUEUE_REDIS_URL');
+      expect(config.get).toHaveBeenCalledWith('QUEUE_REDIS_TLS_CA_PEM');
+      expect(config.get).not.toHaveBeenCalledWith('REALTIME_REDIS_URL');
 
       await service.onModuleDestroy();
     },
@@ -519,15 +527,50 @@ describe('BullmqService lifecycle', () => {
 
   it('reads only the Queue Redis environment contract', async () => {
     const config = {
-      getOrThrow: jest.fn(() => 'redis://test.invalid:6379'),
-      get: jest.fn(),
+      get: jest.fn((key: string) =>
+        key === 'QUEUE_REDIS_URL' ? 'redis://test.invalid:6379' : undefined,
+      ),
     } as unknown as ConfigService;
     const service = new BullmqService(config);
 
-    expect(config.getOrThrow).toHaveBeenCalledWith('QUEUE_REDIS_URL');
-    expect(config.getOrThrow).not.toHaveBeenCalledWith('REALTIME_REDIS_URL');
-    expect(config.getOrThrow).not.toHaveBeenCalledWith('REDIS_URL');
-    expect(config.get).not.toHaveBeenCalled();
+    expect(config.get).toHaveBeenCalledWith('QUEUE_REDIS_URL');
+    expect(config.get).toHaveBeenCalledWith('QUEUE_REDIS_TLS_CA_PEM');
+    expect(config.get).not.toHaveBeenCalledWith('REALTIME_REDIS_URL');
+    expect(config.get).not.toHaveBeenCalledWith(
+      'REALTIME_REDIS_TLS_CA_PEM',
+    );
+    expect(config.get).not.toHaveBeenCalledWith('REDIS_URL');
+    await service.onModuleDestroy();
+  });
+
+  it('applies the Queue CA and peer verification to command, Worker, and readiness clients', async () => {
+    const config = {
+      get: jest.fn((key: string) => {
+        if (key === 'NODE_ENV') return 'production';
+        if (key === 'QUEUE_REDIS_URL') {
+          return 'rediss://queue-cache.invalid:6379';
+        }
+        if (key === 'QUEUE_REDIS_TLS_CA_PEM') return QUEUE_CA_PEM;
+        return undefined;
+      }),
+    } as unknown as ConfigService;
+    const service = new BullmqService(config);
+    service.createWorker('secure-worker', () => Promise.resolve());
+    await service.ping();
+
+    const redisCalls = MockedIORedis.mock.calls as unknown as Array<
+      [string, Record<string, unknown>]
+    >;
+    expect(redisCalls).toHaveLength(3);
+    for (const [url, options] of redisCalls) {
+      expect(url).toBe('rediss://queue-cache.invalid:6379');
+      expect(options.tls).toEqual({
+        ca: [QUEUE_CA_PEM],
+        rejectUnauthorized: true,
+      });
+    }
+    expect(config.get).not.toHaveBeenCalledWith('REALTIME_REDIS_TLS_CA_PEM');
+
     await service.onModuleDestroy();
   });
 
@@ -879,8 +922,12 @@ describe('BullmqService lifecycle', () => {
 
   function createService(runtimeRole = 'api'): BullmqService {
     const config = {
-      getOrThrow: jest.fn(() => 'redis://test.invalid:6379'),
-      get: jest.fn(() => runtimeRole),
+      get: jest.fn((key: string) => {
+        if (key === 'NODE_ENV') return 'test';
+        if (key === 'QUEUE_REDIS_URL') return 'redis://test.invalid:6379';
+        if (key === 'DATABASE_RUNTIME_ROLE') return runtimeRole;
+        return undefined;
+      }),
     } as unknown as ConfigService;
     return new BullmqService(config);
   }

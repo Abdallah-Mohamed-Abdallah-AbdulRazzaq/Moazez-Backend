@@ -5,6 +5,8 @@ import {
   refineDatabaseRuntimeEnvironment,
 } from '../infrastructure/database/database-runtime-env.validation';
 import {
+  refineRedisConnectionSecurity,
+  redisTlsCaPemSchema,
   redisUrlSchema,
   refineRedisEndpointSeparation,
 } from '../config/redis-env.validation';
@@ -43,7 +45,9 @@ const coreWorkerSchema = z
   .object({
     ...managementShape,
     QUEUE_REDIS_URL: redisUrlSchema,
+    QUEUE_REDIS_TLS_CA_PEM: redisTlsCaPemSchema,
     REALTIME_REDIS_URL: redisUrlSchema,
+    REALTIME_REDIS_TLS_CA_PEM: redisTlsCaPemSchema,
     ...createDatabaseRuntimeEnvironmentShape('core-worker'),
     ...storageEnvironmentShape,
     APP_URL: z.string().url(),
@@ -65,6 +69,7 @@ const coreWorkerSchema = z
   })
   .superRefine((env, context) => {
     refineDatabaseRuntimeEnvironment(env, context);
+    refineRedisConnectionSecurity(env, context, ['queue', 'realtime']);
     refineRedisEndpointSeparation(env, context);
     refineStorageEnvironment(env, context, { requireSigner: false });
     for (const error of validateSecretEncryptionEnvironment(
@@ -109,18 +114,25 @@ const mediaWorkerSchema = z
   .object({
     ...managementShape,
     QUEUE_REDIS_URL: redisUrlSchema,
+    QUEUE_REDIS_TLS_CA_PEM: redisTlsCaPemSchema,
     ...createDatabaseRuntimeEnvironmentShape('media-worker'),
     ...storageEnvironmentShape,
   })
   .superRefine((env, context) => {
     refineDatabaseRuntimeEnvironment(env, context);
+    refineRedisConnectionSecurity(env, context, ['queue']);
     refineStorageEnvironment(env, context, { requireSigner: false });
   });
 
-const maintenanceSchedulerSchema = z.object({
-  ...managementShape,
-  QUEUE_REDIS_URL: redisUrlSchema,
-});
+const maintenanceSchedulerSchema = z
+  .object({
+    ...managementShape,
+    QUEUE_REDIS_URL: redisUrlSchema,
+    QUEUE_REDIS_TLS_CA_PEM: redisTlsCaPemSchema,
+  })
+  .superRefine((env, context) => {
+    refineRedisConnectionSecurity(env, context, ['queue']);
+  });
 
 export const validateCoreWorkerEnv = createValidator(coreWorkerSchema);
 export const validateMediaWorkerEnv = createValidator(mediaWorkerSchema);

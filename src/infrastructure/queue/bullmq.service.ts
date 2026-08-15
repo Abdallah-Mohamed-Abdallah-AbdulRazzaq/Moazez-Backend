@@ -3,6 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import { JobsOptions, Processor, Queue, RedisConnection, Worker } from 'bullmq';
 import IORedis, { RedisOptions } from 'ioredis';
 import { randomUUID } from 'node:crypto';
+import {
+  createRedisClientOptions,
+  resolveRedisConnectionConfiguration,
+  type RedisConnectionConfiguration,
+} from '../../config/redis-connection.options';
 
 const DEFAULT_REMOVE_ON_COMPLETE = 100;
 const DEFAULT_REMOVE_ON_FAIL = 500;
@@ -114,61 +119,77 @@ class WorkerShutdownRedisConnection extends RedisConnection {
 }
 
 class BullmqCommandRedisClient extends IORedis {
-  constructor(private readonly queueRedisUrl: string) {
-    super(queueRedisUrl, {
-      lazyConnect: true,
-      enableOfflineQueue: false,
-      autoResendUnfulfilledCommands: false,
-      maxRetriesPerRequest: 0,
-      connectTimeout: BULLMQ_COMMAND_CONNECT_TIMEOUT_MS,
-      commandTimeout: BULLMQ_COMMAND_TIMEOUT_MS,
-      retryStrategy: queueRedisReconnectDelay,
-    });
+  constructor(
+    private readonly queueRedis: RedisConnectionConfiguration,
+  ) {
+    super(
+      queueRedis.url,
+      createRedisClientOptions(queueRedis, {
+        lazyConnect: true,
+        enableOfflineQueue: false,
+        autoResendUnfulfilledCommands: false,
+        maxRetriesPerRequest: 0,
+        connectTimeout: BULLMQ_COMMAND_CONNECT_TIMEOUT_MS,
+        commandTimeout: BULLMQ_COMMAND_TIMEOUT_MS,
+        retryStrategy: queueRedisReconnectDelay,
+      }),
+    );
   }
 
   override duplicate(override: Partial<RedisOptions> = {}): IORedis {
-    return new IORedis(this.queueRedisUrl, {
-      ...override,
-      lazyConnect: true,
-      enableOfflineQueue: false,
-      autoResendUnfulfilledCommands: false,
-      maxRetriesPerRequest: 0,
-      connectTimeout: BULLMQ_COMMAND_CONNECT_TIMEOUT_MS,
-      commandTimeout: BULLMQ_COMMAND_TIMEOUT_MS,
-      retryStrategy: queueRedisReconnectDelay,
-    });
+    return new IORedis(
+      this.queueRedis.url,
+      createRedisClientOptions(this.queueRedis, {
+        ...override,
+        lazyConnect: true,
+        enableOfflineQueue: false,
+        autoResendUnfulfilledCommands: false,
+        maxRetriesPerRequest: 0,
+        connectTimeout: BULLMQ_COMMAND_CONNECT_TIMEOUT_MS,
+        commandTimeout: BULLMQ_COMMAND_TIMEOUT_MS,
+        retryStrategy: queueRedisReconnectDelay,
+      }),
+    );
   }
 }
 
 class BullmqWorkerRedisClient extends IORedis {
-  constructor(private readonly queueRedisUrl: string) {
-    super(queueRedisUrl, {
-      lazyConnect: true,
-      enableOfflineQueue: true,
-      autoResendUnfulfilledCommands: true,
-      maxRetriesPerRequest: null,
-      connectTimeout: BULLMQ_COMMAND_CONNECT_TIMEOUT_MS,
-      retryStrategy: queueRedisReconnectDelay,
-    });
+  constructor(
+    private readonly queueRedis: RedisConnectionConfiguration,
+  ) {
+    super(
+      queueRedis.url,
+      createRedisClientOptions(queueRedis, {
+        lazyConnect: true,
+        enableOfflineQueue: true,
+        autoResendUnfulfilledCommands: true,
+        maxRetriesPerRequest: null,
+        connectTimeout: BULLMQ_COMMAND_CONNECT_TIMEOUT_MS,
+        retryStrategy: queueRedisReconnectDelay,
+      }),
+    );
   }
 
   override duplicate(override: Partial<RedisOptions> = {}): IORedis {
-    return new IORedis(this.queueRedisUrl, {
-      ...override,
-      lazyConnect: true,
-      enableOfflineQueue: true,
-      autoResendUnfulfilledCommands: true,
-      maxRetriesPerRequest: null,
-      connectTimeout: BULLMQ_COMMAND_CONNECT_TIMEOUT_MS,
-      retryStrategy: queueRedisReconnectDelay,
-    });
+    return new IORedis(
+      this.queueRedis.url,
+      createRedisClientOptions(this.queueRedis, {
+        ...override,
+        lazyConnect: true,
+        enableOfflineQueue: true,
+        autoResendUnfulfilledCommands: true,
+        maxRetriesPerRequest: null,
+        connectTimeout: BULLMQ_COMMAND_CONNECT_TIMEOUT_MS,
+        retryStrategy: queueRedisReconnectDelay,
+      }),
+    );
   }
 }
 
 @Injectable()
 export class BullmqService implements OnModuleDestroy {
   private readonly logger = new Logger(BullmqService.name);
-  private readonly redisUrl: string;
+  private readonly redisConnectionConfiguration: RedisConnectionConfiguration;
   private readonly connection: IORedis;
   private readonly sharedStreamSettlement: () => Promise<void>;
   private workerConnection?: IORedis;
@@ -206,9 +227,15 @@ export class BullmqService implements OnModuleDestroy {
   private workerDrainPromise: Promise<void> | null = null;
   private shutdownPromise: Promise<void> | null = null;
 
-  constructor(private readonly configService: ConfigService) {
-    this.redisUrl = this.configService.getOrThrow<string>('QUEUE_REDIS_URL');
-    this.connection = new BullmqCommandRedisClient(this.redisUrl);
+  constructor(configService: ConfigService) {
+    this.redisConnectionConfiguration = resolveRedisConnectionConfiguration(
+      configService,
+      'queue',
+      { required: true },
+    );
+    this.connection = new BullmqCommandRedisClient(
+      this.redisConnectionConfiguration,
+    );
     this.sharedStreamSettlement = this.trackRedisClientStreams(
       this.connection as unknown as RedisShutdownClient,
     );
@@ -727,14 +754,17 @@ export class BullmqService implements OnModuleDestroy {
   private async connectQueueReadinessCandidate(): Promise<void> {
     let candidate: IORedis | undefined;
     try {
-      candidate = new IORedis(this.redisUrl, {
-        lazyConnect: true,
-        enableOfflineQueue: false,
-        maxRetriesPerRequest: 0,
-        connectTimeout: BULLMQ_READINESS_CONNECT_TIMEOUT_MS,
-        commandTimeout: BULLMQ_READINESS_COMMAND_TIMEOUT_MS,
-        retryStrategy: () => null,
-      });
+      candidate = new IORedis(
+        this.redisConnectionConfiguration.url,
+        createRedisClientOptions(this.redisConnectionConfiguration, {
+          lazyConnect: true,
+          enableOfflineQueue: false,
+          maxRetriesPerRequest: 0,
+          connectTimeout: BULLMQ_READINESS_CONNECT_TIMEOUT_MS,
+          commandTimeout: BULLMQ_READINESS_COMMAND_TIMEOUT_MS,
+          retryStrategy: () => null,
+        }),
+      );
       candidate.on('error', () => {
         this.warnQueueReadinessUnavailable();
       });
@@ -947,7 +977,9 @@ export class BullmqService implements OnModuleDestroy {
       return this.workerConnection;
     }
 
-    const connection = new BullmqWorkerRedisClient(this.redisUrl);
+    const connection = new BullmqWorkerRedisClient(
+      this.redisConnectionConfiguration,
+    );
     this.workerConnection = connection;
     this.workerStreamSettlement = this.trackRedisClientStreams(
       connection as unknown as RedisShutdownClient,

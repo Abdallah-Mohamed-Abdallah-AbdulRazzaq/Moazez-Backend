@@ -617,10 +617,11 @@ test('all workflow actions are immutable official pins and historical Phase 3 is
   const workflowDirectory = path.join(REPOSITORY_ROOT, '.github', 'workflows');
   const files = fs
     .readdirSync(workflowDirectory)
-    .filter((file) => file.endsWith('.yml'));
+    .filter((file) => /[.]ya?ml$/u.test(file));
   assert.deepEqual(files.sort(), [
     'ci.yml',
     'phase-3-production-readiness.yml',
+    'staging-backend-image.yml',
     'staging-wif-auth-proof.yml',
   ]);
   const expectedPins = new Set([
@@ -691,4 +692,76 @@ test('all workflow actions are immutable official pins and historical Phase 3 is
     ['contents', 'read'],
     ['id-token', 'write'],
   ]);
+});
+
+test('the staging backend image workflow is manual, least-privileged, and immutably pinned', () => {
+  const workflow = fs.readFileSync(
+    path.join(
+      REPOSITORY_ROOT,
+      '.github',
+      'workflows',
+      'staging-backend-image.yml',
+    ),
+    'utf8',
+  );
+
+  assert.match(
+    workflow,
+    /^on:\r?\n  workflow_dispatch:[ \t]*\r?\n\r?\npermissions:/mu,
+  );
+  assert.doesNotMatch(workflow, /^\s*(?:pull_request|push):/mu);
+
+  const workflowLines = workflow.split(/\r?\n/u);
+  assert.equal(
+    (workflow.match(/^\s*permissions:\s*$/gmu) ?? []).length,
+    1,
+  );
+  const permissionsIndex = workflowLines.findIndex((line) =>
+    /^permissions:\s*$/u.test(line),
+  );
+  assert.notEqual(permissionsIndex, -1);
+  const permissions = [];
+  for (
+    let index = permissionsIndex + 1;
+    index < workflowLines.length;
+    index += 1
+  ) {
+    const line = workflowLines[index];
+    if (line.trim() === '' || line.trimStart().startsWith('#')) {
+      continue;
+    }
+    if (!/^\s/u.test(line)) {
+      break;
+    }
+    const permission = line
+      .trim()
+      .match(/^([a-z-]+):\s*(\S+?)(?:\s+#.*)?$/u);
+    assert.ok(permission, `invalid staging image permission: ${line.trim()}`);
+    permissions.push([permission[1], permission[2]]);
+  }
+  permissions.sort(([left], [right]) => left.localeCompare(right));
+  assert.deepEqual(permissions, [
+    ['contents', 'read'],
+    ['id-token', 'write'],
+  ]);
+
+  const uses = [...workflow.matchAll(/^\s*uses:\s*(\S+)/gmu)].map(
+    (match) => match[1],
+  );
+  assert.deepEqual(uses, [
+    'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
+    'google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093',
+    'google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db',
+  ]);
+  for (const reference of uses) {
+    assert.match(reference, /@[0-9a-f]{40}$/u);
+  }
+
+  assert.equal((workflow.match(/uses: actions\/checkout@/gu) ?? []).length, 1);
+  assert.equal((workflow.match(/persist-credentials: false/gu) ?? []).length, 1);
+  assert.match(
+    workflow,
+    /uses: actions\/checkout@[0-9a-f]{40}[^\r\n]*\r?\n        with:\r?\n(?:          [^\r\n]*\r?\n)*          persist-credentials: false(?:\r?\n|$)/u,
+  );
+  assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/u);
 });

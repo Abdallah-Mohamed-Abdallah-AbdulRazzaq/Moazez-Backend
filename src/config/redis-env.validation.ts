@@ -1,4 +1,10 @@
 import { z } from 'zod';
+import {
+  createRedisConnectionConfiguration,
+  getRedisConnectionConfigurationFields,
+  type RedisConnectionFamily,
+  type RedisRuntimeEnvironment,
+} from './redis-connection.options';
 
 export const redisUrlSchema = z
   .string()
@@ -19,6 +25,45 @@ export const redisUrlSchema = z
       });
     }
   });
+
+export const redisTlsCaPemSchema = z.string().optional();
+
+export function refineRedisConnectionSecurity(
+  environment: {
+    NODE_ENV: RedisRuntimeEnvironment;
+  },
+  context: z.RefinementCtx,
+  families: readonly RedisConnectionFamily[],
+): void {
+  const values = environment as Record<string, unknown>;
+  for (const family of families) {
+    const fields = getRedisConnectionConfigurationFields(family);
+    const url = values[fields.url];
+    const tlsCaPem = values[fields.tlsCaPem];
+    if (typeof url !== 'string') continue;
+
+    try {
+      createRedisConnectionConfiguration({
+        family,
+        nodeEnvironment: environment.NODE_ENV,
+        url,
+        tlsCaPem: typeof tlsCaPem === 'string' ? tlsCaPem : undefined,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : `${fields.url} has invalid Redis TLS configuration`;
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [
+          message.startsWith(fields.tlsCaPem) ? fields.tlsCaPem : fields.url,
+        ],
+        message,
+      });
+    }
+  }
+}
 
 export function refineRedisEndpointSeparation(
   environment: {

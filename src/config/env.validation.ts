@@ -9,6 +9,8 @@ import {
   storageEnvironmentShape,
 } from '../infrastructure/storage/storage-env.validation';
 import {
+  refineRedisConnectionSecurity,
+  redisTlsCaPemSchema,
   redisUrlSchema,
   refineRedisEndpointSeparation,
 } from './redis-env.validation';
@@ -43,7 +45,9 @@ export const envSchema = z
 
     ...createDatabaseRuntimeEnvironmentShape('api'),
     QUEUE_REDIS_URL: redisUrlSchema,
+    QUEUE_REDIS_TLS_CA_PEM: redisTlsCaPemSchema,
     REALTIME_REDIS_URL: redisUrlSchema,
+    REALTIME_REDIS_TLS_CA_PEM: redisTlsCaPemSchema,
 
     JWT_ACCESS_SECRET: z.string().min(16),
     JWT_REFRESH_SECRET: z.string().min(16),
@@ -97,6 +101,7 @@ export const envSchema = z
   })
   .superRefine((env, ctx) => {
     refineDatabaseRuntimeEnvironment(env, ctx);
+    refineRedisConnectionSecurity(env, ctx, ['queue', 'realtime']);
     refineRedisEndpointSeparation(env, ctx);
     refineStorageEnvironment(env, ctx, { requireSigner: true });
     for (const error of validateSecretEncryptionEnvironment(

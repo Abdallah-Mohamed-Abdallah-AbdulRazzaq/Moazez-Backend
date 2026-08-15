@@ -3,6 +3,10 @@ import {
   validateMaintenanceSchedulerEnv,
   validateMediaWorkerEnv,
 } from './runtime-env.validation';
+import { rootCertificates } from 'node:tls';
+
+const QUEUE_CA_PEM = rootCertificates[0];
+const REALTIME_CA_PEM = rootCertificates[1];
 
 describe('runtime role database environment validation', () => {
   it('applies exact Core Worker database defaults', () => {
@@ -77,6 +81,7 @@ describe('runtime role database environment validation', () => {
           NODE_ENV: 'staging',
           DATABASE_URL:
             'postgresql://runtime-user:runtime-value@database.internal/moazez?sslmode=require',
+          QUEUE_REDIS_URL: 'rediss://queue-cache.invalid:6379',
           STORAGE_PROVIDER: 'gcs',
           STORAGE_ENDPOINT: undefined,
           STORAGE_ACCESS_KEY: undefined,
@@ -127,13 +132,83 @@ describe('runtime role database environment validation', () => {
     const scheduler = validateMaintenanceSchedulerEnv({
       NODE_ENV: 'production',
       QUEUE_REDIS_URL: 'rediss://queue-cache.invalid:6379',
+      QUEUE_REDIS_TLS_CA_PEM: QUEUE_CA_PEM,
       REALTIME_REDIS_URL: 'rediss://realtime-cache.invalid:6379',
+      REALTIME_REDIS_TLS_CA_PEM: REALTIME_CA_PEM,
     });
 
     expect(media.QUEUE_REDIS_URL).toBe('redis://127.0.0.1:6379');
+    expect(media.QUEUE_REDIS_TLS_CA_PEM).toBe(QUEUE_CA_PEM);
     expect(media).not.toHaveProperty('REALTIME_REDIS_URL');
+    expect(media).not.toHaveProperty('REALTIME_REDIS_TLS_CA_PEM');
     expect(scheduler.QUEUE_REDIS_URL).toBe('rediss://queue-cache.invalid:6379');
+    expect(scheduler.QUEUE_REDIS_TLS_CA_PEM).toBe(QUEUE_CA_PEM);
     expect(scheduler).not.toHaveProperty('REALTIME_REDIS_URL');
+    expect(scheduler).not.toHaveProperty('REALTIME_REDIS_TLS_CA_PEM');
+  });
+
+  it.each(['staging', 'production'] as const)(
+    'enforces role-specific Redis TLS configuration in %s',
+    (nodeEnvironment) => {
+      const secure = secureWorkerStorageOverrides(nodeEnvironment);
+      expect(validateCoreWorkerEnv(coreEnvironment(secure))).toMatchObject({
+        QUEUE_REDIS_TLS_CA_PEM: QUEUE_CA_PEM,
+        REALTIME_REDIS_TLS_CA_PEM: REALTIME_CA_PEM,
+      });
+      expect(validateMediaWorkerEnv(mediaEnvironment(secure))).toMatchObject({
+        QUEUE_REDIS_TLS_CA_PEM: QUEUE_CA_PEM,
+      });
+      expect(
+        validateMaintenanceSchedulerEnv({
+          NODE_ENV: nodeEnvironment,
+          QUEUE_REDIS_URL: secure.QUEUE_REDIS_URL,
+          QUEUE_REDIS_TLS_CA_PEM: QUEUE_CA_PEM,
+        }),
+      ).toMatchObject({ QUEUE_REDIS_TLS_CA_PEM: QUEUE_CA_PEM });
+
+      expect(() =>
+        validateCoreWorkerEnv(
+          coreEnvironment({
+            ...secure,
+            REALTIME_REDIS_TLS_CA_PEM: undefined,
+          }),
+        ),
+      ).toThrow(/REALTIME_REDIS_TLS_CA_PEM/u);
+      expect(() =>
+        validateMediaWorkerEnv(
+          mediaEnvironment({
+            ...secure,
+            QUEUE_REDIS_TLS_CA_PEM: undefined,
+          }),
+        ),
+      ).toThrow(/QUEUE_REDIS_TLS_CA_PEM/u);
+      expect(() =>
+        validateMaintenanceSchedulerEnv({
+          NODE_ENV: nodeEnvironment,
+          QUEUE_REDIS_URL: secure.QUEUE_REDIS_URL,
+        }),
+      ).toThrow(/QUEUE_REDIS_TLS_CA_PEM/u);
+    },
+  );
+
+  it('rejects malformed role-specific Redis CA material', () => {
+    const secure = secureWorkerStorageOverrides('staging');
+    expect(() =>
+      validateCoreWorkerEnv(
+        coreEnvironment({
+          ...secure,
+          REALTIME_REDIS_TLS_CA_PEM: 'malformed-realtime-ca',
+        }),
+      ),
+    ).toThrow(/REALTIME_REDIS_TLS_CA_PEM/u);
+    expect(() =>
+      validateMediaWorkerEnv(
+        mediaEnvironment({
+          ...secure,
+          QUEUE_REDIS_TLS_CA_PEM: 'malformed-queue-ca',
+        }),
+      ),
+    ).toThrow(/QUEUE_REDIS_TLS_CA_PEM/u);
   });
 
   it('rejects same-endpoint Core Worker Redis URLs in staging and production', () => {
@@ -152,7 +227,14 @@ describe('runtime role database environment validation', () => {
   });
 
   it('accepts equal Core Worker Redis endpoints in test', () => {
-    expect(validateCoreWorkerEnv(coreEnvironment())).toMatchObject({
+    expect(
+      validateCoreWorkerEnv(
+        coreEnvironment({
+          QUEUE_REDIS_TLS_CA_PEM: undefined,
+          REALTIME_REDIS_TLS_CA_PEM: undefined,
+        }),
+      ),
+    ).toMatchObject({
       QUEUE_REDIS_URL: 'redis://127.0.0.1:6379',
       REALTIME_REDIS_URL: 'redis://127.0.0.1:6379',
     });
@@ -175,10 +257,11 @@ describe('runtime role database environment validation', () => {
     );
     const media = validateMediaWorkerEnv(
       mediaEnvironment({
-        NODE_ENV: 'production',
-        DATABASE_URL:
-          'postgresql://runtime-user:runtime-value@database.internal/moazez?sslmode=require',
-        STORAGE_PROVIDER: 'gcs',
+          NODE_ENV: 'production',
+          DATABASE_URL:
+            'postgresql://runtime-user:runtime-value@database.internal/moazez?sslmode=require',
+          QUEUE_REDIS_URL: 'rediss://queue-cache.invalid:6379',
+          STORAGE_PROVIDER: 'gcs',
         STORAGE_ENDPOINT: undefined,
         STORAGE_ACCESS_KEY: undefined,
         STORAGE_SECRET_KEY: undefined,
@@ -404,7 +487,9 @@ function coreEnvironment(
     DATABASE_URL:
       'postgresql://runtime-user:runtime-value@127.0.0.1:5432/moazez',
     QUEUE_REDIS_URL: 'redis://127.0.0.1:6379',
+    QUEUE_REDIS_TLS_CA_PEM: QUEUE_CA_PEM,
     REALTIME_REDIS_URL: 'redis://127.0.0.1:6379',
+    REALTIME_REDIS_TLS_CA_PEM: REALTIME_CA_PEM,
     STORAGE_ENDPOINT: 'http://127.0.0.1:9000',
     STORAGE_ACCESS_KEY: 'runtime-access',
     STORAGE_SECRET_KEY: 'runtime-value',
@@ -426,6 +511,7 @@ function mediaEnvironment(
     DATABASE_URL:
       'postgresql://runtime-user:runtime-value@127.0.0.1:5432/moazez',
     QUEUE_REDIS_URL: 'redis://127.0.0.1:6379',
+    QUEUE_REDIS_TLS_CA_PEM: QUEUE_CA_PEM,
     STORAGE_ENDPOINT: 'http://127.0.0.1:9000',
     STORAGE_ACCESS_KEY: 'runtime-access',
     STORAGE_SECRET_KEY: 'runtime-value',
@@ -452,7 +538,9 @@ function secureWorkerStorageOverrides(
     DATABASE_URL:
       'postgresql://runtime-user:runtime-value@database.internal/moazez?sslmode=require',
     QUEUE_REDIS_URL: 'rediss://queue-cache.invalid:6379/0',
+    QUEUE_REDIS_TLS_CA_PEM: QUEUE_CA_PEM,
     REALTIME_REDIS_URL: 'rediss://realtime-cache.invalid:6380/0',
+    REALTIME_REDIS_TLS_CA_PEM: REALTIME_CA_PEM,
     STORAGE_PROVIDER: 'gcs',
     STORAGE_ENDPOINT: undefined,
     STORAGE_ACCESS_KEY: undefined,

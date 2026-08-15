@@ -1,0 +1,131 @@
+name: Staging backend immutable image
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build-and-push:
+    name: Build and push the staging backend image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      GCP_PROJECT_ID: moazez-nonprod-91001421934
+      ARTIFACT_REGISTRY_HOST: me-central2-docker.pkg.dev
+      IAC_DEPLOYER_SERVICE_ACCOUNT: moazez-iac-deployer@moazez-nonprod-91001421934.iam.gserviceaccount.com
+      IMAGE_PACKAGE: me-central2-docker.pkg.dev/moazez-nonprod-91001421934/moazez-staging-containers/moazez-backend
+
+    steps:
+      - name: Check out the exact image source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact source and allowed ref
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]]; then
+            echo "Staging image creation requires workflow_dispatch." >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Staging image creation is restricted to refs/heads/main." >&2
+            exit 1
+          fi
+          if [[ ! "$EXPECTED_SHA" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "The requested source SHA is invalid." >&2
+            exit 1
+          fi
+
+          actual_sha="$(git rev-parse --verify 'HEAD^{commit}')"
+          if [[ "$actual_sha" != "$EXPECTED_SHA" ]]; then
+            echo "Exact staging image source SHA mismatch." >&2
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud with WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          project_id: moazez-nonprod-91001421934
+          workload_identity_provider: projects/375161231141/locations/global/workloadIdentityPools/moazez-github-staging/providers/moazez-backend-main
+          service_account: moazez-iac-deployer@moazez-nonprod-91001421934.iam.gserviceaccount.com
+          create_credentials_file: true
+          cleanup_credentials: true
+          export_environment_variables: true
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          project_id: moazez-nonprod-91001421934
+
+      - name: Verify active authentication context
+        shell: bash
+        run: |
+          set -euo pipefail
+          active_account="$(gcloud auth list --filter='status:ACTIVE' --format='value(account)')"
+          if [[ "$active_account" != "$IAC_DEPLOYER_SERVICE_ACCOUNT" ]]; then
+            echo "Unexpected active Google Cloud account." >&2
+            exit 1
+          fi
+
+      - name: Configure the regional Artifact Registry credential helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud auth configure-docker "$ARTIFACT_REGISTRY_HOST" --quiet
+
+      - name: Build, push, and resolve the immutable image
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          image_tag="${IMAGE_PACKAGE}:${EXPECTED_SHA}"
+
+          docker build \
+            --file Dockerfile \
+            --target final \
+            --tag "$image_tag" \
+            .
+
+          push_output=''
+          if ! push_output="$(docker push "$image_tag" 2>&1)"; then
+            printf '%s\n' "$push_output" >&2
+            exit 1
+          fi
+          printf '%s\n' "$push_output"
+
+          resolved_digest=''
+          resolved_digest_count=0
+          while IFS= read -r line; do
+            if [[ "$line" =~ digest:\ (sha256:[a-f0-9]{64})\ size:\ [0-9]+$ ]]; then
+              resolved_digest="${BASH_REMATCH[1]}"
+              resolved_digest_count=$((resolved_digest_count + 1))
+            fi
+          done <<<"$push_output"
+
+          if [[ "$resolved_digest_count" -ne 1 ]]; then
+            echo "The pushed image did not resolve to exactly one digest." >&2
+            exit 1
+          fi
+          if [[ ! "$resolved_digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "The pushed image digest is invalid." >&2
+            exit 1
+          fi
+
+          immutable_reference="${IMAGE_PACKAGE}@${resolved_digest}"
+          if [[ ! "$immutable_reference" =~ ^me-central2-docker[.]pkg[.]dev/moazez-nonprod-91001421934/moazez-staging-containers/moazez-backend@sha256:[a-f0-9]{64}$ ]]; then
+            echo "The deployable image reference is invalid." >&2
+            exit 1
+          fi
+
+          printf 'Deployable immutable image reference: %s\n' "$immutable_reference"

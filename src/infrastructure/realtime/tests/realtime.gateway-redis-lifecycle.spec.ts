@@ -1,5 +1,6 @@
 import type { ConfigService } from '@nestjs/config';
 import IORedis from 'ioredis';
+import { rootCertificates } from 'node:tls';
 import type { Env } from '../../../config/env.validation';
 import { RealtimeAuthService } from '../realtime-auth.service';
 import { RealtimeCommunicationAccessService } from '../realtime-communication-access.service';
@@ -267,8 +268,9 @@ describe('RealtimeGateway Redis command ownership', () => {
     expect(client.disconnect).toHaveBeenCalledTimes(1);
   });
 
-  it('configures both adapter clients with fixed connect and command bounds', async () => {
+  it('configures both adapter clients with Realtime TLS and fixed command bounds', async () => {
     jest.useRealTimers();
+    const realtimeCaPem = rootCertificates[1];
     const subscriber = redisClient();
     const publisher = redisClient({
       duplicate: jest.fn(() => subscriber),
@@ -276,13 +278,15 @@ describe('RealtimeGateway Redis command ownership', () => {
     MockedIORedis.mockImplementation(
       () => publisher as unknown as IORedis,
     );
-    const configGet = jest.fn(
-      () => 'redis://synthetic:synthetic@redis:6379',
-    );
-    const gateway = createGateway(
-      'redis://synthetic:synthetic@redis:6379',
-      configGet,
-    );
+    const configGet = jest.fn((key: string) => {
+      if (key === 'NODE_ENV') return 'production';
+      if (key === 'REALTIME_REDIS_URL') {
+        return 'rediss://realtime-cache.invalid:6379';
+      }
+      if (key === 'REALTIME_REDIS_TLS_CA_PEM') return realtimeCaPem;
+      return undefined;
+    });
+    const gateway = createGateway(undefined, configGet);
     const internals = gatewayInternals(gateway);
     const server = {
       adapter: jest.fn(),
@@ -298,7 +302,7 @@ describe('RealtimeGateway Redis command ownership', () => {
     ).resolves.toBe(true);
 
     expect(MockedIORedis).toHaveBeenCalledWith(
-      'redis://synthetic:synthetic@redis:6379',
+      'rediss://realtime-cache.invalid:6379',
       expect.objectContaining({
         lazyConnect: true,
         maxRetriesPerRequest: 0,
@@ -306,6 +310,10 @@ describe('RealtimeGateway Redis command ownership', () => {
         autoResendUnfulfilledCommands: false,
         connectTimeout: 400,
         commandTimeout: 400,
+        tls: {
+          ca: [realtimeCaPem],
+          rejectUnauthorized: true,
+        },
       }),
     );
     expect(publisher.duplicate).toHaveBeenCalledWith(
@@ -316,26 +324,60 @@ describe('RealtimeGateway Redis command ownership', () => {
         autoResendUnfulfilledCommands: false,
         connectTimeout: 400,
         commandTimeout: 400,
+        tls: {
+          ca: [realtimeCaPem],
+          rejectUnauthorized: true,
+        },
       }),
     );
     expect(publisher.connect).toHaveBeenCalledTimes(1);
     expect(subscriber.connect).toHaveBeenCalledTimes(1);
     expect(publisher.ping).toHaveBeenCalledTimes(1);
     expect(subscriber.ping).toHaveBeenCalledTimes(1);
-    expect(configGet).toHaveBeenCalledWith('REALTIME_REDIS_URL', {
-      infer: true,
-    });
-    expect(configGet).not.toHaveBeenCalledWith('REDIS_URL', expect.anything());
+    expect(configGet).toHaveBeenCalledWith('REALTIME_REDIS_URL');
+    expect(configGet).toHaveBeenCalledWith('REALTIME_REDIS_TLS_CA_PEM');
+    expect(configGet).not.toHaveBeenCalledWith('QUEUE_REDIS_TLS_CA_PEM');
+    expect(configGet).not.toHaveBeenCalledWith('REDIS_URL');
 
     await gateway.onModuleDestroy();
     expect(publisher.quit).toHaveBeenCalledTimes(1);
     expect(subscriber.quit).toHaveBeenCalledTimes(1);
   });
+
+  it.each([undefined, 'malformed-ca'])(
+    'keeps a strict missing or malformed Realtime CA unavailable without constructing clients',
+    async (realtimeCaPem) => {
+      const configGet = jest.fn((key: string) => {
+        if (key === 'NODE_ENV') return 'staging';
+        if (key === 'REALTIME_REDIS_URL') {
+          return 'rediss://realtime-cache.invalid:6379';
+        }
+        if (key === 'REALTIME_REDIS_TLS_CA_PEM') return realtimeCaPem;
+        return undefined;
+      });
+      const internals = gatewayInternals(createGateway(undefined, configGet));
+      const server = {
+        adapter: jest.fn(),
+        disconnectSockets: jest.fn(),
+        sockets: { sockets: new Map() },
+      };
+      internals.server = server;
+
+      await expect(
+        internals.configureRedisAdapter(server),
+      ).resolves.toBe(false);
+      expect(MockedIORedis).not.toHaveBeenCalled();
+      expect(internals.redisPublisher).toBeUndefined();
+      expect(internals.redisSubscriber).toBeUndefined();
+    },
+  );
 });
 
 function createGateway(
   redisUrl?: string,
-  configGet = jest.fn(() => redisUrl),
+  configGet = jest.fn((key: string) =>
+    key === 'REALTIME_REDIS_URL' ? redisUrl : undefined,
+  ),
 ): RealtimeGateway {
   return new RealtimeGateway(
     {} as RealtimeAuthService,
