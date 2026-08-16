@@ -37,7 +37,7 @@ resource "google_cloud_run_v2_job" "migration" {
           value_source {
             secret_key_ref {
               secret  = "moazez-staging-migration-database-url"
-              version = "1"
+              version = "2"
             }
           }
         }
