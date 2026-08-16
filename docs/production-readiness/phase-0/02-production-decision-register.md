@@ -41,7 +41,7 @@ No recommendation is represented as owner approval. Evidence IDs resolve to
 | PRD0-D020 | Secret Manager pinning/rotation | LOCKED_FROM_APPROVED_CONTEXT | D017, D018 | Q020 option A: release-pinned immutable versions, 90-day cadence, seven-day staged overlap |
 | PRD0-D021 | Encryption key separation/key-ID envelope | LOCKED_FROM_APPROVED_CONTEXT | D020 | Q021 option A: v2 separate SMTP/device key families, active/optional-previous decrypt, legacy v1 decrypt-only |
 | PRD0-D022 | Frontend origins and production CORS | LOCKED_FROM_APPROVED_CONTEXT | D002, D009, D017 | approved exact production/staging HTTPS origins and credential/WebSocket/direct-storage requirements through Q022 |
-| PRD0-D023 | Ingress/domain/LB/Cloud Armor | OWNER_DECISION_REQUIRED | D017, D022 | authenticated/private where possible; edge controls by threat model |
+| PRD0-D023 | Ingress/domain/LB/Cloud Armor | OWNER_DECISION_REQUIRED | D017, D022 | staging option A approved for `staging-api.moazez.cloud`; production hostname and edge disposition remain required |
 | PRD0-D024 | Liveness/startup/readiness semantics | LOCKED_FROM_APPROVED_CONTEXT | D005, D013 | approved protected role-specific probes and minimum dependency semantics through Q024 |
 | PRD0-D025 | Logs, metrics, SLOs, alerts | OWNER_DECISION_REQUIRED | D005, D024 | structured/redacted telemetry and service/queue/media SLOs |
 | PRD0-D026 | Migration job and deploy ordering | LOCKED_FROM_APPROVED_CONTEXT | D003, D005, D011, D018 | Q026 option A; same-image governed Migration Job before compatible runtime promotion |
@@ -73,14 +73,15 @@ No recommendation is represented as owner approval. Evidence IDs resolve to
 | PRD0-D052 | Storage bucket/privacy topology | LOCKED_FROM_APPROVED_CONTEXT | D009, D017–D019 | Q047: four private per-project buckets in `me-central2`; UBLA, PAP, exact Q022 CORS, private Learning Media prefixes |
 | PRD0-D053 | GCS versioning/lifecycle/deletion protection | LOCKED_FROM_APPROVED_CONTEXT | D042, D044, D052 | Q048: versioning, seven-day Soft Delete, Terraform `prevent_destroy`, no Bucket Lock or Phase 5A automatic transition/deletion |
 
-Current status totals across all 53 decisions after the 2026-08-14 Q020/Q021
-amendment: 36
+Current status totals across all 53 decisions after the 2026-08-16 Q023
+staging-only amendment: 36
 `LOCKED_FROM_APPROVED_CONTEXT`, 17 `OWNER_DECISION_REQUIRED`, 0
 `PROPOSED_RECOMMENDATION`, 0
 `DEFERRED_WITH_CONSTRAINT`, and 0 `REJECTED`. The Phase 0B closeout snapshot on
 2026-07-27 correctly recorded 14 locked, 38 owner-required, and 1 proposed at
-that time; these current totals are an additive governance amendment, not a
-rewrite of that historical evidence.
+that time. The staging-only approval does not close the production decision,
+so these current totals remain unchanged; this is an additive governance
+amendment, not a rewrite of that historical evidence.
 
 At the 2026-07-27 Phase 0B closeout, the implementation evidence in this
 register described the then-current coupled runtime and pre-Phase-1 baseline.
@@ -562,19 +563,32 @@ validation counts. Phase 4 and Phase 5A are not complete.
 
 ### PRD0-D023 — Select ingress, domain, load balancer, and Cloud Armor
 
-- **Status / evidence:** `OWNER_DECISION_REQUIRED`; no deployment/IaC or threat
-  model choice exists (EVD-059).
-- **Options / recommendation:** direct public Cloud Run; external HTTPS LB with
-  custom domain/managed TLS/Armor; private ingress. Recommend private services
-  where possible and LB/Armor for public API after threat/cost approval.
-- **Reasoning / alternatives:** direct public ingress is simpler but has fewer
-  centralized edge controls; unnecessary LB complexity may be deferred.
-- **Impacts:** preserve API paths/headers/WebSocket upgrades; no schema. Define
-  trusted proxy/request-ID and rate-limit policy.
-- **Operations / rollback:** traffic split and prior backend; DNS TTL/certificate
-  rollback plan.
-- **Phase / approval / reopen:** Phase 7/8; domain, threat model, budget missing.
-  Reopen on client/network requirements.
+- **Status / evidence:** `OWNER_DECISION_REQUIRED` for production. Abdallah
+  approved only the staging sub-disposition at
+  `2026-08-16T19:00:00+03:00` (Africa/Cairo); no deployment or cloud-resource
+  evidence is claimed by that approval.
+- **Approved staging sub-disposition:**
+  `PRD0-Q023-STAGING=APPROVED(scope=STAGING_ONLY,option=A,api_domain=staging-api.moazez.cloud,ingress=internal-and-cloud-load-balancing,cloud_armor=YES,trusted_proxies=GOOGLE_CLOUD_EXTERNAL_APPLICATION_LOAD_BALANCER_ONLY,direct_public_run_app=NO,approver=Abdallah,approved_at=2026-08-16T19:00:00+03:00)`.
+- **Production boundary:**
+  `PRD0-Q023-PRODUCTION=PENDING(owner=Abdallah,deadline=before production Phase 7/8,constraint=Production API hostname and edge disposition remain unapproved; silence authorizes no production implementation or cloud provisioning)`.
+  No production API hostname, ingress mode, load-balancer, Cloud Armor, trusted-
+  proxy, certificate, DNS, or direct-`run.app` policy is selected or implied.
+- **Reasoning / alternatives:** staging selects the external HTTPS load-balancer
+  path, Cloud Armor, internal-and-load-balancing Cloud Run ingress, and trust
+  only for the Google Cloud external Application Load Balancer. Direct public
+  `run.app` access is not the approved staging public path.
+- **Impacts:** preserve API paths, headers, and WebSocket upgrades; no schema.
+  `APP_URL` remains derived from the canonical staging API URL. The application
+  trusted-proxy behavior still requires separate source evidence before Stage
+  18 deployment readiness can be claimed.
+- **Operations / rollback:** this source authority does not create a load
+  balancer, Cloud Armor resource, certificate, DNS record, IAM grant, or cloud
+  deployment. Later staging rollout needs its governed plan, evidence, and
+  rollback controls.
+- **Phase / approval / reopen:** staging source work may use the scoped
+  disposition. D023 remains open for the production Phase 7/8 hostname, threat
+  model, budget, and edge decision. Reopen staging on client/network or threat-
+  model changes.
 
 ### PRD0-D024 — Separate liveness, startup, and readiness
 
@@ -1020,7 +1034,7 @@ does not accept a pending decision.
 | ADR-0012 | Capacity, Backup, RTO/RPO, and Recovery Objectives | owns D016, D028 | reserved; D028 is locked through PRD0-Q007 while D016 autoscaling remains pending; no ADR or implementation evidence is created by this amendment |
 | ADR-0013 | File Security, Retention, and Reference-Aware Lifecycle | owns D036–D048 | accepts D037/Q032, D046/Q041, and D047/Q042; other owned decisions remain pending |
 | ADR-0014 | Learning Media Asynchronous Completion Compatibility | owns D008 | reserved; Q009 remains pending |
-| ADR-0015 | GCP Environment, Workload Identity, Secrets, and Crypto | owns D017–D021, D023 | accepts D017/Q005, D018/Q018, D020/Q020, and D021/Q021; D023/Q023 remains pending |
+| ADR-0015 | GCP Environment, Workload Identity, Secrets, and Crypto | owns D017–D021, D023 | accepts D017/Q005, D018/Q018, D020/Q020, and D021/Q021; accepts only the Q023 staging sub-disposition; D023/Q023 remains pending for production |
 
 Each listed major decision has exactly one owning ADR. Other ADRs may cite the
 owning record but must not redefine it, especially for capacity and
@@ -1034,10 +1048,13 @@ Q013, Q014, Q015, Q017, and Q026. The 2026-08-09 cloud/storage amendment added
 Q005, Q008, Q018, Q019, and Q044–Q048. The 2026-08-11 amendment added Q041
 and Q042. The 2026-08-12 amendment added Q007, and the 2026-08-14 amendment
 added Q020 and Q021, for 33 approved and 15 pending owner-question
-dispositions in the current register.
+dispositions in the current register. The 2026-08-16 amendment adds one
+staging-scoped approval inside pending Q023. It does not change those whole-
+question counts because production remains unresolved.
 
 D009, D010, D017–D021, D028, D046–D047, and D049–D053 are now
-`LOCKED_FROM_APPROVED_CONTEXT`. D023, D041–D045, D048, and every other
-`OWNER_DECISION_REQUIRED` record remain open until exact owner answers, impact
-reconciliation, and owning-ADR acceptance are recorded. Absence of an answer
-does not select a recommendation or authorize implementation.
+`LOCKED_FROM_APPROVED_CONTEXT`. D023 remains open for production; D041–D045,
+D048, and every other `OWNER_DECISION_REQUIRED` record remain open until exact
+owner answers, impact reconciliation, and owning-ADR acceptance are recorded.
+Absence of a production answer does not select a recommendation or authorize
+production implementation.

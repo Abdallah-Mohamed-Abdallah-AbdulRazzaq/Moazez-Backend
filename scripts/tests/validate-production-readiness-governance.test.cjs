@@ -239,7 +239,7 @@ test('D023 cannot be silently accepted', () => {
   );
 });
 
-test('Q023 cannot be silently approved', () => {
+test('Q023 cannot be globally approved while production is pending', () => {
   const documents = q020Q021GovernanceDocuments();
   documents.disposition = documents.disposition.replace(
     '| PRD0-Q023 | PENDING |',
@@ -248,6 +248,70 @@ test('Q023 cannot be silently approved', () => {
   assert.throws(
     () => validateQ020Q021Governance(documents),
     /PRD0-Q023 must remain PENDING/u,
+  );
+});
+
+test('Q023 staging-scoped approved values cannot drift', () => {
+  for (const [original, replacement] of [
+    ['scope=STAGING_ONLY', 'scope=PRODUCTION'],
+    ['api_domain=staging-api.moazez.cloud', 'api_domain=drifted.invalid'],
+    ['ingress=internal-and-cloud-load-balancing', 'ingress=internal-only'],
+    ['cloud_armor=YES', 'cloud_armor=NO'],
+    [
+      'trusted_proxies=GOOGLE_CLOUD_EXTERNAL_APPLICATION_LOAD_BALANCER_ONLY',
+      'trusted_proxies=ALL',
+    ],
+    ['direct_public_run_app=NO', 'direct_public_run_app=YES'],
+    [
+      'approved_at=2026-08-16T19:00:00+03:00',
+      'approved_at=2026-08-16T19:01:00+03:00',
+    ],
+  ]) {
+    const documents = q020Q021GovernanceDocuments();
+    documents.disposition = documents.disposition.replace(
+      original,
+      replacement,
+    );
+    assert.throws(
+      () => validateQ020Q021Governance(documents),
+      /PRD0-Q023 must preserve the exact staging-approved and production-pending scoped disposition/u,
+    );
+  }
+});
+
+test('Q023 production sub-disposition cannot be silently approved', () => {
+  const documents = q020Q021GovernanceDocuments();
+  documents.matrix = documents.matrix.replace(
+    'Q023_PRODUCTION_STATUS=PENDING',
+    'Q023_PRODUCTION_STATUS=APPROVED',
+  );
+  assert.throws(
+    () => validateQ020Q021Governance(documents),
+    /Q023_PRODUCTION_STATUS=PENDING|Q023_PRODUCTION_STATUS=APPROVED/u,
+  );
+});
+
+test('Q023 production API domain must remain unapproved', () => {
+  const documents = q020Q021GovernanceDocuments();
+  documents.matrix = documents.matrix.replace(
+    'Q023_PRODUCTION_API_DOMAIN=UNAPPROVED',
+    'Q023_PRODUCTION_API_DOMAIN=UNAUTHORIZED_VALUE',
+  );
+  assert.throws(
+    () => validateQ020Q021Governance(documents),
+    /Q023_PRODUCTION_API_DOMAIN=UNAPPROVED/u,
+  );
+});
+
+test('ADR-0015 must preserve the staging-only Q023 scope', () => {
+  const documents = q020Q021GovernanceDocuments();
+  documents.adr0015 = documents.adr0015.replace(
+    'scope=STAGING_ONLY',
+    'scope=PRODUCTION',
+  );
+  assert.throws(
+    () => validateQ020Q021Governance(documents),
+    /ADR-0015 is missing: PRD0-Q023-STAGING=APPROVED/u,
   );
 });
 

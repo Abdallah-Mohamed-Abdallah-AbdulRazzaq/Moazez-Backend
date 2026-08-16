@@ -110,14 +110,18 @@ release execution mechanism.
 
 ## Ingress and probes
 
-Stage 13 keeps the API at `INGRESS_TRAFFIC_INTERNAL_ONLY` and creates no
-public invoker IAM. Management probes use port 9090 while the API serves on
-port 3000. Worker pools use provider-supported startup and liveness probes;
-the committed Google 7.44.0 worker-pool schema does not expose a readiness
-probe field, so application-level worker readiness remains internal.
+Stage 17B sets the API to `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER` and sets
+`https://staging-api.moazez.cloud` as the canonical staging API origin used by
+the API and Core Worker `APP_URL` values. The provider-assigned `run.app` URI
+remains the underlying Cloud Run service URI and is still exposed by the
+`api_service_uri` output; direct public access through that hostname is not the
+approved staging ingress path.
 
-Stage 17 owns the future load balancer, hostname, public ingress, and related
-edge controls. Stage 13B authorizes none of those resources.
+This root still creates no public invoker IAM, load balancer, Cloud Armor,
+certificate, or DNS resource. Management probes use port 9090 while the API
+serves on port 3000. Worker pools use provider-supported startup and liveness
+probes; the committed Google 7.44.0 worker-pool schema does not expose a
+readiness probe field, so application-level worker readiness remains internal.
 
 ## Source-preparation record
 

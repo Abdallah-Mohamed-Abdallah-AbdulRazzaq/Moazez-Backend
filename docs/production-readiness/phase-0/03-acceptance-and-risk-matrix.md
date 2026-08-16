@@ -37,6 +37,36 @@ governance and Prisma validate/generate when applicable; build;
 that phase's blast radius. Phase 8 additionally runs the full
 production-shaped release-candidate gate.
 
+### 2026-08-16 Q023 staging-only edge amendment
+
+Abdallah approved PRD0-Q023 option A for staging only at
+`2026-08-16T19:00:00+03:00` in Africa/Cairo. The canonical staging API domain
+is `staging-api.moazez.cloud`; the approved staging ingress is internal and
+Cloud Load Balancing, Cloud Armor is required, only the Google Cloud external
+Application Load Balancer is trusted as a proxy, and direct public `run.app`
+access is not the approved staging public path.
+
+This does not approve or infer a production API hostname or production edge
+disposition. Q023 remains pending overall, D023 remains
+`OWNER_DECISION_REQUIRED`, and no production-readiness gate becomes complete.
+The approval is source authority only and does not prove or authorize a load
+balancer, Cloud Armor resource, certificate, DNS record, IAM grant, runtime
+deployment, or cloud mutation.
+
+```text
+Q023_STAGING_STATUS=APPROVED
+Q023_STAGING_SCOPE=STAGING_ONLY
+Q023_STAGING_OPTION=A
+Q023_STAGING_API_DOMAIN=staging-api.moazez.cloud
+Q023_STAGING_INGRESS=internal-and-cloud-load-balancing
+Q023_STAGING_CLOUD_ARMOR=YES
+Q023_STAGING_TRUSTED_PROXIES=GOOGLE_CLOUD_EXTERNAL_APPLICATION_LOAD_BALANCER_ONLY
+Q023_STAGING_DIRECT_PUBLIC_RUN_APP=NO
+Q023_PRODUCTION_STATUS=PENDING
+Q023_PRODUCTION_API_DOMAIN=UNAPPROVED
+Q023_PRODUCTION_EDGE_DISPOSITION=PENDING
+```
+
 ### 2026-08-14 Q020/Q021 crypto-policy amendment
 
 Abdallah approved PRD0-Q020 option A and PRD0-Q021 option A at

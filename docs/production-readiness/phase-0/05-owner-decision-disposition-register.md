@@ -34,7 +34,10 @@ operational recovery evidence. On 2026-08-14, Abdallah approved PRD0-Q020
 option A and PRD0-Q021 option A at `2026-08-14T06:37:00+03:00`
 (Africa/Cairo) in the security, operations, and release capacities. These
 approvals authorize the repository architecture and implementation contract;
-they do not prove cloud provisioning or deployment.
+they do not prove cloud provisioning or deployment. On 2026-08-16, Abdallah
+approved only the staging sub-disposition of PRD0-Q023 at
+`2026-08-16T19:00:00+03:00` (Africa/Cairo). This staging-only approval does
+not select or imply a production API hostname or production edge disposition.
 
 ## Authority statement
 
@@ -63,10 +66,14 @@ and no cross-region DR authorization. The exact approval time was not recorded.
 On 2026-08-14 Abdallah approved Q020 option A for release-pinned immutable
 Secret Manager versions with a 90-day cadence and seven-day overlap, and Q021
 option A for v2 separate `smtp-secret` and `app-device-token` key families.
-Every question not named in the current approved set below remains pending.
-A pending disposition does not select its recommended default, cannot unblock
-its dependent phase, and authorizes no implementation or cloud provisioning
-through silence.
+On 2026-08-16 Abdallah approved Q023 option A for staging only, with the exact
+domain, ingress, Cloud Armor, trusted-proxy, and direct-public-`run.app`
+constraints recorded below. Q023 remains pending as a whole because its
+production hostname and edge disposition are not approved. Every question not
+named in the current fully approved set below remains pending. A pending
+disposition does not select its recommended default, cannot unblock its
+production-dependent phase, and authorizes no implementation or cloud
+provisioning through silence.
 
 ## Post-merge closeout note
 
@@ -78,6 +85,8 @@ the two 2026-08-11 storage-policy approvals reduce the current pending set to
 set to 17 without changing the PR #46 evidence.
 The two 2026-08-14 crypto-policy approvals reduce the current pending set to
 15 without rewriting any historical closeout count.
+The 2026-08-16 Q023 staging-only approval does not change these whole-question
+totals: Q023 remains pending overall while production remains unresolved.
 Silence selects no recommendation.
 Authoritative Phase 0B post-merge evidence remains in
 `07-phase-0b-post-merge-closeout.md`.
@@ -85,6 +94,10 @@ Authoritative Phase 0B post-merge evidence remains in
 ## All-question disposition register
 
 Each row is the sole disposition entry for that question.
+An environment-scoped approval is recorded inside that question's answer cell.
+The row remains `PENDING`, and remains counted as pending, while any required
+production disposition is unresolved. This avoids inventing a third global
+status or treating staging approval as production approval.
 
 | Question | Status | Approved answer or pending disposition |
 | --- | --- | --- |
@@ -110,7 +123,7 @@ Each row is the sole disposition entry for that question.
 | PRD0-Q020 | APPROVED | `PRD0-Q020: option=A; cadence=90d; overlap=7d; emergency_owner=Abdallah; release_owner=Abdallah` |
 | PRD0-Q021 | APPROVED | `PRD0-Q021: option=A; envelope_version=v2; key_families=smtp-secret,app-device-token; rotation_cadence=90d; security_approver=Abdallah` |
 | PRD0-Q022 | APPROVED | `PRD0-Q022: prod_origins=https://schools.moazez.cloud,https://admin.moazez.cloud; staging_origins=https://staging-schools.moazez.cloud,https://staging-admin.moazez.cloud; credentials=YES; websocket=YES; storage_direct=YES; approver=Abdallah` |
-| PRD0-Q023 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 7/8,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
+| PRD0-Q023 | PENDING | `PRD0-Q023-STAGING=APPROVED(scope=STAGING_ONLY,option=A,api_domain=staging-api.moazez.cloud,ingress=internal-and-cloud-load-balancing,cloud_armor=YES,trusted_proxies=GOOGLE_CLOUD_EXTERNAL_APPLICATION_LOAD_BALANCER_ONLY,direct_public_run_app=NO,approver=Abdallah,approved_at=2026-08-16T19:00:00+03:00); PRD0-Q023-PRODUCTION=PENDING(owner=Abdallah,deadline=before production Phase 7/8,constraint=Production API hostname and edge disposition remain unapproved; silence authorizes no production implementation or cloud provisioning)` |
 | PRD0-Q024 | APPROVED | `PRD0-Q024: option=A; api_required=validated configuration, HTTP startup, Prisma, queue-producer Redis, object storage for enabled file contracts, and realtime Redis when realtime is enabled; core_required=validated configuration, Prisma, queue Redis, and all assigned consumers; media_required=validated configuration, Prisma, queue Redis, object storage, temporary-disk capability, and verified ffprobe runtime; public_health=minimal status, version, and timestamp only, with protected role-specific startup, liveness, and readiness endpoints; approver=Abdallah` |
 | PRD0-Q025 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 7,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
 | PRD0-Q026 | APPROVED | `PRD0-Q026: option=A; approver=Abdallah; migration_approver=Abdallah; rollback_authority=Abdallah; approval_timestamp=2026-08-07T00:22:00+03:00` |
@@ -158,7 +171,9 @@ Q003, Q004, Q006, Q012, Q013, Q014, Q015, Q017, and Q026, and the 2026-08-09
 amendment added Q005, Q008, Q018, Q019, and Q044–Q048. The 2026-08-11
 amendment added Q041 and Q042. The 2026-08-12 amendment added Q007. The
 2026-08-14 amendment added Q020 and Q021. All other PRD0-Q001 through
-PRD0-Q048 entries are explicitly pending as shown.
+PRD0-Q048 entries are explicitly pending as shown. The 2026-08-16 amendment
+adds one staging-scoped approval inside pending Q023; it does not add Q023 to
+the fully approved ID set or change the 33/15 whole-question totals.
 
 ## Scope and non-authorization
 
@@ -174,3 +189,7 @@ backups, PITR, restore drills, RTO, RPO, failover, or production launch.
 Q020/Q021 approve repository architecture and contracts only; they do not
 prove Secret Manager resources or versions, IAM access, rotation rehearsal,
 runtime deployment, Phase 4 completion, or production traffic authorization.
+Q023 approves the staging edge source contract only. It does not approve a
+production hostname or edge contract and does not prove or authorize a load
+balancer, Cloud Armor resource, certificate, DNS record, IAM grant, runtime
+deployment, public `run.app` access, or production traffic.
