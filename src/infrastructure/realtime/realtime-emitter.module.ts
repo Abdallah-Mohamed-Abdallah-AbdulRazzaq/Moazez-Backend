@@ -1,6 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import IORedis from 'ioredis';
+import {
+  createRedisClientOptions,
+  resolveRedisConnectionConfiguration,
+  type RedisConnectionConfiguration,
+} from '../../config/redis-connection.options';
 import { RealtimePublisherService } from './realtime-publisher.service';
 import {
   REALTIME_EMITTER_REDIS_CLIENT,
@@ -11,21 +16,26 @@ const REALTIME_EMITTER_CONNECT_TIMEOUT_MS = 400;
 const REALTIME_EMITTER_COMMAND_TIMEOUT_MS = 400;
 const REALTIME_EMITTER_RECONNECT_DELAY_MAX_MS = 1000;
 
-export function createRealtimeEmitterRedisClient(redisUrl: string): IORedis {
-  return new IORedis(redisUrl, {
-    lazyConnect: true,
-    enableOfflineQueue: false,
-    autoResendUnfulfilledCommands: false,
-    maxRetriesPerRequest: 0,
-    connectTimeout: REALTIME_EMITTER_CONNECT_TIMEOUT_MS,
-    commandTimeout: REALTIME_EMITTER_COMMAND_TIMEOUT_MS,
-    connectionName: 'moazez-realtime-emitter',
-    retryStrategy: (attempt) =>
-      Math.min(
-        50 * 2 ** Math.min(attempt - 1, 5),
-        REALTIME_EMITTER_RECONNECT_DELAY_MAX_MS,
-      ),
-  });
+export function createRealtimeEmitterRedisClient(
+  connection: RedisConnectionConfiguration,
+): IORedis {
+  return new IORedis(
+    connection.url,
+    createRedisClientOptions(connection, {
+      lazyConnect: true,
+      enableOfflineQueue: false,
+      autoResendUnfulfilledCommands: false,
+      maxRetriesPerRequest: 0,
+      connectTimeout: REALTIME_EMITTER_CONNECT_TIMEOUT_MS,
+      commandTimeout: REALTIME_EMITTER_COMMAND_TIMEOUT_MS,
+      connectionName: 'moazez-realtime-emitter',
+      retryStrategy: (attempt) =>
+        Math.min(
+          50 * 2 ** Math.min(attempt - 1, 5),
+          REALTIME_EMITTER_RECONNECT_DELAY_MAX_MS,
+        ),
+    }),
+  );
 }
 
 @Module({
@@ -35,7 +45,9 @@ export function createRealtimeEmitterRedisClient(redisUrl: string): IORedis {
       inject: [ConfigService],
       useFactory: (config: ConfigService): IORedis =>
         createRealtimeEmitterRedisClient(
-          config.getOrThrow<string>('REALTIME_REDIS_URL'),
+          resolveRedisConnectionConfiguration(config, 'realtime', {
+            required: true,
+          }),
         ),
     },
     RedisRealtimePublisherService,

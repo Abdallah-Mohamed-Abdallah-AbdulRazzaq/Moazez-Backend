@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { rootCertificates } from 'node:tls';
 import { ConfigService } from '@nestjs/config';
 import { MediaRuntimeStartupGuard } from '../application/media-runtime-startup.guard';
 import { validateEnv } from '../../../../config/env.validation';
@@ -118,8 +119,10 @@ describe('learning media upload foundation contract', () => {
       APP_URL: 'https://api.example.test',
       DATABASE_URL:
         'postgresql://test:test@127.0.0.1:5432/test?sslmode=require',
-      QUEUE_REDIS_URL: 'redis://127.0.0.1:6379',
-      REALTIME_REDIS_URL: 'redis://127.0.0.1:6380',
+      QUEUE_REDIS_URL: 'rediss://queue-cache.invalid:6379',
+      QUEUE_REDIS_TLS_CA_PEM: rootCertificates[0],
+      REALTIME_REDIS_URL: 'rediss://realtime-cache.invalid:6379',
+      REALTIME_REDIS_TLS_CA_PEM: rootCertificates[1],
       JWT_ACCESS_SECRET: 'access-secret-at-least-sixteen',
       JWT_REFRESH_SECRET: 'refresh-secret-at-least-sixteen',
       JWT_ACCESS_TTL: '15m',

@@ -2,7 +2,11 @@ import {
   APPROVED_PRODUCTION_APPLICATION_ORIGINS,
   APPROVED_STAGING_APPLICATION_ORIGINS,
 } from '../bootstrap/application-cors.policy';
+import { rootCertificates } from 'node:tls';
 import { validateEnv } from './env.validation';
+
+const QUEUE_CA_PEM = rootCertificates[0];
+const REALTIME_CA_PEM = rootCertificates[1];
 
 describe('bootstrap environment validation', () => {
   it('applies exact API database defaults', () => {
@@ -129,19 +133,26 @@ describe('bootstrap environment validation', () => {
     ).toThrow(/QUEUE_REDIS_URL.*REALTIME_REDIS_URL/su);
   });
 
-  it('accepts the same disposable Redis endpoint in development and test', () => {
-    expect(
-      validateEnv(
-        baseEnv({
-          QUEUE_REDIS_URL: 'redis://127.0.0.1:6379/0',
-          REALTIME_REDIS_URL: 'redis://127.0.0.1:6379/1',
-        }),
-      ),
-    ).toMatchObject({
-      QUEUE_REDIS_URL: 'redis://127.0.0.1:6379/0',
-      REALTIME_REDIS_URL: 'redis://127.0.0.1:6379/1',
-    });
-  });
+  it.each(['development', 'test'] as const)(
+    'accepts the same plaintext endpoint without custom CAs in %s',
+    (nodeEnvironment) => {
+      expect(
+        validateEnv(
+          baseEnv({
+            NODE_ENV: nodeEnvironment,
+            QUEUE_REDIS_URL: 'redis://127.0.0.1:6379/0',
+            QUEUE_REDIS_TLS_CA_PEM: undefined,
+            REALTIME_REDIS_URL: 'redis://127.0.0.1:6379/1',
+            REALTIME_REDIS_TLS_CA_PEM: undefined,
+          }),
+        ),
+      ).toMatchObject({
+        NODE_ENV: nodeEnvironment,
+        QUEUE_REDIS_URL: 'redis://127.0.0.1:6379/0',
+        REALTIME_REDIS_URL: 'redis://127.0.0.1:6379/1',
+      });
+    },
+  );
 
   it.each([
     {
@@ -151,7 +162,7 @@ describe('bootstrap environment validation', () => {
     },
     {
       QUEUE_REDIS_URL: 'redis://cache.invalid/0',
-      REALTIME_REDIS_URL: 'rediss://cache.invalid:6379/15?tls=true',
+      REALTIME_REDIS_URL: 'rediss://cache.invalid:6379/15?family=4',
     },
   ])(
     'rejects logical-database or credential-only Redis separation in production',
@@ -165,8 +176,86 @@ describe('bootstrap environment validation', () => {
   it('accepts distinct Queue and Realtime Redis endpoints in staging and production', () => {
     expect(validateEnv(productionEnv())).toMatchObject({
       QUEUE_REDIS_URL: 'rediss://queue-cache.invalid:6379/0',
+      QUEUE_REDIS_TLS_CA_PEM: QUEUE_CA_PEM,
       REALTIME_REDIS_URL: 'rediss://realtime-cache.invalid:6379/0',
+      REALTIME_REDIS_TLS_CA_PEM: REALTIME_CA_PEM,
     });
+  });
+
+  it.each(['staging', 'production'] as const)(
+    'accepts valid matching Redis CAs in %s',
+    (nodeEnvironment) => {
+      expect(validateEnv(strictApiEnvironment(nodeEnvironment))).toMatchObject({
+        NODE_ENV: nodeEnvironment,
+        QUEUE_REDIS_TLS_CA_PEM: QUEUE_CA_PEM,
+        REALTIME_REDIS_TLS_CA_PEM: REALTIME_CA_PEM,
+      });
+    },
+  );
+
+  it.each(['staging', 'production'] as const)(
+    'rejects a missing or empty matching Redis CA in %s',
+    (nodeEnvironment) => {
+      for (const value of [undefined, '']) {
+        expect(() =>
+          validateEnv(
+            strictApiEnvironment(nodeEnvironment, {
+              QUEUE_REDIS_TLS_CA_PEM: value,
+            }),
+          ),
+        ).toThrow(/QUEUE_REDIS_TLS_CA_PEM/u);
+      }
+    },
+  );
+
+  it.each(['staging', 'production'] as const)(
+    'rejects plaintext Queue or Realtime Redis in %s',
+    (nodeEnvironment) => {
+      expect(() =>
+        validateEnv(
+          strictApiEnvironment(nodeEnvironment, {
+            QUEUE_REDIS_URL: 'redis://queue-cache.invalid:6379',
+          }),
+        ),
+      ).toThrow(/QUEUE_REDIS_URL.*rediss:/u);
+      expect(() =>
+        validateEnv(
+          strictApiEnvironment(nodeEnvironment, {
+            REALTIME_REDIS_URL: 'redis://realtime-cache.invalid:6379',
+          }),
+        ),
+      ).toThrow(/REALTIME_REDIS_URL.*rediss:/u);
+    },
+  );
+
+  it('rejects malformed matching CA material and accepts CA rotation bundles', () => {
+    expect(() =>
+      validateEnv(
+        strictApiEnvironment('production', {
+          REALTIME_REDIS_TLS_CA_PEM:
+            '-----BEGIN CERTIFICATE-----\ninvalid\n-----END CERTIFICATE-----',
+        }),
+      ),
+    ).toThrow(/REALTIME_REDIS_TLS_CA_PEM/u);
+
+    const queueBundle = `${QUEUE_CA_PEM}\n${REALTIME_CA_PEM}`;
+    expect(
+      validateEnv(
+        strictApiEnvironment('staging', {
+          QUEUE_REDIS_TLS_CA_PEM: queueBundle,
+        }),
+      ).QUEUE_REDIS_TLS_CA_PEM,
+    ).toBe(queueBundle);
+  });
+
+  it('does not substitute one Redis family CA for the other', () => {
+    const environment = validateEnv(strictApiEnvironment('production'));
+
+    expect(environment.QUEUE_REDIS_TLS_CA_PEM).toBe(QUEUE_CA_PEM);
+    expect(environment.REALTIME_REDIS_TLS_CA_PEM).toBe(REALTIME_CA_PEM);
+    expect(environment.QUEUE_REDIS_TLS_CA_PEM).not.toBe(
+      environment.REALTIME_REDIS_TLS_CA_PEM,
+    );
   });
 
   it('redacts Redis endpoint components from separation errors', () => {
@@ -548,7 +637,9 @@ function productionEnv(
     DATABASE_URL:
       'postgresql://runtime-user:runtime-value@database.internal/moazez?sslmode=require',
     QUEUE_REDIS_URL: 'rediss://queue-cache.invalid:6379/0',
+    QUEUE_REDIS_TLS_CA_PEM: QUEUE_CA_PEM,
     REALTIME_REDIS_URL: 'rediss://realtime-cache.invalid:6379/0',
+    REALTIME_REDIS_TLS_CA_PEM: REALTIME_CA_PEM,
     SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY_ID: 'email-active-v2',
     SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY: `hex:${'11'.repeat(32)}`,
     APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY_ID: 'device-active-v2',
@@ -564,7 +655,9 @@ function baseEnv(
     APP_URL: 'http://localhost:3000',
     DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/moazez',
     QUEUE_REDIS_URL: 'redis://localhost:6379',
+    QUEUE_REDIS_TLS_CA_PEM: QUEUE_CA_PEM,
     REALTIME_REDIS_URL: 'redis://localhost:6379',
+    REALTIME_REDIS_TLS_CA_PEM: REALTIME_CA_PEM,
     JWT_ACCESS_SECRET: 'access-secret-for-tests',
     JWT_REFRESH_SECRET: 'refresh-secret-for-tests',
     JWT_ACCESS_TTL: '15m',
@@ -579,4 +672,18 @@ function baseEnv(
   return Object.fromEntries(
     Object.entries(values).filter(([, value]) => value !== undefined),
   ) as Record<string, string>;
+}
+
+function strictApiEnvironment(
+  nodeEnvironment: 'staging' | 'production',
+  overrides: Record<string, string | undefined> = {},
+): Record<string, string> {
+  return productionEnv({
+    NODE_ENV: nodeEnvironment,
+    APP_CORS_ORIGINS:
+      nodeEnvironment === 'staging'
+        ? APPROVED_STAGING_APPLICATION_ORIGINS.join(',')
+        : APPROVED_PRODUCTION_APPLICATION_ORIGINS.join(','),
+    ...overrides,
+  });
 }

@@ -25,6 +25,11 @@ import {
   setActor,
 } from '../../common/context/request-context';
 import type { Env } from '../../config/env.validation';
+import {
+  createRedisClientOptions,
+  resolveRedisConnectionConfiguration,
+  type RedisConnectionConfiguration,
+} from '../../config/redis-connection.options';
 import { RealtimeAuthService } from './realtime-auth.service';
 import { RealtimeCommunicationAccessService } from './realtime-communication-access.service';
 import { REALTIME_NAMESPACE } from './realtime-contract';
@@ -425,10 +430,20 @@ export class RealtimeGateway
   private async configureRedisAdapter(
     server: Server | Namespace,
   ): Promise<boolean> {
-    const redisUrl = this.configService.get('REALTIME_REDIS_URL', {
-      infer: true,
-    });
-    if (!redisUrl) {
+    let redisConnection: RedisConnectionConfiguration | null;
+    try {
+      redisConnection = resolveRedisConnectionConfiguration(
+        this.configService,
+        'realtime',
+      );
+    } catch {
+      this.logger.warn({
+        event: 'realtime.redis_adapter.unavailable',
+        stage: 'configuration',
+      });
+      return false;
+    }
+    if (!redisConnection) {
       this.logger.warn({
         event: 'realtime.redis_adapter.unavailable',
         stage: 'configuration',
@@ -441,24 +456,29 @@ export class RealtimeGateway
 
     const previousPublisher = this.redisPublisher;
     const previousSubscriber = this.redisSubscriber;
-    const publisher = new IORedis(redisUrl, {
-      lazyConnect: true,
-      maxRetriesPerRequest: 0,
-      enableOfflineQueue: false,
-      autoResendUnfulfilledCommands: false,
-      connectTimeout: REDIS_ADAPTER_CONNECT_TIMEOUT_MS,
-      commandTimeout: REDIS_ADAPTER_COMMAND_TIMEOUT_MS,
-      retryStrategy: () => null,
-    });
-    const subscriber = publisher.duplicate({
-      lazyConnect: true,
-      maxRetriesPerRequest: 0,
-      enableOfflineQueue: false,
-      autoResendUnfulfilledCommands: false,
-      connectTimeout: REDIS_ADAPTER_CONNECT_TIMEOUT_MS,
-      commandTimeout: REDIS_ADAPTER_COMMAND_TIMEOUT_MS,
-      retryStrategy: () => null,
-    });
+    const publisher = new IORedis(
+      redisConnection.url,
+      createRedisClientOptions(redisConnection, {
+        lazyConnect: true,
+        maxRetriesPerRequest: 0,
+        enableOfflineQueue: false,
+        autoResendUnfulfilledCommands: false,
+        connectTimeout: REDIS_ADAPTER_CONNECT_TIMEOUT_MS,
+        commandTimeout: REDIS_ADAPTER_COMMAND_TIMEOUT_MS,
+        retryStrategy: () => null,
+      }),
+    );
+    const subscriber = publisher.duplicate(
+      createRedisClientOptions(redisConnection, {
+        lazyConnect: true,
+        maxRetriesPerRequest: 0,
+        enableOfflineQueue: false,
+        autoResendUnfulfilledCommands: false,
+        connectTimeout: REDIS_ADAPTER_CONNECT_TIMEOUT_MS,
+        commandTimeout: REDIS_ADAPTER_COMMAND_TIMEOUT_MS,
+        retryStrategy: () => null,
+      }),
+    );
 
     let warningLogged = false;
     const logRedisError = (): void => {

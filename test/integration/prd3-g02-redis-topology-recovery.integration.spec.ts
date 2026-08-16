@@ -8,6 +8,7 @@ import { Server } from 'socket.io';
 import WebSocket from 'ws';
 import { ApplicationLifecycleState } from '../../src/bootstrap/application-lifecycle.state';
 import type { Env } from '../../src/config/env.validation';
+import { createRedisConnectionConfiguration } from '../../src/config/redis-connection.options';
 import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
 import type { RealtimeAuthService } from '../../src/infrastructure/realtime/realtime-auth.service';
 import type { RealtimeCommunicationAccessService } from '../../src/infrastructure/realtime/realtime-communication-access.service';
@@ -852,10 +853,19 @@ async function createProductionShapedTopology(
       QUEUE_REDIS_URL: queueRedisUrl,
       ...(runtimeRole ? { DATABASE_RUNTIME_ROLE: runtimeRole } : {}),
     });
+  // The disposable Redis fixture is intentionally plaintext. Transport runs
+  // under NODE_ENV=test while the state-store fallback policy is forced to the
+  // strict production value below, so this proof cannot normalize plaintext
+  // Redis as valid staging/production configuration.
   const realtimeConfig = new ConfigService<Env, true>({
-    NODE_ENV: 'production',
+    NODE_ENV: 'test',
     REALTIME_REDIS_URL: realtimeRedisUrl,
   } as Env);
+  const realtimeTestConnection = createRedisConnectionConfiguration({
+    family: 'realtime',
+    nodeEnvironment: 'test',
+    url: realtimeRedisUrl,
+  });
   const apiBullmq = Array.from(
     { length: 4 },
     () => new BullmqService(queueConfig('api')),
@@ -891,7 +901,10 @@ async function createProductionShapedTopology(
 
   const stateStores = Array.from(
     { length: 4 },
-    () => new RealtimeStateStoreService(realtimeConfig),
+    () =>
+      enforceStrictRealtimeFallbackPolicy(
+        new RealtimeStateStoreService(realtimeConfig),
+      ),
   );
   const apiServers = Array.from({ length: 4 }, () => createServer());
   const socketServers = apiServers.map(
@@ -928,7 +941,7 @@ async function createProductionShapedTopology(
       ),
   );
   const emitterClients = Array.from({ length: 2 }, () =>
-    createRealtimeEmitterRedisClient(realtimeRedisUrl),
+    createRealtimeEmitterRedisClient(realtimeTestConnection),
   );
   const emitters = emitterClients.map(
     (client) => new RedisRealtimePublisherService(client),
@@ -1022,6 +1035,17 @@ async function createProductionShapedTopology(
       return shutdownPromise;
     },
   };
+}
+
+function enforceStrictRealtimeFallbackPolicy(
+  store: RealtimeStateStoreService,
+): RealtimeStateStoreService {
+  (
+    store as unknown as {
+      allowLocalFallback: boolean;
+    }
+  ).allowLocalFallback = false;
+  return store;
 }
 
 function authenticatedContext() {
