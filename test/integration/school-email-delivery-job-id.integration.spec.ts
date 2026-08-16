@@ -32,11 +32,11 @@ describeRedisIntegration('School email delivery custom BullMQ job ID', () => {
     }
 
     const configService = {
-      getOrThrow: jest.fn((key: string) => {
-        if (key !== 'QUEUE_REDIS_URL') {
-          throw new Error(`Unexpected configuration key: ${key}`);
-        }
-        return dedicatedRedisUrl;
+      get: jest.fn((key: string) => {
+        if (key === 'NODE_ENV') return 'test';
+        if (key === 'QUEUE_REDIS_URL') return dedicatedRedisUrl;
+        if (key === 'QUEUE_REDIS_TLS_CA_PEM') return undefined;
+        throw new Error(`Unexpected configuration key: ${key}`);
       }),
     } as unknown as ConfigService;
 

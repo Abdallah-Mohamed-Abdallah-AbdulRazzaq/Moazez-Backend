@@ -117,7 +117,12 @@ describeEvidence('PRD3-G03 production-model recovery evidence', () => {
       datasources: { db: { url: databaseUrl } },
     });
     const queue = new BullmqService({
-      getOrThrow: jest.fn(() => queueUrl),
+      get: jest.fn((key: string) => {
+        if (key === 'NODE_ENV') return 'test';
+        if (key === 'QUEUE_REDIS_URL') return queueUrl;
+        if (key === 'QUEUE_REDIS_TLS_CA_PEM') return undefined;
+        return undefined;
+      }),
     } as unknown as ConfigService);
     const storageConfig = new ConfigService({
       STORAGE_ENDPOINT: `http://127.0.0.1:${storagePort}`,
