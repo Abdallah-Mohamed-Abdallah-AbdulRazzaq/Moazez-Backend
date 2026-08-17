@@ -12,7 +12,7 @@ locals {
   core_worker_service_account     = "moazez-core-worker@moazez-nonprod-91001421934.iam.gserviceaccount.com"
   media_worker_service_account    = "moazez-media-worker@moazez-nonprod-91001421934.iam.gserviceaccount.com"
   maintenance_service_account     = "moazez-maintenance-scheduler@moazez-nonprod-91001421934.iam.gserviceaccount.com"
-  api_url                         = "https://moazez-staging-api-375161231141.me-central2.run.app"
+  api_url                         = "https://staging-api.moazez.cloud"
   staging_cors_origins            = "https://staging-schools.moazez.cloud,https://staging-admin.moazez.cloud"
   queue_redis_url                 = format("rediss://%s:%d", var.queue_redis_host, var.queue_redis_port)
   realtime_redis_url              = format("rediss://%s:%d", var.realtime_redis_host, var.realtime_redis_port)
@@ -135,7 +135,7 @@ resource "google_cloud_run_v2_service" "api" {
   project             = local.project_id
   location            = local.region
   name                = local.api_service_name
-  ingress             = "INGRESS_TRAFFIC_INTERNAL_ONLY"
+  ingress             = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
   deletion_protection = true
 
   scaling {

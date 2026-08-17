@@ -58,6 +58,11 @@ const Q020_APPROVED_ANSWER =
   'PRD0-Q020: option=A; cadence=90d; overlap=7d; emergency_owner=Abdallah; release_owner=Abdallah';
 const Q021_APPROVED_ANSWER =
   'PRD0-Q021: option=A; envelope_version=v2; key_families=smtp-secret,app-device-token; rotation_cadence=90d; security_approver=Abdallah';
+const Q023_STAGING_APPROVED_DISPOSITION =
+  'PRD0-Q023-STAGING=APPROVED(scope=STAGING_ONLY,option=A,api_domain=staging-api.moazez.cloud,ingress=internal-and-cloud-load-balancing,cloud_armor=YES,trusted_proxies=GOOGLE_CLOUD_EXTERNAL_APPLICATION_LOAD_BALANCER_ONLY,direct_public_run_app=NO,approver=Abdallah,approved_at=2026-08-16T19:00:00+03:00)';
+const Q023_PRODUCTION_PENDING_DISPOSITION =
+  'PRD0-Q023-PRODUCTION=PENDING(owner=Abdallah,deadline=before production Phase 7/8,constraint=Production API hostname and edge disposition remain unapproved; silence authorizes no production implementation or cloud provisioning)';
+const Q023_SCOPED_DISPOSITION = `${Q023_STAGING_APPROVED_DISPOSITION}; ${Q023_PRODUCTION_PENDING_DISPOSITION}`;
 const STORAGE_RELEASE_DECISION_PATH =
   'docs/production-readiness/phase-5a/03-storage-cutover-release-decision.md';
 const PHASE_3_GATE_IDS = Object.freeze([
@@ -274,10 +279,7 @@ function validateQ007Governance(documents) {
     checkCount += 1;
     if (!text.includes(token)) problems.push(`${name} is missing: ${token}`);
   };
-  const dispositionRows = parseGovernanceRows(
-    documents.disposition,
-    'PRD0-Q',
-  );
+  const dispositionRows = parseGovernanceRows(documents.disposition, 'PRD0-Q');
   const q007 = dispositionRows.find(([id]) => id === 'PRD0-Q007');
   const approvedCount = dispositionRows.filter(
     ([, status]) => status === 'APPROVED',
@@ -419,7 +421,9 @@ function validateQ007Governance(documents) {
     'PRODUCTION_LAUNCH_AUTHORIZED=YES',
   ]) {
     if (combined.includes(forbidden)) {
-      problems.push(`Q007 governance must not claim or authorize: ${forbidden}`);
+      problems.push(
+        `Q007 governance must not claim or authorize: ${forbidden}`,
+      );
     }
   }
 
@@ -445,10 +449,7 @@ function validateQ020Q021Governance(documents) {
     if (!text.includes(token)) problems.push(`${name} is missing: ${token}`);
   };
 
-  const dispositionRows = parseGovernanceRows(
-    documents.disposition,
-    'PRD0-Q',
-  );
+  const dispositionRows = parseGovernanceRows(documents.disposition, 'PRD0-Q');
   const questionById = new Map(dispositionRows.map((row) => [row[0], row]));
   const approvedCount = dispositionRows.filter(
     ([, status]) => status === 'APPROVED',
@@ -470,13 +471,28 @@ function validateQ020Q021Governance(documents) {
     if (row?.[2] !== `\`${approvedAnswer}\``) {
       problems.push(`${questionId} must preserve the exact approved answer`);
     }
-    requireToken('Owner questionnaire', documents.questionnaire, approvedAnswer);
+    requireToken(
+      'Owner questionnaire',
+      documents.questionnaire,
+      approvedAnswer,
+    );
   }
 
-  checkCount += 2;
-  if (questionById.get('PRD0-Q023')?.[1] !== 'PENDING') {
+  const q023 = questionById.get('PRD0-Q023');
+  checkCount += 3;
+  if (q023?.[1] !== 'PENDING') {
     problems.push('PRD0-Q023 must remain PENDING');
   }
+  if (q023?.[2] !== `\`${Q023_SCOPED_DISPOSITION}\``) {
+    problems.push(
+      'PRD0-Q023 must preserve the exact staging-approved and production-pending scoped disposition',
+    );
+  }
+  requireToken(
+    'Owner questionnaire',
+    documents.questionnaire,
+    Q023_SCOPED_DISPOSITION,
+  );
   if (
     dispositionRows.length !== 48 ||
     dispositionIdCount !== 48 ||
@@ -535,6 +551,12 @@ function validateQ020Q021Governance(documents) {
     documents.decisionRegister.replace(/\r\n/gu, '\n'),
     '36\n`LOCKED_FROM_APPROVED_CONTEXT`, 17 `OWNER_DECISION_REQUIRED`, 0\n`PROPOSED_RECOMMENDATION`, 0\n`DEFERRED_WITH_CONSTRAINT`, and 0 `REJECTED`',
   );
+  for (const token of [
+    Q023_STAGING_APPROVED_DISPOSITION,
+    Q023_PRODUCTION_PENDING_DISPOSITION,
+  ]) {
+    requireToken('Decision register', documents.decisionRegister, token);
+  }
 
   const gates = parseAcceptanceMatrix(documents.matrix);
   checkCount += 3;
@@ -549,6 +571,20 @@ function validateQ020Q021Governance(documents) {
 
   for (const token of [
     '2026-08-14T06:37:00+03:00',
+    '2026-08-16T19:00:00+03:00',
+    'Q023_STATUS=PENDING',
+    'Q023_STAGING_STATUS=APPROVED',
+    'Q023_STAGING_SCOPE=STAGING_ONLY',
+    'Q023_STAGING_OPTION=A',
+    'Q023_STAGING_API_DOMAIN=staging-api.moazez.cloud',
+    'Q023_STAGING_INGRESS=internal-and-cloud-load-balancing',
+    'Q023_STAGING_CLOUD_ARMOR=YES',
+    'Q023_STAGING_TRUSTED_PROXIES=GOOGLE_CLOUD_EXTERNAL_APPLICATION_LOAD_BALANCER_ONLY',
+    'Q023_STAGING_DIRECT_PUBLIC_RUN_APP=NO',
+    'Q023_PRODUCTION_STATUS=PENDING',
+    'Q023_PRODUCTION_API_DOMAIN=UNAPPROVED',
+    'Q023_PRODUCTION_EDGE_DISPOSITION=PENDING',
+    'D023_STATUS=OWNER_DECISION_REQUIRED',
     'GCP_SECRET_MANAGER_SECRET_EXISTS=NO',
     'SECRET_MANAGER_VERSIONS_PROVISIONED=NO',
     'IAM_SECRET_ACCESS_CREATED=NO',
@@ -560,10 +596,10 @@ function validateQ020Q021Governance(documents) {
     requireToken('Acceptance matrix', documents.matrix, token);
   }
   for (const token of [
-    'Accepted for PRD0-D017, PRD0-D018, PRD0-D020, and PRD0-D021',
     '| PRD0-D020 | PRD0-Q020 | Accepted |',
     '| PRD0-D021 | PRD0-Q021 | Accepted |',
-    '| PRD0-D023 | PRD0-Q023 | Pending |',
+    '| PRD0-D023 | PRD0-Q023 | Pending overall; staging-only sub-disposition accepted, production pending |',
+    Q023_SCOPED_DISPOSITION,
     'GCP_SECRET_MANAGER_SECRET_EXISTS=NO',
     'SECRET_MANAGER_VERSIONS_PROVISIONED=NO',
     'RUNTIME_DEPLOYMENT_COMPLETE=NO',
@@ -582,17 +618,20 @@ function validateQ020Q021Governance(documents) {
     'RUNTIME_DEPLOYMENT_COMPLETE=YES',
     'PRODUCTION_TRAFFIC_AUTHORIZED=YES',
     'PHASE_4=COMPLETE',
+    'PRD0-Q023-PRODUCTION=APPROVED',
+    'Q023_STATUS=APPROVED',
+    'Q023_PRODUCTION_STATUS=APPROVED',
   ]) {
     if (combined.includes(forbidden)) {
       problems.push(
-        `Q020/Q021 governance must not claim implementation or authorization: ${forbidden}`,
+        `Q020/Q021/Q023 governance must not claim implementation or authorization: ${forbidden}`,
       );
     }
   }
 
   if (problems.length > 0) {
     throw new Error(
-      `PRD0-Q020/Q021 governance validation failed:\n- ${problems.join('\n- ')}`,
+      `PRD0-Q020/Q021/Q023 governance validation failed:\n- ${problems.join('\n- ')}`,
     );
   }
   return Object.freeze({

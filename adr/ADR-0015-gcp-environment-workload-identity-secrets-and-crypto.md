@@ -2,8 +2,8 @@
 
 ## Status
 
-Accepted for PRD0-D017, PRD0-D018, PRD0-D020, and PRD0-D021. PRD0-D023
-remains pending.
+Accepted for PRD0-D017, PRD0-D018, PRD0-D020, PRD0-D021, and the staging-only
+sub-disposition of PRD0-D023. PRD0-D023 remains pending for production.
 
 ## Approval authority
 
@@ -16,7 +16,11 @@ remains pending.
 - Q020/Q021 amendment approved at: `2026-08-14T06:37:00+03:00`
 - Q020/Q021 amendment timezone: Africa/Cairo
 - Q020/Q021 security, operations, and release approver: Abdallah
-- Pending owner question: PRD0-Q023
+- Q023 staging-only amendment approved at: `2026-08-16T19:00:00+03:00`
+- Q023 staging-only amendment timezone: Africa/Cairo
+- Q023 staging-only approver: Abdallah
+- Accepted scoped owner question: PRD0-Q023-STAGING option A
+- Pending owner question: PRD0-Q023-PRODUCTION
 
 ## Context
 
@@ -28,8 +32,9 @@ project or one broad runtime identity would combine production and test
 mutation, DDL, object, signing, scheduler, secret, and deploy blast radii.
 
 This ADR locks the project and identity boundaries, release-pinned secret
-version policy, and application encryption-key envelope contract. Ingress/
-domain policy and production resource provisioning remain separately gated.
+version policy, application encryption-key envelope contract, and the approved
+staging-only ingress/domain sub-disposition. Production ingress/domain policy
+and all production resource provisioning remain separately gated.
 
 ## Decision
 
@@ -53,6 +58,28 @@ release policy; environment data promotion is not.
 The approved non-production project name is a target boundary, not evidence
 that the project has been created, billed, policy-configured, or validated.
 No DR project or cross-region recovery environment is approved.
+
+### Staging API edge sub-disposition
+
+The exact environment-scoped disposition is:
+
+```text
+PRD0-Q023-STAGING=APPROVED(scope=STAGING_ONLY,option=A,api_domain=staging-api.moazez.cloud,ingress=internal-and-cloud-load-balancing,cloud_armor=YES,trusted_proxies=GOOGLE_CLOUD_EXTERNAL_APPLICATION_LOAD_BALANCER_ONLY,direct_public_run_app=NO,approver=Abdallah,approved_at=2026-08-16T19:00:00+03:00); PRD0-Q023-PRODUCTION=PENDING(owner=Abdallah,deadline=before production Phase 7/8,constraint=Production API hostname and edge disposition remain unapproved; silence authorizes no production implementation or cloud provisioning)
+```
+
+For staging, option A selects `staging-api.moazez.cloud` as the canonical API
+domain, internal-and-Cloud-Load-Balancing ingress for the Cloud Run API, Cloud
+Armor at the external Application Load Balancer, and trust only for forwarded
+headers supplied by that Google Cloud external Application Load Balancer.
+Direct public access through the underlying `run.app` hostname is not the
+approved staging public ingress path.
+
+This is architecture and source authority for staging only. It neither creates
+nor proves a serverless NEG, load balancer backend, URL map, target proxy,
+forwarding rule, external IP, Cloud Armor policy, certificate, DNS record, IAM
+grant, or runtime deployment. It does not approve or imply any production API
+hostname, ingress, load-balancer, Cloud Armor, trusted-proxy, certificate, DNS,
+or direct-`run.app` policy.
 
 ### Per-project service accounts
 
@@ -132,11 +159,12 @@ dynamic secret refresh, or automatic read-time re-encryption.
 | PRD0-D018 | PRD0-Q018 | Accepted |
 | PRD0-D020 | PRD0-Q020 | Accepted |
 | PRD0-D021 | PRD0-Q021 | Accepted |
-| PRD0-D023 | PRD0-Q023 | Pending |
+| PRD0-D023 | PRD0-Q023 | Pending overall; staging-only sub-disposition accepted, production pending |
 
 This ADR is the sole authoritative owner of PRD0-D017 through PRD0-D021 and
-PRD0-D023. Acceptance applies to PRD0-D017, PRD0-D018, PRD0-D020, and
-PRD0-D021 only.
+PRD0-D023. Full-decision acceptance applies to PRD0-D017, PRD0-D018,
+PRD0-D020, and PRD0-D021. PRD0-D023 acceptance is limited to its staging-only
+sub-disposition and does not close the production decision.
 
 ## Consequences
 
@@ -197,16 +225,17 @@ No project, service account, IAM grant, Secret Manager secret/version,
 Terraform state, workload binding, rotation rehearsal, deployment, or cloud
 resource is claimed here. PRD4-G01 remains not started; PRD4-G02 and PRD4-G03
 remain baseline-only pending their later cloud, data, and deployment evidence.
-Phase 4 is not complete.
+The Q023 staging-only amendment likewise records a source contract rather than
+deployed edge infrastructure. Phase 4 is not complete.
 
-## Deferred owned decision
+## Deferred production portion of owned decision
 
-- PRD0-D023/PRD0-Q023: domains, ingress, trusted proxies, load balancer, and
-  Cloud Armor.
+- PRD0-D023/PRD0-Q023-PRODUCTION: production domain, ingress, trusted proxies,
+  load balancer, Cloud Armor, certificate, DNS, and direct-`run.app` policy.
 
 The Owner-directed storage fast path does not approve or complete these
-deferred decisions. It only permits storage work to use the accepted
-project/runtime/signer boundary before full Phase 4 closeout.
+deferred production semantics. It only permits storage work to use the
+accepted project/runtime/signer boundary before full Phase 4 closeout.
 
 ## Rollback and reopen conditions
 
@@ -221,7 +250,8 @@ identity limitation, or a material responsibility change.
 This ADR does not create a GCP project, service account, IAM binding, secret,
 secret version, key, network, bucket, database, Redis instance, Terraform
 state, runtime deployment, or production launch. It does not authorize
-production traffic. PRD0-D023 remains unapproved, and Phase 4 is not complete.
+production traffic. PRD0-D023 remains unapproved for production, and Phase 4
+is not complete.
 
 ```text
 GCP_SECRET_MANAGER_SECRET_EXISTS=NO

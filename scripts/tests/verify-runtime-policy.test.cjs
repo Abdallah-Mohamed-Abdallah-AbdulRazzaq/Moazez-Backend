@@ -22,6 +22,45 @@ test('the repository satisfies the supported runtime policy', () => {
   assert.equal(result.firebaseAdminVersion, '14.0.0');
 });
 
+test('the staging API Terraform edge contract remains canonical', () => {
+  const terraform = fs.readFileSync(
+    path.join(
+      REPOSITORY_ROOT,
+      'infra',
+      'gcp',
+      'backend-runtime',
+      'modules',
+      'runtime-environment',
+      'main.tf',
+    ),
+    'utf8',
+  );
+
+  const apiUrls = [...terraform.matchAll(/^\s*api_url\s*=\s*"([^"]+)"$/gmu)];
+  assert.deepEqual(
+    apiUrls.map((match) => match[1]),
+    ['https://staging-api.moazez.cloud'],
+  );
+
+  const ingressValues = [
+    ...terraform.matchAll(/^\s*ingress\s*=\s*"([^"]+)"$/gmu),
+  ];
+  assert.deepEqual(
+    ingressValues.map((match) => match[1]),
+    ['INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER'],
+  );
+
+  const appUrlValues = [
+    ...terraform.matchAll(/^\s*APP_URL\s*=\s*(\S+)\s*$/gmu),
+  ];
+  assert.deepEqual(
+    appUrlValues.map((match) => match[1]),
+    ['local.api_url', 'local.api_url'],
+  );
+  assert.doesNotMatch(terraform, /^\s*APP_URL\s*=\s*"https?:\/\//gmu);
+  assert.doesNotMatch(terraform, /\.run\.app/u);
+});
+
 test('drift in every governed runtime surface fails validation', async (t) => {
   const cases = [
     ['.nvmrc', '20.0.0\n', /\.nvmrc/u],

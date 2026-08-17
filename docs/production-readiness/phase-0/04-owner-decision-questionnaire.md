@@ -15,6 +15,25 @@ decision uses
 `PENDING(owner=<name>,deadline=<phase/date>,constraint=<text>)`; silence never
 selects a recommended default.
 
+## 2026-08-16 Q023 staging-only approval amendment
+
+Abdallah approved only the staging sub-disposition of PRD0-Q023 at
+`2026-08-16T19:00:00+03:00` in Africa/Cairo. The approved scope is
+`STAGING_ONLY`; it does not select or imply a production API hostname or a
+production edge disposition.
+
+```text
+PRD0-Q023-STAGING=APPROVED(scope=STAGING_ONLY,option=A,api_domain=staging-api.moazez.cloud,ingress=internal-and-cloud-load-balancing,cloud_armor=YES,trusted_proxies=GOOGLE_CLOUD_EXTERNAL_APPLICATION_LOAD_BALANCER_ONLY,direct_public_run_app=NO,approver=Abdallah,approved_at=2026-08-16T19:00:00+03:00); PRD0-Q023-PRODUCTION=PENDING(owner=Abdallah,deadline=before production Phase 7/8,constraint=Production API hostname and edge disposition remain unapproved; silence authorizes no production implementation or cloud provisioning)
+```
+
+The historical Q023 question, options, recommendation, and machine-readable
+template below remain unchanged. Because that template does not distinguish
+environments, the scoped record above preserves Q023 as pending overall until
+the production hostname and edge disposition receive separate approval. This
+staging approval is architecture and source authority only; it is not evidence
+that a load balancer, Cloud Armor policy, certificate, DNS record, IAM grant,
+or runtime deployment exists.
+
 ## 2026-08-14 Q020/Q021 approval amendment
 
 Abdallah approved PRD0-Q020 option A and PRD0-Q021 option A at
