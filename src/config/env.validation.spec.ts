@@ -121,6 +121,29 @@ describe('bootstrap environment validation', () => {
     expect(validateEnv(baseEnv()).SWAGGER_ENABLED).toBe(false);
   });
 
+  it('defaults the trusted proxy mode to none, including in staging', () => {
+    expect(validateEnv(baseEnv()).APP_TRUSTED_PROXY_MODE).toBe('none');
+    expect(
+      validateEnv(strictApiEnvironment('staging')).APP_TRUSTED_PROXY_MODE,
+    ).toBe('none');
+  });
+
+  it.each(['none', 'gcp_external_alb'] as const)(
+    'accepts the explicit trusted proxy mode %s',
+    (mode) => {
+      expect(
+        validateEnv(baseEnv({ APP_TRUSTED_PROXY_MODE: mode }))
+          .APP_TRUSTED_PROXY_MODE,
+      ).toBe(mode);
+    },
+  );
+
+  it('rejects an unsupported trusted proxy mode', () => {
+    expect(() =>
+      validateEnv(baseEnv({ APP_TRUSTED_PROXY_MODE: 'unsupported' })),
+    ).toThrow(/APP_TRUSTED_PROXY_MODE/u);
+  });
+
   it('requires explicit Queue and Realtime Redis URLs and never resolves legacy REDIS_URL', () => {
     expect(() =>
       validateEnv(

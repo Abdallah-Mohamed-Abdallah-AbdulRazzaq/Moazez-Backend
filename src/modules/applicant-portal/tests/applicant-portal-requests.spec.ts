@@ -137,6 +137,7 @@ describe('Applicant Portal request ownership foundation', () => {
         resourceType: 'applicant_admission_request',
         resourceId: REQUEST_ID,
         outcome: AuditOutcome.SUCCESS,
+        ipAddress: '127.0.0.1',
       }),
     );
     expect(response).toMatchObject({
@@ -342,6 +343,7 @@ describe('Applicant Portal request ownership foundation', () => {
         resourceType: 'applicant_admission_request',
         resourceId: REQUEST_ID,
         outcome: AuditOutcome.SUCCESS,
+        ipAddress: '127.0.0.1',
         after: {
           status: 'needs_action',
           missingItemsCount: 2,

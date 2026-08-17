@@ -303,6 +303,74 @@ test('Q023 production API domain must remain unapproved', () => {
   );
 });
 
+test('Stage 17E trusted-client-IP contract is required in all active owner documents', () => {
+  for (const [documentKey, documentName] of [
+    ['decisionRegister', 'Decision register'],
+    ['matrix', 'Acceptance matrix'],
+    ['adr0015', 'ADR-0015'],
+  ]) {
+    const documents = q020Q021GovernanceDocuments();
+    documents[documentKey] = documents[documentKey].replace(
+      /Q023_STAGE_17E_TRUSTED_CLIENT_IP_CONTRACT_BEGIN[\s\S]*?Q023_STAGE_17E_TRUSTED_CLIENT_IP_CONTRACT_END/u,
+      '',
+    );
+    assert.throws(
+      () => validateQ020Q021Governance(documents),
+      new RegExp(
+        `${documentName} must contain exactly one delimited Stage 17E trusted-client-IP contract`,
+        'u',
+      ),
+    );
+  }
+});
+
+test('Stage 17E trusted-client-IP security semantics cannot drift', () => {
+  for (const [key, currentValue, driftedValue] of [
+    ['Q023_STAGING_GLOBAL_EXPRESS_TRUST_PROXY', 'DISABLED', 'ENABLED'],
+    ['Q023_STAGING_CLIENT_IP_HEADER', 'X-Moazez-Client-IP', 'X-Forwarded-For'],
+    [
+      'Q023_STAGING_TRUSTED_PROXY_MODE_ENV',
+      'APP_TRUSTED_PROXY_MODE',
+      'TRUST_PROXY',
+    ],
+    [
+      'Q023_STAGING_TRUSTED_PROXY_ALLOWED_MODES',
+      'none,gcp_external_alb',
+      'none,gcp_external_alb,all',
+    ],
+    ['Q023_STAGING_TRUSTED_PROXY_DEFAULT_MODE', 'none', 'gcp_external_alb'],
+    [
+      'Q023_STAGING_CLIENT_IP_HEADER_AUTHORITY',
+      'gcp_external_alb',
+      'all_requests',
+    ],
+    [
+      'Q023_STAGING_EDGE_HEADER_INSERT_OR_OVERWRITE',
+      'STAGE_18:{client_ip_address}',
+      'STAGE_18:{client_ip}',
+    ],
+    [
+      'Q023_STAGING_DIRECT_PUBLIC_CLOUD_RUN_RESTRICTION_OWNER',
+      'STAGE_18',
+      'STAGE_17E',
+    ],
+    ['Q023_STAGE_17E_CLOUD_MUTATION', 'NO', 'YES'],
+  ]) {
+    const documents = q020Q021GovernanceDocuments();
+    const currentToken = `${key}=${currentValue}`;
+    const driftedToken = `${key}=${driftedValue}`;
+    documents.matrix = documents.matrix.replace(currentToken, driftedToken);
+    assert.notEqual(documents.matrix.indexOf(driftedToken), -1, currentToken);
+    assert.throws(
+      () => validateQ020Q021Governance(documents),
+      new RegExp(
+        `Acceptance matrix Stage 17E contract must preserve ${key}=`,
+        'u',
+      ),
+    );
+  }
+});
+
 test('ADR-0015 must preserve the staging-only Q023 scope', () => {
   const documents = q020Q021GovernanceDocuments();
   documents.adr0015 = documents.adr0015.replace(

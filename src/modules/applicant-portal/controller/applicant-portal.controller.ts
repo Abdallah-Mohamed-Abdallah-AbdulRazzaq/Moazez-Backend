@@ -33,6 +33,7 @@ import {
 } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
+import { TrustedClientIpResolver } from '../../../bootstrap/trusted-client-ip.resolver';
 import { AllowApplicantPortalAccess } from '../../../common/decorators/applicant-portal-access.decorator';
 import { PublicRoute } from '../../../common/decorators/public-route.decorator';
 import { CreateApplicantAccountUseCase } from '../application/create-applicant-account.use-case';
@@ -94,6 +95,7 @@ export class ApplicantPortalController {
     private readonly getApplicantDocumentDownloadUrlUseCase: GetApplicantDocumentDownloadUrlUseCase,
     private readonly replaceApplicantDocumentUseCase: ReplaceApplicantDocumentUseCase,
     private readonly deleteApplicantDocumentUseCase: DeleteApplicantDocumentUseCase,
+    private readonly trustedClientIpResolver: TrustedClientIpResolver,
   ) {}
 
   @Post('accounts')
@@ -113,7 +115,7 @@ export class ApplicantPortalController {
   ): Promise<ApplicantProfileResponseDto> {
     return this.createApplicantAccountUseCase.execute({
       ...dto,
-      ipAddress: req.ip ?? null,
+      ipAddress: this.trustedClientIpResolver.resolve(req),
       userAgent: req.header('user-agent') ?? null,
     });
   }
@@ -194,7 +196,7 @@ export class ApplicantPortalController {
   ): Promise<ApplicantRequestDetailResponseDto> {
     return this.createApplicantRequestUseCase.execute({
       ...dto,
-      ipAddress: req.ip ?? null,
+      ipAddress: this.trustedClientIpResolver.resolve(req),
       userAgent: req.header('user-agent') ?? null,
     });
   }
@@ -254,7 +256,7 @@ export class ApplicantPortalController {
   ): Promise<ApplicantRequestDetailResponseDto> {
     return this.submitApplicantRequestUseCase.execute({
       requestId,
-      ipAddress: req.ip ?? null,
+      ipAddress: this.trustedClientIpResolver.resolve(req),
       userAgent: req.header('user-agent') ?? null,
     });
   }
@@ -288,7 +290,7 @@ export class ApplicantPortalController {
       title: dto.title,
       documentType: dto.documentType,
       notes: dto.notes,
-      ipAddress: req.ip ?? null,
+      ipAddress: this.trustedClientIpResolver.resolve(req),
       userAgent: req.header('user-agent') ?? null,
     });
   }
@@ -361,7 +363,7 @@ export class ApplicantPortalController {
       url: await this.getApplicantDocumentDownloadUrlUseCase.execute({
         requestId,
         documentId,
-        ipAddress: req.ip ?? null,
+        ipAddress: this.trustedClientIpResolver.resolve(req),
         userAgent: req.header('user-agent') ?? null,
       }),
     };
@@ -399,7 +401,7 @@ export class ApplicantPortalController {
       title: dto.title,
       documentType: dto.documentType,
       notes: dto.notes,
-      ipAddress: req.ip ?? null,
+      ipAddress: this.trustedClientIpResolver.resolve(req),
       userAgent: req.header('user-agent') ?? null,
     });
   }
@@ -426,7 +428,7 @@ export class ApplicantPortalController {
     await this.deleteApplicantDocumentUseCase.execute({
       requestId,
       documentId,
-      ipAddress: req.ip ?? null,
+      ipAddress: this.trustedClientIpResolver.resolve(req),
       userAgent: req.header('user-agent') ?? null,
     });
 

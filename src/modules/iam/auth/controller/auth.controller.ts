@@ -19,6 +19,7 @@ import {
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
 import type { Request } from 'express';
+import { TrustedClientIpResolver } from '../../../../bootstrap/trusted-client-ip.resolver';
 import { PublicRoute } from '../../../../common/decorators/public-route.decorator';
 import { ChangePasswordUseCase } from '../application/change-password.use-case';
 import { LoginUseCase } from '../application/login.use-case';
@@ -45,6 +46,7 @@ export class AuthController {
     private readonly meUseCase: MeUseCase,
     private readonly logoutUseCase: LogoutUseCase,
     private readonly changePasswordUseCase: ChangePasswordUseCase,
+    private readonly trustedClientIpResolver: TrustedClientIpResolver,
   ) {}
 
   @Post('login')
@@ -63,7 +65,7 @@ export class AuthController {
       email: dto.email,
       password: dto.password,
       userAgent: req.header('user-agent') ?? null,
-      ipAddress: req.ip ?? null,
+      ipAddress: this.trustedClientIpResolver.resolve(req),
     });
   }
 
@@ -85,7 +87,7 @@ export class AuthController {
     return this.refreshUseCase.execute({
       refreshToken: dto.refreshToken,
       userAgent: req.header('user-agent') ?? null,
-      ipAddress: req.ip ?? null,
+      ipAddress: this.trustedClientIpResolver.resolve(req),
     });
   }
 

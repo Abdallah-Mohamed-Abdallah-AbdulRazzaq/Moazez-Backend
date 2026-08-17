@@ -579,8 +579,24 @@ validation counts. Phase 4 and Phase 5A are not complete.
   `run.app` access is not the approved staging public path.
 - **Impacts:** preserve API paths, headers, and WebSocket upgrades; no schema.
   `APP_URL` remains derived from the canonical staging API URL. The application
-  trusted-proxy behavior still requires separate source evidence before Stage
-  18 deployment readiness can be claimed.
+  uses the following narrow Stage 17E trusted-client-IP contract. Global
+  Express `trust proxy` remains disabled; Stage 18 retains the edge and
+  deployment obligations, and production Q023 remains pending.
+
+```text
+Q023_STAGE_17E_TRUSTED_CLIENT_IP_CONTRACT_BEGIN
+Q023_STAGING_GLOBAL_EXPRESS_TRUST_PROXY=DISABLED
+Q023_STAGING_CLIENT_IP_HEADER=X-Moazez-Client-IP
+Q023_STAGING_TRUSTED_PROXY_MODE_ENV=APP_TRUSTED_PROXY_MODE
+Q023_STAGING_TRUSTED_PROXY_ALLOWED_MODES=none,gcp_external_alb
+Q023_STAGING_TRUSTED_PROXY_DEFAULT_MODE=none
+Q023_STAGING_CLIENT_IP_HEADER_AUTHORITY=gcp_external_alb
+Q023_STAGING_EDGE_HEADER_INSERT_OR_OVERWRITE=STAGE_18:{client_ip_address}
+Q023_STAGING_DIRECT_PUBLIC_CLOUD_RUN_RESTRICTION_OWNER=STAGE_18
+Q023_STAGE_17E_CLOUD_MUTATION=NO
+Q023_STAGE_17E_TRUSTED_CLIENT_IP_CONTRACT_END
+```
+
 - **Operations / rollback:** this source authority does not create a load
   balancer, Cloud Armor resource, certificate, DNS record, IAM grant, or cloud
   deployment. Later staging rollout needs its governed plan, evidence, and

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { TrustedClientIpModule } from '../../bootstrap/trusted-client-ip.module';
 import { StorageModule } from '../../infrastructure/storage/storage.module';
 import { AuthModule } from '../iam/auth/auth.module';
 import { BrandingModule } from '../settings/branding/branding.module';
@@ -22,7 +23,7 @@ import { ApplicantPortalController } from './controller/applicant-portal.control
 import { ApplicantPortalRepository } from './infrastructure/applicant-portal.repository';
 
 @Module({
-  imports: [AuthModule, StorageModule, BrandingModule],
+  imports: [AuthModule, StorageModule, BrandingModule, TrustedClientIpModule],
   controllers: [ApplicantPortalController],
   providers: [
     ApplicantPortalRepository,

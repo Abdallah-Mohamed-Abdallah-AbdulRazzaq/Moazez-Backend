@@ -132,6 +132,7 @@ describe('Applicant Portal account foundation', () => {
         resourceType: 'applicant_profile',
         resourceId: APPLICANT_PROFILE_ID,
         outcome: AuditOutcome.SUCCESS,
+        ipAddress: '127.0.0.1',
       }),
     );
     expect(response).toMatchObject({
@@ -260,11 +261,7 @@ describe('Applicant Portal access service', () => {
     const service = new ApplicantPortalAccessService(repository);
 
     await expect(
-      withActor(
-        UserType.APPLICANT,
-        () => service.getApplicantContext(),
-        true,
-      ),
+      withActor(UserType.APPLICANT, () => service.getApplicantContext(), true),
     ).rejects.toMatchObject({
       code: 'auth.scope.missing',
       details: { reason: 'applicant_membership_not_allowed' },

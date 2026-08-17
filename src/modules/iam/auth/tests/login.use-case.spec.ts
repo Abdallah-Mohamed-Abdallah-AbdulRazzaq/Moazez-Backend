@@ -90,11 +90,7 @@ describe('LoginUseCase', () => {
     } as unknown as TokenService & Record<string, jest.Mock>;
 
     return {
-      useCase: new LoginUseCase(
-        authRepository,
-        passwordService,
-        tokenService,
-      ),
+      useCase: new LoginUseCase(authRepository, passwordService, tokenService),
       authRepository,
       passwordService,
       tokenService,
@@ -107,16 +103,21 @@ describe('LoginUseCase', () => {
     const result = await mocks.useCase.execute({
       email: '  USER@EXAMPLE.COM  ',
       password: 'UserPassword123!',
+      ipAddress: '203.0.113.41',
     });
 
     expect(mocks.authRepository.findUserByEmail).toHaveBeenCalledWith(
       'user@example.com',
     );
     expect(result.user.email).toBe('user@example.com');
+    expect(mocks.authRepository.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({ ipAddress: '203.0.113.41' }),
+    );
     expect(mocks.authRepository.createAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'auth.login',
         outcome: AuditOutcome.SUCCESS,
+        ipAddress: '203.0.113.41',
       }),
     );
   });
@@ -140,8 +141,8 @@ describe('LoginUseCase', () => {
         after: { reason: 'user_not_found', email: 'missing@example.com' },
       }),
     );
-    expect(JSON.stringify(mocks.authRepository.createAuditLog.mock.calls)).not.toContain(
-      'Missing@Example.COM',
-    );
+    expect(
+      JSON.stringify(mocks.authRepository.createAuditLog.mock.calls),
+    ).not.toContain('Missing@Example.COM');
   });
 });

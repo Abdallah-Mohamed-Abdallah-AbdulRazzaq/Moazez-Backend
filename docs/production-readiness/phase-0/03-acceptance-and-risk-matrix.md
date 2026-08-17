@@ -67,6 +67,28 @@ Q023_PRODUCTION_API_DOMAIN=UNAPPROVED
 Q023_PRODUCTION_EDGE_DISPOSITION=PENDING
 ```
 
+### Stage 17E Q023 staging trusted-client-IP source contract
+
+This source-only refinement keeps global Express `trust proxy` disabled and
+authorizes the dedicated client-IP header only under the explicit staging
+Application Load Balancer mode. Stage 18 owns edge insertion/overwrite and the
+deployment-side direct-public Cloud Run restriction. Stage 17E performs no
+cloud mutation, and production Q023 remains pending.
+
+```text
+Q023_STAGE_17E_TRUSTED_CLIENT_IP_CONTRACT_BEGIN
+Q023_STAGING_GLOBAL_EXPRESS_TRUST_PROXY=DISABLED
+Q023_STAGING_CLIENT_IP_HEADER=X-Moazez-Client-IP
+Q023_STAGING_TRUSTED_PROXY_MODE_ENV=APP_TRUSTED_PROXY_MODE
+Q023_STAGING_TRUSTED_PROXY_ALLOWED_MODES=none,gcp_external_alb
+Q023_STAGING_TRUSTED_PROXY_DEFAULT_MODE=none
+Q023_STAGING_CLIENT_IP_HEADER_AUTHORITY=gcp_external_alb
+Q023_STAGING_EDGE_HEADER_INSERT_OR_OVERWRITE=STAGE_18:{client_ip_address}
+Q023_STAGING_DIRECT_PUBLIC_CLOUD_RUN_RESTRICTION_OWNER=STAGE_18
+Q023_STAGE_17E_CLOUD_MUTATION=NO
+Q023_STAGE_17E_TRUSTED_CLIENT_IP_CONTRACT_END
+```
+
 ### 2026-08-14 Q020/Q021 crypto-policy amendment
 
 Abdallah approved PRD0-Q020 option A and PRD0-Q021 option A at
