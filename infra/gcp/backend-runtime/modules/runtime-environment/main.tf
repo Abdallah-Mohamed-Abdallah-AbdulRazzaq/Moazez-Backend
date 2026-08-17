@@ -27,6 +27,7 @@ locals {
     APP_PORT                                       = "3000"
     APP_PROBE_PORT                                 = "9090"
     APP_URL                                        = local.api_url
+    APP_TRUSTED_PROXY_MODE                         = "gcp_external_alb"
     APP_CORS_ORIGINS                               = local.staging_cors_origins
     STORAGE_CORS_ORIGINS                           = local.staging_cors_origins
     SWAGGER_ENABLED                                = "false"
@@ -132,11 +133,13 @@ locals {
 }
 
 resource "google_cloud_run_v2_service" "api" {
-  project             = local.project_id
-  location            = local.region
-  name                = local.api_service_name
-  ingress             = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
-  deletion_protection = true
+  project              = local.project_id
+  location             = local.region
+  name                 = local.api_service_name
+  ingress              = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+  invoker_iam_disabled = true
+  default_uri_disabled = true
+  deletion_protection  = true
 
   scaling {
     min_instance_count = 1
