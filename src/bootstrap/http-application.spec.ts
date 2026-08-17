@@ -133,6 +133,15 @@ describe('HTTP application bootstrap policy', () => {
     await request(app.getHttpServer()).get('/').expect(404);
   });
 
+  it('keeps the effective Express trust proxy setting disabled', async () => {
+    const app = await createTestApplication(false);
+    const express = app.getHttpAdapter().getInstance() as {
+      get(setting: string): unknown;
+    };
+
+    expect(express.get('trust proxy')).toBe(false);
+  });
+
   async function createTestApplication(
     swaggerEnabled: boolean,
   ): Promise<INestApplication> {

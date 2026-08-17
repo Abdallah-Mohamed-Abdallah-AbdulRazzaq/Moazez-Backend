@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { TrustedClientIpModule } from '../../../bootstrap/trusted-client-ip.module';
 import { ChangePasswordUseCase } from './application/change-password.use-case';
 import { LoginUseCase } from './application/login.use-case';
 import { LogoutUseCase } from './application/logout.use-case';
@@ -11,7 +12,7 @@ import { TokenService } from './domain/token.service';
 import { AuthRepository } from './infrastructure/auth.repository';
 
 @Module({
-  imports: [JwtModule.register({})],
+  imports: [JwtModule.register({}), TrustedClientIpModule],
   controllers: [AuthController],
   providers: [
     AuthRepository,

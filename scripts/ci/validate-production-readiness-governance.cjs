@@ -63,6 +63,21 @@ const Q023_STAGING_APPROVED_DISPOSITION =
 const Q023_PRODUCTION_PENDING_DISPOSITION =
   'PRD0-Q023-PRODUCTION=PENDING(owner=Abdallah,deadline=before production Phase 7/8,constraint=Production API hostname and edge disposition remain unapproved; silence authorizes no production implementation or cloud provisioning)';
 const Q023_SCOPED_DISPOSITION = `${Q023_STAGING_APPROVED_DISPOSITION}; ${Q023_PRODUCTION_PENDING_DISPOSITION}`;
+const Q023_STAGE_17E_CONTRACT_BEGIN =
+  'Q023_STAGE_17E_TRUSTED_CLIENT_IP_CONTRACT_BEGIN';
+const Q023_STAGE_17E_CONTRACT_END =
+  'Q023_STAGE_17E_TRUSTED_CLIENT_IP_CONTRACT_END';
+const Q023_STAGE_17E_CONTRACT = Object.freeze({
+  Q023_STAGING_GLOBAL_EXPRESS_TRUST_PROXY: 'DISABLED',
+  Q023_STAGING_CLIENT_IP_HEADER: 'X-Moazez-Client-IP',
+  Q023_STAGING_TRUSTED_PROXY_MODE_ENV: 'APP_TRUSTED_PROXY_MODE',
+  Q023_STAGING_TRUSTED_PROXY_ALLOWED_MODES: 'none,gcp_external_alb',
+  Q023_STAGING_TRUSTED_PROXY_DEFAULT_MODE: 'none',
+  Q023_STAGING_CLIENT_IP_HEADER_AUTHORITY: 'gcp_external_alb',
+  Q023_STAGING_EDGE_HEADER_INSERT_OR_OVERWRITE: 'STAGE_18:{client_ip_address}',
+  Q023_STAGING_DIRECT_PUBLIC_CLOUD_RUN_RESTRICTION_OWNER: 'STAGE_18',
+  Q023_STAGE_17E_CLOUD_MUTATION: 'NO',
+});
 const STORAGE_RELEASE_DECISION_PATH =
   'docs/production-readiness/phase-5a/03-storage-cutover-release-decision.md';
 const PHASE_3_GATE_IDS = Object.freeze([
@@ -448,6 +463,64 @@ function validateQ020Q021Governance(documents) {
     checkCount += 1;
     if (!text.includes(token)) problems.push(`${name} is missing: ${token}`);
   };
+  const requireStage17EContract = (name, text) => {
+    const lines = text.split(/\r?\n/u).map((line) => line.trim());
+    const beginIndexes = [];
+    const endIndexes = [];
+    for (const [index, line] of lines.entries()) {
+      if (line === Q023_STAGE_17E_CONTRACT_BEGIN) beginIndexes.push(index);
+      if (line === Q023_STAGE_17E_CONTRACT_END) endIndexes.push(index);
+    }
+
+    checkCount += 2;
+    if (beginIndexes.length !== 1 || endIndexes.length !== 1) {
+      problems.push(
+        `${name} must contain exactly one delimited Stage 17E trusted-client-IP contract`,
+      );
+      return;
+    }
+    const beginIndex = beginIndexes[0];
+    const endIndex = endIndexes[0];
+    if (endIndex <= beginIndex) {
+      problems.push(
+        `${name} has an invalid Stage 17E trusted-client-IP contract boundary`,
+      );
+      return;
+    }
+
+    const actual = new Map();
+    for (const line of lines.slice(beginIndex + 1, endIndex)) {
+      if (!line) continue;
+      const separatorIndex = line.indexOf('=');
+      if (separatorIndex < 1) {
+        problems.push(`${name} has a malformed Stage 17E contract line`);
+        continue;
+      }
+      const key = line.slice(0, separatorIndex);
+      const value = line.slice(separatorIndex + 1);
+      if (actual.has(key)) {
+        problems.push(`${name} duplicates Stage 17E contract key ${key}`);
+        continue;
+      }
+      actual.set(key, value);
+    }
+
+    for (const [key, expectedValue] of Object.entries(
+      Q023_STAGE_17E_CONTRACT,
+    )) {
+      checkCount += 1;
+      if (actual.get(key) !== expectedValue) {
+        problems.push(
+          `${name} Stage 17E contract must preserve ${key}=${expectedValue}`,
+        );
+      }
+    }
+    for (const key of actual.keys()) {
+      if (!Object.hasOwn(Q023_STAGE_17E_CONTRACT, key)) {
+        problems.push(`${name} has unexpected Stage 17E contract key ${key}`);
+      }
+    }
+  };
 
   const dispositionRows = parseGovernanceRows(documents.disposition, 'PRD0-Q');
   const questionById = new Map(dispositionRows.map((row) => [row[0], row]));
@@ -557,6 +630,7 @@ function validateQ020Q021Governance(documents) {
   ]) {
     requireToken('Decision register', documents.decisionRegister, token);
   }
+  requireStage17EContract('Decision register', documents.decisionRegister);
 
   const gates = parseAcceptanceMatrix(documents.matrix);
   checkCount += 3;
@@ -595,6 +669,7 @@ function validateQ020Q021Governance(documents) {
   ]) {
     requireToken('Acceptance matrix', documents.matrix, token);
   }
+  requireStage17EContract('Acceptance matrix', documents.matrix);
   for (const token of [
     '| PRD0-D020 | PRD0-Q020 | Accepted |',
     '| PRD0-D021 | PRD0-Q021 | Accepted |',
@@ -607,6 +682,7 @@ function validateQ020Q021Governance(documents) {
   ]) {
     requireToken('ADR-0015', documents.adr0015, token);
   }
+  requireStage17EContract('ADR-0015', documents.adr0015);
 
   checkCount += 1;
   const combined = Object.values(documents).join('\n');

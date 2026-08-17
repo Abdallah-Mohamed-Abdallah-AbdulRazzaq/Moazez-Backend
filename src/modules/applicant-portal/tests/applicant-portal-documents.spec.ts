@@ -129,6 +129,7 @@ describe('Applicant Portal documents', () => {
         resourceType: 'applicant_admission_request_document',
         resourceId: DOCUMENT_ID,
         outcome: AuditOutcome.SUCCESS,
+        ipAddress: '127.0.0.1',
       }),
     );
     expect(response).toMatchObject({
@@ -600,6 +601,7 @@ describe('Applicant Portal documents', () => {
       expect.objectContaining({
         action: 'applicant.document.replace',
         resourceId: DOCUMENT_ID,
+        ipAddress: '127.0.0.1',
         after: {
           requestId: REQUEST_ID,
           oldDocumentId: DOCUMENT_ID,
@@ -975,6 +977,7 @@ describe('Applicant Portal documents', () => {
       expect.objectContaining({
         action: 'applicant.document.delete',
         resourceId: DOCUMENT_ID,
+        ipAddress: '127.0.0.1',
         after: {
           requestId: REQUEST_ID,
           documentId: DOCUMENT_ID,
@@ -1335,8 +1338,7 @@ describe('Applicant Portal documents', () => {
             },
             {
               applicationDocumentId: { not: null },
-              status:
-                ApplicantAdmissionRequestDocumentStatus.NEEDS_REPLACEMENT,
+              status: ApplicantAdmissionRequestDocumentStatus.NEEDS_REPLACEMENT,
             },
           ],
         }),

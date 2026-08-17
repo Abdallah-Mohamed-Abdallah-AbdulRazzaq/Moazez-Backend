@@ -34,6 +34,9 @@ export const envSchema = z
       .enum(['development', 'test', 'staging', 'production'])
       .default('development'),
     APP_URL: z.string().url(),
+    APP_TRUSTED_PROXY_MODE: z
+      .enum(['none', 'gcp_external_alb'])
+      .default('none'),
     APP_CORS_ORIGINS: optionalNonEmptyString,
     SWAGGER_ENABLED: booleanFromString.default('false'),
     APP_SHUTDOWN_TIMEOUT_MS: z.coerce
