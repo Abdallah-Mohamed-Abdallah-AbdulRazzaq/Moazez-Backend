@@ -23,6 +23,7 @@
     "start:prod:media-worker": "node dist/media-worker",
     "start:prod:maintenance-scheduler": "node dist/maintenance-scheduler",
     "start:prod:migration-job": "node scripts/migrations/run-governed-migration-job.cjs",
+    "bootstrap:platform-admin": "node dist/platform-admin-bootstrap.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "lint:check": "node --max-old-space-size=4096 node_modules/eslint/bin/eslint.js \"{src,apps,libs,test}/**/*.ts\"",
     "ci:plan": "node scripts/ci/plan-ci.cjs",
