@@ -253,11 +253,17 @@ describe('Dashboard todos tenancy and security contracts', () => {
 
   it('seeds dashboard todo permissions for inherited admin roles only', () => {
     const permissions = readFileSync(
-      join(process.cwd(), 'prisma/seeds/01-permissions.seed.ts'),
+      join(
+        process.cwd(),
+        'src/modules/iam/reference-data/permission-catalog.ts',
+      ),
       'utf8',
     );
     const roles = readFileSync(
-      join(process.cwd(), 'prisma/seeds/02-system-roles.seed.ts'),
+      join(
+        process.cwd(),
+        'src/modules/iam/reference-data/system-role-catalog.ts',
+      ),
       'utf8',
     );
     for (const permission of [

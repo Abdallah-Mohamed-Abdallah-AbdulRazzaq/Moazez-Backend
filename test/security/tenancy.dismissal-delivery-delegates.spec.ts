@@ -65,10 +65,13 @@ describe('DISMISSAL-DELIVERY-1B pickup-recipient route metadata and boundaries',
 
   it('adds no permissions, seed changes, schema changes, migrations, or delegate account surfaces', () => {
     const permissionsSeed = readFileSync(
-      'prisma/seeds/01-permissions.seed.ts',
+      'src/modules/iam/reference-data/permission-catalog.ts',
       'utf8',
     );
-    const rolesSeed = readFileSync('prisma/seeds/02-system-roles.seed.ts', 'utf8');
+    const rolesSeed = readFileSync(
+      'src/modules/iam/reference-data/system-role-catalog.ts',
+      'utf8',
+    );
     const schemaSource = readFileSync('prisma/schema.prisma', 'utf8');
     const migrationNames = readdirSync('prisma/migrations');
     const parentPermissions = extractConstStringArray(rolesSeed, 'PARENT_PERMISSIONS');

@@ -144,11 +144,17 @@ describe('Dashboard activity feed tenancy/security contracts', () => {
 
   it('keeps teacher, student, and parent seeds out of activity feed permission', () => {
     const permissionsSeed = readFileSync(
-      join(process.cwd(), 'prisma/seeds/01-permissions.seed.ts'),
+      join(
+        process.cwd(),
+        'src/modules/iam/reference-data/permission-catalog.ts',
+      ),
       'utf8',
     );
     const rolesSeed = readFileSync(
-      join(process.cwd(), 'prisma/seeds/02-system-roles.seed.ts'),
+      join(
+        process.cwd(),
+        'src/modules/iam/reference-data/system-role-catalog.ts',
+      ),
       'utf8',
     );
 

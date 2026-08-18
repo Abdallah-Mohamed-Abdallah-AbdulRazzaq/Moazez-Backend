@@ -65,7 +65,7 @@ describe('DISMISSAL-CALLS-1A route metadata and permission boundaries', () => {
 
   it('uses existing dismissal.requests.view permission without role leakage', () => {
     const rolesSeed = readFileSync(
-      `${process.cwd()}/prisma/seeds/02-system-roles.seed.ts`,
+      `${process.cwd()}/src/modules/iam/reference-data/system-role-catalog.ts`,
       'utf8',
     );
     const dismissalStaffPermissions = extractConstStringArray(

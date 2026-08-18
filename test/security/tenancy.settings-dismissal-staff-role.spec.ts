@@ -114,7 +114,9 @@ describe('Settings Dismissal Staff role security contract', () => {
   });
 
   it('does not grant Settings or broad admin permissions to the dismissal_staff seed role', () => {
-    const source = readSource('prisma/seeds/02-system-roles.seed.ts');
+    const source = readSource(
+      'src/modules/iam/reference-data/system-role-catalog.ts',
+    );
     const permissions = readConstStringArray(
       source,
       'DISMISSAL_STAFF_PERMISSIONS',

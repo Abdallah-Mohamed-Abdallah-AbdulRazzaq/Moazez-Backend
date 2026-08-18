@@ -83,11 +83,11 @@ describe('DISMISSAL-NOTIFICATIONS-1B push/device-token security metadata', () =>
       'utf8',
     );
     const rolesSeed = readFileSync(
-      'prisma/seeds/02-system-roles.seed.ts',
+      'src/modules/iam/reference-data/system-role-catalog.ts',
       'utf8',
     );
     const permissionsSeed = readFileSync(
-      'prisma/seeds/01-permissions.seed.ts',
+      'src/modules/iam/reference-data/permission-catalog.ts',
       'utf8',
     );
 

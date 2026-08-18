@@ -45,11 +45,11 @@ describe('PARENT-DISMISSAL-1D Parent Smart Pickup contract hardening (security)'
 
   it('does not add permissions, role grants, schema, migrations, or device-token surfaces', () => {
     const permissionsSeed = readFileSync(
-      `${process.cwd()}/prisma/seeds/01-permissions.seed.ts`,
+      `${process.cwd()}/src/modules/iam/reference-data/permission-catalog.ts`,
       'utf8',
     );
     const rolesSeed = readFileSync(
-      `${process.cwd()}/prisma/seeds/02-system-roles.seed.ts`,
+      `${process.cwd()}/src/modules/iam/reference-data/system-role-catalog.ts`,
       'utf8',
     );
     const schemaSource = readFileSync('prisma/schema.prisma', 'utf8');

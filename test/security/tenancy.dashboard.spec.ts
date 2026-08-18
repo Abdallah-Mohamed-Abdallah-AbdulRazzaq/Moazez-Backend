@@ -91,7 +91,10 @@ describe('Dashboard summary tenancy/security contracts', () => {
 
   it('keeps teacher, parent, and student system role seeds out of dashboard permissions', () => {
     const rolesSeed = readFileSync(
-      join(process.cwd(), 'prisma/seeds/02-system-roles.seed.ts'),
+      join(
+        process.cwd(),
+        'src/modules/iam/reference-data/system-role-catalog.ts',
+      ),
       'utf8',
     );
 

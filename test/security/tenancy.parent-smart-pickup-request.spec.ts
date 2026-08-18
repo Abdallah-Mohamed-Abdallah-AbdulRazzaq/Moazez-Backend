@@ -58,11 +58,11 @@ describe('PARENT-DISMISSAL-1B route metadata and seed boundaries', () => {
 
   it('adds only the parent smart-pickup request permission to the Parent role boundary', () => {
     const permissionsSeed = readFileSync(
-      `${process.cwd()}/prisma/seeds/01-permissions.seed.ts`,
+      `${process.cwd()}/src/modules/iam/reference-data/permission-catalog.ts`,
       'utf8',
     );
     const rolesSeed = readFileSync(
-      `${process.cwd()}/prisma/seeds/02-system-roles.seed.ts`,
+      `${process.cwd()}/src/modules/iam/reference-data/system-role-catalog.ts`,
       'utf8',
     );
     const parentPermissions = extractConstStringArray(
