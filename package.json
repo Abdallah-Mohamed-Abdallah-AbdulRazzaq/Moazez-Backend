@@ -7,7 +7,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "nest build",
-    "postbuild": "node -e \"const fs = require('node:fs'); const entry = require('./dist/reference-data-bootstrap.js'); if (typeof entry.runReferenceDataBootstrapCli !== 'function' || !fs.existsSync('./dist/modules/iam/reference-data/reference-data-bootstrap.module.js')) process.exit(1); console.log('REFERENCE_DATA_BOOTSTRAP_BUILD_CONTRACT=PASS');\"",
+    "postbuild": "node -e \"const assert = require('node:assert/strict'); const fs = require('node:fs'); const entry = require('./dist/reference-data-bootstrap.js'); assert.equal(typeof entry.runReferenceDataBootstrapCli, 'function'); assert.equal(fs.existsSync('./dist/modules/iam/reference-data/reference-data-bootstrap.module.js'), true); console.log('REFERENCE_DATA_BOOTSTRAP_BUILD_CONTRACT=PASS');\"",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "infra:up": "node scripts/infra-up.cjs",
     "infra:status": "docker ps --filter name=^/moazez-postgres$ --filter name=^/moazez-redis$ --filter name=^/moazez-minio$",
