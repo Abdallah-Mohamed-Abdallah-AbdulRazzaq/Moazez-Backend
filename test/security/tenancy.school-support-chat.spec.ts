@@ -270,7 +270,10 @@ describe('School support chat tenancy and IAM contracts', () => {
 
   it('keeps default app-role seeds out of school support permissions', () => {
     const rolesSeed = readFileSync(
-      join(process.cwd(), 'prisma/seeds/02-system-roles.seed.ts'),
+      join(
+        process.cwd(),
+        'src/modules/iam/reference-data/system-role-catalog.ts',
+      ),
       'utf8',
     );
 

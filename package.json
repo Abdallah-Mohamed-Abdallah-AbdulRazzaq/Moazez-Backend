@@ -7,6 +7,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "nest build",
+    "postbuild": "node -e \"const fs = require('node:fs'); const entry = require('./dist/reference-data-bootstrap.js'); if (typeof entry.runReferenceDataBootstrapCli !== 'function' || !fs.existsSync('./dist/modules/iam/reference-data/reference-data-bootstrap.module.js')) process.exit(1); console.log('REFERENCE_DATA_BOOTSTRAP_BUILD_CONTRACT=PASS');\"",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "infra:up": "node scripts/infra-up.cjs",
     "infra:status": "docker ps --filter name=^/moazez-postgres$ --filter name=^/moazez-redis$ --filter name=^/moazez-minio$",
@@ -24,6 +25,7 @@
     "start:prod:maintenance-scheduler": "node dist/maintenance-scheduler",
     "start:prod:migration-job": "node scripts/migrations/run-governed-migration-job.cjs",
     "bootstrap:platform-admin": "node dist/platform-admin-bootstrap.js",
+    "bootstrap:reference-data": "node dist/reference-data-bootstrap.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "lint:check": "node --max-old-space-size=4096 node_modules/eslint/bin/eslint.js \"{src,apps,libs,test}/**/*.ts\"",
     "ci:plan": "node scripts/ci/plan-ci.cjs",

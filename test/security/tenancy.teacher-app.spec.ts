@@ -998,11 +998,15 @@ describe('Teacher App route permission metadata (security)', () => {
 describe('Teacher role seed integrity (security)', () => {
   it('keeps the post-1B catalog and Teacher role target locked', () => {
     const permissionsSeed = readFileSync(
-      `${process.cwd()}/prisma/seeds/01-permissions.seed.ts`,
+      `${process.cwd()}/src/modules/iam/reference-data/permission-catalog.ts`,
       'utf8',
     );
     const rolesSeed = readFileSync(
-      `${process.cwd()}/prisma/seeds/02-system-roles.seed.ts`,
+      `${process.cwd()}/src/modules/iam/reference-data/system-role-catalog.ts`,
+      'utf8',
+    );
+    const roleApplySource = readFileSync(
+      `${process.cwd()}/src/modules/iam/reference-data/infrastructure/authorization-reference-data.apply.ts`,
       'utf8',
     );
     const catalogCodes = extractPermissionCatalogCodes(permissionsSeed);
@@ -1075,8 +1079,8 @@ describe('Teacher role seed integrity (security)', () => {
       expect(missingPermissions).toEqual([]);
     }
 
-    expect(rolesSeed).toContain('foundPermissionIdsByCode');
-    expect(rolesSeed).toContain(
+    expect(roleApplySource).toContain('foundPermissionIdsByCode');
+    expect(roleApplySource).toContain(
       'Missing permissions for system role ${role.key}',
     );
   });

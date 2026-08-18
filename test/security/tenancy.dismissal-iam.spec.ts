@@ -98,7 +98,7 @@ function readConstStringArray(source: string, constName: string): string[] {
 function readPermissionEntries(seedSource: string): PermissionEntry[] {
   return [
     ...seedSource.matchAll(
-      /\{\s*code:\s*'([^']+)',\s*module:\s*'([^']+)',\s*resource:\s*'([^']+)',\s*action:\s*'([^']+)',\s*description:\s*'([^']+)'\s*\}/g,
+      /\{\s*code:\s*'([^']+)',\s*module:\s*'([^']+)',\s*resource:\s*'([^']+)',\s*action:\s*'([^']+)',\s*description:\s*'([^']+)',?\s*\}/g,
     ),
   ].map((match) => ({
     code: match[1],
@@ -121,9 +121,11 @@ function findMigrationSql(): string {
 
 describe('DISMISSAL-IAM-1A - user type and permission seed contract', () => {
   const schemaSource = readSource('prisma/schema.prisma');
-  const permissionSeedSource = readSource('prisma/seeds/01-permissions.seed.ts');
+  const permissionSeedSource = readSource(
+    'src/modules/iam/reference-data/permission-catalog.ts',
+  );
   const systemRoleSeedSource = readSource(
-    'prisma/seeds/02-system-roles.seed.ts',
+    'src/modules/iam/reference-data/system-role-catalog.ts',
   );
 
   it('adds DISMISSAL_STAFF user type while preserving PICKUP_DELEGATE', () => {

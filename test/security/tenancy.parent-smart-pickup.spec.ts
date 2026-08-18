@@ -57,11 +57,11 @@ describe('PARENT-DISMISSAL-1A route metadata and seed boundaries', () => {
 
   it('keeps Parent Smart Pickup permissions isolated from dismissal and cancel permissions', () => {
     const permissionsSeed = readFileSync(
-      `${process.cwd()}/prisma/seeds/01-permissions.seed.ts`,
+      `${process.cwd()}/src/modules/iam/reference-data/permission-catalog.ts`,
       'utf8',
     );
     const rolesSeed = readFileSync(
-      `${process.cwd()}/prisma/seeds/02-system-roles.seed.ts`,
+      `${process.cwd()}/src/modules/iam/reference-data/system-role-catalog.ts`,
       'utf8',
     );
     const parentPermissions = extractConstStringArray(

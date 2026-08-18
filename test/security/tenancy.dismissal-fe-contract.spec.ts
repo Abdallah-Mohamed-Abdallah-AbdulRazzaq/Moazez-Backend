@@ -229,8 +229,14 @@ describe('DISMISSAL-FE-CONTRACT-1A contract security and inventory', () => {
   });
 
   it('keeps permission catalog, role boundaries, schema, migration, and device-token contracts frozen', () => {
-    const permissionsSeed = readFileSync('prisma/seeds/01-permissions.seed.ts', 'utf8');
-    const rolesSeed = readFileSync('prisma/seeds/02-system-roles.seed.ts', 'utf8');
+    const permissionsSeed = readFileSync(
+      'src/modules/iam/reference-data/permission-catalog.ts',
+      'utf8',
+    );
+    const rolesSeed = readFileSync(
+      'src/modules/iam/reference-data/system-role-catalog.ts',
+      'utf8',
+    );
     const schemaSource = readFileSync('prisma/schema.prisma', 'utf8');
     const migrations = readdirSync('prisma/migrations');
     const parentPermissions = extractConstStringArray(rolesSeed, 'PARENT_PERMISSIONS');

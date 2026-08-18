@@ -156,11 +156,17 @@ describe('Dashboard alerts tenancy/security contracts', () => {
 
   it('adds dashboard.alerts.view to admin-like seed inheritance only', () => {
     const permissionsSeed = readFileSync(
-      join(process.cwd(), 'prisma/seeds/01-permissions.seed.ts'),
+      join(
+        process.cwd(),
+        'src/modules/iam/reference-data/permission-catalog.ts',
+      ),
       'utf8',
     );
     const rolesSeed = readFileSync(
-      join(process.cwd(), 'prisma/seeds/02-system-roles.seed.ts'),
+      join(
+        process.cwd(),
+        'src/modules/iam/reference-data/system-role-catalog.ts',
+      ),
       'utf8',
     );
 

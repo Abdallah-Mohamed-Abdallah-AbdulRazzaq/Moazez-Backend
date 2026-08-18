@@ -164,10 +164,13 @@ describe('DISMISSAL-OPERATIONS-AUDIT-1A production hardening security', () => {
 
   it('keeps role and permission seeds free of production-audit additions', () => {
     const permissionSeed = readFileSync(
-      'prisma/seeds/01-permissions.seed.ts',
+      'src/modules/iam/reference-data/permission-catalog.ts',
       'utf8',
     );
-    const roleSeed = readFileSync('prisma/seeds/02-system-roles.seed.ts', 'utf8');
+    const roleSeed = readFileSync(
+      'src/modules/iam/reference-data/system-role-catalog.ts',
+      'utf8',
+    );
 
     expect(permissionSeed).not.toContain('dismissal.requests.expire');
     expect(permissionSeed).not.toContain('dismissal.operations');

@@ -66,10 +66,13 @@ describe('DISMISSAL-EXPIRY-1A tenancy and worker security', () => {
     expect(permissionRows).toEqual([]);
 
     const permissionSeed = readFileSync(
-      'prisma/seeds/01-permissions.seed.ts',
+      'src/modules/iam/reference-data/permission-catalog.ts',
       'utf8',
     );
-    const roleSeed = readFileSync('prisma/seeds/02-system-roles.seed.ts', 'utf8');
+    const roleSeed = readFileSync(
+      'src/modules/iam/reference-data/system-role-catalog.ts',
+      'utf8',
+    );
     for (const source of [permissionSeed, roleSeed]) {
       expect(source).not.toContain('dismissal.requests.expire');
       expect(source).not.toContain('dismissal.expiry');
