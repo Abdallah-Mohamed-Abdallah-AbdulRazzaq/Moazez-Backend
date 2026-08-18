@@ -314,6 +314,23 @@ test('runtime ownership uses reviewed overrides instead of filename guessing', (
   assert.throws(() => resolveRuntimeRole('src/example.ts', [], [{ path: 'src/example.ts', role: '', reason: '', evidence: '' }]));
 });
 
+test('initial Platform Administrator bootstrap transaction has reviewed API runtime ownership', () => {
+  const row = INVENTORY.find((item) =>
+    item.path === 'src/modules/platform-admin/bootstrap/platform-admin-bootstrap.repository.ts'
+    && item.entryOwner === 'PlatformAdminBootstrapRepository.createInitialPlatformAdministrator',
+  );
+
+  assert.ok(row);
+  assert.equal(row.transactionId, 'B3-TX-FE87DBE7E607');
+  assert.equal(row.runtimeRole, 'api');
+  assert.deepEqual(row.runtimeRoles, ['api']);
+  assert.match(row.runtimeRoleEvidence, /DATABASE_RUNTIME_ROLE=api/u);
+  assert.equal(row.classification, 'SERIALIZABLE_CONFLICT_SENSITIVE');
+  assert.match(row.isolation, /Serializable/u);
+  assert.equal(row.externalWaitInsideTransaction, false);
+  assert.deepEqual(row.unresolvedCalls, []);
+});
+
 test('duplicate transaction identities fail closed', () => {
   assert.throws(() => validateInventory([INVENTORY[0], INVENTORY[0]]), /transactionId|unique|Expected values|duplicate transaction identity/u);
 });

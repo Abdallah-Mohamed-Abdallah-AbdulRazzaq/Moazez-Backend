@@ -383,6 +383,14 @@ const REVIEWED_CALL_OVERRIDES = Object.freeze([
     evidence: 'Both notification helpers accept the active Prisma TransactionClient and only create communication notification and delivery rows in that transaction.',
   }),
 ]);
+const REVIEWED_RUNTIME_ROLE_OVERRIDES = Object.freeze([
+  Object.freeze({
+    path: 'src/modules/platform-admin/bootstrap/platform-admin-bootstrap.repository.ts',
+    role: 'api',
+    reason: 'The first-administrator repository is reachable only through the explicit Stage 20B operator CLI, outside the long-lived runtime import graph.',
+    evidence: 'src/platform-admin-bootstrap.ts creates PlatformAdminBootstrapModule only after platform-admin-bootstrap.environment.ts validates the existing DATABASE_RUNTIME_ROLE=api contract.',
+  }),
+]);
 const EXTERNAL_TARGET_PATTERN = /(?:^(?:this\.)?(?:storage|verifier|provider|mailer|redis|queue|bull|http|s3|minio|firebase|socket|webhook)\.|\.createDownloadUrl$|\.verifyAndStoreFinal$|\.verifyExistingFinal$|^fetch$)/i;
 const LOCK_PATTERN = /FOR\s+(?:NO\s+KEY\s+)?(?:UPDATE|SHARE)|pg_(?:advisory|blocking_pids)/i;
 
@@ -773,7 +781,11 @@ function inventoryTransactions(sourceRoot = path.join(ROOT, 'src')) {
         const callbackDigest = sha256(callback.getText(source).replace(/\s+/gu, ' ').trim());
         const stableIdentity = `${normalized(relativePath)}#${owner}#${ordinal}#${callbackDigest}`;
         const transactionId = `B3-TX-${sha256(stableIdentity).slice(0, 12).toUpperCase()}`;
-        const runtimeRole = resolveRuntimeRole(relativePath, runtimeIndex.roles.get(absolute.toLowerCase()) ?? []);
+        const runtimeRole = resolveRuntimeRole(
+          relativePath,
+          runtimeIndex.roles.get(absolute.toLowerCase()) ?? [],
+          REVIEWED_RUNTIME_ROLE_OVERRIDES,
+        );
         const legacyClassification = /Serializable/i.test(isolationText)
           ? 'SERIALIZABLE_CONFLICT_SENSITIVE'
           : fileHasLock
