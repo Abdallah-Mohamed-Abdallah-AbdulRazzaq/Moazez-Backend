@@ -14,6 +14,11 @@ const PROVIDER_CONFIG_ALLOWLIST = new Set([
   'infrastructure/storage/storage-env.validation.ts',
 ]);
 
+const GCP_PROJECT_ID_CONSUMER_ALLOWLIST = new Set([
+  ...PROVIDER_CONFIG_ALLOWLIST,
+  'modules/platform-admin/bootstrap/platform-admin-bootstrap.environment.ts',
+]);
+
 const PROVIDER_LITERAL_ALLOWLIST = new Set([
   ...PROVIDER_IMPLEMENTATION_ALLOWLIST,
   'infrastructure/storage/provider-url.policy.ts',
@@ -71,6 +76,38 @@ describe('storage cutover source boundary', () => {
       'modules/example/application/persist.ts:signed-url-persistence',
     ]);
   });
+
+  it('allows the governed bootstrap project identity without exposing storage secrets', () => {
+    const bootstrapEnvironmentPath =
+      'modules/platform-admin/bootstrap/platform-admin-bootstrap.environment.ts';
+
+    expect(
+      collectCredentialBoundaryViolations([
+        {
+          path: bootstrapEnvironmentPath,
+          source: 'const projectId = environment.GCP_PROJECT_ID;',
+        },
+      ]),
+    ).toEqual([]);
+    expect(
+      collectCredentialBoundaryViolations([
+        {
+          path: bootstrapEnvironmentPath,
+          source: 'const secret = environment.STORAGE_SECRET_KEY;',
+        },
+      ]),
+    ).toEqual([`${bootstrapEnvironmentPath}:provider-config-reference`]);
+    expect(
+      collectCredentialBoundaryViolations([
+        {
+          path: 'modules/example/application/bypass.ts',
+          source: 'const projectId = environment.GCP_PROJECT_ID;',
+        },
+      ]),
+    ).toEqual([
+      'modules/example/application/bypass.ts:provider-config-reference',
+    ]);
+  });
 });
 
 type SourceFile = { path: string; source: string };
@@ -100,12 +137,16 @@ function collectProviderBoundaryViolations(files: SourceFile[]): string[] {
 }
 
 function collectCredentialBoundaryViolations(files: SourceFile[]): string[] {
-  const credentialPattern =
-    /\b(?:STORAGE_ENDPOINT|STORAGE_ACCESS_KEY|STORAGE_SECRET_KEY|GCP_PROJECT_ID|GCS_SIGNING_SERVICE_ACCOUNT)\b/;
+  const storageCredentialPattern =
+    /\b(?:STORAGE_ENDPOINT|STORAGE_ACCESS_KEY|STORAGE_SECRET_KEY|GCS_SIGNING_SERVICE_ACCOUNT)\b/;
+  const projectIdentityPattern = /\bGCP_PROJECT_ID\b/;
   return files
     .filter(
       ({ path, source }) =>
-        credentialPattern.test(source) && !PROVIDER_CONFIG_ALLOWLIST.has(path),
+        (storageCredentialPattern.test(source) &&
+          !PROVIDER_CONFIG_ALLOWLIST.has(path)) ||
+        (projectIdentityPattern.test(source) &&
+          !GCP_PROJECT_ID_CONSUMER_ALLOWLIST.has(path)),
     )
     .map(({ path }) => `${path}:provider-config-reference`);
 }
