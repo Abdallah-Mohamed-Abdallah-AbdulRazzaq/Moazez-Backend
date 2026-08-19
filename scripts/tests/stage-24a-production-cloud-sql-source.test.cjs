@@ -50,18 +50,18 @@ const PRODUCTION_TUPLE = Object.freeze({
   region: 'me-central2',
   instance_name: 'moazez-production-postgres-me-central2',
   database_version: 'POSTGRES_16',
-  edition: 'ENTERPRISE_PLUS',
-  tier: 'db-perf-optimized-N-2',
+  edition: 'ENTERPRISE',
+  tier: 'db-custom-N4-2-16384',
   availability_type: 'REGIONAL',
-  primary_zone: 'me-central2-a',
-  secondary_zone: 'me-central2-c',
-  disk_type: 'PD_SSD',
+  primary_zone: null,
+  secondary_zone: null,
+  disk_type: 'HYPERDISK_BALANCED',
   disk_size_gb: 20,
   disk_autoresize: true,
   disk_autoresize_limit_gb: 100,
   backups_enabled: true,
   point_in_time_recovery_enabled: true,
-  transaction_log_retention_days: 14,
+  transaction_log_retention_days: 7,
   retained_backups: 30,
   backup_retention_unit: 'COUNT',
   backup_location: 'me-central2',
@@ -79,7 +79,14 @@ const PRODUCTION_TUPLE = Object.freeze({
 const PRODUCTION_LOCAL = Object.freeze(
   Object.fromEntries(
     Object.entries(PRODUCTION_TUPLE).filter(
-      ([name]) => !['project_id', 'environment', 'region'].includes(name),
+      ([name]) =>
+        ![
+          'project_id',
+          'environment',
+          'region',
+          'primary_zone',
+          'secondary_zone',
+        ].includes(name),
     ),
   ),
 );
@@ -101,23 +108,19 @@ const VARIABLE_VALIDATION_CONDITIONS = Object.freeze({
   instance_name:
     'contains(["moazez-staging-postgres-me-central2","moazez-production-postgres-me-central2"],var.instance_name)',
   database_version: 'var.database_version=="POSTGRES_16"',
-  edition: 'contains(["ENTERPRISE","ENTERPRISE_PLUS"],var.edition)',
-  tier: 'contains(["db-custom-N4-2-8192","db-perf-optimized-N-2"],var.tier)',
-  availability_type:
-    'contains(["ZONAL","REGIONAL"],var.availability_type)',
-  primary_zone:
-    'var.primary_zone==null||var.primary_zone=="me-central2-a"',
+  edition: 'var.edition=="ENTERPRISE"',
+  tier: 'contains(["db-custom-N4-2-8192","db-custom-N4-2-16384"],var.tier)',
+  availability_type: 'contains(["ZONAL","REGIONAL"],var.availability_type)',
+  primary_zone: 'var.primary_zone==null||var.primary_zone=="me-central2-a"',
   secondary_zone:
     'var.secondary_zone==null||var.secondary_zone=="me-central2-c"',
-  disk_type: 'contains(["HYPERDISK_BALANCED","PD_SSD"],var.disk_type)',
+  disk_type: 'var.disk_type=="HYPERDISK_BALANCED"',
   disk_size_gb: 'var.disk_size_gb==20',
   disk_autoresize: 'var.disk_autoresize==true',
   disk_autoresize_limit_gb: 'var.disk_autoresize_limit_gb==100',
   backups_enabled: 'var.backups_enabled==true',
-  point_in_time_recovery_enabled:
-    'var.point_in_time_recovery_enabled==true',
-  transaction_log_retention_days:
-    'contains([7,14],var.transaction_log_retention_days)',
+  point_in_time_recovery_enabled: 'var.point_in_time_recovery_enabled==true',
+  transaction_log_retention_days: 'var.transaction_log_retention_days==7',
   retained_backups: 'contains([8,30],var.retained_backups)',
   backup_retention_unit: 'var.backup_retention_unit=="COUNT"',
   backup_location:
@@ -131,10 +134,8 @@ const VARIABLE_VALIDATION_CONDITIONS = Object.freeze({
   ssl_mode: 'var.ssl_mode=="ENCRYPTED_ONLY"',
   enable_private_path_for_google_cloud_services:
     'var.enable_private_path_for_google_cloud_services==false',
-  terraform_deletion_protection:
-    'var.terraform_deletion_protection==true',
-  gcp_deletion_protection_enabled:
-    'var.gcp_deletion_protection_enabled==true',
+  terraform_deletion_protection: 'var.terraform_deletion_protection==true',
+  gcp_deletion_protection_enabled: 'var.gcp_deletion_protection_enabled==true',
 });
 
 function absolutePath(relativePath) {
@@ -147,6 +148,121 @@ function readSource(relativePath) {
 
 function normalizedSource(relativePath) {
   return readSource(relativePath).replace(/\r\n/gu, '\n');
+}
+
+function withoutHclComments(source) {
+  let output = '';
+  let inString = false;
+  let escaped = false;
+  let lineComment = false;
+  let blockComment = false;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    const nextCharacter = source[index + 1];
+
+    if (lineComment) {
+      if (character === '\n') {
+        lineComment = false;
+        output += character;
+      }
+      continue;
+    }
+    if (blockComment) {
+      if (character === '*' && nextCharacter === '/') {
+        blockComment = false;
+        index += 1;
+      } else if (character === '\n') {
+        output += character;
+      }
+      continue;
+    }
+    if (inString) {
+      output += character;
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+      output += character;
+    } else if (character === '#') {
+      lineComment = true;
+    } else if (character === '/' && nextCharacter === '/') {
+      lineComment = true;
+      index += 1;
+    } else if (character === '/' && nextCharacter === '*') {
+      blockComment = true;
+      index += 1;
+    } else {
+      output += character;
+    }
+  }
+
+  return output;
+}
+
+function blockAssignmentExpressions(block) {
+  const openingBrace = block.indexOf('{');
+  const closingBrace = block.lastIndexOf('}');
+  assert.notEqual(openingBrace, -1, 'Assignment block has no opening brace.');
+  assert.ok(
+    closingBrace > openingBrace,
+    'Assignment block has no closing brace.',
+  );
+
+  const body = withoutHclComments(block.slice(openingBrace + 1, closingBrace));
+  const assignments = {};
+  const pattern = /^\s*([a-z][a-z0-9_]*)\s*=\s*([^\r\n]+?)\s*$/gmu;
+  for (const match of body.matchAll(pattern)) {
+    assert.equal(
+      Object.hasOwn(assignments, match[1]),
+      false,
+      `Duplicate assignment for ${match[1]}.`,
+    );
+    assignments[match[1]] = match[2].trim();
+  }
+  return assignments;
+}
+
+function markdownSection(source, heading) {
+  const marker = `## ${heading}`;
+  const start = source.indexOf(marker);
+  assert.notEqual(start, -1, `Missing README section: ${heading}.`);
+  const remainder = source.slice(start + marker.length);
+  const nextHeading = /^##\s+/mu.exec(remainder);
+  return remainder.slice(0, nextHeading?.index ?? remainder.length);
+}
+
+function withoutMarkdownComments(source) {
+  return source.replace(/<!--[\s\S]*?-->/gu, '');
+}
+
+function markdownTable(section) {
+  const rows = section
+    .split('\n')
+    .filter((line) => line.startsWith('|'))
+    .map((line) =>
+      line
+        .split('|')
+        .slice(1, -1)
+        .map((cell) => cell.trim()),
+    );
+  assert.ok(rows.length >= 3, 'README section is missing its governed table.');
+  assert.deepEqual(rows[0], ['Component', 'Approved value']);
+  assert.deepEqual(rows[1], ['---', '---']);
+  const table = Object.fromEntries(rows.slice(2));
+  assert.equal(
+    Object.keys(table).length,
+    rows.length - 2,
+    'README governed table contains a duplicate component.',
+  );
+  return table;
 }
 
 function gitBlobHash(source) {
@@ -237,7 +353,7 @@ function parseLiteralAssignments(source) {
   const assignments = {};
   const pattern =
     /^\s*([a-z][a-z0-9_]*)\s*=\s*(null|true|false|-?\d+|"[^"\r\n]*")\s*$/gmu;
-  for (const match of source.matchAll(pattern)) {
+  for (const match of withoutHclComments(source).matchAll(pattern)) {
     assert.equal(
       Object.hasOwn(assignments, match[1]),
       false,
@@ -318,11 +434,21 @@ test('Staging SQL root remains byte-semantic baseline source', () => {
 });
 
 test('Production root locks the complete Stage 24C contract', () => {
-  const main = normalizedSource(`${PRODUCTION_ROOT}/main.tf`);
-  const variables = normalizedSource(`${PRODUCTION_ROOT}/variables.tf`);
-  const providers = normalizedSource(`${PRODUCTION_ROOT}/providers.tf`);
-  const versions = normalizedSource(`${PRODUCTION_ROOT}/versions.tf`);
-  const outputs = normalizedSource(`${PRODUCTION_ROOT}/outputs.tf`);
+  const main = withoutHclComments(
+    normalizedSource(`${PRODUCTION_ROOT}/main.tf`),
+  );
+  const variables = withoutHclComments(
+    normalizedSource(`${PRODUCTION_ROOT}/variables.tf`),
+  );
+  const providers = withoutHclComments(
+    normalizedSource(`${PRODUCTION_ROOT}/providers.tf`),
+  );
+  const versions = withoutHclComments(
+    normalizedSource(`${PRODUCTION_ROOT}/versions.tf`),
+  );
+  const outputs = withoutHclComments(
+    normalizedSource(`${PRODUCTION_ROOT}/outputs.tf`),
+  );
   const rootSource = [main, variables, providers, versions, outputs].join('\n');
 
   assert.equal((rootSource.match(/^\s*resource\s+"/gmu) ?? []).length, 0);
@@ -334,6 +460,10 @@ test('Production root locks the complete Stage 24C contract', () => {
     /production_sql\s*=\s*\{/u,
     'production_sql local object',
   );
+  assert.deepEqual(
+    Object.keys(blockAssignmentExpressions(productionLocal)),
+    Object.keys(PRODUCTION_LOCAL),
+  );
   assert.deepEqual(parseLiteralAssignments(productionLocal), PRODUCTION_LOCAL);
 
   const moduleBlock = extractBlock(
@@ -341,28 +471,22 @@ test('Production root locks the complete Stage 24C contract', () => {
     /module\s+"sql_environment"\s*\{/u,
     'production sql_environment module',
   );
-  assert.match(
-    moduleBlock,
-    /^\s*source\s*=\s*"\.\.\/\.\.\/modules\/sql-environment"\s*$/mu,
+  const expectedModuleAssignments = {
+    source: '"../../modules/sql-environment"',
+    project_id: 'var.project_id',
+    environment: 'var.environment',
+    region: 'var.region',
+    ...Object.fromEntries(
+      Object.keys(PRODUCTION_LOCAL).map((name) => [
+        name,
+        `local.production_sql.${name}`,
+      ]),
+    ),
+  };
+  assert.deepEqual(
+    blockAssignmentExpressions(moduleBlock),
+    expectedModuleAssignments,
   );
-  for (const variableName of ['project_id', 'environment', 'region']) {
-    assert.match(
-      moduleBlock,
-      new RegExp(
-        `^\\s*${variableName}\\s*=\\s*var\\.${variableName}\\s*$`,
-        'mu',
-      ),
-    );
-  }
-  for (const localName of Object.keys(PRODUCTION_LOCAL)) {
-    assert.match(
-      moduleBlock,
-      new RegExp(
-        `^\\s*${localName}\\s*=\\s*local\\.production_sql\\.${localName}\\s*$`,
-        'mu',
-      ),
-    );
-  }
 
   const variableNames = [
     ...variables.matchAll(/^variable\s+"([^"]+)"\s*\{/gmu),
@@ -385,16 +509,28 @@ test('Production root locks the complete Stage 24C contract', () => {
       new RegExp(`condition\\s*=\\s*var\\.${name}\\s*==\\s*"${value}"`, 'u'),
     );
     assert.deepEqual(
-      [...new Set([...variableBlock.matchAll(/var\.([a-z0-9_]+)/gu)].map((item) => item[1]))],
+      [
+        ...new Set(
+          [...variableBlock.matchAll(/var\.([a-z0-9_]+)/gu)].map(
+            (item) => item[1],
+          ),
+        ),
+      ],
       [name],
     );
   }
 
-  assert.equal((providers.match(/^provider\s+"google"\s*\{/gmu) ?? []).length, 1);
+  assert.equal(
+    (providers.match(/^provider\s+"google"\s*\{/gmu) ?? []).length,
+    1,
+  );
   assert.match(providers, /project\s*=\s*var\.project_id/u);
   assert.match(providers, /region\s*=\s*var\.region/u);
   assert.match(versions, /required_version\s*=\s*">= 1\.6\.0, < 2\.0\.0"/u);
-  assert.match(versions, /bucket\s*=\s*"moazez-production-91001421934-tfstate"/u);
+  assert.match(
+    versions,
+    /bucket\s*=\s*"moazez-production-91001421934-tfstate"/u,
+  );
   assert.match(versions, /prefix\s*=\s*"sql\/production"/u);
   assert.match(versions, /version\s*=\s*">= 7\.40\.0, < 8\.0\.0"/u);
 
@@ -414,9 +550,9 @@ test('Production root locks the complete Stage 24C contract', () => {
     'ssl_mode',
     'self_link',
   ];
-  const outputNames = [
-    ...outputs.matchAll(/^output\s+"([^"]+)"\s*\{/gmu),
-  ].map((match) => match[1]);
+  const outputNames = [...outputs.matchAll(/^output\s+"([^"]+)"\s*\{/gmu)].map(
+    (match) => match[1],
+  );
   assert.deepEqual(outputNames, expectedOutputs);
   for (const outputName of expectedOutputs) {
     const outputBlock = extractBlock(
@@ -429,9 +565,21 @@ test('Production root locks the complete Stage 24C contract', () => {
       new RegExp(`value\\s*=\\s*module\\.sql_environment\\.${outputName}`, 'u'),
     );
   }
-  assert.doesNotMatch(outputs, /password|database_url|credential|access_token|private_key/iu);
-  assert.equal(PRODUCTION_LOCAL.primary_zone, 'me-central2-a');
-  assert.equal(PRODUCTION_LOCAL.secondary_zone, 'me-central2-c');
+  assert.doesNotMatch(
+    outputs,
+    /password|database_url|credential|access_token|private_key/iu,
+  );
+  assert.equal(PRODUCTION_TUPLE.primary_zone, null);
+  assert.equal(PRODUCTION_TUPLE.secondary_zone, null);
+  assert.doesNotMatch(
+    main,
+    /\b(?:machine_series|vcpu|memory_mb|primary_zone|secondary_zone)\b|me-central2-[ac]\b/u,
+  );
+  const tierIdentity = /^db-custom-(N4)-(\d+)-(\d+)$/u.exec(
+    PRODUCTION_LOCAL.tier,
+  );
+  assert.ok(tierIdentity, 'Production tier must encode the governed N4 shape.');
+  assert.deepEqual(tierIdentity.slice(1), ['N4', '2', '16384']);
   assert.doesNotMatch(
     rootSource,
     /data_cache_config|authorized_networks|start_time|follow_gae_application/u,
@@ -440,20 +588,35 @@ test('Production root locks the complete Stage 24C contract', () => {
   console.log('PRODUCTION_ROOT_DIRECT_RESOURCE_COUNT=0');
   console.log('PRODUCTION_ROOT_DATA_SOURCE_COUNT=0');
   console.log('PRODUCTION_ROOT_MODULE_COUNT=1');
-  console.log('PRODUCTION_PRIMARY_ZONE=me-central2-a');
-  console.log('PRODUCTION_SECONDARY_ZONE=me-central2-c');
+  console.log('PRODUCTION_PRIMARY_ZONE_EXPLICIT=NO');
+  console.log('PRODUCTION_SECONDARY_ZONE_EXPLICIT=NO');
   console.log('PRODUCTION_REGION=me-central2');
   console.log('PRODUCTION_AVAILABILITY_TYPE=REGIONAL');
-  console.log('PRODUCTION_EDITION=ENTERPRISE_PLUS');
-  console.log('PRODUCTION_TIER=db-perf-optimized-N-2');
+  console.log('PRODUCTION_EDITION=ENTERPRISE');
+  console.log('PRODUCTION_MACHINE_SERIES=N4');
+  console.log('PRODUCTION_TIER=db-custom-N4-2-16384');
+  console.log('PRODUCTION_VCPU=2');
+  console.log('PRODUCTION_MEMORY_MB=16384');
   console.log('PRODUCTION_DATABASE_VERSION=POSTGRES_16');
+  console.log('PRODUCTION_DISK_TYPE=HYPERDISK_BALANCED');
+  console.log('PRODUCTION_TRANSACTION_LOG_RETENTION_DAYS=7');
+  console.log('TIER_SOURCE_CONTRACT=PASS');
   console.log('PRODUCTION_STAGE_24C_CONTRACT=PASS');
 });
 
 test('Shared module permits only governed values and owns one SQL instance', () => {
-  const moduleMain = normalizedSource(`${MODULE_ROOT}/main.tf`);
-  const moduleVariables = normalizedSource(`${MODULE_ROOT}/variables.tf`);
-  const stagingMain = normalizedSource(`${NONPROD_ROOT}/main.tf`);
+  const moduleMain = withoutHclComments(
+    normalizedSource(`${MODULE_ROOT}/main.tf`),
+  );
+  const moduleVariables = withoutHclComments(
+    normalizedSource(`${MODULE_ROOT}/variables.tf`),
+  );
+  const stagingMain = withoutHclComments(
+    normalizedSource(`${NONPROD_ROOT}/main.tf`),
+  );
+  const productionMain = withoutHclComments(
+    normalizedSource(`${PRODUCTION_ROOT}/main.tf`),
+  );
 
   const resourceMatches = [
     ...moduleMain.matchAll(/^resource\s+"([^"]+)"\s+"([^"]+)"\s*\{/gmu),
@@ -542,8 +705,9 @@ test('Shared module permits only governed values and owns one SQL instance', () 
     /dynamic\s+"location_preference"\s*\{/u,
     'dynamic location_preference',
   );
-  const forEachMatch =
-    /for_each\s*=\s*([\s\S]*?)\s+content\s*\{/u.exec(locationPreference);
+  const forEachMatch = /for_each\s*=\s*([\s\S]*?)\s+content\s*\{/u.exec(
+    locationPreference,
+  );
   assert.ok(forEachMatch, 'Missing location_preference for_each expression.');
   assert.equal(
     canonicalCondition(forEachMatch[1]),
@@ -554,31 +718,25 @@ test('Shared module permits only governed values and owns one SQL instance', () 
     /content\s*\{/u,
     'location_preference content',
   );
-  assert.deepEqual(
-    [...locationContent.matchAll(/^\s*([a-z][a-z0-9_]*)\s*=/gmu)].map(
-      (match) => match[1],
-    ),
-    ['zone', 'secondary_zone'],
-  );
-  assert.match(
-    locationContent,
-    /^\s*zone\s*=\s*var\.primary_zone\s*$/mu,
-  );
-  assert.match(
-    locationContent,
-    /^\s*secondary_zone\s*=\s*var\.secondary_zone\s*$/mu,
-  );
+  assert.deepEqual(blockAssignmentExpressions(locationContent), {
+    zone: 'var.primary_zone',
+    secondary_zone: 'var.secondary_zone',
+  });
   assert.doesNotMatch(locationPreference, /follow_gae_application/u);
 
-  const stagingModule = extractBlock(
-    stagingMain,
-    /module\s+"sql_environment"\s*\{/u,
-    'Staging sql_environment module',
-  );
-  assert.doesNotMatch(
-    stagingModule,
-    /^\s*(?:primary_zone|secondary_zone)\s*=/gmu,
-  );
+  for (const [callerName, callerSource] of [
+    ['Staging', stagingMain],
+    ['Production', productionMain],
+  ]) {
+    const callerModule = extractBlock(
+      callerSource,
+      /module\s+"sql_environment"\s*\{/u,
+      `${callerName} sql_environment module`,
+    );
+    const callerAssignments = blockAssignmentExpressions(callerModule);
+    assert.equal(Object.hasOwn(callerAssignments, 'primary_zone'), false);
+    assert.equal(Object.hasOwn(callerAssignments, 'secondary_zone'), false);
+  }
   assert.doesNotMatch(
     resourceBlock,
     /data_cache_config|authorized_networks|start_time|follow_gae_application/u,
@@ -586,15 +744,18 @@ test('Shared module permits only governed values and owns one SQL instance', () 
 
   console.log('SHARED_MODULE_MANAGED_RESOURCE_COUNT=1');
   console.log('SHARED_MODULE_LOCATION_PREFERENCE=PASS');
+  console.log('SHARED_MODULE_OPTIONAL_LOCATION_PREFERENCE_PRESERVED=YES');
   console.log('STAGING_LOCATION_PREFERENCE_CONFIGURED=NO');
-  console.log('PRODUCTION_LOCATION_PREFERENCE_CONFIGURED=YES');
+  console.log('PRODUCTION_LOCATION_PREFERENCE_CONFIGURED=NO');
   console.log(
     'PRODUCTION_MANAGED_RESOURCE=module.sql_environment.google_sql_database_instance.postgres',
   );
 });
 
 test('Lifecycle guard is an exact Staging-or-Production tuple gate', () => {
-  const moduleMain = normalizedSource(`${MODULE_ROOT}/main.tf`);
+  const moduleMain = withoutHclComments(
+    normalizedSource(`${MODULE_ROOT}/main.tf`),
+  );
   const lifecycle = extractBlock(moduleMain, /lifecycle\s*\{/u, 'lifecycle');
   assert.equal((moduleMain.match(/lifecycle\s*\{/gu) ?? []).length, 1);
   assert.equal((lifecycle.match(/precondition\s*\{/gu) ?? []).length, 1);
@@ -604,8 +765,9 @@ test('Lifecycle guard is an exact Staging-or-Production tuple gate', () => {
     /precondition\s*\{/u,
     'tuple precondition',
   );
-  const conditionMatch =
-    /condition\s*=\s*([\s\S]*?)\s+error_message\s*=/u.exec(precondition);
+  const conditionMatch = /condition\s*=\s*([\s\S]*?)\s+error_message\s*=/u.exec(
+    precondition,
+  );
   assert.ok(conditionMatch, 'Missing tuple precondition condition.');
   assert.equal(
     canonicalCondition(conditionMatch[1]),
@@ -633,36 +795,48 @@ test('Lifecycle guard is an exact Staging-or-Production tuple gate', () => {
       },
     },
     {
-      name: 'Production plus HYPERDISK_BALANCED',
-      tuple: { ...PRODUCTION_TUPLE, disk_type: 'HYPERDISK_BALANCED' },
-    },
-    {
       name: 'Production plus missing backup location',
       tuple: { ...PRODUCTION_TUPLE, backup_location: null },
     },
     {
-      name: 'Production with null zones',
+      name: 'Old Enterprise Plus Production profile',
+      tuple: { ...PRODUCTION_TUPLE, edition: 'ENTERPRISE_PLUS' },
+    },
+    {
+      name: 'Old N2 Production profile',
+      tuple: { ...PRODUCTION_TUPLE, tier: 'db-perf-optimized-N-2' },
+    },
+    {
+      name: 'Old PD_SSD Production profile',
+      tuple: { ...PRODUCTION_TUPLE, disk_type: 'PD_SSD' },
+    },
+    {
+      name: 'Old 14-day Production implementation',
+      tuple: { ...PRODUCTION_TUPLE, transaction_log_retention_days: 14 },
+    },
+    {
+      name: 'Old deterministic a/c Production zone pair',
       tuple: {
         ...PRODUCTION_TUPLE,
-        primary_zone: null,
-        secondary_zone: null,
+        primary_zone: 'me-central2-a',
+        secondary_zone: 'me-central2-c',
       },
     },
     {
       name: 'Production with only primary zone',
-      tuple: { ...PRODUCTION_TUPLE, secondary_zone: null },
+      tuple: { ...PRODUCTION_TUPLE, primary_zone: 'me-central2-a' },
     },
     {
       name: 'Production with only secondary zone',
-      tuple: { ...PRODUCTION_TUPLE, primary_zone: null },
+      tuple: { ...PRODUCTION_TUPLE, secondary_zone: 'me-central2-c' },
     },
     {
-      name: 'Production with wrong primary zone',
-      tuple: { ...PRODUCTION_TUPLE, primary_zone: 'me-central2-c' },
-    },
-    {
-      name: 'Production with wrong secondary zone',
-      tuple: { ...PRODUCTION_TUPLE, secondary_zone: 'me-central2-a' },
+      name: 'Production with arbitrary zones',
+      tuple: {
+        ...PRODUCTION_TUPLE,
+        primary_zone: 'me-central2-b',
+        secondary_zone: 'me-central2-d',
+      },
     },
     {
       name: 'Staging plus Enterprise Plus',
@@ -688,21 +862,21 @@ test('Lifecycle guard is an exact Staging-or-Production tuple gate', () => {
     /ignore_changes\s*=/u,
     'ignore_changes',
   );
-  assert.equal(
-    ignoreChanges.replace(/\s|,/gu, ''),
-    '[settings[0].disk_size]',
-  );
+  assert.equal(ignoreChanges.replace(/\s|,/gu, ''), '[settings[0].disk_size]');
 
-  console.log('CROSS_ENVIRONMENT_TUPLE_GUARD_PRESENT=PASS');
-  console.log('PRODUCTION_NULL_ZONES_REJECTED=PASS');
+  console.log('CROSS_ENVIRONMENT_TUPLE_GUARD=PASS');
   console.log('PRODUCTION_PARTIAL_ZONE_PAIR_REJECTED=PASS');
-  console.log('PRODUCTION_WRONG_ZONE_PAIR_REJECTED=PASS');
-  console.log('PRODUCTION_HYPERDISK_REJECTED=PASS');
+  console.log('PRODUCTION_ARBITRARY_ZONE_PAIR_REJECTED=PASS');
+  console.log('OLD_ENTERPRISE_PLUS_PRODUCTION_REJECTED=PASS');
+  console.log('OLD_N2_PRODUCTION_REJECTED=PASS');
+  console.log('OLD_PD_SSD_PRODUCTION_REJECTED=PASS');
+  console.log('OLD_14_DAY_PRODUCTION_IMPLEMENTATION_REJECTED=PASS');
+  console.log('OLD_AC_ZONE_PAIR_PRODUCTION_REJECTED=PASS');
   console.log('PRODUCTION_BACKUP_LOCATION_GUARD=PASS');
   console.log('LIFECYCLE_DISK_SIZE_ONLY=PASS');
 });
 
-test('Production lockfile and README retain source-only governance', () => {
+test('Production lockfile and README retain temporary source-only governance', () => {
   const nonprodLock = fs.readFileSync(
     absolutePath(`${NONPROD_ROOT}/.terraform.lock.hcl`),
   );
@@ -712,32 +886,131 @@ test('Production lockfile and README retain source-only governance', () => {
   assert.equal(productionLock.equals(nonprodLock), true);
   assert.match(productionLock.toString('utf8'), /version\s*=\s*"7\.44\.0"/u);
 
-  const readme = normalizedSource(`${SQL_ROOT}/README.md`);
+  const readme = withoutMarkdownComments(
+    normalizedSource(`${SQL_ROOT}/README.md`),
+  );
   for (const requiredText of [
     'STAGING_ROOT=infra/gcp/sql/environments/nonprod',
     'PRODUCTION_ROOT=infra/gcp/sql/environments/production',
-    'PRODUCTION_SQL_SOURCE_PREPARED != PRODUCTION_SQL_APPLIED',
-    '`moazez-production-postgres-me-central2`',
-    '`db-perf-optimized-N-2`',
-    '`me-central2-a`',
-    '`me-central2-c`',
-    '`PD_SSD`, 20 GB initial',
-    '`me-central2`',
     '`moazez-production-91001421934-tfstate`',
     '`sql/production`',
-    'Stage 24C',
-    'DevOps owns any later Stage 24C',
   ]) {
-    assert.ok(readme.includes(requiredText), `README is missing: ${requiredText}`);
+    assert.ok(
+      readme.includes(requiredText),
+      `README is missing: ${requiredText}`,
+    );
   }
-  assert.match(readme, /does not prove[\s\S]*backup execution/iu);
-  assert.match(readme, /does not prove[\s\S]*capacity/iu);
-  assert.match(readme, /does not prove[\s\S]*successful HA placement/iu);
-  assert.match(readme, /does not authorize Terraform\s+plan, apply/iu);
+
+  const productionSection = markdownSection(
+    readme,
+    'Temporary Production Stage 24C capacity profile',
+  );
+  const productionTable = markdownTable(productionSection);
+  assert.deepEqual(productionTable, {
+    Project: '`moazez-production`',
+    Environment: '`production`',
+    Region: '`me-central2`',
+    Instance: '`moazez-production-postgres-me-central2`',
+    Engine: '`POSTGRES_16`',
+    Edition: '`ENTERPRISE`',
+    'Machine series': 'N4',
+    Tier: '`db-custom-N4-2-16384`',
+    'Machine shape': '2 vCPU / 16 GB',
+    Availability: '`REGIONAL`',
+    'Primary zone': 'unset; provider-managed placement',
+    'Secondary zone':
+      'unset; provider-managed and different from the primary zone',
+    Disk: '`HYPERDISK_BALANCED`, 20 GB initial',
+    'Disk autoresize': 'enabled, 100 GB limit',
+    'Automated backups': 'enabled',
+    'Point-in-time recovery': 'enabled',
+    'Transaction log retention': '7 days',
+    'Automated backup retention': '30 backups, `COUNT`',
+    'Backup location': '`me-central2`',
+    'PostgreSQL flag': '`max_connections = 100`',
+    'Public IPv4': 'disabled',
+    'Private network':
+      '`projects/moazez-production/global/networks/moazez-production-vpc`',
+    'Allocated range': '`moazez-production-psa`',
+    'SSL mode': '`ENCRYPTED_ONLY`',
+    'Google Cloud services private path': 'disabled',
+    'Terraform deletion protection': 'enabled',
+    'GCP/API deletion protection': 'enabled',
+  });
+  assert.doesNotMatch(
+    JSON.stringify(productionTable),
+    /ENTERPRISE_PLUS|db-perf-optimized-N-2|PD_SSD|14 days|me-central2-[ac]/u,
+  );
+  const q007Markers = [
+    '```text',
+    'APPROVED_Q007_PITR_OBJECTIVE=14',
+    'CURRENT_TEMPORARY_IMPLEMENTATION_PITR=7',
+    'Q007_RECOVERY_POLICY_CHANGED=NO',
+    'TEMPORARY_PITR_EXCEPTION=YES',
+    'CURRENT_IMPLEMENTATION_MEETS_Q007_PITR_OBJECTIVE=NO',
+    '```',
+  ].join('\n');
+  assert.ok(
+    productionSection.includes(q007Markers),
+    'Production section is missing the exact Q007 exception markers.',
+  );
+  assert.match(productionSection, /does not prove[\s\S]*capacity/iu);
+  assert.match(productionSection, /does not prove[\s\S]*will succeed/iu);
+  assert.match(productionSection, /30-day backup-retention\s+objective/iu);
+  assert.match(
+    productionSection,
+    /30\s+backup objects[\s\S]*does not prove 30 calendar\s+days/iu,
+  );
+
+  const sourceEvidenceSection = markdownSection(
+    readme,
+    'Source preparation is not live evidence',
+  );
+  assert.ok(
+    sourceEvidenceSection.includes(
+      '```text\nPRODUCTION_SQL_SOURCE_PREPARED != PRODUCTION_SQL_APPLIED\n```',
+    ),
+    'Source-evidence section is missing the source-not-applied marker.',
+  );
+  const sourceBoundaryMarkers = [
+    '```text',
+    'TIER_SOURCE_CONTRACT=PASS',
+    'LIVE_TIER_CAPACITY_PROVEN=NO',
+    'CAPACITY_SUCCESS_GUARANTEE=NO',
+    'OLD_SAVED_PLANS_AUTHORIZED=NO',
+    'NEW_SAVED_PLAN_REQUIRED=YES',
+    '```',
+  ].join('\n');
+  assert.ok(
+    sourceEvidenceSection.includes(sourceBoundaryMarkers),
+    'Source-evidence section is missing the exact capacity and plan markers.',
+  );
+  assert.match(
+    sourceEvidenceSection,
+    /do not prove\s*:[\s\S]*backup execution/iu,
+  );
+  assert.match(sourceEvidenceSection, /do not prove\s*:[\s\S]*capacity/iu);
+  assert.match(
+    sourceEvidenceSection,
+    /do not prove\s*:[\s\S]*successful creation/iu,
+  );
+  assert.match(
+    sourceEvidenceSection,
+    /Previously generated saved plans[\s\S]*not authorized/iu,
+  );
+  assert.match(
+    sourceEvidenceSection,
+    /DevOps owns any later Stage 24C[\s\S]*does not authorize Terraform\s+plan, apply/iu,
+  );
 
   console.log('PRODUCTION_LOCK_MATCHES_NONPROD_LOCK=YES');
   console.log('GOOGLE_PROVIDER_LOCK_VERSION=7.44.0');
-  console.log('DETERMINISTIC_ZONE_SOURCE=PASS');
+  console.log('Q007_RECOVERY_POLICY_CHANGED=NO');
+  console.log('TEMPORARY_PITR_EXCEPTION_DOCUMENTED=YES');
+  console.log('CURRENT_IMPLEMENTATION_MEETS_Q007_PITR_OBJECTIVE=NO');
+  console.log('LIVE_TIER_CAPACITY_PROVEN=NO');
   console.log('CAPACITY_SUCCESS_GUARANTEE=NO');
+  console.log('OLD_SAVED_PLANS_AUTHORIZED=NO');
+  console.log('NEW_SAVED_PLAN_REQUIRED=YES');
   console.log('SOURCE_PREPARATION_ONLY=YES');
 });

@@ -59,8 +59,8 @@ variable "edition" {
   type        = string
 
   validation {
-    condition     = contains(["ENTERPRISE", "ENTERPRISE_PLUS"], var.edition)
-    error_message = "edition must be ENTERPRISE or ENTERPRISE_PLUS."
+    condition     = var.edition == "ENTERPRISE"
+    error_message = "edition must be ENTERPRISE."
   }
 }
 
@@ -71,14 +71,14 @@ variable "tier" {
   validation {
     condition = contains([
       "db-custom-N4-2-8192",
-      "db-perf-optimized-N-2",
+      "db-custom-N4-2-16384",
     ], var.tier)
     error_message = "tier must be a governed Staging or Production tier."
   }
 }
 
 variable "availability_type" {
-  description = "Governed availability model; Staging uses provider-managed placement and Production uses the approved explicit HA zone pair."
+  description = "Governed availability model; current Staging and Production callers both use provider-managed zone placement."
   type        = string
 
   validation {
@@ -88,7 +88,7 @@ variable "availability_type" {
 }
 
 variable "primary_zone" {
-  description = "Optional governed primary zone; Staging leaves it unset and Production uses me-central2-a."
+  description = "Optional governed primary zone for reusable explicit placement; current Staging and Production callers leave it unset."
   type        = string
   default     = null
   nullable    = true
@@ -100,7 +100,7 @@ variable "primary_zone" {
 }
 
 variable "secondary_zone" {
-  description = "Optional governed secondary zone; Staging leaves it unset and Production uses me-central2-c."
+  description = "Optional governed secondary zone for reusable explicit placement; current Staging and Production callers leave it unset."
   type        = string
   default     = null
   nullable    = true
@@ -116,8 +116,8 @@ variable "disk_type" {
   type        = string
 
   validation {
-    condition     = contains(["HYPERDISK_BALANCED", "PD_SSD"], var.disk_type)
-    error_message = "disk_type must be HYPERDISK_BALANCED or PD_SSD."
+    condition     = var.disk_type == "HYPERDISK_BALANCED"
+    error_message = "disk_type must be HYPERDISK_BALANCED."
   }
 }
 
@@ -176,8 +176,8 @@ variable "transaction_log_retention_days" {
   type        = number
 
   validation {
-    condition     = contains([7, 14], var.transaction_log_retention_days)
-    error_message = "transaction_log_retention_days must be 7 or 14."
+    condition     = var.transaction_log_retention_days == 7
+    error_message = "transaction_log_retention_days must be 7."
   }
 }
 
