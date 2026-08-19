@@ -5,6 +5,8 @@ locals {
     edition                                       = "ENTERPRISE_PLUS"
     tier                                          = "db-perf-optimized-N-2"
     availability_type                             = "REGIONAL"
+    primary_zone                                  = "me-central2-a"
+    secondary_zone                                = "me-central2-c"
     disk_type                                     = "PD_SSD"
     disk_size_gb                                  = 20
     disk_autoresize                               = true
@@ -37,6 +39,8 @@ module "sql_environment" {
   edition                                       = local.production_sql.edition
   tier                                          = local.production_sql.tier
   availability_type                             = local.production_sql.availability_type
+  primary_zone                                  = local.production_sql.primary_zone
+  secondary_zone                                = local.production_sql.secondary_zone
   disk_type                                     = local.production_sql.disk_type
   disk_size_gb                                  = local.production_sql.disk_size_gb
   disk_autoresize                               = local.production_sql.disk_autoresize

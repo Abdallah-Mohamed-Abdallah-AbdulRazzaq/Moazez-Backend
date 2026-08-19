@@ -21,6 +21,8 @@ const STAGING_TUPLE = Object.freeze({
   edition: 'ENTERPRISE',
   tier: 'db-custom-N4-2-8192',
   availability_type: 'ZONAL',
+  primary_zone: null,
+  secondary_zone: null,
   disk_type: 'HYPERDISK_BALANCED',
   disk_size_gb: 20,
   disk_autoresize: true,
@@ -51,6 +53,8 @@ const PRODUCTION_TUPLE = Object.freeze({
   edition: 'ENTERPRISE_PLUS',
   tier: 'db-perf-optimized-N-2',
   availability_type: 'REGIONAL',
+  primary_zone: 'me-central2-a',
+  secondary_zone: 'me-central2-c',
   disk_type: 'PD_SSD',
   disk_size_gb: 20,
   disk_autoresize: true,
@@ -101,6 +105,10 @@ const VARIABLE_VALIDATION_CONDITIONS = Object.freeze({
   tier: 'contains(["db-custom-N4-2-8192","db-perf-optimized-N-2"],var.tier)',
   availability_type:
     'contains(["ZONAL","REGIONAL"],var.availability_type)',
+  primary_zone:
+    'var.primary_zone==null||var.primary_zone=="me-central2-a"',
+  secondary_zone:
+    'var.secondary_zone==null||var.secondary_zone=="me-central2-c"',
   disk_type: 'contains(["HYPERDISK_BALANCED","PD_SSD"],var.disk_type)',
   disk_size_gb: 'var.disk_size_gb==20',
   disk_autoresize: 'var.disk_autoresize==true',
@@ -309,7 +317,7 @@ test('Staging SQL root remains byte-semantic baseline source', () => {
   console.log('STAGING_CONTRACT_UNCHANGED=YES');
 });
 
-test('Production root locks the complete Stage 24A contract', () => {
+test('Production root locks the complete Stage 24C contract', () => {
   const main = normalizedSource(`${PRODUCTION_ROOT}/main.tf`);
   const variables = normalizedSource(`${PRODUCTION_ROOT}/variables.tf`);
   const providers = normalizedSource(`${PRODUCTION_ROOT}/providers.tf`);
@@ -333,19 +341,25 @@ test('Production root locks the complete Stage 24A contract', () => {
     /module\s+"sql_environment"\s*\{/u,
     'production sql_environment module',
   );
-  assert.match(moduleBlock, /source\s*=\s*"\.\.\/\.\.\/modules\/sql-environment"/u);
+  assert.match(
+    moduleBlock,
+    /^\s*source\s*=\s*"\.\.\/\.\.\/modules\/sql-environment"\s*$/mu,
+  );
   for (const variableName of ['project_id', 'environment', 'region']) {
     assert.match(
       moduleBlock,
-      new RegExp(`${variableName}\\s*=\\s*var\\.${variableName}`, 'u'),
+      new RegExp(
+        `^\\s*${variableName}\\s*=\\s*var\\.${variableName}\\s*$`,
+        'mu',
+      ),
     );
   }
   for (const localName of Object.keys(PRODUCTION_LOCAL)) {
     assert.match(
       moduleBlock,
       new RegExp(
-        `${localName}\\s*=\\s*local\\.production_sql\\.${localName}`,
-        'u',
+        `^\\s*${localName}\\s*=\\s*local\\.production_sql\\.${localName}\\s*$`,
+        'mu',
       ),
     );
   }
@@ -416,18 +430,30 @@ test('Production root locks the complete Stage 24A contract', () => {
     );
   }
   assert.doesNotMatch(outputs, /password|database_url|credential|access_token|private_key/iu);
-  assert.doesNotMatch(main, /^\s*(?:zone|secondary_zone)\s*=/gmu);
-  assert.doesNotMatch(rootSource, /data_cache_config|authorized_networks|start_time/u);
+  assert.equal(PRODUCTION_LOCAL.primary_zone, 'me-central2-a');
+  assert.equal(PRODUCTION_LOCAL.secondary_zone, 'me-central2-c');
+  assert.doesNotMatch(
+    rootSource,
+    /data_cache_config|authorized_networks|start_time|follow_gae_application/u,
+  );
 
   console.log('PRODUCTION_ROOT_DIRECT_RESOURCE_COUNT=0');
   console.log('PRODUCTION_ROOT_DATA_SOURCE_COUNT=0');
   console.log('PRODUCTION_ROOT_MODULE_COUNT=1');
-  console.log('PRODUCTION_STAGE_24_CONTRACT=PASS');
+  console.log('PRODUCTION_PRIMARY_ZONE=me-central2-a');
+  console.log('PRODUCTION_SECONDARY_ZONE=me-central2-c');
+  console.log('PRODUCTION_REGION=me-central2');
+  console.log('PRODUCTION_AVAILABILITY_TYPE=REGIONAL');
+  console.log('PRODUCTION_EDITION=ENTERPRISE_PLUS');
+  console.log('PRODUCTION_TIER=db-perf-optimized-N-2');
+  console.log('PRODUCTION_DATABASE_VERSION=POSTGRES_16');
+  console.log('PRODUCTION_STAGE_24C_CONTRACT=PASS');
 });
 
 test('Shared module permits only governed values and owns one SQL instance', () => {
   const moduleMain = normalizedSource(`${MODULE_ROOT}/main.tf`);
   const moduleVariables = normalizedSource(`${MODULE_ROOT}/variables.tf`);
+  const stagingMain = normalizedSource(`${NONPROD_ROOT}/main.tf`);
 
   const resourceMatches = [
     ...moduleMain.matchAll(/^resource\s+"([^"]+)"\s+"([^"]+)"\s*\{/gmu),
@@ -470,6 +496,17 @@ test('Shared module permits only governed values and owns one SQL instance', () 
   );
   assert.match(backupLocationVariable, /default\s*=\s*null/u);
 
+  for (const zoneVariableName of ['primary_zone', 'secondary_zone']) {
+    const zoneVariable = extractBlock(
+      moduleVariables,
+      new RegExp(`variable\\s+"${zoneVariableName}"\\s*\\{`, 'u'),
+      `${zoneVariableName} variable`,
+    );
+    assert.match(zoneVariable, /type\s*=\s*string/u);
+    assert.match(zoneVariable, /default\s*=\s*null/u);
+    assert.match(zoneVariable, /nullable\s*=\s*true/u);
+  }
+
   const resourceBlock = extractBlock(
     moduleMain,
     /resource\s+"google_sql_database_instance"\s+"postgres"\s*\{/u,
@@ -495,13 +532,62 @@ test('Shared module permits only governed values and owns one SQL instance', () 
   assert.match(databaseFlag, /name\s*=\s*"max_connections"/u);
   assert.match(databaseFlag, /value\s*=\s*tostring\(var\.max_connections\)/u);
 
-  assert.doesNotMatch(resourceBlock, /^\s*(?:zone|secondary_zone)\s*=/gmu);
+  assert.equal(
+    (resourceBlock.match(/dynamic\s+"location_preference"\s*\{/gu) ?? [])
+      .length,
+    1,
+  );
+  const locationPreference = extractBlock(
+    resourceBlock,
+    /dynamic\s+"location_preference"\s*\{/u,
+    'dynamic location_preference',
+  );
+  const forEachMatch =
+    /for_each\s*=\s*([\s\S]*?)\s+content\s*\{/u.exec(locationPreference);
+  assert.ok(forEachMatch, 'Missing location_preference for_each expression.');
+  assert.equal(
+    canonicalCondition(forEachMatch[1]),
+    '(var.primary_zone!=null&&var.secondary_zone!=null)?[1]:[]',
+  );
+  const locationContent = extractBlock(
+    locationPreference,
+    /content\s*\{/u,
+    'location_preference content',
+  );
+  assert.deepEqual(
+    [...locationContent.matchAll(/^\s*([a-z][a-z0-9_]*)\s*=/gmu)].map(
+      (match) => match[1],
+    ),
+    ['zone', 'secondary_zone'],
+  );
+  assert.match(
+    locationContent,
+    /^\s*zone\s*=\s*var\.primary_zone\s*$/mu,
+  );
+  assert.match(
+    locationContent,
+    /^\s*secondary_zone\s*=\s*var\.secondary_zone\s*$/mu,
+  );
+  assert.doesNotMatch(locationPreference, /follow_gae_application/u);
+
+  const stagingModule = extractBlock(
+    stagingMain,
+    /module\s+"sql_environment"\s*\{/u,
+    'Staging sql_environment module',
+  );
+  assert.doesNotMatch(
+    stagingModule,
+    /^\s*(?:primary_zone|secondary_zone)\s*=/gmu,
+  );
   assert.doesNotMatch(
     resourceBlock,
-    /data_cache_config|authorized_networks|start_time/u,
+    /data_cache_config|authorized_networks|start_time|follow_gae_application/u,
   );
 
   console.log('SHARED_MODULE_MANAGED_RESOURCE_COUNT=1');
+  console.log('SHARED_MODULE_LOCATION_PREFERENCE=PASS');
+  console.log('STAGING_LOCATION_PREFERENCE_CONFIGURED=NO');
+  console.log('PRODUCTION_LOCATION_PREFERENCE_CONFIGURED=YES');
   console.log(
     'PRODUCTION_MANAGED_RESOURCE=module.sql_environment.google_sql_database_instance.postgres',
   );
@@ -555,6 +641,30 @@ test('Lifecycle guard is an exact Staging-or-Production tuple gate', () => {
       tuple: { ...PRODUCTION_TUPLE, backup_location: null },
     },
     {
+      name: 'Production with null zones',
+      tuple: {
+        ...PRODUCTION_TUPLE,
+        primary_zone: null,
+        secondary_zone: null,
+      },
+    },
+    {
+      name: 'Production with only primary zone',
+      tuple: { ...PRODUCTION_TUPLE, secondary_zone: null },
+    },
+    {
+      name: 'Production with only secondary zone',
+      tuple: { ...PRODUCTION_TUPLE, primary_zone: null },
+    },
+    {
+      name: 'Production with wrong primary zone',
+      tuple: { ...PRODUCTION_TUPLE, primary_zone: 'me-central2-c' },
+    },
+    {
+      name: 'Production with wrong secondary zone',
+      tuple: { ...PRODUCTION_TUPLE, secondary_zone: 'me-central2-a' },
+    },
+    {
       name: 'Staging plus Enterprise Plus',
       tuple: { ...STAGING_TUPLE, edition: 'ENTERPRISE_PLUS' },
     },
@@ -584,6 +694,9 @@ test('Lifecycle guard is an exact Staging-or-Production tuple gate', () => {
   );
 
   console.log('CROSS_ENVIRONMENT_TUPLE_GUARD_PRESENT=PASS');
+  console.log('PRODUCTION_NULL_ZONES_REJECTED=PASS');
+  console.log('PRODUCTION_PARTIAL_ZONE_PAIR_REJECTED=PASS');
+  console.log('PRODUCTION_WRONG_ZONE_PAIR_REJECTED=PASS');
   console.log('PRODUCTION_HYPERDISK_REJECTED=PASS');
   console.log('PRODUCTION_BACKUP_LOCATION_GUARD=PASS');
   console.log('LIFECYCLE_DISK_SIZE_ONLY=PASS');
@@ -606,18 +719,25 @@ test('Production lockfile and README retain source-only governance', () => {
     'PRODUCTION_SQL_SOURCE_PREPARED != PRODUCTION_SQL_APPLIED',
     '`moazez-production-postgres-me-central2`',
     '`db-perf-optimized-N-2`',
+    '`me-central2-a`',
+    '`me-central2-c`',
     '`PD_SSD`, 20 GB initial',
     '`me-central2`',
     '`moazez-production-91001421934-tfstate`',
     '`sql/production`',
-    'DevOps owns live Stage 24B/24C',
+    'Stage 24C',
+    'DevOps owns any later Stage 24C',
   ]) {
     assert.ok(readme.includes(requiredText), `README is missing: ${requiredText}`);
   }
   assert.match(readme, /does not prove[\s\S]*backup execution/iu);
-  assert.match(readme, /does not authorize Terraform plan, apply/iu);
+  assert.match(readme, /does not prove[\s\S]*capacity/iu);
+  assert.match(readme, /does not prove[\s\S]*successful HA placement/iu);
+  assert.match(readme, /does not authorize Terraform\s+plan, apply/iu);
 
   console.log('PRODUCTION_LOCK_MATCHES_NONPROD_LOCK=YES');
   console.log('GOOGLE_PROVIDER_LOCK_VERSION=7.44.0');
+  console.log('DETERMINISTIC_ZONE_SOURCE=PASS');
+  console.log('CAPACITY_SUCCESS_GUARANTEE=NO');
   console.log('SOURCE_PREPARATION_ONLY=YES');
 });

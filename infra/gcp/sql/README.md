@@ -49,8 +49,12 @@ does not modify the Staging root.
 
 ## Locked Production Stage 24 design
 
-Stage 24A prepares the permanent Production source for the following locked
-contract:
+Stage 24A prepared the permanent Production source. Stage 24C changes only the
+placement dimension of that source by introducing deterministic regional HA
+zones after repeated Cloud SQL Create API attempts with automatic placement
+reported provider capacity failures. This source remediation does not prove
+that capacity is currently available or that a later Cloud SQL create will
+succeed. The locked Production contract is:
 
 | Component | Approved value |
 | --- | --- |
@@ -61,7 +65,9 @@ contract:
 | Engine | `POSTGRES_16` |
 | Edition | `ENTERPRISE_PLUS` |
 | Tier | `db-perf-optimized-N-2` |
-| Availability | `REGIONAL`, with provider-managed HA zone selection and no explicit zones |
+| Availability | `REGIONAL` |
+| Primary zone | `me-central2-a` |
+| Secondary zone | `me-central2-c` |
 | Disk | `PD_SSD`, 20 GB initial |
 | Disk autoresize | enabled, 100 GB limit |
 | Automated backups | enabled |
@@ -81,6 +87,11 @@ contract:
 The Production root exposes only `project_id`, `region`, and `environment`,
 all locked to the values above. Every topology and recovery value is an
 explicit `production_sql` local rather than an operator-tunable variable.
+Production explicitly pins `me-central2-a` as the primary zone and
+`me-central2-c` as the secondary zone. Staging continues to omit both optional
+module inputs and therefore preserves provider-managed placement. The complete
+environment tuple guard prevents either placement model from being mixed into
+the other environment.
 Production explicitly pins backup location to `me-central2` so the approved
 Saudi data-residency boundary does not depend on provider default placement.
 No backup start time, cross-region backup copy, replica, or disaster-recovery
@@ -153,18 +164,19 @@ automatic growth. No other lifecycle drift is ignored.
 PRODUCTION_SQL_SOURCE_PREPARED != PRODUCTION_SQL_APPLIED
 ```
 
-Stage 24A source preparation and static validation do not prove:
+Stage 24A source preparation and the Stage 24C deterministic-placement source
+remediation do not prove:
 
 - Production backend initialization;
 - a saved Terraform plan or apply;
-- Cloud SQL existence or provider-selected HA zones;
+- Cloud SQL existence, capacity in either approved zone, or successful HA placement;
 - backup execution or 30 calendar days of effective retention;
 - PITR live operation or restore success;
 - RTO or RPO achievement;
 - real network connectivity, provider failover, or Production readiness.
 
-DevOps owns live Stage 24B/24C initialization, planning, review, application,
-and operational evidence after independent Backend Development review and
-merge. Stage 24A does not authorize Terraform plan, apply, destroy, import,
-refresh, state commands, backend migration, database access, or any GCP
-mutation.
+DevOps owns any later Stage 24C initialization, planning, review, application,
+capacity recovery, and operational evidence after independent Backend
+Development review and merge. This source work does not authorize Terraform
+plan, apply, destroy, import, refresh, state commands, backend migration,
+database access, or any GCP mutation.

@@ -78,12 +78,36 @@ variable "tier" {
 }
 
 variable "availability_type" {
-  description = "Governed availability model; no explicit zone is configured."
+  description = "Governed availability model; Staging uses provider-managed placement and Production uses the approved explicit HA zone pair."
   type        = string
 
   validation {
     condition     = contains(["ZONAL", "REGIONAL"], var.availability_type)
     error_message = "availability_type must be ZONAL or REGIONAL."
+  }
+}
+
+variable "primary_zone" {
+  description = "Optional governed primary zone; Staging leaves it unset and Production uses me-central2-a."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.primary_zone == null || var.primary_zone == "me-central2-a"
+    error_message = "primary_zone must be null or me-central2-a."
+  }
+}
+
+variable "secondary_zone" {
+  description = "Optional governed secondary zone; Staging leaves it unset and Production uses me-central2-c."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.secondary_zone == null || var.secondary_zone == "me-central2-c"
+    error_message = "secondary_zone must be null or me-central2-c."
   }
 }
 
