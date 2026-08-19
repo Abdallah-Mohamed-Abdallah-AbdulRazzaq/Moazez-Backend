@@ -104,6 +104,11 @@ const ACTIVE_TAP_OWNERS = Object.freeze({
     owner: 'ci-orchestrator',
     profile: 'orchestrator',
   }),
+  'scripts/tests/stage-24a-production-cloud-sql-source.test.cjs':
+    Object.freeze({
+      owner: 'sql-source-governance',
+      profile: 'runtime-governance',
+    }),
   'scripts/tests/universal-regression.test.cjs': Object.freeze({
     owner: 'ci-orchestrator',
     profile: 'orchestrator',

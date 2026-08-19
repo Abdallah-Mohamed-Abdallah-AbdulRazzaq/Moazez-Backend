@@ -1,25 +1,28 @@
 variable "project_id" {
-  description = "Existing Google Cloud project that owns the Staging instance."
+  description = "Existing Google Cloud project for a governed SQL environment."
   type        = string
 
   validation {
-    condition     = var.project_id == "moazez-nonprod-91001421934"
-    error_message = "project_id must be moazez-nonprod-91001421934."
+    condition = contains([
+      "moazez-nonprod-91001421934",
+      "moazez-production",
+    ], var.project_id)
+    error_message = "project_id must be a governed Staging or Production project."
   }
 }
 
 variable "environment" {
-  description = "Deployment environment represented by this module instance."
+  description = "Governed deployment environment represented by this module instance."
   type        = string
 
   validation {
-    condition     = var.environment == "staging"
-    error_message = "environment must be staging."
+    condition     = contains(["staging", "production"], var.environment)
+    error_message = "environment must be staging or production."
   }
 }
 
 variable "region" {
-  description = "Google Cloud region for the Staging Cloud SQL instance."
+  description = "Governed Google Cloud region for the Cloud SQL instance."
   type        = string
 
   validation {
@@ -29,12 +32,15 @@ variable "region" {
 }
 
 variable "instance_name" {
-  description = "Locked Staging Cloud SQL instance name."
+  description = "Governed Cloud SQL instance name."
   type        = string
 
   validation {
-    condition     = var.instance_name == "moazez-staging-postgres-me-central2"
-    error_message = "instance_name must be moazez-staging-postgres-me-central2."
+    condition = contains([
+      "moazez-staging-postgres-me-central2",
+      "moazez-production-postgres-me-central2",
+    ], var.instance_name)
+    error_message = "instance_name must be a governed Staging or Production instance name."
   }
 }
 
@@ -49,42 +55,45 @@ variable "database_version" {
 }
 
 variable "edition" {
-  description = "Locked Cloud SQL edition."
+  description = "Governed Cloud SQL edition."
   type        = string
 
   validation {
-    condition     = var.edition == "ENTERPRISE"
-    error_message = "edition must be ENTERPRISE."
+    condition     = contains(["ENTERPRISE", "ENTERPRISE_PLUS"], var.edition)
+    error_message = "edition must be ENTERPRISE or ENTERPRISE_PLUS."
   }
 }
 
 variable "tier" {
-  description = "Locked N4 custom machine tier for 2 vCPU and 8 GiB memory."
+  description = "Governed Cloud SQL machine tier."
   type        = string
 
   validation {
-    condition     = var.tier == "db-custom-N4-2-8192"
-    error_message = "tier must be db-custom-N4-2-8192."
+    condition = contains([
+      "db-custom-N4-2-8192",
+      "db-perf-optimized-N-2",
+    ], var.tier)
+    error_message = "tier must be a governed Staging or Production tier."
   }
 }
 
 variable "availability_type" {
-  description = "Locked zonal availability model; no explicit zone is configured."
+  description = "Governed availability model; no explicit zone is configured."
   type        = string
 
   validation {
-    condition     = var.availability_type == "ZONAL"
-    error_message = "availability_type must be ZONAL."
+    condition     = contains(["ZONAL", "REGIONAL"], var.availability_type)
+    error_message = "availability_type must be ZONAL or REGIONAL."
   }
 }
 
 variable "disk_type" {
-  description = "Locked initial storage type."
+  description = "Governed initial storage type."
   type        = string
 
   validation {
-    condition     = var.disk_type == "HYPERDISK_BALANCED"
-    error_message = "disk_type must be HYPERDISK_BALANCED."
+    condition     = contains(["HYPERDISK_BALANCED", "PD_SSD"], var.disk_type)
+    error_message = "disk_type must be HYPERDISK_BALANCED or PD_SSD."
   }
 }
 
@@ -139,22 +148,22 @@ variable "point_in_time_recovery_enabled" {
 }
 
 variable "transaction_log_retention_days" {
-  description = "Locked PostgreSQL transaction-log retention in days."
+  description = "Governed PostgreSQL transaction-log retention in days."
   type        = number
 
   validation {
-    condition     = var.transaction_log_retention_days == 7
-    error_message = "transaction_log_retention_days must be 7."
+    condition     = contains([7, 14], var.transaction_log_retention_days)
+    error_message = "transaction_log_retention_days must be 7 or 14."
   }
 }
 
 variable "retained_backups" {
-  description = "Locked number of automated backups to retain."
+  description = "Governed number of automated backup objects to retain."
   type        = number
 
   validation {
-    condition     = var.retained_backups == 8
-    error_message = "retained_backups must be 8."
+    condition     = contains([8, 30], var.retained_backups)
+    error_message = "retained_backups must be 8 or 30."
   }
 }
 
@@ -165,6 +174,18 @@ variable "backup_retention_unit" {
   validation {
     condition     = var.backup_retention_unit == "COUNT"
     error_message = "backup_retention_unit must be COUNT."
+  }
+}
+
+variable "backup_location" {
+  description = "Optional governed backup location; Staging leaves it unset and Production uses me-central2."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.backup_location == null || var.backup_location == "me-central2"
+    error_message = "backup_location must be null or me-central2."
   }
 }
 
@@ -189,22 +210,28 @@ variable "ipv4_enabled" {
 }
 
 variable "private_network" {
-  description = "Existing Stage 4 VPC self-link used for private IP."
+  description = "Existing governed VPC self-link used for private IP."
   type        = string
 
   validation {
-    condition     = var.private_network == "projects/moazez-nonprod-91001421934/global/networks/moazez-staging-vpc"
-    error_message = "private_network must reference the approved Staging VPC."
+    condition = contains([
+      "projects/moazez-nonprod-91001421934/global/networks/moazez-staging-vpc",
+      "projects/moazez-production/global/networks/moazez-production-vpc",
+    ], var.private_network)
+    error_message = "private_network must reference a governed Staging or Production VPC."
   }
 }
 
 variable "allocated_ip_range" {
-  description = "Existing Stage 4 Private Services Access allocated range name."
+  description = "Existing governed Private Services Access allocated range name."
   type        = string
 
   validation {
-    condition     = var.allocated_ip_range == "moazez-staging-psa"
-    error_message = "allocated_ip_range must be moazez-staging-psa."
+    condition = contains([
+      "moazez-staging-psa",
+      "moazez-production-psa",
+    ], var.allocated_ip_range)
+    error_message = "allocated_ip_range must be a governed Staging or Production PSA range."
   }
 }
 

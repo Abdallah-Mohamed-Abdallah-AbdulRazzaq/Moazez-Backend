@@ -1,10 +1,19 @@
-# Staging Cloud SQL PostgreSQL foundation
+# Governed Cloud SQL PostgreSQL foundations
 
-Stage 5B is repository-source preparation only. This Terraform source models
-one approved Staging Cloud SQL for PostgreSQL B1 instance. It does not claim
-that the instance exists or that any Google Cloud mutation has occurred.
+This directory contains separate governed Terraform roots for Staging and
+Production Cloud SQL. Both stages are repository-source preparation only. They
+do not claim that an instance exists or that any Google Cloud mutation has
+occurred.
+
+```text
+STAGING_ROOT=infra/gcp/sql/environments/nonprod
+PRODUCTION_ROOT=infra/gcp/sql/environments/production
+```
 
 ## Locked Staging B1 design
+
+Stage 5B prepared the existing Staging source and remains the historical basis
+for the `nonprod` executable root.
 
 | Component | Approved value |
 | --- | --- |
@@ -23,6 +32,7 @@ that the instance exists or that any Google Cloud mutation has occurred.
 | Point-in-time recovery | enabled |
 | Transaction log retention | 7 days |
 | Automated backup retention | 8 backups, `COUNT` |
+| Backup location | unset; provider-managed behavior preserved |
 | PostgreSQL flag | `max_connections = 100` |
 | Public IPv4 | disabled |
 | Private network | `projects/moazez-nonprod-91001421934/global/networks/moazez-staging-vpc` |
@@ -32,64 +42,129 @@ that the instance exists or that any Google Cloud mutation has occurred.
 | Terraform deletion protection | enabled |
 | GCP/API deletion protection | enabled |
 
-The only executable root is `environments/nonprod`. It exposes only
-`project_id`, `region`, and `environment`, all with locked defaults and
-exact-value validation. Every other approved Staging design value is an
-explicit root local passed to the module.
+The Staging root exposes only `project_id`, `region`, and `environment`, all
+with locked defaults and exact-value validation. Every other approved Staging
+value remains an explicit root local passed to the shared module. Stage 24A
+does not modify the Staging root.
+
+## Locked Production Stage 24 design
+
+Stage 24A prepares the permanent Production source for the following locked
+contract:
+
+| Component | Approved value |
+| --- | --- |
+| Project | `moazez-production` |
+| Environment | `production` |
+| Region | `me-central2` |
+| Instance | `moazez-production-postgres-me-central2` |
+| Engine | `POSTGRES_16` |
+| Edition | `ENTERPRISE_PLUS` |
+| Tier | `db-perf-optimized-N-2` |
+| Availability | `REGIONAL`, with provider-managed HA zone selection and no explicit zones |
+| Disk | `PD_SSD`, 20 GB initial |
+| Disk autoresize | enabled, 100 GB limit |
+| Automated backups | enabled |
+| Point-in-time recovery | enabled |
+| Transaction log retention | 14 days |
+| Automated backup retention | 30 backups, `COUNT` |
+| Backup location | `me-central2` |
+| PostgreSQL flag | `max_connections = 100` |
+| Public IPv4 | disabled |
+| Private network | `projects/moazez-production/global/networks/moazez-production-vpc` |
+| Allocated range | `moazez-production-psa` |
+| SSL mode | `ENCRYPTED_ONLY` |
+| Google Cloud services private path | disabled |
+| Terraform deletion protection | enabled |
+| GCP/API deletion protection | enabled |
+
+The Production root exposes only `project_id`, `region`, and `environment`,
+all locked to the values above. Every topology and recovery value is an
+explicit `production_sql` local rather than an operator-tunable variable.
+Production explicitly pins backup location to `me-central2` so the approved
+Saudi data-residency boundary does not depend on provider default placement.
+No backup start time, cross-region backup copy, replica, or disaster-recovery
+region is configured.
+
+The approved recovery policy has a 30-minute RTO objective, a 15-minute RPO
+objective, 14-day PITR retention, a target of 30 retained automated backup
+objects, and a quarterly restore drill. `retained_backups = 30` with
+`retention_unit = COUNT` means 30 backup objects; it does not prove 30 calendar
+days of effective live retention.
 
 ## Exact ownership boundary
 
-This stack owns exactly one managed resource:
+Each executable root invokes the shared module once. The Production root has
+no direct resources and no data sources. Its only managed resource is:
 
 ```text
 module.sql_environment.google_sql_database_instance.postgres
 ```
 
-Stage 4 owns the VPC, Private Services Access allocation, and Service
-Networking foundation. The VPC `moazez-staging-vpc`, allocated range
-`moazez-staging-psa`, and their live connectivity are external prerequisites.
-This SQL stack does not own, recreate, import, mutate, or query that network
-foundation and creates no artificial Terraform dependency on the Stage 4
-stack.
+The shared module itself contains exactly one
+`google_sql_database_instance.postgres` resource. It accepts only the complete
+governed Staging tuple or the complete governed Production tuple. Cross-
+environment mixtures fail the resource lifecycle precondition.
 
-This stack does not manage APIs, IAM, service accounts, Secret Manager,
-database users, database passwords, database resources, Prisma schema, Prisma
-migrations, Redis, Cloud Run, DNS, load balancers, network resources, or
-Production. Permanent PostgreSQL passwords and `DATABASE_URL` secret delivery
-remain out of scope pending the separately governed credentials and identity
-work. Stage 6 owns database-role provisioning and Prisma migration proof.
-No real, user, or production data is authorized by Stage 5B.
+Stage 4 owns the Staging VPC, Private Services Access allocation, and Service
+Networking foundation. Stage 23 owns the equivalent Production prerequisites.
+The Production VPC `moazez-production-vpc`, allocated range
+`moazez-production-psa`, and their live connectivity are external
+prerequisites. The SQL roots do not own, recreate, import, mutate, or query
+either network foundation and create no artificial Terraform dependency on
+those stacks.
+
+The SQL roots do not manage projects, APIs, IAM, service accounts, Secret
+Manager, database users, database roles, passwords, databases, Prisma schema,
+Prisma migrations, Redis, Cloud Run, DNS, load balancers, network resources,
+application buckets, or Terraform state buckets. Permanent PostgreSQL
+passwords and `DATABASE_URL` delivery remain separately governed.
 
 ## Remote-state governance
 
-```text
-REMOTE_STATE_MODEL=GCS
-REMOTE_STATE_BUCKET=moazez-nonprod-91001421934-tfstate
-REMOTE_STATE_PREFIX=sql/staging
-REMOTE_STATE_BUCKET_MANAGED_BY_THIS_STACK=NO
-```
+| Environment | External bucket | Prefix |
+| --- | --- | --- |
+| Staging | `moazez-nonprod-91001421934-tfstate` | `sql/staging` |
+| Production | `moazez-production-91001421934-tfstate` | `sql/production` |
 
-The GCS bucket is an externally bootstrapped Terraform-state bucket. This SQL
-stack does not own it. Application buckets are not Terraform state stores.
+Both GCS buckets are externally bootstrapped Terraform-state buckets. Neither
+SQL stack owns them. Application buckets are not Terraform state stores.
 Credentials in Terraform source are forbidden; authentication remains an
 external operator responsibility.
 
-This source task does not claim that the real SQL GCS backend was initialized.
-It does not claim that SQL Terraform state exists. It does not claim that a
-Terraform plan or apply occurred.
+Stage 5B did not initialize the real Staging backend. Stage 24A does not
+initialize the real Production backend and does not read or mutate any
+Terraform state object.
 
 ## Deletion and storage-growth governance
 
 Both Terraform-level deletion protection and the GCP Cloud SQL API deletion
-protection setting are enabled. Reducing or removing either mechanism requires
-separate explicit approval.
+protection setting are enabled for both governed tuples. Reducing or removing
+either mechanism requires separate explicit approval.
 
-The initial `disk_size` is 20 GB and autoresize may increase it up to 100 GB.
-Cloud SQL storage cannot be shrunk in place. Terraform therefore intentionally
-ignores only `settings[0].disk_size` drift after provider-side automatic
-growth. No other lifecycle drift is ignored.
+Initial `disk_size` is 20 GB and autoresize may increase it up to 100 GB. Cloud
+SQL storage cannot be shrunk in place. The shared module therefore
+intentionally ignores only `settings[0].disk_size` drift after provider-side
+automatic growth. No other lifecycle drift is ignored.
 
-Stage 5B authorizes source formatting and source/schema validation only. It
-does not authorize a real backend initialization, state access or migration,
-Terraform planning, application, destruction, import, refresh, or any cloud
-operation.
+## Source preparation is not live evidence
+
+```text
+PRODUCTION_SQL_SOURCE_PREPARED != PRODUCTION_SQL_APPLIED
+```
+
+Stage 24A source preparation and static validation do not prove:
+
+- Production backend initialization;
+- a saved Terraform plan or apply;
+- Cloud SQL existence or provider-selected HA zones;
+- backup execution or 30 calendar days of effective retention;
+- PITR live operation or restore success;
+- RTO or RPO achievement;
+- real network connectivity, provider failover, or Production readiness.
+
+DevOps owns live Stage 24B/24C initialization, planning, review, application,
+and operational evidence after independent Backend Development review and
+merge. Stage 24A does not authorize Terraform plan, apply, destroy, import,
+refresh, state commands, backend migration, database access, or any GCP
+mutation.
