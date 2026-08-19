@@ -47,14 +47,16 @@ with locked defaults and exact-value validation. Every other approved Staging
 value remains an explicit root local passed to the shared module. Stage 24A
 does not modify the Staging root.
 
-## Locked Production Stage 24 design
+## Temporary Production Stage 24C capacity profile
 
-Stage 24A prepared the permanent Production source. Stage 24C changes only the
-placement dimension of that source by introducing deterministic regional HA
-zones after repeated Cloud SQL Create API attempts with automatic placement
-reported provider capacity failures. This source remediation does not prove
-that capacity is currently available or that a later Cloud SQL create will
-succeed. The locked Production contract is:
+Stage 24A prepared the original Production source. After repeated provider
+capacity failures with the Enterprise Plus/N2 profile, including a later
+attempt using deterministic `me-central2-a`/`me-central2-c` placement, the
+Owner approved this temporary Enterprise/N4 capacity-remediation profile.
+This source change does not prove that N4 or regional HA capacity is currently
+available, that a later Cloud SQL create will succeed, that Cloud SQL exists,
+or that the capacity incident is resolved. The current governed Production
+contract is:
 
 | Component | Approved value |
 | --- | --- |
@@ -63,16 +65,18 @@ succeed. The locked Production contract is:
 | Region | `me-central2` |
 | Instance | `moazez-production-postgres-me-central2` |
 | Engine | `POSTGRES_16` |
-| Edition | `ENTERPRISE_PLUS` |
-| Tier | `db-perf-optimized-N-2` |
+| Edition | `ENTERPRISE` |
+| Machine series | N4 |
+| Tier | `db-custom-N4-2-16384` |
+| Machine shape | 2 vCPU / 16 GB |
 | Availability | `REGIONAL` |
-| Primary zone | `me-central2-a` |
-| Secondary zone | `me-central2-c` |
-| Disk | `PD_SSD`, 20 GB initial |
+| Primary zone | unset; provider-managed placement |
+| Secondary zone | unset; provider-managed and different from the primary zone |
+| Disk | `HYPERDISK_BALANCED`, 20 GB initial |
 | Disk autoresize | enabled, 100 GB limit |
 | Automated backups | enabled |
 | Point-in-time recovery | enabled |
-| Transaction log retention | 14 days |
+| Transaction log retention | 7 days |
 | Automated backup retention | 30 backups, `COUNT` |
 | Backup location | `me-central2` |
 | PostgreSQL flag | `max_connections = 100` |
@@ -87,21 +91,34 @@ succeed. The locked Production contract is:
 The Production root exposes only `project_id`, `region`, and `environment`,
 all locked to the values above. Every topology and recovery value is an
 explicit `production_sql` local rather than an operator-tunable variable.
-Production explicitly pins `me-central2-a` as the primary zone and
-`me-central2-c` as the secondary zone. Staging continues to omit both optional
-module inputs and therefore preserves provider-managed placement. The complete
-environment tuple guard prevents either placement model from being mixed into
-the other environment.
+Production and Staging both omit the shared module's optional primary- and
+secondary-zone inputs, so neither current governed caller configures a
+`location_preference` block. The shared module retains the reusable optional
+placement capability, and the complete environment tuple guard rejects
+partial, explicit, or cross-environment zone mixtures for both current tuples.
 Production explicitly pins backup location to `me-central2` so the approved
 Saudi data-residency boundary does not depend on provider default placement.
 No backup start time, cross-region backup copy, replica, or disaster-recovery
 region is configured.
 
 The approved recovery policy has a 30-minute RTO objective, a 15-minute RPO
-objective, 14-day PITR retention, a target of 30 retained automated backup
-objects, and a quarterly restore drill. `retained_backups = 30` with
-`retention_unit = COUNT` means 30 backup objects; it does not prove 30 calendar
-days of effective live retention.
+objective, a 14-day PITR-retention objective, a 30-day backup-retention
+objective, a quarterly restore drill, and no approved cross-region disaster
+recovery. The temporary Enterprise implementation supports at most 7 days of
+transaction-log retention and therefore does not meet the approved 14-day
+PITR objective. Returning to a conforming implementation requires either a
+future governed Enterprise Plus transition or a separately approved policy
+amendment. `retained_backups = 30` with `retention_unit = COUNT` means 30
+backup objects; it does not prove 30 calendar days of effective live
+retention.
+
+```text
+APPROVED_Q007_PITR_OBJECTIVE=14
+CURRENT_TEMPORARY_IMPLEMENTATION_PITR=7
+Q007_RECOVERY_POLICY_CHANGED=NO
+TEMPORARY_PITR_EXCEPTION=YES
+CURRENT_IMPLEMENTATION_MEETS_Q007_PITR_OBJECTIVE=NO
+```
 
 ## Exact ownership boundary
 
@@ -164,16 +181,28 @@ automatic growth. No other lifecycle drift is ignored.
 PRODUCTION_SQL_SOURCE_PREPARED != PRODUCTION_SQL_APPLIED
 ```
 
-Stage 24A source preparation and the Stage 24C deterministic-placement source
+Stage 24A source preparation and this Stage 24C temporary Enterprise/N4 source
 remediation do not prove:
 
 - Production backend initialization;
 - a saved Terraform plan or apply;
-- Cloud SQL existence, capacity in either approved zone, or successful HA placement;
+- Cloud SQL existence, live N4 or regional HA capacity, or successful creation;
 - backup execution or 30 calendar days of effective retention;
-- PITR live operation or restore success;
+- PITR live operation, 14-day PITR conformance, or restore success;
 - RTO or RPO achievement;
-- real network connectivity, provider failover, or Production readiness.
+- real network connectivity, provider failover, launch readiness, or Production readiness.
+
+Previously generated saved plans describe retired source and are not authorized
+for execution. A later governed live recovery attempt requires a new saved plan
+from the reviewed and merged source.
+
+```text
+TIER_SOURCE_CONTRACT=PASS
+LIVE_TIER_CAPACITY_PROVEN=NO
+CAPACITY_SUCCESS_GUARANTEE=NO
+OLD_SAVED_PLANS_AUTHORIZED=NO
+NEW_SAVED_PLAN_REQUIRED=YES
+```
 
 DevOps owns any later Stage 24C initialization, planning, review, application,
 capacity recovery, and operational evidence after independent Backend
