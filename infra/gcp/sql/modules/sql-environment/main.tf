@@ -11,6 +11,18 @@ resource "google_sql_database_instance" "postgres" {
     edition           = var.edition
     availability_type = var.availability_type
 
+    dynamic "location_preference" {
+      for_each = (
+        var.primary_zone != null &&
+        var.secondary_zone != null
+      ) ? [1] : []
+
+      content {
+        zone           = var.primary_zone
+        secondary_zone = var.secondary_zone
+      }
+    }
+
     disk_type             = var.disk_type
     disk_size             = var.disk_size_gb
     disk_autoresize       = var.disk_autoresize
@@ -58,6 +70,8 @@ resource "google_sql_database_instance" "postgres" {
           var.edition == "ENTERPRISE" &&
           var.tier == "db-custom-N4-2-8192" &&
           var.availability_type == "ZONAL" &&
+          var.primary_zone == null &&
+          var.secondary_zone == null &&
           var.disk_type == "HYPERDISK_BALANCED" &&
           var.disk_size_gb == 20 &&
           var.disk_autoresize == true &&
@@ -86,6 +100,8 @@ resource "google_sql_database_instance" "postgres" {
           var.edition == "ENTERPRISE_PLUS" &&
           var.tier == "db-perf-optimized-N-2" &&
           var.availability_type == "REGIONAL" &&
+          var.primary_zone == "me-central2-a" &&
+          var.secondary_zone == "me-central2-c" &&
           var.disk_type == "PD_SSD" &&
           var.disk_size_gb == 20 &&
           var.disk_autoresize == true &&
