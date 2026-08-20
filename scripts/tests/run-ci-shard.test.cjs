@@ -621,6 +621,7 @@ test('all workflow actions are immutable official pins and historical Phase 3 is
   assert.deepEqual(files.sort(), [
     'ci.yml',
     'phase-3-production-readiness.yml',
+    'production-backend-image.yml',
     'staging-backend-image.yml',
     'staging-wif-auth-proof.yml',
   ]);
