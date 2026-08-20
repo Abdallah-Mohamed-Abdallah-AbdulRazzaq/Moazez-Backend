@@ -29,6 +29,25 @@ const STATUS_MARKERS = Object.freeze([
   'PRODUCTION_RUNTIME_DEPLOYED=NO',
 ]);
 
+function assertStage26CandidateScope(candidateFiles) {
+  if (!candidateFiles.includes(TEST_PATH)) return;
+
+  const allowed = [
+    /^infra\/gcp\/(?:secrets|artifact-registry|runtime-iam|deployment-identity)\//u,
+    /^scripts\/ci\/plan-ci\.cjs$/u,
+    /^scripts\/tests\/stage-26c-production-foundation-source\.test\.cjs$/u,
+    /^scripts\/tests\/plan-ci\.test\.cjs$/u,
+  ];
+  assert.deepEqual(
+    candidateFiles.filter((file) => !allowed.some((pattern) => pattern.test(file))),
+    [],
+  );
+  assert.deepEqual(
+    candidateFiles.filter((file) => /\/environments\/nonprod\//u.test(file)),
+    [],
+  );
+}
+
 const STAGING_SECRET_IDS = Object.freeze({
   api_database_url: 'moazez-staging-api-database-url',
   core_worker_database_url: 'moazez-staging-core-worker-database-url',
@@ -1150,19 +1169,20 @@ test('Stage 26C candidate change scope contains no application, Prisma, workflow
     candidate,
     '--',
   ]).sort();
-  const allowed = [
-    /^infra\/gcp\/(?:secrets|artifact-registry|runtime-iam|deployment-identity)\//u,
-    /^scripts\/ci\/plan-ci\.cjs$/u,
-    /^scripts\/tests\/stage-26c-production-foundation-source\.test\.cjs$/u,
-    /^scripts\/tests\/plan-ci\.test\.cjs$/u,
-  ];
-  assert.deepEqual(
-    candidateFiles.filter((file) => !allowed.some((pattern) => pattern.test(file))),
-    [],
+  assertStage26CandidateScope(candidateFiles);
+});
+
+test('Stage 26C scope activation ignores future unrelated PRs and rejects mixed Stage26 candidates', () => {
+  assert.doesNotThrow(() =>
+    assertStage26CandidateScope(['src/example-future-change.ts']),
   );
-  assert.deepEqual(
-    candidateFiles.filter((file) => /\/environments\/nonprod\//u.test(file)),
-    [],
+  assert.throws(
+    () =>
+      assertStage26CandidateScope([
+        TEST_PATH,
+        'src/example-unrelated-change.ts',
+      ]),
+    { code: 'ERR_ASSERTION' },
   );
 });
 
