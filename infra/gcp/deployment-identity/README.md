@@ -146,3 +146,67 @@ prefix, and staging-region Cloud Run services and jobs.
 The workflow does not run Terraform, expose tokens or credential contents,
 push artifacts, deploy runtimes, execute jobs, read secrets, or mutate Google
 Cloud or GitHub.
+
+## Stage 26C Production GitHub deployment identity source
+
+```text
+PRODUCTION_SOURCE_PREPARED=YES
+PRODUCTION_TERRAFORM_APPLIED=NO
+PRODUCTION_SECRET_VERSIONS_CREATED=NO
+PRODUCTION_ARTIFACTS_PUSHED=NO
+PRODUCTION_RUNTIME_DEPLOYED=NO
+```
+
+Stage 26C adds Production Terraform source only. It performs no Google Cloud
+mutation, real-backend initialization, live plan, apply, import, artifact
+push, or runtime deployment.
+
+The authoritative Stage 26 discovery inputs are project
+`moazez-production` (`91001421934`), region `me-central2`, and externally
+managed state bucket `moazez-production-91001421934-tfstate`. IAM, IAM
+Credentials, STS, Artifact Registry, Secret Manager, and Cloud Run APIs were
+reported enabled. Discovery reported zero Production Workload Identity pools,
+zero Production Workload Identity providers, zero Production Artifact
+Registry repositories, zero Stage 26 Terraform state residue, zero
+user-managed service-account keys, and no import or legacy-resource reuse
+requirement. Those are point-in-time discovery facts, not evidence that this
+source has been applied.
+
+The existing IaC deployer remains owned outside this stack:
+`moazez-iac-deployer@moazez-production.iam.gserviceaccount.com`. This stack
+does not create, import, or manage its lifecycle. The immutable GitHub owner,
+owner ID, repository, repository ID, and allowed ref remain identical to the
+Staging contract.
+
+The Production pool is `moazez-github-production`; the provider is
+`moazez-backend-main`. Pool metadata is exactly `MOAZEZ GitHub production
+deploy` and `MOAZEZ GitHub Actions production deployment identity pool.` The
+provider retains the exact GitHub OIDC issuer, six-entry attribute mapping,
+and numeric repository-ID, numeric owner-ID, and `refs/heads/main` condition.
+Its repository-ID-scoped principal set is:
+
+```text
+principalSet://iam.googleapis.com/projects/91001421934/locations/global/workloadIdentityPools/moazez-github-production/attribute.repository_id/1217512033
+```
+
+Production authorization remains limited to one IaC-deployer
+`roles/iam.workloadIdentityUser` membership, repository-scoped
+`roles/artifactregistry.writer` on `moazez-production-containers`,
+bucket-scoped `roles/storage.objectAdmin` on the Production state bucket,
+project-scoped `roles/run.developer`, and resource-level
+`roles/iam.serviceAccountUser` on exactly API Runtime, Core Worker, Media
+Worker, Migration Job, and Maintenance Scheduler. The pool, provider, four
+single memberships, and five `actAs` memberships total exactly 11 managed
+instances.
+
+There is no project-wide Service Account User grant, no `actAs` grant on the
+IaC deployer or GCS signer, no wildcard principal, no Token Creator, Owner,
+Editor, or Secret Accessor grant, no service-account key, and no resource
+creation outside the established Deployment Identity boundary.
+
+```text
+REMOTE_STATE_MODEL=GCS
+REMOTE_STATE_BUCKET=moazez-production-91001421934-tfstate
+REMOTE_STATE_PREFIX=deployment-identity/production
+REMOTE_STATE_BUCKET_MANAGED_BY_THIS_STACK=NO
+```

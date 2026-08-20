@@ -1,10 +1,13 @@
 variable "project_id" {
-  description = "Existing Google Cloud project that owns the Staging runtime identities and secret IAM memberships."
+  description = "Existing Google Cloud project that owns a governed environment's runtime identities and secret IAM memberships."
   type        = string
 
   validation {
-    condition     = var.project_id == "moazez-nonprod-91001421934"
-    error_message = "project_id must be moazez-nonprod-91001421934."
+    condition = contains([
+      "moazez-nonprod-91001421934",
+      "moazez-production",
+    ], var.project_id)
+    error_message = "project_id must be a governed Staging or Production project."
   }
 }
 
@@ -13,8 +16,8 @@ variable "environment" {
   type        = string
 
   validation {
-    condition     = var.environment == "staging"
-    error_message = "environment must be staging."
+    condition     = contains(["staging", "production"], var.environment)
+    error_message = "environment must be staging or production."
   }
 }
 
@@ -53,7 +56,7 @@ variable "managed_runtime_service_accounts" {
 }
 
 variable "secret_access_grants" {
-  description = "Exact logical-key map of Staging secret-level Secret Accessor grants."
+  description = "Exact logical-key map of governed Staging or Production secret-level Secret Accessor grants."
   type = map(object({
     runtime_identity_key = string
     secret_id            = string
@@ -62,27 +65,53 @@ variable "secret_access_grants" {
   validation {
     condition = (
       length(var.secret_access_grants) == 10 &&
-      try(var.secret_access_grants["api_database_url"].runtime_identity_key, "") == "api_runtime" &&
-      try(var.secret_access_grants["api_database_url"].secret_id, "") == "moazez-staging-api-database-url" &&
-      try(var.secret_access_grants["api_jwt_access_secret"].runtime_identity_key, "") == "api_runtime" &&
-      try(var.secret_access_grants["api_jwt_access_secret"].secret_id, "") == "moazez-staging-jwt-access-secret" &&
-      try(var.secret_access_grants["api_jwt_refresh_secret"].runtime_identity_key, "") == "api_runtime" &&
-      try(var.secret_access_grants["api_jwt_refresh_secret"].secret_id, "") == "moazez-staging-jwt-refresh-secret" &&
-      try(var.secret_access_grants["api_smtp_secret_encryption_key"].runtime_identity_key, "") == "api_runtime" &&
-      try(var.secret_access_grants["api_smtp_secret_encryption_key"].secret_id, "") == "moazez-staging-smtp-secret-encryption-key" &&
-      try(var.secret_access_grants["api_app_device_token_encryption_key"].runtime_identity_key, "") == "api_runtime" &&
-      try(var.secret_access_grants["api_app_device_token_encryption_key"].secret_id, "") == "moazez-staging-app-device-token-encryption-key" &&
-      try(var.secret_access_grants["core_worker_database_url"].runtime_identity_key, "") == "core_worker" &&
-      try(var.secret_access_grants["core_worker_database_url"].secret_id, "") == "moazez-staging-core-worker-database-url" &&
-      try(var.secret_access_grants["core_worker_smtp_secret_encryption_key"].runtime_identity_key, "") == "core_worker" &&
-      try(var.secret_access_grants["core_worker_smtp_secret_encryption_key"].secret_id, "") == "moazez-staging-smtp-secret-encryption-key" &&
-      try(var.secret_access_grants["core_worker_app_device_token_encryption_key"].runtime_identity_key, "") == "core_worker" &&
-      try(var.secret_access_grants["core_worker_app_device_token_encryption_key"].secret_id, "") == "moazez-staging-app-device-token-encryption-key" &&
-      try(var.secret_access_grants["media_worker_database_url"].runtime_identity_key, "") == "media_worker" &&
-      try(var.secret_access_grants["media_worker_database_url"].secret_id, "") == "moazez-staging-media-worker-database-url" &&
-      try(var.secret_access_grants["migration_job_database_url"].runtime_identity_key, "") == "migration_job" &&
-      try(var.secret_access_grants["migration_job_database_url"].secret_id, "") == "moazez-staging-migration-database-url"
+      (
+        (
+          try(var.secret_access_grants["api_database_url"].runtime_identity_key, "") == "api_runtime" &&
+          try(var.secret_access_grants["api_database_url"].secret_id, "") == "moazez-staging-api-database-url" &&
+          try(var.secret_access_grants["api_jwt_access_secret"].runtime_identity_key, "") == "api_runtime" &&
+          try(var.secret_access_grants["api_jwt_access_secret"].secret_id, "") == "moazez-staging-jwt-access-secret" &&
+          try(var.secret_access_grants["api_jwt_refresh_secret"].runtime_identity_key, "") == "api_runtime" &&
+          try(var.secret_access_grants["api_jwt_refresh_secret"].secret_id, "") == "moazez-staging-jwt-refresh-secret" &&
+          try(var.secret_access_grants["api_smtp_secret_encryption_key"].runtime_identity_key, "") == "api_runtime" &&
+          try(var.secret_access_grants["api_smtp_secret_encryption_key"].secret_id, "") == "moazez-staging-smtp-secret-encryption-key" &&
+          try(var.secret_access_grants["api_app_device_token_encryption_key"].runtime_identity_key, "") == "api_runtime" &&
+          try(var.secret_access_grants["api_app_device_token_encryption_key"].secret_id, "") == "moazez-staging-app-device-token-encryption-key" &&
+          try(var.secret_access_grants["core_worker_database_url"].runtime_identity_key, "") == "core_worker" &&
+          try(var.secret_access_grants["core_worker_database_url"].secret_id, "") == "moazez-staging-core-worker-database-url" &&
+          try(var.secret_access_grants["core_worker_smtp_secret_encryption_key"].runtime_identity_key, "") == "core_worker" &&
+          try(var.secret_access_grants["core_worker_smtp_secret_encryption_key"].secret_id, "") == "moazez-staging-smtp-secret-encryption-key" &&
+          try(var.secret_access_grants["core_worker_app_device_token_encryption_key"].runtime_identity_key, "") == "core_worker" &&
+          try(var.secret_access_grants["core_worker_app_device_token_encryption_key"].secret_id, "") == "moazez-staging-app-device-token-encryption-key" &&
+          try(var.secret_access_grants["media_worker_database_url"].runtime_identity_key, "") == "media_worker" &&
+          try(var.secret_access_grants["media_worker_database_url"].secret_id, "") == "moazez-staging-media-worker-database-url" &&
+          try(var.secret_access_grants["migration_job_database_url"].runtime_identity_key, "") == "migration_job" &&
+          try(var.secret_access_grants["migration_job_database_url"].secret_id, "") == "moazez-staging-migration-database-url"
+        ) ||
+        (
+          try(var.secret_access_grants["api_database_url"].runtime_identity_key, "") == "api_runtime" &&
+          try(var.secret_access_grants["api_database_url"].secret_id, "") == "moazez-production-api-database-url" &&
+          try(var.secret_access_grants["api_jwt_access_secret"].runtime_identity_key, "") == "api_runtime" &&
+          try(var.secret_access_grants["api_jwt_access_secret"].secret_id, "") == "moazez-production-jwt-access-secret" &&
+          try(var.secret_access_grants["api_jwt_refresh_secret"].runtime_identity_key, "") == "api_runtime" &&
+          try(var.secret_access_grants["api_jwt_refresh_secret"].secret_id, "") == "moazez-production-jwt-refresh-secret" &&
+          try(var.secret_access_grants["api_smtp_secret_encryption_key"].runtime_identity_key, "") == "api_runtime" &&
+          try(var.secret_access_grants["api_smtp_secret_encryption_key"].secret_id, "") == "moazez-production-smtp-secret-encryption-key" &&
+          try(var.secret_access_grants["api_app_device_token_encryption_key"].runtime_identity_key, "") == "api_runtime" &&
+          try(var.secret_access_grants["api_app_device_token_encryption_key"].secret_id, "") == "moazez-production-app-device-token-encryption-key" &&
+          try(var.secret_access_grants["core_worker_database_url"].runtime_identity_key, "") == "core_worker" &&
+          try(var.secret_access_grants["core_worker_database_url"].secret_id, "") == "moazez-production-core-worker-database-url" &&
+          try(var.secret_access_grants["core_worker_smtp_secret_encryption_key"].runtime_identity_key, "") == "core_worker" &&
+          try(var.secret_access_grants["core_worker_smtp_secret_encryption_key"].secret_id, "") == "moazez-production-smtp-secret-encryption-key" &&
+          try(var.secret_access_grants["core_worker_app_device_token_encryption_key"].runtime_identity_key, "") == "core_worker" &&
+          try(var.secret_access_grants["core_worker_app_device_token_encryption_key"].secret_id, "") == "moazez-production-app-device-token-encryption-key" &&
+          try(var.secret_access_grants["media_worker_database_url"].runtime_identity_key, "") == "media_worker" &&
+          try(var.secret_access_grants["media_worker_database_url"].secret_id, "") == "moazez-production-media-worker-database-url" &&
+          try(var.secret_access_grants["migration_job_database_url"].runtime_identity_key, "") == "migration_job" &&
+          try(var.secret_access_grants["migration_job_database_url"].secret_id, "") == "moazez-production-migration-database-url"
+        )
+      )
     )
-    error_message = "secret_access_grants must contain exactly the ten approved Staging secret-level memberships."
+    error_message = "secret_access_grants must contain exactly the ten approved Staging or Production secret-level memberships."
   }
 }

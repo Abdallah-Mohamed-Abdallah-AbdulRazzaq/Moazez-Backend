@@ -3,8 +3,11 @@ variable "project_id" {
   type        = string
 
   validation {
-    condition     = can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", var.project_id))
-    error_message = "project_id must be a valid Google Cloud project ID."
+    condition = contains([
+      "moazez-nonprod-91001421934",
+      "moazez-production",
+    ], var.project_id)
+    error_message = "project_id must be a governed Staging or Production project."
   }
 }
 
@@ -23,8 +26,8 @@ variable "location" {
   type        = string
 
   validation {
-    condition     = can(regex("^[a-z]+(-[a-z0-9]+)+$", var.location))
-    error_message = "location must be a valid Google Cloud location."
+    condition     = var.location == "me-central2"
+    error_message = "location must be me-central2."
   }
 }
 
@@ -33,7 +36,10 @@ variable "repository_id" {
   type        = string
 
   validation {
-    condition     = can(regex("^[a-z][a-z0-9-]{0,61}[a-z0-9]$", var.repository_id))
-    error_message = "repository_id must be a valid Artifact Registry repository ID."
+    condition = contains([
+      "moazez-staging-containers",
+      "moazez-production-containers",
+    ], var.repository_id)
+    error_message = "repository_id must be a governed Staging or Production repository ID."
   }
 }

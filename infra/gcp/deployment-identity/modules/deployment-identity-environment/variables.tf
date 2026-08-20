@@ -1,10 +1,13 @@
 variable "project_id" {
-  description = "Existing Google Cloud project that owns the staging deployment identity resources."
+  description = "Existing Google Cloud project that owns governed deployment identity resources."
   type        = string
 
   validation {
-    condition     = var.project_id == "moazez-nonprod-91001421934"
-    error_message = "project_id must be moazez-nonprod-91001421934."
+    condition = contains([
+      "moazez-nonprod-91001421934",
+      "moazez-production",
+    ], var.project_id)
+    error_message = "project_id must be a governed Staging or Production project."
   }
 }
 
@@ -13,8 +16,11 @@ variable "project_number" {
   type        = string
 
   validation {
-    condition     = var.project_number == "375161231141"
-    error_message = "project_number must be 375161231141."
+    condition = contains([
+      "375161231141",
+      "91001421934",
+    ], var.project_number)
+    error_message = "project_number must be a governed Staging or Production project number."
   }
 }
 
@@ -23,8 +29,8 @@ variable "environment" {
   type        = string
 
   validation {
-    condition     = var.environment == "staging"
-    error_message = "environment must be staging."
+    condition     = contains(["staging", "production"], var.environment)
+    error_message = "environment must be staging or production."
   }
 }
 
@@ -69,7 +75,7 @@ variable "github_repository_id" {
 }
 
 variable "github_allowed_ref" {
-  description = "Only Git ref accepted by the staging deployment identity provider."
+  description = "Only Git ref accepted by a governed deployment identity provider."
   type        = string
 
   validation {
@@ -79,12 +85,15 @@ variable "github_allowed_ref" {
 }
 
 variable "workload_identity_pool_id" {
-  description = "Persistent staging GitHub Workload Identity Pool ID."
+  description = "Persistent governed GitHub Workload Identity Pool ID."
   type        = string
 
   validation {
-    condition     = var.workload_identity_pool_id == "moazez-github-staging"
-    error_message = "workload_identity_pool_id must be moazez-github-staging."
+    condition = contains([
+      "moazez-github-staging",
+      "moazez-github-production",
+    ], var.workload_identity_pool_id)
+    error_message = "workload_identity_pool_id must be a governed Staging or Production pool ID."
   }
 }
 
@@ -109,7 +118,7 @@ variable "iac_deployer_service_account_id" {
 }
 
 variable "artifact_registry_location" {
-  description = "Location of the existing staging Artifact Registry repository."
+  description = "Location of the existing governed Artifact Registry repository."
   type        = string
 
   validation {
@@ -119,12 +128,15 @@ variable "artifact_registry_location" {
 }
 
 variable "artifact_registry_repository_id" {
-  description = "Existing staging Artifact Registry repository ID."
+  description = "Existing governed Artifact Registry repository ID."
   type        = string
 
   validation {
-    condition     = var.artifact_registry_repository_id == "moazez-staging-containers"
-    error_message = "artifact_registry_repository_id must be moazez-staging-containers."
+    condition = contains([
+      "moazez-staging-containers",
+      "moazez-production-containers",
+    ], var.artifact_registry_repository_id)
+    error_message = "artifact_registry_repository_id must be a governed Staging or Production repository ID."
   }
 }
 
@@ -133,8 +145,11 @@ variable "terraform_state_bucket" {
   type        = string
 
   validation {
-    condition     = var.terraform_state_bucket == "moazez-nonprod-91001421934-tfstate"
-    error_message = "terraform_state_bucket must be moazez-nonprod-91001421934-tfstate."
+    condition = contains([
+      "moazez-nonprod-91001421934-tfstate",
+      "moazez-production-91001421934-tfstate",
+    ], var.terraform_state_bucket)
+    error_message = "terraform_state_bucket must be a governed Staging or Production state bucket."
   }
 }
 
@@ -151,6 +166,6 @@ variable "runtime_service_account_ids" {
       try(var.runtime_service_account_ids["migration_job"], "") == "moazez-migration-job" &&
       try(var.runtime_service_account_ids["maintenance_scheduler"], "") == "moazez-maintenance-scheduler"
     )
-    error_message = "runtime_service_account_ids must contain exactly the five approved Staging runtime identities."
+    error_message = "runtime_service_account_ids must contain exactly the five approved runtime identities."
   }
 }

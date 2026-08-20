@@ -109,3 +109,68 @@ not own the state bucket, state bucket IAM, or state infrastructure. Stage 11B
 must validate only with backend-disabled initialization in an isolated
 Terraform data directory. It does not initialize or access the real GCS
 backend and runs no live plan, apply, import, or state mutation.
+
+## Stage 26C Production runtime IAM source
+
+```text
+PRODUCTION_SOURCE_PREPARED=YES
+PRODUCTION_TERRAFORM_APPLIED=NO
+PRODUCTION_SECRET_VERSIONS_CREATED=NO
+PRODUCTION_ARTIFACTS_PUSHED=NO
+PRODUCTION_RUNTIME_DEPLOYED=NO
+```
+
+Stage 26C adds Production Terraform source only. It does not initialize the
+real backend, plan against Google Cloud, apply Terraform, deploy a runtime, or
+otherwise mutate Google Cloud.
+
+The authoritative Stage 26 discovery inputs are project
+`moazez-production` (`91001421934`), region `me-central2`, and externally
+managed state bucket `moazez-production-91001421934-tfstate`. Secret Manager,
+IAM, IAM Credentials, STS, Artifact Registry, and Cloud Run APIs were reported
+enabled. Discovery reported zero Production secret containers, zero Stage 26
+Terraform state residue, zero user-managed service-account keys, and no import
+or legacy-resource reuse requirement. Those are point-in-time discovery facts,
+not provisioning claims.
+
+The Storage stack continues to own the five existing enabled accounts:
+
+- `moazez-api-runtime`;
+- `moazez-core-worker`;
+- `moazez-media-worker`;
+- `moazez-iac-deployer`;
+- `moazez-gcs-signer`.
+
+Runtime IAM references the first three and creates only the two accounts that
+discovery reported missing: `moazez-migration-job` and
+`moazez-maintenance-scheduler`. Both retain `deletion_policy=PREVENT` and
+`lifecycle.prevent_destroy=true`.
+
+The Production source expands exactly ten additive secret-level
+`roles/secretmanager.secretAccessor` memberships:
+
+| Runtime identity | Secret ID |
+| --- | --- |
+| `moazez-api-runtime` | `moazez-production-api-database-url` |
+| `moazez-api-runtime` | `moazez-production-jwt-access-secret` |
+| `moazez-api-runtime` | `moazez-production-jwt-refresh-secret` |
+| `moazez-api-runtime` | `moazez-production-smtp-secret-encryption-key` |
+| `moazez-api-runtime` | `moazez-production-app-device-token-encryption-key` |
+| `moazez-core-worker` | `moazez-production-core-worker-database-url` |
+| `moazez-core-worker` | `moazez-production-smtp-secret-encryption-key` |
+| `moazez-core-worker` | `moazez-production-app-device-token-encryption-key` |
+| `moazez-media-worker` | `moazez-production-media-worker-database-url` |
+| `moazez-migration-job` | `moazez-production-migration-database-url` |
+
+Maintenance Scheduler receives no Secret Manager access. The two service
+accounts plus ten secret IAM members total exactly 12 managed instances. This
+stack creates no service-account key, secret version or payload, project IAM,
+Token Creator grant, runtime deployment, or resource outside its established
+ownership boundary.
+
+```text
+REMOTE_STATE_MODEL=GCS
+REMOTE_STATE_BUCKET=moazez-production-91001421934-tfstate
+REMOTE_STATE_PREFIX=runtime-iam/production
+REMOTE_STATE_BUCKET_MANAGED_BY_THIS_STACK=NO
+```
