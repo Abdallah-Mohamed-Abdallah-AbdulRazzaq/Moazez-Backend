@@ -94,3 +94,54 @@ lifecycle.prevent_destroy=true
 Intentional future deletion requires a separately reviewed source change and
 explicitly authorized Terraform mutation. This domain provides no destroy
 helper or cleanup script.
+
+## Stage 26C Production source preparation
+
+```text
+PRODUCTION_SOURCE_PREPARED=YES
+PRODUCTION_TERRAFORM_APPLIED=NO
+PRODUCTION_SECRET_VERSIONS_CREATED=NO
+PRODUCTION_ARTIFACTS_PUSHED=NO
+PRODUCTION_RUNTIME_DEPLOYED=NO
+```
+
+Stage 26C adds a separate Production source root without changing the
+historical Staging root. It models exactly one standard Docker repository and
+does not push an image or package, configure authentication, add cleanup/tag
+policies, or implement artifact promotion, signing, provenance, SBOM, canary,
+or soak behavior.
+
+| Component | Production source value |
+| --- | --- |
+| Project | `moazez-production` |
+| Project number | `91001421934` |
+| Environment | `production` |
+| Location | `me-central2` |
+| Repository ID | `moazez-production-containers` |
+| Description | `Stores Moazez production container artifacts.` |
+| Format | `DOCKER` |
+| Mode | `STANDARD_REPOSITORY` |
+| State bucket | `moazez-production-91001421934-tfstate` |
+| State prefix | `artifact-registry/production` |
+| Provider deletion policy | `PREVENT` |
+| Terraform lifecycle `prevent_destroy` | `true` |
+
+Stage 26A/26B authoritative discovery reported the Production project active,
+the Artifact Registry API enabled, zero Production Artifact Registry
+repositories, and zero Stage 26 Terraform-state residue. Therefore import and
+legacy-resource reuse were not required. These are discovery facts, not a
+claim that Terraform was initialized or applied. The module derives the exact
+Staging or Production description from its governed environment and accepts no
+arbitrary project, location, repository ID, or description input.
+
+```text
+PROJECT_ID=moazez-production
+PROJECT_NUMBER=91001421934
+REGION=me-central2
+STATE_BUCKET=moazez-production-91001421934-tfstate
+ARTIFACT_REGISTRY_API=ENABLED
+PRODUCTION_ARTIFACT_REPOSITORIES=0
+STAGE26_TERRAFORM_STATE_RESIDUE=0
+IMPORT_REQUIRED=NO
+LEGACY_RESOURCE_REUSE_REQUIRED=NO
+```

@@ -131,3 +131,63 @@ Every container has provider `deletion_policy = "PREVENT"`, provider
 An intentional future deletion requires a separately governed and reviewed
 source change. Stage 9E configures no TTL, expiration, or version-destruction
 schedule.
+
+## Stage 26C Production source preparation
+
+```text
+PRODUCTION_SOURCE_PREPARED=YES
+PRODUCTION_TERRAFORM_APPLIED=NO
+PRODUCTION_SECRET_VERSIONS_CREATED=NO
+PRODUCTION_ARTIFACTS_PUSHED=NO
+PRODUCTION_RUNTIME_DEPLOYED=NO
+```
+
+Stage 26C adds a separate Production source root without changing the
+historical Staging root. It prepares exactly eight Secret Manager containers;
+it does not create secret versions, payloads, aliases, IAM, or any live cloud
+resource.
+
+| Component | Production source value |
+| --- | --- |
+| Project | `moazez-production` |
+| Project number | `91001421934` |
+| Environment | `production` |
+| Replica location | `me-central2` |
+| State bucket | `moazez-production-91001421934-tfstate` |
+| State prefix | `secrets/production` |
+| Secret containers modeled | 8 |
+| Replication | user-managed, exactly one replica |
+| Deletion policy | `PREVENT` |
+| Provider deletion protection | `true` |
+| Terraform lifecycle `prevent_destroy` | `true` |
+
+The Production source models these container IDs only:
+
+- `moazez-production-api-database-url`
+- `moazez-production-core-worker-database-url`
+- `moazez-production-media-worker-database-url`
+- `moazez-production-migration-database-url`
+- `moazez-production-jwt-access-secret`
+- `moazez-production-jwt-refresh-secret`
+- `moazez-production-smtp-secret-encryption-key`
+- `moazez-production-app-device-token-encryption-key`
+
+Stage 26A/26B authoritative discovery reported the Production project active,
+the Secret Manager API enabled, zero Production Secret Manager containers,
+and zero Stage 26 Terraform-state residue. Therefore import and legacy-resource
+reuse were not required. These are discovery facts, not a claim that Terraform
+was initialized or applied. No secret value was read, generated, recorded, or
+stored by this source-preparation stage. Redis CA and legacy-v1 encryption-key
+containers remain deliberately absent.
+
+```text
+PROJECT_ID=moazez-production
+PROJECT_NUMBER=91001421934
+REGION=me-central2
+STATE_BUCKET=moazez-production-91001421934-tfstate
+SECRET_MANAGER_API=ENABLED
+PRODUCTION_SECRET_CONTAINERS=0
+STAGE26_TERRAFORM_STATE_RESIDUE=0
+IMPORT_REQUIRED=NO
+LEGACY_RESOURCE_REUSE_REQUIRED=NO
+```
