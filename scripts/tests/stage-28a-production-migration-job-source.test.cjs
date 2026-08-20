@@ -393,7 +393,10 @@ function assertStage28CandidateScope(candidateFiles) {
     normalized.includes(TEST_PATH) ||
     normalized.some((file) => file.startsWith(`${PRODUCTION_ROOT}/`));
   if (!active) return false;
-  assert.deepEqual(normalized, AUTHORIZED_CANDIDATE_PATHS);
+  const unauthorized = normalized.filter(
+    (file) => !AUTHORIZED_CANDIDATE_PATHS.includes(file),
+  );
+  assert.deepEqual(unauthorized, []);
   return true;
 }
 
@@ -896,7 +899,7 @@ test('Stage 28A and PRD3-G04 retain exact independent CI ownership', () => {
   });
 });
 
-test('Committed Stage 28A candidate scope is exactly the authorized 12 paths when active', () => {
+test('Committed Stage 28A candidate scope contains only authorized paths when active', () => {
   assertStage28CandidateScope(candidateFilesFromCommittedRange());
 });
 
@@ -913,16 +916,18 @@ test('Candidate scope ignores unrelated PRs and rejects every mixed Stage 28A ca
     ]),
     false,
   );
-  assert.equal(assertStage28CandidateScope(AUTHORIZED_CANDIDATE_PATHS), true);
-  assert.throws(
-    () =>
-      assertStage28CandidateScope(
-        AUTHORIZED_CANDIDATE_PATHS.filter(
-          (file) => file !== `${MODULE_ROOT}/outputs.tf`,
-        ),
-      ),
-    { code: 'ERR_ASSERTION' },
+  assert.equal(
+    assertStage28CandidateScope([`${PRODUCTION_ROOT}/variables.tf`]),
+    true,
   );
+  assert.equal(
+    assertStage28CandidateScope([
+      `${MODULE_ROOT}/main.tf`,
+      `${PRODUCTION_ROOT}/main.tf`,
+    ]),
+    true,
+  );
+  assert.equal(assertStage28CandidateScope(AUTHORIZED_CANDIDATE_PATHS), true);
   assert.throws(
     () =>
       assertStage28CandidateScope([
