@@ -1141,19 +1141,15 @@ test('Stage 26C candidate change scope contains no application, Prisma, workflow
       .split(/\r?\n/u)
       .filter(Boolean)
       .map((file) => file.replace(/\\/gu, '/'));
-  const worktreeFiles = [
-    ...git(['diff', '--name-only', BASE_SHA, '--']),
-    ...git(['ls-files', '--others', '--exclude-standard']),
-  ];
-  const headFiles = git([
-    'diff-tree',
-    '--no-commit-id',
+  const base = process.env.CI_BASE_SHA || BASE_SHA;
+  const candidate = process.env.CI_CANDIDATE_SHA || 'HEAD';
+  const candidateFiles = git([
+    'diff',
     '--name-only',
-    '-r',
-    'HEAD',
-  ]);
-  const candidateFiles = [...new Set([...worktreeFiles, ...headFiles])].sort();
-  if (!candidateFiles.includes(TEST_PATH)) return;
+    base,
+    candidate,
+    '--',
+  ]).sort();
   const allowed = [
     /^infra\/gcp\/(?:secrets|artifact-registry|runtime-iam|deployment-identity)\//u,
     /^scripts\/ci\/plan-ci\.cjs$/u,
