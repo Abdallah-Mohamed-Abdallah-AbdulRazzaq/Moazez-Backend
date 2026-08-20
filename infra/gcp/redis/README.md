@@ -98,3 +98,66 @@ only. They must not be treated as application-ready `QUEUE_REDIS_URL` or
 trust and live Redis TLS connectivity before application roles are deployed
 against these instances. Stage 7A does not claim that runtime Redis
 connectivity has been proven.
+
+## Stage 25B Production Redis source contract
+
+Stage 25B prepares the governed Production Terraform source for later operator
+review. Source preparation is distinct from provisioning:
+
+```text
+SOURCE_PREPARATION != CLOUD_PROVISIONING
+```
+
+| Component | Approved value |
+| --- | --- |
+| Project | `moazez-production` |
+| Environment | `production` |
+| Region | `me-central2` |
+| Queue instance | `moazez-production-queue-me-central2` |
+| Realtime instance | `moazez-production-realtime-me-central2` |
+| Queue tier | `STANDARD_HA` |
+| Realtime tier | `STANDARD_HA` |
+| Queue memory | 2 GiB |
+| Realtime memory | 1 GiB |
+| Redis version | `REDIS_7_2` |
+| Authorized network | `projects/moazez-production/global/networks/moazez-production-vpc` |
+| Connect mode | `PRIVATE_SERVICE_ACCESS` |
+| TLS | `SERVER_AUTHENTICATION` |
+| AUTH | disabled intentionally in Stage 25 |
+| Terraform deletion protection | enabled |
+| Terraform lifecycle `prevent_destroy` | enabled on both instances |
+| Explicit zone placement | none; provider/service managed |
+| State bucket | `moazez-production-91001421934-tfstate` |
+| State prefix | `redis/production` |
+
+Production retains two physically independent Redis instances. Queue owns the
+BullMQ failure domain, while Realtime owns the Socket.IO and ephemeral-state
+failure domain. Different logical Redis database indexes on one endpoint are
+not an acceptable substitute for this separation.
+
+The existing Production VPC, runtime subnet, Private Service Access allocation,
+and Service Networking connection remain external prerequisites owned outside
+this Redis stack:
+
+```text
+VPC=moazez-production-vpc
+RUNTIME_SUBNET=moazez-production-runtime-me-central2
+PSA=moazez-production-psa
+PSA_CIDR=10.61.0.0/16
+SERVICE_NETWORKING=servicenetworking-googleapis-com
+```
+
+The Redis stack does not create, import, mutate, or query that networking
+foundation through Terraform state. Standard HA zone placement is intentionally
+not pinned; placement remains provider/service managed.
+
+AUTH is intentionally disabled in Stage 25, so this source creates no Redis
+AUTH secret. It also creates no Secret Manager, IAM, workload-identity, or
+runtime-delivery resources and does not configure `QUEUE_REDIS_URL`,
+`REALTIME_REDIS_URL`, or CA material. The outputs remain safe infrastructure
+identity and configuration metadata, not application-ready connection values.
+
+No claim is made that either Production Redis instance exists. Stage 25B does
+not prove Redis creation, TLS connectivity, runtime CA trust, or application
+cutover. Provisioning and live evidence belong to later independently approved
+deployment gates.

@@ -3,7 +3,8 @@ locals {
     queue_instance_name     = "moazez-staging-queue-me-central2"
     realtime_instance_name  = "moazez-staging-realtime-me-central2"
     tier                    = "BASIC"
-    memory_size_gb          = 1
+    queue_memory_size_gb    = 1
+    realtime_memory_size_gb = 1
     redis_version           = "REDIS_7_2"
     authorized_network      = "projects/moazez-nonprod-91001421934/global/networks/moazez-staging-vpc"
     connect_mode            = "PRIVATE_SERVICE_ACCESS"
@@ -32,7 +33,8 @@ module "redis_environment" {
   queue_instance_name     = local.staging_redis.queue_instance_name
   realtime_instance_name  = local.staging_redis.realtime_instance_name
   tier                    = local.staging_redis.tier
-  memory_size_gb          = local.staging_redis.memory_size_gb
+  queue_memory_size_gb    = local.staging_redis.queue_memory_size_gb
+  realtime_memory_size_gb = local.staging_redis.realtime_memory_size_gb
   redis_version           = local.staging_redis.redis_version
   authorized_network      = local.staging_redis.authorized_network
   connect_mode            = local.staging_redis.connect_mode

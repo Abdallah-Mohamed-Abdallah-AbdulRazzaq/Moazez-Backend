@@ -1,10 +1,13 @@
 variable "project_id" {
-  description = "Existing Google Cloud project that owns the Staging instances."
+  description = "Existing Google Cloud project for a governed Redis environment."
   type        = string
 
   validation {
-    condition     = var.project_id == "moazez-nonprod-91001421934"
-    error_message = "project_id must be moazez-nonprod-91001421934."
+    condition = contains([
+      "moazez-nonprod-91001421934",
+      "moazez-production",
+    ], var.project_id)
+    error_message = "project_id must be a governed Staging or Production project."
   }
 }
 
@@ -13,13 +16,13 @@ variable "environment" {
   type        = string
 
   validation {
-    condition     = var.environment == "staging"
-    error_message = "environment must be staging."
+    condition     = contains(["staging", "production"], var.environment)
+    error_message = "environment must be staging or production."
   }
 }
 
 variable "region" {
-  description = "Google Cloud region for both Staging Memorystore instances."
+  description = "Governed Google Cloud region for both Memorystore instances."
   type        = string
 
   validation {
@@ -33,8 +36,11 @@ variable "queue_instance_name" {
   type        = string
 
   validation {
-    condition     = var.queue_instance_name == "moazez-staging-queue-me-central2"
-    error_message = "queue_instance_name must be moazez-staging-queue-me-central2."
+    condition = contains([
+      "moazez-staging-queue-me-central2",
+      "moazez-production-queue-me-central2",
+    ], var.queue_instance_name)
+    error_message = "queue_instance_name must be a governed Staging or Production Queue instance name."
   }
 }
 
@@ -43,8 +49,11 @@ variable "realtime_instance_name" {
   type        = string
 
   validation {
-    condition     = var.realtime_instance_name == "moazez-staging-realtime-me-central2"
-    error_message = "realtime_instance_name must be moazez-staging-realtime-me-central2."
+    condition = contains([
+      "moazez-staging-realtime-me-central2",
+      "moazez-production-realtime-me-central2",
+    ], var.realtime_instance_name)
+    error_message = "realtime_instance_name must be a governed Staging or Production Realtime instance name."
   }
 }
 
@@ -53,18 +62,28 @@ variable "tier" {
   type        = string
 
   validation {
-    condition     = var.tier == "BASIC"
-    error_message = "tier must be BASIC."
+    condition     = contains(["BASIC", "STANDARD_HA"], var.tier)
+    error_message = "tier must be BASIC or STANDARD_HA."
   }
 }
 
-variable "memory_size_gb" {
-  description = "Locked memory size in GiB for each instance."
+variable "queue_memory_size_gb" {
+  description = "Governed Queue Redis memory size in GiB."
   type        = number
 
   validation {
-    condition     = var.memory_size_gb == 1
-    error_message = "memory_size_gb must be 1."
+    condition     = contains([1, 2], var.queue_memory_size_gb)
+    error_message = "queue_memory_size_gb must be 1 or 2."
+  }
+}
+
+variable "realtime_memory_size_gb" {
+  description = "Locked Realtime Redis memory size in GiB."
+  type        = number
+
+  validation {
+    condition     = var.realtime_memory_size_gb == 1
+    error_message = "realtime_memory_size_gb must be 1."
   }
 }
 
@@ -79,12 +98,15 @@ variable "redis_version" {
 }
 
 variable "authorized_network" {
-  description = "Existing Stage 4 VPC used through Private Service Access."
+  description = "Existing governed VPC used through Private Service Access."
   type        = string
 
   validation {
-    condition     = var.authorized_network == "projects/moazez-nonprod-91001421934/global/networks/moazez-staging-vpc"
-    error_message = "authorized_network must reference the approved Staging VPC."
+    condition = contains([
+      "projects/moazez-nonprod-91001421934/global/networks/moazez-staging-vpc",
+      "projects/moazez-production/global/networks/moazez-production-vpc",
+    ], var.authorized_network)
+    error_message = "authorized_network must reference a governed Staging or Production VPC."
   }
 }
 
@@ -109,12 +131,12 @@ variable "transit_encryption_mode" {
 }
 
 variable "auth_enabled" {
-  description = "Whether Memorystore AUTH is enabled in Stage 7A."
+  description = "Whether Memorystore AUTH is enabled in the governed environment."
   type        = bool
 
   validation {
     condition     = var.auth_enabled == false
-    error_message = "auth_enabled must be false in Stage 7A."
+    error_message = "auth_enabled must be false."
   }
 }
 
@@ -135,10 +157,10 @@ variable "queue_labels" {
   validation {
     condition = (
       length(var.queue_labels) == 2 &&
-      lookup(var.queue_labels, "environment", "") == "staging" &&
+      contains(["staging", "production"], lookup(var.queue_labels, "environment", "")) &&
       lookup(var.queue_labels, "redis_role", "") == "queue"
     )
-    error_message = "queue_labels must contain exactly environment=staging and redis_role=queue."
+    error_message = "queue_labels must contain exactly a governed environment and redis_role=queue."
   }
 }
 
@@ -149,9 +171,9 @@ variable "realtime_labels" {
   validation {
     condition = (
       length(var.realtime_labels) == 2 &&
-      lookup(var.realtime_labels, "environment", "") == "staging" &&
+      contains(["staging", "production"], lookup(var.realtime_labels, "environment", "")) &&
       lookup(var.realtime_labels, "redis_role", "") == "realtime"
     )
-    error_message = "realtime_labels must contain exactly environment=staging and redis_role=realtime."
+    error_message = "realtime_labels must contain exactly a governed environment and redis_role=realtime."
   }
 }
