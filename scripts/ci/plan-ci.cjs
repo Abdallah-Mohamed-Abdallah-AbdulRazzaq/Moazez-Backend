@@ -119,6 +119,11 @@ const ACTIVE_TAP_OWNERS = Object.freeze({
       owner: 'production-foundation-source-governance',
       profile: 'runtime-governance',
     }),
+  'scripts/tests/stage-27a-production-backend-image-workflow.test.cjs':
+    Object.freeze({
+      owner: 'production-artifact-governance',
+      profile: 'runtime-governance',
+    }),
   'scripts/tests/universal-regression.test.cjs': Object.freeze({
     owner: 'ci-orchestrator',
     profile: 'orchestrator',
