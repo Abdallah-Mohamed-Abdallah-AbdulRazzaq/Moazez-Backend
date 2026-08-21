@@ -22,6 +22,8 @@ const TEST_PATH =
   'scripts/tests/stage-29a-production-runtime-source.test.cjs';
 const STAGE_28_TEST_PATH =
   'scripts/tests/stage-28a-production-migration-job-source.test.cjs';
+const HISTORICAL_RUNTIME_POLICY_TEST_PATH =
+  'scripts/tests/verify-runtime-policy.test.cjs';
 const PLAN_CI_PATH = 'scripts/ci/plan-ci.cjs';
 const README_PATH = 'infra/gcp/backend-runtime/README.md';
 
@@ -48,6 +50,7 @@ const AUTHORIZED_STAGE29A_PATHS = Object.freeze(
     `${MODULE_ROOT}/outputs.tf`,
     README_PATH,
     PLAN_CI_PATH,
+    HISTORICAL_RUNTIME_POLICY_TEST_PATH,
     TEST_PATH,
   ].sort(),
 );
@@ -1044,10 +1047,17 @@ test('Candidate scope ignores unrelated PRs and rejects every mixed Stage 29A ca
     false,
   );
   assert.equal(assertStage29CandidateScope([`${PRODUCTION_ROOT}/variables.tf`]), true);
+  assert.equal(
+    assertStage29CandidateScope([
+      `${PRODUCTION_ROOT}/main.tf`,
+      HISTORICAL_RUNTIME_POLICY_TEST_PATH,
+    ]),
+    true,
+  );
   assert.equal(assertStage29CandidateScope(AUTHORIZED_STAGE29A_PATHS), true);
   for (const candidate of [
     [...AUTHORIZED_STAGE29A_PATHS, 'src/example-unrelated-change.ts'],
-    [`${PRODUCTION_ROOT}/main.tf`, 'prisma/schema.prisma'],
+    [`${PRODUCTION_ROOT}/main.tf`, 'src/example-unrelated-change.ts'],
     [TEST_PATH, 'scripts/tests/stage-30-production-edge.test.cjs'],
   ]) {
     assert.throws(() => assertStage29CandidateScope(candidate), {

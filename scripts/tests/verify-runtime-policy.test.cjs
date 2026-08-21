@@ -23,7 +23,20 @@ test('the repository satisfies the supported runtime policy', () => {
 });
 
 test('the staging API Terraform edge contract remains canonical', () => {
-  const terraform = fs.readFileSync(
+  const stagingRuntimeCaller = fs.readFileSync(
+    path.join(
+      REPOSITORY_ROOT,
+      'infra',
+      'gcp',
+      'backend-runtime',
+      'environments',
+      'nonprod',
+      'runtime',
+      'main.tf',
+    ),
+    'utf8',
+  );
+  const sharedRuntimeModule = fs.readFileSync(
     path.join(
       REPOSITORY_ROOT,
       'infra',
@@ -36,14 +49,24 @@ test('the staging API Terraform edge contract remains canonical', () => {
     'utf8',
   );
 
-  const apiUrls = [...terraform.matchAll(/^\s*api_url\s*=\s*"([^"]+)"$/gmu)];
+  const environmentSelectors = [
+    ...stagingRuntimeCaller.matchAll(/^\s*environment\s*=\s*"([^"]+)"$/gmu),
+  ];
+  assert.deepEqual(
+    environmentSelectors.map((match) => match[1]),
+    ['staging'],
+  );
+
+  const apiUrls = [
+    ...stagingRuntimeCaller.matchAll(/^\s*api_url\s*=\s*"([^"]+)"$/gmu),
+  ];
   assert.deepEqual(
     apiUrls.map((match) => match[1]),
     ['https://staging-api.moazez.cloud'],
   );
 
   const ingressValues = [
-    ...terraform.matchAll(/^\s*ingress\s*=\s*"([^"]+)"$/gmu),
+    ...sharedRuntimeModule.matchAll(/^\s*ingress\s*=\s*"([^"]+)"$/gmu),
   ];
   assert.deepEqual(
     ingressValues.map((match) => match[1]),
@@ -51,14 +74,22 @@ test('the staging API Terraform edge contract remains canonical', () => {
   );
 
   const appUrlValues = [
-    ...terraform.matchAll(/^\s*APP_URL\s*=\s*(\S+)\s*$/gmu),
+    ...sharedRuntimeModule.matchAll(/^\s*APP_URL\s*=\s*(\S+)\s*$/gmu),
   ];
   assert.deepEqual(
     appUrlValues.map((match) => match[1]),
-    ['local.api_url', 'local.api_url'],
+    ['var.api_url', 'var.api_url'],
   );
-  assert.doesNotMatch(terraform, /^\s*APP_URL\s*=\s*"https?:\/\//gmu);
-  assert.doesNotMatch(terraform, /\.run\.app/u);
+  assert.doesNotMatch(
+    sharedRuntimeModule,
+    /^\s*APP_URL\s*=\s*"https?:\/\//gmu,
+  );
+  assert.doesNotMatch(
+    sharedRuntimeModule,
+    /^\s*api_url\s*=\s*"https:\/\/staging-api[.]moazez[.]cloud"\s*$/gmu,
+  );
+  assert.doesNotMatch(stagingRuntimeCaller, /\.run\.app/u);
+  assert.doesNotMatch(sharedRuntimeModule, /\.run\.app/u);
 });
 
 test('drift in every governed runtime surface fails validation', async (t) => {
