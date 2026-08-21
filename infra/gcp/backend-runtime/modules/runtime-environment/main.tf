@@ -1,24 +1,151 @@
 locals {
-  project_id = "moazez-nonprod-91001421934"
-  region     = "me-central2"
-  network    = "moazez-staging-vpc"
-  subnetwork = "moazez-staging-runtime-me-central2"
+  approved_environment = {
+    staging = {
+      project_id = "moazez-nonprod-91001421934"
+      region     = "me-central2"
+      network    = "moazez-staging-vpc"
+      subnetwork = "moazez-staging-runtime-me-central2"
 
-  api_service_name                = "moazez-staging-api"
-  core_worker_pool_name           = "moazez-staging-core-worker"
-  media_worker_pool_name          = "moazez-staging-media-worker"
-  maintenance_scheduler_pool_name = "moazez-staging-maintenance-scheduler"
-  api_service_account             = "moazez-api-runtime@moazez-nonprod-91001421934.iam.gserviceaccount.com"
-  core_worker_service_account     = "moazez-core-worker@moazez-nonprod-91001421934.iam.gserviceaccount.com"
-  media_worker_service_account    = "moazez-media-worker@moazez-nonprod-91001421934.iam.gserviceaccount.com"
-  maintenance_service_account     = "moazez-maintenance-scheduler@moazez-nonprod-91001421934.iam.gserviceaccount.com"
-  api_url                         = "https://staging-api.moazez.cloud"
-  staging_cors_origins            = "https://staging-schools.moazez.cloud,https://staging-admin.moazez.cloud"
-  queue_redis_url                 = format("rediss://%s:%d", var.queue_redis_host, var.queue_redis_port)
-  realtime_redis_url              = format("rediss://%s:%d", var.realtime_redis_host, var.realtime_redis_port)
+      api_service_name                = "moazez-staging-api"
+      core_worker_pool_name           = "moazez-staging-core-worker"
+      media_worker_pool_name          = "moazez-staging-media-worker"
+      maintenance_scheduler_pool_name = "moazez-staging-maintenance-scheduler"
+      api_service_account             = "moazez-api-runtime@moazez-nonprod-91001421934.iam.gserviceaccount.com"
+      core_worker_service_account     = "moazez-core-worker@moazez-nonprod-91001421934.iam.gserviceaccount.com"
+      media_worker_service_account    = "moazez-media-worker@moazez-nonprod-91001421934.iam.gserviceaccount.com"
+      maintenance_service_account     = "moazez-maintenance-scheduler@moazez-nonprod-91001421934.iam.gserviceaccount.com"
+
+      node_environment            = "staging"
+      trusted_proxy_mode          = "gcp_external_alb"
+      cors_origins                = "https://staging-schools.moazez.cloud,https://staging-admin.moazez.cloud"
+      image_pattern               = "^me-central2-docker[.]pkg[.]dev/moazez-nonprod-91001421934/moazez-staging-containers/moazez-backend@sha256:[a-f0-9]{64}$"
+      storage_private_bucket      = "moazez-nonprod-91001421934-private"
+      storage_published_bucket    = "moazez-nonprod-91001421934-published"
+      gcs_signing_service_account = "moazez-gcs-signer@moazez-nonprod-91001421934.iam.gserviceaccount.com"
+
+      api_secret_environment = {
+        DATABASE_URL = {
+          secret  = "moazez-staging-api-database-url"
+          version = "1"
+        }
+        JWT_ACCESS_SECRET = {
+          secret  = "moazez-staging-jwt-access-secret"
+          version = "1"
+        }
+        JWT_REFRESH_SECRET = {
+          secret  = "moazez-staging-jwt-refresh-secret"
+          version = "1"
+        }
+        SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY = {
+          secret  = "moazez-staging-smtp-secret-encryption-key"
+          version = "1"
+        }
+        APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY = {
+          secret  = "moazez-staging-app-device-token-encryption-key"
+          version = "1"
+        }
+      }
+
+      core_worker_secret_environment = {
+        DATABASE_URL = {
+          secret  = "moazez-staging-core-worker-database-url"
+          version = "1"
+        }
+        SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY = {
+          secret  = "moazez-staging-smtp-secret-encryption-key"
+          version = "1"
+        }
+        APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY = {
+          secret  = "moazez-staging-app-device-token-encryption-key"
+          version = "1"
+        }
+      }
+
+      media_worker_secret_environment = {
+        DATABASE_URL = {
+          secret  = "moazez-staging-media-worker-database-url"
+          version = "1"
+        }
+      }
+    }
+
+    production = {
+      project_id = "moazez-production"
+      region     = "me-central2"
+      network    = "moazez-production-vpc"
+      subnetwork = "moazez-production-runtime-me-central2"
+
+      api_service_name                = "moazez-production-api"
+      core_worker_pool_name           = "moazez-production-core-worker"
+      media_worker_pool_name          = "moazez-production-media-worker"
+      maintenance_scheduler_pool_name = "moazez-production-maintenance-scheduler"
+      api_service_account             = "moazez-api-runtime@moazez-production.iam.gserviceaccount.com"
+      core_worker_service_account     = "moazez-core-worker@moazez-production.iam.gserviceaccount.com"
+      media_worker_service_account    = "moazez-media-worker@moazez-production.iam.gserviceaccount.com"
+      maintenance_service_account     = "moazez-maintenance-scheduler@moazez-production.iam.gserviceaccount.com"
+
+      node_environment            = "production"
+      trusted_proxy_mode          = "none"
+      cors_origins                = "https://schools.moazez.cloud,https://admin.moazez.cloud"
+      image_pattern               = "^me-central2-docker[.]pkg[.]dev/moazez-production/moazez-production-containers/moazez-backend@sha256:[a-f0-9]{64}$"
+      storage_private_bucket      = "moazez-production-91001421934-private"
+      storage_published_bucket    = "moazez-production-91001421934-published"
+      gcs_signing_service_account = "moazez-gcs-signer@moazez-production.iam.gserviceaccount.com"
+
+      api_secret_environment = {
+        DATABASE_URL = {
+          secret  = "moazez-production-api-database-url"
+          version = "1"
+        }
+        JWT_ACCESS_SECRET = {
+          secret  = "moazez-production-jwt-access-secret"
+          version = "1"
+        }
+        JWT_REFRESH_SECRET = {
+          secret  = "moazez-production-jwt-refresh-secret"
+          version = "1"
+        }
+        SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY = {
+          secret  = "moazez-production-smtp-secret-encryption-key"
+          version = "1"
+        }
+        APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY = {
+          secret  = "moazez-production-app-device-token-encryption-key"
+          version = "1"
+        }
+      }
+
+      core_worker_secret_environment = {
+        DATABASE_URL = {
+          secret  = "moazez-production-core-worker-database-url"
+          version = "1"
+        }
+        SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY = {
+          secret  = "moazez-production-smtp-secret-encryption-key"
+          version = "1"
+        }
+        APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY = {
+          secret  = "moazez-production-app-device-token-encryption-key"
+          version = "1"
+        }
+      }
+
+      media_worker_secret_environment = {
+        DATABASE_URL = {
+          secret  = "moazez-production-media-worker-database-url"
+          version = "1"
+        }
+      }
+    }
+  }
+
+  selected                  = local.approved_environment[var.environment]
+  image_matches_environment = can(regex(local.selected.image_pattern, var.image_reference))
+  queue_redis_url           = format("rediss://%s:%d", var.queue_redis_host, var.queue_redis_port)
+  realtime_redis_url        = format("rediss://%s:%d", var.realtime_redis_host, var.realtime_redis_port)
 
   common_environment = {
-    NODE_ENV                = "staging"
+    NODE_ENV                = local.selected.node_environment
     APP_SHUTDOWN_TIMEOUT_MS = "15000"
     LOG_LEVEL               = "info"
   }
@@ -26,10 +153,10 @@ locals {
   api_environment = merge(local.common_environment, {
     APP_PORT                                       = "3000"
     APP_PROBE_PORT                                 = "9090"
-    APP_URL                                        = local.api_url
-    APP_TRUSTED_PROXY_MODE                         = "gcp_external_alb"
-    APP_CORS_ORIGINS                               = local.staging_cors_origins
-    STORAGE_CORS_ORIGINS                           = local.staging_cors_origins
+    APP_URL                                        = var.api_url
+    APP_TRUSTED_PROXY_MODE                         = local.selected.trusted_proxy_mode
+    APP_CORS_ORIGINS                               = local.selected.cors_origins
+    STORAGE_CORS_ORIGINS                           = local.selected.cors_origins
     SWAGGER_ENABLED                                = "false"
     SEED_DEMO_DATA                                 = "false"
     DATABASE_RUNTIME_ROLE                          = "api"
@@ -38,73 +165,35 @@ locals {
     DATABASE_CONNECT_TIMEOUT_SECONDS               = "5"
     JWT_ACCESS_TTL                                 = "15m"
     JWT_REFRESH_TTL                                = "7d"
-    SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY_ID = "staging-email-20260815"
-    APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY_ID      = "staging-device-20260815"
+    SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY_ID = var.settings_email_secret_encryption_active_key_id
+    APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY_ID      = var.app_device_token_encryption_active_key_id
     QUEUE_REDIS_URL                                = local.queue_redis_url
     REALTIME_REDIS_URL                             = local.realtime_redis_url
     STORAGE_PROVIDER                               = "gcs"
-    GCP_PROJECT_ID                                 = local.project_id
-    STORAGE_BUCKET                                 = "moazez-nonprod-91001421934-private"
-    STORAGE_PUBLIC_BUCKET                          = "moazez-nonprod-91001421934-published"
-    GCS_SIGNING_SERVICE_ACCOUNT                    = "moazez-gcs-signer@moazez-nonprod-91001421934.iam.gserviceaccount.com"
+    GCP_PROJECT_ID                                 = local.selected.project_id
+    STORAGE_BUCKET                                 = local.selected.storage_private_bucket
+    STORAGE_PUBLIC_BUCKET                          = local.selected.storage_published_bucket
+    GCS_SIGNING_SERVICE_ACCOUNT                    = local.selected.gcs_signing_service_account
   })
-
-  api_secret_environment = {
-    DATABASE_URL = {
-      secret  = "moazez-staging-api-database-url"
-      version = "1"
-    }
-    JWT_ACCESS_SECRET = {
-      secret  = "moazez-staging-jwt-access-secret"
-      version = "1"
-    }
-    JWT_REFRESH_SECRET = {
-      secret  = "moazez-staging-jwt-refresh-secret"
-      version = "1"
-    }
-    SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY = {
-      secret  = "moazez-staging-smtp-secret-encryption-key"
-      version = "1"
-    }
-    APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY = {
-      secret  = "moazez-staging-app-device-token-encryption-key"
-      version = "1"
-    }
-  }
 
   core_worker_environment = merge(local.common_environment, {
     APP_PROBE_PORT                                 = "9090"
-    APP_URL                                        = local.api_url
+    APP_URL                                        = var.api_url
     DATABASE_RUNTIME_ROLE                          = "core-worker"
     DATABASE_CONNECTION_LIMIT                      = "6"
     DATABASE_POOL_TIMEOUT_SECONDS                  = "10"
     DATABASE_CONNECT_TIMEOUT_SECONDS               = "5"
-    SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY_ID = "staging-email-20260815"
-    APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY_ID      = "staging-device-20260815"
+    SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY_ID = var.settings_email_secret_encryption_active_key_id
+    APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY_ID      = var.app_device_token_encryption_active_key_id
     FCM_ENABLED                                    = "false"
     FCM_DRY_RUN                                    = "true"
     QUEUE_REDIS_URL                                = local.queue_redis_url
     REALTIME_REDIS_URL                             = local.realtime_redis_url
     STORAGE_PROVIDER                               = "gcs"
-    GCP_PROJECT_ID                                 = local.project_id
-    STORAGE_BUCKET                                 = "moazez-nonprod-91001421934-private"
-    STORAGE_PUBLIC_BUCKET                          = "moazez-nonprod-91001421934-published"
+    GCP_PROJECT_ID                                 = local.selected.project_id
+    STORAGE_BUCKET                                 = local.selected.storage_private_bucket
+    STORAGE_PUBLIC_BUCKET                          = local.selected.storage_published_bucket
   })
-
-  core_worker_secret_environment = {
-    DATABASE_URL = {
-      secret  = "moazez-staging-core-worker-database-url"
-      version = "1"
-    }
-    SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY = {
-      secret  = "moazez-staging-smtp-secret-encryption-key"
-      version = "1"
-    }
-    APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY = {
-      secret  = "moazez-staging-app-device-token-encryption-key"
-      version = "1"
-    }
-  }
 
   media_worker_environment = merge(local.common_environment, {
     APP_PROBE_PORT                   = "9090"
@@ -114,17 +203,10 @@ locals {
     DATABASE_CONNECT_TIMEOUT_SECONDS = "5"
     QUEUE_REDIS_URL                  = local.queue_redis_url
     STORAGE_PROVIDER                 = "gcs"
-    GCP_PROJECT_ID                   = local.project_id
-    STORAGE_BUCKET                   = "moazez-nonprod-91001421934-private"
-    STORAGE_PUBLIC_BUCKET            = "moazez-nonprod-91001421934-published"
+    GCP_PROJECT_ID                   = local.selected.project_id
+    STORAGE_BUCKET                   = local.selected.storage_private_bucket
+    STORAGE_PUBLIC_BUCKET            = local.selected.storage_published_bucket
   })
-
-  media_worker_secret_environment = {
-    DATABASE_URL = {
-      secret  = "moazez-staging-media-worker-database-url"
-      version = "1"
-    }
-  }
 
   maintenance_scheduler_environment = merge(local.common_environment, {
     APP_PROBE_PORT  = "9090"
@@ -133,9 +215,9 @@ locals {
 }
 
 resource "google_cloud_run_v2_service" "api" {
-  project              = local.project_id
-  location             = local.region
-  name                 = local.api_service_name
+  project              = local.selected.project_id
+  location             = local.selected.region
+  name                 = local.selected.api_service_name
   ingress              = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
   invoker_iam_disabled = true
   default_uri_disabled = true
@@ -147,7 +229,7 @@ resource "google_cloud_run_v2_service" "api" {
   }
 
   template {
-    service_account                  = local.api_service_account
+    service_account                  = local.selected.api_service_account
     max_instance_request_concurrency = 40
 
     containers {
@@ -177,7 +259,7 @@ resource "google_cloud_run_v2_service" "api" {
       }
 
       dynamic "env" {
-        for_each = local.api_secret_environment
+        for_each = local.selected.api_secret_environment
 
         content {
           name = env.key
@@ -217,21 +299,26 @@ resource "google_cloud_run_v2_service" "api" {
       egress = "PRIVATE_RANGES_ONLY"
 
       network_interfaces {
-        network    = local.network
-        subnetwork = local.subnetwork
+        network    = local.selected.network
+        subnetwork = local.selected.subnetwork
       }
     }
   }
 
   lifecycle {
     prevent_destroy = true
+
+    precondition {
+      condition     = local.image_matches_environment
+      error_message = "image_reference must use the immutable backend package governed for the selected environment."
+    }
   }
 }
 
 resource "google_cloud_run_v2_worker_pool" "core" {
-  project             = local.project_id
-  location            = local.region
-  name                = local.core_worker_pool_name
+  project             = local.selected.project_id
+  location            = local.selected.region
+  name                = local.selected.core_worker_pool_name
   deletion_protection = true
 
   scaling {
@@ -240,7 +327,7 @@ resource "google_cloud_run_v2_worker_pool" "core" {
   }
 
   template {
-    service_account = local.core_worker_service_account
+    service_account = local.selected.core_worker_service_account
 
     containers {
       image   = var.image_reference
@@ -266,7 +353,7 @@ resource "google_cloud_run_v2_worker_pool" "core" {
       }
 
       dynamic "env" {
-        for_each = local.core_worker_secret_environment
+        for_each = local.selected.core_worker_secret_environment
 
         content {
           name = env.key
@@ -299,21 +386,26 @@ resource "google_cloud_run_v2_worker_pool" "core" {
       egress = "PRIVATE_RANGES_ONLY"
 
       network_interfaces {
-        network    = local.network
-        subnetwork = local.subnetwork
+        network    = local.selected.network
+        subnetwork = local.selected.subnetwork
       }
     }
   }
 
   lifecycle {
     prevent_destroy = true
+
+    precondition {
+      condition     = local.image_matches_environment
+      error_message = "image_reference must use the immutable backend package governed for the selected environment."
+    }
   }
 }
 
 resource "google_cloud_run_v2_worker_pool" "media" {
-  project             = local.project_id
-  location            = local.region
-  name                = local.media_worker_pool_name
+  project             = local.selected.project_id
+  location            = local.selected.region
+  name                = local.selected.media_worker_pool_name
   deletion_protection = true
 
   scaling {
@@ -322,7 +414,7 @@ resource "google_cloud_run_v2_worker_pool" "media" {
   }
 
   template {
-    service_account = local.media_worker_service_account
+    service_account = local.selected.media_worker_service_account
 
     containers {
       image   = var.image_reference
@@ -343,7 +435,7 @@ resource "google_cloud_run_v2_worker_pool" "media" {
       }
 
       dynamic "env" {
-        for_each = local.media_worker_secret_environment
+        for_each = local.selected.media_worker_secret_environment
 
         content {
           name = env.key
@@ -376,21 +468,26 @@ resource "google_cloud_run_v2_worker_pool" "media" {
       egress = "PRIVATE_RANGES_ONLY"
 
       network_interfaces {
-        network    = local.network
-        subnetwork = local.subnetwork
+        network    = local.selected.network
+        subnetwork = local.selected.subnetwork
       }
     }
   }
 
   lifecycle {
     prevent_destroy = true
+
+    precondition {
+      condition     = local.image_matches_environment
+      error_message = "image_reference must use the immutable backend package governed for the selected environment."
+    }
   }
 }
 
 resource "google_cloud_run_v2_worker_pool" "maintenance_scheduler" {
-  project             = local.project_id
-  location            = local.region
-  name                = local.maintenance_scheduler_pool_name
+  project             = local.selected.project_id
+  location            = local.selected.region
+  name                = local.selected.maintenance_scheduler_pool_name
   deletion_protection = true
 
   scaling {
@@ -399,7 +496,7 @@ resource "google_cloud_run_v2_worker_pool" "maintenance_scheduler" {
   }
 
   template {
-    service_account = local.maintenance_service_account
+    service_account = local.selected.maintenance_service_account
 
     containers {
       image   = var.image_reference
@@ -438,13 +535,18 @@ resource "google_cloud_run_v2_worker_pool" "maintenance_scheduler" {
       egress = "PRIVATE_RANGES_ONLY"
 
       network_interfaces {
-        network    = local.network
-        subnetwork = local.subnetwork
+        network    = local.selected.network
+        subnetwork = local.selected.subnetwork
       }
     }
   }
 
   lifecycle {
     prevent_destroy = true
+
+    precondition {
+      condition     = local.image_matches_environment
+      error_message = "image_reference must use the immutable backend package governed for the selected environment."
+    }
   }
 }

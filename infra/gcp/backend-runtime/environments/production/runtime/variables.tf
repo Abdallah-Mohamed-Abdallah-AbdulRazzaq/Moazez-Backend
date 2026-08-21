@@ -1,29 +1,13 @@
-variable "environment" {
-  description = "Closed runtime environment selector."
-  type        = string
-
-  validation {
-    condition     = contains(["staging", "production"], var.environment)
-    error_message = "environment must be either staging or production."
-  }
-}
-
 variable "image_reference" {
-  description = "Immutable digest reference shared by the selected environment's API and worker pools."
+  description = "Immutable digest reference shared by the Production API and all three worker pools."
   type        = string
 
   validation {
-    condition = (
-      can(regex(
-        "^me-central2-docker[.]pkg[.]dev/moazez-nonprod-91001421934/moazez-staging-containers/moazez-backend@sha256:[a-f0-9]{64}$",
-        var.image_reference,
-      )) ||
-      can(regex(
-        "^me-central2-docker[.]pkg[.]dev/moazez-production/moazez-production-containers/moazez-backend@sha256:[a-f0-9]{64}$",
-        var.image_reference,
-      ))
-    )
-    error_message = "image_reference must be an approved staging or production backend package pinned by a lowercase sha256 digest."
+    condition = can(regex(
+      "^me-central2-docker[.]pkg[.]dev/moazez-production/moazez-production-containers/moazez-backend@sha256:[a-f0-9]{64}$",
+      var.image_reference,
+    ))
+    error_message = "image_reference must be the approved Production backend package pinned by a lowercase sha256 digest."
   }
 }
 
@@ -104,7 +88,7 @@ variable "realtime_redis_ca_pem" {
 }
 
 variable "api_url" {
-  description = "Canonical HTTPS origin used as APP_URL by the API and Core Worker."
+  description = "Required canonical HTTPS origin used as APP_URL by the Production API and Core Worker."
   type        = string
 
   validation {
@@ -117,7 +101,7 @@ variable "api_url" {
 }
 
 variable "settings_email_secret_encryption_active_key_id" {
-  description = "Non-secret active SMTP encryption key identifier."
+  description = "Required non-secret active SMTP encryption key identifier for Production."
   type        = string
 
   validation {
@@ -127,7 +111,7 @@ variable "settings_email_secret_encryption_active_key_id" {
 }
 
 variable "app_device_token_encryption_active_key_id" {
-  description = "Non-secret active app-device-token encryption key identifier."
+  description = "Required non-secret active app-device-token encryption key identifier for Production."
   type        = string
 
   validation {
