@@ -1,136 +1,120 @@
-# Staging backend runtime source
+# Backend runtime Terraform source
 
-Stage 13B is source preparation only. This directory models the Staging
-backend runtime boundary; it does not claim that a Cloud Run service, worker
-pool, job, Terraform backend, or any other Google Cloud resource has been
-created, changed, imported, or deployed.
+This directory contains source definitions for the Staging and Production
+backend runtimes. Development source preparation and local validation are not
+deployment: they do not initialize a real backend, create a saved plan, apply
+Terraform, execute the Migration Job, deploy Cloud Run, or mutate Google
+Cloud.
 
 ## Independent Terraform roots
 
-The Migration Job and long-running runtime are deliberately separate
-Terraform roots with no Terraform dependency or remote-state lookup between
+Migration and long-running runtime resources use independent roots and state
+prefixes. There is no remote-state lookup or Terraform dependency between
 them.
 
-| Root | Remote state prefix | Managed resources |
-| --- | --- | --- |
-| `environments/nonprod/migration` | `backend-runtime/staging/migration` | 1 `google_cloud_run_v2_job` |
-| `environments/nonprod/runtime` | `backend-runtime/staging/runtime` | 1 `google_cloud_run_v2_service` and 3 `google_cloud_run_v2_worker_pool` resources |
+| Environment | Root | Remote state prefix | Managed resources |
+| --- | --- | --- | --- |
+| Staging | `environments/nonprod/migration` | `backend-runtime/staging/migration` | 1 `google_cloud_run_v2_job` |
+| Staging | `environments/nonprod/runtime` | `backend-runtime/staging/runtime` | 1 `google_cloud_run_v2_service` and 3 `google_cloud_run_v2_worker_pool` resources |
+| Production | `environments/production/migration` | `backend-runtime/production/migration` | 1 `google_cloud_run_v2_job` |
+| Production | `environments/production/runtime` | `backend-runtime/production/runtime` | 1 `google_cloud_run_v2_service` and 3 `google_cloud_run_v2_worker_pool` resources |
 
-Both roots configure the externally owned state bucket
-`moazez-nonprod-91001421934-tfstate`. Neither Stage 13B root creates or
-manages the bucket as a Terraform managed resource, and neither declares a
-Google data source for it. Real backend initialization is a separately
-governed DevOps operation and will access the bucket when backend access is
-enabled. Development validation uses backend-disabled initialization and
-therefore does not access the real remote backend. Each root locks
-`hashicorp/google` to the committed 7.44.0 provider selection and configures
-only the normal `google` provider.
+The Staging roots reference the externally owned state bucket
+`moazez-nonprod-91001421934-tfstate`. The Production roots reference
+`moazez-production-91001421934-tfstate`. No root creates or manages its state
+bucket, and local source validation uses backend-disabled initialization.
+Every root selects `hashicorp/google` 7.44.0 under the governed
+`>= 7.40.0, < 8.0.0` constraint.
 
-The complete five-resource ownership boundary is:
+Production runtime state is intentionally independent from Production
+migration state. Defining or applying one root does not execute or promote the
+other.
 
-| Role | Terraform type | Name |
-| --- | --- | --- |
-| API | `google_cloud_run_v2_service` | `moazez-staging-api` |
-| Core Worker | `google_cloud_run_v2_worker_pool` | `moazez-staging-core-worker` |
-| Media Worker | `google_cloud_run_v2_worker_pool` | `moazez-staging-media-worker` |
-| Maintenance Scheduler | `google_cloud_run_v2_worker_pool` | `moazez-staging-maintenance-scheduler` |
-| Migration | `google_cloud_run_v2_job` | `moazez-staging-migration` |
+## Closed runtime environment contract
 
-No root owns IAM, service accounts, secrets, secret versions, Redis, Cloud
-SQL, storage, Artifact Registry, API enablement, networking, load balancing,
-DNS, Cloud Armor, or Production resources. No Google data source is used.
+The shared `modules/runtime-environment` module accepts only the closed
+selector values `staging` and `production`. Project, region, network,
+subnetwork, Cloud Run names, runtime service accounts, storage buckets, signer
+identity, CORS origins, trusted-proxy mode, and Secret Manager IDs are selected
+inside the module from the governed environment contracts. Callers cannot
+combine Staging and Production infrastructure identities.
 
-The API uses top-level service scaling with a minimum of 1, maximum of 4,
-and request concurrency 40 so the maximum applies across active revisions.
-Each worker pool uses `MANUAL` scaling with exactly one instance; no worker
-autoscaler or HTTP worker service is modeled.
+The module preserves these four resource addresses in both environments:
 
-## Immutable image contract
+- `google_cloud_run_v2_service.api`
+- `google_cloud_run_v2_worker_pool.core`
+- `google_cloud_run_v2_worker_pool.media`
+- `google_cloud_run_v2_worker_pool.maintenance_scheduler`
 
-All five roles use one immutable image. The only accepted image input is a
-digest reference with this exact package shape:
+The Migration Job remains owned by the separate migration module and roots; it
+is not recreated by the runtime module.
 
-```text
-me-central2-docker.pkg.dev/moazez-nonprod-91001421934/moazez-staging-containers/moazez-backend@sha256:<64-lowercase-hex>
-```
+## Release-time inputs
 
-Mutable tags are rejected by input validation. The migration and runtime
-roots receive the digest independently so that each saved plan can be
-reviewed and applied as its own release gate.
+Runtime roots accept immutable image references in their exact environment
+package. Mutable tags are rejected, and the selected environment is bound to
+the matching package. The concrete approved image digest is supplied later by
+DevOps when producing a saved plan; reusable source does not pin a release
+digest.
 
-## External placement and identity dependencies
+Queue and Realtime Redis remain separate DevOps runtime inputs. Each family is
+provided as host, integer TLS port, and sensitive CA PEM. Terraform constructs
+`rediss://<host>:<port>`; callers do not supply complete Redis URLs. CA payloads
+are neither committed nor exposed as Terraform outputs. API and Core Worker
+receive both Redis families. Media Worker and Maintenance Scheduler receive
+Queue Redis only.
 
-Every resource references the locked names of the externally owned
-`moazez-staging-vpc` network and `moazez-staging-runtime-me-central2`
-subnetwork through Direct VPC with `PRIVATE_RANGES_ONLY` egress. Stage 13B
-does not create or manage either dependency and declares no Google data
-source for them.
+The Production runtime additionally requires these non-secret, owner/DevOps
+inputs with no defaults:
 
-The five existing service accounts are referenced only:
+- canonical HTTPS `api_url`;
+- `settings_email_secret_encryption_active_key_id`;
+- `app_device_token_encryption_active_key_id`.
 
-- `moazez-api-runtime@moazez-nonprod-91001421934.iam.gserviceaccount.com`
-- `moazez-core-worker@moazez-nonprod-91001421934.iam.gserviceaccount.com`
-- `moazez-media-worker@moazez-nonprod-91001421934.iam.gserviceaccount.com`
-- `moazez-maintenance-scheduler@moazez-nonprod-91001421934.iam.gserviceaccount.com`
-- `moazez-migration-job@moazez-nonprod-91001421934.iam.gserviceaccount.com`
+No Production hostname or encryption key ID is inferred by this source. The
+Staging caller preserves `https://staging-api.moazez.cloud`,
+`staging-email-20260815`, and `staging-device-20260815` as its existing fixed
+contract.
 
-Secret Manager environment references use explicit numeric version `1`.
-Mutable version aliases are forbidden, and no secret payload is read by
-Terraform source processing.
+Secret Manager references use explicit numeric versions. Terraform references
+secret containers only and neither reads nor creates secret payloads or secret
+versions.
 
-## Redis deployment inputs
+## Runtime placement and role topology
 
-The runtime root accepts Queue and Realtime Redis host, integer port, and CA
-PEM inputs separately. It constructs `rediss://<host>:<port>` inside
-Terraform; Redis URLs are not accepted as inputs.
+Both environments use Direct VPC with `PRIVATE_RANGES_ONLY` egress. The API
+uses port 3000, management probes on port 9090, min instances 1, max instances
+4, and concurrency 40. Each worker pool uses `MANUAL` scaling with exactly one
+instance and keeps its role-specific command and probe topology.
 
-The Queue and Realtime CA PEM bundles are sensitive, ephemeral DevOps inputs.
-They are injected as ordinary container environment values because they are
-live infrastructure trust material, not Secret Manager references. Actual CA
-contents must never be placed in source, committed variable files, saved-plan
-artifacts intended for broad access, logs, or Terraform outputs. Media Worker
-and Maintenance Scheduler receive Queue Redis only; API and Core Worker
-receive both independent Redis families.
+Storage roles remain asymmetric by design: API, Core Worker, and Media Worker
+receive their approved GCS bucket configuration; only API receives
+`GCS_SIGNING_SERVICE_ACCOUNT`; Maintenance Scheduler receives no storage
+environment.
+
+## Dark Production boundary
+
+During Stage 29 the Production API remains Dark. Its Cloud Run ingress is
+restricted to `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER`, the provider default
+URI is disabled, and no Production external Application Load Balancer, public
+DNS, certificate, Cloud Armor, or public edge resource is owned here.
+Production uses `APP_TRUSTED_PROXY_MODE=none`.
+
+`invoker_iam_disabled=true` preserves the governed runtime/edge model; it must
+not be described as IAM-authenticated protection. The Dark guarantee comes
+from restricted ingress, the absence of a Production public edge, and the
+disabled provider URI. Stage 30 owns any future Production proxy and edge
+transition.
+
+Staging retains `APP_TRUSTED_PROXY_MODE=gcp_external_alb` and its existing
+Staging origins. This runtime source creates no public invoker IAM binding,
+`allUsers` grant, load balancer, Cloud Armor policy, certificate, or DNS
+resource for either environment.
 
 ## Governed release order
 
-Terraform defines the Migration Job but never starts or executes it. The
-future human-governed release sequence is:
-
-1. Build and push the immutable image.
-2. Review the Migration Job saved plan.
-3. Apply only the Migration Job definition.
-4. Execute the governed Migration Job through the separate execution gate.
-5. Prove migration success and zero drift.
-6. Review the runtime saved plan.
-7. Apply the API service and three worker pools separately.
-
-The roots contain definition-only managed resources and no Terraform-embedded
-release execution mechanism.
-
-## Ingress and probes
-
-Stage 17B sets the API to `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER` and sets
-`https://staging-api.moazez.cloud` as the canonical staging API origin used by
-the API and Core Worker `APP_URL` values. The provider-assigned `run.app` URI
-remains the underlying Cloud Run service URI and is still exposed by the
-`api_service_uri` output; direct public access through that hostname is not the
-approved staging ingress path.
-
-This root still creates no public invoker IAM, load balancer, Cloud Armor,
-certificate, or DNS resource. Management probes use port 9090 while the API
-serves on port 3000. Worker pools use provider-supported startup and liveness
-probes; the committed Google 7.44.0 worker-pool schema does not expose a
-readiness probe field, so application-level worker readiness remains internal.
-
-## Source-preparation record
-
-The Codex source-generation step itself performed no Terraform initialization,
-validation, plan, apply, import, real backend access, image push, Migration
-Job execution, Cloud Run deployment, or cloud mutation. The subsequent
-human-owned Development validation gate is authorized to run local
-backend-disabled initialization with
-`terraform init -backend=false -lockfile=readonly` and `terraform validate`
-for both roots. That local validation does not authorize or perform real
-backend access, Terraform plan, apply, import, image push, Migration Job
-execution, Cloud Run deployment, or cloud mutation.
+Terraform source defines resources but does not execute the release. A later
+authorized workflow supplies the immutable image and runtime inputs, handles
+the independently governed Migration Job, validates its outcome, and only
+then promotes the runtime roles. Stage 29 source preparation does not deploy
+Production, make a plan ready, or authorize Production traffic.
