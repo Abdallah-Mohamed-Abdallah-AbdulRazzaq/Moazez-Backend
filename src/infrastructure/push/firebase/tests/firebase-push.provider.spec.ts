@@ -82,6 +82,7 @@ describe('FirebasePushProvider', () => {
     const { provider } = createProvider({
       FCM_ENABLED: true,
       FCM_DRY_RUN: true,
+      FIREBASE_CREDENTIAL_MODE: 'application_default',
     });
 
     const result = await provider.sendToToken(validSingleInput());
@@ -98,6 +99,7 @@ describe('FirebasePushProvider', () => {
     const { provider } = createProvider({
       FCM_ENABLED: true,
       FCM_DRY_RUN: true,
+      FIREBASE_CREDENTIAL_MODE: 'application_default',
     });
 
     const result = await provider.sendToToken({
@@ -123,6 +125,7 @@ describe('FirebasePushProvider', () => {
     const { provider } = createProvider({
       FCM_ENABLED: true,
       FCM_DRY_RUN: false,
+      FIREBASE_CREDENTIAL_MODE: 'service_account_env',
       FIREBASE_PROJECT_ID: 'moazez-production',
       FIREBASE_CLIENT_EMAIL: 'service-account@example.invalid',
       FIREBASE_PRIVATE_KEY: 'line-one\\nline-two',
@@ -152,11 +155,12 @@ describe('FirebasePushProvider', () => {
     });
   });
 
-  it('prefers GOOGLE_APPLICATION_CREDENTIALS strategy when configured', () => {
+  it('uses GOOGLE_APPLICATION_CREDENTIALS when explicitly selected', () => {
     const service = new FirebaseAdminService(
       configService({
         FCM_ENABLED: true,
         FCM_DRY_RUN: false,
+        FIREBASE_CREDENTIAL_MODE: 'google_application_credentials',
         GOOGLE_APPLICATION_CREDENTIALS: 'C:/secure/firebase-admin.json',
       }),
     );
@@ -192,6 +196,7 @@ describe('FirebasePushProvider', () => {
     const { provider } = createProvider({
       FCM_ENABLED: true,
       FCM_DRY_RUN: false,
+      FIREBASE_CREDENTIAL_MODE: 'service_account_env',
       FIREBASE_PROJECT_ID: 'moazez-production',
       FIREBASE_CLIENT_EMAIL: 'service-account@example.invalid',
       FIREBASE_PRIVATE_KEY: 'line-one\\nline-two',
@@ -245,6 +250,7 @@ describe('FirebasePushProvider', () => {
     const { provider } = createProvider({
       FCM_ENABLED: true,
       FCM_DRY_RUN: false,
+      FIREBASE_CREDENTIAL_MODE: 'service_account_env',
       FIREBASE_PROJECT_ID: 'moazez-production',
       FIREBASE_CLIENT_EMAIL: 'service-account@example.invalid',
       FIREBASE_PRIVATE_KEY: 'line-one\\nline-two',
@@ -265,6 +271,7 @@ describe('FirebasePushProvider', () => {
     const { provider } = createProvider({
       FCM_ENABLED: true,
       FCM_DRY_RUN: true,
+      FIREBASE_CREDENTIAL_MODE: 'application_default',
     });
 
     const result = await provider.sendToToken({

@@ -22,6 +22,10 @@ const FIREBASE_VALIDATION_PATH =
   'src/infrastructure/push/firebase/firebase-credential-env.validation.ts';
 const FIREBASE_ADMIN_PATH =
   'src/infrastructure/push/firebase/firebase-admin.service.ts';
+const FIREBASE_PUSH_PROVIDER_TEST_PATH =
+  'src/infrastructure/push/firebase/tests/firebase-push.provider.spec.ts';
+const STORAGE_CUTOVER_BOUNDARY_TEST_PATH =
+  'src/infrastructure/storage/tests/storage-cutover-source-boundary.spec.ts';
 const RUNTIME_MODULE_ROOT =
   'infra/gcp/backend-runtime/modules/runtime-environment';
 const STAGING_RUNTIME_ROOT =
@@ -37,6 +41,8 @@ const AUTHORIZED_PT2_PATHS = Object.freeze(
     FIREBASE_ADMIN_PATH,
     'src/infrastructure/push/firebase/tests/firebase-admin.service.spec.ts',
     'src/infrastructure/push/firebase/tests/firebase-env.validation.spec.ts',
+    FIREBASE_PUSH_PROVIDER_TEST_PATH,
+    STORAGE_CUTOVER_BOUNDARY_TEST_PATH,
     'src/config/env.validation.ts',
     'src/runtime/runtime-env.validation.ts',
     'src/runtime/runtime-env.validation.spec.ts',
@@ -154,7 +160,7 @@ function treeSource(relativeRoot) {
 }
 
 test('PT-2 TAP owns exactly the authorized maximum and rejects every unrelated domain', () => {
-  assert.equal(AUTHORIZED_PT2_PATHS.length, 26);
+  assert.equal(AUTHORIZED_PT2_PATHS.length, 28);
   assert.equal(assertPt2CandidateScope(AUTHORIZED_PT2_PATHS), true);
   assert.equal(assertPt2CandidateScope(['src/example-future-change.ts']), false);
   for (const forbiddenPath of [
@@ -172,6 +178,15 @@ test('PT-2 TAP owns exactly the authorized maximum and rejects every unrelated d
       forbiddenPath,
     );
   }
+  assert.throws(
+    () =>
+      assertPt2CandidateScope([
+        ...AUTHORIZED_PT2_PATHS,
+        'src/infrastructure/push/firebase/tests/unrelated-remediation.spec.ts',
+      ]),
+    { code: 'ERR_ASSERTION' },
+    'unrelated Jest test must remain unauthorized',
+  );
 });
 
 test('Committed PT-2 range is fully owned by the canonical TAP when active', () => {
