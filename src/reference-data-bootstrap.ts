@@ -5,6 +5,10 @@ import {
   isReferenceDataBootstrapError,
   type BootstrapAuthorizationReferenceDataResult,
 } from './modules/iam/reference-data';
+import {
+  isPlatformAdminBootstrapEnvironment,
+  type PlatformAdminBootstrapEnvironment,
+} from './modules/platform-admin/bootstrap/platform-admin-bootstrap.constants';
 import { assertPlatformAdminBootstrapEnvironment } from './modules/platform-admin/bootstrap/platform-admin-bootstrap.environment';
 
 const SAFE_BLOCKED_REASONS = new Set([
@@ -22,7 +26,7 @@ const SAFE_FAILURE_REASONS = new Set([
 
 export interface ReferenceDataBootstrapArguments {
   execute: true;
-  environment: 'staging';
+  environment: PlatformAdminBootstrapEnvironment;
 }
 
 export interface AuthorizationReferenceDataBootstrapExecutor {
@@ -39,7 +43,7 @@ export interface ReferenceDataBootstrapApplicationContext {
 export interface ReferenceDataBootstrapCliDependencies {
   rawEnvironment?: NodeJS.ProcessEnv;
   assertEnvironment?: (
-    requestedEnvironment: string,
+    requestedEnvironment: PlatformAdminBootstrapEnvironment,
     rawEnvironment: NodeJS.ProcessEnv,
   ) => unknown;
   createApplicationContext?: () => Promise<ReferenceDataBootstrapApplicationContext>;
@@ -99,7 +103,7 @@ export function parseReferenceDataBootstrapArguments(
   if (!environment) {
     throw new ReferenceDataBootstrapCliError('ARGUMENTS_INVALID');
   }
-  if (environment !== 'staging') {
+  if (!isPlatformAdminBootstrapEnvironment(environment)) {
     throw new ReferenceDataBootstrapCliError('UNSUPPORTED_ENVIRONMENT');
   }
 
