@@ -59,7 +59,7 @@ resource "google_iam_workload_identity_pool_provider" "platform_admin" {
   project                            = var.project_id
   workload_identity_pool_id          = var.workload_identity_pool_id
   workload_identity_pool_provider_id = var.platform_admin_wif_provider_id
-  display_name                       = "MOAZEZ Platform Admin main branch"
+  display_name                       = "MOAZEZ Platform Admin main"
   description                        = "MOAZEZ Platform Admin main-branch GitHub Actions OIDC provider."
 
   attribute_mapping = {
@@ -89,7 +89,7 @@ resource "google_iam_workload_identity_pool_provider" "school_dashboard" {
   project                            = var.project_id
   workload_identity_pool_id          = var.workload_identity_pool_id
   workload_identity_pool_provider_id = var.school_dashboard_wif_provider_id
-  display_name                       = "MOAZEZ School Dashboard main branch"
+  display_name                       = "MOAZEZ School Dashboard main"
   description                        = "MOAZEZ School Dashboard main-branch GitHub Actions OIDC provider."
 
   attribute_mapping = {
