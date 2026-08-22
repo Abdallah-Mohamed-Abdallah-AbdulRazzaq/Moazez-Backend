@@ -20,6 +20,8 @@ const EDGE_NONPROD_ROOT = 'infra/gcp/edge/environments/nonprod';
 const EDGE_MODULE = 'infra/gcp/edge/modules/edge-environment';
 const TEST_PATH =
   'scripts/tests/stage-30c1-production-frontend-edge-source.test.cjs';
+const HISTORICAL_STAGE29_REMEDIATION_PATH =
+  'scripts/tests/stage-29a-production-runtime-source.test.cjs';
 const PLAN_CI_PATH = 'scripts/ci/plan-ci.cjs';
 
 const TERRAFORM_ROOT_FILES = Object.freeze([
@@ -76,6 +78,7 @@ const AUTHORIZED_STAGE30C1_PATHS = Object.freeze(
     `${EDGE_ROOT}/outputs.tf`,
     `${EDGE_ROOT}/providers.tf`,
     `${EDGE_ROOT}/versions.tf`,
+    HISTORICAL_STAGE29_REMEDIATION_PATH,
     PLAN_CI_PATH,
     TEST_PATH,
   ].sort(),
@@ -342,7 +345,7 @@ function assertStage30C1CandidateScope(candidateFiles) {
 }
 
 test('Stage 30C1 domains have exactly the governed source structure and ignore policy', () => {
-  assert.equal(AUTHORIZED_STAGE30C1_PATHS.length, 28);
+  assert.equal(AUTHORIZED_STAGE30C1_PATHS.length, 29);
   assert.deepEqual(filesInDirectory(ARTIFACT_ROOT), TERRAFORM_ROOT_FILES);
   assert.deepEqual(filesInDirectory(ARTIFACT_MODULE), MODULE_FILES);
   assert.deepEqual(filesInDirectory(RUNTIME_ROOT), RUNTIME_ROOT_FILES);
@@ -921,7 +924,7 @@ test('Stage 30C1 TAP has exactly one canonical pull-request ownership assignment
   });
 });
 
-test('Committed Stage 30C1 candidate scope is a subset of the 28 authorized paths when active', () => {
+test('Committed Stage 30C1 candidate scope is a subset of the 29 authorized paths when active', () => {
   assertStage30C1CandidateScope(candidateFilesFromCommittedRange());
 });
 
@@ -931,7 +934,18 @@ test('Candidate scope activation accepts each domain and rejects mixed or later-
     false,
   );
   assert.equal(
+    assertStage30C1CandidateScope([HISTORICAL_STAGE29_REMEDIATION_PATH]),
+    false,
+  );
+  assert.equal(
     assertStage30C1CandidateScope([`${RUNTIME_ROOT}/variables.tf`]),
+    true,
+  );
+  assert.equal(
+    assertStage30C1CandidateScope([
+      `${RUNTIME_ROOT}/variables.tf`,
+      HISTORICAL_STAGE29_REMEDIATION_PATH,
+    ]),
     true,
   );
   assert.equal(
