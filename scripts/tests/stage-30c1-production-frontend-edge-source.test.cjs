@@ -440,6 +440,30 @@ test('Artifact identity references the existing pool and owns exactly two indepe
   assert.doesNotMatch(main, /\|\||pull_request|repository\s*==|[*]/u);
 });
 
+test('Frontend WIF provider display names are exact literals within the 32-character limit', () => {
+  const main = normalizedHclSource(`${ARTIFACT_MODULE}/main.tf`);
+  for (const [providerName, expectedName, expectedLength] of [
+    ['platform_admin', 'MOAZEZ Platform Admin main', 26],
+    ['school_dashboard', 'MOAZEZ School Dashboard main', 28],
+  ]) {
+    const provider = resourceBlock(
+      main,
+      'google_iam_workload_identity_pool_provider',
+      providerName,
+    );
+    const displayNameExpression = assignmentExpression(
+      provider,
+      'display_name',
+    );
+    assert.equal(displayNameExpression, JSON.stringify(expectedName));
+    const displayName = JSON.parse(displayNameExpression);
+    assert.equal(typeof displayName, 'string');
+    assert.equal(displayName, expectedName);
+    assert.equal(displayName.length, expectedLength);
+    assert.ok(displayName.length <= 32);
+  }
+});
+
 test('Artifact builder is protected and has only two exact WIF grants plus repository writer', () => {
   const main = normalizedHclSource(`${ARTIFACT_MODULE}/main.tf`);
   const builder = resourceBlock(
