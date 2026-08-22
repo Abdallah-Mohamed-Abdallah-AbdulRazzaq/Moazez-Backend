@@ -189,3 +189,16 @@ resource "google_secret_manager_secret_iam_member" "secret_accessor" {
     }
   }
 }
+
+resource "google_project_iam_member" "core_worker_firebase_cloud_messaging" {
+  project = var.project_id
+  role    = "roles/firebasecloudmessaging.admin"
+  member  = local.existing_runtime_service_account_members["core_worker"]
+
+  lifecycle {
+    precondition {
+      condition     = local.governed_contract
+      error_message = "The Runtime IAM environment must match the complete governed Staging or Production tuple."
+    }
+  }
+}

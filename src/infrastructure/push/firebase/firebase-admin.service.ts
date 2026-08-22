@@ -10,6 +10,11 @@ import {
 } from 'firebase-admin/app';
 import { getMessaging, Messaging } from 'firebase-admin/messaging';
 import { Env } from '../../../config/env.validation';
+import {
+  assertFirebaseCredentialEnvironment,
+  FirebaseCredentialEnvironment,
+  FirebaseCredentialMode,
+} from './firebase-credential-env.validation';
 
 @Injectable()
 export class FirebaseAdminService {
@@ -30,11 +35,12 @@ export class FirebaseAdminService {
       return { mode: 'disabled' };
     }
 
+    this.getOrInitializeApp();
+
     if (this.isDryRun()) {
       return { mode: 'dry_run' };
     }
 
-    this.getOrInitializeApp();
     return { mode: 'send_enabled' };
   }
 
@@ -45,41 +51,59 @@ export class FirebaseAdminService {
   getOrInitializeApp(): App {
     if (this.app) return this.app;
 
+    const credentialEnvironment = this.readCredentialEnvironment();
+    assertFirebaseCredentialEnvironment(credentialEnvironment);
+
     const existingApp = getApps()[0];
     if (existingApp) {
       this.app = existingApp;
       return existingApp;
     }
 
-    this.app = initializeApp(this.resolveAppOptions());
+    this.app = initializeApp(this.resolveAppOptions(credentialEnvironment));
     return this.app;
   }
 
-  private resolveAppOptions(): AppOptions {
-    const credentialsPath = this.readOptionalString(
-      'GOOGLE_APPLICATION_CREDENTIALS',
-    );
-    if (credentialsPath) {
-      return { credential: applicationDefault() };
+  private resolveAppOptions(
+    env: FirebaseCredentialEnvironment & {
+      FIREBASE_CREDENTIAL_MODE: FirebaseCredentialMode;
+    },
+  ): AppOptions {
+    switch (env.FIREBASE_CREDENTIAL_MODE) {
+      case 'application_default': {
+        const projectId = this.readOptionalString('GCP_PROJECT_ID');
+        return {
+          credential: applicationDefault(),
+          ...(projectId ? { projectId } : {}),
+        };
+      }
+      case 'google_application_credentials':
+        return { credential: applicationDefault() };
+      case 'service_account_env':
+        return {
+          credential: cert({
+            projectId: env.FIREBASE_PROJECT_ID!,
+            clientEmail: env.FIREBASE_CLIENT_EMAIL!,
+            privateKey: normalizeFirebasePrivateKey(env.FIREBASE_PRIVATE_KEY!),
+          }),
+        };
     }
+  }
 
-    const projectId = this.readOptionalString('FIREBASE_PROJECT_ID');
-    const clientEmail = this.readOptionalString('FIREBASE_CLIENT_EMAIL');
-    const privateKey = this.readOptionalString('FIREBASE_PRIVATE_KEY');
-
-    if (projectId && clientEmail && privateKey) {
-      return {
-        credential: cert({
-          projectId,
-          clientEmail,
-          privateKey: normalizeFirebasePrivateKey(privateKey),
-        }),
-      };
-    }
-
-    throw new Error(
-      'Firebase credentials are required when FCM send mode is enabled',
-    );
+  private readCredentialEnvironment(): FirebaseCredentialEnvironment {
+    return {
+      FCM_ENABLED: this.isEnabled(),
+      FIREBASE_CREDENTIAL_MODE:
+        this.readOptionalString('FIREBASE_CREDENTIAL_MODE') ?? undefined,
+      GOOGLE_APPLICATION_CREDENTIALS:
+        this.readOptionalString('GOOGLE_APPLICATION_CREDENTIALS') ?? undefined,
+      FIREBASE_PROJECT_ID:
+        this.readOptionalString('FIREBASE_PROJECT_ID') ?? undefined,
+      FIREBASE_CLIENT_EMAIL:
+        this.readOptionalString('FIREBASE_CLIENT_EMAIL') ?? undefined,
+      FIREBASE_PRIVATE_KEY:
+        this.readOptionalString('FIREBASE_PRIVATE_KEY') ?? undefined,
+    };
   }
 
   private readOptionalString(key: keyof Env): string | null {

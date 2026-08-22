@@ -2,6 +2,7 @@ module "runtime_environment" {
   source = "../../../modules/runtime-environment"
 
   environment                                    = "production"
+  fcm_delivery_mode                              = var.fcm_delivery_mode
   image_reference                                = var.image_reference
   queue_redis_host                               = var.queue_redis_host
   queue_redis_port                               = var.queue_redis_port

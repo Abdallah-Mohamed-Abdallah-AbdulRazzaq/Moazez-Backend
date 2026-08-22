@@ -257,11 +257,11 @@ describe('runtime role database environment validation', () => {
     );
     const media = validateMediaWorkerEnv(
       mediaEnvironment({
-          NODE_ENV: 'production',
-          DATABASE_URL:
-            'postgresql://runtime-user:runtime-value@database.internal/moazez?sslmode=require',
-          QUEUE_REDIS_URL: 'rediss://queue-cache.invalid:6379',
-          STORAGE_PROVIDER: 'gcs',
+        NODE_ENV: 'production',
+        DATABASE_URL:
+          'postgresql://runtime-user:runtime-value@database.internal/moazez?sslmode=require',
+        QUEUE_REDIS_URL: 'rediss://queue-cache.invalid:6379',
+        STORAGE_PROVIDER: 'gcs',
         STORAGE_ENDPOINT: undefined,
         STORAGE_ACCESS_KEY: undefined,
         STORAGE_SECRET_KEY: undefined,
@@ -378,6 +378,151 @@ describe('runtime role database environment validation', () => {
     expect(scheduler).not.toHaveProperty('STORAGE_PROVIDER');
     expect(scheduler).not.toHaveProperty('GCP_PROJECT_ID');
     expect(scheduler).not.toHaveProperty('GCS_SIGNING_SERVICE_ACCOUNT');
+  });
+
+  it('accepts enabled Core Worker dry-run with explicit ambient ADC', () => {
+    const env = validateCoreWorkerEnv(
+      coreEnvironment({
+        FCM_ENABLED: 'true',
+        FCM_DRY_RUN: 'true',
+        FIREBASE_CREDENTIAL_MODE: 'application_default',
+        GCP_PROJECT_ID: 'moazez-nonprod-91001421934',
+      }),
+    );
+
+    expect(env).toMatchObject({
+      FCM_ENABLED: true,
+      FCM_DRY_RUN: true,
+      FIREBASE_CREDENTIAL_MODE: 'application_default',
+      GCP_PROJECT_ID: 'moazez-nonprod-91001421934',
+    });
+    expect(env.GOOGLE_APPLICATION_CREDENTIALS).toBeUndefined();
+    expect(env.FIREBASE_PRIVATE_KEY).toBeUndefined();
+  });
+
+  it('rejects enabled Core Worker dry-run without an explicit mode', () => {
+    expect(() =>
+      validateCoreWorkerEnv(
+        coreEnvironment({
+          FCM_ENABLED: 'true',
+          FCM_DRY_RUN: 'true',
+        }),
+      ),
+    ).toThrow(/FIREBASE_CREDENTIAL_MODE is required/u);
+  });
+
+  it('preserves both explicit Core Worker compatibility modes', () => {
+    expect(
+      validateCoreWorkerEnv(
+        coreEnvironment({
+          FCM_ENABLED: 'true',
+          FCM_DRY_RUN: 'false',
+          FIREBASE_CREDENTIAL_MODE: 'google_application_credentials',
+          GOOGLE_APPLICATION_CREDENTIALS:
+            'C:/synthetic/firebase-admin-credential.json',
+        }),
+      ),
+    ).toMatchObject({
+      FIREBASE_CREDENTIAL_MODE: 'google_application_credentials',
+    });
+
+    expect(
+      validateCoreWorkerEnv(
+        coreEnvironment({
+          FCM_ENABLED: 'true',
+          FCM_DRY_RUN: 'false',
+          FIREBASE_CREDENTIAL_MODE: 'service_account_env',
+          FIREBASE_PROJECT_ID: 'synthetic-firebase-project',
+          FIREBASE_CLIENT_EMAIL: 'synthetic-firebase@example.invalid',
+          FIREBASE_PRIVATE_KEY: 'synthetic-private-key',
+        }),
+      ),
+    ).toMatchObject({ FIREBASE_CREDENTIAL_MODE: 'service_account_env' });
+  });
+
+  it('uses the shared fail-closed Firebase conflict and completeness rules', () => {
+    expect(() =>
+      validateCoreWorkerEnv(
+        coreEnvironment({
+          FIREBASE_CREDENTIAL_MODE: 'service_account_env',
+          FIREBASE_PROJECT_ID: 'synthetic-firebase-project',
+        }),
+      ),
+    ).toThrow(/must be provided together/u);
+
+    expect(() =>
+      validateCoreWorkerEnv(
+        coreEnvironment({
+          FIREBASE_CREDENTIAL_MODE: 'google_application_credentials',
+          GOOGLE_APPLICATION_CREDENTIALS:
+            'C:/synthetic/firebase-admin-credential.json',
+          FIREBASE_PROJECT_ID: 'synthetic-firebase-project',
+          FIREBASE_CLIENT_EMAIL: 'synthetic-firebase@example.invalid',
+          FIREBASE_PRIVATE_KEY: 'synthetic-private-key',
+        }),
+      ),
+    ).toThrow(/cannot be configured together/u);
+
+    expect(() =>
+      validateCoreWorkerEnv(
+        coreEnvironment({
+          FCM_ENABLED: 'false',
+          FIREBASE_CREDENTIAL_MODE: 'google_application_credentials',
+        }),
+      ),
+    ).toThrow(/GOOGLE_APPLICATION_CREDENTIALS is required/u);
+  });
+
+  it('keeps Firebase configuration out of non-Core-Worker roles', () => {
+    const unrelatedFirebaseFields = {
+      FCM_ENABLED: 'true',
+      FCM_DRY_RUN: 'false',
+      FIREBASE_CREDENTIAL_MODE: 'application_default',
+      GOOGLE_APPLICATION_CREDENTIALS:
+        'C:/synthetic/firebase-admin-credential.json',
+      FIREBASE_PROJECT_ID: 'synthetic-firebase-project',
+      FIREBASE_CLIENT_EMAIL: 'synthetic-firebase@example.invalid',
+      FIREBASE_PRIVATE_KEY: 'synthetic-private-key',
+    };
+    const media = validateMediaWorkerEnv(
+      mediaEnvironment(unrelatedFirebaseFields),
+    );
+    const scheduler = validateMaintenanceSchedulerEnv({
+      QUEUE_REDIS_URL: 'redis://127.0.0.1:6379',
+      ...unrelatedFirebaseFields,
+    });
+
+    for (const field of Object.keys(unrelatedFirebaseFields)) {
+      expect(media).not.toHaveProperty(field);
+      expect(scheduler).not.toHaveProperty(field);
+    }
+  });
+
+  it('keeps Core Worker Firebase validation errors secret-safe', () => {
+    const credentialPathMarker =
+      'C:/synthetic/do-not-disclose-credential-marker.json';
+    const privateKeyMarker = 'synthetic-do-not-disclose-private-key-marker';
+    let message = '';
+
+    try {
+      validateCoreWorkerEnv(
+        coreEnvironment({
+          FCM_ENABLED: 'true',
+          FCM_DRY_RUN: 'true',
+          FIREBASE_CREDENTIAL_MODE: 'application_default',
+          GOOGLE_APPLICATION_CREDENTIALS: credentialPathMarker,
+          FIREBASE_PROJECT_ID: 'synthetic-project',
+          FIREBASE_CLIENT_EMAIL: 'synthetic@example.invalid',
+          FIREBASE_PRIVATE_KEY: privateKeyMarker,
+        }),
+      );
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+
+    expect(message).toContain('application_default');
+    expect(message).not.toContain(credentialPathMarker);
+    expect(message).not.toContain(privateKeyMarker);
   });
 
   it('keeps development and test Core Worker usable without configured encryption keys', () => {

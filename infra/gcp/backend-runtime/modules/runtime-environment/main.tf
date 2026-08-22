@@ -144,6 +144,23 @@ locals {
   queue_redis_url           = format("rediss://%s:%d", var.queue_redis_host, var.queue_redis_port)
   realtime_redis_url        = format("rediss://%s:%d", var.realtime_redis_host, var.realtime_redis_port)
 
+  fcm_delivery_contracts = {
+    disabled = {
+      enabled = "false"
+      dry_run = "true"
+    }
+    dry_run = {
+      enabled = "true"
+      dry_run = "true"
+    }
+    send_enabled = {
+      enabled = "true"
+      dry_run = "false"
+    }
+  }
+
+  selected_fcm_delivery_contract = local.fcm_delivery_contracts[var.fcm_delivery_mode]
+
   common_environment = {
     NODE_ENV                = local.selected.node_environment
     APP_SHUTDOWN_TIMEOUT_MS = "15000"
@@ -185,8 +202,9 @@ locals {
     DATABASE_CONNECT_TIMEOUT_SECONDS               = "5"
     SETTINGS_EMAIL_SECRET_ENCRYPTION_ACTIVE_KEY_ID = var.settings_email_secret_encryption_active_key_id
     APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY_ID      = var.app_device_token_encryption_active_key_id
-    FCM_ENABLED                                    = "false"
-    FCM_DRY_RUN                                    = "true"
+    FIREBASE_CREDENTIAL_MODE                       = "application_default"
+    FCM_ENABLED                                    = local.selected_fcm_delivery_contract.enabled
+    FCM_DRY_RUN                                    = local.selected_fcm_delivery_contract.dry_run
     QUEUE_REDIS_URL                                = local.queue_redis_url
     REALTIME_REDIS_URL                             = local.realtime_redis_url
     STORAGE_PROVIDER                               = "gcs"

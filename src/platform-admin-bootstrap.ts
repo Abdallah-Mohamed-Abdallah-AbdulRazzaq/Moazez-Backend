@@ -5,9 +5,11 @@ import {
   PLATFORM_ADMIN_ROLE_CODE,
   PlatformAdminBootstrapError,
   assertPlatformAdminBootstrapEnvironment,
+  isPlatformAdminBootstrapEnvironment,
   isPlatformAdminBootstrapError,
   type BootstrapInitialPlatformAdministratorCommand,
   type BootstrapInitialPlatformAdministratorResult,
+  type PlatformAdminBootstrapEnvironment,
 } from './modules/platform-admin/bootstrap';
 
 export { PLATFORM_ADMIN_ROLE_CODE };
@@ -44,7 +46,7 @@ const SAFE_FAILURE_REASONS = new Set([
 
 export interface PlatformAdminBootstrapArguments {
   execute: true;
-  environment: 'staging';
+  environment: PlatformAdminBootstrapEnvironment;
   email: string;
   firstName: string;
   lastName: string;
@@ -145,7 +147,7 @@ export function parsePlatformAdminBootstrapArguments(
   if (!environment || !email || !firstName || !lastName) {
     throw new PlatformAdminBootstrapCliError('ARGUMENTS_INVALID');
   }
-  if (environment !== 'staging') {
+  if (!isPlatformAdminBootstrapEnvironment(environment)) {
     throw new PlatformAdminBootstrapCliError('UNSUPPORTED_ENVIRONMENT');
   }
 
@@ -336,6 +338,7 @@ export async function runPlatformAdminBootstrapCli(
       BootstrapInitialPlatformAdministratorUseCase,
     );
     const result = await useCase.execute({
+      environment: argumentsValue.environment,
       email: argumentsValue.email,
       password,
       firstName: argumentsValue.firstName,

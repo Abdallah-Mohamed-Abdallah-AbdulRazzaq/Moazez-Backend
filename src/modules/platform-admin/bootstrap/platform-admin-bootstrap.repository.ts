@@ -10,13 +10,14 @@ import { PrismaService } from '../../../infrastructure/database/prisma.service';
 import {
   PLATFORM_ADMIN_BOOTSTRAP_AUDIT_ACTION,
   PLATFORM_ADMIN_BOOTSTRAP_AUDIT_MODULE,
-  PLATFORM_ADMIN_BOOTSTRAP_ENVIRONMENT,
   PLATFORM_ADMIN_BOOTSTRAP_MAX_TRANSACTION_ATTEMPTS,
   PLATFORM_ADMIN_ROLE_CODE,
+  type PlatformAdminBootstrapEnvironment,
 } from './platform-admin-bootstrap.constants';
 import { PlatformAdminBootstrapError } from './platform-admin-bootstrap.errors';
 
 export interface CreateInitialPlatformAdministratorInput {
+  environment: PlatformAdminBootstrapEnvironment;
   email: string;
   firstName: string;
   lastName: string;
@@ -173,7 +174,7 @@ export class PlatformAdminBootstrapRepository {
           status: UserStatus.ACTIVE,
           roleCode: PLATFORM_ADMIN_ROLE_CODE,
           credentialVersion: 1,
-          environment: PLATFORM_ADMIN_BOOTSTRAP_ENVIRONMENT,
+          environment: input.environment,
         },
       },
     });

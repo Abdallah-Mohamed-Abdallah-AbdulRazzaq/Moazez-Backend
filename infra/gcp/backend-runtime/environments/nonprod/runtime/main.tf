@@ -2,6 +2,7 @@ module "runtime_environment" {
   source = "../../../modules/runtime-environment"
 
   environment                                    = "staging"
+  fcm_delivery_mode                              = "dry_run"
   image_reference                                = var.image_reference
   queue_redis_host                               = var.queue_redis_host
   queue_redis_port                               = var.queue_redis_port

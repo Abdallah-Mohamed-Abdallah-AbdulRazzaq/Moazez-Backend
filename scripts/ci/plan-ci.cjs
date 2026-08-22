@@ -100,6 +100,11 @@ const ACTIVE_TAP_OWNERS = Object.freeze({
     owner: 'prd3-g05',
     profile: 'prd3-g05',
   }),
+  'scripts/tests/pt-2-backend-firebase-production-bootstrap.test.cjs':
+    Object.freeze({
+      owner: 'pre-launch-pt2-backend-governance',
+      profile: 'runtime-governance',
+    }),
   'scripts/tests/run-ci-shard.test.cjs': Object.freeze({
     owner: 'ci-orchestrator',
     profile: 'orchestrator',
