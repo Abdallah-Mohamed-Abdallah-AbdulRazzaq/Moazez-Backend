@@ -25,6 +25,9 @@ const VALID_ARGUMENTS = [
   '--first-name=Initial',
   '--last-name=Administrator',
 ] as const;
+const PRODUCTION_ARGUMENTS = VALID_ARGUMENTS.map((argument) =>
+  argument === '--environment=staging' ? '--environment=production' : argument,
+);
 
 const USER_ID = 'ca9ab8a3-1ea1-4ee8-9ccf-7615564dc266';
 const PASSWORD = `Aa1!${randomBytes(24).toString('base64url')}`;
@@ -35,6 +38,13 @@ describe('Platform Administrator bootstrap operator CLI', () => {
     expect(parsePlatformAdminBootstrapArguments(VALID_ARGUMENTS)).toEqual({
       execute: true,
       environment: 'staging',
+      email: EMAIL,
+      firstName: 'Initial',
+      lastName: 'Administrator',
+    });
+    expect(parsePlatformAdminBootstrapArguments(PRODUCTION_ARGUMENTS)).toEqual({
+      execute: true,
+      environment: 'production',
       email: EMAIL,
       firstName: 'Initial',
       lastName: 'Administrator',
@@ -50,8 +60,11 @@ describe('Platform Administrator bootstrap operator CLI', () => {
         '--email',
       ],
       VALID_ARGUMENTS.map((value) =>
-        value === '--environment=staging' ? '--environment=production' : value,
+        value === '--environment=staging' ? '--environment=prod' : value,
       ),
+      [...VALID_ARGUMENTS, '--app-url=https://api.moazez.cloud'],
+      [...VALID_ARGUMENTS, '--gcp-project-id=moazez-production'],
+      [...VALID_ARGUMENTS, '--database-url=synthetic'],
       [...VALID_ARGUMENTS, 'positional-value'],
     ];
 
@@ -168,73 +181,85 @@ describe('Platform Administrator bootstrap operator CLI', () => {
     ).rejects.toThrow('PASSWORD_INPUT_MULTILINE');
   });
 
-  it('emits bounded PASS evidence only after the application context closes', async () => {
-    const calls: string[] = [];
-    const outputs: string[] = [];
-    const executor: BootstrapInitialPlatformAdministratorExecutor = {
-      execute: (command) => {
-        calls.push('execute');
-        expect(command).toEqual({
-          email: EMAIL,
-          password: PASSWORD,
-          firstName: 'Initial',
-          lastName: 'Administrator',
-        });
-        return Promise.resolve({
-          status: 'PASS',
-          platformAdminCreated: true,
-          platformAdminUserId: USER_ID,
-          roleCode: 'platform_super_admin',
-        });
-      },
-    };
-    const context = applicationContext(executor, () => {
-      calls.push('close');
-      return Promise.resolve();
-    });
+  it.each(['staging', 'production'] as const)(
+    'carries the validated %s environment and emits bounded PASS evidence only after close',
+    async (environment) => {
+      const argumentsForEnvironment = VALID_ARGUMENTS.map((argument) =>
+        argument === '--environment=staging'
+          ? `--environment=${environment}`
+          : argument,
+      );
+      const calls: string[] = [];
+      const outputs: string[] = [];
+      const executor: BootstrapInitialPlatformAdministratorExecutor = {
+        execute: (command) => {
+          calls.push('execute');
+          expect(command).toEqual({
+            environment,
+            email: EMAIL,
+            password: PASSWORD,
+            firstName: 'Initial',
+            lastName: 'Administrator',
+          });
+          return Promise.resolve({
+            status: 'PASS',
+            platformAdminCreated: true,
+            platformAdminUserId: USER_ID,
+            roleCode: 'platform_super_admin',
+          });
+        },
+      };
+      const context = applicationContext(executor, () => {
+        calls.push('close');
+        return Promise.resolve();
+      });
 
-    const exitCode = await runPlatformAdminBootstrapCli(VALID_ARGUMENTS, {
-      rawEnvironment: { NODE_ENV: 'staging' },
-      assertEnvironment: (requestedEnvironment, rawEnvironment) => {
-        calls.push('environment');
-        expect(requestedEnvironment).toBe('staging');
-        expect(rawEnvironment.NODE_ENV).toBe('staging');
-        return 'staging';
-      },
-      readPassword: () => {
-        calls.push('stdin');
-        return Promise.resolve(PASSWORD);
-      },
-      createApplicationContext: () => {
-        calls.push('context');
-        return Promise.resolve(context);
-      },
-      writeOutput: (output) => {
-        calls.push('output');
-        outputs.push(output);
-      },
-    });
+      const exitCode = await runPlatformAdminBootstrapCli(
+        argumentsForEnvironment,
+        {
+          rawEnvironment: { NODE_ENV: environment },
+          assertEnvironment: (requestedEnvironment, rawEnvironment) => {
+            calls.push('environment');
+            expect(requestedEnvironment).toBe(environment);
+            expect(rawEnvironment.NODE_ENV).toBe(environment);
+            return environment;
+          },
+          readPassword: () => {
+            calls.push('stdin');
+            return Promise.resolve(PASSWORD);
+          },
+          createApplicationContext: () => {
+            calls.push('context');
+            return Promise.resolve(context);
+          },
+          writeOutput: (output) => {
+            calls.push('output');
+            outputs.push(output);
+          },
+        },
+      );
 
-    expect(exitCode).toBe(0);
-    expect(calls).toEqual([
-      'environment',
-      'stdin',
-      'context',
-      'execute',
-      'close',
-      'output',
-    ]);
-    expect(outputs).toEqual([
-      [
-        'BOOTSTRAP_STATUS=PASS',
-        'PLATFORM_ADMIN_CREATED=YES',
-        `PLATFORM_ADMIN_USER_ID=${USER_ID}`,
-        'ROLE_CODE=platform_super_admin',
-      ].join('\n'),
-    ]);
-    expect(outputs[0]).not.toContain(PASSWORD);
-    expect(outputs[0]).not.toContain(PASSWORD_HASH);
-  });
+      expect(exitCode).toBe(0);
+      expect(calls).toEqual([
+        'environment',
+        'stdin',
+        'context',
+        'execute',
+        'close',
+        'output',
+      ]);
+      expect(outputs).toEqual([
+        [
+          'BOOTSTRAP_STATUS=PASS',
+          'PLATFORM_ADMIN_CREATED=YES',
+          `PLATFORM_ADMIN_USER_ID=${USER_ID}`,
+          'ROLE_CODE=platform_super_admin',
+        ].join('\n'),
+      ]);
+      expect(outputs[0]).not.toContain(PASSWORD);
+      expect(outputs[0]).not.toContain(PASSWORD_HASH);
+    },
+  );
 
   it('emits an allowlisted BLOCKED reason and closes after a domain refusal', async () => {
     const outputs: string[] = [];

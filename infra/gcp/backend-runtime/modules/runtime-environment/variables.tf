@@ -8,6 +8,16 @@ variable "environment" {
   }
 }
 
+variable "fcm_delivery_mode" {
+  description = "Closed Core Worker FCM delivery selector."
+  type        = string
+
+  validation {
+    condition     = contains(["disabled", "dry_run", "send_enabled"], var.fcm_delivery_mode)
+    error_message = "fcm_delivery_mode must be disabled, dry_run, or send_enabled."
+  }
+}
+
 variable "image_reference" {
   description = "Immutable digest reference shared by the selected environment's API and worker pools."
   type        = string

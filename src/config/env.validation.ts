@@ -15,6 +15,10 @@ import {
   refineRedisEndpointSeparation,
 } from './redis-env.validation';
 import { validateSecretEncryptionEnvironment } from '../shared/crypto/versioned-secret-crypto';
+import {
+  firebaseCredentialEnvironmentShape,
+  refineFirebaseCredentialEnvironment,
+} from '../infrastructure/push/firebase/firebase-credential-env.validation';
 
 const booleanFromString = z
   .enum(['true', 'false'])
@@ -90,12 +94,7 @@ export const envSchema = z
     APP_DEVICE_TOKEN_ENCRYPTION_PREVIOUS_KEY: optionalNonEmptyString,
     SETTINGS_SECRET_ENCRYPTION_KEY: optionalNonEmptyString,
 
-    FCM_ENABLED: booleanFromString.default('false'),
-    FCM_DRY_RUN: booleanFromString.default('true'),
-    GOOGLE_APPLICATION_CREDENTIALS: optionalNonEmptyString,
-    FIREBASE_PROJECT_ID: optionalNonEmptyString,
-    FIREBASE_CLIENT_EMAIL: optionalNonEmptyString,
-    FIREBASE_PRIVATE_KEY: optionalNonEmptyString,
+    ...firebaseCredentialEnvironmentShape,
 
     SEED_DEMO_DATA: booleanFromString.default('false'),
     LOG_LEVEL: z
@@ -158,51 +157,7 @@ export const envSchema = z
       });
     }
 
-    const hasCredentialsFile = Boolean(env.GOOGLE_APPLICATION_CREDENTIALS);
-    const firebaseEnvFields = [
-      'FIREBASE_PROJECT_ID',
-      'FIREBASE_CLIENT_EMAIL',
-      'FIREBASE_PRIVATE_KEY',
-    ] as const;
-    const providedFirebaseEnvFields = firebaseEnvFields.filter((key) =>
-      Boolean(env[key]),
-    );
-    const hasFirebaseEnvTriple =
-      providedFirebaseEnvFields.length === firebaseEnvFields.length;
-    const hasPartialFirebaseEnvTriple =
-      providedFirebaseEnvFields.length > 0 && !hasFirebaseEnvTriple;
-
-    if (hasPartialFirebaseEnvTriple) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['FIREBASE_PROJECT_ID'],
-        message:
-          'FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY must be provided together',
-      });
-    }
-
-    if (!env.FCM_ENABLED || env.FCM_DRY_RUN) {
-      return;
-    }
-
-    if (hasCredentialsFile && hasFirebaseEnvTriple) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['GOOGLE_APPLICATION_CREDENTIALS'],
-        message:
-          'Use exactly one Firebase credential strategy: GOOGLE_APPLICATION_CREDENTIALS or the Firebase env credential triple',
-      });
-      return;
-    }
-
-    if (!hasCredentialsFile && !hasFirebaseEnvTriple) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['FCM_ENABLED'],
-        message:
-          'FCM_ENABLED=true with FCM_DRY_RUN=false requires GOOGLE_APPLICATION_CREDENTIALS or FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY',
-      });
-    }
+    refineFirebaseCredentialEnvironment(env, ctx);
   });
 
 export type Env = z.infer<typeof envSchema>;

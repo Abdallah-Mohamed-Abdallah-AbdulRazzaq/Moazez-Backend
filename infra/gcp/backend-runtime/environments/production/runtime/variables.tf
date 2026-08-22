@@ -11,6 +11,16 @@ variable "image_reference" {
   }
 }
 
+variable "fcm_delivery_mode" {
+  description = "Required governed Production FCM delivery selector."
+  type        = string
+
+  validation {
+    condition     = contains(["disabled", "dry_run", "send_enabled"], var.fcm_delivery_mode)
+    error_message = "fcm_delivery_mode must be disabled, dry_run, or send_enabled."
+  }
+}
+
 variable "queue_redis_host" {
   description = "Ephemeral DevOps-supplied Queue Redis hostname or IPv4 address, without a scheme, port, or path."
   type        = string

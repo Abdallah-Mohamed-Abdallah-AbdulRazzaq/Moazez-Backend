@@ -125,6 +125,10 @@ test('canonical routing preserves every dedicated service and invariant profile'
     ['scripts/tests/prd3-g04-governed-migration-job.test.cjs', 'prd3-g04'],
     ['scripts/tests/prd3-g05-clean-start.test.cjs', 'prd3-g05'],
     [
+      'scripts/tests/pt-2-backend-firebase-production-bootstrap.test.cjs',
+      'runtime-governance',
+    ],
+    [
       'scripts/tests/prd3-g01-b2-database-recovery.test.cjs',
       'historical-manual',
     ],
@@ -189,6 +193,22 @@ test('the exact legacy media-test runtime list has one canonical media-storage a
     assert.equal(matches[0].owner, 'media-storage', file);
     assert.equal(matches[0].profile, 'media-storage', file);
   }
+});
+
+test('PT-2 backend governance TAP has the exact canonical pull-request route', () => {
+  assert.deepEqual(
+    classifyTestFile(
+      'scripts/tests/pt-2-backend-firebase-production-bootstrap.test.cjs',
+    ),
+    {
+      file: 'scripts/tests/pt-2-backend-firebase-production-bootstrap.test.cjs',
+      kind: 'node-tap',
+      owner: 'pre-launch-pt2-backend-governance',
+      category: 'invariant',
+      profile: 'runtime-governance',
+      execution: 'pull-request',
+    },
+  );
 });
 
 test('unknown governed test locations and patterns fail closed', () => {

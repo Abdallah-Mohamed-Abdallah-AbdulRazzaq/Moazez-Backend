@@ -1,79 +1,179 @@
 import { randomBytes } from 'node:crypto';
+import type { PlatformAdminBootstrapEnvironment } from '../platform-admin-bootstrap.constants';
 import { PlatformAdminBootstrapError } from '../platform-admin-bootstrap.errors';
-import { assertPlatformAdminBootstrapEnvironment } from '../platform-admin-bootstrap.environment';
+import {
+  assertPlatformAdminBootstrapEnvironment,
+  validatePlatformAdminBootstrapEnvironment,
+} from '../platform-admin-bootstrap.environment';
 
 const SYNTHETIC_DATABASE_SECRET = randomBytes(24).toString('base64url');
 
-const ENVIRONMENT_DRIFT_CASES: ReadonlyArray<
-  readonly [string, Record<string, string>]
+const ENVIRONMENT_CONTRACTS = {
+  staging: {
+    NODE_ENV: 'staging',
+    APP_URL: 'https://staging-api.moazez.cloud',
+    GCP_PROJECT_ID: 'moazez-nonprod-91001421934',
+  },
+  production: {
+    NODE_ENV: 'production',
+    APP_URL: 'https://api.moazez.cloud',
+    GCP_PROJECT_ID: 'moazez-production',
+  },
+} as const;
+
+const CROSS_ENVIRONMENT_CASES: ReadonlyArray<
+  readonly [
+    string,
+    PlatformAdminBootstrapEnvironment,
+    Partial<NodeJS.ProcessEnv>,
+  ]
 > = [
-  ['requested environment', { requestedEnvironment: 'production' }],
-  ['NODE_ENV', { NODE_ENV: 'production' }],
-  ['APP_URL', { APP_URL: 'https://api.example.invalid' }],
-  ['GCP project', { GCP_PROJECT_ID: 'different-project' }],
-  ['database runtime role', { DATABASE_RUNTIME_ROLE: 'core-worker' }],
+  ['production with staging NODE_ENV', 'production', { NODE_ENV: 'staging' }],
   [
-    'database login identity',
-    {
-      DATABASE_URL: `postgresql://different_user:${SYNTHETIC_DATABASE_SECRET}@127.0.0.1:5432/moazez?sslmode=require`,
-    },
+    'production with staging APP_URL',
+    'production',
+    { APP_URL: ENVIRONMENT_CONTRACTS.staging.APP_URL },
   ],
   [
-    'database transport policy',
-    {
-      DATABASE_URL: `postgresql://moazez_api:${SYNTHETIC_DATABASE_SECRET}@127.0.0.1:5432/moazez?sslmode=disable`,
-    },
+    'production with staging GCP_PROJECT_ID',
+    'production',
+    { GCP_PROJECT_ID: ENVIRONMENT_CONTRACTS.staging.GCP_PROJECT_ID },
+  ],
+  ['staging with production NODE_ENV', 'staging', { NODE_ENV: 'production' }],
+  [
+    'staging with production APP_URL',
+    'staging',
+    { APP_URL: ENVIRONMENT_CONTRACTS.production.APP_URL },
+  ],
+  [
+    'staging with production GCP_PROJECT_ID',
+    'staging',
+    { GCP_PROJECT_ID: ENVIRONMENT_CONTRACTS.production.GCP_PROJECT_ID },
   ],
 ];
 
 describe('Platform Administrator bootstrap environment guard', () => {
-  it('accepts only the approved existing staging API identity tuple', () => {
-    expect(
-      assertPlatformAdminBootstrapEnvironment('staging', stagingEnvironment()),
-    ).toMatchObject({
-      NODE_ENV: 'staging',
-      APP_URL: 'https://staging-api.moazez.cloud',
-      GCP_PROJECT_ID: 'moazez-nonprod-91001421934',
-      DATABASE_RUNTIME_ROLE: 'api',
-      DATABASE_CONNECTION_LIMIT: 5,
-      DATABASE_POOL_TIMEOUT_SECONDS: 5,
-      DATABASE_CONNECT_TIMEOUT_SECONDS: 5,
-    });
-  });
+  it.each(['staging', 'production'] as const)(
+    'accepts the exact governed %s API identity tuple',
+    (environment) => {
+      expect(
+        assertPlatformAdminBootstrapEnvironment(
+          environment,
+          bootstrapEnvironment(environment),
+        ),
+      ).toMatchObject({
+        ...ENVIRONMENT_CONTRACTS[environment],
+        DATABASE_RUNTIME_ROLE: 'api',
+        DATABASE_CONNECTION_LIMIT: 5,
+        DATABASE_POOL_TIMEOUT_SECONDS: 5,
+        DATABASE_CONNECT_TIMEOUT_SECONDS: 5,
+      });
+    },
+  );
 
-  it.each(ENVIRONMENT_DRIFT_CASES)(
-    'rejects a mismatched %s without exposing configuration',
-    (_label, drift) => {
-      const { requestedEnvironment = 'staging', ...environmentDrift } = drift;
-
-      let caught: unknown;
-      try {
-        assertPlatformAdminBootstrapEnvironment(requestedEnvironment, {
-          ...stagingEnvironment(),
-          ...environmentDrift,
-        });
-      } catch (error) {
-        caught = error;
-      }
-
-      expect(caught).toBeInstanceOf(PlatformAdminBootstrapError);
-      expect((caught as PlatformAdminBootstrapError).reason).toBe(
-        'UNSUPPORTED_ENVIRONMENT',
+  it.each(CROSS_ENVIRONMENT_CASES)(
+    'rejects %s without exposing configuration',
+    (_label, requestedEnvironment, environmentDrift) => {
+      expectSafeEnvironmentRejection(
+        requestedEnvironment,
+        bootstrapEnvironment(requestedEnvironment, environmentDrift),
       );
-      expect(String(caught)).not.toContain(SYNTHETIC_DATABASE_SECRET);
+    },
+  );
+
+  it.each(['development', 'test', 'prod', 'qa', 'custom'])(
+    'rejects unsupported environment %s without aliases',
+    (requestedEnvironment) => {
+      expectSafeEnvironmentRejection(
+        requestedEnvironment,
+        bootstrapEnvironment('staging'),
+      );
+    },
+  );
+
+  it.each(['staging', 'production'] as const)(
+    'rejects database runtime-role and transport drift for %s',
+    (environment) => {
+      expectSafeEnvironmentRejection(
+        environment,
+        bootstrapEnvironment(environment, {
+          DATABASE_RUNTIME_ROLE: 'core-worker',
+        }),
+      );
+      expectSafeEnvironmentRejection(
+        environment,
+        bootstrapEnvironment(environment, {
+          DATABASE_URL: databaseUrl('moazez_api', 'disable'),
+        }),
+      );
+    },
+  );
+
+  it.each(['moazez_migration', 'postgres', 'admin', 'cloudsqlsuperuser'])(
+    'rejects forbidden database identity %s in both environments',
+    (databaseUser) => {
+      for (const environment of ['staging', 'production'] as const) {
+        expectSafeEnvironmentRejection(
+          environment,
+          bootstrapEnvironment(environment, {
+            DATABASE_URL: databaseUrl(databaseUser),
+          }),
+        );
+      }
+    },
+  );
+
+  it.each(['staging', 'production'] as const)(
+    'selects the governed %s tuple during Nest configuration validation',
+    (environment) => {
+      expect(
+        validatePlatformAdminBootstrapEnvironment(
+          bootstrapEnvironment(environment),
+        ),
+      ).toMatchObject(ENVIRONMENT_CONTRACTS[environment]);
     },
   );
 });
 
-function stagingEnvironment(): NodeJS.ProcessEnv {
+function bootstrapEnvironment(
+  environment: PlatformAdminBootstrapEnvironment,
+  override: Partial<NodeJS.ProcessEnv> = {},
+): NodeJS.ProcessEnv {
   return {
-    NODE_ENV: 'staging',
-    APP_URL: 'https://staging-api.moazez.cloud',
-    GCP_PROJECT_ID: 'moazez-nonprod-91001421934',
-    DATABASE_URL: `postgresql://moazez_api:${SYNTHETIC_DATABASE_SECRET}@127.0.0.1:5432/moazez?sslmode=require`,
+    ...ENVIRONMENT_CONTRACTS[environment],
+    DATABASE_URL: databaseUrl('moazez_api'),
     DATABASE_RUNTIME_ROLE: 'api',
     DATABASE_CONNECTION_LIMIT: '5',
     DATABASE_POOL_TIMEOUT_SECONDS: '5',
     DATABASE_CONNECT_TIMEOUT_SECONDS: '5',
+    ...override,
   };
+}
+
+function databaseUrl(
+  username: string,
+  sslmode: 'require' | 'disable' = 'require',
+): string {
+  return `postgresql://${username}:${SYNTHETIC_DATABASE_SECRET}@127.0.0.1:5432/moazez?sslmode=${sslmode}`;
+}
+
+function expectSafeEnvironmentRejection(
+  requestedEnvironment: string,
+  rawEnvironment: NodeJS.ProcessEnv,
+): void {
+  let caught: unknown;
+  try {
+    assertPlatformAdminBootstrapEnvironment(
+      requestedEnvironment,
+      rawEnvironment,
+    );
+  } catch (error) {
+    caught = error;
+  }
+
+  expect(caught).toBeInstanceOf(PlatformAdminBootstrapError);
+  expect((caught as PlatformAdminBootstrapError).reason).toBe(
+    'UNSUPPORTED_ENVIRONMENT',
+  );
+  expect(String(caught)).not.toContain(SYNTHETIC_DATABASE_SECRET);
 }

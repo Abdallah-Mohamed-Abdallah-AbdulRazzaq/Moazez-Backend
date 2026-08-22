@@ -15,10 +15,11 @@ import {
   storageEnvironmentShape,
 } from '../infrastructure/storage/storage-env.validation';
 import { validateSecretEncryptionEnvironment } from '../shared/crypto/versioned-secret-crypto';
+import {
+  firebaseCredentialEnvironmentShape,
+  refineFirebaseCredentialEnvironment,
+} from '../infrastructure/push/firebase/firebase-credential-env.validation';
 
-const booleanFromString = z
-  .enum(['true', 'false'])
-  .transform((value) => value === 'true');
 const optionalNonEmptyString = z.preprocess(
   (value) =>
     typeof value === 'string' && value.trim().length === 0 ? undefined : value,
@@ -60,12 +61,7 @@ const coreWorkerSchema = z
     APP_DEVICE_TOKEN_ENCRYPTION_PREVIOUS_KEY_ID: optionalNonEmptyString,
     APP_DEVICE_TOKEN_ENCRYPTION_PREVIOUS_KEY: optionalNonEmptyString,
     SETTINGS_SECRET_ENCRYPTION_KEY: optionalNonEmptyString,
-    FCM_ENABLED: booleanFromString.default('false'),
-    FCM_DRY_RUN: booleanFromString.default('true'),
-    GOOGLE_APPLICATION_CREDENTIALS: optionalNonEmptyString,
-    FIREBASE_PROJECT_ID: optionalNonEmptyString,
-    FIREBASE_CLIENT_EMAIL: optionalNonEmptyString,
-    FIREBASE_PRIVATE_KEY: optionalNonEmptyString,
+    ...firebaseCredentialEnvironmentShape,
   })
   .superRefine((env, context) => {
     refineDatabaseRuntimeEnvironment(env, context);
@@ -83,31 +79,7 @@ const coreWorkerSchema = z
       });
     }
 
-    const firebaseFields = [
-      env.FIREBASE_PROJECT_ID,
-      env.FIREBASE_CLIENT_EMAIL,
-      env.FIREBASE_PRIVATE_KEY,
-    ];
-    const provided = firebaseFields.filter(Boolean).length;
-    if (provided > 0 && provided < firebaseFields.length) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['FIREBASE_PROJECT_ID'],
-        message: 'Firebase environment credentials must be provided together',
-      });
-    }
-    if (!env.FCM_ENABLED || env.FCM_DRY_RUN) return;
-
-    const hasFile = Boolean(env.GOOGLE_APPLICATION_CREDENTIALS);
-    const hasTriple = provided === firebaseFields.length;
-    if (hasFile === hasTriple) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['FCM_ENABLED'],
-        message:
-          'Enabled Firebase delivery requires exactly one credential strategy',
-      });
-    }
+    refineFirebaseCredentialEnvironment(env, context);
   });
 
 const mediaWorkerSchema = z

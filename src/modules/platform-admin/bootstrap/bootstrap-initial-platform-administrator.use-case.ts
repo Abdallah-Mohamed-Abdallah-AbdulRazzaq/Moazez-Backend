@@ -4,7 +4,11 @@ import { PasswordService } from '../../iam/auth/domain/password.service';
 import { normalizeContactEmail } from '../../settings/login-identity/domain/login-identity.policy';
 import { validateAdminProvidedPassword } from '../../settings/users/credentials/domain/credential-password.policy';
 import { normalizePlatformName } from '../domain/platform-admin-inputs';
-import { PLATFORM_ADMIN_ROLE_CODE } from './platform-admin-bootstrap.constants';
+import {
+  PLATFORM_ADMIN_ROLE_CODE,
+  isPlatformAdminBootstrapEnvironment,
+  type PlatformAdminBootstrapEnvironment,
+} from './platform-admin-bootstrap.constants';
 import { PlatformAdminBootstrapError } from './platform-admin-bootstrap.errors';
 import { PlatformAdminBootstrapRepository } from './platform-admin-bootstrap.repository';
 
@@ -13,6 +17,7 @@ const MAX_NAME_LENGTH = 100;
 const MAX_PASSWORD_LENGTH = 256;
 
 export interface BootstrapInitialPlatformAdministratorCommand {
+  environment: PlatformAdminBootstrapEnvironment;
   email: string;
   password: string;
   firstName: string;
@@ -44,6 +49,7 @@ export class BootstrapInitialPlatformAdministratorUseCase {
 
     const passwordHash = await this.passwordService.hash(input.password);
     const created = await this.repository.createInitialPlatformAdministrator({
+      environment: input.environment,
       email: input.email,
       firstName: input.firstName,
       lastName: input.lastName,
@@ -64,6 +70,7 @@ function normalizeAndValidateInput(
 ): BootstrapInitialPlatformAdministratorCommand {
   if (
     !command ||
+    !isPlatformAdminBootstrapEnvironment(command.environment) ||
     typeof command.email !== 'string' ||
     typeof command.firstName !== 'string' ||
     typeof command.lastName !== 'string' ||
@@ -94,5 +101,11 @@ function normalizeAndValidateInput(
     throw new PlatformAdminBootstrapError('INVALID_INPUT');
   }
 
-  return { email, firstName, lastName, password: command.password };
+  return {
+    environment: command.environment,
+    email,
+    firstName,
+    lastName,
+    password: command.password,
+  };
 }

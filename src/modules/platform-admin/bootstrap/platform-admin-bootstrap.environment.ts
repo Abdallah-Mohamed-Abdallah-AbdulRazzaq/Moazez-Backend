@@ -3,55 +3,87 @@ import {
   createDatabaseRuntimeEnvironmentShape,
   refineDatabaseRuntimeEnvironment,
 } from '../../../infrastructure/database/database-runtime-env.validation';
-import { PLATFORM_ADMIN_BOOTSTRAP_ENVIRONMENT } from './platform-admin-bootstrap.constants';
+import {
+  isPlatformAdminBootstrapEnvironment,
+  type PlatformAdminBootstrapEnvironment,
+} from './platform-admin-bootstrap.constants';
 import { PlatformAdminBootstrapError } from './platform-admin-bootstrap.errors';
 
-const STAGING_API_URL = 'https://staging-api.moazez.cloud';
-const STAGING_GCP_PROJECT_ID = 'moazez-nonprod-91001421934';
-const STAGING_DATABASE_USER = 'moazez_api';
+const PLATFORM_ADMIN_BOOTSTRAP_ENVIRONMENT_CONTRACT = Object.freeze({
+  staging: Object.freeze({
+    NODE_ENV: 'staging',
+    APP_URL: 'https://staging-api.moazez.cloud',
+    GCP_PROJECT_ID: 'moazez-nonprod-91001421934',
+  }),
+  production: Object.freeze({
+    NODE_ENV: 'production',
+    APP_URL: 'https://api.moazez.cloud',
+    GCP_PROJECT_ID: 'moazez-production',
+  }),
+} satisfies Record<
+  PlatformAdminBootstrapEnvironment,
+  {
+    NODE_ENV: PlatformAdminBootstrapEnvironment;
+    APP_URL: string;
+    GCP_PROJECT_ID: string;
+  }
+>);
 
-const environmentSchema = z
-  .object({
-    NODE_ENV: z.literal(PLATFORM_ADMIN_BOOTSTRAP_ENVIRONMENT),
-    APP_URL: z.literal(STAGING_API_URL),
-    GCP_PROJECT_ID: z.literal(STAGING_GCP_PROJECT_ID),
-    ...createDatabaseRuntimeEnvironmentShape('api'),
-  })
-  .superRefine((environment, context) => {
-    refineDatabaseRuntimeEnvironment(environment, context);
+const APPROVED_DATABASE_USER = 'moazez_api';
 
-    try {
-      const databaseUrl = new URL(environment.DATABASE_URL);
-      if (databaseUrl.username !== STAGING_DATABASE_USER) {
+function createEnvironmentSchema(
+  environment: PlatformAdminBootstrapEnvironment,
+) {
+  const contract = PLATFORM_ADMIN_BOOTSTRAP_ENVIRONMENT_CONTRACT[environment];
+
+  return z
+    .object({
+      NODE_ENV: z.literal(contract.NODE_ENV),
+      APP_URL: z.literal(contract.APP_URL),
+      GCP_PROJECT_ID: z.literal(contract.GCP_PROJECT_ID),
+      ...createDatabaseRuntimeEnvironmentShape('api'),
+    })
+    .superRefine((environmentVariables, context) => {
+      refineDatabaseRuntimeEnvironment(environmentVariables, context);
+
+      try {
+        const databaseUrl = new URL(environmentVariables.DATABASE_URL);
+        if (databaseUrl.username !== APPROVED_DATABASE_USER) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['DATABASE_URL'],
+            message: 'DATABASE_URL does not use the approved API identity',
+          });
+        }
+      } catch {
         context.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['DATABASE_URL'],
-          message:
-            'DATABASE_URL does not use the approved staging API identity',
+          message: 'DATABASE_URL is invalid',
         });
       }
-    } catch {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['DATABASE_URL'],
-        message: 'DATABASE_URL is invalid',
-      });
-    }
-  });
+    });
+}
 
-export type PlatformAdminBootstrapEnvironment = z.infer<
-  typeof environmentSchema
+const environmentSchemas = {
+  staging: createEnvironmentSchema('staging'),
+  production: createEnvironmentSchema('production'),
+} as const;
+
+export type PlatformAdminBootstrapRuntimeEnvironment = z.infer<
+  (typeof environmentSchemas)[keyof typeof environmentSchemas]
 >;
 
 export function assertPlatformAdminBootstrapEnvironment(
   requestedEnvironment: string,
   rawEnvironment: NodeJS.ProcessEnv,
-): PlatformAdminBootstrapEnvironment {
-  if (requestedEnvironment !== PLATFORM_ADMIN_BOOTSTRAP_ENVIRONMENT) {
+): PlatformAdminBootstrapRuntimeEnvironment {
+  if (!isPlatformAdminBootstrapEnvironment(requestedEnvironment)) {
     throw new PlatformAdminBootstrapError('UNSUPPORTED_ENVIRONMENT');
   }
 
-  const parsed = environmentSchema.safeParse(rawEnvironment);
+  const parsed =
+    environmentSchemas[requestedEnvironment].safeParse(rawEnvironment);
   if (!parsed.success) {
     throw new PlatformAdminBootstrapError('UNSUPPORTED_ENVIRONMENT');
   }
@@ -61,9 +93,13 @@ export function assertPlatformAdminBootstrapEnvironment(
 
 export function validatePlatformAdminBootstrapEnvironment(
   rawEnvironment: Record<string, unknown>,
-): PlatformAdminBootstrapEnvironment {
-  return assertPlatformAdminBootstrapEnvironment(
-    PLATFORM_ADMIN_BOOTSTRAP_ENVIRONMENT,
-    rawEnvironment as NodeJS.ProcessEnv,
-  );
+): PlatformAdminBootstrapRuntimeEnvironment {
+  const requestedEnvironment = rawEnvironment.NODE_ENV;
+  if (!isPlatformAdminBootstrapEnvironment(requestedEnvironment)) {
+    throw new PlatformAdminBootstrapError('UNSUPPORTED_ENVIRONMENT');
+  }
+
+  return assertPlatformAdminBootstrapEnvironment(requestedEnvironment, {
+    ...rawEnvironment,
+  } as NodeJS.ProcessEnv);
 }

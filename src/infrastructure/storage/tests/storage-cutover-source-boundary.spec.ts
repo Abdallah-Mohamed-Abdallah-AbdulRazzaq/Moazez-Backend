@@ -16,6 +16,7 @@ const PROVIDER_CONFIG_ALLOWLIST = new Set([
 
 const GCP_PROJECT_ID_CONSUMER_ALLOWLIST = new Set([
   ...PROVIDER_CONFIG_ALLOWLIST,
+  'infrastructure/push/firebase/firebase-admin.service.ts',
   'modules/platform-admin/bootstrap/platform-admin-bootstrap.environment.ts',
 ]);
 
@@ -107,6 +108,36 @@ describe('storage cutover source boundary', () => {
     ).toEqual([
       'modules/example/application/bypass.ts:provider-config-reference',
     ]);
+  });
+
+  it('allows Firebase Admin project identity without granting storage credential access', () => {
+    const firebaseAdminPath =
+      'infrastructure/push/firebase/firebase-admin.service.ts';
+
+    expect(
+      collectCredentialBoundaryViolations([
+        {
+          path: firebaseAdminPath,
+          source: 'const projectId = environment.GCP_PROJECT_ID;',
+        },
+      ]),
+    ).toEqual([]);
+
+    for (const storageCredential of [
+      'STORAGE_ENDPOINT',
+      'STORAGE_ACCESS_KEY',
+      'STORAGE_SECRET_KEY',
+      'GCS_SIGNING_SERVICE_ACCOUNT',
+    ]) {
+      expect(
+        collectCredentialBoundaryViolations([
+          {
+            path: firebaseAdminPath,
+            source: `const credential = environment.${storageCredential};`,
+          },
+        ]),
+      ).toEqual([`${firebaseAdminPath}:provider-config-reference`]);
+    }
   });
 });
 

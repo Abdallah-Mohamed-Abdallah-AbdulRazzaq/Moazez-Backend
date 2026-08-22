@@ -13,6 +13,17 @@ const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
 const BASE_SHA = '1342d64dee8355ba2a6c8a286430a6cdd698e93a';
 const TEST_PATH =
   'scripts/tests/stage-26c-production-foundation-source.test.cjs';
+const PT2_TEST_PATH =
+  'scripts/tests/pt-2-backend-firebase-production-bootstrap.test.cjs';
+const PT2_STAGE26_DELEGATED_PATHS = Object.freeze(
+  [
+    'infra/gcp/runtime-iam/modules/runtime-iam-environment/main.tf',
+    'scripts/ci/plan-ci.cjs',
+    'scripts/tests/plan-ci.test.cjs',
+    PT2_TEST_PATH,
+    TEST_PATH,
+  ].sort(),
+);
 const ROOT_FILES = Object.freeze([
   '.terraform.lock.hcl',
   'main.tf',
@@ -46,6 +57,56 @@ function assertStage26CandidateScope(candidateFiles) {
     candidateFiles.filter((file) => /\/environments\/nonprod\//u.test(file)),
     [],
   );
+}
+
+function candidateFilesFromCommittedRange() {
+  const base = process.env.CI_BASE_SHA || BASE_SHA;
+  const candidate = process.env.CI_CANDIDATE_SHA || 'HEAD';
+  return [
+    ...new Set(
+      execFileSync('git', ['diff', '--name-only', base, candidate, '--'], {
+        cwd: REPOSITORY_ROOT,
+        encoding: 'utf8',
+        windowsHide: true,
+      })
+        .split(/\r?\n/u)
+        .filter(Boolean)
+        .map((file) => file.replace(/\\/gu, '/')),
+    ),
+  ].sort();
+}
+
+function assertCommittedStage26CandidateScope(
+  candidateFiles = candidateFilesFromCommittedRange(),
+) {
+  const normalized = [
+    ...new Set(candidateFiles.map((file) => file.replace(/\\/gu, '/'))),
+  ].sort();
+  if (!normalized.includes(TEST_PATH)) return false;
+
+  const pt2DelegationActive = normalized.includes(PT2_TEST_PATH);
+  if (pt2DelegationActive) {
+    const stage26OwnedPaths = normalized.filter(
+      (file) =>
+        /^infra\/gcp\/(?:secrets|artifact-registry|runtime-iam|deployment-identity)\//u.test(
+          file,
+        ) ||
+        file === 'scripts/ci/plan-ci.cjs' ||
+        file === 'scripts/tests/plan-ci.test.cjs' ||
+        file === TEST_PATH ||
+        file === PT2_TEST_PATH,
+    );
+    assert.deepEqual(
+      stage26OwnedPaths.filter(
+        (file) => !PT2_STAGE26_DELEGATED_PATHS.includes(file),
+      ),
+      [],
+    );
+    return false;
+  }
+
+  assertStage26CandidateScope(normalized);
+  return true;
 }
 
 const STAGING_SECRET_IDS = Object.freeze({
@@ -869,7 +930,7 @@ test('Artifact Registry source owns exactly one governed Docker repository', () 
   console.log('PRODUCTION_ARTIFACT_REPOSITORY_SOURCE_COUNT=1');
 });
 
-test('Runtime IAM owns only two accounts and ten exact secret-level grants', () => {
+test('Runtime IAM owns two accounts, ten secret grants, and one Core Worker FCM project member', () => {
   const config = DOMAINS.runtimeIam;
   const moduleMain = normalizedSource(`${config.module}/main.tf`);
   const productionMain = normalizedSource(
@@ -881,6 +942,7 @@ test('Runtime IAM owns only two accounts and ten exact secret-level grants', () 
     [
       ['google_service_account', 'runtime'],
       ['google_secret_manager_secret_iam_member', 'secret_accessor'],
+      ['google_project_iam_member', 'core_worker_firebase_cloud_messaging'],
     ],
   );
   const managed = extractBlock(
@@ -917,12 +979,35 @@ test('Runtime IAM owns only two accounts and ten exact secret-level grants', () 
   );
   assert.match(secretAccessor, /for_each\s*=\s*var\.secret_access_grants/u);
   assert.match(secretAccessor, /role\s*=\s*"roles\/secretmanager\.secretAccessor"/u);
+  const firebaseMessaging = resourceByName(
+    resources,
+    'google_project_iam_member',
+    'core_worker_firebase_cloud_messaging',
+  );
+  assert.match(firebaseMessaging, /project\s*=\s*var\.project_id/u);
+  assert.match(
+    firebaseMessaging,
+    /role\s*=\s*"roles\/firebasecloudmessaging\.admin"/u,
+  );
+  assert.match(
+    firebaseMessaging,
+    /member\s*=\s*local\.existing_runtime_service_account_members\["core_worker"\]/u,
+  );
+  assert.equal(
+    `serviceAccount:${EXISTING_RUNTIME_IDS.core_worker}@${CONTRACTS.runtimeIam.staging.project_id}.iam.gserviceaccount.com`,
+    'serviceAccount:moazez-core-worker@moazez-nonprod-91001421934.iam.gserviceaccount.com',
+  );
+  assert.equal(
+    `serviceAccount:${EXISTING_RUNTIME_IDS.core_worker}@${CONTRACTS.runtimeIam.production.project_id}.iam.gserviceaccount.com`,
+    'serviceAccount:moazez-core-worker@moazez-production.iam.gserviceaccount.com',
+  );
   assert.doesNotMatch(
     moduleMain,
-    /google_service_account_key|google_project_iam_|roles\/iam\.serviceAccountTokenCreator/u,
+    /google_service_account_key|google_project_iam_(?:policy|binding)|roles\/iam\.serviceAccountTokenCreator/u,
   );
   console.log('PRODUCTION_RUNTIME_MANAGED_SERVICE_ACCOUNT_COUNT=2');
   console.log('PRODUCTION_RUNTIME_SECRET_ACCESS_GRANT_COUNT=10');
+  console.log('PRODUCTION_RUNTIME_FIREBASE_PROJECT_MEMBER_COUNT=1');
 });
 
 test('Deployment Identity owns exactly the approved 11-instance WIF authorization model', () => {
@@ -1110,9 +1195,13 @@ test('global Terraform ownership and forbidden-resource boundary is exact', () =
   );
   assert.deepEqual(
     projectMembers.map(({ name }) => name),
-    ['cloud_run_developer'],
+    ['core_worker_firebase_cloud_messaging', 'cloud_run_developer'],
   );
-  assert.match(projectMembers[0].body, /roles\/run\.developer/u);
+  assert.match(
+    projectMembers[0].body,
+    /roles\/firebasecloudmessaging\.admin/u,
+  );
+  assert.match(projectMembers[1].body, /roles\/run\.developer/u);
   assert.equal(
     findResources(allSource).filter(
       ({ type }) => type === 'google_storage_bucket_iam_member',
@@ -1151,25 +1240,7 @@ test('READMEs preserve source-only Production claims and exact discovery status'
 });
 
 test('Stage 26C candidate change scope contains no application, Prisma, workflow, or unrelated source', () => {
-  const git = (args) =>
-    execFileSync('git', args, {
-      cwd: REPOSITORY_ROOT,
-      encoding: 'utf8',
-      windowsHide: true,
-    })
-      .split(/\r?\n/u)
-      .filter(Boolean)
-      .map((file) => file.replace(/\\/gu, '/'));
-  const base = process.env.CI_BASE_SHA || BASE_SHA;
-  const candidate = process.env.CI_CANDIDATE_SHA || 'HEAD';
-  const candidateFiles = git([
-    'diff',
-    '--name-only',
-    base,
-    candidate,
-    '--',
-  ]).sort();
-  assertStage26CandidateScope(candidateFiles);
+  assertCommittedStage26CandidateScope();
 });
 
 test('Stage 26C scope activation ignores future unrelated PRs and rejects mixed Stage26 candidates', () => {
@@ -1182,6 +1253,41 @@ test('Stage 26C scope activation ignores future unrelated PRs and rejects mixed 
         TEST_PATH,
         'src/example-unrelated-change.ts',
       ]),
+    { code: 'ERR_ASSERTION' },
+  );
+});
+
+test('Stage 26C committed scope delegates only the bounded PT-2 evolution', () => {
+  assert.equal(assertCommittedStage26CandidateScope([TEST_PATH]), true);
+  assert.throws(
+    () =>
+      assertCommittedStage26CandidateScope([
+        TEST_PATH,
+        'src/example-unrelated-change.ts',
+      ]),
+    { code: 'ERR_ASSERTION' },
+  );
+  assert.equal(
+    assertCommittedStage26CandidateScope([
+      TEST_PATH,
+      PT2_TEST_PATH,
+      'infra/gcp/runtime-iam/modules/runtime-iam-environment/main.tf',
+      'scripts/ci/plan-ci.cjs',
+      'scripts/tests/plan-ci.test.cjs',
+    ]),
+    false,
+  );
+  assert.throws(
+    () =>
+      assertCommittedStage26CandidateScope([
+        TEST_PATH,
+        PT2_TEST_PATH,
+        'infra/gcp/secrets/modules/secret-environment/main.tf',
+      ]),
+    { code: 'ERR_ASSERTION' },
+  );
+  assert.throws(
+    () => assertStage26CandidateScope([TEST_PATH, PT2_TEST_PATH]),
     { code: 'ERR_ASSERTION' },
   );
 });

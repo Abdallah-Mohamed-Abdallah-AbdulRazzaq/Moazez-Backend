@@ -14,7 +14,10 @@ import { PasswordService } from '../../src/modules/iam/auth/domain/password.serv
 import { TokenService } from '../../src/modules/iam/auth/domain/token.service';
 import { AuthRepository } from '../../src/modules/iam/auth/infrastructure/auth.repository';
 import { BootstrapInitialPlatformAdministratorUseCase } from '../../src/modules/platform-admin/bootstrap/bootstrap-initial-platform-administrator.use-case';
-import { PLATFORM_ADMIN_ROLE_CODE } from '../../src/modules/platform-admin/bootstrap/platform-admin-bootstrap.constants';
+import {
+  PLATFORM_ADMIN_ROLE_CODE,
+  type PlatformAdminBootstrapEnvironment,
+} from '../../src/modules/platform-admin/bootstrap/platform-admin-bootstrap.constants';
 import { PlatformAdminBootstrapError } from '../../src/modules/platform-admin/bootstrap/platform-admin-bootstrap.errors';
 import { PlatformAdminBootstrapRepository } from '../../src/modules/platform-admin/bootstrap/platform-admin-bootstrap.repository';
 import { PERMISSION_CODES } from '../../prisma/seeds/01-permissions.seed';
@@ -106,9 +109,11 @@ describe('Stage 20B initial Platform Administrator bootstrap (integration)', () 
     }
   });
 
-  it('creates the first legitimate admin with the canonical role and credential implementation', async () => {
+  it('creates the first Production-labelled admin with the canonical role, credentials, and audit environment', async () => {
     const password = strongPassword();
-    const command = validCommand('first-success', password);
+    const command = validCommand('first-success', password, {
+      environment: 'production',
+    });
 
     const result = await useCase.execute(command);
 
@@ -166,6 +171,17 @@ describe('Stage 20B initial Platform Administrator bootstrap (integration)', () 
     ).toEqual([...PERMISSION_CODES].sort());
 
     expect(auditEntries.length).toBeGreaterThan(0);
+    expect(
+      auditEntries.some((entry) => {
+        const after = entry.after;
+        return (
+          after !== null &&
+          typeof after === 'object' &&
+          !Array.isArray(after) &&
+          after.environment === 'production'
+        );
+      }),
+    ).toBe(true);
     const safeEvidence = JSON.stringify({ result, auditEntries });
     expect(safeEvidence).not.toContain(password);
     expect(safeEvidence).not.toContain(user.passwordHash!);
@@ -406,6 +422,7 @@ describe('Stage 20B initial Platform Administrator bootstrap (integration)', () 
     suffix: string,
     password = strongPassword(),
     override: Partial<{
+      environment: PlatformAdminBootstrapEnvironment;
       email: string;
       password: string;
       firstName: string;
@@ -413,6 +430,7 @@ describe('Stage 20B initial Platform Administrator bootstrap (integration)', () 
     }> = {},
   ) {
     return {
+      environment: 'staging' as const,
       email: `${TEST_MARKER}-${suffix}@example.test`,
       password,
       firstName: 'Initial',

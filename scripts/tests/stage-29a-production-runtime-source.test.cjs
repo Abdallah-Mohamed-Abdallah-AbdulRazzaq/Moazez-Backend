@@ -24,9 +24,12 @@ const STAGE_28_TEST_PATH =
   'scripts/tests/stage-28a-production-migration-job-source.test.cjs';
 const STAGE_30C1_TEST_PATH =
   'scripts/tests/stage-30c1-production-frontend-edge-source.test.cjs';
+const PT2_TEST_PATH =
+  'scripts/tests/pt-2-backend-firebase-production-bootstrap.test.cjs';
 const HISTORICAL_RUNTIME_POLICY_TEST_PATH =
   'scripts/tests/verify-runtime-policy.test.cjs';
 const PLAN_CI_PATH = 'scripts/ci/plan-ci.cjs';
+const PLAN_CI_TEST_PATH = 'scripts/tests/plan-ci.test.cjs';
 const README_PATH = 'infra/gcp/backend-runtime/README.md';
 
 const ROOT_FILES = Object.freeze([
@@ -56,6 +59,19 @@ const AUTHORIZED_STAGE29A_PATHS = Object.freeze(
     TEST_PATH,
   ].sort(),
 );
+const PT2_STAGE29_DELEGATED_PATHS = Object.freeze(
+  [
+    `${STAGING_ROOT}/main.tf`,
+    `${PRODUCTION_ROOT}/main.tf`,
+    `${PRODUCTION_ROOT}/variables.tf`,
+    `${MODULE_ROOT}/main.tf`,
+    `${MODULE_ROOT}/variables.tf`,
+    PLAN_CI_PATH,
+    PLAN_CI_TEST_PATH,
+    PT2_TEST_PATH,
+    TEST_PATH,
+  ].sort(),
+);
 
 const STAGING_IMAGE_PATTERN =
   '^me-central2-docker[.]pkg[.]dev/moazez-nonprod-91001421934/moazez-staging-containers/moazez-backend@sha256:[a-f0-9]{64}$';
@@ -64,11 +80,17 @@ const PRODUCTION_IMAGE_PATTERN =
 const API_URL_PATTERN =
   '^https://[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?([.][A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*([:](6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}|[1-9][0-9]{0,3}))?/?$';
 const KEY_ID_PATTERN = '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$';
+const FCM_DELIVERY_MODES = Object.freeze([
+  'disabled',
+  'dry_run',
+  'send_enabled',
+]);
 const STAGE_27_DIGEST =
   'aa1f4099f35cd5d4e6961e925f32aa52fb604e832f230d6c02d5051c8f6fdb41';
 
 const ROOT_VARIABLES = Object.freeze([
   'image_reference',
+  'fcm_delivery_mode',
   'queue_redis_host',
   'queue_redis_port',
   'queue_redis_ca_pem',
@@ -80,7 +102,12 @@ const ROOT_VARIABLES = Object.freeze([
   'app_device_token_encryption_active_key_id',
 ]);
 
-const MODULE_VARIABLES = Object.freeze(['environment', ...ROOT_VARIABLES]);
+const MODULE_VARIABLES = Object.freeze([
+  'environment',
+  'fcm_delivery_mode',
+  'image_reference',
+  ...ROOT_VARIABLES.slice(2),
+]);
 
 const PRODUCTION_CONTRACT = Object.freeze({
   project_id: 'moazez-production',
@@ -476,17 +503,40 @@ function assertStage29CandidateScope(candidateFiles) {
 function assertCommittedStage29CandidateScope(
   candidateFiles = candidateFilesFromCommittedRange(),
 ) {
-  const stage29ProductionSourceActive = candidateFiles.some((file) =>
+  const normalized = [
+    ...new Set(candidateFiles.map((file) => file.replace(/\\/gu, '/'))),
+  ].sort();
+  const pt2DelegationActive =
+    normalized.includes(TEST_PATH) && normalized.includes(PT2_TEST_PATH);
+  if (pt2DelegationActive) {
+    const stage29OwnedPaths = normalized.filter(
+      (file) =>
+        file.startsWith('infra/gcp/backend-runtime/') ||
+        file === PLAN_CI_PATH ||
+        file === PLAN_CI_TEST_PATH ||
+        file === TEST_PATH ||
+        file === PT2_TEST_PATH,
+    );
+    assert.deepEqual(
+      stage29OwnedPaths.filter(
+        (file) => !PT2_STAGE29_DELEGATED_PATHS.includes(file),
+      ),
+      [],
+    );
+    return false;
+  }
+
+  const stage29ProductionSourceActive = normalized.some((file) =>
     file.startsWith(`${PRODUCTION_ROOT}/`),
   );
   const stage30HistoricalRemediationActive =
     !stage29ProductionSourceActive &&
-    candidateFiles.includes(TEST_PATH) &&
-    candidateFiles.includes(STAGE_30C1_TEST_PATH);
+    normalized.includes(TEST_PATH) &&
+    normalized.includes(STAGE_30C1_TEST_PATH);
   return assertStage29CandidateScope(
     stage30HistoricalRemediationActive
-      ? candidateFiles.filter((file) => file !== TEST_PATH)
-      : candidateFiles,
+      ? normalized.filter((file) => file !== TEST_PATH)
+      : normalized,
   );
 }
 
@@ -537,6 +587,7 @@ test('Production root contains one shared-module caller and no direct resource o
   assert.deepEqual(blockAssignmentExpressions(module), {
     source: '"../../../modules/runtime-environment"',
     environment: '"production"',
+    fcm_delivery_mode: 'var.fcm_delivery_mode',
     image_reference: 'var.image_reference',
     queue_redis_host: 'var.queue_redis_host',
     queue_redis_port: 'var.queue_redis_port',
@@ -553,7 +604,7 @@ test('Production root contains one shared-module caller and no direct resource o
   assert.doesNotMatch(main, /https:\/\//u);
 });
 
-test('Production root requires exactly ten release and runtime variables with no defaults', () => {
+test('Production root requires exactly eleven release and runtime variables with no defaults', () => {
   const variables = normalizedHclSource(`${PRODUCTION_ROOT}/variables.tf`);
   assert.deepEqual(variableNames(variables), ROOT_VARIABLES);
   for (const name of ROOT_VARIABLES) {
@@ -565,6 +616,23 @@ test('Production root requires exactly ten release and runtime variables with no
   }
   for (const name of ['queue_redis_ca_pem', 'realtime_redis_ca_pem']) {
     assert.equal(assignmentExpression(variableBlock(variables, name), 'sensitive'), 'true');
+  }
+});
+
+test('Production FCM delivery mode is required and accepts exactly the governed selector values', () => {
+  const variables = normalizedHclSource(`${PRODUCTION_ROOT}/variables.tf`);
+  const deliveryMode = assertRequiredVariable(
+    variables,
+    'fcm_delivery_mode',
+    'string',
+  );
+  assert.match(
+    deliveryMode.replace(/\s+/gu, ''),
+    /condition=contains\(\["disabled","dry_run","send_enabled"\],var[.]fcm_delivery_mode\)/u,
+  );
+  assert.doesNotMatch(deliveryMode, /^\s*default\s*=/mu);
+  for (const rejected of ['', 'enabled', 'send', 'DRY_RUN', 'production']) {
+    assert.equal(FCM_DELIVERY_MODES.includes(rejected), false);
   }
 });
 
@@ -644,6 +712,15 @@ test('Shared module exposes only the closed selector and approved dynamic inputs
   for (const candidate of ['development', 'qa', 'prod', '', 'STAGING']) {
     assert.equal(['staging', 'production'].includes(candidate), false);
   }
+  const deliveryMode = assertRequiredVariable(
+    variables,
+    'fcm_delivery_mode',
+    'string',
+  );
+  assert.match(
+    deliveryMode.replace(/\s+/gu, ''),
+    /condition=contains\(\["disabled","dry_run","send_enabled"\],var[.]fcm_delivery_mode\)/u,
+  );
   assert.deepEqual(validationPatterns(variableBlock(variables, 'image_reference')), [
     STAGING_IMAGE_PATTERN,
     PRODUCTION_IMAGE_PATTERN,
@@ -661,6 +738,41 @@ test('Closed environment map preserves the exact governed Staging infrastructure
   const main = normalizedHclSource(`${MODULE_ROOT}/main.tf`);
   const staging = environmentContractBlock(main, 'staging');
   assertContract(staging, STAGING_CONTRACT);
+});
+
+test('FCM delivery selector derives the exact disabled, dry-run, and send-enabled matrix', () => {
+  const main = normalizedHclSource(`${MODULE_ROOT}/main.tf`);
+  const contracts = extractBlock(
+    main,
+    /^\s*fcm_delivery_contracts\s*=\s*\{/mu,
+    'FCM delivery contracts',
+  );
+  assert.deepEqual(
+    blockAssignmentExpressions(
+      extractBlock(contracts, /^\s*disabled\s*=\s*\{/mu, 'disabled FCM mode'),
+    ),
+    { enabled: '"false"', dry_run: '"true"' },
+  );
+  assert.deepEqual(
+    blockAssignmentExpressions(
+      extractBlock(contracts, /^\s*dry_run\s*=\s*\{/mu, 'dry-run FCM mode'),
+    ),
+    { enabled: '"true"', dry_run: '"true"' },
+  );
+  assert.deepEqual(
+    blockAssignmentExpressions(
+      extractBlock(
+        contracts,
+        /^\s*send_enabled\s*=\s*\{/mu,
+        'send-enabled FCM mode',
+      ),
+    ),
+    { enabled: '"true"', dry_run: '"false"' },
+  );
+  assert.equal(
+    assignmentExpression(main, 'selected_fcm_delivery_contract'),
+    'local.fcm_delivery_contracts[var.fcm_delivery_mode]',
+  );
 });
 
 test('Production and Staging secret maps are exact and every version is numeric one', () => {
@@ -838,8 +950,9 @@ test('Common and role-specific application environment contracts remain exact', 
       'var.settings_email_secret_encryption_active_key_id',
     APP_DEVICE_TOKEN_ENCRYPTION_ACTIVE_KEY_ID:
       'var.app_device_token_encryption_active_key_id',
-    FCM_ENABLED: '"false"',
-    FCM_DRY_RUN: '"true"',
+    FIREBASE_CREDENTIAL_MODE: '"application_default"',
+    FCM_ENABLED: 'local.selected_fcm_delivery_contract.enabled',
+    FCM_DRY_RUN: 'local.selected_fcm_delivery_contract.dry_run',
     QUEUE_REDIS_URL: 'local.queue_redis_url',
     REALTIME_REDIS_URL: 'local.realtime_redis_url',
     STORAGE_PROVIDER: '"gcs"',
@@ -863,6 +976,13 @@ test('Common and role-specific application environment contracts remain exact', 
     APP_PROBE_PORT: '"9090"',
     QUEUE_REDIS_URL: 'local.queue_redis_url',
   });
+  for (const [name, environment] of [
+    ['api', api],
+    ['media', media],
+    ['maintenance', maintenance],
+  ]) {
+    assert.doesNotMatch(environment, /\b(?:FIREBASE_|FCM_)/u, name);
+  }
   assert.equal((main.match(/GCS_SIGNING_SERVICE_ACCOUNT\s*=/gu) ?? []).length, 1);
 });
 
@@ -970,6 +1090,7 @@ test('Staging caller preserves its existing effective non-secret and dynamic inp
   assert.deepEqual(blockAssignmentExpressions(module), {
     source: '"../../../modules/runtime-environment"',
     environment: '"staging"',
+    fcm_delivery_mode: '"dry_run"',
     image_reference: 'var.image_reference',
     queue_redis_host: 'var.queue_redis_host',
     queue_redis_port: 'var.queue_redis_port',
@@ -1055,7 +1176,7 @@ test('Committed Stage 29A candidate scope contains only authorized paths when ac
   assertCommittedStage29CandidateScope();
 });
 
-test('Committed scope preserves Stage 29 test activation and delegates only Stage 30C1 remediation', () => {
+test('Committed scope preserves Stage 29 activation and delegates only bounded Stage 30C1 or PT-2 evolution', () => {
   assert.equal(assertCommittedStage29CandidateScope([TEST_PATH]), true);
   assert.throws(
     () =>
@@ -1068,6 +1189,26 @@ test('Committed scope preserves Stage 29 test activation and delegates only Stag
   assert.equal(
     assertCommittedStage29CandidateScope([TEST_PATH, STAGE_30C1_TEST_PATH]),
     false,
+  );
+  assert.equal(
+    assertCommittedStage29CandidateScope(PT2_STAGE29_DELEGATED_PATHS),
+    false,
+  );
+  assert.throws(
+    () =>
+      assertCommittedStage29CandidateScope([
+        ...PT2_STAGE29_DELEGATED_PATHS,
+        `${PRODUCTION_MIGRATION_ROOT}/main.tf`,
+      ]),
+    { code: 'ERR_ASSERTION' },
+  );
+  assert.throws(
+    () =>
+      assertStage29CandidateScope([
+        `${PRODUCTION_ROOT}/main.tf`,
+        PT2_TEST_PATH,
+      ]),
+    { code: 'ERR_ASSERTION' },
   );
   for (const candidate of [
     [`${PRODUCTION_ROOT}/main.tf`, STAGE_30C1_TEST_PATH],
@@ -1091,6 +1232,7 @@ test('Committed scope preserves Stage 29 test activation and delegates only Stag
 test('Candidate scope ignores unrelated PRs and rejects every mixed Stage 29A candidate', () => {
   assert.equal(assertStage29CandidateScope(['src/example-future-change.ts']), false);
   assert.equal(assertStage29CandidateScope([STAGE_30C1_TEST_PATH]), false);
+  assert.equal(assertStage29CandidateScope([PT2_TEST_PATH]), false);
   assert.equal(
     assertCommittedStage29CandidateScope([TEST_PATH, STAGE_30C1_TEST_PATH]),
     false,
