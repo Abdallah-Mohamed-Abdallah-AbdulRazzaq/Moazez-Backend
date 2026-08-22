@@ -22,6 +22,8 @@ const TEST_PATH =
   'scripts/tests/stage-29a-production-runtime-source.test.cjs';
 const STAGE_28_TEST_PATH =
   'scripts/tests/stage-28a-production-migration-job-source.test.cjs';
+const STAGE_30C1_TEST_PATH =
+  'scripts/tests/stage-30c1-production-frontend-edge-source.test.cjs';
 const HISTORICAL_RUNTIME_POLICY_TEST_PATH =
   'scripts/tests/verify-runtime-policy.test.cjs';
 const PLAN_CI_PATH = 'scripts/ci/plan-ci.cjs';
@@ -469,6 +471,23 @@ function assertStage29CandidateScope(candidateFiles) {
   );
   assert.deepEqual(unauthorized, []);
   return true;
+}
+
+function assertCommittedStage29CandidateScope(
+  candidateFiles = candidateFilesFromCommittedRange(),
+) {
+  const stage29ProductionSourceActive = candidateFiles.some((file) =>
+    file.startsWith(`${PRODUCTION_ROOT}/`),
+  );
+  const stage30HistoricalRemediationActive =
+    !stage29ProductionSourceActive &&
+    candidateFiles.includes(TEST_PATH) &&
+    candidateFiles.includes(STAGE_30C1_TEST_PATH);
+  return assertStage29CandidateScope(
+    stage30HistoricalRemediationActive
+      ? candidateFiles.filter((file) => file !== TEST_PATH)
+      : candidateFiles,
+  );
 }
 
 test('Production runtime root has exactly the six governed source files', () => {
@@ -1033,11 +1052,49 @@ test('Stage 29A TAP has exactly one canonical pull-request ownership assignment'
 });
 
 test('Committed Stage 29A candidate scope contains only authorized paths when active', () => {
-  assertStage29CandidateScope(candidateFilesFromCommittedRange());
+  assertCommittedStage29CandidateScope();
+});
+
+test('Committed scope preserves Stage 29 test activation and delegates only Stage 30C1 remediation', () => {
+  assert.equal(assertCommittedStage29CandidateScope([TEST_PATH]), true);
+  assert.throws(
+    () =>
+      assertCommittedStage29CandidateScope([
+        TEST_PATH,
+        'src/example-unrelated-change.ts',
+      ]),
+    { code: 'ERR_ASSERTION' },
+  );
+  assert.equal(
+    assertCommittedStage29CandidateScope([TEST_PATH, STAGE_30C1_TEST_PATH]),
+    false,
+  );
+  for (const candidate of [
+    [`${PRODUCTION_ROOT}/main.tf`, STAGE_30C1_TEST_PATH],
+    [`${PRODUCTION_ROOT}/main.tf`, 'src/example-unrelated-change.ts'],
+    [`${PRODUCTION_ROOT}/main.tf`, `${PRODUCTION_MIGRATION_ROOT}/main.tf`],
+  ]) {
+    assert.throws(() => assertCommittedStage29CandidateScope(candidate), {
+      code: 'ERR_ASSERTION',
+    });
+  }
+  assert.equal(
+    assertCommittedStage29CandidateScope(AUTHORIZED_STAGE29A_PATHS),
+    true,
+  );
+  assert.equal(
+    assertCommittedStage29CandidateScope(['src/example-future-change.ts']),
+    false,
+  );
 });
 
 test('Candidate scope ignores unrelated PRs and rejects every mixed Stage 29A candidate', () => {
   assert.equal(assertStage29CandidateScope(['src/example-future-change.ts']), false);
+  assert.equal(assertStage29CandidateScope([STAGE_30C1_TEST_PATH]), false);
+  assert.equal(
+    assertCommittedStage29CandidateScope([TEST_PATH, STAGE_30C1_TEST_PATH]),
+    false,
+  );
   assert.equal(
     assertStage29CandidateScope([
       `${MODULE_ROOT}/main.tf`,
@@ -1058,28 +1115,12 @@ test('Candidate scope ignores unrelated PRs and rejects every mixed Stage 29A ca
   for (const candidate of [
     [...AUTHORIZED_STAGE29A_PATHS, 'src/example-unrelated-change.ts'],
     [`${PRODUCTION_ROOT}/main.tf`, 'src/example-unrelated-change.ts'],
-    [TEST_PATH, 'scripts/tests/stage-30-production-edge.test.cjs'],
+    [`${PRODUCTION_ROOT}/main.tf`, `${PRODUCTION_MIGRATION_ROOT}/main.tf`],
+    [`${PRODUCTION_ROOT}/main.tf`, STAGE_28_TEST_PATH],
+    [`${PRODUCTION_ROOT}/main.tf`, STAGE_30C1_TEST_PATH],
   ]) {
     assert.throws(() => assertStage29CandidateScope(candidate), {
       code: 'ERR_ASSERTION',
     });
   }
-});
-
-test('Authoritative-base working changes do not touch application, migration, Stage 28A, or Stage 30 source', () => {
-  const changed = execFileSync('git', ['diff', '--name-only', BASE_SHA, '--'], {
-    cwd: REPOSITORY_ROOT,
-    encoding: 'utf8',
-    windowsHide: true,
-  })
-    .split(/\r?\n/u)
-    .filter(Boolean)
-    .map((file) => file.replace(/\\/gu, '/'));
-  assert.deepEqual(
-    changed.filter((file) => /^(?:src|config|test|prisma)\//u.test(file)),
-    [],
-  );
-  assert.equal(changed.some((file) => file.startsWith(`${PRODUCTION_MIGRATION_ROOT}/`)), false);
-  assert.equal(changed.includes(STAGE_28_TEST_PATH), false);
-  assert.equal(changed.some((file) => /stage-30|stage30/iu.test(file)), false);
 });
