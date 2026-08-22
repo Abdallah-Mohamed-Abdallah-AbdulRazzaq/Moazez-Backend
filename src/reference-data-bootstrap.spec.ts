@@ -13,92 +13,156 @@ import {
   runReferenceDataBootstrapCli,
 } from './reference-data-bootstrap';
 
-const VALID_ARGUMENTS = ['--execute', '--environment=staging'] as const;
+const VALID_STAGING_ARGUMENTS = [
+  '--execute',
+  '--environment=staging',
+] as const;
+const VALID_PRODUCTION_ARGUMENTS = [
+  '--execute',
+  '--environment=production',
+] as const;
 const SYNTHETIC_SECRET = randomBytes(24).toString('base64url');
 const SYNTHETIC_DATABASE_URL = `postgresql://moazez_api:${SYNTHETIC_SECRET}@127.0.0.1:5432/moazez?sslmode=require`;
 
 describe('authorization reference-data bootstrap operator CLI', () => {
-  it('accepts only the explicit staging execution contract', () => {
-    expect(parseReferenceDataBootstrapArguments(VALID_ARGUMENTS)).toEqual({
+  it('accepts the exact governed staging and production contracts', () => {
+    expect(
+      parseReferenceDataBootstrapArguments(VALID_STAGING_ARGUMENTS),
+    ).toEqual({
       execute: true,
       environment: 'staging',
     });
+    expect(
+      parseReferenceDataBootstrapArguments(VALID_PRODUCTION_ARGUMENTS),
+    ).toEqual({
+      execute: true,
+      environment: 'production',
+    });
+  });
 
-    const invalidArgumentSets: readonly (readonly string[])[] = [
-      [],
-      ['--environment=staging'],
-      ['--execute'],
-      ['--execute', '--environment=production'],
-      [...VALID_ARGUMENTS, '--execute'],
-      [...VALID_ARGUMENTS, '--environment=staging'],
-      [...VALID_ARGUMENTS, '--unknown=value'],
-      [...VALID_ARGUMENTS, 'positional-value'],
-      ['--execute=true', '--environment=staging'],
-    ];
-
-    for (const invalidArguments of invalidArgumentSets) {
+  it.each(['qa', 'prod'] as const)(
+    'rejects the well-formed unsupported environment %s',
+    (environment) => {
       expect(() =>
-        parseReferenceDataBootstrapArguments(invalidArguments),
-      ).toThrow();
-    }
-  });
+        parseReferenceDataBootstrapArguments([
+          '--execute',
+          '--environment=' + environment,
+        ]),
+      ).toThrow('UNSUPPORTED_ENVIRONMENT');
+    },
+  );
 
-  it('rejects missing execution confirmation before environment or database startup', async () => {
-    const assertEnvironment = jest.fn();
-    const createApplicationContext = jest.fn();
-    const outputs: string[] = [];
+  it.each([
+    {
+      name: 'missing execution confirmation',
+      argv: ['--environment=staging'],
+      reason: 'EXECUTION_CONFIRMATION_REQUIRED',
+    },
+    {
+      name: 'missing environment',
+      argv: ['--execute'],
+      reason: 'ARGUMENTS_INVALID',
+    },
+    {
+      name: 'duplicate execution confirmation',
+      argv: [...VALID_STAGING_ARGUMENTS, '--execute'],
+      reason: 'ARGUMENTS_INVALID',
+    },
+    {
+      name: 'duplicate environment',
+      argv: [...VALID_STAGING_ARGUMENTS, '--environment=production'],
+      reason: 'ARGUMENTS_INVALID',
+    },
+    {
+      name: 'unknown flag',
+      argv: [...VALID_STAGING_ARGUMENTS, '--unknown=value'],
+      reason: 'ARGUMENTS_INVALID',
+    },
+    {
+      name: 'positional argument',
+      argv: [...VALID_STAGING_ARGUMENTS, 'positional-value'],
+      reason: 'ARGUMENTS_INVALID',
+    },
+    {
+      name: 'malformed execution confirmation',
+      argv: ['--execute=true', '--environment=staging'],
+      reason: 'ARGUMENTS_INVALID',
+    },
+    {
+      name: 'malformed environment argument',
+      argv: ['--execute', '--environment'],
+      reason: 'ARGUMENTS_INVALID',
+    },
+    {
+      name: 'empty environment',
+      argv: ['--execute', '--environment='],
+      reason: 'ARGUMENTS_INVALID',
+    },
+    {
+      name: 'environment containing a carriage return',
+      argv: ['--execute', '--environment=staging\rproduction'],
+      reason: 'ARGUMENTS_INVALID',
+    },
+    {
+      name: 'environment containing a line feed',
+      argv: ['--execute', '--environment=staging\nproduction'],
+      reason: 'ARGUMENTS_INVALID',
+    },
+    {
+      name: 'environment containing NUL',
+      argv: ['--execute', '--environment=staging\0production'],
+      reason: 'ARGUMENTS_INVALID',
+    },
+    {
+      name: 'unsupported qa environment',
+      argv: ['--execute', '--environment=qa'],
+      reason: 'UNSUPPORTED_ENVIRONMENT',
+    },
+    {
+      name: 'unsupported prod alias',
+      argv: ['--execute', '--environment=prod'],
+      reason: 'UNSUPPORTED_ENVIRONMENT',
+    },
+  ] as const)(
+    'rejects $name before environment or database startup',
+    async ({ argv, reason }) => {
+      const assertEnvironment = jest.fn();
+      const createApplicationContext = jest.fn();
+      const outputs: string[] = [];
 
-    const exitCode = await runReferenceDataBootstrapCli(
-      ['--environment=staging'],
-      {
+      const exitCode = await runReferenceDataBootstrapCli(argv, {
         assertEnvironment,
         createApplicationContext,
         writeOutput: (output) => outputs.push(output),
-      },
-    );
+      });
 
-    expect(exitCode).toBe(2);
-    expect(assertEnvironment).not.toHaveBeenCalled();
-    expect(createApplicationContext).not.toHaveBeenCalled();
-    expect(outputs).toEqual([
-      'REFERENCE_BOOTSTRAP_STATUS=BLOCKED\nREASON=EXECUTION_CONFIRMATION_REQUIRED',
-    ]);
-  });
-
-  it('rejects the wrong requested environment before database startup', async () => {
-    const assertEnvironment = jest.fn();
-    const createApplicationContext = jest.fn();
-    const outputs: string[] = [];
-
-    const exitCode = await runReferenceDataBootstrapCli(
-      ['--execute', '--environment=production'],
-      {
-        assertEnvironment,
-        createApplicationContext,
-        writeOutput: (output) => outputs.push(output),
-      },
-    );
-
-    expect(exitCode).toBe(2);
-    expect(assertEnvironment).not.toHaveBeenCalled();
-    expect(createApplicationContext).not.toHaveBeenCalled();
-    expect(outputs).toEqual([
-      'REFERENCE_BOOTSTRAP_STATUS=BLOCKED\nREASON=UNSUPPORTED_ENVIRONMENT',
-    ]);
-  });
+      expect(exitCode).toBe(2);
+      expect(assertEnvironment).not.toHaveBeenCalled();
+      expect(createApplicationContext).not.toHaveBeenCalled();
+      expect(outputs).toEqual([
+        [
+          'REFERENCE_BOOTSTRAP_STATUS=BLOCKED',
+          'REASON=' + reason,
+        ].join('\n'),
+      ]);
+    },
+  );
 
   it('requires the governed staging runtime identity before database startup', async () => {
     const createApplicationContext = jest.fn();
     const outputs: string[] = [];
 
-    const exitCode = await runReferenceDataBootstrapCli(VALID_ARGUMENTS, {
-      rawEnvironment: {
-        NODE_ENV: 'staging',
-        DATABASE_URL: SYNTHETIC_DATABASE_URL,
+    const exitCode = await runReferenceDataBootstrapCli(
+      VALID_STAGING_ARGUMENTS,
+      {
+        rawEnvironment: {
+          NODE_ENV: 'staging',
+          DATABASE_URL: SYNTHETIC_DATABASE_URL,
+        },
+        createApplicationContext,
+        writeOutput: (output) => outputs.push(output),
       },
-      createApplicationContext,
-      writeOutput: (output) => outputs.push(output),
-    });
+    );
 
     expect(exitCode).toBe(2);
     expect(createApplicationContext).not.toHaveBeenCalled();
@@ -109,82 +173,121 @@ describe('authorization reference-data bootstrap operator CLI', () => {
     expect(outputs[0]).not.toContain('DATABASE_URL');
   });
 
-  it('fails closed on unknown or duplicate arguments before environment validation', async () => {
-    for (const argv of [
-      [...VALID_ARGUMENTS, '--unknown=value'],
-      [...VALID_ARGUMENTS, '--execute'],
-      [...VALID_ARGUMENTS, '--environment=staging'],
-    ]) {
-      const assertEnvironment = jest.fn();
-      const createApplicationContext = jest.fn();
+  it.each([
+    {
+      name: 'Staging',
+      environment: 'staging',
+      argv: VALID_STAGING_ARGUMENTS,
+    },
+    {
+      name: 'Production',
+      environment: 'production',
+      argv: VALID_PRODUCTION_ARGUMENTS,
+    },
+  ] as const)(
+    'runs the governed $name guard before context startup and emits stable PASS evidence last',
+    async ({ environment, argv }) => {
+      const calls: string[] = [];
       const outputs: string[] = [];
+      const rawEnvironment = { NODE_ENV: environment };
+      const assertEnvironment = jest.fn(
+        (
+          requestedEnvironment: string,
+          receivedRawEnvironment: NodeJS.ProcessEnv,
+        ) => {
+          calls.push('environment');
+          expect(requestedEnvironment).toBe(environment);
+          expect(receivedRawEnvironment).toBe(rawEnvironment);
+          return requestedEnvironment;
+        },
+      );
+      const context = applicationContext(
+        {
+          execute: () => {
+            calls.push('execute');
+            return Promise.resolve(successfulResult());
+          },
+        },
+        () => {
+          calls.push('close');
+          return Promise.resolve();
+        },
+      );
 
-      await expect(
-        runReferenceDataBootstrapCli(argv, {
-          assertEnvironment,
-          createApplicationContext,
-          writeOutput: (output) => outputs.push(output),
-        }),
-      ).resolves.toBe(2);
+      const exitCode = await runReferenceDataBootstrapCli(argv, {
+        rawEnvironment,
+        assertEnvironment,
+        createApplicationContext: () => {
+          calls.push('context');
+          return Promise.resolve(context);
+        },
+        writeOutput: (output) => {
+          calls.push('output');
+          outputs.push(output);
+        },
+      });
 
-      expect(assertEnvironment).not.toHaveBeenCalled();
-      expect(createApplicationContext).not.toHaveBeenCalled();
-      expect(outputs).toEqual([
-        'REFERENCE_BOOTSTRAP_STATUS=BLOCKED\nREASON=ARGUMENTS_INVALID',
+      expect(exitCode).toBe(0);
+      expect(assertEnvironment).toHaveBeenCalledWith(
+        environment,
+        rawEnvironment,
+      );
+      expect(calls).toEqual([
+        'environment',
+        'context',
+        'execute',
+        'close',
+        'output',
       ]);
-    }
-  });
+      expect(outputs).toEqual([
+        [
+          'REFERENCE_BOOTSTRAP_STATUS=PASS',
+          'PERMISSIONS_READY=YES',
+          'SYSTEM_ROLES_READY=YES',
+          'PLATFORM_SUPER_ADMIN_READY=YES',
+          'PERMISSION_COUNT=236',
+          'SYSTEM_ROLE_COUNT=7',
+          'PLATFORM_SUPER_ADMIN_PERMISSION_COUNT=236',
+          'USER_MUTATION=NO',
+        ].join('\n'),
+      ]);
+    },
+  );
 
-  it('emits stable PASS evidence only after the application context closes', async () => {
+  it('blocks a Production environment mismatch before application context startup', async () => {
     const calls: string[] = [];
     const outputs: string[] = [];
-    const context = applicationContext(
+    const rawEnvironment = { NODE_ENV: 'staging' };
+    const execute = jest.fn(() => Promise.resolve(successfulResult()));
+    const createApplicationContext = jest.fn(() =>
+      Promise.resolve(applicationContext({ execute })),
+    );
+    const assertEnvironment = jest.fn((requestedEnvironment: string) => {
+      calls.push('environment');
+      expect(requestedEnvironment).toBe('production');
+      throw new Error('synthetic environment mismatch');
+    });
+
+    const exitCode = await runReferenceDataBootstrapCli(
+      VALID_PRODUCTION_ARGUMENTS,
       {
-        execute: () => {
-          calls.push('execute');
-          return Promise.resolve(successfulResult());
+        rawEnvironment,
+        assertEnvironment,
+        createApplicationContext,
+        writeOutput: (output) => {
+          calls.push('output');
+          outputs.push(output);
         },
-      },
-      () => {
-        calls.push('close');
-        return Promise.resolve();
       },
     );
 
-    const exitCode = await runReferenceDataBootstrapCli(VALID_ARGUMENTS, {
-      assertEnvironment: () => {
-        calls.push('environment');
-        return 'staging';
-      },
-      createApplicationContext: () => {
-        calls.push('context');
-        return Promise.resolve(context);
-      },
-      writeOutput: (output) => {
-        calls.push('output');
-        outputs.push(output);
-      },
-    });
-
-    expect(exitCode).toBe(0);
-    expect(calls).toEqual([
-      'environment',
-      'context',
-      'execute',
-      'close',
-      'output',
-    ]);
+    expect(exitCode).toBe(2);
+    expect(assertEnvironment).toHaveBeenCalledWith('production', rawEnvironment);
+    expect(createApplicationContext).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+    expect(calls).toEqual(['environment', 'output']);
     expect(outputs).toEqual([
-      [
-        'REFERENCE_BOOTSTRAP_STATUS=PASS',
-        'PERMISSIONS_READY=YES',
-        'SYSTEM_ROLES_READY=YES',
-        'PLATFORM_SUPER_ADMIN_READY=YES',
-        'PERMISSION_COUNT=236',
-        'SYSTEM_ROLE_COUNT=7',
-        'PLATFORM_SUPER_ADMIN_PERMISSION_COUNT=236',
-        'USER_MUTATION=NO',
-      ].join('\n'),
+      'REFERENCE_BOOTSTRAP_STATUS=BLOCKED\nREASON=ENVIRONMENT_MISMATCH',
     ]);
   });
 
@@ -201,11 +304,14 @@ describe('authorization reference-data bootstrap operator CLI', () => {
       close,
     );
 
-    const exitCode = await runReferenceDataBootstrapCli(VALID_ARGUMENTS, {
-      assertEnvironment: () => 'staging',
-      createApplicationContext: () => Promise.resolve(context),
-      writeOutput: (output) => outputs.push(output),
-    });
+    const exitCode = await runReferenceDataBootstrapCli(
+      VALID_STAGING_ARGUMENTS,
+      {
+        assertEnvironment: () => 'staging',
+        createApplicationContext: () => Promise.resolve(context),
+        writeOutput: (output) => outputs.push(output),
+      },
+    );
 
     expect(exitCode).toBe(2);
     expect(close).toHaveBeenCalledTimes(1);
@@ -228,11 +334,14 @@ describe('authorization reference-data bootstrap operator CLI', () => {
       ),
     ]) {
       const outputs: string[] = [];
-      const exitCode = await runReferenceDataBootstrapCli(VALID_ARGUMENTS, {
-        assertEnvironment: () => 'staging',
-        createApplicationContext: () => Promise.resolve(context),
-        writeOutput: (output) => outputs.push(output),
-      });
+      const exitCode = await runReferenceDataBootstrapCli(
+        VALID_STAGING_ARGUMENTS,
+        {
+          assertEnvironment: () => 'staging',
+          createApplicationContext: () => Promise.resolve(context),
+          writeOutput: (output) => outputs.push(output),
+        },
+      );
 
       expect(exitCode).toBe(1);
       expect(outputs).toEqual([
@@ -251,7 +360,7 @@ describe('authorization reference-data bootstrap operator CLI', () => {
         '--require',
         'ts-node/register',
         'src/reference-data-bootstrap.ts',
-        ...VALID_ARGUMENTS,
+        ...VALID_STAGING_ARGUMENTS,
       ],
       {
         cwd: repositoryRoot,
