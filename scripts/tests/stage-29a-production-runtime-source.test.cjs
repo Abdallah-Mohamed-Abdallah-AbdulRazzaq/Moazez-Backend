@@ -476,13 +476,17 @@ function assertStage29CandidateScope(candidateFiles) {
 function assertCommittedStage29CandidateScope(
   candidateFiles = candidateFilesFromCommittedRange(),
 ) {
-  const stage29SourceActive = candidateFiles.some((file) =>
+  const stage29ProductionSourceActive = candidateFiles.some((file) =>
     file.startsWith(`${PRODUCTION_ROOT}/`),
   );
+  const stage30HistoricalRemediationActive =
+    !stage29ProductionSourceActive &&
+    candidateFiles.includes(TEST_PATH) &&
+    candidateFiles.includes(STAGE_30C1_TEST_PATH);
   return assertStage29CandidateScope(
-    stage29SourceActive
-      ? candidateFiles
-      : candidateFiles.filter((file) => file !== TEST_PATH),
+    stage30HistoricalRemediationActive
+      ? candidateFiles.filter((file) => file !== TEST_PATH)
+      : candidateFiles,
   );
 }
 
@@ -1049,6 +1053,39 @@ test('Stage 29A TAP has exactly one canonical pull-request ownership assignment'
 
 test('Committed Stage 29A candidate scope contains only authorized paths when active', () => {
   assertCommittedStage29CandidateScope();
+});
+
+test('Committed scope preserves Stage 29 test activation and delegates only Stage 30C1 remediation', () => {
+  assert.equal(assertCommittedStage29CandidateScope([TEST_PATH]), true);
+  assert.throws(
+    () =>
+      assertCommittedStage29CandidateScope([
+        TEST_PATH,
+        'src/example-unrelated-change.ts',
+      ]),
+    { code: 'ERR_ASSERTION' },
+  );
+  assert.equal(
+    assertCommittedStage29CandidateScope([TEST_PATH, STAGE_30C1_TEST_PATH]),
+    false,
+  );
+  for (const candidate of [
+    [`${PRODUCTION_ROOT}/main.tf`, STAGE_30C1_TEST_PATH],
+    [`${PRODUCTION_ROOT}/main.tf`, 'src/example-unrelated-change.ts'],
+    [`${PRODUCTION_ROOT}/main.tf`, `${PRODUCTION_MIGRATION_ROOT}/main.tf`],
+  ]) {
+    assert.throws(() => assertCommittedStage29CandidateScope(candidate), {
+      code: 'ERR_ASSERTION',
+    });
+  }
+  assert.equal(
+    assertCommittedStage29CandidateScope(AUTHORIZED_STAGE29A_PATHS),
+    true,
+  );
+  assert.equal(
+    assertCommittedStage29CandidateScope(['src/example-future-change.ts']),
+    false,
+  );
 });
 
 test('Candidate scope ignores unrelated PRs and rejects every mixed Stage 29A candidate', () => {
