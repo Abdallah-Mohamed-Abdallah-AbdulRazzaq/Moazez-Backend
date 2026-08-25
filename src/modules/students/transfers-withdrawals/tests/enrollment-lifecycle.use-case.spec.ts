@@ -1,4 +1,8 @@
-import { StudentEnrollmentStatus, StudentStatus, UserType } from '@prisma/client';
+import {
+  StudentEnrollmentStatus,
+  StudentStatus,
+  UserType,
+} from '@prisma/client';
 import {
   createRequestContext,
   runWithRequestContext,
@@ -11,6 +15,7 @@ import {
   StudentEnrollmentPlacementConflictException,
 } from '../../enrollments/domain/enrollment.exceptions';
 import { EnrollmentPlacementService } from '../../enrollments/domain/enrollment-placement.service';
+import { StudentPlacementCapacityPolicyService } from '../../enrollments/domain/student-placement-capacity-policy.service';
 import { EnrollmentsRepository } from '../../enrollments/infrastructure/enrollments.repository';
 import { StudentsRepository } from '../../students/infrastructure/students.repository';
 import { StudentEnrollmentAlreadyWithdrawnException } from '../domain/lifecycle.exceptions';
@@ -55,32 +60,33 @@ describe('students lifecycle transition use cases', () => {
     };
   }
 
-  function buildEnrollmentRecord(overrides?: Partial<{
-    id: string;
-    studentId: string;
-    academicYearId: string;
-    academicYearName: string;
-    classroomId: string;
-    classroomName: string;
-    sectionId: string;
-    sectionName: string;
-    gradeId: string;
-    gradeName: string;
-    termId: string | null;
-    status: StudentEnrollmentStatus;
-    enrolledAt: Date;
-    endedAt: Date | null;
-    exitReason: string | null;
-    createdAt: Date;
-    updatedAt: Date;
-  }>) {
+  function buildEnrollmentRecord(
+    overrides?: Partial<{
+      id: string;
+      studentId: string;
+      academicYearId: string;
+      academicYearName: string;
+      classroomId: string;
+      classroomName: string;
+      sectionId: string;
+      sectionName: string;
+      gradeId: string;
+      gradeName: string;
+      termId: string | null;
+      status: StudentEnrollmentStatus;
+      enrolledAt: Date;
+      endedAt: Date | null;
+      exitReason: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+    }>,
+  ) {
     return {
       id: overrides?.id ?? 'enrollment-1',
       schoolId: 'school-1',
       studentId: overrides?.studentId ?? 'student-1',
       academicYearId: overrides?.academicYearId ?? 'year-1',
-      termId:
-        overrides?.termId === undefined ? null : overrides.termId,
+      termId: overrides?.termId === undefined ? null : overrides.termId,
       classroomId: overrides?.classroomId ?? 'classroom-1',
       status: overrides?.status ?? StudentEnrollmentStatus.ACTIVE,
       enrolledAt: overrides?.enrolledAt ?? new Date('2026-09-01T00:00:00.000Z'),
@@ -113,17 +119,19 @@ describe('students lifecycle transition use cases', () => {
     };
   }
 
-  function buildPlacementResolution(overrides?: Partial<{
-    academicYearId: string;
-    academicYearName: string;
-    classroomId: string;
-    classroomName: string;
-    sectionId: string;
-    sectionName: string;
-    gradeId: string;
-    gradeName: string;
-    classroomCapacity: number | null;
-  }>) {
+  function buildPlacementResolution(
+    overrides?: Partial<{
+      academicYearId: string;
+      academicYearName: string;
+      classroomId: string;
+      classroomName: string;
+      sectionId: string;
+      sectionName: string;
+      gradeId: string;
+      gradeName: string;
+      classroomCapacity: number | null;
+    }>,
+  ) {
     return {
       student: buildStudentRecord(),
       academicYear: {
@@ -189,7 +197,9 @@ describe('students lifecycle transition use cases', () => {
       findStudentById: jest.fn().mockResolvedValue(buildStudentRecord()),
     } as unknown as StudentsRepository;
     const enrollmentsRepository = {
-      findActiveEnrollmentByStudentId: jest.fn().mockResolvedValue(activeEnrollment),
+      findActiveEnrollmentByStudentId: jest
+        .fn()
+        .mockResolvedValue(activeEnrollment),
       withdrawEnrollment: jest.fn().mockResolvedValue(updatedEnrollment),
     } as unknown as EnrollmentsRepository;
     const authRepository = {
@@ -213,7 +223,9 @@ describe('students lifecycle transition use cases', () => {
       }),
     );
 
-    expect((enrollmentsRepository.withdrawEnrollment as jest.Mock).mock.calls[0][0]).toEqual({
+    expect(
+      (enrollmentsRepository.withdrawEnrollment as jest.Mock).mock.calls[0][0],
+    ).toEqual({
       enrollmentId: 'enrollment-1',
       effectiveDate: new Date('2026-03-20T00:00:00.000Z'),
       exitReason: 'Family relocation',
@@ -228,7 +240,9 @@ describe('students lifecycle transition use cases', () => {
         reason: 'Family relocation',
       }),
     );
-    expect((authRepository.createAuditLog as jest.Mock).mock.calls[0][0]).toMatchObject({
+    expect(
+      (authRepository.createAuditLog as jest.Mock).mock.calls[0][0],
+    ).toMatchObject({
       action: 'students.enrollment.withdraw',
       resourceId: 'enrollment-1',
     });
@@ -283,8 +297,9 @@ describe('students lifecycle transition use cases', () => {
       findStudentById: jest.fn().mockResolvedValue(buildStudentRecord()),
     } as unknown as StudentsRepository;
     const enrollmentsRepository = {
-      findActiveEnrollmentByStudentId: jest.fn().mockResolvedValue(activeEnrollment),
-      countActiveEnrollmentsInPlacement: jest.fn().mockResolvedValue(0),
+      findActiveEnrollmentByStudentId: jest
+        .fn()
+        .mockResolvedValue(activeEnrollment),
       completeEnrollmentAndCreateNext: jest.fn().mockResolvedValue({
         previousEnrollment: completedEnrollment,
         nextEnrollment,
@@ -303,12 +318,16 @@ describe('students lifecycle transition use cases', () => {
     const authRepository = {
       createAuditLog: jest.fn().mockResolvedValue(undefined),
     } as unknown as AuthRepository;
+    const studentPlacementCapacityPolicy = {
+      assertCanPlace: jest.fn().mockResolvedValue(undefined),
+    } as unknown as StudentPlacementCapacityPolicyService;
 
     const useCase = new TransferStudentEnrollmentUseCase(
       enrollmentsRepository,
       studentsRepository,
       placementService,
       authRepository,
+      studentPlacementCapacityPolicy,
     );
 
     const result = await withStudentsScope(() =>
@@ -324,7 +343,8 @@ describe('students lifecycle transition use cases', () => {
     );
 
     expect(
-      (enrollmentsRepository.completeEnrollmentAndCreateNext as jest.Mock).mock.calls[0][0],
+      (enrollmentsRepository.completeEnrollmentAndCreateNext as jest.Mock).mock
+        .calls[0][0],
     ).toMatchObject({
       currentEnrollmentId: 'enrollment-1',
       newEnrollment: {
@@ -332,6 +352,11 @@ describe('students lifecycle transition use cases', () => {
         academicYearId: 'year-1',
         classroomId: 'classroom-2',
       },
+    });
+    expect(studentPlacementCapacityPolicy.assertCanPlace).toHaveBeenCalledWith({
+      academicYearId: 'year-1',
+      classroom: expect.objectContaining({ id: 'classroom-2' }),
+      excludeEnrollmentId: 'enrollment-1',
     });
     expect(result).toEqual(
       expect.objectContaining({
@@ -342,19 +367,24 @@ describe('students lifecycle transition use cases', () => {
         reason: 'Capacity balancing',
       }),
     );
-    expect((authRepository.createAuditLog as jest.Mock).mock.calls[0][0]).toMatchObject({
+    expect(
+      (authRepository.createAuditLog as jest.Mock).mock.calls[0][0],
+    ).toMatchObject({
       action: 'students.enrollment.transfer',
       resourceId: 'enrollment-2',
     });
   });
 
   it('rejects transfer when the destination placement is at capacity', async () => {
+    const activeEnrollment = buildEnrollmentRecord();
     const studentsRepository = {
       findStudentById: jest.fn().mockResolvedValue(buildStudentRecord()),
     } as unknown as StudentsRepository;
     const enrollmentsRepository = {
-      findActiveEnrollmentByStudentId: jest.fn().mockResolvedValue(buildEnrollmentRecord()),
-      countActiveEnrollmentsInPlacement: jest.fn().mockResolvedValue(1),
+      findActiveEnrollmentByStudentId: jest
+        .fn()
+        .mockResolvedValue(activeEnrollment),
+      completeEnrollmentAndCreateNext: jest.fn(),
     } as unknown as EnrollmentsRepository;
     const placementService = {
       resolvePlacement: jest.fn().mockResolvedValue(
@@ -365,12 +395,25 @@ describe('students lifecycle transition use cases', () => {
         }),
       ),
     } as unknown as EnrollmentPlacementService;
+    const authRepository = {
+      createAuditLog: jest.fn(),
+    } as unknown as AuthRepository;
+    const studentPlacementCapacityPolicy = {
+      assertCanPlace: jest.fn().mockRejectedValue(
+        new StudentEnrollmentPlacementConflictException({
+          academicYearId: 'year-1',
+          classroomId: 'classroom-2',
+          capacity: 1,
+        }),
+      ),
+    } as unknown as StudentPlacementCapacityPolicyService;
 
     const useCase = new TransferStudentEnrollmentUseCase(
       enrollmentsRepository,
       studentsRepository,
       placementService,
-      { createAuditLog: jest.fn() } as never,
+      authRepository,
+      studentPlacementCapacityPolicy,
     );
 
     await expect(
@@ -385,6 +428,15 @@ describe('students lifecycle transition use cases', () => {
         }),
       ),
     ).rejects.toBeInstanceOf(StudentEnrollmentPlacementConflictException);
+    expect(studentPlacementCapacityPolicy.assertCanPlace).toHaveBeenCalledWith({
+      academicYearId: 'year-1',
+      classroom: expect.objectContaining({ id: 'classroom-2', capacity: 1 }),
+      excludeEnrollmentId: activeEnrollment.id,
+    });
+    expect(
+      enrollmentsRepository.completeEnrollmentAndCreateNext,
+    ).not.toHaveBeenCalled();
+    expect(authRepository.createAuditLog).not.toHaveBeenCalled();
   });
 
   it('promotes an enrollment successfully', async () => {
@@ -413,8 +465,9 @@ describe('students lifecycle transition use cases', () => {
       findStudentById: jest.fn().mockResolvedValue(buildStudentRecord()),
     } as unknown as StudentsRepository;
     const enrollmentsRepository = {
-      findActiveEnrollmentByStudentId: jest.fn().mockResolvedValue(activeEnrollment),
-      countActiveEnrollmentsInPlacement: jest.fn().mockResolvedValue(0),
+      findActiveEnrollmentByStudentId: jest
+        .fn()
+        .mockResolvedValue(activeEnrollment),
       completeEnrollmentAndCreateNext: jest.fn().mockResolvedValue({
         previousEnrollment: completedEnrollment,
         nextEnrollment,
@@ -437,12 +490,16 @@ describe('students lifecycle transition use cases', () => {
     const authRepository = {
       createAuditLog: jest.fn().mockResolvedValue(undefined),
     } as unknown as AuthRepository;
+    const studentPlacementCapacityPolicy = {
+      assertCanPlace: jest.fn().mockResolvedValue(undefined),
+    } as unknown as StudentPlacementCapacityPolicyService;
 
     const useCase = new PromoteStudentEnrollmentUseCase(
       enrollmentsRepository,
       studentsRepository,
       promotionPlacementService,
       authRepository,
+      studentPlacementCapacityPolicy,
     );
 
     const result = await withStudentsScope(() =>
@@ -463,10 +520,85 @@ describe('students lifecycle transition use cases', () => {
         academicYear: 'Academic Year 2027/2028',
       }),
     );
-    expect((authRepository.createAuditLog as jest.Mock).mock.calls[0][0]).toMatchObject({
+    expect(studentPlacementCapacityPolicy.assertCanPlace).toHaveBeenCalledWith({
+      academicYearId: 'year-2',
+      classroom: expect.objectContaining({ id: 'classroom-3' }),
+      excludeEnrollmentId: activeEnrollment.id,
+    });
+    expect(
+      (authRepository.createAuditLog as jest.Mock).mock.calls[0][0],
+    ).toMatchObject({
       action: 'students.enrollment.promote',
       resourceId: 'enrollment-3',
     });
+  });
+
+  it('rejects promotion when the destination placement is at capacity without mutation', async () => {
+    const activeEnrollment = buildEnrollmentRecord();
+    const studentsRepository = {
+      findStudentById: jest.fn().mockResolvedValue(buildStudentRecord()),
+    } as unknown as StudentsRepository;
+    const enrollmentsRepository = {
+      findActiveEnrollmentByStudentId: jest
+        .fn()
+        .mockResolvedValue(activeEnrollment),
+      completeEnrollmentAndCreateNext: jest.fn(),
+    } as unknown as EnrollmentsRepository;
+    const promotionPlacementService = {
+      resolvePlacement: jest.fn().mockResolvedValue(
+        buildPlacementResolution({
+          academicYearId: 'year-2',
+          academicYearName: 'Academic Year 2027/2028',
+          gradeId: 'grade-2',
+          gradeName: 'Demo Grade 2',
+          sectionId: 'section-3',
+          sectionName: 'Demo Section Grade 2',
+          classroomId: 'classroom-3',
+          classroomName: 'Demo Classroom Grade 2',
+          classroomCapacity: 1,
+        }),
+      ),
+    } as unknown as PromotionPlacementService;
+    const authRepository = {
+      createAuditLog: jest.fn(),
+    } as unknown as AuthRepository;
+    const studentPlacementCapacityPolicy = {
+      assertCanPlace: jest.fn().mockRejectedValue(
+        new StudentEnrollmentPlacementConflictException({
+          academicYearId: 'year-2',
+          classroomId: 'classroom-3',
+          capacity: 1,
+        }),
+      ),
+    } as unknown as StudentPlacementCapacityPolicyService;
+
+    const useCase = new PromoteStudentEnrollmentUseCase(
+      enrollmentsRepository,
+      studentsRepository,
+      promotionPlacementService,
+      authRepository,
+      studentPlacementCapacityPolicy,
+    );
+
+    await expect(
+      withStudentsScope(() =>
+        useCase.execute({
+          studentId: 'student-1',
+          targetAcademicYear: 'Academic Year 2027/2028',
+          effectiveDate: '2026-09-01',
+          notes: 'Auto promotion',
+        }),
+      ),
+    ).rejects.toBeInstanceOf(StudentEnrollmentPlacementConflictException);
+    expect(studentPlacementCapacityPolicy.assertCanPlace).toHaveBeenCalledWith({
+      academicYearId: 'year-2',
+      classroom: expect.objectContaining({ id: 'classroom-3', capacity: 1 }),
+      excludeEnrollmentId: activeEnrollment.id,
+    });
+    expect(
+      enrollmentsRepository.completeEnrollmentAndCreateNext,
+    ).not.toHaveBeenCalled();
+    expect(authRepository.createAuditLog).not.toHaveBeenCalled();
   });
 
   it('rejects promotion into an inactive academic year with the canonical code', async () => {
@@ -474,23 +606,27 @@ describe('students lifecycle transition use cases', () => {
       findStudentById: jest.fn().mockResolvedValue(buildStudentRecord()),
     } as unknown as StudentsRepository;
     const enrollmentsRepository = {
-      findActiveEnrollmentByStudentId: jest.fn().mockResolvedValue(buildEnrollmentRecord()),
+      findActiveEnrollmentByStudentId: jest
+        .fn()
+        .mockResolvedValue(buildEnrollmentRecord()),
     } as unknown as EnrollmentsRepository;
     const promotionPlacementService = {
-      resolvePlacement: jest
-        .fn()
-        .mockRejectedValue(
-          new StudentEnrollmentInactiveYearException({
-            academicYearId: 'year-2',
-          }),
-        ),
+      resolvePlacement: jest.fn().mockRejectedValue(
+        new StudentEnrollmentInactiveYearException({
+          academicYearId: 'year-2',
+        }),
+      ),
     } as unknown as PromotionPlacementService;
+    const studentPlacementCapacityPolicy = {
+      assertCanPlace: jest.fn(),
+    } as unknown as StudentPlacementCapacityPolicyService;
 
     const useCase = new PromoteStudentEnrollmentUseCase(
       enrollmentsRepository,
       studentsRepository,
       promotionPlacementService,
       { createAuditLog: jest.fn() } as never,
+      studentPlacementCapacityPolicy,
     );
 
     await expect(
@@ -503,5 +639,8 @@ describe('students lifecycle transition use cases', () => {
         }),
       ),
     ).rejects.toBeInstanceOf(StudentEnrollmentInactiveYearException);
+    expect(
+      studentPlacementCapacityPolicy.assertCanPlace,
+    ).not.toHaveBeenCalled();
   });
 });

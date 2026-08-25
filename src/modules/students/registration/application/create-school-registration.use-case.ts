@@ -26,6 +26,7 @@ import {
   resolveGuardianRelation,
 } from '../../guardians/domain/guardian.inputs';
 import { StudentEnrollmentInactiveYearException } from '../../enrollments/domain/enrollment.exceptions';
+import { StudentPlacementCapacityPolicyService } from '../../enrollments/domain/student-placement-capacity-policy.service';
 import {
   AcademicYearRecord,
   EnrollmentsRepository,
@@ -77,6 +78,7 @@ export class CreateSchoolRegistrationUseCase {
     private readonly structureRepository: StructureRepository,
     private readonly termsRepository: TermsRepository,
     private readonly studentSeatLimitPolicy: StudentSeatLimitPolicyService,
+    private readonly studentPlacementCapacityPolicy: StudentPlacementCapacityPolicyService,
     private readonly createOrLinkGuardianAccountUseCase: CreateOrLinkGuardianAccountUseCase,
     private readonly createOrLinkStudentAccountUseCase: CreateOrLinkStudentAccountUseCase,
     private readonly authRepository: AuthRepository,
@@ -93,6 +95,10 @@ export class CreateSchoolRegistrationUseCase {
     await this.studentSeatLimitPolicy.assertCanIncreaseActiveStudentSeats({
       schoolId: scope.schoolId,
       reason: 'registration_wizard',
+    });
+    await this.studentPlacementCapacityPolicy.assertCanPlace({
+      academicYearId: placement.academicYear.id,
+      classroom: placement.classroom,
     });
 
     const studentName = resolveStudentName(command.student);

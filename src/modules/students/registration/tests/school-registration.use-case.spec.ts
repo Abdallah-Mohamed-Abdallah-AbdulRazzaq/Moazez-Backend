@@ -16,6 +16,8 @@ import { StructureRepository } from '../../../academics/structure/infrastructure
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { StudentSeatLimitPolicyService } from '../../../platform-admin/application/student-seat-limit-policy.service';
 import { CreateOrLinkGuardianAccountUseCase } from '../../guardians/application/create-or-link-guardian-account.use-case';
+import { StudentEnrollmentPlacementConflictException } from '../../enrollments/domain/enrollment.exceptions';
+import { StudentPlacementCapacityPolicyService } from '../../enrollments/domain/student-placement-capacity-policy.service';
 import { EnrollmentsRepository } from '../../enrollments/infrastructure/enrollments.repository';
 import { CreateOrLinkStudentAccountUseCase } from '../../students/application/create-or-link-student-account.use-case';
 import { CreateSchoolRegistrationUseCase } from '../application/create-school-registration.use-case';
@@ -293,6 +295,9 @@ describe('CreateSchoolRegistrationUseCase', () => {
     const studentSeatLimitPolicy = {
       assertCanIncreaseActiveStudentSeats: jest.fn().mockResolvedValue({}),
     } as unknown as StudentSeatLimitPolicyService;
+    const studentPlacementCapacityPolicy = {
+      assertCanPlace: jest.fn().mockResolvedValue(undefined),
+    } as unknown as StudentPlacementCapacityPolicyService;
     const createOrLinkGuardianAccountUseCase = {
       execute: jest.fn(),
     } as unknown as CreateOrLinkGuardianAccountUseCase;
@@ -310,6 +315,7 @@ describe('CreateSchoolRegistrationUseCase', () => {
         structureRepository,
         termsRepository,
         studentSeatLimitPolicy,
+        studentPlacementCapacityPolicy,
         createOrLinkGuardianAccountUseCase,
         createOrLinkStudentAccountUseCase,
         authRepository,
@@ -319,6 +325,7 @@ describe('CreateSchoolRegistrationUseCase', () => {
       structureRepository,
       termsRepository,
       studentSeatLimitPolicy,
+      studentPlacementCapacityPolicy,
       createOrLinkGuardianAccountUseCase,
       createOrLinkStudentAccountUseCase,
       authRepository,
@@ -338,6 +345,27 @@ describe('CreateSchoolRegistrationUseCase', () => {
       schoolId: 'school-1',
       reason: 'registration_wizard',
     });
+    expect(
+      deps.studentPlacementCapacityPolicy.assertCanPlace,
+    ).toHaveBeenCalledWith({
+      academicYearId: 'year-1',
+      classroom: expect.objectContaining({
+        id: 'classroom-1',
+        capacity: 24,
+      }),
+    });
+    const seatLimitCallOrder = (
+      deps.studentSeatLimitPolicy
+        .assertCanIncreaseActiveStudentSeats as jest.Mock
+    ).mock.invocationCallOrder[0];
+    const placementCapacityCallOrder = (
+      deps.studentPlacementCapacityPolicy.assertCanPlace as jest.Mock
+    ).mock.invocationCallOrder[0];
+    const registrationCoreCallOrder = (
+      deps.registrationRepository.createRegistrationCore as jest.Mock
+    ).mock.invocationCallOrder[0];
+    expect(seatLimitCallOrder).toBeLessThan(placementCapacityCallOrder);
+    expect(placementCapacityCallOrder).toBeLessThan(registrationCoreCallOrder);
     expect(
       (deps.registrationRepository.createRegistrationCore as jest.Mock).mock
         .calls[0][0],
@@ -434,6 +462,54 @@ describe('CreateSchoolRegistrationUseCase', () => {
     expect(JSON.stringify(result)).not.toContain('deletedAt');
     expect(JSON.stringify(result)).not.toContain('applicationId');
     expect(JSON.stringify(result)).not.toContain('applicant');
+  });
+
+  it('rejects a full classroom before creating registration records or side effects', async () => {
+    const deps = createUseCase();
+    (
+      deps.studentPlacementCapacityPolicy.assertCanPlace as jest.Mock
+    ).mockRejectedValue(
+      new StudentEnrollmentPlacementConflictException({
+        academicYearId: 'year-1',
+        classroomId: 'classroom-1',
+        capacity: 24,
+        activeCount: 24,
+        incrementBy: 1,
+        projectedActiveCount: 25,
+      }),
+    );
+
+    await expect(
+      withStudentsScope(() => deps.useCase.execute(baseCommand())),
+    ).rejects.toMatchObject({
+      code: 'students.enrollment.placement_conflict',
+    });
+
+    expect(
+      deps.studentSeatLimitPolicy.assertCanIncreaseActiveStudentSeats,
+    ).toHaveBeenCalledWith({
+      schoolId: 'school-1',
+      reason: 'registration_wizard',
+    });
+    expect(
+      deps.studentPlacementCapacityPolicy.assertCanPlace,
+    ).toHaveBeenCalledWith({
+      academicYearId: 'year-1',
+      classroom: expect.objectContaining({
+        id: 'classroom-1',
+        capacity: 24,
+      }),
+    });
+    expect(
+      deps.registrationRepository.createRegistrationCore,
+    ).not.toHaveBeenCalled();
+    expect(
+      deps.createOrLinkGuardianAccountUseCase.execute,
+    ).not.toHaveBeenCalled();
+    expect(
+      deps.createOrLinkStudentAccountUseCase.execute,
+    ).not.toHaveBeenCalled();
+    expect(deps.authRepository.createAuditLog).not.toHaveBeenCalled();
   });
 
   it('sets Student.applicationId only through trusted internal source context', async () => {

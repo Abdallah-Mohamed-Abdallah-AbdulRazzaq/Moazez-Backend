@@ -3,12 +3,14 @@ import {
   NotFoundDomainException,
   ValidationDomainException,
 } from '../../../../common/exceptions/domain-exception';
-import { ClassroomRecord } from '../../../academics/structure/infrastructure/structure.repository';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { requireStudentsScope } from '../../students/domain/students-scope';
 import { StudentsRepository } from '../../students/infrastructure/students.repository';
 import { StudentEnrollmentPlacementConflictException } from '../../enrollments/domain/enrollment.exceptions';
-import { EnrollmentsRepository, EnrollmentRecord } from '../../enrollments/infrastructure/enrollments.repository';
+import {
+  EnrollmentsRepository,
+  EnrollmentRecord,
+} from '../../enrollments/infrastructure/enrollments.repository';
 import { StudentEnrollmentAlreadyWithdrawnException } from '../domain/lifecycle.exceptions';
 
 function deriveName(nameAr: string, nameEn: string): string {
@@ -29,7 +31,9 @@ export async function requireStudentWithActiveEnrollment(params: {
   studentsRepository: StudentsRepository;
   enrollmentsRepository: EnrollmentsRepository;
 }): Promise<{ activeEnrollment: EnrollmentRecord }> {
-  const student = await params.studentsRepository.findStudentById(params.studentId);
+  const student = await params.studentsRepository.findStudentById(
+    params.studentId,
+  );
   if (!student) {
     throw new NotFoundDomainException('Student not found', {
       studentId: params.studentId,
@@ -37,7 +41,9 @@ export async function requireStudentWithActiveEnrollment(params: {
   }
 
   const activeEnrollment =
-    await params.enrollmentsRepository.findActiveEnrollmentByStudentId(student.id);
+    await params.enrollmentsRepository.findActiveEnrollmentByStudentId(
+      student.id,
+    );
   if (!activeEnrollment) {
     throw new StudentEnrollmentAlreadyWithdrawnException({
       studentId: student.id,
@@ -47,37 +53,9 @@ export async function requireStudentWithActiveEnrollment(params: {
   return { activeEnrollment };
 }
 
-export async function assertPlacementCapacity(params: {
-  enrollmentsRepository: EnrollmentsRepository;
-  academicYearId: string;
-  classroom: ClassroomRecord;
-  excludeEnrollmentId?: string;
-}): Promise<void> {
-  if (
-    params.classroom.capacity === null ||
-    params.classroom.capacity === undefined
-  ) {
-    return;
-  }
-
-  const activeCount =
-    await params.enrollmentsRepository.countActiveEnrollmentsInPlacement({
-      academicYearId: params.academicYearId,
-      classroomId: params.classroom.id,
-      excludeEnrollmentId: params.excludeEnrollmentId,
-    });
-
-  if (activeCount >= params.classroom.capacity) {
-    throw new StudentEnrollmentPlacementConflictException({
-      academicYearId: params.academicYearId,
-      classroomId: params.classroom.id,
-      capacity: params.classroom.capacity,
-      activeCount,
-    });
-  }
-}
-
-function serializeEnrollmentForAudit(enrollment: EnrollmentRecord): Record<string, unknown> {
+function serializeEnrollmentForAudit(
+  enrollment: EnrollmentRecord,
+): Record<string, unknown> {
   return {
     id: enrollment.id,
     studentId: enrollment.studentId,
@@ -97,7 +75,10 @@ function serializeEnrollmentForAudit(enrollment: EnrollmentRecord): Record<strin
       enrollment.classroom.section.nameEn,
     ),
     classroomId: enrollment.classroom.id,
-    classroom: deriveName(enrollment.classroom.nameAr, enrollment.classroom.nameEn),
+    classroom: deriveName(
+      enrollment.classroom.nameAr,
+      enrollment.classroom.nameEn,
+    ),
     termId: enrollment.termId,
     status: enrollment.status,
     enrolledAt: enrollment.enrolledAt.toISOString(),
@@ -170,9 +151,7 @@ export async function writeLifecycleAuditLog(params: {
   });
 }
 
-export function requireTargetAcademicYear(
-  targetAcademicYear: string,
-): string {
+export function requireTargetAcademicYear(targetAcademicYear: string): string {
   const normalized = normalizeOptionalText(targetAcademicYear);
   if (!normalized) {
     throw new ValidationDomainException('Target academic year is required', {

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
+import { StudentPlacementCapacityPolicyService } from '../../enrollments/domain/student-placement-capacity-policy.service';
 import { StudentsRepository } from '../../students/infrastructure/students.repository';
 import { EnrollmentsRepository } from '../../enrollments/infrastructure/enrollments.repository';
 import {
@@ -10,7 +11,6 @@ import { StudentEnrollmentAlreadyWithdrawnException } from '../domain/lifecycle.
 import { PromotionPlacementService } from '../domain/promotion-placement.service';
 import { presentEnrollmentMovement } from '../presenters/enrollment-lifecycle.presenter';
 import {
-  assertPlacementCapacity,
   assertPlacementChanged,
   normalizeOptionalText,
   requireStudentWithActiveEnrollment,
@@ -25,6 +25,7 @@ export class PromoteStudentEnrollmentUseCase {
     private readonly studentsRepository: StudentsRepository,
     private readonly promotionPlacementService: PromotionPlacementService,
     private readonly authRepository: AuthRepository,
+    private readonly studentPlacementCapacityPolicy: StudentPlacementCapacityPolicyService,
   ) {}
 
   async execute(
@@ -36,11 +37,12 @@ export class PromoteStudentEnrollmentUseCase {
       enrollmentsRepository: this.enrollmentsRepository,
     });
 
-    const resolvedPlacement = await this.promotionPlacementService.resolvePlacement({
-      activeEnrollment,
-      targetAcademicYear: command.targetAcademicYear,
-      effectiveDate: command.effectiveDate,
-    });
+    const resolvedPlacement =
+      await this.promotionPlacementService.resolvePlacement({
+        activeEnrollment,
+        targetAcademicYear: command.targetAcademicYear,
+        effectiveDate: command.effectiveDate,
+      });
 
     assertPlacementChanged({
       currentEnrollment: activeEnrollment,
@@ -49,10 +51,10 @@ export class PromoteStudentEnrollmentUseCase {
       nextTermId: null,
     });
 
-    await assertPlacementCapacity({
-      enrollmentsRepository: this.enrollmentsRepository,
+    await this.studentPlacementCapacityPolicy.assertCanPlace({
       academicYearId: resolvedPlacement.academicYear.id,
       classroom: resolvedPlacement.classroom,
+      excludeEnrollmentId: activeEnrollment.id,
     });
 
     const transition =

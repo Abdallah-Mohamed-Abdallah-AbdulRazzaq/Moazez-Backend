@@ -4,6 +4,7 @@ import { StructureRepository } from '../../academics/structure/infrastructure/st
 import { AuthModule } from '../../iam/auth/auth.module';
 import { PlatformAdminModule } from '../../platform-admin/platform-admin.module';
 import { EnrollmentsRepository } from '../enrollments/infrastructure/enrollments.repository';
+import { StudentPlacementCapacityPolicyService } from '../enrollments/domain/student-placement-capacity-policy.service';
 import { GuardiansModule } from '../guardians/guardians.module';
 import { StudentsRecordsModule } from '../students/students.module';
 import { CreateSchoolRegistrationUseCase } from './application/create-school-registration.use-case';
@@ -21,6 +22,7 @@ import { SchoolRegistrationRepository } from './infrastructure/school-registrati
   providers: [
     SchoolRegistrationRepository,
     EnrollmentsRepository,
+    StudentPlacementCapacityPolicyService,
     StructureRepository,
     TermsRepository,
     CreateSchoolRegistrationUseCase,
