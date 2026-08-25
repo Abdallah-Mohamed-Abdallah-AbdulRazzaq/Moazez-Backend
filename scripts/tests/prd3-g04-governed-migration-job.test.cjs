@@ -571,9 +571,17 @@ test('rejects a manifest generated from CRLF migration artifacts against LF byte
   });
 });
 
-test('orders and hashes all seven canonical migrations', () => {
+test('orders and hashes all current canonical migrations', () => {
   const manifest = buildManifest();
-  assert.equal(manifest.migrations.length, 7);
+  assert.ok(manifest.migrations.length > 0);
+  assert.equal(
+    manifest.migrations.length,
+    manifest.migrationDirectories.length,
+  );
+  assert.deepEqual(
+    manifest.migrations.map((migration) => migration.directory),
+    manifest.migrationDirectories,
+  );
   assert.deepEqual(
     manifest.migrationDirectories,
     [...manifest.migrationDirectories].sort(),

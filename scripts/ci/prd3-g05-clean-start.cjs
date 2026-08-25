@@ -612,7 +612,10 @@ function runGovernedFreshMigration() {
       .map((event) => event.stage),
   );
   assert.equal(final?.status, 'migration_applied');
-  assert.equal(final?.migrationCount, 7);
+  assert.ok(
+    Number.isSafeInteger(final?.migrationCount) && final.migrationCount > 0,
+    'governed migration result must expose a positive migration count',
+  );
   assert.ok(succeededStages.has('migrate-status'));
   assert.ok(succeededStages.has('migrate-diff'));
   return {
@@ -839,7 +842,7 @@ async function runLiveEvidence() {
       'SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL',
     ),
   );
-  assert.equal(appliedMigrations, 7);
+  assert.equal(appliedMigrations, migration.migrationCount);
 
   const referenceSeedExecution = runApprovedReferenceSeeds();
   const rows = provePostSeedRowScope();
