@@ -1,4 +1,7 @@
-import { SCHOOL_SCOPED_MODELS } from '../school-scope.extension';
+import {
+  EXCLUDED_FROM_SCHOOL_SCOPE,
+  SCHOOL_SCOPED_MODELS,
+} from '../school-scope.extension';
 
 describe('schoolScope communication registration', () => {
   it('registers TeacherProfile for school scope enforcement', () => {
@@ -47,5 +50,15 @@ describe('schoolScope communication registration', () => {
   it('registers homework core models for school scope enforcement', () => {
     expect(SCHOOL_SCOPED_MODELS.has('HomeworkAssignment')).toBe(true);
     expect(SCHOOL_SCOPED_MODELS.has('HomeworkTarget')).toBe(true);
+  });
+
+  it('registers bulk student registration models without a school-scope exclusion', () => {
+    for (const model of [
+      'StudentBulkRegistrationBatch',
+      'StudentBulkRegistrationRow',
+    ]) {
+      expect(SCHOOL_SCOPED_MODELS.has(model)).toBe(true);
+      expect(EXCLUDED_FROM_SCHOOL_SCOPE.has(model)).toBe(false);
+    }
   });
 });
