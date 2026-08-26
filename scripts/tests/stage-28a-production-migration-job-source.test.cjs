@@ -448,24 +448,45 @@ function assertCommittedStage28CandidateScope(
   candidateFiles,
   maintenanceFiles,
 ) {
-  const committedCandidates = candidateFiles ?? candidateFilesFromCommittedRange();
+  const committedCandidates =
+    candidateFiles ?? candidateFilesFromCommittedRange();
   const normalized = [
     ...new Set(committedCandidates.map((file) => file.replace(/\\/gu, '/'))),
   ].sort();
   const normalizedMaintenance = [
     ...new Set(
-      (maintenanceFiles ??
+      (
+        maintenanceFiles ??
         (candidateFiles === undefined
           ? candidateFilesFromMaintenanceRange()
           : committedCandidates)
       ).map((file) => file.replace(/\\/gu, '/')),
     ),
   ].sort();
-  const verifierMaintenanceActive =
-    normalizedMaintenance.includes(TEST_PATH) &&
-    normalizedMaintenance.includes(STAGE_29_TEST_PATH);
-  if (verifierMaintenanceActive) {
-    const stage28OwnedPaths = normalizedMaintenance.filter(
+  const maintenanceScopeActive =
+    candidateFiles === undefined || maintenanceFiles !== undefined;
+  const verifierRetouched =
+    maintenanceScopeActive &&
+    normalizedMaintenance.some(
+      (file) => file === TEST_PATH || file === STAGE_29_TEST_PATH,
+    );
+  if (verifierRetouched) {
+    const stage28MaintenancePaths = normalizedMaintenance.filter(
+      (file) =>
+        isStage28OperationalPath(file) ||
+        file === TEST_PATH ||
+        file === STAGE_29_TEST_PATH,
+    );
+    assert.deepEqual(
+      stage28MaintenancePaths,
+      [STAGE_29_TEST_PATH, TEST_PATH].sort(),
+    );
+  }
+
+  const historicalVerifierPairPresent =
+    normalized.includes(TEST_PATH) && normalized.includes(STAGE_29_TEST_PATH);
+  if (historicalVerifierPairPresent) {
+    const stage28OwnedPaths = normalized.filter(
       (file) =>
         isStage28OperationalPath(file) ||
         file === TEST_PATH ||
@@ -1013,6 +1034,70 @@ test('Committed scope preserves Stage 28 activation and delegates only Stage 28A
         STAGE_29_TEST_PATH,
         `${PRODUCTION_ROOT}/main.tf`,
       ]),
+    { code: 'ERR_ASSERTION' },
+  );
+});
+
+test('Committed Stage 28 verifier delegation persists across later product commits and fails closed on re-touch', () => {
+  const historicalFullRange = [
+    TEST_PATH,
+    STAGE_29_TEST_PATH,
+    'prisma/schema.prisma',
+    'src/infrastructure/database/school-scope.extension.ts',
+    'src/modules/students/registration/application/create-student-bulk-registration.use-case.ts',
+    'test/e2e/student-bulk-registration-intake.e2e-spec.ts',
+  ];
+
+  assert.equal(
+    assertCommittedStage28CandidateScope(historicalFullRange, [
+      'src/modules/students/registration/application/create-student-bulk-registration.use-case.ts',
+      'test/e2e/student-bulk-registration-intake.e2e-spec.ts',
+    ]),
+    false,
+  );
+  assert.equal(
+    assertCommittedStage28CandidateScope(
+      [
+        ...historicalFullRange,
+        'src/modules/students/future-stage4.use-case.ts',
+      ],
+      ['src/modules/students/future-stage4.use-case.ts'],
+    ),
+    false,
+  );
+  assert.throws(
+    () =>
+      assertCommittedStage28CandidateScope(
+        [...historicalFullRange, `${PRODUCTION_ROOT}/main.tf`],
+        ['src/modules/students/future-stage4.use-case.ts'],
+      ),
+    { code: 'ERR_ASSERTION' },
+  );
+  assert.throws(
+    () =>
+      assertCommittedStage28CandidateScope(historicalFullRange, [TEST_PATH]),
+    { code: 'ERR_ASSERTION' },
+  );
+  assert.throws(
+    () =>
+      assertCommittedStage28CandidateScope(historicalFullRange, [
+        STAGE_29_TEST_PATH,
+      ]),
+    { code: 'ERR_ASSERTION' },
+  );
+  assert.equal(
+    assertCommittedStage28CandidateScope(historicalFullRange, [
+      TEST_PATH,
+      STAGE_29_TEST_PATH,
+    ]),
+    false,
+  );
+  assert.throws(
+    () =>
+      assertCommittedStage28CandidateScope(
+        [...historicalFullRange, `${PRODUCTION_ROOT}/main.tf`],
+        [TEST_PATH, STAGE_29_TEST_PATH, `${PRODUCTION_ROOT}/main.tf`],
+      ),
     { code: 'ERR_ASSERTION' },
   );
 });
