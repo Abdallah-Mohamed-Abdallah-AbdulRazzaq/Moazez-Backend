@@ -3,7 +3,9 @@ import {
   AuditOutcome,
   ImportJobStatus,
   MembershipStatus,
+  OrganizationStatus,
   Prisma,
+  SchoolStatus,
   StudentBulkRegistrationBatchStatus,
   StudentBulkRegistrationRowStatus,
   StudentEnrollmentStatus,
@@ -36,9 +38,14 @@ import {
 } from '../domain/student-bulk-registration-csv';
 import { readStudentBulkRegistrationExecutionMetadata } from '../domain/student-bulk-registration-execution.metadata';
 import {
+  STUDENT_BULK_REGISTRATION_EXECUTION_RECOVERY_WINDOW_EXPIRED_CODE,
+  STUDENT_BULK_REGISTRATION_EXECUTION_TENANT_INELIGIBLE_CODE,
+} from '../domain/student-bulk-registration.constants';
+import {
   StudentBulkRegistrationExecutionInvariantException,
   StudentBulkRegistrationExecutionMetadataException,
   StudentBulkRegistrationPlacementInvalidException,
+  StudentBulkRegistrationExecutionTenantIneligibleException,
   StudentBulkRegistrationRowDataInvalidException,
 } from '../domain/student-bulk-registration.exceptions';
 
@@ -78,6 +85,56 @@ export type StudentBulkRegistrationExecutionBatch =
   Prisma.StudentBulkRegistrationBatchGetPayload<{
     select: typeof EXECUTION_BATCH_SELECT;
   }>;
+
+const EXECUTION_RECOVERY_BATCH_SELECT =
+  Prisma.validator<Prisma.StudentBulkRegistrationBatchSelect>()({
+    id: true,
+    schoolId: true,
+    organizationId: true,
+    sourceImportJobId: true,
+    status: true,
+    totalRows: true,
+    validRows: true,
+    invalidRows: true,
+    createdRows: true,
+    failedRows: true,
+    createdAt: true,
+    startedAt: true,
+    completedAt: true,
+    school: {
+      select: {
+        id: true,
+        organizationId: true,
+        status: true,
+        deletedAt: true,
+        organization: {
+          select: { id: true, status: true, deletedAt: true },
+        },
+      },
+    },
+    sourceImportJob: {
+      select: {
+        id: true,
+        schoolId: true,
+        type: true,
+        status: true,
+        reportJson: true,
+      },
+    },
+  });
+
+export type StudentBulkRegistrationExecutionRowCounts = Record<
+  StudentBulkRegistrationRowStatus,
+  number
+>;
+
+export type StudentBulkRegistrationExecutionRecoveryCandidate =
+  Prisma.StudentBulkRegistrationBatchGetPayload<{
+    select: typeof EXECUTION_RECOVERY_BATCH_SELECT;
+  }> & {
+    rowCounts: StudentBulkRegistrationExecutionRowCounts;
+    rowSchoolMismatch: boolean;
+  };
 
 export type StudentBulkRegistrationProvisioningResult =
   | {
@@ -170,6 +227,72 @@ export class StudentBulkRegistrationExecutionRepository {
     });
   }
 
+  async listExecutionRecoveryCandidates(input: {
+    createdBefore: Date;
+    cursor?: { createdAt: Date; id: string };
+    limit: number;
+  }): Promise<StudentBulkRegistrationExecutionRecoveryCandidate[]> {
+    const batches = await this.prisma.studentBulkRegistrationBatch.findMany({
+      where: {
+        status: StudentBulkRegistrationBatchStatus.EXECUTING,
+        createdAt: { lte: input.createdBefore },
+        ...(input.cursor
+          ? {
+              OR: [
+                { createdAt: { gt: input.cursor.createdAt } },
+                {
+                  createdAt: input.cursor.createdAt,
+                  id: { gt: input.cursor.id },
+                },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: input.limit,
+      select: EXECUTION_RECOVERY_BATCH_SELECT,
+    });
+    if (batches.length === 0) return [];
+
+    const groupedRows = await this.prisma.studentBulkRegistrationRow.groupBy({
+      by: ['batchId', 'schoolId', 'status'],
+      where: { batchId: { in: batches.map((batch) => batch.id) } },
+      _count: { _all: true },
+    });
+    const counts = new Map<
+      string,
+      {
+        rowCounts: StudentBulkRegistrationExecutionRowCounts;
+        rowSchoolMismatch: boolean;
+      }
+    >();
+    const schoolIdByBatchId = new Map(
+      batches.map((batch) => [batch.id, batch.schoolId]),
+    );
+    for (const batch of batches) {
+      counts.set(batch.id, {
+        rowCounts: emptyExecutionRowCounts(),
+        rowSchoolMismatch: false,
+      });
+    }
+    for (const row of groupedRows) {
+      const aggregate = counts.get(row.batchId);
+      if (!aggregate) continue;
+      aggregate.rowCounts[row.status] += row._count._all;
+      if (row.schoolId !== schoolIdByBatchId.get(row.batchId)) {
+        aggregate.rowSchoolMismatch = true;
+      }
+    }
+
+    return batches.map((batch) => ({
+      ...batch,
+      ...(counts.get(batch.id) ?? {
+        rowCounts: emptyExecutionRowCounts(),
+        rowSchoolMismatch: false,
+      }),
+    }));
+  }
+
   async listValidRowIds(input: {
     batchId: string;
     schoolId: string;
@@ -254,6 +377,94 @@ export class StudentBulkRegistrationExecutionRepository {
       }
       return true;
     });
+  }
+
+  async terminalizeRemainingValidRows(input: {
+    batchId: string;
+    schoolId: string;
+    reasonCode:
+      | typeof STUDENT_BULK_REGISTRATION_EXECUTION_RECOVERY_WINDOW_EXPIRED_CODE
+      | typeof STUDENT_BULK_REGISTRATION_EXECUTION_TENANT_INELIGIBLE_CODE;
+  }): Promise<number> {
+    for (
+      let attempt = 1;
+      attempt <= STUDENT_BULK_REGISTRATION_TRANSACTION_MAX_ATTEMPTS;
+      attempt += 1
+    ) {
+      try {
+        return await this.prisma.$transaction(
+          async (tx) => {
+            const batch = await tx.studentBulkRegistrationBatch.findFirst({
+              where: {
+                id: input.batchId,
+                schoolId: input.schoolId,
+                status: StudentBulkRegistrationBatchStatus.EXECUTING,
+              },
+              select: EXECUTION_BATCH_SELECT,
+            });
+            if (!batch) return 0;
+            const metadata = requireExecutionMetadata(batch);
+            const rows = await tx.studentBulkRegistrationRow.updateMany({
+              where: {
+                batchId: input.batchId,
+                schoolId: input.schoolId,
+                status: StudentBulkRegistrationRowStatus.VALID,
+              },
+              data: {
+                status: StudentBulkRegistrationRowStatus.FAILED,
+                errorsJson: [
+                  { code: input.reasonCode, field: null },
+                ] as unknown as Prisma.InputJsonValue,
+              },
+            });
+            if (rows.count === 0) return 0;
+
+            const updated = await tx.studentBulkRegistrationBatch.updateMany({
+              where: {
+                id: batch.id,
+                schoolId: batch.schoolId,
+                status: StudentBulkRegistrationBatchStatus.EXECUTING,
+              },
+              data: { failedRows: { increment: rows.count } },
+            });
+            if (updated.count !== 1) {
+              throw new StudentBulkRegistrationExecutionInvariantException({
+                field: 'batchStatus',
+              });
+            }
+            await tx.auditLog.create({
+              data: {
+                actorId: metadata.requestedById,
+                userType: metadata.requestedByUserType,
+                organizationId: batch.organizationId,
+                schoolId: batch.schoolId,
+                module: 'students',
+                action:
+                  'students.bulk_registration.execution_recovery_terminalize',
+                resourceType: 'student_bulk_registration_batch',
+                resourceId: batch.id,
+                outcome: AuditOutcome.SUCCESS,
+                after: {
+                  reasonCode: input.reasonCode,
+                  terminalizedRows: rows.count,
+                },
+              },
+            });
+            return rows.count;
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        );
+      } catch (error) {
+        if (
+          isPrismaErrorCode(error, 'P2034') &&
+          attempt < STUDENT_BULK_REGISTRATION_TRANSACTION_MAX_ATTEMPTS
+        ) {
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw new Error('bulk_registration_serialization_retry_exhausted');
   }
 
   async finalizeExecution(input: {
@@ -389,6 +600,7 @@ export class StudentBulkRegistrationExecutionRepository {
     }
     const normalizedData = row.normalizedDataJson;
 
+    await assertExecutionTenantEligible(tx, batch);
     await assertFinalPlacement(tx, batch);
     const role = await tx.role.findFirst({
       where: {
@@ -604,6 +816,42 @@ async function assertFinalPlacement(
   }
 }
 
+async function assertExecutionTenantEligible(
+  tx: Prisma.TransactionClient,
+  batch: StudentBulkRegistrationExecutionBatch,
+): Promise<void> {
+  const school = await tx.school.findUnique({
+    where: { id: batch.schoolId },
+    select: {
+      id: true,
+      organizationId: true,
+      status: true,
+      deletedAt: true,
+      organization: {
+        select: { id: true, status: true, deletedAt: true },
+      },
+    },
+  });
+  if (
+    !school ||
+    school.id !== batch.schoolId ||
+    school.organizationId !== batch.organizationId ||
+    school.organization.id !== batch.organizationId
+  ) {
+    throw new StudentBulkRegistrationExecutionInvariantException({
+      field: 'tenantIdentity',
+    });
+  }
+  if (
+    school.status !== SchoolStatus.ACTIVE ||
+    school.deletedAt !== null ||
+    school.organization.status !== OrganizationStatus.ACTIVE ||
+    school.organization.deletedAt !== null
+  ) {
+    throw new StudentBulkRegistrationExecutionTenantIneligibleException();
+  }
+}
+
 async function assertFinalCapacity(
   tx: Prisma.TransactionClient,
   batch: StudentBulkRegistrationExecutionBatch,
@@ -708,6 +956,17 @@ function countRows(
   return tx.studentBulkRegistrationRow.count({
     where: { batchId: input.batchId, schoolId: input.schoolId, status },
   });
+}
+
+function emptyExecutionRowCounts(): StudentBulkRegistrationExecutionRowCounts {
+  return {
+    [StudentBulkRegistrationRowStatus.PENDING]: 0,
+    [StudentBulkRegistrationRowStatus.VALID]: 0,
+    [StudentBulkRegistrationRowStatus.INVALID]: 0,
+    [StudentBulkRegistrationRowStatus.PROCESSING]: 0,
+    [StudentBulkRegistrationRowStatus.CREATED]: 0,
+    [StudentBulkRegistrationRowStatus.FAILED]: 0,
+  };
 }
 
 function isPrismaErrorCode(error: unknown, code: string): boolean {

@@ -5,6 +5,7 @@ import {
   FileVisibility,
   ImportJobStatus,
   PrismaClient,
+  SchoolStatus,
   SchoolLoginSettingsStatus,
   StudentBulkRegistrationBatchStatus,
   StudentBulkRegistrationRowStatus,
@@ -24,7 +25,13 @@ import { StudentBulkRegistrationRepository } from '../../src/modules/students/re
 import { StudentBulkRegistrationPlacementService } from '../../src/modules/students/registration/domain/student-bulk-registration-placement.service';
 import { ImportJobsRepository } from '../../src/modules/files/imports/infrastructure/import-jobs.repository';
 import { LoginIdentityRepository } from '../../src/modules/settings/login-identity/infrastructure/login-identity.repository';
-import { STUDENT_BULK_REGISTRATION_TEMPLATE_HEADERS } from '../../src/modules/students/registration/domain/student-bulk-registration.constants';
+import {
+  STUDENT_BULK_REGISTRATION_EXECUTION_RECOVERY_WINDOW_MS,
+  STUDENT_BULK_REGISTRATION_TEMPLATE_HEADERS,
+} from '../../src/modules/students/registration/domain/student-bulk-registration.constants';
+import { StudentBulkRegistrationExecutionReconciliationService } from '../../src/modules/students/registration/application/student-bulk-registration-execution-reconciliation.service';
+import { StudentBulkRegistrationExecutionRepository } from '../../src/modules/students/registration/infrastructure/student-bulk-registration-execution.repository';
+import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
 
 const GLOBAL_PREFIX = '/api/v1';
 const DEMO_ADMIN_EMAIL = 'admin@academy.moazez.dev';
@@ -701,12 +708,260 @@ describe('Student bulk registration intake flow (e2e)', () => {
     );
   });
 
+  it('recovers a confirmed batch whose deterministic execution enqueue was lost', async () => {
+    const ids = await createConfirmedBatch('lost-enqueue');
+    const queue = {
+      ensureJobFromPersistedTruth: jest.fn().mockResolvedValue('created'),
+    };
+    const reconciliation =
+      new StudentBulkRegistrationExecutionReconciliationService(
+        app.get(StudentBulkRegistrationExecutionRepository),
+        queue as unknown as BullmqService,
+      );
+
+    await expect(reconciliation.reconcile()).resolves.toMatchObject({
+      restored: 1,
+      blockedInvariant: 0,
+    });
+    expect(queue.ensureJobFromPersistedTruth).toHaveBeenCalledWith(
+      'files-imports',
+      'execute-student-bulk-registration',
+      { batchId: ids.id },
+      {
+        jobId: `student-bulk-registration-execution-${ids.id}`,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 1000 },
+      },
+    );
+    await executor.execute(ids.id);
+    await expect(
+      prisma.studentBulkRegistrationBatch.findUniqueOrThrow({
+        where: { id: ids.id },
+        select: { status: true },
+      }),
+    ).resolves.toEqual({
+      status: StudentBulkRegistrationBatchStatus.COMPLETED,
+    });
+  });
+
+  it('terminalizes an expired confirmed batch without creating business entities', async () => {
+    const ids = await createConfirmedBatch('expired');
+    const reconciliationNow = new Date(Date.now() + 1_000);
+    await prisma.studentBulkRegistrationBatch.update({
+      where: { id: ids.id },
+      data: {
+        startedAt: new Date(
+          reconciliationNow.getTime() -
+            STUDENT_BULK_REGISTRATION_EXECUTION_RECOVERY_WINDOW_MS -
+            1,
+        ),
+      },
+    });
+    const queue = {
+      ensureJobFromPersistedTruth: jest.fn(() => {
+        throw new Error('queue_must_not_be_called');
+      }),
+    };
+    const reconciliation =
+      new StudentBulkRegistrationExecutionReconciliationService(
+        app.get(StudentBulkRegistrationExecutionRepository),
+        queue as unknown as BullmqService,
+      );
+
+    await reconciliation.reconcile(reconciliationNow);
+
+    const [batch, row] = await Promise.all([
+      prisma.studentBulkRegistrationBatch.findUniqueOrThrow({
+        where: { id: ids.id },
+      }),
+      prisma.studentBulkRegistrationRow.findFirstOrThrow({
+        where: { batchId: ids.id },
+      }),
+    ]);
+    expect(batch).toMatchObject({
+      status: StudentBulkRegistrationBatchStatus.FAILED,
+      createdRows: 0,
+      failedRows: 1,
+    });
+    expect(row).toMatchObject({
+      status: StudentBulkRegistrationRowStatus.FAILED,
+      studentId: null,
+      userId: null,
+      enrollmentId: null,
+    });
+    expect(JSON.stringify(row.errorsJson)).toContain(
+      'students.bulk_registration.execution_recovery_window_expired',
+    );
+    expect(queue.ensureJobFromPersistedTruth).not.toHaveBeenCalled();
+  });
+
+  it('terminalizes a confirmed batch when its school becomes inactive', async () => {
+    const ids = await createConfirmedBatch('tenant-inactive');
+    const queue = {
+      ensureJobFromPersistedTruth: jest.fn(() => {
+        throw new Error('queue_must_not_be_called');
+      }),
+    };
+    const reconciliation =
+      new StudentBulkRegistrationExecutionReconciliationService(
+        app.get(StudentBulkRegistrationExecutionRepository),
+        queue as unknown as BullmqService,
+      );
+    await prisma.school.update({
+      where: { id: schoolId },
+      data: { status: SchoolStatus.SUSPENDED },
+    });
+    try {
+      await reconciliation.reconcile();
+    } finally {
+      await prisma.school.update({
+        where: { id: schoolId },
+        data: { status: SchoolStatus.ACTIVE },
+      });
+    }
+
+    const [batch, row] = await Promise.all([
+      prisma.studentBulkRegistrationBatch.findUniqueOrThrow({
+        where: { id: ids.id },
+      }),
+      prisma.studentBulkRegistrationRow.findFirstOrThrow({
+        where: { batchId: ids.id },
+      }),
+    ]);
+    expect(batch).toMatchObject({
+      status: StudentBulkRegistrationBatchStatus.FAILED,
+      createdRows: 0,
+      failedRows: 1,
+    });
+    expect(row).toMatchObject({
+      status: StudentBulkRegistrationRowStatus.FAILED,
+      studentId: null,
+      userId: null,
+      enrollmentId: null,
+    });
+    expect(JSON.stringify(row.errorsJson)).toContain(
+      'students.bulk_registration.execution_tenant_ineligible',
+    );
+    expect(queue.ensureJobFromPersistedTruth).not.toHaveBeenCalled();
+  });
+
+  it('keeps a created row and fails the next row when the tenant deactivates mid-run', async () => {
+    const ids = await createConfirmedBatch('tenant-mid-run', 2);
+    const repository = app.get(StudentBulkRegistrationExecutionRepository);
+    const rows = await prisma.studentBulkRegistrationRow.findMany({
+      where: { batchId: ids.id },
+      orderBy: { rowNumber: 'asc' },
+      select: { id: true },
+    });
+    await expect(
+      repository.provisionRow({
+        batchId: ids.id,
+        schoolId,
+        rowId: rows[0].id,
+      }),
+    ).resolves.toMatchObject({ kind: 'created' });
+
+    await prisma.school.update({
+      where: { id: schoolId },
+      data: { status: SchoolStatus.SUSPENDED },
+    });
+    try {
+      await executor.execute(ids.id);
+    } finally {
+      await prisma.school.update({
+        where: { id: schoolId },
+        data: { status: SchoolStatus.ACTIVE },
+      });
+    }
+
+    const [batch, outcomes] = await Promise.all([
+      prisma.studentBulkRegistrationBatch.findUniqueOrThrow({
+        where: { id: ids.id },
+      }),
+      prisma.studentBulkRegistrationRow.findMany({
+        where: { batchId: ids.id },
+        orderBy: { rowNumber: 'asc' },
+      }),
+    ]);
+    expect(batch).toMatchObject({
+      status: StudentBulkRegistrationBatchStatus.EXECUTION_PARTIAL_FAILED,
+      createdRows: 1,
+      failedRows: 1,
+    });
+    expect(outcomes[0]).toMatchObject({
+      status: StudentBulkRegistrationRowStatus.CREATED,
+    });
+    expect(outcomes[0].studentId).not.toBeNull();
+    expect(outcomes[0].userId).not.toBeNull();
+    expect(outcomes[0].enrollmentId).not.toBeNull();
+    expect(outcomes[1]).toMatchObject({
+      status: StudentBulkRegistrationRowStatus.FAILED,
+      studentId: null,
+      userId: null,
+      enrollmentId: null,
+    });
+    expect(JSON.stringify(outcomes[1].errorsJson)).toContain(
+      'students.bulk_registration.execution_tenant_ineligible',
+    );
+  });
+
   async function login(): Promise<string> {
     const response = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/auth/login`)
       .send({ email: DEMO_ADMIN_EMAIL, password: DEMO_ADMIN_PASSWORD })
       .expect(200);
     return (response.body as { accessToken: string }).accessToken;
+  }
+
+  async function createConfirmedBatch(
+    label: string,
+    rowCount = 1,
+  ): Promise<{
+    id: string;
+    sourceImportJobId: string;
+  }> {
+    const token = await login();
+    const suffix = Date.now();
+    const rows = Array.from(
+      { length: rowCount },
+      (_, index) =>
+        `Recovery,${label}${index + 1},,Student,,,,,2012-05-20,female,Egyptian,recovery.${label}.${suffix}.${index + 1},,`,
+    );
+    const csv = Buffer.from(
+      `${STUDENT_BULK_REGISTRATION_TEMPLATE_HEADERS.join(',')}\n${rows.join('\n')}\n`,
+    );
+    const upload = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/students-guardians/bulk-registrations`)
+      .set('Authorization', `Bearer ${token}`)
+      .field('academicYearId', academicYearId)
+      .field('termId', termId)
+      .field('classroomId', classroomId)
+      .field('enrollmentDate', '2026-09-01')
+      .attach('file', csv, {
+        filename: `bulk-students-${label}.csv`,
+        contentType: 'text/csv',
+      })
+      .expect(201);
+    const ids = upload.body as { id: string; sourceImportJobId: string };
+    const source = await prisma.importJob.findUniqueOrThrow({
+      where: { id: ids.sourceImportJobId },
+      include: { uploadedFile: true },
+    });
+    intakeResources.push({
+      batchId: ids.id,
+      importJobId: ids.sourceImportJobId,
+      fileId: source.uploadedFileId,
+      bucket: source.uploadedFile.bucket,
+      objectKey: source.uploadedFile.objectKey,
+    });
+    await processInPersistedScope(ids.sourceImportJobId);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/students-guardians/bulk-registrations/${ids.id}/confirm`,
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .expect(202);
+    return ids;
   }
 
   async function readForbiddenMutationCounts(): Promise<{

@@ -19,6 +19,7 @@ import { ImportJobsRepository } from './import-jobs.repository';
 import { STUDENTS_BULK_REGISTRATION_IMPORT_TYPE } from '../domain/import-upload.constraints';
 import { ProcessStudentBulkRegistrationValidationUseCase } from '../../../students/registration/application/process-student-bulk-registration-validation.use-case';
 import { ProcessStudentBulkRegistrationExecutionUseCase } from '../../../students/registration/application/process-student-bulk-registration-execution.use-case';
+import { StudentBulkRegistrationExecutionReconciliationService } from '../../../students/registration/application/student-bulk-registration-execution-reconciliation.service';
 
 @Injectable()
 export class ImportValidationWorker implements OnModuleInit {
@@ -28,6 +29,7 @@ export class ImportValidationWorker implements OnModuleInit {
     private readonly bullmqService: BullmqService,
     private readonly processImportValidationUseCase: ProcessImportValidationUseCase,
     private readonly reconciliationService: ImportValidationReconciliationService,
+    private readonly studentBulkRegistrationExecutionReconciliationService: StudentBulkRegistrationExecutionReconciliationService,
     private readonly importJobsRepository: ImportJobsRepository,
     @Optional()
     private readonly processStudentBulkRegistrationValidationUseCase?: ProcessStudentBulkRegistrationValidationUseCase,
@@ -42,6 +44,7 @@ export class ImportValidationWorker implements OnModuleInit {
     >(FILES_IMPORT_QUEUE_NAME, async (job) => {
       if (job.name === FILES_IMPORT_RECONCILE_JOB_NAME) {
         await this.reconciliationService.reconcile();
+        await this.studentBulkRegistrationExecutionReconciliationService.reconcile();
         return;
       }
       if (job.name === STUDENT_BULK_REGISTRATION_EXECUTE_JOB_NAME) {

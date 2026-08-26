@@ -58,6 +58,7 @@ import { StudentBulkRegistrationRepository } from '../../modules/students/regist
 import { ProcessStudentBulkRegistrationValidationUseCase } from '../../modules/students/registration/application/process-student-bulk-registration-validation.use-case';
 import { ProcessStudentBulkRegistrationExecutionUseCase } from '../../modules/students/registration/application/process-student-bulk-registration-execution.use-case';
 import { StudentBulkRegistrationExecutionRepository } from '../../modules/students/registration/infrastructure/student-bulk-registration-execution.repository';
+import { StudentBulkRegistrationExecutionReconciliationService } from '../../modules/students/registration/application/student-bulk-registration-execution-reconciliation.service';
 
 export const CORE_WORKER_CONSUMER_PROVIDERS = Object.freeze([
   CommunicationNotificationGenerationWorker,
@@ -108,6 +109,7 @@ const CORE_WORKER_SUPPORT_PROVIDERS: Provider[] = [
   StudentBulkRegistrationPlacementService,
   StudentBulkRegistrationRepository,
   StudentBulkRegistrationExecutionRepository,
+  StudentBulkRegistrationExecutionReconciliationService,
   ProcessStudentBulkRegistrationValidationUseCase,
   ProcessStudentBulkRegistrationExecutionUseCase,
   DismissalRequestsExpiryRepository,

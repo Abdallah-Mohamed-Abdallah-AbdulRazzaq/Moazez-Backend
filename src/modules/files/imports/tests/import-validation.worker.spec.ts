@@ -3,6 +3,7 @@ import type { Job } from 'bullmq';
 import { BullmqService } from '../../../../infrastructure/queue/bullmq.service';
 import { ProcessStudentBulkRegistrationValidationUseCase } from '../../../students/registration/application/process-student-bulk-registration-validation.use-case';
 import { ProcessStudentBulkRegistrationExecutionUseCase } from '../../../students/registration/application/process-student-bulk-registration-execution.use-case';
+import { StudentBulkRegistrationExecutionReconciliationService } from '../../../students/registration/application/student-bulk-registration-execution-reconciliation.service';
 import { ImportValidationReconciliationService } from '../application/import-validation-reconciliation.service';
 import { ProcessImportValidationUseCase } from '../application/process-import-validation.use-case';
 import type { FilesImportQueueJobData } from '../domain/import-job.types';
@@ -16,6 +17,7 @@ describe('ImportValidationWorker persisted type routing', () => {
   let execution: { execute: jest.Mock };
   let repository: { findRecoveryContextById: jest.Mock };
   let reconciliation: { reconcile: jest.Mock; reconcileCandidate: jest.Mock };
+  let executionReconciliation: { reconcile: jest.Mock };
 
   beforeEach(() => {
     generic = { execute: jest.fn().mockResolvedValue(undefined) };
@@ -28,6 +30,9 @@ describe('ImportValidationWorker persisted type routing', () => {
       reconcile: jest.fn().mockResolvedValue(undefined),
       reconcileCandidate: jest.fn().mockResolvedValue(undefined),
     };
+    executionReconciliation = {
+      reconcile: jest.fn().mockResolvedValue(undefined),
+    };
     const bullmq = {
       createWorker: jest.fn((_queue: string, handler: typeof processor) => {
         processor = handler;
@@ -38,6 +43,7 @@ describe('ImportValidationWorker persisted type routing', () => {
       bullmq as unknown as BullmqService,
       generic as unknown as ProcessImportValidationUseCase,
       reconciliation as unknown as ImportValidationReconciliationService,
+      executionReconciliation as unknown as StudentBulkRegistrationExecutionReconciliationService,
       repository as unknown as ImportJobsRepository,
       bulk as unknown as ProcessStudentBulkRegistrationValidationUseCase,
       execution as unknown as ProcessStudentBulkRegistrationExecutionUseCase,
@@ -91,6 +97,10 @@ describe('ImportValidationWorker persisted type routing', () => {
       data: {},
     } as Job<FilesImportQueueJobData>);
     expect(reconciliation.reconcile).toHaveBeenCalledTimes(1);
+    expect(executionReconciliation.reconcile).toHaveBeenCalledTimes(1);
+    expect(reconciliation.reconcile.mock.invocationCallOrder[0]).toBeLessThan(
+      executionReconciliation.reconcile.mock.invocationCallOrder[0],
+    );
     expect(repository.findRecoveryContextById).not.toHaveBeenCalled();
   });
 
@@ -106,16 +116,25 @@ describe('ImportValidationWorker persisted type routing', () => {
     expect(bulk.execute).not.toHaveBeenCalled();
   });
 
-  it('rejects execution payload attempts to inject tenant or role state', async () => {
-    await expect(
-      processor({
-        id: 'execution-1',
-        name: 'execute-student-bulk-registration',
-        data: { batchId: 'batch-1', schoolId: 'school-2' },
-      } as unknown as Job<FilesImportQueueJobData>),
-    ).rejects.toThrow('bulk_registration_execution_payload_invalid');
-    expect(execution.execute).not.toHaveBeenCalled();
-  });
+  it.each([
+    ['schoolId', 'school-2'],
+    ['organizationId', 'organization-2'],
+    ['actorId', 'actor-2'],
+    ['roleId', 'role-2'],
+    ['loginDomain', 'attacker.example.test'],
+  ])(
+    'rejects execution payload attempts to inject %s',
+    async (field, value) => {
+      await expect(
+        processor({
+          id: 'execution-1',
+          name: 'execute-student-bulk-registration',
+          data: { batchId: 'batch-1', [field]: value },
+        } as unknown as Job<FilesImportQueueJobData>),
+      ).rejects.toThrow('bulk_registration_execution_payload_invalid');
+      expect(execution.execute).not.toHaveBeenCalled();
+    },
+  );
 
   it('fails closed for unknown queue job names', async () => {
     await expect(

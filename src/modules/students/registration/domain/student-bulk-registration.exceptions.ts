@@ -34,6 +34,16 @@ export class StudentBulkRegistrationExecutionMetadataException extends DomainExc
   }
 }
 
+export class StudentBulkRegistrationExecutionTenantIneligibleException extends DomainException {
+  constructor() {
+    super({
+      code: 'students.bulk_registration.execution_tenant_ineligible',
+      message: 'Bulk registration execution tenant is not eligible',
+      httpStatus: HttpStatus.CONFLICT,
+    });
+  }
+}
+
 export class StudentBulkRegistrationRowDataInvalidException extends DomainException {
   constructor() {
     super({

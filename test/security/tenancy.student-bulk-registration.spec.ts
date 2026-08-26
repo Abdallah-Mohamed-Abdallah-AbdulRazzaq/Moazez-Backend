@@ -16,6 +16,7 @@ import * as argon2 from 'argon2';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
+import { isStudentBulkRegistrationExecutionJobData } from '../../src/modules/files/imports/domain/import-job.types';
 
 const GLOBAL_PREFIX = '/api/v1';
 const DEMO_ADMIN_EMAIL = 'admin@academy.moazez.dev';
@@ -290,6 +291,18 @@ describe('Student bulk registration tenancy and authorization (security)', () =>
         [field]: randomUUID(),
       }).expect(400);
       expect(errorCode(response.body)).toBe('validation.failed');
+    },
+  );
+
+  it.each(['schoolId', 'organizationId', 'actorId', 'roleId', 'loginDomain'])(
+    'rejects attempted execution queue %s injection',
+    (field) => {
+      expect(
+        isStudentBulkRegistrationExecutionJobData({
+          batchId: randomUUID(),
+          [field]: randomUUID(),
+        }),
+      ).toBe(false);
     },
   );
 

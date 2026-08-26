@@ -195,6 +195,8 @@ does not change that global behavior.
 | `students.account.student_role_missing`    | 422  | Student role is missing or invalid                  |
 | `students.account.parent_role_missing`     | 422  | Parent role is missing or invalid                   |
 | `students.guardian.account_already_linked` | 409  | Guardian account is already linked                  |
+| `students.bulk_registration.execution_tenant_ineligible`       | 409  | Bulk registration execution tenant is not eligible  |
+| `students.bulk_registration.execution_recovery_window_expired` | 409  | Bulk registration execution recovery window expired |
 
 ### Academics
 

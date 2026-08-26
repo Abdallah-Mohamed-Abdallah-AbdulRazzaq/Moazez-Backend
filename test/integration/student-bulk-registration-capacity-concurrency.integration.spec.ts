@@ -15,6 +15,9 @@ import {
 import { DomainException } from '../../src/common/exceptions/domain-exception';
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
 import { StudentBulkRegistrationExecutionRepository } from '../../src/modules/students/registration/infrastructure/student-bulk-registration-execution.repository';
+import { StudentBulkRegistrationExecutionReconciliationService } from '../../src/modules/students/registration/application/student-bulk-registration-execution-reconciliation.service';
+import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
+import { STUDENT_BULK_REGISTRATION_EXECUTION_RECOVERY_WINDOW_MS } from '../../src/modules/students/registration/domain/student-bulk-registration.constants';
 
 jest.setTimeout(60000);
 
@@ -107,6 +110,141 @@ describe('Student bulk registration Serializable capacity enforcement', () => {
     });
   });
 
+  it('serializes provisioning against recovery terminalization without double counters or partial entities', async () => {
+    const fixture = await createExecutionFixture({
+      classroomCapacity: 10,
+      studentSeatLimit: null,
+      label: 'recovery-race',
+      rowCount: 1,
+    });
+
+    const [provisioned, terminalizedRows] = await Promise.all([
+      repository.provisionRow({
+        batchId: fixture.batchId,
+        schoolId: fixture.schoolId,
+        rowId: fixture.rowIds[0],
+      }),
+      repository.terminalizeRemainingValidRows({
+        batchId: fixture.batchId,
+        schoolId: fixture.schoolId,
+        reasonCode:
+          'students.bulk_registration.execution_recovery_window_expired',
+      }),
+    ]);
+    await repository.finalizeExecution({
+      batchId: fixture.batchId,
+      schoolId: fixture.schoolId,
+    });
+
+    const [batch, rows] = await Promise.all([
+      prisma.studentBulkRegistrationBatch.findUniqueOrThrow({
+        where: { id: fixture.batchId },
+      }),
+      prisma.studentBulkRegistrationRow.findMany({
+        where: { batchId: fixture.batchId },
+      }),
+    ]);
+    const createdRows = rows.filter(
+      (row) => row.status === StudentBulkRegistrationRowStatus.CREATED,
+    );
+    const failedRows = rows.filter(
+      (row) => row.status === StudentBulkRegistrationRowStatus.FAILED,
+    );
+    expect(createdRows).toHaveLength(provisioned.kind === 'created' ? 1 : 0);
+    expect(terminalizedRows).toBe(failedRows.length);
+    expect(createdRows.length + failedRows.length).toBe(1);
+    expect(batch.createdRows).toBe(createdRows.length);
+    expect(batch.failedRows).toBe(failedRows.length);
+    expect(
+      rows.some((row) =>
+        [
+          StudentBulkRegistrationRowStatus.VALID,
+          StudentBulkRegistrationRowStatus.PROCESSING,
+        ].includes(row.status),
+      ),
+    ).toBe(false);
+    for (const row of failedRows) {
+      expect(row.studentId).toBeNull();
+      expect(row.userId).toBeNull();
+      expect(row.enrollmentId).toBeNull();
+    }
+  });
+
+  it.each([
+    ['expired recovery window', 'expired'],
+    ['inactive tenant', 'tenant'],
+  ] as const)(
+    'terminalizes durable VALID rows for %s without queue or business creation',
+    async (_label, reason) => {
+      const fixture = await createExecutionFixture({
+        classroomCapacity: 10,
+        studentSeatLimit: null,
+        label: `terminal-${reason}`,
+      });
+      const reconciliationNow = new Date(Date.now() + 1_000);
+      if (reason === 'expired') {
+        await prisma.studentBulkRegistrationBatch.update({
+          where: { id: fixture.batchId },
+          data: {
+            startedAt: new Date(
+              reconciliationNow.getTime() -
+                STUDENT_BULK_REGISTRATION_EXECUTION_RECOVERY_WINDOW_MS -
+                1,
+            ),
+          },
+        });
+      } else {
+        await prisma.school.update({
+          where: { id: fixture.schoolId },
+          data: { status: SchoolStatus.SUSPENDED },
+        });
+      }
+      const queue = {
+        ensureJobFromPersistedTruth: jest.fn(() => {
+          throw new Error('queue_must_not_be_called');
+        }),
+      };
+      const reconciliation =
+        new StudentBulkRegistrationExecutionReconciliationService(
+          repository,
+          queue as unknown as BullmqService,
+        );
+
+      await reconciliation.reconcile(reconciliationNow);
+
+      const [batch, rows, entityCount] = await Promise.all([
+        prisma.studentBulkRegistrationBatch.findUniqueOrThrow({
+          where: { id: fixture.batchId },
+        }),
+        prisma.studentBulkRegistrationRow.findMany({
+          where: { batchId: fixture.batchId },
+        }),
+        prisma.student.count({ where: { schoolId: fixture.schoolId } }),
+      ]);
+      expect(batch).toMatchObject({
+        status: StudentBulkRegistrationBatchStatus.FAILED,
+        createdRows: 0,
+        failedRows: 2,
+      });
+      expect(
+        rows.every(
+          (row) =>
+            row.status === StudentBulkRegistrationRowStatus.FAILED &&
+            row.studentId === null &&
+            row.userId === null &&
+            row.enrollmentId === null,
+        ),
+      ).toBe(true);
+      expect(JSON.stringify(rows[0].errorsJson)).toContain(
+        reason === 'expired'
+          ? 'students.bulk_registration.execution_recovery_window_expired'
+          : 'students.bulk_registration.execution_tenant_ineligible',
+      );
+      expect(entityCount).toBe(0);
+      expect(queue.ensureJobFromPersistedTruth).not.toHaveBeenCalled();
+    },
+  );
+
   async function provisionConcurrently(fixture: ExecutionFixture) {
     return Promise.all(
       fixture.rowIds.map(async (rowId) => {
@@ -135,6 +273,7 @@ describe('Student bulk registration Serializable capacity enforcement', () => {
     classroomCapacity: number | null;
     studentSeatLimit: number | null;
     label: string;
+    rowCount?: number;
   }): Promise<ExecutionFixture> {
     const suffix = `${input.label}-${Date.now()}-${randomUUID().slice(0, 8)}`;
     const organization = await prisma.organization.create({
@@ -279,8 +418,8 @@ describe('Student bulk registration Serializable capacity enforcement', () => {
         classroomId: classroom.id,
         enrollmentDate: new Date('2026-09-01T00:00:00.000Z'),
         status: StudentBulkRegistrationBatchStatus.EXECUTING,
-        totalRows: 2,
-        validRows: 2,
+        totalRows: input.rowCount ?? 2,
+        validRows: input.rowCount ?? 2,
         invalidRows: 0,
         createdRows: 0,
         failedRows: 0,
@@ -291,7 +430,10 @@ describe('Student bulk registration Serializable capacity enforcement', () => {
       select: { id: true },
     });
     const rows = await Promise.all(
-      [1, 2].map((index) =>
+      Array.from(
+        { length: input.rowCount ?? 2 },
+        (_, offset) => offset + 1,
+      ).map((index) =>
         prisma.studentBulkRegistrationRow.create({
           data: {
             schoolId: school.id,

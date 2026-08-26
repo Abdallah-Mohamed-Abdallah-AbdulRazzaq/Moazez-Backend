@@ -28,6 +28,7 @@ const PERMANENT_ROW_BUSINESS_ERROR_CODES = new Set([
   'students.account.student_role_missing',
   'students.bulk_registration.row_data_invalid',
   'students.bulk_registration.execution_placement_invalid',
+  'students.bulk_registration.execution_tenant_ineligible',
 ]);
 
 @Injectable()

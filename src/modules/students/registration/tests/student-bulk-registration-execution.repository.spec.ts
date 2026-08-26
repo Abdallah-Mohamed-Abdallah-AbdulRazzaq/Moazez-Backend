@@ -178,6 +178,82 @@ describe('StudentBulkRegistrationExecutionRepository', () => {
     },
   );
 
+  it.each([
+    ['inactive school', { schoolStatus: 'SUSPENDED' }],
+    ['deleted school', { schoolDeletedAt: new Date() }],
+    ['inactive organization', { organizationStatus: 'SUSPENDED' }],
+    ['deleted organization', { organizationDeletedAt: new Date() }],
+  ])(
+    'rejects provisioning for an %s inside the Serializable transaction',
+    async (_label, state) => {
+      const eligibility = state as {
+        schoolStatus?: string;
+        schoolDeletedAt?: Date;
+        organizationStatus?: string;
+        organizationDeletedAt?: Date;
+      };
+      const tx = transactionFixture();
+      tx.school.findUnique.mockResolvedValue({
+        id: IDS.school,
+        organizationId: IDS.organization,
+        status: eligibility.schoolStatus ?? 'ACTIVE',
+        deletedAt: eligibility.schoolDeletedAt ?? null,
+        organization: {
+          id: IDS.organization,
+          status: eligibility.organizationStatus ?? 'ACTIVE',
+          deletedAt: eligibility.organizationDeletedAt ?? null,
+        },
+      });
+      const repository = new StudentBulkRegistrationExecutionRepository({
+        $transaction: (callback: (client: typeof tx) => Promise<unknown>) =>
+          callback(tx),
+      } as unknown as PrismaService);
+
+      await expect(
+        repository.provisionRow({
+          batchId: IDS.batch,
+          schoolId: IDS.school,
+          rowId: 'row-1',
+        }),
+      ).rejects.toMatchObject({
+        code: 'students.bulk_registration.execution_tenant_ineligible',
+      });
+      expect(tx.user.create).not.toHaveBeenCalled();
+      expect(tx.membership.create).not.toHaveBeenCalled();
+      expect(tx.student.create).not.toHaveBeenCalled();
+      expect(tx.enrollment.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it('fails closed on tenant identity mismatch inside provisioning', async () => {
+    const tx = transactionFixture();
+    tx.school.findUnique.mockResolvedValue({
+      id: IDS.school,
+      organizationId: 'other-organization',
+      status: 'ACTIVE',
+      deletedAt: null,
+      organization: {
+        id: 'other-organization',
+        status: 'ACTIVE',
+        deletedAt: null,
+      },
+    });
+    const repository = new StudentBulkRegistrationExecutionRepository({
+      $transaction: (callback: (client: typeof tx) => Promise<unknown>) =>
+        callback(tx),
+    } as unknown as PrismaService);
+    await expect(
+      repository.provisionRow({
+        batchId: IDS.batch,
+        schoolId: IDS.school,
+        rowId: 'row-1',
+      }),
+    ).rejects.toMatchObject({
+      code: 'students.bulk_registration.execution_invariant_invalid',
+    });
+    expect(tx.user.create).not.toHaveBeenCalled();
+  });
+
   it('retries only P2034 up to the bounded attempt count', async () => {
     const conflict = Object.assign(new Error('serialization conflict'), {
       code: 'P2034',
@@ -463,6 +539,162 @@ describe('StudentBulkRegistrationExecutionRepository', () => {
       expect(tx.auditLog.create).toHaveBeenCalledTimes(1);
     },
   );
+
+  it('terminalizes only VALID rows, increments the exact count, and audits without row data', async () => {
+    const tx = {
+      studentBulkRegistrationBatch: {
+        findFirst: jest.fn().mockResolvedValue(batchFixture()),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      studentBulkRegistrationRow: {
+        updateMany: jest.fn().mockResolvedValue({ count: 2 }),
+      },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
+    };
+    const transaction = jest.fn(
+      (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
+    );
+    const repository = new StudentBulkRegistrationExecutionRepository({
+      $transaction: transaction,
+    } as unknown as PrismaService);
+
+    await expect(
+      repository.terminalizeRemainingValidRows({
+        batchId: IDS.batch,
+        schoolId: IDS.school,
+        reasonCode:
+          'students.bulk_registration.execution_recovery_window_expired',
+      }),
+    ).resolves.toBe(2);
+    expect(transaction.mock.calls[0][1]).toEqual({
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+    expect(tx.studentBulkRegistrationRow.updateMany).toHaveBeenCalledWith({
+      where: {
+        batchId: IDS.batch,
+        schoolId: IDS.school,
+        status: StudentBulkRegistrationRowStatus.VALID,
+      },
+      data: {
+        status: StudentBulkRegistrationRowStatus.FAILED,
+        errorsJson: [
+          {
+            code: 'students.bulk_registration.execution_recovery_window_expired',
+            field: null,
+          },
+        ],
+      },
+    });
+    expect(tx.studentBulkRegistrationBatch.updateMany).toHaveBeenCalledWith({
+      where: objectContaining({
+        status: StudentBulkRegistrationBatchStatus.EXECUTING,
+      }),
+      data: { failedRows: { increment: 2 } },
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: objectContaining({
+        actorId: IDS.actor,
+        action: 'students.bulk_registration.execution_recovery_terminalize',
+        after: {
+          reasonCode:
+            'students.bulk_registration.execution_recovery_window_expired',
+          terminalizedRows: 2,
+        },
+      }),
+    });
+    expect(JSON.stringify(tx.auditLog.create.mock.calls)).not.toContain(
+      'student.one',
+    );
+  });
+
+  it('does not double-increment or duplicate the audit when terminalization has no VALID rows left', async () => {
+    const tx = {
+      studentBulkRegistrationBatch: {
+        findFirst: jest.fn().mockResolvedValue(batchFixture()),
+        updateMany: jest.fn(),
+      },
+      studentBulkRegistrationRow: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      auditLog: { create: jest.fn() },
+    };
+    const repository = new StudentBulkRegistrationExecutionRepository({
+      $transaction: (callback: (client: typeof tx) => Promise<unknown>) =>
+        callback(tx),
+    } as unknown as PrismaService);
+    await expect(
+      repository.terminalizeRemainingValidRows({
+        batchId: IDS.batch,
+        schoolId: IDS.school,
+        reasonCode:
+          'students.bulk_registration.execution_recovery_window_expired',
+      }),
+    ).resolves.toBe(0);
+    expect(tx.studentBulkRegistrationBatch.updateMany).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('lists recovery candidates with stable paging and one bulk row-status aggregation', async () => {
+    const batch = {
+      ...batchFixture(),
+      createdAt: new Date('2026-08-26T09:00:00.000Z'),
+      school: {
+        id: IDS.school,
+        organizationId: IDS.organization,
+        status: 'ACTIVE',
+        deletedAt: null,
+        organization: {
+          id: IDS.organization,
+          status: 'ACTIVE',
+          deletedAt: null,
+        },
+      },
+    };
+    const findMany = jest.fn().mockResolvedValue([batch]);
+    const groupBy = jest.fn().mockResolvedValue([
+      {
+        batchId: IDS.batch,
+        schoolId: IDS.school,
+        status: StudentBulkRegistrationRowStatus.VALID,
+        _count: { _all: 2 },
+      },
+    ]);
+    const repository = new StudentBulkRegistrationExecutionRepository({
+      studentBulkRegistrationBatch: { findMany },
+      studentBulkRegistrationRow: { groupBy },
+    } as unknown as PrismaService);
+    const cursor = {
+      createdAt: new Date('2026-08-26T08:00:00.000Z'),
+      id: 'previous-batch',
+    };
+
+    await expect(
+      repository.listExecutionRecoveryCandidates({
+        createdBefore: new Date('2026-08-26T12:00:00.000Z'),
+        cursor,
+        limit: 100,
+      }),
+    ).resolves.toMatchObject([
+      {
+        id: IDS.batch,
+        rowCounts: { VALID: 2 },
+        rowSchoolMismatch: false,
+      },
+    ]);
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        take: 100,
+      }),
+    );
+    expect(groupBy).toHaveBeenCalledTimes(1);
+    expect(groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        by: ['batchId', 'schoolId', 'status'],
+        where: { batchId: { in: [IDS.batch] } },
+      }),
+    );
+  });
 });
 
 function transactionFixture() {
@@ -476,6 +708,19 @@ function transactionFixture() {
       findFirstOrThrow: jest.fn().mockResolvedValue({
         id: 'row-1',
         normalizedDataJson: normalizedData(),
+      }),
+    },
+    school: {
+      findUnique: jest.fn().mockResolvedValue({
+        id: IDS.school,
+        organizationId: IDS.organization,
+        status: 'ACTIVE',
+        deletedAt: null,
+        organization: {
+          id: IDS.organization,
+          status: 'ACTIVE',
+          deletedAt: null,
+        },
       }),
     },
     academicYear: {

@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
+import type { Job, Worker } from 'bullmq';
 import {
   AppDeviceTokenPlatform,
   AppDeviceTokenSurface,
@@ -25,6 +26,8 @@ import {
   SchoolEmailDeliveryRecipientType,
   SchoolStatus,
   StudentEnrollmentStatus,
+  StudentBulkRegistrationBatchStatus,
+  StudentBulkRegistrationRowStatus,
   UserStatus,
   UserType,
 } from '@prisma/client';
@@ -57,6 +60,8 @@ import { ImportJobsRepository } from '../../src/modules/files/imports/infrastruc
 import { ImportValidationReconciliationService } from '../../src/modules/files/imports/application/import-validation-reconciliation.service';
 import { ProcessImportValidationUseCase } from '../../src/modules/files/imports/application/process-import-validation.use-case';
 import { ImportValidationWorker } from '../../src/modules/files/imports/infrastructure/import-validation.worker';
+import { StudentBulkRegistrationExecutionReconciliationService } from '../../src/modules/students/registration/application/student-bulk-registration-execution-reconciliation.service';
+import { StudentBulkRegistrationExecutionRepository } from '../../src/modules/students/registration/infrastructure/student-bulk-registration-execution.repository';
 import { DismissalRequestsExpiryRepository } from '../../src/modules/dismissal/requests/infrastructure/dismissal-requests-expiry.repository';
 import { ExpireDismissalRequestsUseCase } from '../../src/modules/dismissal/requests/application/expire-dismissal-requests.use-case';
 import { DismissalRequestExpiryWorker } from '../../src/modules/dismissal/requests/worker/dismissal-request-expiry.worker';
@@ -89,6 +94,8 @@ import {
 import {
   FILES_IMPORT_QUEUE_NAME,
   FILES_IMPORT_VALIDATE_JOB_NAME,
+  STUDENT_BULK_REGISTRATION_EXECUTE_JOB_NAME,
+  studentBulkRegistrationExecutionJobId,
 } from '../../src/modules/files/imports/domain/import-job.types';
 import {
   DISMISSAL_REQUEST_EXPIRY_JOB_NAME,
@@ -176,6 +183,60 @@ describeEvidence('PRD3-G03 production-model recovery evidence', () => {
         emailTerminalized: 1,
         learningMedia: 1,
       });
+      const bulkExecutionJobId = studentBulkRegistrationExecutionJobId(
+        fixture.bulkExecutionBatchId,
+      );
+      await queue.getQueue(FILES_IMPORT_QUEUE_NAME).remove(bulkExecutionJobId);
+      const exhaustedWorker = queue.createWorker(
+        FILES_IMPORT_QUEUE_NAME,
+        (job) => {
+          if (job.id === bulkExecutionJobId) {
+            throw new Error('synthetic_execution_exhausted');
+          }
+        },
+      );
+      try {
+        const exhausted = waitForWorkerFailure(
+          exhaustedWorker,
+          bulkExecutionJobId,
+          30_000,
+        );
+        await exhaustedWorker.waitUntilReady();
+        await queue.addJob(
+          FILES_IMPORT_QUEUE_NAME,
+          STUDENT_BULK_REGISTRATION_EXECUTE_JOB_NAME,
+          { batchId: fixture.bulkExecutionBatchId },
+          { jobId: bulkExecutionJobId, attempts: 1 },
+        );
+        await exhausted;
+        await expect(
+          queue
+            .getQueue(FILES_IMPORT_QUEUE_NAME)
+            .getJob(bulkExecutionJobId)
+            .then((job) => job?.getState()),
+        ).resolves.toBe('failed');
+      } finally {
+        await exhaustedWorker.pause(true);
+      }
+      await components.studentBulkRegistrationExecutionReconciliation.reconcile(
+        fixture.now,
+      );
+      await expect(
+        queue
+          .getQueue(FILES_IMPORT_QUEUE_NAME)
+          .getJob(bulkExecutionJobId)
+          .then((job) => job?.getState()),
+      ).resolves.toBe('waiting');
+      await expect(
+        prisma.studentBulkRegistrationBatch.findUniqueOrThrow({
+          where: { id: fixture.bulkExecutionBatchId },
+          select: { status: true, createdRows: true, failedRows: true },
+        }),
+      ).resolves.toEqual({
+        status: StudentBulkRegistrationBatchStatus.EXECUTING,
+        createdRows: 0,
+        failedRows: 0,
+      });
 
       const ineligibleBeforeReplacement = await readIneligibleOutcomes(
         prisma,
@@ -223,6 +284,7 @@ describeEvidence('PRD3-G03 production-model recovery evidence', () => {
         push: 1,
         email: 4,
         imports: 1,
+        bulkExecution: 1,
         dismissal: 1,
         learningMedia: 1,
         branding: 1,
@@ -279,7 +341,7 @@ describeEvidence('PRD3-G03 production-model recovery evidence', () => {
       const evidence = {
         emptyRedisDbSize: 0,
         productionModelSourceCount: 7,
-        productionReconcilerCount: 6,
+        productionReconcilerCount: 7,
         productionWorkerDispatchCount: 7,
         reconstructedJobsByQueue: reconstructed,
         actualUniqueScheduleRegistrations: 7,
@@ -435,6 +497,11 @@ function createProductionComponents(
     importRepository,
     queue,
   );
+  const studentBulkRegistrationExecutionReconciliation =
+    new StudentBulkRegistrationExecutionReconciliationService(
+      new StudentBulkRegistrationExecutionRepository(prisma),
+      queue,
+    );
   const importProcess = new ProcessImportValidationUseCase(
     importRepository,
     storage,
@@ -473,6 +540,7 @@ function createProductionComponents(
     emailTransport,
     importRepository,
     importReconciliation,
+    studentBulkRegistrationExecutionReconciliation,
     importProcess,
     dismissalProcess,
     learningMedia,
@@ -489,6 +557,9 @@ async function reconstructProductionWork(
   const push = await components.pushReconciliation.reconcile(now);
   const email = await components.emailReconciliation.reconcile(now);
   await components.importReconciliation.reconcile(now);
+  await components.studentBulkRegistrationExecutionReconciliation.reconcile(
+    now,
+  );
   const learningMedia = await components.learningMedia.discoverAndEnqueue(now);
   await components.brandingProcess.reconcile();
   return {
@@ -542,6 +613,7 @@ async function exerciseProductionWorkerDispatch(
     bullmq,
     components.importProcess,
     components.importReconciliation,
+    components.studentBulkRegistrationExecutionReconciliation,
     components.importRepository,
   ).onModuleInit();
   new DismissalRequestExpiryWorker(
@@ -1121,6 +1193,120 @@ async function seedProductionModels(
       createdById: actorUserId,
     },
   });
+  const dismissalRequestId = await seedDismissalRequest(prisma, {
+    id,
+    now: new Date(),
+    old,
+    organizationId,
+    schoolId: activeSchoolId,
+    guardianUserId,
+  });
+  const bulkExecutionFileId = id();
+  const bulkExecutionObject = {
+    bucket,
+    objectKey: `imports/${bulkExecutionFileId}.csv`,
+  };
+  await storage.saveObject({
+    ...bulkExecutionObject,
+    body: 'bulk execution source retained',
+    contentType: 'text/csv',
+  });
+  await prisma.file.create({
+    data: file(
+      bulkExecutionFileId,
+      organizationId,
+      activeSchoolId,
+      actorUserId,
+      bulkExecutionObject,
+      'bulk-execution.csv',
+      'text/csv',
+    ),
+  });
+  const studentRoleId = id();
+  await prisma.role.create({
+    data: {
+      id: studentRoleId,
+      schoolId: activeSchoolId,
+      key: 'student',
+      name: 'Student',
+    },
+  });
+  const academicYear = await prisma.academicYear.findFirstOrThrow({
+    where: { schoolId: activeSchoolId, isActive: true, deletedAt: null },
+    select: { id: true },
+  });
+  const classroom = await prisma.classroom.findFirstOrThrow({
+    where: { schoolId: activeSchoolId, deletedAt: null },
+    select: { id: true },
+  });
+  const bulkExecutionImportJobId = id();
+  await prisma.importJob.create({
+    data: {
+      id: bulkExecutionImportJobId,
+      schoolId: activeSchoolId,
+      uploadedFileId: bulkExecutionFileId,
+      type: 'students_bulk_registration',
+      status: ImportJobStatus.COMPLETED,
+      createdById: actorUserId,
+      reportJson: {
+        status: ImportJobStatus.COMPLETED,
+        errors: [],
+        bulkRegistrationExecution: {
+          requestedById: actorUserId,
+          requestedByUserType: UserType.SCHOOL_USER,
+          requestedAt: now.toISOString(),
+          loginDomain: 'g03.students.example.test',
+          studentRoleId,
+        },
+      },
+    },
+  });
+  const bulkExecutionBatchId = id();
+  await prisma.studentBulkRegistrationBatch.create({
+    data: {
+      id: bulkExecutionBatchId,
+      schoolId: activeSchoolId,
+      organizationId,
+      sourceImportJobId: bulkExecutionImportJobId,
+      academicYearId: academicYear.id,
+      classroomId: classroom.id,
+      enrollmentDate: new Date('2026-09-01T00:00:00.000Z'),
+      status: StudentBulkRegistrationBatchStatus.EXECUTING,
+      totalRows: 1,
+      validRows: 1,
+      invalidRows: 0,
+      createdRows: 0,
+      failedRows: 0,
+      createdById: actorUserId,
+      validatedAt: now,
+      startedAt: now,
+    },
+  });
+  await prisma.studentBulkRegistrationRow.create({
+    data: {
+      schoolId: activeSchoolId,
+      batchId: bulkExecutionBatchId,
+      rowNumber: 2,
+      normalizedDataJson: {
+        firstNameEn: 'G03',
+        fatherNameEn: null,
+        grandfatherNameEn: null,
+        familyNameEn: 'Recovery',
+        firstNameAr: null,
+        fatherNameAr: null,
+        grandfatherNameAr: null,
+        familyNameAr: null,
+        dateOfBirth: '2012-05-20',
+        gender: 'female',
+        nationality: 'Egyptian',
+        username: 'g03.recovery',
+        contactEmail: null,
+        studentPhone: null,
+      },
+      rowHash: 'a'.repeat(64),
+      status: StudentBulkRegistrationRowStatus.VALID,
+    },
+  });
   const inactiveImportFileId = id();
   await prisma.file.create({
     data: {
@@ -1225,15 +1411,6 @@ async function seedProductionModels(
     },
   });
 
-  const dismissalRequestId = await seedDismissalRequest(prisma, {
-    id,
-    now: new Date(),
-    old,
-    organizationId,
-    schoolId: activeSchoolId,
-    guardianUserId,
-  });
-
   return {
     now: new Date(),
     organizationId,
@@ -1256,6 +1433,7 @@ async function seedProductionModels(
     executableEmailRecipientIds,
     inactiveEmailRecipientId,
     importJobId,
+    bulkExecutionBatchId,
     inactiveImportJobId,
     deletedImportJobId,
     learningUploadId,
@@ -1591,6 +1769,15 @@ async function assertReconstructedJobs(
           .getJob(fixture.importJobId),
       ),
     ),
+    bulkExecution: Number(
+      Boolean(
+        await queue
+          .getQueue(FILES_IMPORT_QUEUE_NAME)
+          .getJob(
+            studentBulkRegistrationExecutionJobId(fixture.bulkExecutionBatchId),
+          ),
+      ),
+    ),
     dismissal: Number(
       queue
         .getRepeatRegistrations()
@@ -1743,6 +1930,26 @@ function waitForRedisContainer(container: string): void {
     pause(100);
   }
   throw new Error('replacement_redis_startup_timeout');
+}
+
+function waitForWorkerFailure(
+  worker: Worker,
+  jobId: string,
+  timeoutMs: number,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      worker.off('failed', onFailed);
+      reject(new Error('bulk_execution_job_not_exhausted'));
+    }, timeoutMs);
+    const onFailed = (job: Job | undefined): void => {
+      if (job?.id !== jobId) return;
+      clearTimeout(timeout);
+      worker.off('failed', onFailed);
+      resolve();
+    };
+    worker.on('failed', onFailed);
+  });
 }
 
 async function waitFor(

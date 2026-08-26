@@ -75,6 +75,7 @@ describe('ProcessStudentBulkRegistrationExecutionUseCase', () => {
     ['students.bulk_registration.row_data_invalid', null],
     ['students.account.student_role_missing', null],
     ['students.bulk_registration.execution_placement_invalid', null],
+    ['students.bulk_registration.execution_tenant_ineligible', null],
   ] as const)(
     'marks known business failure %s per row and continues',
     async (code, field) => {
