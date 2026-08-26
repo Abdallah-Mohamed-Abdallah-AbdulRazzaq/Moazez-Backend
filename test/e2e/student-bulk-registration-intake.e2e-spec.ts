@@ -19,6 +19,7 @@ import {
   runWithRequestContext,
 } from '../../src/common/context/request-context';
 import { ProcessStudentBulkRegistrationValidationUseCase } from '../../src/modules/students/registration/application/process-student-bulk-registration-validation.use-case';
+import { ProcessStudentBulkRegistrationExecutionUseCase } from '../../src/modules/students/registration/application/process-student-bulk-registration-execution.use-case';
 import { StudentBulkRegistrationRepository } from '../../src/modules/students/registration/infrastructure/student-bulk-registration.repository';
 import { StudentBulkRegistrationPlacementService } from '../../src/modules/students/registration/domain/student-bulk-registration-placement.service';
 import { ImportJobsRepository } from '../../src/modules/files/imports/infrastructure/import-jobs.repository';
@@ -46,6 +47,7 @@ describe('Student bulk registration intake flow (e2e)', () => {
   let prisma: PrismaClient;
   let storageService: StorageService;
   let processor: ProcessStudentBulkRegistrationValidationUseCase;
+  let executor: ProcessStudentBulkRegistrationExecutionUseCase;
   let schoolId: string;
   let organizationId: string;
   let actorId: string;
@@ -55,6 +57,7 @@ describe('Student bulk registration intake flow (e2e)', () => {
   let gradeId: string;
   let sectionId: string;
   let classroomId: string;
+  let partialClassroomId: string | null = null;
   let batchId: string | null = null;
   let importJobId: string | null = null;
   let fileId: string | null = null;
@@ -136,21 +139,61 @@ describe('Student bulk registration intake flow (e2e)', () => {
       app.get(LoginIdentityRepository),
       app.get(StudentBulkRegistrationPlacementService),
     );
+    executor = app.get(ProcessStudentBulkRegistrationExecutionUseCase);
   });
 
   afterAll(async () => {
     if (prisma) {
+      const executionRows = await prisma.studentBulkRegistrationRow.findMany({
+        where: {
+          batchId: { in: intakeResources.map((item) => item.batchId) },
+        },
+        select: { studentId: true, userId: true, enrollmentId: true },
+      });
       await prisma.studentBulkRegistrationBatch.deleteMany({
         where: { id: { in: intakeResources.map((item) => item.batchId) } },
       });
+      const enrollmentIds = executionRows.flatMap((row) =>
+        row.enrollmentId ? [row.enrollmentId] : [],
+      );
+      const studentIds = executionRows.flatMap((row) =>
+        row.studentId ? [row.studentId] : [],
+      );
+      const userIds = executionRows.flatMap((row) =>
+        row.userId ? [row.userId] : [],
+      );
+      await prisma.auditLog.deleteMany({
+        where: {
+          OR: [
+            { resourceId: { in: intakeResources.map((item) => item.batchId) } },
+            { resourceId: { in: studentIds } },
+          ],
+        },
+      });
+      await prisma.enrollment.deleteMany({
+        where: { id: { in: enrollmentIds } },
+      });
+      await prisma.student.deleteMany({ where: { id: { in: studentIds } } });
+      await prisma.membership.deleteMany({
+        where: { userId: { in: userIds } },
+      });
+      await prisma.user.deleteMany({ where: { id: { in: userIds } } });
       await prisma.importJob.deleteMany({
         where: { id: { in: intakeResources.map((item) => item.importJobId) } },
       });
       await prisma.file.deleteMany({
         where: { id: { in: intakeResources.map((item) => item.fileId) } },
       });
-      if (classroomId) {
-        await prisma.classroom.deleteMany({ where: { id: classroomId } });
+      if (classroomId || partialClassroomId) {
+        await prisma.classroom.deleteMany({
+          where: {
+            id: {
+              in: [classroomId, partialClassroomId].filter(
+                (value): value is string => Boolean(value),
+              ),
+            },
+          },
+        });
       }
       if (sectionId) {
         await prisma.section.deleteMany({ where: { id: sectionId } });
@@ -409,7 +452,101 @@ describe('Student bulk registration intake flow (e2e)', () => {
     );
   });
 
+  it('confirms READY and atomically provisions a passwordless Student through COMPLETED', async () => {
+    const token = await login();
+    const confirmation = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/students-guardians/bulk-registrations/${batchId}/confirm`,
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .expect(202);
+    expect(confirmation.body).toMatchObject({
+      id: batchId,
+      status: StudentBulkRegistrationBatchStatus.EXECUTING,
+      counters: { validRows: 1, createdRows: 0, failedRows: 0 },
+      completedAt: null,
+      validationErrors: [],
+    });
+    expect(
+      Number.isNaN(
+        Date.parse((confirmation.body as { startedAt: string }).startedAt),
+      ),
+    ).toBe(false);
+
+    await executor.execute(batchId!);
+
+    const batch = await prisma.studentBulkRegistrationBatch.findUniqueOrThrow({
+      where: { id: batchId! },
+    });
+    const row = await prisma.studentBulkRegistrationRow.findFirstOrThrow({
+      where: { batchId: batchId! },
+    });
+    if (!row.userId || !row.studentId || !row.enrollmentId) {
+      throw new Error('Expected completed reconciliation identifiers');
+    }
+    const [user, membership, student, enrollment] = await Promise.all([
+      prisma.user.findUniqueOrThrow({ where: { id: row.userId } }),
+      prisma.membership.findFirstOrThrow({ where: { userId: row.userId } }),
+      prisma.student.findUniqueOrThrow({ where: { id: row.studentId } }),
+      prisma.enrollment.findUniqueOrThrow({ where: { id: row.enrollmentId } }),
+    ]);
+    expect(batch).toMatchObject({
+      status: StudentBulkRegistrationBatchStatus.COMPLETED,
+      createdRows: 1,
+      failedRows: 0,
+    });
+    expect(batch.completedAt).toBeInstanceOf(Date);
+    expect(row).toMatchObject({
+      status: StudentBulkRegistrationRowStatus.CREATED,
+      schoolId,
+    });
+    expect(user).toMatchObject({
+      userType: UserType.STUDENT,
+      status: 'ACTIVE',
+      passwordHash: null,
+      mustChangePassword: false,
+      passwordProvisionedAt: null,
+      passwordChangedAt: null,
+      credentialVersion: 0,
+    });
+    expect(user.email).not.toBe(user.contactEmail);
+    expect(membership).toMatchObject({
+      schoolId,
+      organizationId,
+      userType: UserType.STUDENT,
+      status: 'ACTIVE',
+    });
+    expect(student).toMatchObject({
+      schoolId,
+      organizationId,
+      userId: user.id,
+      status: 'ACTIVE',
+    });
+    expect(enrollment).toMatchObject({
+      schoolId,
+      studentId: student.id,
+      academicYearId,
+      termId,
+      classroomId,
+      status: 'ACTIVE',
+    });
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/students-guardians/bulk-registrations/${batchId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          status: StudentBulkRegistrationBatchStatus.COMPLETED,
+          counters: { createdRows: 1, failedRows: 0 },
+          completedAt: expect.any(String) as unknown,
+        });
+      });
+  });
+
   it('completes an invalid CSV as VALIDATION_FAILED with row preview and no business creation', async () => {
+    const mutationCountsBeforeInvalidValidation =
+      await readForbiddenMutationCounts();
     const token = await login();
     const upload = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/students-guardians/bulk-registrations`)
@@ -472,7 +609,95 @@ describe('Student bulk registration intake flow (e2e)', () => {
       invalidRows: 1,
     });
     await expect(readForbiddenMutationCounts()).resolves.toEqual(
-      forbiddenCountsBefore,
+      mutationCountsBeforeInvalidValidation,
+    );
+  });
+
+  it('persists CREATED and FAILED rows and closes execution as partial after a post-confirm capacity change', async () => {
+    const token = await login();
+    const classroom = await prisma.classroom.create({
+      data: {
+        schoolId,
+        sectionId,
+        nameAr: `${TEST_SUFFIX}-partial-classroom-ar`,
+        nameEn: `${TEST_SUFFIX}-partial-classroom`,
+        sortOrder: 102,
+        capacity: 2,
+      },
+      select: { id: true },
+    });
+    partialClassroomId = classroom.id;
+    const partialCsv = Buffer.from(
+      `${STUDENT_BULK_REGISTRATION_TEMPLATE_HEADERS.join(',')}\n` +
+        `Partial,One,,Student,,,,,2012-05-20,female,Egyptian,partial.one.${Date.now()},,\n` +
+        `Partial,Two,,Student,,,,,2012-05-20,female,Egyptian,partial.two.${Date.now()},,\n`,
+    );
+    const upload = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/students-guardians/bulk-registrations`)
+      .set('Authorization', `Bearer ${token}`)
+      .field('academicYearId', academicYearId)
+      .field('termId', termId)
+      .field('classroomId', classroom.id)
+      .field('enrollmentDate', '2026-09-01')
+      .attach('file', partialCsv, {
+        filename: 'bulk-students-partial.csv',
+        contentType: 'text/csv',
+      })
+      .expect(201);
+    const ids = upload.body as { id: string; sourceImportJobId: string };
+    const source = await prisma.importJob.findUniqueOrThrow({
+      where: { id: ids.sourceImportJobId },
+      include: { uploadedFile: true },
+    });
+    intakeResources.push({
+      batchId: ids.id,
+      importJobId: ids.sourceImportJobId,
+      fileId: source.uploadedFileId,
+      bucket: source.uploadedFile.bucket,
+      objectKey: source.uploadedFile.objectKey,
+    });
+    await processInPersistedScope(ids.sourceImportJobId);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/students-guardians/bulk-registrations/${ids.id}/confirm`,
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .expect(202);
+    await prisma.classroom.update({
+      where: { id: classroom.id },
+      data: { capacity: 1 },
+    });
+
+    await executor.execute(ids.id);
+
+    const [partialBatch, rows] = await Promise.all([
+      prisma.studentBulkRegistrationBatch.findUniqueOrThrow({
+        where: { id: ids.id },
+      }),
+      prisma.studentBulkRegistrationRow.findMany({
+        where: { batchId: ids.id },
+        orderBy: { rowNumber: 'asc' },
+      }),
+    ]);
+    expect(partialBatch).toMatchObject({
+      status: StudentBulkRegistrationBatchStatus.EXECUTION_PARTIAL_FAILED,
+      createdRows: 1,
+      failedRows: 1,
+    });
+    expect(rows.map((row) => row.status).sort()).toEqual([
+      StudentBulkRegistrationRowStatus.CREATED,
+      StudentBulkRegistrationRowStatus.FAILED,
+    ]);
+    const failed = rows.find(
+      (row) => row.status === StudentBulkRegistrationRowStatus.FAILED,
+    );
+    expect(failed).toMatchObject({
+      studentId: null,
+      userId: null,
+      enrollmentId: null,
+    });
+    expect(JSON.stringify(failed?.errorsJson)).toContain(
+      'students.enrollment.placement_conflict',
     );
   });
 

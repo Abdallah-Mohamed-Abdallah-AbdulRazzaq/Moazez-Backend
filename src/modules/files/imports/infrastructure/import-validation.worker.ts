@@ -9,17 +9,20 @@ import {
   FILES_IMPORT_QUEUE_NAME,
   FILES_IMPORT_RECONCILE_JOB_NAME,
   FILES_IMPORT_VALIDATE_JOB_NAME,
-  ImportValidationJobData,
+  FilesImportQueueJobData,
+  STUDENT_BULK_REGISTRATION_EXECUTE_JOB_NAME,
+  isStudentBulkRegistrationExecutionJobData,
 } from '../domain/import-job.types';
 import { ProcessImportValidationUseCase } from '../application/process-import-validation.use-case';
 import { ImportValidationReconciliationService } from '../application/import-validation-reconciliation.service';
 import { ImportJobsRepository } from './import-jobs.repository';
 import { STUDENTS_BULK_REGISTRATION_IMPORT_TYPE } from '../domain/import-upload.constraints';
 import { ProcessStudentBulkRegistrationValidationUseCase } from '../../../students/registration/application/process-student-bulk-registration-validation.use-case';
+import { ProcessStudentBulkRegistrationExecutionUseCase } from '../../../students/registration/application/process-student-bulk-registration-execution.use-case';
 
 @Injectable()
 export class ImportValidationWorker implements OnModuleInit {
-  private worker: Worker<ImportValidationJobData, void, string> | null = null;
+  private worker: Worker<FilesImportQueueJobData, void, string> | null = null;
 
   constructor(
     private readonly bullmqService: BullmqService,
@@ -28,19 +31,39 @@ export class ImportValidationWorker implements OnModuleInit {
     private readonly importJobsRepository: ImportJobsRepository,
     @Optional()
     private readonly processStudentBulkRegistrationValidationUseCase?: ProcessStudentBulkRegistrationValidationUseCase,
+    @Optional()
+    private readonly processStudentBulkRegistrationExecutionUseCase?: ProcessStudentBulkRegistrationExecutionUseCase,
   ) {}
 
   onModuleInit(): void {
     this.worker = this.bullmqService.createWorker<
-      ImportValidationJobData,
+      FilesImportQueueJobData,
       void
     >(FILES_IMPORT_QUEUE_NAME, async (job) => {
       if (job.name === FILES_IMPORT_RECONCILE_JOB_NAME) {
         await this.reconciliationService.reconcile();
         return;
       }
+      if (job.name === STUDENT_BULK_REGISTRATION_EXECUTE_JOB_NAME) {
+        if (!isStudentBulkRegistrationExecutionJobData(job.data)) {
+          throw new Error('bulk_registration_execution_payload_invalid');
+        }
+        if (!this.processStudentBulkRegistrationExecutionUseCase) {
+          throw new Error('bulk_registration_execution_processor_missing');
+        }
+        await this.processStudentBulkRegistrationExecutionUseCase.execute(
+          job.data.batchId,
+        );
+        return;
+      }
       if (job.name !== FILES_IMPORT_VALIDATE_JOB_NAME) {
         throw new Error('files_import_job_unknown');
+      }
+      if (
+        !('importJobId' in job.data) ||
+        typeof job.data.importJobId !== 'string'
+      ) {
+        throw new Error('files_import_validation_payload_invalid');
       }
       const persisted = await this.importJobsRepository.findRecoveryContextById(
         job.data.importJobId,

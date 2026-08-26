@@ -56,6 +56,8 @@ import { StudentSeatLimitPolicyService } from '../../modules/platform-admin/appl
 import { StudentBulkRegistrationPlacementService } from '../../modules/students/registration/domain/student-bulk-registration-placement.service';
 import { StudentBulkRegistrationRepository } from '../../modules/students/registration/infrastructure/student-bulk-registration.repository';
 import { ProcessStudentBulkRegistrationValidationUseCase } from '../../modules/students/registration/application/process-student-bulk-registration-validation.use-case';
+import { ProcessStudentBulkRegistrationExecutionUseCase } from '../../modules/students/registration/application/process-student-bulk-registration-execution.use-case';
+import { StudentBulkRegistrationExecutionRepository } from '../../modules/students/registration/infrastructure/student-bulk-registration-execution.repository';
 
 export const CORE_WORKER_CONSUMER_PROVIDERS = Object.freeze([
   CommunicationNotificationGenerationWorker,
@@ -105,7 +107,9 @@ const CORE_WORKER_SUPPORT_PROVIDERS: Provider[] = [
   StudentSeatLimitPolicyService,
   StudentBulkRegistrationPlacementService,
   StudentBulkRegistrationRepository,
+  StudentBulkRegistrationExecutionRepository,
   ProcessStudentBulkRegistrationValidationUseCase,
+  ProcessStudentBulkRegistrationExecutionUseCase,
   DismissalRequestsExpiryRepository,
   DismissalRealtimeRepository,
   DismissalRealtimeEventsService,

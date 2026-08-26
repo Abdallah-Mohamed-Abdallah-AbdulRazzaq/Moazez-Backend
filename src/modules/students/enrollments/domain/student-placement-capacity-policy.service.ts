@@ -11,6 +11,34 @@ export interface AssertStudentPlacementCapacityCommand {
   excludeEnrollmentId?: string;
 }
 
+export interface StudentPlacementCapacitySnapshot {
+  academicYearId: string;
+  classroomId: string;
+  capacity: number | null;
+  activeCount: number;
+  incrementBy?: number;
+}
+
+export function assertStudentPlacementCapacitySnapshot(
+  snapshot: StudentPlacementCapacitySnapshot,
+): void {
+  const incrementBy = normalizePlacementIncrement(snapshot.incrementBy);
+
+  if (snapshot.capacity === null) return;
+
+  const projectedActiveCount = snapshot.activeCount + incrementBy;
+  if (projectedActiveCount > snapshot.capacity) {
+    throw new StudentEnrollmentPlacementConflictException({
+      academicYearId: snapshot.academicYearId,
+      classroomId: snapshot.classroomId,
+      capacity: snapshot.capacity,
+      activeCount: snapshot.activeCount,
+      incrementBy,
+      projectedActiveCount,
+    });
+  }
+}
+
 @Injectable()
 export class StudentPlacementCapacityPolicyService {
   constructor(private readonly enrollmentsRepository: EnrollmentsRepository) {}
@@ -18,7 +46,7 @@ export class StudentPlacementCapacityPolicyService {
   async assertCanPlace(
     command: AssertStudentPlacementCapacityCommand,
   ): Promise<void> {
-    const incrementBy = this.normalizeIncrement(command.incrementBy);
+    const incrementBy = normalizePlacementIncrement(command.incrementBy);
 
     if (command.classroom.capacity === null) {
       return;
@@ -30,33 +58,25 @@ export class StudentPlacementCapacityPolicyService {
         classroomId: command.classroom.id,
         excludeEnrollmentId: command.excludeEnrollmentId,
       });
-    const projectedActiveCount = activeCount + incrementBy;
+    assertStudentPlacementCapacitySnapshot({
+      academicYearId: command.academicYearId,
+      classroomId: command.classroom.id,
+      capacity: command.classroom.capacity,
+      activeCount,
+      incrementBy,
+    });
+  }
+}
 
-    if (projectedActiveCount > command.classroom.capacity) {
-      throw new StudentEnrollmentPlacementConflictException({
-        academicYearId: command.academicYearId,
-        classroomId: command.classroom.id,
-        capacity: command.classroom.capacity,
-        activeCount,
-        incrementBy,
-        projectedActiveCount,
-      });
-    }
+function normalizePlacementIncrement(incrementBy?: number): number {
+  const normalizedIncrement = incrementBy === undefined ? 1 : incrementBy;
+
+  if (!Number.isSafeInteger(normalizedIncrement) || normalizedIncrement <= 0) {
+    throw new ValidationDomainException(
+      'Placement increment must be a positive integer',
+      { field: 'incrementBy' },
+    );
   }
 
-  private normalizeIncrement(incrementBy?: number): number {
-    const normalizedIncrement = incrementBy === undefined ? 1 : incrementBy;
-
-    if (
-      !Number.isSafeInteger(normalizedIncrement) ||
-      normalizedIncrement <= 0
-    ) {
-      throw new ValidationDomainException(
-        'Placement increment must be a positive integer',
-        { field: 'incrementBy' },
-      );
-    }
-
-    return normalizedIncrement;
-  }
+  return normalizedIncrement;
 }

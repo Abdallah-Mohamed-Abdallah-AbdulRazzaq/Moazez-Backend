@@ -16,6 +16,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiAcceptedResponse,
   ApiConsumes,
   ApiCreatedResponse,
   ApiOkResponse,
@@ -29,6 +30,7 @@ import { GetStudentBulkRegistrationTemplateUseCase } from '../application/get-st
 import { StudentBulkRegistrationPreflightUseCase } from '../application/student-bulk-registration-preflight.use-case';
 import { GetStudentBulkRegistrationBatchUseCase } from '../application/get-student-bulk-registration-batch.use-case';
 import { ListStudentBulkRegistrationRowsUseCase } from '../application/list-student-bulk-registration-rows.use-case';
+import { ConfirmStudentBulkRegistrationUseCase } from '../application/confirm-student-bulk-registration.use-case';
 import {
   CreateStudentBulkRegistrationDto,
   StudentBulkRegistrationBatchResponseDto,
@@ -55,6 +57,7 @@ export class StudentBulkRegistrationController {
     private readonly createUseCase: CreateStudentBulkRegistrationUseCase,
     private readonly getBatchUseCase: GetStudentBulkRegistrationBatchUseCase,
     private readonly listRowsUseCase: ListStudentBulkRegistrationRowsUseCase,
+    private readonly confirmUseCase: ConfirmStudentBulkRegistrationUseCase,
   ) {}
 
   @Post('preflight')
@@ -97,6 +100,16 @@ export class StudentBulkRegistrationController {
     @Param('batchId', ParseUUIDPipe) batchId: string,
   ): Promise<StudentBulkRegistrationBatchDetailResponseDto> {
     return this.getBatchUseCase.execute(batchId);
+  }
+
+  @Post(':batchId/confirm')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiAcceptedResponse({ type: StudentBulkRegistrationBatchDetailResponseDto })
+  @RequiredPermissions(...BULK_REGISTRATION_PERMISSIONS)
+  confirm(
+    @Param('batchId', ParseUUIDPipe) batchId: string,
+  ): Promise<StudentBulkRegistrationBatchDetailResponseDto> {
+    return this.confirmUseCase.execute(batchId);
   }
 
   @Post()

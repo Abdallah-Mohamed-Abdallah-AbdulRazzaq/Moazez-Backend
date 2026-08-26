@@ -8,6 +8,7 @@ import { GetStudentBulkRegistrationTemplateUseCase } from '../application/get-st
 import { StudentBulkRegistrationPreflightUseCase } from '../application/student-bulk-registration-preflight.use-case';
 import { GetStudentBulkRegistrationBatchUseCase } from '../application/get-student-bulk-registration-batch.use-case';
 import { ListStudentBulkRegistrationRowsUseCase } from '../application/list-student-bulk-registration-rows.use-case';
+import { ConfirmStudentBulkRegistrationUseCase } from '../application/confirm-student-bulk-registration.use-case';
 import { StudentBulkRegistrationController } from '../controller/student-bulk-registration.controller';
 import { STUDENT_BULK_REGISTRATION_TEMPLATE_CSV } from '../domain/student-bulk-registration.constants';
 import type { UploadedMultipartFile } from '../../../files/uploads/domain/uploaded-file';
@@ -49,6 +50,7 @@ describe('StudentBulkRegistrationController API contract', () => {
   let createUseCase: { execute: jest.Mock };
   let getBatchUseCase: { execute: jest.Mock };
   let listRowsUseCase: { execute: jest.Mock };
+  let confirmUseCase: { execute: jest.Mock };
 
   beforeAll(async () => {
     preflightUseCase = {
@@ -75,6 +77,16 @@ describe('StudentBulkRegistrationController API contract', () => {
         limit: 50,
       }),
     };
+    confirmUseCase = {
+      execute: jest.fn().mockResolvedValue({
+        ...createResponse,
+        status: 'EXECUTING',
+        validatedAt: '2026-08-26T09:00:00.000Z',
+        startedAt: '2026-08-26T10:00:00.000Z',
+        completedAt: null,
+        validationErrors: [],
+      }),
+    };
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       controllers: [StudentBulkRegistrationController],
@@ -98,6 +110,10 @@ describe('StudentBulkRegistrationController API contract', () => {
         {
           provide: ListStudentBulkRegistrationRowsUseCase,
           useValue: listRowsUseCase,
+        },
+        {
+          provide: ConfirmStudentBulkRegistrationUseCase,
+          useValue: confirmUseCase,
         },
       ],
     }).compile();
@@ -128,6 +144,7 @@ describe('StudentBulkRegistrationController API contract', () => {
       'create',
       'getBatch',
       'listRows',
+      'confirm',
     ] as const) {
       expect(
         Reflect.getMetadata(
@@ -215,15 +232,23 @@ describe('StudentBulkRegistrationController API contract', () => {
     });
   });
 
-  it('does not expose the Stage 5 confirm route', async () => {
+  it('exposes the Stage 5 confirmation route as 202 Accepted', async () => {
+    const batchId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     await request(app.getHttpServer())
-      .post('/students-guardians/bulk-registrations/batch-1/confirm')
-      .expect(404);
+      .post(`/students-guardians/bulk-registrations/${batchId}/confirm`)
+      .expect(202);
+    expect(confirmUseCase.execute).toHaveBeenCalledWith(batchId);
   });
 });
 
 function getControllerHandler(
-  methodName: 'preflight' | 'getTemplate' | 'create' | 'getBatch' | 'listRows',
+  methodName:
+    | 'preflight'
+    | 'getTemplate'
+    | 'create'
+    | 'getBatch'
+    | 'listRows'
+    | 'confirm',
 ): object {
   const handler = Object.getOwnPropertyDescriptor(
     StudentBulkRegistrationController.prototype,

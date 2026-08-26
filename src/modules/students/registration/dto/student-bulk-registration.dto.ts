@@ -177,6 +177,12 @@ export class StudentBulkRegistrationBatchDetailResponseDto extends StudentBulkRe
   @ApiPropertyOptional({ format: 'date-time', nullable: true })
   validatedAt!: string | null;
 
+  @ApiPropertyOptional({ format: 'date-time', nullable: true })
+  startedAt!: string | null;
+
+  @ApiPropertyOptional({ format: 'date-time', nullable: true })
+  completedAt!: string | null;
+
   @ApiProperty({ type: [String] })
   validationErrors!: string[];
 }

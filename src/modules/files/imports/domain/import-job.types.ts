@@ -3,6 +3,8 @@ import { FileVisibility, ImportJobStatus } from '@prisma/client';
 export const FILES_IMPORT_QUEUE_NAME = 'files-imports';
 export const FILES_IMPORT_VALIDATE_JOB_NAME = 'validate-import';
 export const FILES_IMPORT_RECONCILE_JOB_NAME = 'files.imports.reconcile';
+export const STUDENT_BULK_REGISTRATION_EXECUTE_JOB_NAME =
+  'execute-student-bulk-registration';
 export const FILES_IMPORT_RECONCILE_INTERVAL_MS = 5 * 60 * 1000;
 export const FILES_IMPORT_RECOVERY_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const FILES_IMPORT_PROCESSING_LEASE_MS = 5 * 60 * 1000;
@@ -25,6 +27,32 @@ export type ImportValidationJobData = {
   importJobId: string;
 };
 
+export type StudentBulkRegistrationExecutionJobData = {
+  batchId: string;
+};
+
+export type FilesImportQueueJobData =
+  | ImportValidationJobData
+  | StudentBulkRegistrationExecutionJobData;
+
+export function studentBulkRegistrationExecutionJobId(batchId: string): string {
+  return `student-bulk-registration-execution-${batchId}`;
+}
+
+export function isStudentBulkRegistrationExecutionJobData(
+  value: unknown,
+): value is StudentBulkRegistrationExecutionJobData {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 1 &&
+    'batchId' in value &&
+    typeof value.batchId === 'string' &&
+    value.batchId.length > 0
+  );
+}
+
 export type ImportUploadedFileRecord = {
   id: string;
   bucket: string;
@@ -42,7 +70,7 @@ export type ImportJobRecord = {
   uploadedFileId: string;
   type: string;
   status: ImportJobStatus;
-  reportJson: unknown | null;
+  reportJson: unknown;
   createdById: string | null;
   createdAt: Date;
   updatedAt: Date;

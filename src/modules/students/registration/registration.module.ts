@@ -16,11 +16,16 @@ import { GetStudentBulkRegistrationTemplateUseCase } from './application/get-stu
 import { StudentBulkRegistrationPreflightUseCase } from './application/student-bulk-registration-preflight.use-case';
 import { GetStudentBulkRegistrationBatchUseCase } from './application/get-student-bulk-registration-batch.use-case';
 import { ListStudentBulkRegistrationRowsUseCase } from './application/list-student-bulk-registration-rows.use-case';
+import { ConfirmStudentBulkRegistrationUseCase } from './application/confirm-student-bulk-registration.use-case';
+import { ProcessStudentBulkRegistrationExecutionUseCase } from './application/process-student-bulk-registration-execution.use-case';
 import { SchoolRegistrationController } from './controller/school-registration.controller';
 import { StudentBulkRegistrationController } from './controller/student-bulk-registration.controller';
 import { StudentBulkRegistrationPlacementService } from './domain/student-bulk-registration-placement.service';
 import { SchoolRegistrationRepository } from './infrastructure/school-registration.repository';
 import { StudentBulkRegistrationRepository } from './infrastructure/student-bulk-registration.repository';
+import { StudentBulkRegistrationExecutionRepository } from './infrastructure/student-bulk-registration-execution.repository';
+import { LoginIdentityModule } from '../../settings/login-identity/login-identity.module';
+import { UsersModule } from '../../settings/users/users.module';
 
 @Module({
   imports: [
@@ -31,6 +36,8 @@ import { StudentBulkRegistrationRepository } from './infrastructure/student-bulk
     StorageModule,
     QueueModule,
     UploadsModule,
+    LoginIdentityModule,
+    UsersModule,
   ],
   controllers: [
     SchoolRegistrationController,
@@ -39,6 +46,7 @@ import { StudentBulkRegistrationRepository } from './infrastructure/student-bulk
   providers: [
     SchoolRegistrationRepository,
     StudentBulkRegistrationRepository,
+    StudentBulkRegistrationExecutionRepository,
     EnrollmentsRepository,
     StudentPlacementCapacityPolicyService,
     StructureRepository,
@@ -50,6 +58,8 @@ import { StudentBulkRegistrationRepository } from './infrastructure/student-bulk
     CreateStudentBulkRegistrationUseCase,
     GetStudentBulkRegistrationBatchUseCase,
     ListStudentBulkRegistrationRowsUseCase,
+    ConfirmStudentBulkRegistrationUseCase,
+    ProcessStudentBulkRegistrationExecutionUseCase,
   ],
   exports: [CreateSchoolRegistrationUseCase],
 })

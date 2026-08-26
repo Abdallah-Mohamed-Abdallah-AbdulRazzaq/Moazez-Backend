@@ -135,6 +135,26 @@ export class StudentBulkRegistrationRepository {
     });
   }
 
+  async countRowsByStatus(
+    batchId: string,
+  ): Promise<Record<StudentBulkRegistrationRowStatus, number>> {
+    const groups = await this.scopedPrisma.studentBulkRegistrationRow.groupBy({
+      by: ['status'],
+      where: { batchId },
+      _count: { _all: true },
+    });
+    const counts: Record<StudentBulkRegistrationRowStatus, number> = {
+      PENDING: 0,
+      VALID: 0,
+      INVALID: 0,
+      PROCESSING: 0,
+      CREATED: 0,
+      FAILED: 0,
+    };
+    for (const group of groups) counts[group.status] = group._count._all;
+    return counts;
+  }
+
   async listRows(input: {
     batchId: string;
     page: number;

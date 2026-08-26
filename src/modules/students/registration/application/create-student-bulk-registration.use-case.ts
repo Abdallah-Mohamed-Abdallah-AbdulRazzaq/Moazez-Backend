@@ -28,6 +28,7 @@ import type {
 import { StudentBulkRegistrationPlacementService } from '../domain/student-bulk-registration-placement.service';
 import type { StudentBulkRegistrationBatchRecord } from '../infrastructure/student-bulk-registration.repository';
 import { StudentBulkRegistrationRepository } from '../infrastructure/student-bulk-registration.repository';
+import { presentStudentBulkRegistrationBatch } from '../presenters/student-bulk-registration.presenter';
 
 @Injectable()
 export class CreateStudentBulkRegistrationUseCase {
@@ -146,30 +147,4 @@ export class CreateStudentBulkRegistrationUseCase {
       // Keep the original intake failure as the surfaced error.
     }
   }
-}
-
-function presentStudentBulkRegistrationBatch(
-  batch: StudentBulkRegistrationBatchRecord,
-): StudentBulkRegistrationBatchResponseDto {
-  return {
-    id: batch.id,
-    sourceImportJobId: batch.sourceImportJobId,
-    status: batch.status,
-    templateVersion: batch.templateVersion,
-    placement: {
-      academicYearId: batch.academicYearId,
-      termId: batch.termId,
-      classroomId: batch.classroomId,
-      enrollmentDate: batch.enrollmentDate.toISOString().slice(0, 10),
-    },
-    counters: {
-      totalRows: batch.totalRows,
-      validRows: batch.validRows,
-      invalidRows: batch.invalidRows,
-      createdRows: batch.createdRows,
-      failedRows: batch.failedRows,
-    },
-    createdAt: batch.createdAt.toISOString(),
-    updatedAt: batch.updatedAt.toISOString(),
-  };
 }

@@ -208,6 +208,11 @@ describe('Student bulk registration tenancy and authorization (security)', () =>
         `${GLOBAL_PREFIX}/students-guardians/bulk-registrations/${foreignBatchId}/rows`,
       )
       .expect(401);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/students-guardians/bulk-registrations/${foreignBatchId}/confirm`,
+      )
+      .expect(401);
   });
 
   it('denies an authenticated actor without active school scope', async () => {
@@ -235,6 +240,12 @@ describe('Student bulk registration tenancy and authorization (security)', () =>
       )
       .set('Authorization', `Bearer ${token}`)
       .expect(403);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/students-guardians/bulk-registrations/${foreignBatchId}/confirm`,
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .expect(403);
   });
 
   it('does not disclose a foreign-school batch or its rows', async () => {
@@ -248,6 +259,13 @@ describe('Student bulk registration tenancy and authorization (security)', () =>
         .expect(404);
       expect(errorCode(response.body)).toBe('not_found');
     }
+    const confirm = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/students-guardians/bulk-registrations/${foreignBatchId}/confirm`,
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .expect(404);
+    expect(errorCode(confirm.body)).toBe('not_found');
   });
 
   it.each([

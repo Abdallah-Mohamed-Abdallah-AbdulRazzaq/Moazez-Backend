@@ -1,6 +1,9 @@
 import { ValidationDomainException } from '../../../../common/exceptions/domain-exception';
 import { StudentEnrollmentPlacementConflictException } from '../domain/enrollment.exceptions';
-import { StudentPlacementCapacityPolicyService } from '../domain/student-placement-capacity-policy.service';
+import {
+  assertStudentPlacementCapacitySnapshot,
+  StudentPlacementCapacityPolicyService,
+} from '../domain/student-placement-capacity-policy.service';
 import { EnrollmentsRepository } from '../infrastructure/enrollments.repository';
 
 describe('StudentPlacementCapacityPolicyService', () => {
@@ -129,4 +132,24 @@ describe('StudentPlacementCapacityPolicyService', () => {
       expect(countActiveEnrollmentsInPlacement).not.toHaveBeenCalled();
     },
   );
+
+  it('exposes the same pure snapshot decision for transaction-safe callers', () => {
+    expect(() =>
+      assertStudentPlacementCapacitySnapshot({
+        academicYearId: 'year-1',
+        classroomId: 'classroom-1',
+        capacity: 3,
+        activeCount: 2,
+        incrementBy: 1,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertStudentPlacementCapacitySnapshot({
+        academicYearId: 'year-1',
+        classroomId: 'classroom-1',
+        capacity: 3,
+        activeCount: 3,
+      }),
+    ).toThrow(StudentEnrollmentPlacementConflictException);
+  });
 });
