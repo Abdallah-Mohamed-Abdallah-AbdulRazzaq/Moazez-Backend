@@ -34,6 +34,11 @@ export interface ResolvedStudentBulkRegistrationPlacement {
   studentSeat: StudentSeatLimitDecision;
 }
 
+export type ResolvedStudentBulkRegistrationValidationPlacement = Omit<
+  ResolvedStudentBulkRegistrationPlacement,
+  'studentSeat'
+>;
+
 @Injectable()
 export class StudentBulkRegistrationPlacementService {
   constructor(
@@ -47,6 +52,34 @@ export class StudentBulkRegistrationPlacementService {
   async resolve(
     command: StudentBulkRegistrationPlacementDto,
   ): Promise<ResolvedStudentBulkRegistrationPlacement> {
+    const placement = await this.resolvePlacement(command);
+    const studentSeat = await this.assertCapacity(
+      placement,
+      1,
+      'bulk_registration_intake',
+    );
+
+    return { ...placement, studentSeat };
+  }
+
+  async resolveForValidation(
+    command: StudentBulkRegistrationPlacementDto,
+    incrementBy: number,
+  ): Promise<ResolvedStudentBulkRegistrationValidationPlacement> {
+    const placement = await this.resolvePlacement(command);
+    if (incrementBy > 0) {
+      await this.assertCapacity(
+        placement,
+        incrementBy,
+        'bulk_registration_validation',
+      );
+    }
+    return placement;
+  }
+
+  private async resolvePlacement(
+    command: StudentBulkRegistrationPlacementDto,
+  ): Promise<ResolvedStudentBulkRegistrationValidationPlacement> {
     const scope = requireStudentsScope();
     const academicYear = await this.enrollmentsRepository.findAcademicYearById(
       command.academicYearId,
@@ -109,19 +142,6 @@ export class StudentBulkRegistrationPlacementService {
       });
     }
 
-    const studentSeat =
-      await this.studentSeatLimitPolicy.assertCanIncreaseActiveStudentSeats({
-        schoolId: scope.schoolId,
-        incrementBy: 1,
-        reason: 'bulk_registration_intake',
-      });
-
-    await this.studentPlacementCapacityPolicy.assertCanPlace({
-      academicYearId: academicYear.id,
-      classroom,
-      incrementBy: 1,
-    });
-
     return {
       scope,
       academicYear,
@@ -131,7 +151,27 @@ export class StudentBulkRegistrationPlacementService {
       section,
       classroom,
       enrollmentDate: command.enrollmentDate,
-      studentSeat,
     };
+  }
+
+  private async assertCapacity(
+    placement: ResolvedStudentBulkRegistrationValidationPlacement,
+    incrementBy: number,
+    reason: string,
+  ): Promise<StudentSeatLimitDecision> {
+    const studentSeat =
+      await this.studentSeatLimitPolicy.assertCanIncreaseActiveStudentSeats({
+        schoolId: placement.scope.schoolId,
+        incrementBy,
+        reason,
+      });
+
+    await this.studentPlacementCapacityPolicy.assertCanPlace({
+      academicYearId: placement.academicYear.id,
+      classroom: placement.classroom,
+      incrementBy,
+    });
+
+    return studentSeat;
   }
 }

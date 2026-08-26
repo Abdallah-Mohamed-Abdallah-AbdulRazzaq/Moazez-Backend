@@ -5,18 +5,39 @@ import {
   FileVisibility,
   ImportJobStatus,
   PrismaClient,
+  SchoolLoginSettingsStatus,
   StudentBulkRegistrationBatchStatus,
+  StudentBulkRegistrationRowStatus,
+  UserType,
 } from '@prisma/client';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 import { StorageService } from '../../src/infrastructure/storage/storage.service';
+import {
+  createRequestContext,
+  runWithRequestContext,
+} from '../../src/common/context/request-context';
+import { ProcessStudentBulkRegistrationValidationUseCase } from '../../src/modules/students/registration/application/process-student-bulk-registration-validation.use-case';
+import { StudentBulkRegistrationRepository } from '../../src/modules/students/registration/infrastructure/student-bulk-registration.repository';
+import { StudentBulkRegistrationPlacementService } from '../../src/modules/students/registration/domain/student-bulk-registration-placement.service';
+import { ImportJobsRepository } from '../../src/modules/files/imports/infrastructure/import-jobs.repository';
+import { LoginIdentityRepository } from '../../src/modules/settings/login-identity/infrastructure/login-identity.repository';
+import { STUDENT_BULK_REGISTRATION_TEMPLATE_HEADERS } from '../../src/modules/students/registration/domain/student-bulk-registration.constants';
 
 const GLOBAL_PREFIX = '/api/v1';
 const DEMO_ADMIN_EMAIL = 'admin@academy.moazez.dev';
 const DEMO_ADMIN_PASSWORD = 'School123!';
 const TEST_SUFFIX = `bulk-registration-intake-${Date.now()}`;
-const ARBITRARY_CSV = Buffer.from('this,is,not,the,v1,header\n1,2,3');
+const VALID_USERNAME = `stage4.${Date.now()}`;
+const VALID_CSV = Buffer.from(
+  `${STUDENT_BULK_REGISTRATION_TEMPLATE_HEADERS.join(',')}\n` +
+    `Stage,Four,,Valid,,,,,2012-05-20,female,Egyptian,${VALID_USERNAME},,+201001234567\n`,
+);
+const INVALID_CSV = Buffer.from(
+  `${STUDENT_BULK_REGISTRATION_TEMPLATE_HEADERS.join(',')}\n` +
+    'Stage,Four,,Invalid,,,,,bad-date,female,Egyptian,,,not-a-phone\n',
+);
 
 jest.setTimeout(30000);
 
@@ -24,6 +45,7 @@ describe('Student bulk registration intake flow (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaClient;
   let storageService: StorageService;
+  let processor: ProcessStudentBulkRegistrationValidationUseCase;
   let schoolId: string;
   let organizationId: string;
   let actorId: string;
@@ -40,6 +62,21 @@ describe('Student bulk registration intake flow (e2e)', () => {
   let storedObjectKey: string | null = null;
   let createdAcademicYear = false;
   let createdTerm = false;
+  let createdLoginSettings = false;
+  let previousLoginSettingsStatus: SchoolLoginSettingsStatus | null = null;
+  let forbiddenCountsBefore: {
+    students: number;
+    users: number;
+    memberships: number;
+    enrollments: number;
+  };
+  const intakeResources: Array<{
+    batchId: string;
+    importJobId: string;
+    fileId: string;
+    bucket: string;
+    objectKey: string;
+  }> = [];
 
   beforeAll(async () => {
     prisma = new PrismaClient();
@@ -56,6 +93,27 @@ describe('Student bulk registration intake flow (e2e)', () => {
     organizationId = school.organizationId;
     actorId = actor.id;
     await createPlacement();
+    const currentLoginSettings = await prisma.schoolLoginSettings.findUnique({
+      where: { schoolId },
+    });
+    if (currentLoginSettings) {
+      previousLoginSettingsStatus = currentLoginSettings.status;
+      await prisma.schoolLoginSettings.update({
+        where: { schoolId },
+        data: { status: SchoolLoginSettingsStatus.ACTIVE },
+      });
+    } else {
+      await prisma.schoolLoginSettings.create({
+        data: {
+          schoolId,
+          loginDomain: `bulk-${Date.now()}.students.example.edu`,
+          usernameMinLength: 3,
+          usernameMaxLength: 40,
+          status: SchoolLoginSettingsStatus.ACTIVE,
+        },
+      });
+      createdLoginSettings = true;
+    }
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -71,31 +129,26 @@ describe('Student bulk registration intake flow (e2e)', () => {
     );
     await app.init();
     storageService = app.get(StorageService);
+    processor = new ProcessStudentBulkRegistrationValidationUseCase(
+      app.get(ImportJobsRepository),
+      app.get(StudentBulkRegistrationRepository),
+      storageService,
+      app.get(LoginIdentityRepository),
+      app.get(StudentBulkRegistrationPlacementService),
+    );
   });
 
   afterAll(async () => {
     if (prisma) {
-      if (importJobId && (!fileId || !storedBucket || !storedObjectKey)) {
-        const persistedImportJob = await prisma.importJob.findUnique({
-          where: { id: importJobId },
-          include: { uploadedFile: true },
-        });
-        fileId = persistedImportJob?.uploadedFileId ?? fileId;
-        storedBucket = persistedImportJob?.uploadedFile.bucket ?? storedBucket;
-        storedObjectKey =
-          persistedImportJob?.uploadedFile.objectKey ?? storedObjectKey;
-      }
-      if (batchId) {
-        await prisma.studentBulkRegistrationBatch.deleteMany({
-          where: { id: batchId },
-        });
-      }
-      if (importJobId) {
-        await prisma.importJob.deleteMany({ where: { id: importJobId } });
-      }
-      if (fileId) {
-        await prisma.file.deleteMany({ where: { id: fileId } });
-      }
+      await prisma.studentBulkRegistrationBatch.deleteMany({
+        where: { id: { in: intakeResources.map((item) => item.batchId) } },
+      });
+      await prisma.importJob.deleteMany({
+        where: { id: { in: intakeResources.map((item) => item.importJobId) } },
+      });
+      await prisma.file.deleteMany({
+        where: { id: { in: intakeResources.map((item) => item.fileId) } },
+      });
       if (classroomId) {
         await prisma.classroom.deleteMany({ where: { id: classroomId } });
       }
@@ -110,12 +163,22 @@ describe('Student bulk registration intake flow (e2e)', () => {
       if (createdAcademicYear && academicYearId) {
         await prisma.academicYear.deleteMany({ where: { id: academicYearId } });
       }
+      if (createdLoginSettings) {
+        await prisma.schoolLoginSettings.deleteMany({ where: { schoolId } });
+      } else if (previousLoginSettingsStatus) {
+        await prisma.schoolLoginSettings.updateMany({
+          where: { schoolId },
+          data: { status: previousLoginSettingsStatus },
+        });
+      }
     }
-    if (storedBucket && storedObjectKey && storageService) {
-      await storageService.deleteObject({
-        bucket: storedBucket,
-        objectKey: storedObjectKey,
-      });
+    if (storageService) {
+      for (const resource of intakeResources) {
+        await storageService.deleteObject({
+          bucket: resource.bucket,
+          objectKey: resource.objectKey,
+        });
+      }
     }
     if (app) await app.close();
     if (prisma) await prisma.$disconnect();
@@ -129,7 +192,7 @@ describe('Student bulk registration intake flow (e2e)', () => {
       classroomId,
       enrollmentDate: '2026-09-01',
     };
-    const mutationCountsBefore = await readForbiddenMutationCounts();
+    forbiddenCountsBefore = await readForbiddenMutationCounts();
 
     const preflight = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/students-guardians/bulk-registrations/preflight`)
@@ -174,7 +237,7 @@ describe('Student bulk registration intake flow (e2e)', () => {
       .field('termId', termId)
       .field('classroomId', classroomId)
       .field('enrollmentDate', '2026-09-01')
-      .attach('file', ARBITRARY_CSV, {
+      .attach('file', VALID_CSV, {
         filename: 'bulk-students.csv',
         contentType: 'text/csv',
       })
@@ -257,10 +320,8 @@ describe('Student bulk registration intake flow (e2e)', () => {
         uploaderId: actorId,
         originalName: 'bulk-students.csv',
         mimeType: 'text/csv',
-        sizeBytes: BigInt(ARBITRARY_CSV.byteLength),
-        checksumSha256: createHash('sha256')
-          .update(ARBITRARY_CSV)
-          .digest('hex'),
+        sizeBytes: BigInt(VALID_CSV.byteLength),
+        checksumSha256: createHash('sha256').update(VALID_CSV).digest('hex'),
         visibility: FileVisibility.PRIVATE,
       },
     });
@@ -279,8 +340,139 @@ describe('Student bulk registration intake flow (e2e)', () => {
     expect(
       await prisma.studentBulkRegistrationRow.count({ where: { batchId } }),
     ).toBe(0);
+    intakeResources.push({
+      batchId,
+      importJobId,
+      fileId,
+      bucket: storedBucket,
+      objectKey: storedObjectKey,
+    });
     await expect(readForbiddenMutationCounts()).resolves.toEqual(
-      mutationCountsBefore,
+      forbiddenCountsBefore,
+    );
+  });
+
+  it('processes the queued intake to READY and exposes the tenant-scoped preview', async () => {
+    await processInPersistedScope(importJobId!);
+    const persistedBatch =
+      await prisma.studentBulkRegistrationBatch.findUniqueOrThrow({
+        where: { id: batchId! },
+      });
+    expect(persistedBatch).toMatchObject({
+      status: StudentBulkRegistrationBatchStatus.READY,
+      totalRows: 1,
+      validRows: 1,
+      invalidRows: 0,
+    });
+    const token = await login();
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/students-guardians/bulk-registrations/${batchId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200)
+      .expect((response) => {
+        const body = response.body as {
+          items: Array<{ errors: unknown[] }>;
+        };
+        expect(body).toMatchObject({
+          id: batchId,
+          status: StudentBulkRegistrationBatchStatus.READY,
+          counters: { totalRows: 1, validRows: 1, invalidRows: 0 },
+          validationErrors: [],
+        });
+      });
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/bulk-registrations/${batchId}/rows`,
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          total: 1,
+          page: 1,
+          limit: 50,
+          items: [
+            {
+              rowNumber: 2,
+              status: StudentBulkRegistrationRowStatus.VALID,
+              normalizedData: { username: VALID_USERNAME },
+              errors: [],
+              studentId: null,
+              userId: null,
+              enrollmentId: null,
+            },
+          ],
+        });
+      });
+    await expect(readForbiddenMutationCounts()).resolves.toEqual(
+      forbiddenCountsBefore,
+    );
+  });
+
+  it('completes an invalid CSV as VALIDATION_FAILED with row preview and no business creation', async () => {
+    const token = await login();
+    const upload = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/students-guardians/bulk-registrations`)
+      .set('Authorization', `Bearer ${token}`)
+      .field('academicYearId', academicYearId)
+      .field('termId', termId)
+      .field('classroomId', classroomId)
+      .field('enrollmentDate', '2026-09-01')
+      .attach('file', INVALID_CSV, {
+        filename: 'bulk-students-invalid.csv',
+        contentType: 'text/csv',
+      })
+      .expect(201);
+    const ids = upload.body as { id: string; sourceImportJobId: string };
+    const source = await prisma.importJob.findUniqueOrThrow({
+      where: { id: ids.sourceImportJobId },
+      include: { uploadedFile: true },
+    });
+    intakeResources.push({
+      batchId: ids.id,
+      importJobId: ids.sourceImportJobId,
+      fileId: source.uploadedFileId,
+      bucket: source.uploadedFile.bucket,
+      objectKey: source.uploadedFile.objectKey,
+    });
+
+    await processInPersistedScope(ids.sourceImportJobId);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/bulk-registrations/${ids.id}/rows?status=INVALID`,
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          total: 1,
+          items: [
+            {
+              rowNumber: 2,
+              status: StudentBulkRegistrationRowStatus.INVALID,
+              studentId: null,
+              userId: null,
+              enrollmentId: null,
+            },
+          ],
+        });
+        expect(
+          readFirstRowErrorCount(response.body as unknown),
+        ).toBeGreaterThan(0);
+      });
+    const invalidBatch =
+      await prisma.studentBulkRegistrationBatch.findUniqueOrThrow({
+        where: { id: ids.id },
+      });
+    expect(invalidBatch).toMatchObject({
+      status: StudentBulkRegistrationBatchStatus.VALIDATION_FAILED,
+      totalRows: 1,
+      validRows: 0,
+      invalidRows: 1,
+    });
+    await expect(readForbiddenMutationCounts()).resolves.toEqual(
+      forbiddenCountsBefore,
     );
   });
 
@@ -305,6 +497,35 @@ describe('Student bulk registration intake flow (e2e)', () => {
       prisma.enrollment.count(),
     ]);
     return { students, users, memberships, enrollments };
+  }
+
+  async function processInPersistedScope(jobId: string): Promise<void> {
+    const context = createRequestContext(`e2e-bulk-validation:${jobId}`);
+    context.actor = { id: actorId, userType: UserType.SCHOOL_USER };
+    context.activeMembership = {
+      membershipId: 'queue:files-import-validation',
+      organizationId,
+      schoolId,
+      roleId: 'queue:files-import-validation',
+      permissions: [],
+    };
+    await runWithRequestContext(context, () => processor.execute(jobId));
+  }
+
+  function readFirstRowErrorCount(value: unknown): number {
+    if (!isRecord(value) || !isUnknownArray(value.items)) return 0;
+    const first = value.items[0];
+    return isRecord(first) && isUnknownArray(first.errors)
+      ? first.errors.length
+      : 0;
+  }
+
+  function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+
+  function isUnknownArray(value: unknown): value is unknown[] {
+    return Array.isArray(value);
   }
 
   async function createPlacement(): Promise<void> {

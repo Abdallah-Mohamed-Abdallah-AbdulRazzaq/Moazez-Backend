@@ -6,6 +6,8 @@ import { REQUIRED_PERMISSIONS_METADATA } from '../../../../common/decorators/req
 import { CreateStudentBulkRegistrationUseCase } from '../application/create-student-bulk-registration.use-case';
 import { GetStudentBulkRegistrationTemplateUseCase } from '../application/get-student-bulk-registration-template.use-case';
 import { StudentBulkRegistrationPreflightUseCase } from '../application/student-bulk-registration-preflight.use-case';
+import { GetStudentBulkRegistrationBatchUseCase } from '../application/get-student-bulk-registration-batch.use-case';
+import { ListStudentBulkRegistrationRowsUseCase } from '../application/list-student-bulk-registration-rows.use-case';
 import { StudentBulkRegistrationController } from '../controller/student-bulk-registration.controller';
 import { STUDENT_BULK_REGISTRATION_TEMPLATE_CSV } from '../domain/student-bulk-registration.constants';
 import type { UploadedMultipartFile } from '../../../files/uploads/domain/uploaded-file';
@@ -45,6 +47,8 @@ describe('StudentBulkRegistrationController API contract', () => {
   let preflightUseCase: { execute: jest.Mock };
   let templateUseCase: { execute: jest.Mock };
   let createUseCase: { execute: jest.Mock };
+  let getBatchUseCase: { execute: jest.Mock };
+  let listRowsUseCase: { execute: jest.Mock };
 
   beforeAll(async () => {
     preflightUseCase = {
@@ -56,6 +60,21 @@ describe('StudentBulkRegistrationController API contract', () => {
         .mockReturnValue(STUDENT_BULK_REGISTRATION_TEMPLATE_CSV),
     };
     createUseCase = { execute: jest.fn().mockResolvedValue(createResponse) };
+    getBatchUseCase = {
+      execute: jest.fn().mockResolvedValue({
+        ...createResponse,
+        validatedAt: null,
+        validationErrors: [],
+      }),
+    };
+    listRowsUseCase = {
+      execute: jest.fn().mockResolvedValue({
+        items: [],
+        total: 0,
+        page: 1,
+        limit: 50,
+      }),
+    };
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       controllers: [StudentBulkRegistrationController],
@@ -71,6 +90,14 @@ describe('StudentBulkRegistrationController API contract', () => {
         {
           provide: CreateStudentBulkRegistrationUseCase,
           useValue: createUseCase,
+        },
+        {
+          provide: GetStudentBulkRegistrationBatchUseCase,
+          useValue: getBatchUseCase,
+        },
+        {
+          provide: ListStudentBulkRegistrationRowsUseCase,
+          useValue: listRowsUseCase,
         },
       ],
     }).compile();
@@ -94,8 +121,14 @@ describe('StudentBulkRegistrationController API contract', () => {
     await app.close();
   });
 
-  it('pins both Students permissions on all three endpoints', () => {
-    for (const methodName of ['preflight', 'getTemplate', 'create'] as const) {
+  it('pins both Students permissions on all endpoints', () => {
+    for (const methodName of [
+      'preflight',
+      'getTemplate',
+      'create',
+      'getBatch',
+      'listRows',
+    ] as const) {
       expect(
         Reflect.getMetadata(
           REQUIRED_PERMISSIONS_METADATA,
@@ -164,10 +197,25 @@ describe('StudentBulkRegistrationController API contract', () => {
     },
   );
 
-  it('does not expose Stage 4 batch or confirm routes', async () => {
+  it('exposes batch detail and paginated row preview routes', async () => {
+    const batchId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     await request(app.getHttpServer())
-      .get('/students-guardians/bulk-registrations/batch-1')
-      .expect(404);
+      .get(`/students-guardians/bulk-registrations/${batchId}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(
+        `/students-guardians/bulk-registrations/${batchId}/rows?page=2&limit=25&status=INVALID`,
+      )
+      .expect(200);
+    expect(getBatchUseCase.execute).toHaveBeenCalledWith(batchId);
+    expect(listRowsUseCase.execute).toHaveBeenCalledWith(batchId, {
+      page: 2,
+      limit: 25,
+      status: 'INVALID',
+    });
+  });
+
+  it('does not expose the Stage 5 confirm route', async () => {
     await request(app.getHttpServer())
       .post('/students-guardians/bulk-registrations/batch-1/confirm')
       .expect(404);
@@ -175,7 +223,7 @@ describe('StudentBulkRegistrationController API contract', () => {
 });
 
 function getControllerHandler(
-  methodName: 'preflight' | 'getTemplate' | 'create',
+  methodName: 'preflight' | 'getTemplate' | 'create' | 'getBatch' | 'listRows',
 ): object {
   const handler = Object.getOwnPropertyDescriptor(
     StudentBulkRegistrationController.prototype,

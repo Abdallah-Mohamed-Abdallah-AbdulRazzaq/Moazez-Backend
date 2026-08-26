@@ -2,12 +2,15 @@ import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  FileVisibility,
+  ImportJobStatus,
   MembershipStatus,
   OrganizationStatus,
   PrismaClient,
   SchoolStatus,
   UserStatus,
   UserType,
+  StudentBulkRegistrationBatchStatus,
 } from '@prisma/client';
 import * as argon2 from 'argon2';
 import request from 'supertest';
@@ -36,6 +39,9 @@ describe('Student bulk registration tenancy and authorization (security)', () =>
   let demoOrganizationId: string;
   let demoPlacement: PlacementFixture;
   let tenantBPlacement: PlacementFixture;
+  let foreignBatchId: string;
+  let foreignImportJobId: string;
+  let foreignFileId: string;
   const createdUserIds = new Set<string>();
   const createdMembershipIds = new Set<string>();
   const createdRoleIds = new Set<string>();
@@ -67,6 +73,51 @@ describe('Student bulk registration tenancy and authorization (security)', () =>
       schoolId: tenantB.schoolId,
       label: `${TEST_SUFFIX}-tenant-b`,
     });
+    const demoActor = await prisma.user.findUniqueOrThrow({
+      where: { email: DEMO_ADMIN_EMAIL },
+      select: { id: true },
+    });
+    const foreignFile = await prisma.file.create({
+      data: {
+        organizationId: tenantB.organizationId,
+        schoolId: tenantB.schoolId,
+        uploaderId: demoActor.id,
+        bucket: 'security-fixture',
+        objectKey: `${TEST_SUFFIX}/foreign.csv`,
+        originalName: 'foreign.csv',
+        mimeType: 'text/csv',
+        sizeBytes: 0,
+        visibility: FileVisibility.PRIVATE,
+      },
+      select: { id: true },
+    });
+    foreignFileId = foreignFile.id;
+    const foreignImportJob = await prisma.importJob.create({
+      data: {
+        schoolId: tenantB.schoolId,
+        uploadedFileId: foreignFile.id,
+        type: 'students_bulk_registration',
+        status: ImportJobStatus.COMPLETED,
+        createdById: demoActor.id,
+      },
+      select: { id: true },
+    });
+    foreignImportJobId = foreignImportJob.id;
+    const foreignBatch = await prisma.studentBulkRegistrationBatch.create({
+      data: {
+        schoolId: tenantB.schoolId,
+        organizationId: tenantB.organizationId,
+        sourceImportJobId: foreignImportJob.id,
+        academicYearId: tenantBPlacement.academicYearId,
+        termId: tenantBPlacement.termId,
+        classroomId: tenantBPlacement.classroomId,
+        enrollmentDate: new Date('2026-09-01T00:00:00.000Z'),
+        createdById: demoActor.id,
+        status: StudentBulkRegistrationBatchStatus.READY,
+      },
+      select: { id: true },
+    });
+    foreignBatchId = foreignBatch.id;
 
     await createActor({
       email: `${TEST_SUFFIX}-records-only@moazez.local`,
@@ -98,6 +149,19 @@ describe('Student bulk registration tenancy and authorization (security)', () =>
 
   afterAll(async () => {
     if (prisma) {
+      if (foreignBatchId) {
+        await prisma.studentBulkRegistrationBatch.deleteMany({
+          where: { id: foreignBatchId },
+        });
+      }
+      if (foreignImportJobId) {
+        await prisma.importJob.deleteMany({
+          where: { id: foreignImportJobId },
+        });
+      }
+      if (foreignFileId) {
+        await prisma.file.deleteMany({ where: { id: foreignFileId } });
+      }
       if (createdMembershipIds.size > 0) {
         await prisma.membership.deleteMany({
           where: { id: { in: [...createdMembershipIds] } },
@@ -134,6 +198,16 @@ describe('Student bulk registration tenancy and authorization (security)', () =>
       .send(payload(demoPlacement))
       .expect(401);
     expect(errorCode(response.body)).toBe('auth.token.invalid');
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/bulk-registrations/${foreignBatchId}`,
+      )
+      .expect(401);
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/bulk-registrations/${foreignBatchId}/rows`,
+      )
+      .expect(401);
   });
 
   it('denies an authenticated actor without active school scope', async () => {
@@ -149,6 +223,31 @@ describe('Student bulk registration tenancy and authorization (security)', () =>
     const token = await login(email);
     const response = await preflight(token, payload(demoPlacement)).expect(403);
     expect(errorCode(response.body)).toBe('auth.scope.missing');
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/bulk-registrations/${foreignBatchId}`,
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/bulk-registrations/${foreignBatchId}/rows`,
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .expect(403);
+  });
+
+  it('does not disclose a foreign-school batch or its rows', async () => {
+    const token = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    for (const suffix of ['', '/rows']) {
+      const response = await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/students-guardians/bulk-registrations/${foreignBatchId}${suffix}`,
+        )
+        .set('Authorization', `Bearer ${token}`)
+        .expect(404);
+      expect(errorCode(response.body)).toBe('not_found');
+    }
   });
 
   it.each([
@@ -203,7 +302,10 @@ describe('Student bulk registration tenancy and authorization (security)', () =>
     };
   }
 
-  async function createTenantB(): Promise<{ schoolId: string }> {
+  async function createTenantB(): Promise<{
+    schoolId: string;
+    organizationId: string;
+  }> {
     const organization = await prisma.organization.create({
       data: {
         slug: `${TEST_SUFFIX}-org-b`,
@@ -223,7 +325,7 @@ describe('Student bulk registration tenancy and authorization (security)', () =>
       select: { id: true },
     });
     createdSchoolIds.add(school.id);
-    return { schoolId: school.id };
+    return { schoolId: school.id, organizationId: organization.id };
   }
 
   async function createActor(params: {

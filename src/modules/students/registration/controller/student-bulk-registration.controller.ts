@@ -6,6 +6,9 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Param,
+  ParseUUIDPipe,
+  Query,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -24,11 +27,16 @@ import type { UploadedMultipartFile } from '../../../files/uploads/domain/upload
 import { CreateStudentBulkRegistrationUseCase } from '../application/create-student-bulk-registration.use-case';
 import { GetStudentBulkRegistrationTemplateUseCase } from '../application/get-student-bulk-registration-template.use-case';
 import { StudentBulkRegistrationPreflightUseCase } from '../application/student-bulk-registration-preflight.use-case';
+import { GetStudentBulkRegistrationBatchUseCase } from '../application/get-student-bulk-registration-batch.use-case';
+import { ListStudentBulkRegistrationRowsUseCase } from '../application/list-student-bulk-registration-rows.use-case';
 import {
   CreateStudentBulkRegistrationDto,
   StudentBulkRegistrationBatchResponseDto,
   StudentBulkRegistrationPlacementDto,
   StudentBulkRegistrationPreflightResponseDto,
+  ListStudentBulkRegistrationRowsQueryDto,
+  StudentBulkRegistrationBatchDetailResponseDto,
+  StudentBulkRegistrationRowsResponseDto,
 } from '../dto/student-bulk-registration.dto';
 import { STUDENT_BULK_REGISTRATION_TEMPLATE_FILENAME } from '../domain/student-bulk-registration.constants';
 
@@ -45,6 +53,8 @@ export class StudentBulkRegistrationController {
     private readonly preflightUseCase: StudentBulkRegistrationPreflightUseCase,
     private readonly templateUseCase: GetStudentBulkRegistrationTemplateUseCase,
     private readonly createUseCase: CreateStudentBulkRegistrationUseCase,
+    private readonly getBatchUseCase: GetStudentBulkRegistrationBatchUseCase,
+    private readonly listRowsUseCase: ListStudentBulkRegistrationRowsUseCase,
   ) {}
 
   @Post('preflight')
@@ -68,6 +78,25 @@ export class StudentBulkRegistrationController {
   @RequiredPermissions(...BULK_REGISTRATION_PERMISSIONS)
   getTemplate(): string {
     return this.templateUseCase.execute();
+  }
+
+  @Get(':batchId/rows')
+  @ApiOkResponse({ type: StudentBulkRegistrationRowsResponseDto })
+  @RequiredPermissions(...BULK_REGISTRATION_PERMISSIONS)
+  listRows(
+    @Param('batchId', ParseUUIDPipe) batchId: string,
+    @Query() query: ListStudentBulkRegistrationRowsQueryDto,
+  ): Promise<StudentBulkRegistrationRowsResponseDto> {
+    return this.listRowsUseCase.execute(batchId, query);
+  }
+
+  @Get(':batchId')
+  @ApiOkResponse({ type: StudentBulkRegistrationBatchDetailResponseDto })
+  @RequiredPermissions(...BULK_REGISTRATION_PERMISSIONS)
+  getBatch(
+    @Param('batchId', ParseUUIDPipe) batchId: string,
+  ): Promise<StudentBulkRegistrationBatchDetailResponseDto> {
+    return this.getBatchUseCase.execute(batchId);
   }
 
   @Post()

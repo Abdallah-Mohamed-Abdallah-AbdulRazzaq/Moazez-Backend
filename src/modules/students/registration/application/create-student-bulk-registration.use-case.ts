@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { FileVisibility } from '@prisma/client';
 import { StorageService } from '../../../../infrastructure/storage/storage.service';
+import { BullmqService } from '../../../../infrastructure/queue/bullmq.service';
 import { RegisterFileMetadataUseCase } from '../../../files/uploads/application/register-file-metadata.use-case';
 import {
   buildSchoolFileObjectKey,
@@ -13,6 +14,10 @@ import {
   buildPendingImportJobReport,
   toImportJobReportJson,
 } from '../../../files/imports/domain/import-job.report';
+import {
+  FILES_IMPORT_QUEUE_NAME,
+  FILES_IMPORT_VALIDATE_JOB_NAME,
+} from '../../../files/imports/domain/import-job.types';
 import { validateFilesImportUpload } from '../../../files/imports/domain/import-upload.validator';
 import { toEnrollmentDate } from '../../enrollments/application/shared';
 import { requireStudentsScope } from '../../students/domain/students-scope';
@@ -32,6 +37,7 @@ export class CreateStudentBulkRegistrationUseCase {
     private readonly registerFileMetadataUseCase: RegisterFileMetadataUseCase,
     private readonly filesRepository: FilesRepository,
     private readonly repository: StudentBulkRegistrationRepository,
+    private readonly bullmqService: BullmqService,
   ) {}
 
   async execute(
@@ -60,6 +66,7 @@ export class CreateStudentBulkRegistrationUseCase {
 
     let uploadedFileId: string | null = null;
 
+    let batch: StudentBulkRegistrationBatchRecord;
     try {
       const storedFile = await this.registerFileMetadataUseCase.execute({
         organizationId: scope.organizationId,
@@ -77,7 +84,7 @@ export class CreateStudentBulkRegistrationUseCase {
       });
       uploadedFileId = storedFile.id;
 
-      const batch = await this.repository.createIntake({
+      batch = await this.repository.createIntake({
         schoolId: scope.schoolId,
         organizationId: scope.organizationId,
         uploadedFileId: storedFile.id,
@@ -95,8 +102,6 @@ export class CreateStudentBulkRegistrationUseCase {
         classroomId: placement.classroom.id,
         enrollmentDate: toEnrollmentDate(placement.enrollmentDate),
       });
-
-      return presentStudentBulkRegistrationBatch(batch);
     } catch (error) {
       await this.deleteStoredObjectQuietly(storedObject.bucket, objectKey);
       if (uploadedFileId) {
@@ -104,6 +109,23 @@ export class CreateStudentBulkRegistrationUseCase {
       }
       throw error;
     }
+
+    try {
+      await this.bullmqService.ensureJobFromPersistedTruth(
+        FILES_IMPORT_QUEUE_NAME,
+        FILES_IMPORT_VALIDATE_JOB_NAME,
+        { importJobId: batch.sourceImportJobId },
+        {
+          jobId: batch.sourceImportJobId,
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 1000 },
+        },
+      );
+    } catch {
+      // The committed PENDING ImportJob remains recoverable by reconciliation.
+    }
+
+    return presentStudentBulkRegistrationBatch(batch);
   }
 
   private async deleteStoredObjectQuietly(

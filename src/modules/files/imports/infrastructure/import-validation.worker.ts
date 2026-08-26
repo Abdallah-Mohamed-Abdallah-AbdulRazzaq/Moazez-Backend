@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Optional } from '@nestjs/common';
 import { Worker } from 'bullmq';
 import {
   createRequestContext,
@@ -14,6 +14,8 @@ import {
 import { ProcessImportValidationUseCase } from '../application/process-import-validation.use-case';
 import { ImportValidationReconciliationService } from '../application/import-validation-reconciliation.service';
 import { ImportJobsRepository } from './import-jobs.repository';
+import { STUDENTS_BULK_REGISTRATION_IMPORT_TYPE } from '../domain/import-upload.constraints';
+import { ProcessStudentBulkRegistrationValidationUseCase } from '../../../students/registration/application/process-student-bulk-registration-validation.use-case';
 
 @Injectable()
 export class ImportValidationWorker implements OnModuleInit {
@@ -24,6 +26,8 @@ export class ImportValidationWorker implements OnModuleInit {
     private readonly processImportValidationUseCase: ProcessImportValidationUseCase,
     private readonly reconciliationService: ImportValidationReconciliationService,
     private readonly importJobsRepository: ImportJobsRepository,
+    @Optional()
+    private readonly processStudentBulkRegistrationValidationUseCase?: ProcessStudentBulkRegistrationValidationUseCase,
   ) {}
 
   onModuleInit(): void {
@@ -65,9 +69,22 @@ export class ImportValidationWorker implements OnModuleInit {
         roleId: 'queue:files-import-validation',
         permissions: [],
       };
-      await runWithRequestContext(context, () =>
-        this.processImportValidationUseCase.execute(persisted.id),
-      );
+      await runWithRequestContext(context, async () => {
+        if (persisted.type === 'students_basic') {
+          await this.processImportValidationUseCase.execute(persisted.id);
+          return;
+        }
+        if (persisted.type === STUDENTS_BULK_REGISTRATION_IMPORT_TYPE) {
+          if (!this.processStudentBulkRegistrationValidationUseCase) {
+            throw new Error('bulk_registration_validation_processor_missing');
+          }
+          await this.processStudentBulkRegistrationValidationUseCase.execute(
+            persisted.id,
+          );
+          return;
+        }
+        throw new Error('files_import_persisted_type_unknown');
+      });
     });
   }
 }

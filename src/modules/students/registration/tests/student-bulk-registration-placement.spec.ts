@@ -155,6 +155,25 @@ describe('StudentBulkRegistration placement readiness', () => {
     expect(termsRepository.findTermById).not.toHaveBeenCalled();
   });
 
+  it('revalidates both canonical capacity policies for the semantic valid-row count', async () => {
+    await inStudentsScope(() =>
+      placementService.resolveForValidation(command, 12),
+    );
+
+    expect(seatPolicy.assertCanIncreaseActiveStudentSeats).toHaveBeenCalledWith(
+      {
+        schoolId: 'school-1',
+        incrementBy: 12,
+        reason: 'bulk_registration_validation',
+      },
+    );
+    expect(capacityPolicy.assertCanPlace).toHaveBeenCalledWith({
+      academicYearId: command.academicYearId,
+      classroom,
+      incrementBy: 12,
+    });
+  });
+
   it('rejects an inactive academic year with the canonical error', async () => {
     enrollmentsRepository.findAcademicYearById.mockResolvedValue({
       ...academicYear,

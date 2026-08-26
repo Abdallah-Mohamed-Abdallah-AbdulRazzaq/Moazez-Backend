@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { StorageModule } from '../../../infrastructure/storage/storage.module';
+import { QueueModule } from '../../../infrastructure/queue/queue.module';
 import { UploadsModule } from '../../files/uploads/uploads.module';
 import { TermsRepository } from '../../academics/structure/infrastructure/terms.repository';
 import { StructureRepository } from '../../academics/structure/infrastructure/structure.repository';
@@ -13,6 +14,8 @@ import { CreateSchoolRegistrationUseCase } from './application/create-school-reg
 import { CreateStudentBulkRegistrationUseCase } from './application/create-student-bulk-registration.use-case';
 import { GetStudentBulkRegistrationTemplateUseCase } from './application/get-student-bulk-registration-template.use-case';
 import { StudentBulkRegistrationPreflightUseCase } from './application/student-bulk-registration-preflight.use-case';
+import { GetStudentBulkRegistrationBatchUseCase } from './application/get-student-bulk-registration-batch.use-case';
+import { ListStudentBulkRegistrationRowsUseCase } from './application/list-student-bulk-registration-rows.use-case';
 import { SchoolRegistrationController } from './controller/school-registration.controller';
 import { StudentBulkRegistrationController } from './controller/student-bulk-registration.controller';
 import { StudentBulkRegistrationPlacementService } from './domain/student-bulk-registration-placement.service';
@@ -26,6 +29,7 @@ import { StudentBulkRegistrationRepository } from './infrastructure/student-bulk
     StudentsRecordsModule,
     GuardiansModule,
     StorageModule,
+    QueueModule,
     UploadsModule,
   ],
   controllers: [
@@ -44,6 +48,8 @@ import { StudentBulkRegistrationRepository } from './infrastructure/student-bulk
     StudentBulkRegistrationPreflightUseCase,
     GetStudentBulkRegistrationTemplateUseCase,
     CreateStudentBulkRegistrationUseCase,
+    GetStudentBulkRegistrationBatchUseCase,
+    ListStudentBulkRegistrationRowsUseCase,
   ],
   exports: [CreateSchoolRegistrationUseCase],
 })

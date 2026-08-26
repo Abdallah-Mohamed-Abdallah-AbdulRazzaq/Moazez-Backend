@@ -8,6 +8,7 @@ import {
   runWithRequestContext,
 } from '../../../../common/context/request-context';
 import { StorageService } from '../../../../infrastructure/storage/storage.service';
+import { BullmqService } from '../../../../infrastructure/queue/bullmq.service';
 import { RegisterFileMetadataUseCase } from '../../../files/uploads/application/register-file-metadata.use-case';
 import type { UploadedMultipartFile } from '../../../files/uploads/domain/uploaded-file';
 import { FilesRepository } from '../../../files/uploads/infrastructure/files.repository';
@@ -68,6 +69,7 @@ describe('CreateStudentBulkRegistrationUseCase', () => {
   let registerFileMetadata: { execute: jest.Mock };
   let filesRepository: { softDeleteFile: jest.Mock };
   let repository: { createIntake: jest.Mock };
+  let bullmqService: { ensureJobFromPersistedTruth: jest.Mock };
   let useCase: CreateStudentBulkRegistrationUseCase;
 
   beforeEach(() => {
@@ -86,12 +88,16 @@ describe('CreateStudentBulkRegistrationUseCase', () => {
       softDeleteFile: jest.fn().mockResolvedValue(undefined),
     };
     repository = { createIntake: jest.fn().mockResolvedValue(batchRecord) };
+    bullmqService = {
+      ensureJobFromPersistedTruth: jest.fn().mockResolvedValue('created'),
+    };
     useCase = new CreateStudentBulkRegistrationUseCase(
       placementService as unknown as StudentBulkRegistrationPlacementService,
       storageService as unknown as StorageService,
       registerFileMetadata as unknown as RegisterFileMetadataUseCase,
       filesRepository as unknown as FilesRepository,
       repository as unknown as StudentBulkRegistrationRepository,
+      bullmqService as unknown as BullmqService,
     );
   });
 
@@ -136,6 +142,16 @@ describe('CreateStudentBulkRegistrationUseCase', () => {
         classroomId: command.classroomId,
         enrollmentDate: new Date('2026-09-01T00:00:00.000Z'),
       }),
+    );
+    expect(bullmqService.ensureJobFromPersistedTruth).toHaveBeenCalledWith(
+      'files-imports',
+      'validate-import',
+      { importJobId: 'job-1' },
+      {
+        jobId: 'job-1',
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 1000 },
+      },
     );
     expect(response).toEqual({
       id: 'batch-1',
@@ -222,6 +238,18 @@ describe('CreateStudentBulkRegistrationUseCase', () => {
     await expect(
       inStudentsScope(() => useCase.execute(command, file)),
     ).rejects.toBe(failure);
+  });
+
+  it('preserves the durable intake when initial queue dispatch fails', async () => {
+    bullmqService.ensureJobFromPersistedTruth.mockRejectedValue(
+      new Error('queue_unavailable'),
+    );
+
+    await expect(
+      inStudentsScope(() => useCase.execute(command, file)),
+    ).resolves.toMatchObject({ id: 'batch-1', sourceImportJobId: 'job-1' });
+    expect(storageService.deleteObject).not.toHaveBeenCalled();
+    expect(filesRepository.softDeleteFile).not.toHaveBeenCalled();
   });
 });
 

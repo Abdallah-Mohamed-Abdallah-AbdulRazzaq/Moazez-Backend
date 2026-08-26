@@ -1,6 +1,19 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { StudentBulkRegistrationBatchStatus } from '@prisma/client';
-import { Allow, IsDateString, IsOptional, IsUUID } from 'class-validator';
+import {
+  StudentBulkRegistrationBatchStatus,
+  StudentBulkRegistrationRowStatus,
+} from '@prisma/client';
+import { Type } from 'class-transformer';
+import {
+  Allow,
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsUUID,
+  Max,
+  Min,
+} from 'class-validator';
 
 export class StudentBulkRegistrationPlacementDto {
   @ApiProperty({ format: 'uuid' })
@@ -158,4 +171,87 @@ export class StudentBulkRegistrationBatchResponseDto {
 
   @ApiProperty({ format: 'date-time' })
   updatedAt!: string;
+}
+
+export class StudentBulkRegistrationBatchDetailResponseDto extends StudentBulkRegistrationBatchResponseDto {
+  @ApiPropertyOptional({ format: 'date-time', nullable: true })
+  validatedAt!: string | null;
+
+  @ApiProperty({ type: [String] })
+  validationErrors!: string[];
+}
+
+export class ListStudentBulkRegistrationRowsQueryDto {
+  @ApiPropertyOptional({ default: 1, minimum: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page = 1;
+
+  @ApiPropertyOptional({ default: 50, minimum: 1, maximum: 200 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  limit = 50;
+
+  @ApiPropertyOptional({ enum: StudentBulkRegistrationRowStatus })
+  @IsOptional()
+  @IsEnum(StudentBulkRegistrationRowStatus)
+  status?: StudentBulkRegistrationRowStatus;
+}
+
+export class StudentBulkRegistrationNormalizedDataResponseDto {
+  @ApiPropertyOptional({ nullable: true }) firstNameEn!: string | null;
+  @ApiPropertyOptional({ nullable: true }) fatherNameEn!: string | null;
+  @ApiPropertyOptional({ nullable: true }) grandfatherNameEn!: string | null;
+  @ApiPropertyOptional({ nullable: true }) familyNameEn!: string | null;
+  @ApiPropertyOptional({ nullable: true }) firstNameAr!: string | null;
+  @ApiPropertyOptional({ nullable: true }) fatherNameAr!: string | null;
+  @ApiPropertyOptional({ nullable: true }) grandfatherNameAr!: string | null;
+  @ApiPropertyOptional({ nullable: true }) familyNameAr!: string | null;
+  @ApiPropertyOptional({ nullable: true, format: 'date' }) dateOfBirth!:
+    | string
+    | null;
+  @ApiPropertyOptional({ nullable: true }) gender!: string | null;
+  @ApiPropertyOptional({ nullable: true }) nationality!: string | null;
+  @ApiProperty() username!: string;
+  @ApiPropertyOptional({ nullable: true }) contactEmail!: string | null;
+  @ApiPropertyOptional({ nullable: true }) studentPhone!: string | null;
+}
+
+export class StudentBulkRegistrationRowErrorResponseDto {
+  @ApiProperty() code!: string;
+  @ApiPropertyOptional({ nullable: true }) field!: string | null;
+  @ApiPropertyOptional() reason?: string;
+}
+
+export class StudentBulkRegistrationRowResponseDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() rowNumber!: number;
+  @ApiProperty({ enum: StudentBulkRegistrationRowStatus })
+  status!: StudentBulkRegistrationRowStatus;
+  @ApiProperty({ type: StudentBulkRegistrationNormalizedDataResponseDto })
+  normalizedData!: StudentBulkRegistrationNormalizedDataResponseDto;
+  @ApiProperty({ type: [StudentBulkRegistrationRowErrorResponseDto] })
+  errors!: StudentBulkRegistrationRowErrorResponseDto[];
+  @ApiPropertyOptional({ format: 'uuid', nullable: true }) studentId!:
+    | string
+    | null;
+  @ApiPropertyOptional({ format: 'uuid', nullable: true }) userId!:
+    | string
+    | null;
+  @ApiPropertyOptional({ format: 'uuid', nullable: true }) enrollmentId!:
+    | string
+    | null;
+}
+
+export class StudentBulkRegistrationRowsResponseDto {
+  @ApiProperty({ type: [StudentBulkRegistrationRowResponseDto] })
+  items!: StudentBulkRegistrationRowResponseDto[];
+  @ApiProperty() total!: number;
+  @ApiProperty() page!: number;
+  @ApiProperty() limit!: number;
 }

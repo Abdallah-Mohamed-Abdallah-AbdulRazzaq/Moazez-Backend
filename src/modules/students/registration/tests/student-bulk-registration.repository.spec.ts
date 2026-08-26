@@ -1,6 +1,7 @@
 import {
   ImportJobStatus,
   StudentBulkRegistrationBatchStatus,
+  StudentBulkRegistrationRowStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import { StudentBulkRegistrationRepository } from '../infrastructure/student-bulk-registration.repository';
@@ -74,5 +75,122 @@ describe('StudentBulkRegistrationRepository', () => {
         },
       }),
     );
+  });
+
+  it('replaces rows, counters, final status, and ImportJob report in one transaction', async () => {
+    const deleteMany = jest.fn().mockResolvedValue({ count: 0 });
+    const createMany = jest.fn().mockResolvedValue({ count: 1 });
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const importJobUpdate = jest.fn().mockResolvedValue({ id: 'job-1' });
+    const tx = {
+      studentBulkRegistrationRow: { deleteMany, createMany },
+      studentBulkRegistrationBatch: { updateMany },
+      importJob: { update: importJobUpdate },
+    };
+    const transaction = jest.fn(
+      (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
+    );
+    const repository = new StudentBulkRegistrationRepository({
+      $transaction: transaction,
+    } as unknown as PrismaService);
+    const reportJson = { status: ImportJobStatus.COMPLETED, errors: [] };
+
+    await repository.finalizeValidation({
+      importJobId: 'job-1',
+      schoolId: 'school-1',
+      batchId: 'batch-1',
+      batchStatus: StudentBulkRegistrationBatchStatus.READY,
+      rows: [
+        {
+          rowNumber: 2,
+          normalizedDataJson: { username: 'sara' },
+          rowHash: 'a'.repeat(64),
+          status: StudentBulkRegistrationRowStatus.VALID,
+          errorsJson: null,
+        },
+      ],
+      validRows: 1,
+      invalidRows: 0,
+      reportJson,
+      validatedAt: new Date('2026-08-26T10:00:00.000Z'),
+    });
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(deleteMany).toHaveBeenCalledWith({
+      where: { batchId: 'batch-1', schoolId: 'school-1' },
+    });
+    expect(createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          schoolId: 'school-1',
+          batchId: 'batch-1',
+          rowNumber: 2,
+          status: StudentBulkRegistrationRowStatus.VALID,
+        }),
+      ],
+    });
+    const updateCalls = updateMany.mock.calls as unknown[][];
+    const update = updateCalls[0][0] as {
+      data: {
+        status: StudentBulkRegistrationBatchStatus;
+        totalRows: number;
+        validRows: number;
+        invalidRows: number;
+      };
+    };
+    expect(update.data).toMatchObject({
+      status: StudentBulkRegistrationBatchStatus.READY,
+      totalRows: 1,
+      validRows: 1,
+      invalidRows: 0,
+    });
+    expect(importJobUpdate).toHaveBeenCalledWith({
+      where: { id: 'job-1' },
+      data: { status: ImportJobStatus.COMPLETED, reportJson },
+    });
+  });
+
+  it('fails inside the transaction before completing the ImportJob when finalization conflicts', async () => {
+    const importJobUpdate = jest.fn();
+    const tx = {
+      studentBulkRegistrationRow: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+        createMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      studentBulkRegistrationBatch: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      importJob: { update: importJobUpdate },
+    };
+    const transaction = jest.fn(
+      (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
+    );
+    const repository = new StudentBulkRegistrationRepository({
+      $transaction: transaction,
+    } as unknown as PrismaService);
+
+    await expect(
+      repository.finalizeValidation({
+        importJobId: 'job-1',
+        schoolId: 'school-1',
+        batchId: 'batch-1',
+        batchStatus: StudentBulkRegistrationBatchStatus.READY,
+        rows: [
+          {
+            rowNumber: 2,
+            normalizedDataJson: { username: 'sara' },
+            rowHash: 'a'.repeat(64),
+            status: StudentBulkRegistrationRowStatus.VALID,
+            errorsJson: null,
+          },
+        ],
+        validRows: 1,
+        invalidRows: 0,
+        reportJson: { status: ImportJobStatus.COMPLETED },
+        validatedAt: new Date('2026-08-26T10:00:00.000Z'),
+      }),
+    ).rejects.toThrow('bulk_registration_validation_finalize_conflict');
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(importJobUpdate).not.toHaveBeenCalled();
   });
 });
