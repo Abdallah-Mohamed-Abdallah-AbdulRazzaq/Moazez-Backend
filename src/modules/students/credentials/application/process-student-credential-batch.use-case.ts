@@ -94,6 +94,13 @@ export class ProcessStudentCredentialBatchUseCase {
         error instanceof StudentCredentialSecretArtifactException ||
         error instanceof StudentCredentialExecutionTenantIneligibleException
       ) {
+        const current = await this.repository.findExecutionBatchById(batch.id);
+        if (!current?.secretArtifactFileId) {
+          await this.artifactService.deletePotentialOrphanSecretArtifact({
+            schoolId: batch.schoolId,
+            batchId: batch.id,
+          });
+        }
         await this.repository.terminalizeRemainingPendingRows({
           batchId: batch.id,
           schoolId: batch.schoolId,

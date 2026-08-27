@@ -11,6 +11,7 @@ import { ImportJobsRepository } from '../infrastructure/import-jobs.repository';
 import { ImportValidationWorker } from '../infrastructure/import-validation.worker';
 import { ProcessStudentCredentialBatchUseCase } from '../../../students/credentials/application/process-student-credential-batch.use-case';
 import { StudentCredentialBatchReconciliationService } from '../../../students/credentials/application/student-credential-batch-reconciliation.service';
+import { StudentCredentialSecretArtifactCleanupService } from '../../../students/credentials/application/student-credential-secret-artifact-cleanup.service';
 
 describe('ImportValidationWorker persisted type routing', () => {
   let processor: (job: Job<FilesImportQueueJobData>) => Promise<void>;
@@ -22,6 +23,7 @@ describe('ImportValidationWorker persisted type routing', () => {
   let executionReconciliation: { reconcile: jest.Mock };
   let credentialExecution: { execute: jest.Mock };
   let credentialReconciliation: { reconcile: jest.Mock };
+  let credentialArtifactCleanup: { reconcile: jest.Mock };
 
   beforeEach(() => {
     generic = { execute: jest.fn().mockResolvedValue(undefined) };
@@ -41,6 +43,9 @@ describe('ImportValidationWorker persisted type routing', () => {
     credentialReconciliation = {
       reconcile: jest.fn().mockResolvedValue(undefined),
     };
+    credentialArtifactCleanup = {
+      reconcile: jest.fn().mockResolvedValue(undefined),
+    };
     const bullmq = {
       createWorker: jest.fn((_queue: string, handler: typeof processor) => {
         processor = handler;
@@ -57,6 +62,7 @@ describe('ImportValidationWorker persisted type routing', () => {
       execution as unknown as ProcessStudentBulkRegistrationExecutionUseCase,
       credentialExecution as unknown as ProcessStudentCredentialBatchUseCase,
       credentialReconciliation as unknown as StudentCredentialBatchReconciliationService,
+      credentialArtifactCleanup as unknown as StudentCredentialSecretArtifactCleanupService,
     ).onModuleInit();
   });
 
@@ -109,6 +115,7 @@ describe('ImportValidationWorker persisted type routing', () => {
     expect(reconciliation.reconcile).toHaveBeenCalledTimes(1);
     expect(executionReconciliation.reconcile).toHaveBeenCalledTimes(1);
     expect(credentialReconciliation.reconcile).toHaveBeenCalledTimes(1);
+    expect(credentialArtifactCleanup.reconcile).toHaveBeenCalledTimes(1);
     expect(reconciliation.reconcile.mock.invocationCallOrder[0]).toBeLessThan(
       executionReconciliation.reconcile.mock.invocationCallOrder[0],
     );
@@ -116,6 +123,11 @@ describe('ImportValidationWorker persisted type routing', () => {
       executionReconciliation.reconcile.mock.invocationCallOrder[0],
     ).toBeLessThan(
       credentialReconciliation.reconcile.mock.invocationCallOrder[0],
+    );
+    expect(
+      credentialReconciliation.reconcile.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      credentialArtifactCleanup.reconcile.mock.invocationCallOrder[0],
     );
     expect(repository.findRecoveryContextById).not.toHaveBeenCalled();
   });

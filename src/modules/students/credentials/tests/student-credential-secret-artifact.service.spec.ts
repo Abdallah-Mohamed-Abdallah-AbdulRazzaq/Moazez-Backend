@@ -184,6 +184,19 @@ describe('StudentCredentialSecretArtifactService', () => {
     ).rejects.toThrow('storage_temporarily_unavailable');
     expect(fixture.storage.saveObject).toHaveBeenCalledTimes(1);
   });
+
+  it('deletes only the deterministic private potential-orphan object', async () => {
+    const fixture = createFixture(StudentCredentialMode.UNIQUE_GENERATED);
+    await fixture.service.deletePotentialOrphanSecretArtifact({
+      schoolId: 'school-1',
+      batchId: 'batch-1',
+    });
+    expect(fixture.storage.deleteObjectAndConfirmAbsent).toHaveBeenCalledWith({
+      bucket: 'private-bucket',
+      objectKey:
+        'schools/school-1/files/student-credential-batch-batch-1-v1.json',
+    });
+  });
 });
 
 function createFixture(credentialMode: StudentCredentialMode) {
@@ -207,6 +220,7 @@ function createFixture(credentialMode: StudentCredentialMode) {
       return { bucket: 'private-bucket', etag: 'etag' };
     }),
     deleteObject: jest.fn().mockResolvedValue(undefined),
+    deleteObjectAndConfirmAbsent: jest.fn().mockResolvedValue(undefined),
     statObject: jest.fn(async () => ({
       size: storedBody.byteLength,
       etag: 'etag',

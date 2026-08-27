@@ -111,7 +111,12 @@ describe('student credential execution', () => {
   });
 
   it('terminalizes remaining rows without exposing artifact details on permanent artifact failure', async () => {
-    const batch = batchFixture();
+    const batch = batchFixture({
+      secretArtifactFileId: null,
+      secretArtifactVersion: null,
+      secretArtifactStagedAt: null,
+      secretArtifactExpiresAt: null,
+    });
     const repository = repositoryFixture(batch, rowFixtures());
     const artifact = {
       ensureArtifact: jest
@@ -121,6 +126,9 @@ describe('student credential execution', () => {
             'students.credentials.secret_artifact_unavailable',
           ),
         ),
+      deletePotentialOrphanSecretArtifact: jest
+        .fn()
+        .mockResolvedValue(undefined),
     };
     const useCase = new ProcessStudentCredentialBatchUseCase(
       repository as unknown as StudentCredentialBatchRepository,
@@ -135,6 +143,90 @@ describe('student credential execution', () => {
       }),
     );
     expect(repository.applyCredentialRow).not.toHaveBeenCalled();
+    expect(artifact.deletePotentialOrphanSecretArtifact).toHaveBeenCalledWith({
+      schoolId: batch.schoolId,
+      batchId: batch.id,
+    });
+    expect(
+      artifact.deletePotentialOrphanSecretArtifact.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      repository.terminalizeRemainingPendingRows.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('does not terminalize a no-pointer batch when orphan deletion cannot be confirmed', async () => {
+    const batch = batchFixture({
+      secretArtifactFileId: null,
+      secretArtifactVersion: null,
+      secretArtifactStagedAt: null,
+      secretArtifactExpiresAt: null,
+    });
+    const repository = repositoryFixture(batch, rowFixtures());
+    const artifact = {
+      ensureArtifact: jest
+        .fn()
+        .mockRejectedValue(
+          new StudentCredentialSecretArtifactException(
+            'students.credentials.secret_artifact_unavailable',
+          ),
+        ),
+      deletePotentialOrphanSecretArtifact: jest
+        .fn()
+        .mockRejectedValue(new Error('storage_temporarily_unavailable')),
+    };
+    const useCase = new ProcessStudentCredentialBatchUseCase(
+      repository as unknown as StudentCredentialBatchRepository,
+      artifact as unknown as StudentCredentialSecretArtifactService,
+      { hash: jest.fn() } as unknown as PasswordService,
+    );
+
+    await expect(useCase.execute(batch.id)).rejects.toThrow(
+      'storage_temporarily_unavailable',
+    );
+    expect(repository.terminalizeRemainingPendingRows).not.toHaveBeenCalled();
+    expect(repository.finalizeBatch).not.toHaveBeenCalled();
+  });
+
+  it('deletes a no-pointer orphan before terminalizing an ineligible tenant', async () => {
+    const batch = batchFixture({
+      secretArtifactFileId: null,
+      secretArtifactVersion: null,
+      secretArtifactStagedAt: null,
+      secretArtifactExpiresAt: null,
+      school: {
+        ...batchFixture().school,
+        status: SchoolStatus.SUSPENDED,
+      },
+    });
+    const repository = repositoryFixture(batch, rowFixtures());
+    const artifact = {
+      ensureArtifact: jest.fn(),
+      deletePotentialOrphanSecretArtifact: jest
+        .fn()
+        .mockResolvedValue(undefined),
+    };
+    const useCase = new ProcessStudentCredentialBatchUseCase(
+      repository as unknown as StudentCredentialBatchRepository,
+      artifact as unknown as StudentCredentialSecretArtifactService,
+      { hash: jest.fn() } as unknown as PasswordService,
+    );
+
+    await expect(useCase.execute(batch.id)).resolves.toBeUndefined();
+    expect(artifact.ensureArtifact).not.toHaveBeenCalled();
+    expect(artifact.deletePotentialOrphanSecretArtifact).toHaveBeenCalledWith({
+      schoolId: batch.schoolId,
+      batchId: batch.id,
+    });
+    expect(repository.terminalizeRemainingPendingRows).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reasonCode: 'students.credentials.execution_tenant_ineligible',
+      }),
+    );
+    expect(
+      artifact.deletePotentialOrphanSecretArtifact.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      repository.terminalizeRemainingPendingRows.mock.invocationCallOrder[0],
+    );
   });
 });
 
@@ -155,6 +247,7 @@ describe('StudentCredentialBatchReconciliationService', () => {
     const service = new StudentCredentialBatchReconciliationService(
       repository as unknown as StudentCredentialBatchRepository,
       bullmq as unknown as BullmqService,
+      artifactCleanupFixture(),
     );
 
     await expect(
@@ -187,6 +280,7 @@ describe('StudentCredentialBatchReconciliationService', () => {
     const service = new StudentCredentialBatchReconciliationService(
       repository as unknown as StudentCredentialBatchRepository,
       bullmq as unknown as BullmqService,
+      artifactCleanupFixture(),
     );
 
     await expect(
@@ -203,14 +297,22 @@ describe('StudentCredentialBatchReconciliationService', () => {
     });
     const repository = {
       listRecoveryCandidates: jest.fn().mockResolvedValue([candidate]),
+      findExecutionBatchById: jest.fn().mockResolvedValue(candidate),
       terminalizeRemainingPendingRows: jest.fn().mockResolvedValue(2),
       finalizeBatch: jest
         .fn()
         .mockResolvedValue(StudentCredentialBatchStatus.FAILED),
     };
+    const deletePotentialOrphanSecretArtifact = jest
+      .fn()
+      .mockResolvedValue(undefined);
+    const artifact = {
+      deletePotentialOrphanSecretArtifact,
+    } as unknown as StudentCredentialSecretArtifactService;
     const service = new StudentCredentialBatchReconciliationService(
       repository as unknown as StudentCredentialBatchRepository,
       { ensureJobFromPersistedTruth: jest.fn() } as unknown as BullmqService,
+      artifact,
     );
 
     await expect(
@@ -223,6 +325,10 @@ describe('StudentCredentialBatchReconciliationService', () => {
         reasonCode: 'students.credentials.execution_recovery_window_expired',
       }),
     );
+    expect(deletePotentialOrphanSecretArtifact).toHaveBeenCalledWith({
+      schoolId: 'school-1',
+      batchId: 'batch-1',
+    });
   });
 
   it('blocks PENDING recovery when artifact metadata was already staged', async () => {
@@ -239,12 +345,41 @@ describe('StudentCredentialBatchReconciliationService', () => {
     const service = new StudentCredentialBatchReconciliationService(
       repository as unknown as StudentCredentialBatchRepository,
       bullmq as unknown as BullmqService,
+      artifactCleanupFixture(),
     );
 
     await expect(
       service.reconcile(new Date('2026-08-27T11:00:00Z')),
     ).resolves.toMatchObject({ blockedInvariant: 1 });
     expect(bullmq.ensureJobFromPersistedTruth).not.toHaveBeenCalled();
+  });
+
+  it('does not recovery-terminalize when no-pointer orphan deletion fails', async () => {
+    const candidate = recoveryCandidate({
+      createdAt: new Date('2026-08-25T00:00:00Z'),
+    });
+    const repository = {
+      listRecoveryCandidates: jest.fn().mockResolvedValue([candidate]),
+      findExecutionBatchById: jest.fn().mockResolvedValue(candidate),
+      terminalizeRemainingPendingRows: jest.fn(),
+      finalizeBatch: jest.fn(),
+    };
+    const artifact = {
+      deletePotentialOrphanSecretArtifact: jest
+        .fn()
+        .mockRejectedValue(new Error('storage_temporarily_unavailable')),
+    };
+    const service = new StudentCredentialBatchReconciliationService(
+      repository as unknown as StudentCredentialBatchRepository,
+      { ensureJobFromPersistedTruth: jest.fn() } as unknown as BullmqService,
+      artifact as unknown as StudentCredentialSecretArtifactService,
+    );
+
+    await expect(
+      service.reconcile(new Date('2026-08-27T11:00:00Z')),
+    ).rejects.toThrow('storage_temporarily_unavailable');
+    expect(repository.terminalizeRemainingPendingRows).not.toHaveBeenCalled();
+    expect(repository.finalizeBatch).not.toHaveBeenCalled();
   });
 });
 
@@ -262,6 +397,12 @@ function repositoryFixture(
       .fn()
       .mockResolvedValue(StudentCredentialBatchStatus.COMPLETED),
   };
+}
+
+function artifactCleanupFixture(): StudentCredentialSecretArtifactService {
+  return {
+    deletePotentialOrphanSecretArtifact: jest.fn().mockResolvedValue(undefined),
+  } as unknown as StudentCredentialSecretArtifactService;
 }
 
 function batchFixture(

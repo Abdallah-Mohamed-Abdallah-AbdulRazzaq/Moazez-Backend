@@ -8,7 +8,6 @@ import { createHash } from 'node:crypto';
 import type { Readable } from 'node:stream';
 import { StorageService } from '../../../../infrastructure/storage/storage.service';
 import { isObjectStorageNotFoundError } from '../../../../infrastructure/storage/object-storage.errors';
-import { buildSchoolFileObjectKey } from '../../../files/uploads/domain/uploaded-file';
 import { generateTemporaryPassword } from '../../../settings/users/credentials/domain/credential-password.policy';
 import {
   STUDENT_CREDENTIAL_SECRET_ARTIFACT_EXPIRED_CODE,
@@ -20,6 +19,7 @@ import {
   STUDENT_CREDENTIAL_SECRET_ARTIFACT_UNAVAILABLE_CODE,
   STUDENT_CREDENTIAL_SECRET_ARTIFACT_VERSION,
 } from '../domain/student-credential.constants';
+import { studentCredentialSecretArtifactObjectKey } from '../domain/student-credential-secret-artifact-key';
 import {
   StudentCredentialExecutionInvariantException,
   StudentCredentialSecretArtifactException,
@@ -83,11 +83,10 @@ export class StudentCredentialSecretArtifactService {
       );
     }
     const checksumSha256 = createHash('sha256').update(body).digest('hex');
-    const objectKey = buildSchoolFileObjectKey(
-      input.batch.schoolId,
-      STUDENT_CREDENTIAL_SECRET_ARTIFACT_ORIGINAL_NAME,
-      `student-credential-batch-${input.batch.id}-v${STUDENT_CREDENTIAL_SECRET_ARTIFACT_VERSION}`,
-    );
+    const objectKey = studentCredentialSecretArtifactObjectKey({
+      schoolId: input.batch.schoolId,
+      batchId: input.batch.id,
+    });
     const stored = await this.storage.saveObject({
       objectKey,
       body,
@@ -148,11 +147,10 @@ export class StudentCredentialSecretArtifactService {
     now: Date,
   ): Promise<StudentCredentialSecretArtifact> {
     const file = batch.secretArtifactFile;
-    const expectedObjectKey = buildSchoolFileObjectKey(
-      batch.schoolId,
-      STUDENT_CREDENTIAL_SECRET_ARTIFACT_ORIGINAL_NAME,
-      `student-credential-batch-${batch.id}-v${STUDENT_CREDENTIAL_SECRET_ARTIFACT_VERSION}`,
-    );
+    const expectedObjectKey = studentCredentialSecretArtifactObjectKey({
+      schoolId: batch.schoolId,
+      batchId: batch.id,
+    });
     if (
       !batch.secretArtifactFileId ||
       !file ||
@@ -224,6 +222,16 @@ export class StudentCredentialSecretArtifactService {
       }
       throw error;
     }
+  }
+
+  async deletePotentialOrphanSecretArtifact(input: {
+    schoolId: string;
+    batchId: string;
+  }): Promise<void> {
+    await this.storage.deleteObjectAndConfirmAbsent({
+      bucket: this.storage.resolveBucket(FileVisibility.PRIVATE),
+      objectKey: studentCredentialSecretArtifactObjectKey(input),
+    });
   }
 }
 

@@ -1,10 +1,43 @@
 import { HttpStatus } from '@nestjs/common';
 import { DomainException } from '../../../../common/exceptions/domain-exception';
 import {
+  STUDENT_CREDENTIAL_EXPORT_EMPTY_CODE,
+  STUDENT_CREDENTIAL_EXPORT_NOT_READY_CODE,
+  STUDENT_CREDENTIAL_EXPORT_TOO_LARGE_CODE,
   STUDENT_CREDENTIAL_SECRET_ARTIFACT_EXPIRED_CODE,
   STUDENT_CREDENTIAL_SECRET_ARTIFACT_INVALID_CODE,
   STUDENT_CREDENTIAL_SECRET_ARTIFACT_UNAVAILABLE_CODE,
 } from './student-credential.constants';
+
+export class StudentCredentialExportNotReadyException extends DomainException {
+  constructor() {
+    super({
+      code: STUDENT_CREDENTIAL_EXPORT_NOT_READY_CODE,
+      message: 'Student credential export is not ready',
+      httpStatus: HttpStatus.CONFLICT,
+    });
+  }
+}
+
+export class StudentCredentialExportEmptyException extends DomainException {
+  constructor() {
+    super({
+      code: STUDENT_CREDENTIAL_EXPORT_EMPTY_CODE,
+      message: 'Student credential export has no generated credentials',
+      httpStatus: HttpStatus.CONFLICT,
+    });
+  }
+}
+
+export class StudentCredentialExportTooLargeException extends DomainException {
+  constructor() {
+    super({
+      code: STUDENT_CREDENTIAL_EXPORT_TOO_LARGE_CODE,
+      message: 'Student credential export exceeds the maximum size',
+      httpStatus: HttpStatus.PAYLOAD_TOO_LARGE,
+    });
+  }
+}
 
 export class StudentCredentialAudienceInvalidException extends DomainException {
   constructor(reasonCode: string) {

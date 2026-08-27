@@ -24,6 +24,7 @@ import { StudentBulkRegistrationExecutionReconciliationService } from '../../../
 import { STUDENT_CREDENTIAL_BATCH_EXECUTE_JOB_NAME } from '../../../students/credentials/domain/student-credential.constants';
 import { ProcessStudentCredentialBatchUseCase } from '../../../students/credentials/application/process-student-credential-batch.use-case';
 import { StudentCredentialBatchReconciliationService } from '../../../students/credentials/application/student-credential-batch-reconciliation.service';
+import { StudentCredentialSecretArtifactCleanupService } from '../../../students/credentials/application/student-credential-secret-artifact-cleanup.service';
 
 @Injectable()
 export class ImportValidationWorker implements OnModuleInit {
@@ -43,6 +44,8 @@ export class ImportValidationWorker implements OnModuleInit {
     private readonly processStudentCredentialBatchUseCase?: ProcessStudentCredentialBatchUseCase,
     @Optional()
     private readonly studentCredentialBatchReconciliationService?: StudentCredentialBatchReconciliationService,
+    @Optional()
+    private readonly studentCredentialSecretArtifactCleanupService?: StudentCredentialSecretArtifactCleanupService,
   ) {}
 
   onModuleInit(): void {
@@ -54,6 +57,7 @@ export class ImportValidationWorker implements OnModuleInit {
         await this.reconciliationService.reconcile();
         await this.studentBulkRegistrationExecutionReconciliationService.reconcile();
         await this.studentCredentialBatchReconciliationService?.reconcile();
+        await this.studentCredentialSecretArtifactCleanupService?.reconcile();
         return;
       }
       if (job.name === STUDENT_CREDENTIAL_BATCH_EXECUTE_JOB_NAME) {

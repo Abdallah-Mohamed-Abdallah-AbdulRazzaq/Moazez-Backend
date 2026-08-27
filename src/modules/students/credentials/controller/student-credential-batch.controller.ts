@@ -7,17 +7,21 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Res,
 } from '@nestjs/common';
 import {
   ApiAcceptedResponse,
   ApiBearerAuth,
   ApiOkResponse,
+  ApiProduces,
   ApiTags,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { CreateStudentCredentialBatchUseCase } from '../application/create-student-credential-batch.use-case';
 import { GetStudentCredentialBatchUseCase } from '../application/get-student-credential-batch.use-case';
 import { PreviewStudentCredentialBatchUseCase } from '../application/preview-student-credential-batch.use-case';
+import { ExportStudentCredentialBatchUseCase } from '../application/export-student-credential-batch.use-case';
 import {
   CreateStudentCredentialBatchDto,
   StudentCredentialAudienceDto,
@@ -42,6 +46,7 @@ export class StudentCredentialBatchController {
     private readonly previewUseCase: PreviewStudentCredentialBatchUseCase,
     private readonly createUseCase: CreateStudentCredentialBatchUseCase,
     private readonly getUseCase: GetStudentCredentialBatchUseCase,
+    private readonly exportUseCase: ExportStudentCredentialBatchUseCase,
   ) {}
 
   @Post('preview')
@@ -62,6 +67,29 @@ export class StudentCredentialBatchController {
     @Body() dto: CreateStudentCredentialBatchDto,
   ): Promise<StudentCredentialBatchResponseDto> {
     return this.createUseCase.execute(dto);
+  }
+
+  @Get(':batchId/export')
+  @ApiProduces('text/csv')
+  @ApiOkResponse({ description: 'Student temporary credential CSV export' })
+  @RequiredPermissions(...CREDENTIAL_CREATE_PERMISSIONS)
+  async export(
+    @Param('batchId', ParseUUIDPipe) batchId: string,
+    @Res() response: Response,
+  ): Promise<void> {
+    const result = await this.exportUseCase.execute(batchId);
+    response.status(HttpStatus.OK);
+    response.set({
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${result.filename}"`,
+      'Cache-Control': 'no-store, private, max-age=0',
+      Pragma: 'no-cache',
+      Expires: '0',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Length': String(result.body.byteLength),
+    });
+    response.removeHeader('ETag');
+    response.end(result.body);
   }
 
   @Get(':batchId')

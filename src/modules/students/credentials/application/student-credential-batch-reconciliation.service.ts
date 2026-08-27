@@ -19,6 +19,7 @@ import {
   StudentCredentialBatchRepository,
   type StudentCredentialRecoveryCandidate,
 } from '../infrastructure/student-credential-batch.repository';
+import { StudentCredentialSecretArtifactService } from './student-credential-secret-artifact.service';
 
 export interface StudentCredentialRecoverySummary {
   scanned: number;
@@ -34,6 +35,7 @@ export class StudentCredentialBatchReconciliationService {
   constructor(
     private readonly repository: StudentCredentialBatchRepository,
     private readonly bullmq: BullmqService,
+    private readonly artifactService: StudentCredentialSecretArtifactService,
   ) {}
 
   async reconcile(now = new Date()): Promise<StudentCredentialRecoverySummary> {
@@ -147,6 +149,13 @@ export class StudentCredentialBatchReconciliationService {
     now: Date,
     reasonCode: string,
   ): Promise<void> {
+    const current = await this.repository.findExecutionBatchById(candidate.id);
+    if (!current?.secretArtifactFileId) {
+      await this.artifactService.deletePotentialOrphanSecretArtifact({
+        schoolId: candidate.schoolId,
+        batchId: candidate.id,
+      });
+    }
     await this.repository.terminalizeRemainingPendingRows({
       batchId: candidate.id,
       schoolId: candidate.schoolId,

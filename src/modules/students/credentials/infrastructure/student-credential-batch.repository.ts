@@ -176,6 +176,50 @@ export interface StudentCredentialRecoveryCandidate extends StudentCredentialExe
   rowSchoolMismatch: boolean;
 }
 
+export interface StudentCredentialExportRow {
+  id: string;
+  schoolId: string;
+  batchId: string;
+  studentId: string;
+  userId: string | null;
+  status: StudentCredentialRowStatus;
+  credentialVersionAfter: number | null;
+  generatedAt: Date | null;
+  createdAt: Date;
+  student: {
+    id: string;
+    schoolId: string;
+    organizationId: string;
+    userId: string | null;
+    firstName: string;
+    lastName: string;
+    status: StudentStatus;
+    deletedAt: Date | null;
+  };
+  user: {
+    id: string;
+    email: string;
+    username: string | null;
+    passwordHash: string | null;
+    mustChangePassword: boolean;
+    passwordProvisionedAt: Date | null;
+    credentialVersion: number;
+    userType: UserType;
+    status: UserStatus;
+    deletedAt: Date | null;
+    memberships: Array<{
+      schoolId: string | null;
+      organizationId: string;
+      userType: UserType;
+      status: MembershipStatus;
+      deletedAt: Date | null;
+    }>;
+  } | null;
+}
+
+export type StudentCredentialSecretArtifactCleanupCandidate =
+  StudentCredentialExecutionBatch;
+
 export type ApplyStudentCredentialRowResult =
   | { kind: 'generated'; credentialVersionAfter: number }
   | { kind: 'skipped'; reasonCode: string }
@@ -316,6 +360,112 @@ export class StudentCredentialBatchRepository {
     return this.scopedPrisma.studentCredentialBatch.findFirst({
       where: { id: batchId },
       ...API_BATCH_ARGS,
+    });
+  }
+
+  findScopedExecutionBatchById(
+    batchId: string,
+  ): Promise<StudentCredentialExecutionBatch | null> {
+    return this.scopedPrisma.studentCredentialBatch.findFirst({
+      where: { id: batchId },
+      select: EXECUTION_BATCH_SELECT,
+    });
+  }
+
+  listGeneratedExportRows(input: {
+    batchId: string;
+    schoolId: string;
+    organizationId: string;
+  }): Promise<StudentCredentialExportRow[]> {
+    return this.scopedPrisma.studentCredentialRow.findMany({
+      where: {
+        batchId: input.batchId,
+        schoolId: input.schoolId,
+        status: StudentCredentialRowStatus.GENERATED,
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: {
+        id: true,
+        schoolId: true,
+        batchId: true,
+        studentId: true,
+        userId: true,
+        status: true,
+        credentialVersionAfter: true,
+        generatedAt: true,
+        createdAt: true,
+        student: {
+          select: {
+            id: true,
+            schoolId: true,
+            organizationId: true,
+            userId: true,
+            firstName: true,
+            lastName: true,
+            status: true,
+            deletedAt: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            email: true,
+            username: true,
+            passwordHash: true,
+            mustChangePassword: true,
+            passwordProvisionedAt: true,
+            credentialVersion: true,
+            userType: true,
+            status: true,
+            deletedAt: true,
+            memberships: {
+              where: {
+                schoolId: input.schoolId,
+                organizationId: input.organizationId,
+                userType: UserType.STUDENT,
+                status: MembershipStatus.ACTIVE,
+                deletedAt: null,
+              },
+              select: {
+                schoolId: true,
+                organizationId: true,
+                userType: true,
+                status: true,
+                deletedAt: true,
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  async recordExportAudit(input: {
+    scope: StudentsScope;
+    batchId: string;
+    generatedRows: number;
+    temporaryCredentialsExported: number;
+    credentialChangedRows: number;
+    accountIneligibleRows: number;
+  }): Promise<void> {
+    await this.prisma.auditLog.create({
+      data: {
+        actorId: input.scope.actorId,
+        userType: input.scope.userType,
+        organizationId: input.scope.organizationId,
+        schoolId: input.scope.schoolId,
+        module: 'iam',
+        action: 'iam.credentials.student_batch.export',
+        resourceType: 'student_credential_batch',
+        resourceId: input.batchId,
+        outcome: AuditOutcome.SUCCESS,
+        after: {
+          generatedRows: input.generatedRows,
+          temporaryCredentialsExported: input.temporaryCredentialsExported,
+          credentialChangedRows: input.credentialChangedRows,
+          accountIneligibleRows: input.accountIneligibleRows,
+        },
+      },
     });
   }
 
@@ -869,6 +1019,109 @@ export class StudentCredentialBatchRepository {
       }
     }
     return batches.map((batch) => ({ ...batch, ...rowState.get(batch.id)! }));
+  }
+
+  listExpiredSecretArtifactCleanupCandidates(input: {
+    expiresAtOrBefore: Date;
+    limit: number;
+    cursor?: { expiresAt: Date; id: string };
+  }): Promise<StudentCredentialSecretArtifactCleanupCandidate[]> {
+    return this.prisma.studentCredentialBatch.findMany({
+      where: {
+        status: {
+          in: [
+            StudentCredentialBatchStatus.COMPLETED,
+            StudentCredentialBatchStatus.PARTIAL_FAILED,
+            StudentCredentialBatchStatus.FAILED,
+          ],
+        },
+        secretArtifactFileId: { not: null },
+        secretArtifactExpiresAt: { lte: input.expiresAtOrBefore },
+        secretArtifactFile: { is: { deletedAt: null } },
+        ...(input.cursor
+          ? {
+              OR: [
+                {
+                  secretArtifactExpiresAt: { gt: input.cursor.expiresAt },
+                },
+                {
+                  secretArtifactExpiresAt: input.cursor.expiresAt,
+                  id: { gt: input.cursor.id },
+                },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ secretArtifactExpiresAt: 'asc' }, { id: 'asc' }],
+      take: input.limit,
+      select: EXECUTION_BATCH_SELECT,
+    });
+  }
+
+  async commitExpiredSecretArtifactCleanup(input: {
+    batchId: string;
+    schoolId: string;
+    organizationId: string;
+    fileId: string;
+    artifactVersion: number;
+    stagedAt: Date;
+    expiresAt: Date;
+    cleanedAt: Date;
+  }): Promise<boolean> {
+    return this.prisma.$transaction(async (tx) => {
+      const batch = await tx.studentCredentialBatch.findFirst({
+        where: {
+          id: input.batchId,
+          schoolId: input.schoolId,
+          organizationId: input.organizationId,
+          status: {
+            in: [
+              StudentCredentialBatchStatus.COMPLETED,
+              StudentCredentialBatchStatus.PARTIAL_FAILED,
+              StudentCredentialBatchStatus.FAILED,
+            ],
+          },
+          secretArtifactFileId: input.fileId,
+          secretArtifactVersion: input.artifactVersion,
+          secretArtifactStagedAt: input.stagedAt,
+          secretArtifactExpiresAt: {
+            equals: input.expiresAt,
+            lte: input.cleanedAt,
+          },
+        },
+        select: { id: true },
+      });
+      if (!batch) return false;
+      const file = await tx.file.updateMany({
+        where: {
+          id: input.fileId,
+          schoolId: input.schoolId,
+          organizationId: input.organizationId,
+          deletedAt: null,
+        },
+        data: { deletedAt: input.cleanedAt },
+      });
+      if (file.count !== 1) return false;
+      await tx.auditLog.create({
+        data: {
+          actorId: null,
+          userType: null,
+          organizationId: input.organizationId,
+          schoolId: input.schoolId,
+          module: 'iam',
+          action: 'iam.credentials.student_batch.secret_cleanup',
+          resourceType: 'student_credential_batch',
+          resourceId: input.batchId,
+          outcome: AuditOutcome.SUCCESS,
+          after: {
+            reason: 'expired',
+            artifactVersion: input.artifactVersion,
+            fileMetadataSoftDeleted: true,
+          },
+        },
+      });
+      return true;
+    });
   }
 
   private async resolveCurrentRowSkipReason(

@@ -153,6 +153,11 @@ describe('Student credential batch tenancy (security)', () => {
         `${GLOBAL_PREFIX}/students-guardians/credential-batches/${foreignBatchId}`,
       )
       .expect(401);
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/credential-batches/${foreignBatchId}/export`,
+      )
+      .expect(401);
   });
 
   it('aggregates a foreign selected target without leaking it and returns not found for a foreign batch', async () => {
@@ -177,6 +182,12 @@ describe('Student credential batch tenancy (security)', () => {
     await request(app.getHttpServer())
       .get(
         `${GLOBAL_PREFIX}/students-guardians/credential-batches/${foreignBatchId}`,
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/credential-batches/${foreignBatchId}/export`,
       )
       .set('Authorization', `Bearer ${token}`)
       .expect(404);

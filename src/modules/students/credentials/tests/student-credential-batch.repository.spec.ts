@@ -4,6 +4,7 @@ import {
   OrganizationStatus,
   SchoolStatus,
   StudentCredentialAudienceMode,
+  StudentCredentialBatchStatus,
   StudentCredentialRowStatus,
   StudentStatus,
   UserStatus,
@@ -188,6 +189,114 @@ describe('StudentCredentialBatchRepository row atomicity', () => {
       credentialVersionAfter: 4,
     });
     expect(prisma.$transaction).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('StudentCredentialBatchRepository export and cleanup audit boundaries', () => {
+  it('discovers only terminal expired linked artifacts in stable bounded pages', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const prisma = {
+      studentCredentialBatch: { findMany },
+    } as unknown as PrismaService;
+    const repository = new StudentCredentialBatchRepository(prisma);
+    const now = new Date('2026-08-29T10:00:00Z');
+    await repository.listExpiredSecretArtifactCleanupCandidates({
+      expiresAtOrBefore: now,
+      limit: 100,
+    });
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: {
+            in: [
+              StudentCredentialBatchStatus.COMPLETED,
+              StudentCredentialBatchStatus.PARTIAL_FAILED,
+              StudentCredentialBatchStatus.FAILED,
+            ],
+          },
+          secretArtifactFileId: { not: null },
+          secretArtifactExpiresAt: { lte: now },
+          secretArtifactFile: { is: { deletedAt: null } },
+        }),
+        orderBy: [{ secretArtifactExpiresAt: 'asc' }, { id: 'asc' }],
+        take: 100,
+      }),
+    );
+  });
+
+  it('records only aggregate export counts for the authenticated school actor', async () => {
+    const create = jest.fn().mockResolvedValue({});
+    const prisma = { auditLog: { create } } as unknown as PrismaService;
+    const repository = new StudentCredentialBatchRepository(prisma);
+    await repository.recordExportAudit({
+      scope: {
+        schoolId: 'school-1',
+        organizationId: 'organization-1',
+        actorId: 'actor-1',
+        userType: UserType.SCHOOL_USER,
+        roleId: 'role-1',
+      },
+      batchId: 'batch-1',
+      generatedRows: 3,
+      temporaryCredentialsExported: 1,
+      credentialChangedRows: 1,
+      accountIneligibleRows: 1,
+    });
+    const serialized = JSON.stringify(create.mock.calls);
+    expect(serialized).toContain('iam.credentials.student_batch.export');
+    expect(serialized).not.toMatch(
+      /password|username|email|objectKey|checksum|fileId/iu,
+    );
+  });
+
+  it('soft-deletes metadata and writes a safe cleanup audit in one transaction', async () => {
+    const tx = {
+      studentCredentialBatch: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'batch-1' }),
+      },
+      file: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx)),
+    } as unknown as PrismaService;
+    const repository = new StudentCredentialBatchRepository(prisma);
+    const stagedAt = new Date('2026-08-27T10:00:00Z');
+    const expiresAt = new Date('2026-08-28T10:00:00Z');
+    const cleanedAt = new Date('2026-08-29T10:00:00Z');
+
+    await expect(
+      repository.commitExpiredSecretArtifactCleanup({
+        batchId: 'batch-1',
+        schoolId: 'school-1',
+        organizationId: 'organization-1',
+        fileId: 'file-1',
+        artifactVersion: 1,
+        stagedAt,
+        expiresAt,
+        cleanedAt,
+      }),
+    ).resolves.toBe(true);
+    expect(tx.file.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { deletedAt: cleanedAt } }),
+    );
+    expect(tx.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actorId: null,
+          userType: null,
+          action: 'iam.credentials.student_batch.secret_cleanup',
+          after: {
+            reason: 'expired',
+            artifactVersion: 1,
+            fileMetadataSoftDeleted: true,
+          },
+        }),
+      }),
+    );
+    expect(JSON.stringify(tx.auditLog.create.mock.calls)).not.toMatch(
+      /file-1|bucket|objectKey|checksum|password/iu,
+    );
   });
 });
 

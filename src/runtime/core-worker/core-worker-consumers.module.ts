@@ -63,6 +63,7 @@ import { StudentCredentialBatchRepository } from '../../modules/students/credent
 import { StudentCredentialSecretArtifactService } from '../../modules/students/credentials/application/student-credential-secret-artifact.service';
 import { ProcessStudentCredentialBatchUseCase } from '../../modules/students/credentials/application/process-student-credential-batch.use-case';
 import { StudentCredentialBatchReconciliationService } from '../../modules/students/credentials/application/student-credential-batch-reconciliation.service';
+import { StudentCredentialSecretArtifactCleanupService } from '../../modules/students/credentials/application/student-credential-secret-artifact-cleanup.service';
 
 export const CORE_WORKER_CONSUMER_PROVIDERS = Object.freeze([
   CommunicationNotificationGenerationWorker,
@@ -120,6 +121,7 @@ const CORE_WORKER_SUPPORT_PROVIDERS: Provider[] = [
   StudentCredentialSecretArtifactService,
   ProcessStudentCredentialBatchUseCase,
   StudentCredentialBatchReconciliationService,
+  StudentCredentialSecretArtifactCleanupService,
   DismissalRequestsExpiryRepository,
   DismissalRealtimeRepository,
   DismissalRealtimeEventsService,

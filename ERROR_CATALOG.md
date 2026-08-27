@@ -208,6 +208,9 @@ does not change that global behavior.
 | `students.credentials.secret_artifact_unavailable`             | 409  | Student credential secret artifact is unavailable    |
 | `students.credentials.secret_artifact_expired`                 | 409  | Student credential secret artifact has expired       |
 | `students.credentials.secret_artifact_invalid`                 | 409  | Student credential secret artifact is invalid        |
+| `students.credentials.export_not_ready`                        | 409  | Student credential export is not ready                |
+| `students.credentials.export_empty`                            | 409  | Student credential export has no generated rows       |
+| `students.credentials.export_too_large`                        | 413  | Student credential export exceeds the maximum size    |
 
 ### Academics
 

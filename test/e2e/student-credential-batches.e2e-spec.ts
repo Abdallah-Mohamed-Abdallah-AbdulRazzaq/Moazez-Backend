@@ -22,6 +22,7 @@ import { PasswordService } from '../../src/modules/iam/auth/domain/password.serv
 import { ProcessStudentCredentialBatchUseCase } from '../../src/modules/students/credentials/application/process-student-credential-batch.use-case';
 import { StudentCredentialBatchReconciliationService } from '../../src/modules/students/credentials/application/student-credential-batch-reconciliation.service';
 import { StudentCredentialSecretArtifactService } from '../../src/modules/students/credentials/application/student-credential-secret-artifact.service';
+import { StudentCredentialSecretArtifactCleanupService } from '../../src/modules/students/credentials/application/student-credential-secret-artifact-cleanup.service';
 import { studentCredentialBatchExecutionJobId } from '../../src/modules/students/credentials/domain/student-credential.constants';
 import { StudentCredentialBatchRepository } from '../../src/modules/students/credentials/infrastructure/student-credential-batch.repository';
 import { FILES_IMPORT_QUEUE_NAME } from '../../src/modules/files/imports/domain/import-job.types';
@@ -344,6 +345,43 @@ describe('Student credential batches (e2e)', () => {
       /secretArtifact|objectKey|checksum|temporaryPassword/iu,
     );
 
+    const exported = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/credential-batches/${batchId}/export`,
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .buffer(true)
+      .parse((response, callback) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
+        response.on('end', () => callback(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
+    const csv = (exported.body as Buffer).toString('utf8');
+    expect(exported.headers['content-type']).toBe('text/csv; charset=utf-8');
+    expect(exported.headers['content-disposition']).toBe(
+      `attachment; filename="student-credentials-${batchId}.csv"`,
+    );
+    expect(exported.headers['cache-control']).toBe(
+      'no-store, private, max-age=0',
+    );
+    expect(exported.headers.pragma).toBe('no-cache');
+    expect(exported.headers.expires).toBe('0');
+    expect(exported.headers['x-content-type-options']).toBe('nosniff');
+    expect(exported.headers.etag).toBeUndefined();
+    expect(csv.startsWith('\uFEFF')).toBe(true);
+    expect(csv).toContain(secret.entries[0].temporaryPassword);
+    expect(csv).toContain('temporary_credential');
+    expect(csv).not.toMatch(/secretArtifact|objectKey|checksum/iu);
+    await expect(
+      prisma.auditLog.count({
+        where: {
+          resourceId: batchId,
+          action: 'iam.credentials.student_batch.export',
+        },
+      }),
+    ).resolves.toBe(1);
+
     const download = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/files/${artifact.id}/download`)
       .set('Authorization', `Bearer ${token}`)
@@ -351,6 +389,46 @@ describe('Student credential batches (e2e)', () => {
     expect((download.body as { error: { code: string } }).error.code).toBe(
       'files.not_found',
     );
+
+    await prisma.studentCredentialBatch.update({
+      where: { id: batchId },
+      data: { secretArtifactExpiresAt: new Date(Date.now() - 1000) },
+    });
+    await expect(
+      app.get(StudentCredentialSecretArtifactCleanupService).reconcile(),
+    ).resolves.toMatchObject({ cleaned: 1 });
+    await expect(
+      storage.objectExists({
+        bucket: artifact.bucket,
+        objectKey: artifact.objectKey,
+      }),
+    ).resolves.toBe(false);
+    const cleaned = await prisma.studentCredentialBatch.findUniqueOrThrow({
+      where: { id: batchId },
+      include: { secretArtifactFile: true },
+    });
+    expect(cleaned.secretArtifactFileId).toBe(artifact.id);
+    expect(cleaned.secretArtifactFile?.deletedAt).not.toBeNull();
+    await expect(
+      prisma.auditLog.count({
+        where: {
+          resourceId: batchId,
+          action: 'iam.credentials.student_batch.secret_cleanup',
+          actorId: null,
+          userType: null,
+        },
+      }),
+    ).resolves.toBe(1);
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/credential-batches/${batchId}/export`,
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .expect(409);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/files/${artifact.id}/download`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(404);
 
     const replacementSessions = await Promise.all(
       [studentUserId, secondStudentUserId].map((userId, index) =>
