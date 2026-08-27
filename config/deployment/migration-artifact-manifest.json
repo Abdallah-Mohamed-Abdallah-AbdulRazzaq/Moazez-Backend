@@ -63,8 +63,8 @@
     {
       "directory": "20260827101533_student_credential_batch_domain",
       "path": "prisma/migrations/20260827101533_student_credential_batch_domain/migration.sql",
-      "sha256": "7bbda87e93c4323fd78ca3595732e85619ad4131c948dff998af592c38dce1c9"
+      "sha256": "7515b7eaeb089b8a8a9007c166307894b52db78cd9d94671e6d8fe39761d70f8"
     }
   ],
-  "aggregateMigrationChainSha256": "79b69a58fb312430a59a28a26e88aa9683ede78d835382fe8260a3e31f1d9007"
+  "aggregateMigrationChainSha256": "72e3ff637c71b235205ca517857d425a7735dcca67f865084e70efb2b621931c"
 }

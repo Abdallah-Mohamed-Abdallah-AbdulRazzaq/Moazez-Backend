@@ -154,4 +154,3 @@ ALTER TABLE "student_credential_rows" ADD CONSTRAINT "student_cred_rows_student_
 
 -- AddForeignKey
 ALTER TABLE "student_credential_rows" ADD CONSTRAINT "student_cred_rows_user_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
