@@ -61,4 +61,11 @@ describe('schoolScope communication registration', () => {
       expect(EXCLUDED_FROM_SCHOOL_SCOPE.has(model)).toBe(false);
     }
   });
+
+  it('registers student credential models without a school-scope exclusion', () => {
+    for (const model of ['StudentCredentialBatch', 'StudentCredentialRow']) {
+      expect(SCHOOL_SCOPED_MODELS.has(model)).toBe(true);
+      expect(EXCLUDED_FROM_SCHOOL_SCOPE.has(model)).toBe(false);
+    }
+  });
 });

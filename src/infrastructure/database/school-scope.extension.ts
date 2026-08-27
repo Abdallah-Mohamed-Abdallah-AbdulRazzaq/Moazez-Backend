@@ -55,6 +55,8 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
   'Enrollment',
   'StudentBulkRegistrationBatch',
   'StudentBulkRegistrationRow',
+  'StudentCredentialBatch',
+  'StudentCredentialRow',
   'StudentDocument',
   'StudentMedicalProfile',
   'StudentNote',
