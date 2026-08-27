@@ -152,6 +152,84 @@ function withCopiedMigrationWorkspace(callback) {
   }
 }
 
+function assertExactKeys(value, expectedKeys, label) {
+  assert.deepEqual(
+    Object.keys(value).sort(),
+    [...expectedKeys].sort(),
+    `${label} contains unexpected or missing fields`,
+  );
+}
+
+function assertPortableManifestPath(value, label) {
+  assert.equal(typeof value, 'string', `${label} must be a string`);
+  assert.equal(path.win32.isAbsolute(value), false, `${label} must be relative`);
+  assert.equal(path.posix.isAbsolute(value), false, `${label} must be relative`);
+  assert.doesNotMatch(value, /\\/u, `${label} must use portable separators`);
+  assert.doesNotMatch(
+    value,
+    /^[a-z][a-z0-9+.-]*:\/\//iu,
+    `${label} must not be a URL`,
+  );
+}
+
+function assertPortableHashOnlyManifest(manifest) {
+  const sha256 = /^[a-f0-9]{64}$/u;
+  const canonicalMigrationDirectory = /^\d{14}_[a-z0-9_]+$/u;
+
+  assertExactKeys(
+    manifest,
+    [
+      'manifestVersion',
+      'prismaSchema',
+      'prismaConfig',
+      'migrationDirectories',
+      'migrations',
+      'aggregateMigrationChainSha256',
+    ],
+    'manifest',
+  );
+  assert.equal(manifest.manifestVersion, 1);
+
+  for (const [label, artifact, expectedPath] of [
+    ['prismaSchema', manifest.prismaSchema, 'prisma/schema.prisma'],
+    ['prismaConfig', manifest.prismaConfig, 'prisma.config.ts'],
+  ]) {
+    assertExactKeys(artifact, ['path', 'sha256'], label);
+    assertPortableManifestPath(artifact.path, `${label}.path`);
+    assert.equal(artifact.path, expectedPath);
+    assert.match(artifact.sha256, sha256);
+  }
+
+  assert.ok(manifest.migrationDirectories.length > 0);
+  assert.equal(
+    manifest.migrations.length,
+    manifest.migrationDirectories.length,
+  );
+  assert.deepEqual(
+    manifest.migrationDirectories,
+    [...manifest.migrationDirectories].sort(),
+  );
+
+  for (const [index, directory] of manifest.migrationDirectories.entries()) {
+    assert.match(directory, canonicalMigrationDirectory);
+    const migration = manifest.migrations[index];
+    assertExactKeys(
+      migration,
+      ['directory', 'path', 'sha256'],
+      `migrations[${index}]`,
+    );
+    assert.equal(migration.directory, directory);
+    assertPortableManifestPath(migration.path, `migrations[${index}].path`);
+    assert.equal(
+      migration.path,
+      `prisma/migrations/${directory}/migration.sql`,
+    );
+    assert.match(migration.sha256, sha256);
+  }
+
+  assert.match(manifest.aggregateMigrationChainSha256, sha256);
+}
+
 function makeOperations(failureStage, calls) {
   return Object.fromEntries(
     RELEASE_STAGE_IDS.map((stage) => [
@@ -490,14 +568,89 @@ test('encodes the exact blocking release sequence', () => {
   assert.equal(contract.automaticRetryAllowed, false);
 });
 
-test('builds a deterministic manifest without timestamps, machine paths, URLs, or credentials', () => {
-  const first = serializeManifest(buildManifest());
-  const second = serializeManifest(buildManifest());
+test('builds a deterministic manifest with exact portable artifact references and hashes', () => {
+  const firstManifest = buildManifest();
+  const secondManifest = buildManifest();
+  assertPortableHashOnlyManifest(firstManifest);
+  assertPortableHashOnlyManifest(secondManifest);
+  const first = serializeManifest(firstManifest);
+  const second = serializeManifest(secondManifest);
   assert.equal(first, second);
-  assert.doesNotMatch(
-    first,
-    /createdAt|generatedAt|E:\\|C:\\|postgres(?:ql)?:\/\/|DATABASE_URL|credential/iu,
-  );
+});
+
+test('allows canonical migration names containing credential and password vocabulary', () => {
+  withCopiedMigrationWorkspace((workspace) => {
+    for (const directory of [
+      '20990101000000_credential_export_fixture',
+      '20990101000001_password_policy_fixture',
+    ]) {
+      const migrationDirectory = path.join(
+        workspace,
+        'prisma',
+        'migrations',
+        directory,
+      );
+      fs.mkdirSync(migrationDirectory);
+      fs.writeFileSync(
+        path.join(migrationDirectory, 'migration.sql'),
+        `-- ${directory}\n`,
+        'utf8',
+      );
+    }
+
+    const manifest = buildManifest(workspace);
+    assertPortableHashOnlyManifest(manifest);
+    assert.ok(
+      manifest.migrationDirectories.includes(
+        '20990101000000_credential_export_fixture',
+      ),
+    );
+    assert.ok(
+      manifest.migrationDirectories.includes(
+        '20990101000001_password_policy_fixture',
+      ),
+    );
+  });
+});
+
+test('rejects absolute paths and URLs in manifest artifact references', () => {
+  const cases = [
+    ['Windows absolute path', 'C:\\workspace\\prisma\\schema.prisma'],
+    ['Unix absolute path', '/workspace/prisma/schema.prisma'],
+    ['database URL', 'postgresql://local.invalid/database'],
+    ['HTTPS URL', 'https://example.invalid/migration.sql'],
+  ];
+
+  for (const [label, invalidPath] of cases) {
+    const manifest = structuredClone(buildManifest());
+    manifest.prismaSchema.path = invalidPath;
+    assert.throws(
+      () => assertPortableHashOnlyManifest(manifest),
+      assert.AssertionError,
+      label,
+    );
+  }
+});
+
+test('rejects nondeterministic metadata and unexpected manifest fields', () => {
+  for (const mutate of [
+    (manifest) => {
+      manifest.createdAt = '2099-01-01T00:00:00.000Z';
+    },
+    (manifest) => {
+      manifest.prismaSchema.credentialValue = 'synthetic';
+    },
+    (manifest) => {
+      manifest.migrations[0].generatedAt = '2099-01-01T00:00:00.000Z';
+    },
+  ]) {
+    const manifest = structuredClone(buildManifest());
+    mutate(manifest);
+    assert.throws(
+      () => assertPortableHashOnlyManifest(manifest),
+      assert.AssertionError,
+    );
+  }
 });
 
 test('committed default manifest verifies against the current repository artifacts', () => {
