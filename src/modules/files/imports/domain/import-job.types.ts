@@ -31,9 +31,14 @@ export type StudentBulkRegistrationExecutionJobData = {
   batchId: string;
 };
 
+export type StudentCredentialBatchExecutionJobData = {
+  batchId: string;
+};
+
 export type FilesImportQueueJobData =
   | ImportValidationJobData
-  | StudentBulkRegistrationExecutionJobData;
+  | StudentBulkRegistrationExecutionJobData
+  | StudentCredentialBatchExecutionJobData;
 
 export function studentBulkRegistrationExecutionJobId(batchId: string): string {
   return `student-bulk-registration-execution-${batchId}`;
@@ -51,6 +56,12 @@ export function isStudentBulkRegistrationExecutionJobData(
     typeof value.batchId === 'string' &&
     value.batchId.length > 0
   );
+}
+
+export function isStudentCredentialBatchExecutionJobData(
+  value: unknown,
+): value is StudentCredentialBatchExecutionJobData {
+  return isStudentBulkRegistrationExecutionJobData(value);
 }
 
 export type ImportUploadedFileRecord = {

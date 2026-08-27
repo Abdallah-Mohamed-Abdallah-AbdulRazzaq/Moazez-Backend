@@ -9,6 +9,8 @@ import { ProcessImportValidationUseCase } from '../application/process-import-va
 import type { FilesImportQueueJobData } from '../domain/import-job.types';
 import { ImportJobsRepository } from '../infrastructure/import-jobs.repository';
 import { ImportValidationWorker } from '../infrastructure/import-validation.worker';
+import { ProcessStudentCredentialBatchUseCase } from '../../../students/credentials/application/process-student-credential-batch.use-case';
+import { StudentCredentialBatchReconciliationService } from '../../../students/credentials/application/student-credential-batch-reconciliation.service';
 
 describe('ImportValidationWorker persisted type routing', () => {
   let processor: (job: Job<FilesImportQueueJobData>) => Promise<void>;
@@ -18,6 +20,8 @@ describe('ImportValidationWorker persisted type routing', () => {
   let repository: { findRecoveryContextById: jest.Mock };
   let reconciliation: { reconcile: jest.Mock; reconcileCandidate: jest.Mock };
   let executionReconciliation: { reconcile: jest.Mock };
+  let credentialExecution: { execute: jest.Mock };
+  let credentialReconciliation: { reconcile: jest.Mock };
 
   beforeEach(() => {
     generic = { execute: jest.fn().mockResolvedValue(undefined) };
@@ -31,6 +35,10 @@ describe('ImportValidationWorker persisted type routing', () => {
       reconcileCandidate: jest.fn().mockResolvedValue(undefined),
     };
     executionReconciliation = {
+      reconcile: jest.fn().mockResolvedValue(undefined),
+    };
+    credentialExecution = { execute: jest.fn().mockResolvedValue(undefined) };
+    credentialReconciliation = {
       reconcile: jest.fn().mockResolvedValue(undefined),
     };
     const bullmq = {
@@ -47,6 +55,8 @@ describe('ImportValidationWorker persisted type routing', () => {
       repository as unknown as ImportJobsRepository,
       bulk as unknown as ProcessStudentBulkRegistrationValidationUseCase,
       execution as unknown as ProcessStudentBulkRegistrationExecutionUseCase,
+      credentialExecution as unknown as ProcessStudentCredentialBatchUseCase,
+      credentialReconciliation as unknown as StudentCredentialBatchReconciliationService,
     ).onModuleInit();
   });
 
@@ -98,10 +108,40 @@ describe('ImportValidationWorker persisted type routing', () => {
     } as Job<FilesImportQueueJobData>);
     expect(reconciliation.reconcile).toHaveBeenCalledTimes(1);
     expect(executionReconciliation.reconcile).toHaveBeenCalledTimes(1);
+    expect(credentialReconciliation.reconcile).toHaveBeenCalledTimes(1);
     expect(reconciliation.reconcile.mock.invocationCallOrder[0]).toBeLessThan(
       executionReconciliation.reconcile.mock.invocationCallOrder[0],
     );
+    expect(
+      executionReconciliation.reconcile.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      credentialReconciliation.reconcile.mock.invocationCallOrder[0],
+    );
     expect(repository.findRecoveryContextById).not.toHaveBeenCalled();
+  });
+
+  it('routes credential batch execution by the exact job name and minimal payload', async () => {
+    await processor({
+      id: 'credential-execution-1',
+      name: 'execute-student-credential-batch',
+      data: { batchId: 'credential-batch-1' },
+    } as Job<FilesImportQueueJobData>);
+
+    expect(credentialExecution.execute).toHaveBeenCalledWith(
+      'credential-batch-1',
+    );
+    expect(repository.findRecoveryContextById).not.toHaveBeenCalled();
+  });
+
+  it('rejects credential execution payload tenant injection', async () => {
+    await expect(
+      processor({
+        id: 'credential-execution-1',
+        name: 'execute-student-credential-batch',
+        data: { batchId: 'credential-batch-1', schoolId: 'attacker-school' },
+      } as unknown as Job<FilesImportQueueJobData>),
+    ).rejects.toThrow('student_credential_execution_payload_invalid');
+    expect(credentialExecution.execute).not.toHaveBeenCalled();
   });
 
   it('routes execution by job name using only batchId', async () => {

@@ -12,6 +12,7 @@ import {
   FilesImportQueueJobData,
   STUDENT_BULK_REGISTRATION_EXECUTE_JOB_NAME,
   isStudentBulkRegistrationExecutionJobData,
+  isStudentCredentialBatchExecutionJobData,
 } from '../domain/import-job.types';
 import { ProcessImportValidationUseCase } from '../application/process-import-validation.use-case';
 import { ImportValidationReconciliationService } from '../application/import-validation-reconciliation.service';
@@ -20,6 +21,9 @@ import { STUDENTS_BULK_REGISTRATION_IMPORT_TYPE } from '../domain/import-upload.
 import { ProcessStudentBulkRegistrationValidationUseCase } from '../../../students/registration/application/process-student-bulk-registration-validation.use-case';
 import { ProcessStudentBulkRegistrationExecutionUseCase } from '../../../students/registration/application/process-student-bulk-registration-execution.use-case';
 import { StudentBulkRegistrationExecutionReconciliationService } from '../../../students/registration/application/student-bulk-registration-execution-reconciliation.service';
+import { STUDENT_CREDENTIAL_BATCH_EXECUTE_JOB_NAME } from '../../../students/credentials/domain/student-credential.constants';
+import { ProcessStudentCredentialBatchUseCase } from '../../../students/credentials/application/process-student-credential-batch.use-case';
+import { StudentCredentialBatchReconciliationService } from '../../../students/credentials/application/student-credential-batch-reconciliation.service';
 
 @Injectable()
 export class ImportValidationWorker implements OnModuleInit {
@@ -35,6 +39,10 @@ export class ImportValidationWorker implements OnModuleInit {
     private readonly processStudentBulkRegistrationValidationUseCase?: ProcessStudentBulkRegistrationValidationUseCase,
     @Optional()
     private readonly processStudentBulkRegistrationExecutionUseCase?: ProcessStudentBulkRegistrationExecutionUseCase,
+    @Optional()
+    private readonly processStudentCredentialBatchUseCase?: ProcessStudentCredentialBatchUseCase,
+    @Optional()
+    private readonly studentCredentialBatchReconciliationService?: StudentCredentialBatchReconciliationService,
   ) {}
 
   onModuleInit(): void {
@@ -45,6 +53,19 @@ export class ImportValidationWorker implements OnModuleInit {
       if (job.name === FILES_IMPORT_RECONCILE_JOB_NAME) {
         await this.reconciliationService.reconcile();
         await this.studentBulkRegistrationExecutionReconciliationService.reconcile();
+        await this.studentCredentialBatchReconciliationService?.reconcile();
+        return;
+      }
+      if (job.name === STUDENT_CREDENTIAL_BATCH_EXECUTE_JOB_NAME) {
+        if (!isStudentCredentialBatchExecutionJobData(job.data)) {
+          throw new Error('student_credential_execution_payload_invalid');
+        }
+        if (!this.processStudentCredentialBatchUseCase) {
+          throw new Error('student_credential_execution_processor_missing');
+        }
+        await this.processStudentCredentialBatchUseCase.execute(
+          job.data.batchId,
+        );
         return;
       }
       if (job.name === STUDENT_BULK_REGISTRATION_EXECUTE_JOB_NAME) {

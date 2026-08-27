@@ -59,6 +59,10 @@ import { ProcessStudentBulkRegistrationValidationUseCase } from '../../modules/s
 import { ProcessStudentBulkRegistrationExecutionUseCase } from '../../modules/students/registration/application/process-student-bulk-registration-execution.use-case';
 import { StudentBulkRegistrationExecutionRepository } from '../../modules/students/registration/infrastructure/student-bulk-registration-execution.repository';
 import { StudentBulkRegistrationExecutionReconciliationService } from '../../modules/students/registration/application/student-bulk-registration-execution-reconciliation.service';
+import { StudentCredentialBatchRepository } from '../../modules/students/credentials/infrastructure/student-credential-batch.repository';
+import { StudentCredentialSecretArtifactService } from '../../modules/students/credentials/application/student-credential-secret-artifact.service';
+import { ProcessStudentCredentialBatchUseCase } from '../../modules/students/credentials/application/process-student-credential-batch.use-case';
+import { StudentCredentialBatchReconciliationService } from '../../modules/students/credentials/application/student-credential-batch-reconciliation.service';
 
 export const CORE_WORKER_CONSUMER_PROVIDERS = Object.freeze([
   CommunicationNotificationGenerationWorker,
@@ -112,6 +116,10 @@ const CORE_WORKER_SUPPORT_PROVIDERS: Provider[] = [
   StudentBulkRegistrationExecutionReconciliationService,
   ProcessStudentBulkRegistrationValidationUseCase,
   ProcessStudentBulkRegistrationExecutionUseCase,
+  StudentCredentialBatchRepository,
+  StudentCredentialSecretArtifactService,
+  ProcessStudentCredentialBatchUseCase,
+  StudentCredentialBatchReconciliationService,
   DismissalRequestsExpiryRepository,
   DismissalRealtimeRepository,
   DismissalRealtimeEventsService,

@@ -54,7 +54,10 @@ export class FilesRepository {
 
   async findScopedFileById(fileId: string): Promise<StoredFileMetadata | null> {
     const file = await this.scopedPrisma.file.findFirst({
-      where: { id: fileId },
+      where: {
+        id: fileId,
+        studentCredentialSecretArtifacts: { none: {} },
+      },
       ...FILE_RECORD_ARGS,
     });
 
