@@ -14,6 +14,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
 import { StudentCredentialBatchRepository } from '../../src/modules/students/credentials/infrastructure/student-credential-batch.repository';
+import { assertDisposablePostgresTarget } from '../helpers/disposable-postgres-target';
 
 jest.setTimeout(60_000);
 
@@ -276,11 +277,12 @@ describe('Student credential batch atomic concurrency', () => {
 });
 
 function assertDisposableTestDatabase(): void {
-  if (process.env.NODE_ENV !== 'test' || !process.env.DATABASE_URL) {
-    throw new Error('Disposable test DATABASE_URL is required');
-  }
-  const database = new URL(process.env.DATABASE_URL);
-  if (!['127.0.0.1', 'localhost', '::1'].includes(database.hostname)) {
-    throw new Error('Credential runtime integration requires local PostgreSQL');
-  }
+  assertDisposablePostgresTarget({
+    databaseUrl: process.env.DATABASE_URL,
+    nodeEnv: process.env.NODE_ENV,
+    universalRegressionMarker:
+      process.env.MOAZEZ_UNIVERSAL_REGRESSION_DISPOSABLE_DB,
+    localDatabasePredicate: () => true,
+    errorMessage: 'Credential runtime integration requires local PostgreSQL',
+  });
 }

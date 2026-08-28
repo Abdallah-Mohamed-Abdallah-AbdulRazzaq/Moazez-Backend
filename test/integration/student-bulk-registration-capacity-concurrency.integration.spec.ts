@@ -15,6 +15,7 @@ import {
 import { DomainException } from '../../src/common/exceptions/domain-exception';
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
 import { StudentBulkRegistrationExecutionRepository } from '../../src/modules/students/registration/infrastructure/student-bulk-registration-execution.repository';
+import { assertDisposablePostgresTarget } from '../helpers/disposable-postgres-target';
 import { StudentBulkRegistrationExecutionReconciliationService } from '../../src/modules/students/registration/application/student-bulk-registration-execution-reconciliation.service';
 import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
 import { STUDENT_BULK_REGISTRATION_EXECUTION_RECOVERY_WINDOW_MS } from '../../src/modules/students/registration/domain/student-bulk-registration.constants';
@@ -544,11 +545,12 @@ function normalizedData(suffix: string) {
 }
 
 function assertDisposableTestDatabase(): void {
-  if (process.env.NODE_ENV !== 'test' || !process.env.DATABASE_URL) {
-    throw new Error('Disposable test DATABASE_URL is required');
-  }
-  const database = new URL(process.env.DATABASE_URL);
-  if (!['127.0.0.1', 'localhost', '::1'].includes(database.hostname)) {
-    throw new Error('Capacity concurrency tests require local PostgreSQL');
-  }
+  assertDisposablePostgresTarget({
+    databaseUrl: process.env.DATABASE_URL,
+    nodeEnv: process.env.NODE_ENV,
+    universalRegressionMarker:
+      process.env.MOAZEZ_UNIVERSAL_REGRESSION_DISPOSABLE_DB,
+    localDatabasePredicate: () => true,
+    errorMessage: 'Capacity concurrency tests require local PostgreSQL',
+  });
 }

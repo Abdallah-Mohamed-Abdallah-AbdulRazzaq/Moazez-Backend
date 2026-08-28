@@ -11,6 +11,7 @@ import type { Env } from '../../src/config/env.validation';
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
 import { LoginUseCase } from '../../src/modules/iam/auth/application/login.use-case';
 import { PasswordService } from '../../src/modules/iam/auth/domain/password.service';
+import { assertDisposablePostgresTarget } from '../helpers/disposable-postgres-target';
 import { TokenService } from '../../src/modules/iam/auth/domain/token.service';
 import { AuthRepository } from '../../src/modules/iam/auth/infrastructure/auth.repository';
 import { BootstrapInitialPlatformAdministratorUseCase } from '../../src/modules/platform-admin/bootstrap/bootstrap-initial-platform-administrator.use-case';
@@ -555,33 +556,16 @@ function strongPassword(): string {
 function assertDisposableIntegrationDatabase(
   environment: NodeJS.ProcessEnv,
 ): void {
-  if (environment.NODE_ENV !== 'test' || !environment.DATABASE_URL) {
-    throw new Error(DISPOSABLE_DATABASE_REQUIRED_MESSAGE);
-  }
-
-  let databaseUrl: URL;
-  let databaseName: string;
-  try {
-    databaseUrl = new URL(environment.DATABASE_URL);
-    databaseName = decodeURIComponent(databaseUrl.pathname.slice(1));
-  } catch {
-    throw new Error(DISPOSABLE_DATABASE_REQUIRED_MESSAGE);
-  }
-
-  const isLoopback =
-    databaseUrl.hostname === 'localhost' ||
-    databaseUrl.hostname === '127.0.0.1';
-  const isDisposableDatabase =
-    LOCAL_DISPOSABLE_DATABASE_PATTERN.test(databaseName) ||
-    CI_DISPOSABLE_DATABASE_PATTERN.test(databaseName);
-
-  if (
-    databaseUrl.protocol !== 'postgresql:' ||
-    !isLoopback ||
-    !isDisposableDatabase
-  ) {
-    throw new Error(DISPOSABLE_DATABASE_REQUIRED_MESSAGE);
-  }
+  assertDisposablePostgresTarget({
+    databaseUrl: environment.DATABASE_URL,
+    nodeEnv: environment.NODE_ENV,
+    universalRegressionMarker:
+      environment.MOAZEZ_UNIVERSAL_REGRESSION_DISPOSABLE_DB,
+    localDatabasePredicate: (databaseName) =>
+      LOCAL_DISPOSABLE_DATABASE_PATTERN.test(databaseName) ||
+      CI_DISPOSABLE_DATABASE_PATTERN.test(databaseName),
+    errorMessage: DISPOSABLE_DATABASE_REQUIRED_MESSAGE,
+  });
 }
 
 function tokenConfigService(): ConfigService<Env, true> {

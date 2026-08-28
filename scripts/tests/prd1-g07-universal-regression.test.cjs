@@ -87,6 +87,25 @@ test('special integration fixtures route to the required topology', () => {
   );
 });
 
+test('universal fixture exposes only the exact disposable PostgreSQL identity contract', () => {
+  const fixture = createFixture('abc-123');
+  const databaseUrl = new URL(
+    fixture.databaseUrl(createBatchDatabaseName(fixture, 'integration_general_1')),
+  );
+
+  assert.equal(
+    fixture.environment.MOAZEZ_UNIVERSAL_REGRESSION_DISPOSABLE_DB,
+    '1',
+  );
+  assert.match(databaseUrl.hostname, /^g07-[a-z0-9-]+-postgres$/u);
+  assert.equal(decodeURIComponent(databaseUrl.username), 'g07_ci');
+  assert.equal(databaseUrl.port, '5432');
+  assert.match(
+    decodeURIComponent(databaseUrl.pathname.slice(1)),
+    /^g07_[0-9a-f]{20}$/u,
+  );
+});
+
 test('src integration specs use the default Jest project instead of the E2E config', () => {
   const repositoryRoot = path.resolve(__dirname, '../..');
   const context = {

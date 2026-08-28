@@ -273,6 +273,7 @@ function createFixture(suffix) {
   const storageEndpoint = `http://${minioHost}:9000`;
   const environment = {
     NODE_ENV: 'test',
+    MOAZEZ_UNIVERSAL_REGRESSION_DISPOSABLE_DB: '1',
     APP_PORT: '3000',
     APP_PROBE_PORT: '9090',
     APP_URL: 'http://127.0.0.1:3000',

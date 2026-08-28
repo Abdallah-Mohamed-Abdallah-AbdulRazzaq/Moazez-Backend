@@ -8,6 +8,7 @@ import {
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
+import { assertDisposablePostgresTarget } from '../helpers/disposable-postgres-target';
 import { BootstrapAuthorizationReferenceDataUseCase } from '../../src/modules/iam/reference-data/application/bootstrap-authorization-reference-data.use-case';
 import { PERMISSIONS } from '../../src/modules/iam/reference-data/permission-catalog';
 import { ReferenceDataBootstrapError } from '../../src/modules/iam/reference-data/reference-data-bootstrap.errors';
@@ -590,31 +591,14 @@ function requireRolePermission(roleKey: string): string {
 function assertDisposableIntegrationDatabase(
   environment: NodeJS.ProcessEnv,
 ): void {
-  if (environment.NODE_ENV !== 'test' || !environment.DATABASE_URL) {
-    throw new Error(DISPOSABLE_DATABASE_REQUIRED_MESSAGE);
-  }
-
-  let databaseUrl: URL;
-  let databaseName: string;
-  try {
-    databaseUrl = new URL(environment.DATABASE_URL);
-    databaseName = decodeURIComponent(databaseUrl.pathname.slice(1));
-  } catch {
-    throw new Error(DISPOSABLE_DATABASE_REQUIRED_MESSAGE);
-  }
-
-  const isLoopback =
-    databaseUrl.hostname === 'localhost' ||
-    databaseUrl.hostname === '127.0.0.1';
-  const isDisposableDatabase =
-    LOCAL_DISPOSABLE_DATABASE_PATTERN.test(databaseName) ||
-    CI_DISPOSABLE_DATABASE_PATTERN.test(databaseName);
-
-  if (
-    databaseUrl.protocol !== 'postgresql:' ||
-    !isLoopback ||
-    !isDisposableDatabase
-  ) {
-    throw new Error(DISPOSABLE_DATABASE_REQUIRED_MESSAGE);
-  }
+  assertDisposablePostgresTarget({
+    databaseUrl: environment.DATABASE_URL,
+    nodeEnv: environment.NODE_ENV,
+    universalRegressionMarker:
+      environment.MOAZEZ_UNIVERSAL_REGRESSION_DISPOSABLE_DB,
+    localDatabasePredicate: (databaseName) =>
+      LOCAL_DISPOSABLE_DATABASE_PATTERN.test(databaseName) ||
+      CI_DISPOSABLE_DATABASE_PATTERN.test(databaseName),
+    errorMessage: DISPOSABLE_DATABASE_REQUIRED_MESSAGE,
+  });
 }
