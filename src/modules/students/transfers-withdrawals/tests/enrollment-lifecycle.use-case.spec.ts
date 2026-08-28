@@ -24,6 +24,15 @@ import { PromoteStudentEnrollmentUseCase } from '../application/promote-student-
 import { TransferStudentEnrollmentUseCase } from '../application/transfer-student-enrollment.use-case';
 import { WithdrawStudentEnrollmentUseCase } from '../application/withdraw-student-enrollment.use-case';
 
+type AnyMethod = (...args: never[]) => unknown;
+
+function mockedMethod<T extends object, K extends keyof T>(
+  target: T,
+  key: K,
+): jest.MockedFunction<Extract<T[K], AnyMethod>> {
+  return target[key] as jest.MockedFunction<Extract<T[K], AnyMethod>>;
+}
+
 describe('students lifecycle transition use cases', () => {
   async function withStudentsScope<T>(fn: () => Promise<T>): Promise<T> {
     return runWithRequestContext(createRequestContext(), async () => {
@@ -224,7 +233,8 @@ describe('students lifecycle transition use cases', () => {
     );
 
     expect(
-      (enrollmentsRepository.withdrawEnrollment as jest.Mock).mock.calls[0][0],
+      mockedMethod(enrollmentsRepository, 'withdrawEnrollment').mock
+        .calls[0][0],
     ).toEqual({
       enrollmentId: 'enrollment-1',
       effectiveDate: new Date('2026-03-20T00:00:00.000Z'),
@@ -241,7 +251,7 @@ describe('students lifecycle transition use cases', () => {
       }),
     );
     expect(
-      (authRepository.createAuditLog as jest.Mock).mock.calls[0][0],
+      mockedMethod(authRepository, 'createAuditLog').mock.calls[0][0],
     ).toMatchObject({
       action: 'students.enrollment.withdraw',
       resourceId: 'enrollment-1',
@@ -343,8 +353,8 @@ describe('students lifecycle transition use cases', () => {
     );
 
     expect(
-      (enrollmentsRepository.completeEnrollmentAndCreateNext as jest.Mock).mock
-        .calls[0][0],
+      mockedMethod(enrollmentsRepository, 'completeEnrollmentAndCreateNext')
+        .mock.calls[0][0],
     ).toMatchObject({
       currentEnrollmentId: 'enrollment-1',
       newEnrollment: {
@@ -353,9 +363,12 @@ describe('students lifecycle transition use cases', () => {
         classroomId: 'classroom-2',
       },
     });
-    expect(studentPlacementCapacityPolicy.assertCanPlace).toHaveBeenCalledWith({
+    expect(
+      mockedMethod(studentPlacementCapacityPolicy, 'assertCanPlace').mock
+        .calls[0][0],
+    ).toMatchObject({
       academicYearId: 'year-1',
-      classroom: expect.objectContaining({ id: 'classroom-2' }),
+      classroom: { id: 'classroom-2' },
       excludeEnrollmentId: 'enrollment-1',
     });
     expect(result).toEqual(
@@ -368,7 +381,7 @@ describe('students lifecycle transition use cases', () => {
       }),
     );
     expect(
-      (authRepository.createAuditLog as jest.Mock).mock.calls[0][0],
+      mockedMethod(authRepository, 'createAuditLog').mock.calls[0][0],
     ).toMatchObject({
       action: 'students.enrollment.transfer',
       resourceId: 'enrollment-2',
@@ -428,15 +441,20 @@ describe('students lifecycle transition use cases', () => {
         }),
       ),
     ).rejects.toBeInstanceOf(StudentEnrollmentPlacementConflictException);
-    expect(studentPlacementCapacityPolicy.assertCanPlace).toHaveBeenCalledWith({
+    expect(
+      mockedMethod(studentPlacementCapacityPolicy, 'assertCanPlace').mock
+        .calls[0][0],
+    ).toMatchObject({
       academicYearId: 'year-1',
-      classroom: expect.objectContaining({ id: 'classroom-2', capacity: 1 }),
+      classroom: { id: 'classroom-2', capacity: 1 },
       excludeEnrollmentId: activeEnrollment.id,
     });
     expect(
-      enrollmentsRepository.completeEnrollmentAndCreateNext,
+      mockedMethod(enrollmentsRepository, 'completeEnrollmentAndCreateNext'),
     ).not.toHaveBeenCalled();
-    expect(authRepository.createAuditLog).not.toHaveBeenCalled();
+    expect(
+      mockedMethod(authRepository, 'createAuditLog'),
+    ).not.toHaveBeenCalled();
   });
 
   it('promotes an enrollment successfully', async () => {
@@ -520,13 +538,16 @@ describe('students lifecycle transition use cases', () => {
         academicYear: 'Academic Year 2027/2028',
       }),
     );
-    expect(studentPlacementCapacityPolicy.assertCanPlace).toHaveBeenCalledWith({
+    expect(
+      mockedMethod(studentPlacementCapacityPolicy, 'assertCanPlace').mock
+        .calls[0][0],
+    ).toMatchObject({
       academicYearId: 'year-2',
-      classroom: expect.objectContaining({ id: 'classroom-3' }),
+      classroom: { id: 'classroom-3' },
       excludeEnrollmentId: activeEnrollment.id,
     });
     expect(
-      (authRepository.createAuditLog as jest.Mock).mock.calls[0][0],
+      mockedMethod(authRepository, 'createAuditLog').mock.calls[0][0],
     ).toMatchObject({
       action: 'students.enrollment.promote',
       resourceId: 'enrollment-3',
@@ -590,15 +611,20 @@ describe('students lifecycle transition use cases', () => {
         }),
       ),
     ).rejects.toBeInstanceOf(StudentEnrollmentPlacementConflictException);
-    expect(studentPlacementCapacityPolicy.assertCanPlace).toHaveBeenCalledWith({
+    expect(
+      mockedMethod(studentPlacementCapacityPolicy, 'assertCanPlace').mock
+        .calls[0][0],
+    ).toMatchObject({
       academicYearId: 'year-2',
-      classroom: expect.objectContaining({ id: 'classroom-3', capacity: 1 }),
+      classroom: { id: 'classroom-3', capacity: 1 },
       excludeEnrollmentId: activeEnrollment.id,
     });
     expect(
-      enrollmentsRepository.completeEnrollmentAndCreateNext,
+      mockedMethod(enrollmentsRepository, 'completeEnrollmentAndCreateNext'),
     ).not.toHaveBeenCalled();
-    expect(authRepository.createAuditLog).not.toHaveBeenCalled();
+    expect(
+      mockedMethod(authRepository, 'createAuditLog'),
+    ).not.toHaveBeenCalled();
   });
 
   it('rejects promotion into an inactive academic year with the canonical code', async () => {
@@ -640,7 +666,7 @@ describe('students lifecycle transition use cases', () => {
       ),
     ).rejects.toBeInstanceOf(StudentEnrollmentInactiveYearException);
     expect(
-      studentPlacementCapacityPolicy.assertCanPlace,
+      mockedMethod(studentPlacementCapacityPolicy, 'assertCanPlace'),
     ).not.toHaveBeenCalled();
   });
 });

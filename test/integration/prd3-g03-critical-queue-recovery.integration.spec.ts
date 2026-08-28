@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
-import type { Job, Worker } from 'bullmq';
+import type { Job, JobsOptions, Worker } from 'bullmq';
 import {
   AppDeviceTokenPlatform,
   AppDeviceTokenSurface,
@@ -30,6 +30,7 @@ import {
   StudentBulkRegistrationRowStatus,
   UserStatus,
   UserType,
+  type SchoolEmailConnection,
 } from '@prisma/client';
 import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
@@ -51,11 +52,22 @@ import { CommunicationNotificationPushPayloadBuilder } from '../../src/modules/c
 import { CommunicationNotificationGenerationWorker } from '../../src/modules/communication/infrastructure/communication-notification-generation.worker';
 import { CommunicationNotificationPushWorker } from '../../src/modules/communication/infrastructure/communication-notification-push.worker';
 import { AppDeviceTokenRepository } from '../../src/modules/app-device-tokens/infrastructure/app-device-token.repository';
+import type { AppDeviceTokenCrypto } from '../../src/modules/app-device-tokens/domain/app-device-token-crypto';
+import type { FirebasePushProvider } from '../../src/infrastructure/push/firebase/firebase-push.provider';
 import { EmailDeliveryRepository } from '../../src/modules/settings/email/delivery/infrastructure/email-delivery.repository';
 import { SchoolEmailDeliveryReconciliationService } from '../../src/modules/settings/email/delivery/application/school-email-delivery-reconciliation.service';
 import { ProcessEmailDeliveryRecipientUseCase } from '../../src/modules/settings/email/delivery/application/process-email-delivery-recipient.use-case';
 import { SchoolEmailDeliveryWorker } from '../../src/modules/settings/email/delivery/infrastructure/school-email-delivery.worker';
-import { SchoolEmailTransportFailure } from '../../src/modules/settings/email/delivery/transport/email-transport';
+import {
+  SchoolEmailTransportFailure,
+  type SchoolEmailTransport,
+} from '../../src/modules/settings/email/delivery/transport/email-transport';
+import type { EmailSettingsRepository } from '../../src/modules/settings/email/infrastructure/email-settings.repository';
+import type { UserCredentialsRepository } from '../../src/modules/settings/users/credentials/infrastructure/user-credentials.repository';
+import type { PasswordService } from '../../src/modules/iam/auth/domain/password.service';
+import type { AuthRepository } from '../../src/modules/iam/auth/infrastructure/auth.repository';
+import type { SchoolEmailRendererService } from '../../src/modules/settings/email/delivery/application/school-email-renderer.service';
+import type { EmailSecretCrypto } from '../../src/modules/settings/email/domain/email-secret-crypto';
 import { ImportJobsRepository } from '../../src/modules/files/imports/infrastructure/import-jobs.repository';
 import { ImportValidationReconciliationService } from '../../src/modules/files/imports/application/import-validation-reconciliation.service';
 import { ProcessImportValidationUseCase } from '../../src/modules/files/imports/application/process-import-validation.use-case';
@@ -65,6 +77,7 @@ import { StudentBulkRegistrationExecutionRepository } from '../../src/modules/st
 import { DismissalRequestsExpiryRepository } from '../../src/modules/dismissal/requests/infrastructure/dismissal-requests-expiry.repository';
 import { ExpireDismissalRequestsUseCase } from '../../src/modules/dismissal/requests/application/expire-dismissal-requests.use-case';
 import { DismissalRequestExpiryWorker } from '../../src/modules/dismissal/requests/worker/dismissal-request-expiry.worker';
+import type { DismissalRealtimeEventsService } from '../../src/modules/dismissal/realtime/dismissal-realtime-events.service';
 import { LearningMediaRepository } from '../../src/modules/files/uploads/infrastructure/learning-media.repository';
 import {
   LearningMediaCleanupService,
@@ -105,6 +118,40 @@ import { LEARNING_MEDIA_CLEANUP_QUEUE } from '../../src/modules/files/uploads/do
 
 const enabled = process.env.RUN_PRD3_G03_RECOVERY_INTEGRATION === '1';
 const describeEvidence = enabled ? describe : describe.skip;
+
+interface ProductionFixture {
+  now: Date;
+  organizationId: string;
+  activeSchoolId: string;
+  actorUserId: string;
+  inactivePublisherUserId: string;
+  activeRecipientUserId: string;
+  announcementId: string;
+  announcementExpiresAt: Date;
+  pushNotificationId: string;
+  pushDeliveryId: string;
+  pushRecipientIneligibleDeliveryId: string;
+  pushTenantIneligibleDeliveryId: string;
+  emailBatchId: string;
+  emailRecipientId: string;
+  preProviderEmailRecipientId: string;
+  knownRejectedEmailRecipientId: string;
+  ambiguousEmailRecipientId: string;
+  outcomeUnknownEmailRecipientId: string;
+  executableEmailRecipientIds: string[];
+  inactiveEmailRecipientId: string;
+  importJobId: string;
+  bulkExecutionBatchId: string;
+  inactiveImportJobId: string;
+  deletedImportJobId: string;
+  learningUploadId: string;
+  brandingFileId: string;
+  dismissalRequestId: string;
+  importObject: { bucket: string; objectKey: string };
+  learningObject: { bucket: string; objectKey: string };
+  brandingObject: { bucket: string; objectKey: string };
+  emailConnection: SchoolEmailConnection;
+}
 
 describeEvidence('PRD3-G03 production-model recovery evidence', () => {
   jest.setTimeout(420_000);
@@ -157,15 +204,17 @@ describeEvidence('PRD3-G03 production-model recovery evidence', () => {
       );
 
       for (const registration of MAINTENANCE_SCHEDULE_REGISTRATIONS) {
+        const repeat: NonNullable<JobsOptions['repeat']> =
+          'pattern' in registration
+            ? { pattern: registration.pattern }
+            : { every: registration.every };
         await queue.registerRepeatJob(
           registration.queueName,
           registration.jobName,
           { definitionSource: 'current-application-policy' },
           {
             jobId: registration.jobId,
-            repeat: registration.pattern
-              ? { pattern: registration.pattern }
-              : { every: registration.every },
+            repeat,
           },
         );
       }
@@ -401,10 +450,10 @@ function createProductionComponents(
   const deviceTokens = new AppDeviceTokenRepository(prisma);
   let pushProviderCalls = 0;
   const pushProvider = {
-    sendBatch: jest.fn(async ({ tokens }: { tokens: string[] }) => {
+    sendBatch: jest.fn(({ tokens }: { tokens: string[] }) => {
       pushProviderCalls += 1;
       if (pushProviderCalls === 1 && tokens.length === 2) {
-        return {
+        return Promise.resolve({
           status: 'partial',
           provider: 'firebase_fcm',
           successCount: 1,
@@ -413,9 +462,9 @@ function createProductionComponents(
             { tokenIndex: 0, status: 'sent', providerMessageId: 'fake-1' },
             { tokenIndex: 1, status: 'failed', errorCode: 'fcm/unavailable' },
           ],
-        };
+        });
       }
-      return {
+      return Promise.resolve({
         status: 'sent',
         provider: 'firebase_fcm',
         successCount: tokens.length,
@@ -425,14 +474,16 @@ function createProductionComponents(
           status: 'sent',
           providerMessageId: `fake-${pushProviderCalls}-${tokenIndex}`,
         })),
-      };
+      });
     }),
   };
   const pushDelivery = new CommunicationNotificationPushDeliveryService(
     pushRepository,
     deviceTokens,
-    { decrypt: jest.fn((value: string) => `plain:${value}`) } as any,
-    pushProvider as any,
+    {
+      decrypt: jest.fn((value: string) => `plain:${value}`),
+    } as unknown as AppDeviceTokenCrypto,
+    pushProvider as unknown as FirebasePushProvider,
     new CommunicationNotificationPushPayloadBuilder(),
   );
   const pushReconciliation =
@@ -448,48 +499,52 @@ function createProductionComponents(
     queue,
   );
   const emailTransport = {
-    sendEmail: jest.fn(async (input: { toEmail: string }) => {
+    sendEmail: jest.fn((input: { toEmail: string }) => {
       if (input.toEmail.startsWith('pre-provider')) {
-        throw new SchoolEmailTransportFailure(
-          'PRE_PROVIDER_ATTEMPT',
-          'smtp_configuration_invalid',
-          true,
+        return Promise.reject(
+          new SchoolEmailTransportFailure(
+            'PRE_PROVIDER_ATTEMPT',
+            'smtp_configuration_invalid',
+            true,
+          ),
         );
       }
       if (input.toEmail.startsWith('known-rejection')) {
-        return { accepted: [], rejected: [input.toEmail] };
+        return Promise.resolve({ accepted: [], rejected: [input.toEmail] });
       }
       if (input.toEmail.startsWith('ambiguous')) {
-        throw new SchoolEmailTransportFailure(
-          'AMBIGUOUS_AFTER_PROVIDER_ATTEMPT',
-          'provider_outcome_ambiguous',
-          false,
+        return Promise.reject(
+          new SchoolEmailTransportFailure(
+            'AMBIGUOUS_AFTER_PROVIDER_ATTEMPT',
+            'provider_outcome_ambiguous',
+            false,
+          ),
         );
       }
-      return {
+      return Promise.resolve({
         providerMessageId: 'fake-email-accepted',
         accepted: [input.toEmail],
         rejected: [],
-      };
+      });
     }),
   };
   const emailProcess = new ProcessEmailDeliveryRecipientUseCase(
     emailRepository,
     {
       findConnection: jest.fn().mockResolvedValue(fixture.emailConnection),
-    } as any,
-    {} as any,
-    {} as any,
-    {} as any,
+    } as unknown as EmailSettingsRepository,
+    {} as UserCredentialsRepository,
+    {} as PasswordService,
+    {} as AuthRepository,
     {
       renderCampaignEmail: jest.fn().mockResolvedValue({
         subject: 'Synthetic campaign',
         html: '<p>Synthetic campaign</p>',
         text: 'Synthetic campaign',
       }),
-    } as any,
-    {} as any,
-    emailTransport as any,
+    } as unknown as SchoolEmailRendererService,
+    {} as EmailSecretCrypto,
+    emailTransport as unknown as SchoolEmailTransport,
   );
 
   const importRepository = new ImportJobsRepository(prisma);
@@ -509,7 +564,9 @@ function createProductionComponents(
   const dismissalRepository = new DismissalRequestsExpiryRepository(prisma);
   const dismissalProcess = new ExpireDismissalRequestsUseCase(
     dismissalRepository,
-    { publishStatusChanged: jest.fn().mockResolvedValue(undefined) } as any,
+    {
+      publishStatusChanged: jest.fn().mockResolvedValue(undefined),
+    } as unknown as DismissalRealtimeEventsService,
   );
   const learningRepository = new LearningMediaRepository(prisma);
   const learningMedia = new LearningMediaCleanupService(
@@ -543,6 +600,8 @@ function createProductionComponents(
     studentBulkRegistrationExecutionReconciliation,
     importProcess,
     dismissalProcess,
+    learningRepository,
+    storage,
     learningMedia,
     brandingQueue,
     brandingProcess,
@@ -572,10 +631,32 @@ async function reconstructProductionWork(
   };
 }
 
-class ProductionDispatchHarness {
-  readonly processors = new Map<string, (job: any) => Promise<unknown>>();
+interface ProductionDispatchJob {
+  id?: string;
+  name: string;
+  data: Record<string, unknown>;
+  opts?: { attempts?: number };
+  attemptsMade?: number;
+}
 
-  createWorker(queueName: string, processor: (job: any) => Promise<unknown>) {
+function requireJobData(job: Job): Record<string, unknown> {
+  const data: unknown = job.data;
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+    throw new Error('production_job_data_invalid');
+  }
+  return data as Record<string, unknown>;
+}
+
+class ProductionDispatchHarness {
+  readonly processors = new Map<
+    string,
+    (job: ProductionDispatchJob) => Promise<unknown>
+  >();
+
+  createWorker(
+    queueName: string,
+    processor: (job: ProductionDispatchJob) => Promise<unknown>,
+  ) {
     this.processors.set(queueName, processor);
     return { on: jest.fn() };
   }
@@ -622,13 +703,13 @@ async function exerciseProductionWorkerDispatch(
   ).onModuleInit();
   new LearningMediaCleanupService(
     bullmq,
-    (components.learningMedia as any).repository,
-    (components.learningMedia as any).storage,
+    components.learningRepository,
+    components.storage,
   ).onModuleInit();
   new BrandingLogoCleanupWorker(bullmq, components.brandingProcess, {
     ...components.brandingQueue,
     getReadiness: jest.fn().mockResolvedValue({ counts: {} }),
-  } as any).onModuleInit();
+  } as unknown as BrandingLogoCleanupQueueService).onModuleInit();
 
   const base = {
     schoolId: fixture.activeSchoolId,
@@ -647,7 +728,8 @@ async function exerciseProductionWorkerDispatch(
       `communication-announcement-notifications-${fixture.activeSchoolId}-${fixture.announcementId}`,
     );
   if (!generationJob) throw new Error('reconstructed_generation_job_missing');
-  expect(generationJob.data).toMatchObject({
+  const generationJobData = requireJobData(generationJob);
+  expect(generationJobData).toMatchObject({
     schoolId: fixture.activeSchoolId,
     organizationId: fixture.organizationId,
     announcementId: fixture.announcementId,
@@ -661,7 +743,7 @@ async function exerciseProductionWorkerDispatch(
   await harness.processor(COMMUNICATION_NOTIFICATION_QUEUE_NAME)({
     id: generationJob.id,
     name: COMMUNICATION_ANNOUNCEMENT_NOTIFICATIONS_GENERATE_JOB_NAME,
-    data: generationJob.data,
+    data: generationJobData,
   });
   const generationAfterFirst = await readGenerationOutcomes(
     components.prisma,
@@ -677,7 +759,7 @@ async function exerciseProductionWorkerDispatch(
   await harness.processor(COMMUNICATION_NOTIFICATION_QUEUE_NAME)({
     id: generationJob.id,
     name: COMMUNICATION_ANNOUNCEMENT_NOTIFICATIONS_GENERATE_JOB_NAME,
-    data: generationJob.data,
+    data: generationJobData,
   });
   const generationAfterDuplicate = await readGenerationOutcomes(
     components.prisma,
@@ -692,20 +774,27 @@ async function exerciseProductionWorkerDispatch(
   const observedPushContexts: Array<ReturnType<typeof getRequestContext>> = [];
   const originalProcessDelivery = components.pushDelivery.processDelivery.bind(
     components.pushDelivery,
-  );
+  ) as unknown as CommunicationNotificationPushDeliveryService['processDelivery'];
   jest
     .spyOn(components.pushDelivery, 'processDelivery')
-    .mockImplementation(async (input) => {
-      if (input.deliveryId === fixture.pushDeliveryId) {
-        observedPushContexts.push(getRequestContext());
-      }
-      return originalProcessDelivery(input);
-    });
+    .mockImplementation(
+      (
+        input: Parameters<
+          CommunicationNotificationPushDeliveryService['processDelivery']
+        >[0],
+      ) => {
+        if (input.deliveryId === fixture.pushDeliveryId) {
+          observedPushContexts.push(getRequestContext());
+        }
+        return originalProcessDelivery(input);
+      },
+    );
   const recoveredPushJob = await components.queue
     .getQueue(COMMUNICATION_NOTIFICATION_PUSH_QUEUE_NAME)
     .getJob(`communication-push-${fixture.pushDeliveryId}`);
   if (!recoveredPushJob) throw new Error('reconstructed_push_job_missing');
-  expect(recoveredPushJob.data).toMatchObject({
+  const recoveredPushJobData = requireJobData(recoveredPushJob);
+  expect(recoveredPushJobData).toMatchObject({
     schoolId: fixture.activeSchoolId,
     organizationId: fixture.organizationId,
     actorUserId: null,
@@ -715,20 +804,20 @@ async function exerciseProductionWorkerDispatch(
     harness.processor(COMMUNICATION_NOTIFICATION_PUSH_QUEUE_NAME)({
       id: fixture.pushDeliveryId,
       name: COMMUNICATION_NOTIFICATION_PUSH_SEND_JOB_NAME,
-      data: recoveredPushJob.data,
+      data: recoveredPushJobData,
     }),
   ).rejects.toThrow('communication_push_retryable_failure');
   await harness.processor(COMMUNICATION_NOTIFICATION_PUSH_QUEUE_NAME)({
     id: fixture.pushDeliveryId,
     name: COMMUNICATION_NOTIFICATION_PUSH_SEND_JOB_NAME,
-    data: recoveredPushJob.data,
+    data: recoveredPushJobData,
   });
   const callsAfterPushSuccess =
     components.pushProvider.sendBatch.mock.calls.length;
   await harness.processor(COMMUNICATION_NOTIFICATION_PUSH_QUEUE_NAME)({
     id: fixture.pushDeliveryId,
     name: COMMUNICATION_NOTIFICATION_PUSH_SEND_JOB_NAME,
-    data: recoveredPushJob.data,
+    data: recoveredPushJobData,
   });
   const pushKnownSuccessReplayCount =
     components.pushProvider.sendBatch.mock.calls.length - callsAfterPushSuccess;
@@ -1461,7 +1550,7 @@ async function seedProductionModels(
       failureReason: null,
       createdAt: now,
       updatedAt: now,
-    } as any,
+    },
   };
 }
 
@@ -1860,8 +1949,6 @@ function file(
     visibility: FileVisibility.PRIVATE,
   };
 }
-
-type ProductionFixture = Awaited<ReturnType<typeof seedProductionModels>>;
 
 function replaceQueueRedisWithEmptyBarrier(): void {
   const container = required('PRD3_G03_QUEUE_CONTAINER');

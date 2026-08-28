@@ -24,6 +24,15 @@ import { EnrollmentPlacementService } from '../domain/enrollment-placement.servi
 import { StudentPlacementCapacityPolicyService } from '../domain/student-placement-capacity-policy.service';
 import { EnrollmentsRepository } from '../infrastructure/enrollments.repository';
 
+type AnyMethod = (...args: never[]) => unknown;
+
+function mockedMethod<T extends object, K extends keyof T>(
+  target: T,
+  key: K,
+): jest.MockedFunction<Extract<T[K], AnyMethod>> {
+  return target[key] as jest.MockedFunction<Extract<T[K], AnyMethod>>;
+}
+
 describe('Enrollments use cases', () => {
   async function withStudentsScope<T>(fn: () => Promise<T>): Promise<T> {
     return runWithRequestContext(createRequestContext(), async () => {
@@ -205,10 +214,10 @@ describe('Enrollments use cases', () => {
     );
 
     expect(
-      (placementService.resolvePlacement as jest.Mock).mock.calls[0][1],
+      mockedMethod(placementService, 'resolvePlacement').mock.calls[0][1],
     ).toEqual({ handoff: null });
     expect(
-      (enrollmentsRepository.createEnrollment as jest.Mock).mock.calls[0][0],
+      mockedMethod(enrollmentsRepository, 'createEnrollment').mock.calls[0][0],
     ).toMatchObject({
       schoolId: 'school-1',
       studentId: 'student-1',
@@ -218,7 +227,10 @@ describe('Enrollments use cases', () => {
       enrolledAt: new Date('2026-09-01T00:00:00.000Z'),
     });
     expect(
-      studentSeatLimitPolicy.assertCanIncreaseActiveStudentSeats,
+      mockedMethod(
+        studentSeatLimitPolicy,
+        'assertCanIncreaseActiveStudentSeats',
+      ),
     ).toHaveBeenCalledWith({
       schoolId: 'school-1',
       existingStudentId: 'student-1',
@@ -231,9 +243,11 @@ describe('Enrollments use cases', () => {
       (enrollmentsRepository.createEnrollment as jest.Mock).mock
         .invocationCallOrder[0],
     );
-    expect(studentPlacementCapacityPolicy.assertCanPlace).toHaveBeenCalledWith({
+    expect(
+      mockedMethod(studentPlacementCapacityPolicy, 'assertCanPlace'),
+    ).toHaveBeenCalledWith({
       academicYearId: 'year-1',
-      classroom: expect.objectContaining({ id: 'classroom-1', capacity: 24 }),
+      classroom: buildPlacementResolution().classroom,
     });
     expect(result).toEqual({
       enrollmentId: 'enrollment-1',
@@ -250,7 +264,7 @@ describe('Enrollments use cases', () => {
       status: 'active',
     });
     expect(
-      (authRepository.createAuditLog as jest.Mock).mock.calls[0][0],
+      mockedMethod(authRepository, 'createAuditLog').mock.calls[0][0],
     ).toMatchObject({
       action: 'students.enrollment.create',
       resourceType: 'enrollment',
@@ -310,19 +324,22 @@ describe('Enrollments use cases', () => {
       }),
     );
 
-    expect(enrollApplicationHandoffUseCase.execute).toHaveBeenCalledWith(
-      'application-1',
-    );
     expect(
-      (placementService.resolvePlacement as jest.Mock).mock.calls[0][1],
-    ).toEqual({
-      handoff: expect.objectContaining({
+      mockedMethod(enrollApplicationHandoffUseCase, 'execute'),
+    ).toHaveBeenCalledWith('application-1');
+    expect(
+      mockedMethod(placementService, 'resolvePlacement').mock.calls[0][1],
+    ).toMatchObject({
+      handoff: {
         applicationId: 'application-1',
         eligible: true,
-      }),
+      },
     });
     expect(
-      studentSeatLimitPolicy.assertCanIncreaseActiveStudentSeats,
+      mockedMethod(
+        studentSeatLimitPolicy,
+        'assertCanIncreaseActiveStudentSeats',
+      ),
     ).toHaveBeenCalledWith({
       schoolId: 'school-1',
       existingStudentId: 'student-1',
@@ -379,9 +396,11 @@ describe('Enrollments use cases', () => {
       code: 'platform.entitlement.student_seat_limit_exceeded',
     });
     expect(
-      studentPlacementCapacityPolicy.assertCanPlace,
+      mockedMethod(studentPlacementCapacityPolicy, 'assertCanPlace'),
     ).not.toHaveBeenCalled();
-    expect(enrollmentsRepository.createEnrollment).not.toHaveBeenCalled();
+    expect(
+      mockedMethod(enrollmentsRepository, 'createEnrollment'),
+    ).not.toHaveBeenCalled();
   });
 
   it('blocks enrollment creation when the classroom is at capacity', async () => {
@@ -435,12 +454,18 @@ describe('Enrollments use cases', () => {
     ).rejects.toMatchObject({
       code: 'students.enrollment.placement_conflict',
     });
-    expect(studentPlacementCapacityPolicy.assertCanPlace).toHaveBeenCalledWith({
+    expect(
+      mockedMethod(studentPlacementCapacityPolicy, 'assertCanPlace'),
+    ).toHaveBeenCalledWith({
       academicYearId: 'year-1',
       classroom: resolvedPlacement.classroom,
     });
-    expect(enrollmentsRepository.createEnrollment).not.toHaveBeenCalled();
-    expect(authRepository.createAuditLog).not.toHaveBeenCalled();
+    expect(
+      mockedMethod(enrollmentsRepository, 'createEnrollment'),
+    ).not.toHaveBeenCalled();
+    expect(
+      mockedMethod(authRepository, 'createAuditLog'),
+    ).not.toHaveBeenCalled();
   });
 
   it('rejects duplicate active placement conflicts with the canonical code', async () => {
@@ -480,10 +505,13 @@ describe('Enrollments use cases', () => {
       ),
     ).rejects.toBeInstanceOf(StudentEnrollmentPlacementConflictException);
     expect(
-      studentSeatLimitPolicy.assertCanIncreaseActiveStudentSeats,
+      mockedMethod(
+        studentSeatLimitPolicy,
+        'assertCanIncreaseActiveStudentSeats',
+      ),
     ).not.toHaveBeenCalled();
     expect(
-      studentPlacementCapacityPolicy.assertCanPlace,
+      mockedMethod(studentPlacementCapacityPolicy, 'assertCanPlace'),
     ).not.toHaveBeenCalled();
   });
 
@@ -528,11 +556,15 @@ describe('Enrollments use cases', () => {
       }),
     );
 
-    expect(placementService.resolvePlacement).toHaveBeenCalledWith(
+    expect(
+      mockedMethod(placementService, 'resolvePlacement'),
+    ).toHaveBeenCalledWith(
       expect.objectContaining({ studentId: 'student-1' }),
       { handoff: null, allowMatchingActiveEnrollment: true },
     );
-    expect(studentPlacementCapacityPolicy.assertCanPlace).toHaveBeenCalledWith({
+    expect(
+      mockedMethod(studentPlacementCapacityPolicy, 'assertCanPlace'),
+    ).toHaveBeenCalledWith({
       academicYearId: 'year-1',
       classroom: resolvedPlacement.classroom,
     });
@@ -543,12 +575,12 @@ describe('Enrollments use cases', () => {
       (enrollmentsRepository.createEnrollment as jest.Mock).mock
         .invocationCallOrder[0],
     );
-    expect(enrollmentsRepository.createEnrollment).toHaveBeenCalledTimes(1);
-    expect(authRepository.createAuditLog).toHaveBeenCalledWith(
-      expect.objectContaining({
-        after: expect.objectContaining({ source: 'upsert' }),
-      }),
-    );
+    expect(
+      mockedMethod(enrollmentsRepository, 'createEnrollment'),
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      mockedMethod(authRepository, 'createAuditLog').mock.calls[0][0],
+    ).toMatchObject({ after: { source: 'upsert' } });
   });
 
   it('returns an identical active Upsert placement without capacity-checking a full classroom', async () => {
@@ -609,13 +641,20 @@ describe('Enrollments use cases', () => {
       }),
     );
     expect(
-      studentPlacementCapacityPolicy.assertCanPlace,
+      mockedMethod(studentPlacementCapacityPolicy, 'assertCanPlace'),
     ).not.toHaveBeenCalled();
     expect(
-      studentSeatLimitPolicy.assertCanIncreaseActiveStudentSeats,
+      mockedMethod(
+        studentSeatLimitPolicy,
+        'assertCanIncreaseActiveStudentSeats',
+      ),
     ).not.toHaveBeenCalled();
-    expect(enrollmentsRepository.createEnrollment).not.toHaveBeenCalled();
-    expect(authRepository.createAuditLog).not.toHaveBeenCalled();
+    expect(
+      mockedMethod(enrollmentsRepository, 'createEnrollment'),
+    ).not.toHaveBeenCalled();
+    expect(
+      mockedMethod(authRepository, 'createAuditLog'),
+    ).not.toHaveBeenCalled();
   });
 
   it('reports classroom capacity failure during validation without trusting an unrelated enrollment exclusion', async () => {
@@ -651,13 +690,15 @@ describe('Enrollments use cases', () => {
       errors: ['students.enrollment.placement_conflict'],
     });
     expect(
-      enrollmentsRepository.countActiveEnrollmentsInPlacement,
+      mockedMethod(enrollmentsRepository, 'countActiveEnrollmentsInPlacement'),
     ).toHaveBeenCalledWith({
       academicYearId: 'year-1',
       classroomId: 'classroom-1',
       excludeEnrollmentId: undefined,
     });
-    expect(enrollmentsRepository.createEnrollment).not.toHaveBeenCalled();
+    expect(
+      mockedMethod(enrollmentsRepository, 'createEnrollment'),
+    ).not.toHaveBeenCalled();
   });
 
   it('preserves a verified current enrollment exclusion during validation', async () => {
@@ -693,13 +734,15 @@ describe('Enrollments use cases', () => {
 
     expect(result).toEqual({ valid: true, errors: [] });
     expect(
-      enrollmentsRepository.countActiveEnrollmentsInPlacement,
+      mockedMethod(enrollmentsRepository, 'countActiveEnrollmentsInPlacement'),
     ).toHaveBeenCalledWith({
       academicYearId: 'year-1',
       classroomId: 'classroom-1',
       excludeEnrollmentId: activeEnrollment.id,
     });
-    expect(enrollmentsRepository.createEnrollment).not.toHaveBeenCalled();
+    expect(
+      mockedMethod(enrollmentsRepository, 'createEnrollment'),
+    ).not.toHaveBeenCalled();
   });
 
   it('rejects inactive academic years with the canonical code', async () => {
@@ -735,7 +778,7 @@ describe('Enrollments use cases', () => {
       errors: ['students.enrollment.inactive_year'],
     });
     expect(
-      studentPlacementCapacityPolicy.assertCanPlace,
+      mockedMethod(studentPlacementCapacityPolicy, 'assertCanPlace'),
     ).not.toHaveBeenCalled();
   });
 });

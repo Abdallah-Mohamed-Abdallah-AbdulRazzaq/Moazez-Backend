@@ -27,6 +27,15 @@ import {
   SchoolRegistrationRepository,
 } from '../infrastructure/school-registration.repository';
 
+type AnyMethod = (...args: never[]) => unknown;
+
+function mockedMethod<T extends object, K extends keyof T>(
+  target: T,
+  key: K,
+): jest.MockedFunction<Extract<T[K], AnyMethod>> {
+  return target[key] as jest.MockedFunction<Extract<T[K], AnyMethod>>;
+}
+
 describe('CreateSchoolRegistrationUseCase', () => {
   const now = new Date('2026-06-28T09:00:00.000Z');
 
@@ -143,9 +152,7 @@ describe('CreateSchoolRegistrationUseCase', () => {
       district: params.student.district as string | null,
       studentPhone: params.student.studentPhone as string | null,
       studentEmail: params.student.studentEmail as string | null,
-      status:
-        (params.student.status as StudentStatus | undefined) ??
-        StudentStatus.ACTIVE,
+      status: params.student.status ?? StudentStatus.ACTIVE,
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
@@ -236,10 +243,11 @@ describe('CreateSchoolRegistrationUseCase', () => {
   }
 
   function createUseCase() {
+    const createRegistrationCore: jest.MockedFunction<
+      SchoolRegistrationRepository['createRegistrationCore']
+    > = jest.fn((params) => Promise.resolve(buildCoreRecord(params)));
     const registrationRepository = {
-      createRegistrationCore: jest.fn((params) =>
-        Promise.resolve(buildCoreRecord(params)),
-      ),
+      createRegistrationCore,
     } as unknown as SchoolRegistrationRepository;
     const enrollmentsRepository = {
       findAcademicYearById: jest.fn().mockResolvedValue({
@@ -340,34 +348,40 @@ describe('CreateSchoolRegistrationUseCase', () => {
     );
 
     expect(
-      deps.studentSeatLimitPolicy.assertCanIncreaseActiveStudentSeats,
+      mockedMethod(
+        deps.studentSeatLimitPolicy,
+        'assertCanIncreaseActiveStudentSeats',
+      ),
     ).toHaveBeenCalledWith({
       schoolId: 'school-1',
       reason: 'registration_wizard',
     });
     expect(
-      deps.studentPlacementCapacityPolicy.assertCanPlace,
-    ).toHaveBeenCalledWith({
+      mockedMethod(deps.studentPlacementCapacityPolicy, 'assertCanPlace').mock
+        .calls[0][0],
+    ).toMatchObject({
       academicYearId: 'year-1',
-      classroom: expect.objectContaining({
+      classroom: {
         id: 'classroom-1',
         capacity: 24,
-      }),
+      },
     });
-    const seatLimitCallOrder = (
-      deps.studentSeatLimitPolicy
-        .assertCanIncreaseActiveStudentSeats as jest.Mock
+    const seatLimitCallOrder = mockedMethod(
+      deps.studentSeatLimitPolicy,
+      'assertCanIncreaseActiveStudentSeats',
     ).mock.invocationCallOrder[0];
-    const placementCapacityCallOrder = (
-      deps.studentPlacementCapacityPolicy.assertCanPlace as jest.Mock
+    const placementCapacityCallOrder = mockedMethod(
+      deps.studentPlacementCapacityPolicy,
+      'assertCanPlace',
     ).mock.invocationCallOrder[0];
-    const registrationCoreCallOrder = (
-      deps.registrationRepository.createRegistrationCore as jest.Mock
+    const registrationCoreCallOrder = mockedMethod(
+      deps.registrationRepository,
+      'createRegistrationCore',
     ).mock.invocationCallOrder[0];
     expect(seatLimitCallOrder).toBeLessThan(placementCapacityCallOrder);
     expect(placementCapacityCallOrder).toBeLessThan(registrationCoreCallOrder);
     expect(
-      (deps.registrationRepository.createRegistrationCore as jest.Mock).mock
+      mockedMethod(deps.registrationRepository, 'createRegistrationCore').mock
         .calls[0][0],
     ).toMatchObject({
       schoolId: 'school-1',
@@ -466,8 +480,9 @@ describe('CreateSchoolRegistrationUseCase', () => {
 
   it('rejects a full classroom before creating registration records or side effects', async () => {
     const deps = createUseCase();
-    (
-      deps.studentPlacementCapacityPolicy.assertCanPlace as jest.Mock
+    mockedMethod(
+      deps.studentPlacementCapacityPolicy,
+      'assertCanPlace',
     ).mockRejectedValue(
       new StudentEnrollmentPlacementConflictException({
         academicYearId: 'year-1',
@@ -486,30 +501,36 @@ describe('CreateSchoolRegistrationUseCase', () => {
     });
 
     expect(
-      deps.studentSeatLimitPolicy.assertCanIncreaseActiveStudentSeats,
+      mockedMethod(
+        deps.studentSeatLimitPolicy,
+        'assertCanIncreaseActiveStudentSeats',
+      ),
     ).toHaveBeenCalledWith({
       schoolId: 'school-1',
       reason: 'registration_wizard',
     });
     expect(
-      deps.studentPlacementCapacityPolicy.assertCanPlace,
-    ).toHaveBeenCalledWith({
+      mockedMethod(deps.studentPlacementCapacityPolicy, 'assertCanPlace').mock
+        .calls[0][0],
+    ).toMatchObject({
       academicYearId: 'year-1',
-      classroom: expect.objectContaining({
+      classroom: {
         id: 'classroom-1',
         capacity: 24,
-      }),
+      },
     });
     expect(
-      deps.registrationRepository.createRegistrationCore,
+      mockedMethod(deps.registrationRepository, 'createRegistrationCore'),
     ).not.toHaveBeenCalled();
     expect(
-      deps.createOrLinkGuardianAccountUseCase.execute,
+      mockedMethod(deps.createOrLinkGuardianAccountUseCase, 'execute'),
     ).not.toHaveBeenCalled();
     expect(
-      deps.createOrLinkStudentAccountUseCase.execute,
+      mockedMethod(deps.createOrLinkStudentAccountUseCase, 'execute'),
     ).not.toHaveBeenCalled();
-    expect(deps.authRepository.createAuditLog).not.toHaveBeenCalled();
+    expect(
+      mockedMethod(deps.authRepository, 'createAuditLog'),
+    ).not.toHaveBeenCalled();
   });
 
   it('sets Student.applicationId only through trusted internal source context', async () => {
@@ -521,8 +542,9 @@ describe('CreateSchoolRegistrationUseCase', () => {
         sourceApplicationId: 'application-1',
       }),
     );
-    const coreCommand = (
-      deps.registrationRepository.createRegistrationCore as jest.Mock
+    const coreCommand = mockedMethod(
+      deps.registrationRepository,
+      'createRegistrationCore',
     ).mock.calls[0][0];
 
     expect(coreCommand.student.applicationId).toBe('application-1');
@@ -533,15 +555,15 @@ describe('CreateSchoolRegistrationUseCase', () => {
       }),
     );
     expect(JSON.stringify(result)).not.toContain('applicationId');
-    expect(deps.authRepository.createAuditLog).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: 'students.registration.create',
-        after: expect.objectContaining({
-          source: 'admissions_application',
-          sourceApplicationId: 'application-1',
-        }),
-      }),
-    );
+    expect(
+      mockedMethod(deps.authRepository, 'createAuditLog').mock.calls[0][0],
+    ).toMatchObject({
+      action: 'students.registration.create',
+      after: {
+        source: 'admissions_application',
+        sourceApplicationId: 'application-1',
+      },
+    });
   });
 
   it('respects an explicitly primary guardian and leaves the others non-primary', async () => {
@@ -568,8 +590,9 @@ describe('CreateSchoolRegistrationUseCase', () => {
     });
 
     const result = await withStudentsScope(() => deps.useCase.execute(command));
-    const coreCommand = (
-      deps.registrationRepository.createRegistrationCore as jest.Mock
+    const coreCommand = mockedMethod(
+      deps.registrationRepository,
+      'createRegistrationCore',
     ).mock.calls[0][0];
 
     expect(coreCommand.guardians.map((guardian) => guardian.isPrimary)).toEqual(
@@ -583,9 +606,10 @@ describe('CreateSchoolRegistrationUseCase', () => {
 
   it('creates and links optional parent and student accounts with sanitized summaries', async () => {
     const deps = createUseCase();
-    (
-      deps.createOrLinkGuardianAccountUseCase.execute as jest.Mock
-    ).mockImplementation((guardianId: string, command) =>
+    mockedMethod(
+      deps.createOrLinkGuardianAccountUseCase,
+      'execute',
+    ).mockImplementation((guardianId, command) =>
       Promise.resolve({
         guardianId,
         user: credentialUser(command.mode === 'create' ? 'parent' : 'parent'),
@@ -595,8 +619,9 @@ describe('CreateSchoolRegistrationUseCase', () => {
           : {}),
       }),
     );
-    (
-      deps.createOrLinkStudentAccountUseCase.execute as jest.Mock
+    mockedMethod(
+      deps.createOrLinkStudentAccountUseCase,
+      'execute',
     ).mockResolvedValue({
       studentId: 'student-1',
       user: credentialUser('student'),
@@ -643,7 +668,7 @@ describe('CreateSchoolRegistrationUseCase', () => {
     );
 
     expect(
-      deps.createOrLinkGuardianAccountUseCase.execute,
+      mockedMethod(deps.createOrLinkGuardianAccountUseCase, 'execute'),
     ).toHaveBeenCalledWith(
       'guardian-1',
       expect.objectContaining({
@@ -652,7 +677,7 @@ describe('CreateSchoolRegistrationUseCase', () => {
       }),
     );
     expect(
-      deps.createOrLinkGuardianAccountUseCase.execute,
+      mockedMethod(deps.createOrLinkGuardianAccountUseCase, 'execute'),
     ).toHaveBeenCalledWith(
       'guardian-2',
       expect.objectContaining({
@@ -660,87 +685,83 @@ describe('CreateSchoolRegistrationUseCase', () => {
         userId: 'existing-parent-user',
       }),
     );
-    expect(deps.createOrLinkStudentAccountUseCase.execute).toHaveBeenCalledWith(
+    expect(
+      mockedMethod(deps.createOrLinkStudentAccountUseCase, 'execute'),
+    ).toHaveBeenCalledWith(
       'student-1',
       expect.objectContaining({
         mode: 'create',
         username: 'student.one',
       }),
     );
-    expect(result.parentAccounts).toEqual([
-      expect.objectContaining({
+    expect(result.parentAccounts).toMatchObject([
+      {
         target: 'parent',
         guardianId: 'guardian-1',
         mode: 'create',
         status: 'created',
         temporaryPassword: 'MZ-PARENT-1234',
-        user: expect.not.objectContaining({
-          userId: expect.anything(),
-          roleId: expect.anything(),
-        }),
-      }),
-      expect.objectContaining({
+      },
+      {
         target: 'parent',
         guardianId: 'guardian-2',
         mode: 'link',
         status: 'linked',
-        user: expect.not.objectContaining({
-          userId: expect.anything(),
-          roleId: expect.anything(),
-        }),
-      }),
+      },
     ]);
-    expect(result.studentAccount).toEqual(
-      expect.objectContaining({
-        target: 'student',
-        mode: 'create',
-        status: 'created',
-        temporaryPassword: 'MZ-STUDENT-1234',
-        user: expect.not.objectContaining({
-          userId: expect.anything(),
-          roleId: expect.anything(),
-        }),
-      }),
-    );
+    for (const account of result.parentAccounts) {
+      expect(account.user).not.toHaveProperty('userId');
+      expect(account.user).not.toHaveProperty('roleId');
+    }
+    expect(result.studentAccount).toMatchObject({
+      target: 'student',
+      mode: 'create',
+      status: 'created',
+      temporaryPassword: 'MZ-STUDENT-1234',
+    });
+    expect(result.studentAccount?.user).not.toHaveProperty('userId');
+    expect(result.studentAccount?.user).not.toHaveProperty('roleId');
     expect(result.warnings).toEqual([]);
-    expect(deps.authRepository.createAuditLog).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: 'students.registration.create',
-        module: 'students',
-        resourceType: 'registration',
-        resourceId: 'student-1',
-        outcome: AuditOutcome.SUCCESS,
-        after: expect.objectContaining({
-          studentId: 'student-1',
-          guardianCount: 2,
-          primaryGuardianCount: 1,
-          enrollmentId: 'enrollment-1',
-          parentAccountsCreatedCount: 1,
-          parentAccountsLinkedCount: 1,
-          studentAccountCreated: true,
-          studentAccountLinked: false,
-        }),
-      }),
-    );
+    expect(
+      mockedMethod(deps.authRepository, 'createAuditLog').mock.calls[0][0],
+    ).toMatchObject({
+      action: 'students.registration.create',
+      module: 'students',
+      resourceType: 'registration',
+      resourceId: 'student-1',
+      outcome: AuditOutcome.SUCCESS,
+      after: {
+        studentId: 'student-1',
+        guardianCount: 2,
+        primaryGuardianCount: 1,
+        enrollmentId: 'enrollment-1',
+        parentAccountsCreatedCount: 1,
+        parentAccountsLinkedCount: 1,
+        studentAccountCreated: true,
+        studentAccountLinked: false,
+      },
+    });
     expect(
       JSON.stringify(
-        (deps.authRepository.createAuditLog as jest.Mock).mock.calls,
+        mockedMethod(deps.authRepository, 'createAuditLog').mock.calls,
       ),
     ).not.toContain('MZ-');
     expect(
       JSON.stringify(
-        (deps.authRepository.createAuditLog as jest.Mock).mock.calls,
+        mockedMethod(deps.authRepository, 'createAuditLog').mock.calls,
       ),
     ).not.toContain('29901011234567');
   });
 
   it('turns optional account failures into warnings after the core registration is durable', async () => {
     const deps = createUseCase();
-    (
-      deps.createOrLinkGuardianAccountUseCase.execute as jest.Mock
+    mockedMethod(
+      deps.createOrLinkGuardianAccountUseCase,
+      'execute',
     ).mockRejectedValue(new Error('account failed'));
-    (
-      deps.createOrLinkStudentAccountUseCase.execute as jest.Mock
+    mockedMethod(
+      deps.createOrLinkStudentAccountUseCase,
+      'execute',
     ).mockRejectedValue(new Error('account failed'));
 
     const result = await withStudentsScope(() =>
@@ -768,7 +789,7 @@ describe('CreateSchoolRegistrationUseCase', () => {
     );
 
     expect(
-      deps.registrationRepository.createRegistrationCore,
+      mockedMethod(deps.registrationRepository, 'createRegistrationCore'),
     ).toHaveBeenCalled();
     expect(result.parentAccounts[0]).toEqual(
       expect.objectContaining({
@@ -800,7 +821,7 @@ describe('CreateSchoolRegistrationUseCase', () => {
       ),
     ).rejects.toBeInstanceOf(ValidationDomainException);
     expect(
-      deps.registrationRepository.createRegistrationCore,
+      mockedMethod(deps.registrationRepository, 'createRegistrationCore'),
     ).not.toHaveBeenCalled();
   });
 
@@ -826,7 +847,7 @@ describe('CreateSchoolRegistrationUseCase', () => {
       ),
     ).rejects.toBeInstanceOf(ValidationDomainException);
     expect(
-      deps.registrationRepository.createRegistrationCore,
+      mockedMethod(deps.registrationRepository, 'createRegistrationCore'),
     ).not.toHaveBeenCalled();
 
     await expect(
@@ -839,13 +860,13 @@ describe('CreateSchoolRegistrationUseCase', () => {
       ),
     ).rejects.toBeInstanceOf(ValidationDomainException);
     expect(
-      deps.registrationRepository.createRegistrationCore,
+      mockedMethod(deps.registrationRepository, 'createRegistrationCore'),
     ).not.toHaveBeenCalled();
   });
 
   it('validates term, section, and grade placement before creating records', async () => {
     const deps = createUseCase();
-    (deps.termsRepository.findTermById as jest.Mock).mockResolvedValue({
+    mockedMethod(deps.termsRepository, 'findTermById').mockResolvedValue({
       id: 'term-1',
       schoolId: 'school-1',
       academicYearId: 'other-year',
@@ -876,7 +897,7 @@ describe('CreateSchoolRegistrationUseCase', () => {
       ),
     ).rejects.toBeInstanceOf(ValidationDomainException);
     expect(
-      deps.registrationRepository.createRegistrationCore,
+      mockedMethod(deps.registrationRepository, 'createRegistrationCore'),
     ).not.toHaveBeenCalled();
   });
 });
