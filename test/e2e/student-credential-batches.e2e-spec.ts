@@ -6,6 +6,7 @@ import {
   ImportJobStatus,
   MembershipStatus,
   PrismaClient,
+  StudentEnrollmentStatus,
   StudentBulkRegistrationBatchStatus,
   StudentBulkRegistrationRowStatus,
   StudentCredentialBatchStatus,
@@ -60,6 +61,7 @@ describe('Student credential batches (e2e)', () => {
     objectKey: string;
   }> = [];
   const createdSessionIds: string[] = [];
+  const createdEnrollmentIds: string[] = [];
 
   beforeAll(async () => {
     prisma = new PrismaClient();
@@ -220,6 +222,11 @@ describe('Student credential batches (e2e)', () => {
     if (sourceRegistrationBatchId) {
       await prisma.studentBulkRegistrationBatch.deleteMany({
         where: { id: sourceRegistrationBatchId },
+      });
+    }
+    if (createdEnrollmentIds.length > 0) {
+      await prisma.enrollment.deleteMany({
+        where: { id: { in: createdEnrollmentIds } },
       });
     }
     if (sourceImportJobId) {
@@ -583,6 +590,35 @@ describe('Student credential batches (e2e)', () => {
       },
     });
     sourceRegistrationBatchId = sourceBatch.id;
+    const [sourceEnrollment, secondSourceEnrollment] = await Promise.all([
+      prisma.enrollment.create({
+        data: {
+          schoolId,
+          studentId,
+          academicYearId: sourceBatch.academicYearId,
+          termId: sourceBatch.termId,
+          classroomId: sourceBatch.classroomId,
+          status: StudentEnrollmentStatus.ACTIVE,
+          enrolledAt: sourceBatch.enrollmentDate,
+          endedAt: null,
+          exitReason: null,
+        },
+      }),
+      prisma.enrollment.create({
+        data: {
+          schoolId,
+          studentId: secondStudentId,
+          academicYearId: sourceBatch.academicYearId,
+          termId: sourceBatch.termId,
+          classroomId: sourceBatch.classroomId,
+          status: StudentEnrollmentStatus.ACTIVE,
+          enrolledAt: sourceBatch.enrollmentDate,
+          endedAt: null,
+          exitReason: null,
+        },
+      }),
+    ]);
+    createdEnrollmentIds.push(sourceEnrollment.id, secondSourceEnrollment.id);
     await prisma.studentBulkRegistrationRow.createMany({
       data: [
         {
@@ -594,6 +630,7 @@ describe('Student credential batches (e2e)', () => {
           status: StudentBulkRegistrationRowStatus.CREATED,
           studentId,
           userId: studentUserId,
+          enrollmentId: sourceEnrollment.id,
         },
         {
           schoolId,
@@ -604,6 +641,7 @@ describe('Student credential batches (e2e)', () => {
           status: StudentBulkRegistrationRowStatus.CREATED,
           studentId: secondStudentId,
           userId: secondStudentUserId,
+          enrollmentId: secondSourceEnrollment.id,
         },
       ],
     });
@@ -650,6 +688,29 @@ describe('Student credential batches (e2e)', () => {
       generatedRows: 2,
       skippedRows: 0,
       failedRows: 0,
+    });
+    expect(importCredentialBatch.rows).toHaveLength(2);
+    expect(
+      new Set(importCredentialBatch.rows.map((row) => row.studentId)).size,
+    ).toBe(2);
+    expect(
+      new Set(importCredentialBatch.rows.map((row) => row.userId)).size,
+    ).toBe(2);
+    expect(
+      importCredentialBatch.rows.find((row) => row.studentId === studentId),
+    ).toMatchObject({
+      studentId,
+      userId: studentUserId,
+      enrollmentId: sourceEnrollment.id,
+    });
+    expect(
+      importCredentialBatch.rows.find(
+        (row) => row.studentId === secondStudentId,
+      ),
+    ).toMatchObject({
+      studentId: secondStudentId,
+      userId: secondStudentUserId,
+      enrollmentId: secondSourceEnrollment.id,
     });
     const importArtifact = {
       id: importCredentialBatch.secretArtifactFile!.id,
