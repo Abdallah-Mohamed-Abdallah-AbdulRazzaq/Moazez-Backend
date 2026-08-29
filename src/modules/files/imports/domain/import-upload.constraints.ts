@@ -2,6 +2,9 @@ import { FILES_UPLOAD_MAX_SIZE_BYTES } from '../../uploads/domain/file-upload.co
 
 export const FILES_IMPORT_ALLOWED_TYPES = ['students_basic'] as const;
 
+export const STUDENTS_BULK_REGISTRATION_IMPORT_TYPE =
+  'students_bulk_registration' as const;
+
 export const FILES_IMPORT_ALLOWED_MIME_TYPES = [
   'text/csv',
   'application/vnd.ms-excel',

@@ -18,6 +18,7 @@ import { UpsertEnrollmentUseCase } from './application/upsert-enrollment.use-cas
 import { ValidateEnrollmentUseCase } from './application/validate-enrollment.use-case';
 import { EnrollmentsController } from './controller/enrollments.controller';
 import { EnrollmentPlacementService } from './domain/enrollment-placement.service';
+import { StudentPlacementCapacityPolicyService } from './domain/student-placement-capacity-policy.service';
 import { EnrollmentsRepository } from './infrastructure/enrollments.repository';
 
 @Module({
@@ -32,6 +33,7 @@ import { EnrollmentsRepository } from './infrastructure/enrollments.repository';
     EnrollApplicationHandoffUseCase,
     AuthRepository,
     EnrollmentPlacementService,
+    StudentPlacementCapacityPolicyService,
     ListEnrollmentsUseCase,
     CreateEnrollmentUseCase,
     UpsertEnrollmentUseCase,

@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
+import { RealtimeGateway } from '../../src/infrastructure/realtime/realtime.gateway';
 
 type ExpressLayer = {
   route?: {
@@ -23,6 +24,8 @@ describe('Sprint 15E Homework questions and attachments foundation (e2e)', () =>
     })
       .overrideProvider(BullmqService)
       .useValue(createNoopBullmqService())
+      .overrideProvider(RealtimeGateway)
+      .useValue(createNoopRealtimeGateway())
       .compile();
 
     app = moduleRef.createNestApplication();
@@ -187,6 +190,17 @@ function createNoopBullmqService(): AppModuleBullmqServiceMock {
       on: jest.fn(),
       close: jest.fn().mockResolvedValue(undefined),
     }),
+    onModuleDestroy: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
+function createNoopRealtimeGateway(): Pick<
+  RealtimeGateway,
+  'checkReadiness' | 'disconnectSocketsForShutdown' | 'onModuleDestroy'
+> {
+  return {
+    checkReadiness: jest.fn().mockResolvedValue(undefined),
+    disconnectSocketsForShutdown: jest.fn().mockResolvedValue(undefined),
     onModuleDestroy: jest.fn().mockResolvedValue(undefined),
   };
 }

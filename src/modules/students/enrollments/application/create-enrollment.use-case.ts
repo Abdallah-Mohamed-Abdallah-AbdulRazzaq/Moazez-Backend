@@ -7,6 +7,7 @@ import {
   EnrollmentResponseDto,
 } from '../dto/enrollment.dto';
 import { EnrollmentPlacementService } from '../domain/enrollment-placement.service';
+import { StudentPlacementCapacityPolicyService } from '../domain/student-placement-capacity-policy.service';
 import { EnrollmentsRepository } from '../infrastructure/enrollments.repository';
 import { presentEnrollment } from '../presenters/enrollment.presenter';
 import { createEnrollmentRecord } from './shared';
@@ -19,6 +20,7 @@ export class CreateEnrollmentUseCase {
     private readonly enrollApplicationHandoffUseCase: EnrollApplicationHandoffUseCase,
     private readonly authRepository: AuthRepository,
     private readonly studentSeatLimitPolicy: StudentSeatLimitPolicyService,
+    private readonly studentPlacementCapacityPolicy: StudentPlacementCapacityPolicyService,
   ) {}
 
   async execute(command: CreateEnrollmentDto): Promise<EnrollmentResponseDto> {
@@ -39,6 +41,7 @@ export class CreateEnrollmentUseCase {
       enrollmentsRepository: this.enrollmentsRepository,
       authRepository: this.authRepository,
       studentSeatLimitPolicy: this.studentSeatLimitPolicy,
+      studentPlacementCapacityPolicy: this.studentPlacementCapacityPolicy,
       source: 'create',
     });
 

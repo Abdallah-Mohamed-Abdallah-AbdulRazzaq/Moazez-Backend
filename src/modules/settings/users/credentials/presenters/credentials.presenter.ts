@@ -1,4 +1,4 @@
-import { UserStatus, UserType } from '@prisma/client';
+import { UserType } from '@prisma/client';
 import {
   BulkCredentialPreviewResponseDto,
   BulkGenerateCredentialsResponseDto,
@@ -10,6 +10,7 @@ import {
   UserTypeApiValue,
 } from '../dto/credential.dto';
 import { CredentialMembershipRecord } from '../infrastructure/user-credentials.repository';
+export { isCredentialManageableStatus } from '../domain/credential-user-status.policy';
 
 export function presentCredentialStatus(
   membership: CredentialMembershipRecord,
@@ -141,8 +142,4 @@ export function presentBulkGeneratedCredentials(args: {
 
 export function presentUserType(userType: UserType): UserTypeApiValue {
   return userType.toLowerCase() as UserTypeApiValue;
-}
-
-export function isCredentialManageableStatus(status: UserStatus): boolean {
-  return status === UserStatus.ACTIVE || status === UserStatus.INVITED;
 }

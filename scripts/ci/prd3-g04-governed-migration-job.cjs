@@ -1144,7 +1144,13 @@ async function runLiveEvidence() {
     monitorConnections: true,
   });
   assert.equal(fresh.exitCode, 0);
-  assert.equal(resultEvent(fresh)?.status, 'migration_applied');
+  const freshResult = resultEvent(fresh);
+  assert.equal(freshResult?.status, 'migration_applied');
+  const expectedMigrationCount = freshResult?.migrationCount;
+  assert.ok(
+    Number.isSafeInteger(expectedMigrationCount) && expectedMigrationCount > 0,
+    'governed migration result must expose a positive migration count',
+  );
   assert.equal(countDatabaseCommandStarts(fresh), 4);
   assert.ok(stageStarted(fresh, 'migrate-status'));
   assert.ok(stageStarted(fresh, 'migrate-diff'));
@@ -1159,7 +1165,7 @@ async function runLiveEvidence() {
       'SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL',
     ),
   );
-  assert.equal(migrationCount, 7);
+  assert.equal(migrationCount, expectedMigrationCount);
   const checksumsBefore = queryScalar(
     freshDatabase,
     "SELECT string_agg(migration_name || ':' || checksum, E'\\n' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL",

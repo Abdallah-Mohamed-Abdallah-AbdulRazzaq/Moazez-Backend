@@ -9,6 +9,7 @@ import {
 } from '../dto/enrollment.dto';
 import { StudentEnrollmentStatusApiValue } from '../domain/enrollment-status.enums';
 import { ResolvedEnrollmentPlacement } from '../domain/enrollment-placement.service';
+import { StudentPlacementCapacityPolicyService } from '../domain/student-placement-capacity-policy.service';
 import {
   EnrollmentsRepository,
   EnrollmentRecord,
@@ -43,6 +44,7 @@ export async function createEnrollmentRecord(params: {
   enrollmentsRepository: EnrollmentsRepository;
   authRepository?: AuthRepository;
   studentSeatLimitPolicy?: StudentSeatLimitPolicyService;
+  studentPlacementCapacityPolicy: StudentPlacementCapacityPolicyService;
   source: 'create' | 'upsert';
 }): Promise<EnrollmentRecord> {
   const scope = requireStudentsScope();
@@ -56,6 +58,11 @@ export async function createEnrollmentRecord(params: {
         : 'enrollment_create',
     });
   }
+
+  await params.studentPlacementCapacityPolicy.assertCanPlace({
+    academicYearId: params.resolvedPlacement.academicYear.id,
+    classroom: params.resolvedPlacement.classroom,
+  });
 
   const enrollment = await params.enrollmentsRepository.createEnrollment({
     schoolId: scope.schoolId,

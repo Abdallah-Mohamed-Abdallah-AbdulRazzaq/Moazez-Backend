@@ -505,6 +505,33 @@ function resolveCallDeclaration(checker, call, sourceRoot) {
   ) ?? null;
 }
 
+function isTypeScriptStandardLibraryDeclaration(declaration) {
+  const sourceFile = declaration.getSourceFile();
+  const typescriptLibraryDirectory = path.dirname(require.resolve('typescript'));
+  return sourceFile.isDeclarationFile &&
+    /^lib\..+\.d\.ts$/u.test(path.basename(sourceFile.fileName)) &&
+    isPathWithinDirectory(sourceFile.fileName, typescriptLibraryDirectory);
+}
+
+function isStandardLibraryRegExpType(checker, receiver) {
+  const type = checker.getTypeAtLocation(receiver);
+  const constituentTypes = type.isUnionOrIntersection() ? type.types : [type];
+  return constituentTypes.length > 0 && constituentTypes.every((constituent) => {
+    const symbol = constituent.getSymbol();
+    const declarations = symbol?.getDeclarations() ?? [];
+    return symbol?.getName() === 'RegExp' &&
+      declarations.length > 0 &&
+      declarations.every(isTypeScriptStandardLibraryDeclaration);
+  });
+}
+
+function isKnownSynchronousIntrinsicCall(checker, call) {
+  if (!ts.isCallExpression(call) || !ts.isPropertyAccessExpression(call.expression)) return false;
+  if (call.expression.name.text !== 'test') return false;
+  const receiver = call.expression.expression;
+  return ts.isRegularExpressionLiteral(receiver) || isStandardLibraryRegExpType(checker, receiver);
+}
+
 function functionImplementation(declaration) {
   if (ts.isFunctionLike(declaration)) return declaration;
   if (
@@ -650,6 +677,8 @@ function analyzeCallback({ callback, ownerNode, source, checker, sourceRoot }) {
             } else if (!PURE_CALL_ROOTS.has(root) && awaited) {
               analysis.unresolvedCalls.push({ target, origin, reason: 'repository declaration has no resolvable implementation body' });
             }
+          } else if (isKnownSynchronousIntrinsicCall(checker, child)) {
+            // RegExp.prototype.test is a synchronous standard-library intrinsic.
           } else if (!PURE_CALL_ROOTS.has(root) && !PURE_METHODS.has(property) && awaited) {
             analysis.unresolvedCalls.push({ target, origin, reason: 'call target has no repository-local declaration' });
           }

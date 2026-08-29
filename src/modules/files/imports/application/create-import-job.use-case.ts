@@ -3,7 +3,6 @@ import { Injectable } from '@nestjs/common';
 import { FileVisibility, ImportJobStatus } from '@prisma/client';
 import { StorageService } from '../../../../infrastructure/storage/storage.service';
 import { BullmqService } from '../../../../infrastructure/queue/bullmq.service';
-import { ValidationDomainException } from '../../../../common/exceptions/domain-exception';
 import {
   buildSchoolFileObjectKey,
   normalizeOriginalFileName,
@@ -11,10 +10,6 @@ import {
 } from '../../uploads/domain/uploaded-file';
 import { RegisterFileMetadataUseCase } from '../../uploads/application/register-file-metadata.use-case';
 import { FilesRepository } from '../../uploads/infrastructure/files.repository';
-import {
-  FilesUploadMimeNotAllowedException,
-  FilesUploadSizeExceededException,
-} from '../../uploads/domain/file-upload.exceptions';
 import {
   CreateImportJobRequestDto,
   ImportJobStatusResponseDto,
@@ -25,10 +20,7 @@ import {
   toImportJobRecoveryReportJson,
   toImportJobReportJson,
 } from '../domain/import-job.report';
-import {
-  FILES_IMPORT_MAX_SIZE_BYTES,
-  isFilesImportMimeTypeAllowed,
-} from '../domain/import-upload.constraints';
+import { validateFilesImportUpload } from '../domain/import-upload.validator';
 import {
   FILES_IMPORT_QUEUE_NAME,
   FILES_IMPORT_RETRYABLE_ENQUEUE_CODE,
@@ -55,7 +47,7 @@ export class CreateImportJobUseCase {
   ): Promise<ImportJobStatusResponseDto> {
     const scope = requireImportsScope();
     const importType = normalizeImportJobType(command.type);
-    const uploadedFile = this.validateFile(file);
+    const uploadedFile = validateFilesImportUpload(file);
     const normalizedMimeType = uploadedFile.mimetype.trim().toLowerCase();
     const normalizedOriginalName = normalizeOriginalFileName(
       uploadedFile.originalname,
@@ -121,7 +113,7 @@ export class CreateImportJobUseCase {
         );
 
         return presentImportJobStatus(importJob);
-      } catch (error) {
+      } catch {
         const failedJob = await this.importJobsRepository.updateImportJob({
           importJobId: importJob.id,
           status: ImportJobStatus.FAILED,
@@ -151,32 +143,6 @@ export class CreateImportJobUseCase {
       }
       throw error;
     }
-  }
-
-  private validateFile(
-    file: UploadedMultipartFile | undefined,
-  ): UploadedMultipartFile {
-    if (!file || !Buffer.isBuffer(file.buffer)) {
-      throw new ValidationDomainException(
-        'A multipart file field named "file" is required',
-        { field: 'file' },
-      );
-    }
-
-    if (file.buffer.byteLength > FILES_IMPORT_MAX_SIZE_BYTES) {
-      throw new FilesUploadSizeExceededException({
-        maxSizeBytes: FILES_IMPORT_MAX_SIZE_BYTES,
-        actualSizeBytes: file.buffer.byteLength,
-      });
-    }
-
-    if (!isFilesImportMimeTypeAllowed(file.mimetype)) {
-      throw new FilesUploadMimeNotAllowedException({
-        mimeType: file.mimetype,
-      });
-    }
-
-    return file;
   }
 
   private async deleteStoredObjectQuietly(

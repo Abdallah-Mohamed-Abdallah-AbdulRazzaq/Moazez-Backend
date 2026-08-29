@@ -14,13 +14,24 @@ import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository
 import { StudentSeatLimitPolicyService } from '../../../platform-admin/application/student-seat-limit-policy.service';
 import { PlatformEntitlementStudentSeatLimitExceededException } from '../../../platform-admin/domain/platform-admin-errors';
 import { CreateEnrollmentUseCase } from '../application/create-enrollment.use-case';
+import { UpsertEnrollmentUseCase } from '../application/upsert-enrollment.use-case';
 import { ValidateEnrollmentUseCase } from '../application/validate-enrollment.use-case';
 import {
   StudentEnrollmentInactiveYearException,
   StudentEnrollmentPlacementConflictException,
 } from '../domain/enrollment.exceptions';
 import { EnrollmentPlacementService } from '../domain/enrollment-placement.service';
+import { StudentPlacementCapacityPolicyService } from '../domain/student-placement-capacity-policy.service';
 import { EnrollmentsRepository } from '../infrastructure/enrollments.repository';
+
+type AnyMethod = (...args: never[]) => unknown;
+
+function mockedMethod<T extends object, K extends keyof T>(
+  target: T,
+  key: K,
+): jest.MockedFunction<Extract<T[K], AnyMethod>> {
+  return target[key] as jest.MockedFunction<Extract<T[K], AnyMethod>>;
+}
 
 describe('Enrollments use cases', () => {
   async function withStudentsScope<T>(fn: () => Promise<T>): Promise<T> {
@@ -178,6 +189,9 @@ describe('Enrollments use cases', () => {
     const studentSeatLimitPolicy = {
       assertCanIncreaseActiveStudentSeats: jest.fn().mockResolvedValue({}),
     } as unknown as StudentSeatLimitPolicyService;
+    const studentPlacementCapacityPolicy = {
+      assertCanPlace: jest.fn().mockResolvedValue(undefined),
+    } as unknown as StudentPlacementCapacityPolicyService;
 
     const useCase = new CreateEnrollmentUseCase(
       enrollmentsRepository,
@@ -185,6 +199,7 @@ describe('Enrollments use cases', () => {
       enrollApplicationHandoffUseCase,
       authRepository,
       studentSeatLimitPolicy,
+      studentPlacementCapacityPolicy,
     );
 
     const result = await withStudentsScope(() =>
@@ -199,10 +214,10 @@ describe('Enrollments use cases', () => {
     );
 
     expect(
-      (placementService.resolvePlacement as jest.Mock).mock.calls[0][1],
+      mockedMethod(placementService, 'resolvePlacement').mock.calls[0][1],
     ).toEqual({ handoff: null });
     expect(
-      (enrollmentsRepository.createEnrollment as jest.Mock).mock.calls[0][0],
+      mockedMethod(enrollmentsRepository, 'createEnrollment').mock.calls[0][0],
     ).toMatchObject({
       schoolId: 'school-1',
       studentId: 'student-1',
@@ -212,7 +227,10 @@ describe('Enrollments use cases', () => {
       enrolledAt: new Date('2026-09-01T00:00:00.000Z'),
     });
     expect(
-      studentSeatLimitPolicy.assertCanIncreaseActiveStudentSeats,
+      mockedMethod(
+        studentSeatLimitPolicy,
+        'assertCanIncreaseActiveStudentSeats',
+      ),
     ).toHaveBeenCalledWith({
       schoolId: 'school-1',
       existingStudentId: 'student-1',
@@ -225,6 +243,12 @@ describe('Enrollments use cases', () => {
       (enrollmentsRepository.createEnrollment as jest.Mock).mock
         .invocationCallOrder[0],
     );
+    expect(
+      mockedMethod(studentPlacementCapacityPolicy, 'assertCanPlace'),
+    ).toHaveBeenCalledWith({
+      academicYearId: 'year-1',
+      classroom: buildPlacementResolution().classroom,
+    });
     expect(result).toEqual({
       enrollmentId: 'enrollment-1',
       studentId: 'student-1',
@@ -240,7 +264,7 @@ describe('Enrollments use cases', () => {
       status: 'active',
     });
     expect(
-      (authRepository.createAuditLog as jest.Mock).mock.calls[0][0],
+      mockedMethod(authRepository, 'createAuditLog').mock.calls[0][0],
     ).toMatchObject({
       action: 'students.enrollment.create',
       resourceType: 'enrollment',
@@ -277,6 +301,9 @@ describe('Enrollments use cases', () => {
     const studentSeatLimitPolicy = {
       assertCanIncreaseActiveStudentSeats: jest.fn().mockResolvedValue({}),
     } as unknown as StudentSeatLimitPolicyService;
+    const studentPlacementCapacityPolicy = {
+      assertCanPlace: jest.fn().mockResolvedValue(undefined),
+    } as unknown as StudentPlacementCapacityPolicyService;
 
     const useCase = new CreateEnrollmentUseCase(
       enrollmentsRepository,
@@ -284,6 +311,7 @@ describe('Enrollments use cases', () => {
       enrollApplicationHandoffUseCase,
       authRepository,
       studentSeatLimitPolicy,
+      studentPlacementCapacityPolicy,
     );
 
     await withStudentsScope(() =>
@@ -296,19 +324,22 @@ describe('Enrollments use cases', () => {
       }),
     );
 
-    expect(enrollApplicationHandoffUseCase.execute).toHaveBeenCalledWith(
-      'application-1',
-    );
     expect(
-      (placementService.resolvePlacement as jest.Mock).mock.calls[0][1],
-    ).toEqual({
-      handoff: expect.objectContaining({
+      mockedMethod(enrollApplicationHandoffUseCase, 'execute'),
+    ).toHaveBeenCalledWith('application-1');
+    expect(
+      mockedMethod(placementService, 'resolvePlacement').mock.calls[0][1],
+    ).toMatchObject({
+      handoff: {
         applicationId: 'application-1',
         eligible: true,
-      }),
+      },
     });
     expect(
-      studentSeatLimitPolicy.assertCanIncreaseActiveStudentSeats,
+      mockedMethod(
+        studentSeatLimitPolicy,
+        'assertCanIncreaseActiveStudentSeats',
+      ),
     ).toHaveBeenCalledWith({
       schoolId: 'school-1',
       existingStudentId: 'student-1',
@@ -337,6 +368,9 @@ describe('Enrollments use cases', () => {
         }),
       ),
     } as unknown as StudentSeatLimitPolicyService;
+    const studentPlacementCapacityPolicy = {
+      assertCanPlace: jest.fn().mockResolvedValue(undefined),
+    } as unknown as StudentPlacementCapacityPolicyService;
 
     const useCase = new CreateEnrollmentUseCase(
       enrollmentsRepository,
@@ -344,6 +378,7 @@ describe('Enrollments use cases', () => {
       enrollApplicationHandoffUseCase,
       { createAuditLog: jest.fn() } as never,
       studentSeatLimitPolicy,
+      studentPlacementCapacityPolicy,
     );
 
     await expect(
@@ -360,7 +395,77 @@ describe('Enrollments use cases', () => {
     ).rejects.toMatchObject({
       code: 'platform.entitlement.student_seat_limit_exceeded',
     });
-    expect(enrollmentsRepository.createEnrollment).not.toHaveBeenCalled();
+    expect(
+      mockedMethod(studentPlacementCapacityPolicy, 'assertCanPlace'),
+    ).not.toHaveBeenCalled();
+    expect(
+      mockedMethod(enrollmentsRepository, 'createEnrollment'),
+    ).not.toHaveBeenCalled();
+  });
+
+  it('blocks enrollment creation when the classroom is at capacity', async () => {
+    const resolvedPlacement = buildPlacementResolution();
+    const placementService = {
+      resolvePlacement: jest.fn().mockResolvedValue(resolvedPlacement),
+    } as unknown as EnrollmentPlacementService;
+    const enrollmentsRepository = {
+      createEnrollment: jest.fn(),
+    } as unknown as EnrollmentsRepository;
+    const enrollApplicationHandoffUseCase = {
+      execute: jest.fn(),
+    } as unknown as EnrollApplicationHandoffUseCase;
+    const authRepository = {
+      createAuditLog: jest.fn(),
+    } as unknown as AuthRepository;
+    const studentSeatLimitPolicy = {
+      assertCanIncreaseActiveStudentSeats: jest.fn().mockResolvedValue({}),
+    } as unknown as StudentSeatLimitPolicyService;
+    const studentPlacementCapacityPolicy = {
+      assertCanPlace: jest.fn().mockRejectedValue(
+        new StudentEnrollmentPlacementConflictException({
+          academicYearId: 'year-1',
+          classroomId: 'classroom-1',
+          capacity: 24,
+          activeCount: 24,
+        }),
+      ),
+    } as unknown as StudentPlacementCapacityPolicyService;
+
+    const useCase = new CreateEnrollmentUseCase(
+      enrollmentsRepository,
+      placementService,
+      enrollApplicationHandoffUseCase,
+      authRepository,
+      studentSeatLimitPolicy,
+      studentPlacementCapacityPolicy,
+    );
+
+    await expect(
+      withStudentsScope(() =>
+        useCase.execute({
+          studentId: 'student-1',
+          academicYearId: 'year-1',
+          gradeId: 'grade-1',
+          sectionId: 'section-1',
+          classroomId: 'classroom-1',
+          enrollmentDate: '2026-09-01',
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'students.enrollment.placement_conflict',
+    });
+    expect(
+      mockedMethod(studentPlacementCapacityPolicy, 'assertCanPlace'),
+    ).toHaveBeenCalledWith({
+      academicYearId: 'year-1',
+      classroom: resolvedPlacement.classroom,
+    });
+    expect(
+      mockedMethod(enrollmentsRepository, 'createEnrollment'),
+    ).not.toHaveBeenCalled();
+    expect(
+      mockedMethod(authRepository, 'createAuditLog'),
+    ).not.toHaveBeenCalled();
   });
 
   it('rejects duplicate active placement conflicts with the canonical code', async () => {
@@ -377,12 +482,16 @@ describe('Enrollments use cases', () => {
     const studentSeatLimitPolicy = {
       assertCanIncreaseActiveStudentSeats: jest.fn().mockResolvedValue({}),
     } as unknown as StudentSeatLimitPolicyService;
+    const studentPlacementCapacityPolicy = {
+      assertCanPlace: jest.fn().mockResolvedValue(undefined),
+    } as unknown as StudentPlacementCapacityPolicyService;
     const useCase = new CreateEnrollmentUseCase(
       {} as EnrollmentsRepository,
       placementService,
       enrollApplicationHandoffUseCase,
       { createAuditLog: jest.fn() } as never,
       studentSeatLimitPolicy,
+      studentPlacementCapacityPolicy,
     );
 
     await expect(
@@ -396,7 +505,243 @@ describe('Enrollments use cases', () => {
       ),
     ).rejects.toBeInstanceOf(StudentEnrollmentPlacementConflictException);
     expect(
-      studentSeatLimitPolicy.assertCanIncreaseActiveStudentSeats,
+      mockedMethod(
+        studentSeatLimitPolicy,
+        'assertCanIncreaseActiveStudentSeats',
+      ),
+    ).not.toHaveBeenCalled();
+    expect(
+      mockedMethod(studentPlacementCapacityPolicy, 'assertCanPlace'),
+    ).not.toHaveBeenCalled();
+  });
+
+  it('enforces classroom capacity on the Upsert create path', async () => {
+    const resolvedPlacement = buildPlacementResolution();
+    const placementService = {
+      resolvePlacement: jest.fn().mockResolvedValue(resolvedPlacement),
+    } as unknown as EnrollmentPlacementService;
+    const enrollmentsRepository = {
+      createEnrollment: jest.fn().mockResolvedValue(buildEnrollmentRecord()),
+    } as unknown as EnrollmentsRepository;
+    const enrollApplicationHandoffUseCase = {
+      execute: jest.fn(),
+    } as unknown as EnrollApplicationHandoffUseCase;
+    const authRepository = {
+      createAuditLog: jest.fn().mockResolvedValue(undefined),
+    } as unknown as AuthRepository;
+    const studentSeatLimitPolicy = {
+      assertCanIncreaseActiveStudentSeats: jest.fn().mockResolvedValue({}),
+    } as unknown as StudentSeatLimitPolicyService;
+    const studentPlacementCapacityPolicy = {
+      assertCanPlace: jest.fn().mockResolvedValue(undefined),
+    } as unknown as StudentPlacementCapacityPolicyService;
+
+    const useCase = new UpsertEnrollmentUseCase(
+      enrollmentsRepository,
+      placementService,
+      enrollApplicationHandoffUseCase,
+      authRepository,
+      studentSeatLimitPolicy,
+      studentPlacementCapacityPolicy,
+    );
+
+    await withStudentsScope(() =>
+      useCase.execute({
+        studentId: 'student-1',
+        academicYearId: 'year-1',
+        gradeId: 'grade-1',
+        sectionId: 'section-1',
+        classroomId: 'classroom-1',
+        enrollmentDate: '2026-09-01',
+      }),
+    );
+
+    expect(
+      mockedMethod(placementService, 'resolvePlacement'),
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({ studentId: 'student-1' }),
+      { handoff: null, allowMatchingActiveEnrollment: true },
+    );
+    expect(
+      mockedMethod(studentPlacementCapacityPolicy, 'assertCanPlace'),
+    ).toHaveBeenCalledWith({
+      academicYearId: 'year-1',
+      classroom: resolvedPlacement.classroom,
+    });
+    expect(
+      (studentPlacementCapacityPolicy.assertCanPlace as jest.Mock).mock
+        .invocationCallOrder[0],
+    ).toBeLessThan(
+      (enrollmentsRepository.createEnrollment as jest.Mock).mock
+        .invocationCallOrder[0],
+    );
+    expect(
+      mockedMethod(enrollmentsRepository, 'createEnrollment'),
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      mockedMethod(authRepository, 'createAuditLog').mock.calls[0][0],
+    ).toMatchObject({ after: { source: 'upsert' } });
+  });
+
+  it('returns an identical active Upsert placement without capacity-checking a full classroom', async () => {
+    const activeEnrollment = buildEnrollmentRecord();
+    const placementService = {
+      resolvePlacement: jest
+        .fn()
+        .mockResolvedValue(buildPlacementResolution({ activeEnrollment })),
+    } as unknown as EnrollmentPlacementService;
+    const enrollmentsRepository = {
+      createEnrollment: jest.fn(),
+    } as unknown as EnrollmentsRepository;
+    const enrollApplicationHandoffUseCase = {
+      execute: jest.fn(),
+    } as unknown as EnrollApplicationHandoffUseCase;
+    const authRepository = {
+      createAuditLog: jest.fn(),
+    } as unknown as AuthRepository;
+    const studentSeatLimitPolicy = {
+      assertCanIncreaseActiveStudentSeats: jest.fn(),
+    } as unknown as StudentSeatLimitPolicyService;
+    const studentPlacementCapacityPolicy = {
+      assertCanPlace: jest.fn().mockRejectedValue(
+        new StudentEnrollmentPlacementConflictException({
+          classroomId: 'classroom-1',
+          capacity: 24,
+          activeCount: 24,
+        }),
+      ),
+    } as unknown as StudentPlacementCapacityPolicyService;
+
+    const useCase = new UpsertEnrollmentUseCase(
+      enrollmentsRepository,
+      placementService,
+      enrollApplicationHandoffUseCase,
+      authRepository,
+      studentSeatLimitPolicy,
+      studentPlacementCapacityPolicy,
+    );
+
+    const result = await withStudentsScope(() =>
+      useCase.execute({
+        studentId: 'student-1',
+        academicYearId: 'year-1',
+        gradeId: 'grade-1',
+        sectionId: 'section-1',
+        classroomId: 'classroom-1',
+        enrollmentDate: '2026-09-01',
+      }),
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        enrollmentId: 'enrollment-1',
+        studentId: 'student-1',
+        classroomId: 'classroom-1',
+        status: 'active',
+      }),
+    );
+    expect(
+      mockedMethod(studentPlacementCapacityPolicy, 'assertCanPlace'),
+    ).not.toHaveBeenCalled();
+    expect(
+      mockedMethod(
+        studentSeatLimitPolicy,
+        'assertCanIncreaseActiveStudentSeats',
+      ),
+    ).not.toHaveBeenCalled();
+    expect(
+      mockedMethod(enrollmentsRepository, 'createEnrollment'),
+    ).not.toHaveBeenCalled();
+    expect(
+      mockedMethod(authRepository, 'createAuditLog'),
+    ).not.toHaveBeenCalled();
+  });
+
+  it('reports classroom capacity failure during validation without trusting an unrelated enrollment exclusion', async () => {
+    const placementService = {
+      resolvePlacement: jest.fn().mockResolvedValue(buildPlacementResolution()),
+    } as unknown as EnrollmentPlacementService;
+    const enrollmentsRepository = {
+      countActiveEnrollmentsInPlacement: jest.fn().mockResolvedValue(24),
+      createEnrollment: jest.fn(),
+    } as unknown as EnrollmentsRepository;
+    const studentPlacementCapacityPolicy =
+      new StudentPlacementCapacityPolicyService(enrollmentsRepository);
+    const validateUseCase = new ValidateEnrollmentUseCase(
+      placementService,
+      { execute: jest.fn() } as unknown as EnrollApplicationHandoffUseCase,
+      studentPlacementCapacityPolicy,
+    );
+
+    const result = await withStudentsScope(() =>
+      validateUseCase.execute({
+        studentId: 'student-1',
+        academicYearId: 'year-1',
+        gradeId: 'grade-1',
+        sectionId: 'section-1',
+        classroomId: 'classroom-1',
+        enrollmentDate: '2026-09-01',
+        enrollmentId: 'unrelated-enrollment',
+      }),
+    );
+
+    expect(result).toEqual({
+      valid: false,
+      errors: ['students.enrollment.placement_conflict'],
+    });
+    expect(
+      mockedMethod(enrollmentsRepository, 'countActiveEnrollmentsInPlacement'),
+    ).toHaveBeenCalledWith({
+      academicYearId: 'year-1',
+      classroomId: 'classroom-1',
+      excludeEnrollmentId: undefined,
+    });
+    expect(
+      mockedMethod(enrollmentsRepository, 'createEnrollment'),
+    ).not.toHaveBeenCalled();
+  });
+
+  it('preserves a verified current enrollment exclusion during validation', async () => {
+    const activeEnrollment = buildEnrollmentRecord();
+    const placementService = {
+      resolvePlacement: jest
+        .fn()
+        .mockResolvedValue(buildPlacementResolution({ activeEnrollment })),
+    } as unknown as EnrollmentPlacementService;
+    const enrollmentsRepository = {
+      countActiveEnrollmentsInPlacement: jest.fn().mockResolvedValue(23),
+      createEnrollment: jest.fn(),
+    } as unknown as EnrollmentsRepository;
+    const studentPlacementCapacityPolicy =
+      new StudentPlacementCapacityPolicyService(enrollmentsRepository);
+    const validateUseCase = new ValidateEnrollmentUseCase(
+      placementService,
+      { execute: jest.fn() } as unknown as EnrollApplicationHandoffUseCase,
+      studentPlacementCapacityPolicy,
+    );
+
+    const result = await withStudentsScope(() =>
+      validateUseCase.execute({
+        studentId: 'student-1',
+        academicYearId: 'year-1',
+        gradeId: 'grade-1',
+        sectionId: 'section-1',
+        classroomId: 'classroom-1',
+        enrollmentDate: '2026-09-01',
+        enrollmentId: activeEnrollment.id,
+      }),
+    );
+
+    expect(result).toEqual({ valid: true, errors: [] });
+    expect(
+      mockedMethod(enrollmentsRepository, 'countActiveEnrollmentsInPlacement'),
+    ).toHaveBeenCalledWith({
+      academicYearId: 'year-1',
+      classroomId: 'classroom-1',
+      excludeEnrollmentId: activeEnrollment.id,
+    });
+    expect(
+      mockedMethod(enrollmentsRepository, 'createEnrollment'),
     ).not.toHaveBeenCalled();
   });
 
@@ -408,9 +753,16 @@ describe('Enrollments use cases', () => {
         }),
       ),
     } as unknown as EnrollmentPlacementService;
-    const validateUseCase = new ValidateEnrollmentUseCase(placementService, {
-      execute: jest.fn(),
-    } as unknown as EnrollApplicationHandoffUseCase);
+    const studentPlacementCapacityPolicy = {
+      assertCanPlace: jest.fn().mockResolvedValue(undefined),
+    } as unknown as StudentPlacementCapacityPolicyService;
+    const validateUseCase = new ValidateEnrollmentUseCase(
+      placementService,
+      {
+        execute: jest.fn(),
+      } as unknown as EnrollApplicationHandoffUseCase,
+      studentPlacementCapacityPolicy,
+    );
 
     const result = await withStudentsScope(() =>
       validateUseCase.execute({
@@ -425,5 +777,8 @@ describe('Enrollments use cases', () => {
       valid: false,
       errors: ['students.enrollment.inactive_year'],
     });
+    expect(
+      mockedMethod(studentPlacementCapacityPolicy, 'assertCanPlace'),
+    ).not.toHaveBeenCalled();
   });
 });

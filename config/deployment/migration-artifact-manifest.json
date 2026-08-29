@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "prismaSchema": {
     "path": "prisma/schema.prisma",
-    "sha256": "fea4bb56470dd765ecf3c5c5b7b96f3f27545d79a852f4758983265e03b42376"
+    "sha256": "20944e3342f51d7562da527d480bb9f4b6de32eaa2ced3f61b45939eb50c48f7"
   },
   "prismaConfig": {
     "path": "prisma.config.ts",
@@ -15,7 +15,9 @@
     "20260718115332_teacher_directory_data_foundation",
     "20260720182221_membership_suspended_open_state",
     "20260721224852_lesson_content_publication_lifecycle",
-    "20260722160000_learning_media_runtime_upload_foundation"
+    "20260722160000_learning_media_runtime_upload_foundation",
+    "20260825152406_student_bulk_registration_domain",
+    "20260827101533_student_credential_batch_domain"
   ],
   "migrations": [
     {
@@ -52,7 +54,17 @@
       "directory": "20260722160000_learning_media_runtime_upload_foundation",
       "path": "prisma/migrations/20260722160000_learning_media_runtime_upload_foundation/migration.sql",
       "sha256": "56ca9dce071d8f880920b758bd2a1ea2ce3b87d522de2f602de2525443a8f32d"
+    },
+    {
+      "directory": "20260825152406_student_bulk_registration_domain",
+      "path": "prisma/migrations/20260825152406_student_bulk_registration_domain/migration.sql",
+      "sha256": "252a12a8c53efbc350dbe6e0a24e4f81968e54e6cd26f83e442431a8c7fc3131"
+    },
+    {
+      "directory": "20260827101533_student_credential_batch_domain",
+      "path": "prisma/migrations/20260827101533_student_credential_batch_domain/migration.sql",
+      "sha256": "7515b7eaeb089b8a8a9007c166307894b52db78cd9d94671e6d8fe39761d70f8"
     }
   ],
-  "aggregateMigrationChainSha256": "6e3677489a5bf6b3524fe3684ca6d1bc1baa4b9cb97458b403042357c21df3ab"
+  "aggregateMigrationChainSha256": "72e3ff637c71b235205ca517857d425a7735dcca67f865084e70efb2b621931c"
 }

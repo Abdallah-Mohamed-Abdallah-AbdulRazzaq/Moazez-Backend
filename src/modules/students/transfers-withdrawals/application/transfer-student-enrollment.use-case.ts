@@ -3,6 +3,7 @@ import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository
 import { StudentsRepository } from '../../students/infrastructure/students.repository';
 import { StudentEnrollmentPlacementConflictException } from '../../enrollments/domain/enrollment.exceptions';
 import { EnrollmentPlacementService } from '../../enrollments/domain/enrollment-placement.service';
+import { StudentPlacementCapacityPolicyService } from '../../enrollments/domain/student-placement-capacity-policy.service';
 import { EnrollmentsRepository } from '../../enrollments/infrastructure/enrollments.repository';
 import {
   EnrollmentMovementResponseDto,
@@ -11,7 +12,6 @@ import {
 import { StudentEnrollmentAlreadyWithdrawnException } from '../domain/lifecycle.exceptions';
 import { presentEnrollmentMovement } from '../presenters/enrollment-lifecycle.presenter';
 import {
-  assertPlacementCapacity,
   assertPlacementChanged,
   normalizeOptionalText,
   requireStudentWithActiveEnrollment,
@@ -26,6 +26,7 @@ export class TransferStudentEnrollmentUseCase {
     private readonly studentsRepository: StudentsRepository,
     private readonly enrollmentPlacementService: EnrollmentPlacementService,
     private readonly authRepository: AuthRepository,
+    private readonly studentPlacementCapacityPolicy: StudentPlacementCapacityPolicyService,
   ) {}
 
   async execute(
@@ -66,10 +67,10 @@ export class TransferStudentEnrollmentUseCase {
       });
     }
 
-    await assertPlacementCapacity({
-      enrollmentsRepository: this.enrollmentsRepository,
+    await this.studentPlacementCapacityPolicy.assertCanPlace({
       academicYearId: resolvedPlacement.academicYear.id,
       classroom: resolvedPlacement.classroom,
+      excludeEnrollmentId: activeEnrollment.id,
     });
 
     const transition =

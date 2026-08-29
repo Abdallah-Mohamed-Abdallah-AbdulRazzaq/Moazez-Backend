@@ -8,6 +8,7 @@ import { ProfileCorrectionRequestsModule } from './profile-correction-requests/p
 import { RegistrationModule } from './registration/registration.module';
 import { StudentsRecordsModule } from './students/students.module';
 import { TransfersWithdrawalsModule } from './transfers-withdrawals/transfers-withdrawals.module';
+import { StudentCredentialsModule } from './credentials/credentials.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { TransfersWithdrawalsModule } from './transfers-withdrawals/transfers-wi
     ProfileCorrectionRequestsModule,
     RegistrationModule,
     TransfersWithdrawalsModule,
+    StudentCredentialsModule,
   ],
 })
 export class StudentsModule {}

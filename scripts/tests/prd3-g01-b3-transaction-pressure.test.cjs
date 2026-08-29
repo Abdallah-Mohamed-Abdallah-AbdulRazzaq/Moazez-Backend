@@ -307,6 +307,125 @@ test('returned Promises are treated as waits across direct, aggregate, helper, c
   });
 });
 
+test('direct RegExp literal test is recognized as a synchronous intrinsic', () => {
+  withFixture(`
+    function isUuid(value: string): boolean {
+      return /^[0-9a-f-]+$/iu.test(value);
+    }
+
+    class Sample {
+      constructor(private prisma: any) {}
+      run() {
+        return this.prisma.$transaction(
+          async (tx: any) => {
+            if (!isUuid('00000000-0000-4000-8000-000000000001')) throw new Error('invalid');
+            return await tx.user.findFirst({ where: { id: 'one' } });
+          },
+          { isolationLevel: 'Serializable' },
+        );
+      }
+    }
+  `, (rows) => {
+    assert.equal(rows.length, 1);
+    assert.deepEqual(rows[0].unresolvedCalls, []);
+    assert.ok(rows[0].databaseCalls.some((item) => item.target === 'tx.user.findFirst'));
+    assert.equal(rows[0].classification, 'SERIALIZABLE_CONFLICT_SENSITIVE');
+  });
+});
+
+test('typed RegExp variable test is recognized through the standard-library declaration', () => {
+  withFixture(`
+    const UUID_PATTERN: RegExp = /^[0-9a-f-]+$/iu;
+
+    function isUuid(value: string): boolean {
+      return UUID_PATTERN.test(value);
+    }
+
+    class Sample {
+      constructor(private prisma: any) {}
+      run() {
+        return this.prisma.$transaction(
+          async (tx: any) => {
+            if (!isUuid('00000000-0000-4000-8000-000000000001')) throw new Error('invalid');
+            return await tx.user.findFirst({ where: { id: 'one' } });
+          },
+          { isolationLevel: 'Serializable' },
+        );
+      }
+    }
+  `, (rows) => {
+    assert.equal(rows.length, 1);
+    assert.deepEqual(rows[0].unresolvedCalls, []);
+    assert.equal(rows[0].classification, 'SERIALIZABLE_CONFLICT_SENSITIVE');
+  });
+});
+
+test('arbitrary object test remains unresolved and fails closed', () => {
+  withFixture(`
+    interface ExternalValidator {
+      test(value: string): Promise<boolean>;
+    }
+
+    class Sample {
+      constructor(private prisma: any, private validator: ExternalValidator) {}
+      run() {
+        return this.prisma.$transaction(async (tx: any) => {
+          await this.validator.test('value');
+          return await tx.user.findFirst({ where: { id: 'one' } });
+        });
+      }
+    }
+  `, (rows) => {
+    assert.equal(rows.length, 1);
+    assert.deepEqual(rows[0].unresolvedCalls.map((item) => item.target), ['this.validator.test']);
+    assert.throws(
+      () => validateInventory([{ ...rows[0], runtimeRole: 'test-only', runtimeRoles: ['test-only'] }]),
+      /unresolved calls/u,
+    );
+  });
+});
+
+test('custom RegExp-like test is resolved as application code rather than trusted as an intrinsic', () => {
+  withFixture(`
+    class RegexLike {
+      test(value: string): boolean {
+        return Boolean(value);
+      }
+    }
+
+    class Sample {
+      constructor(private prisma: any, private validator: RegexLike) {}
+      run() {
+        return this.prisma.$transaction(
+          async (tx: any) => {
+            if (!this.validator.test('value')) throw new Error('invalid');
+            return await tx.user.findFirst({ where: { id: 'one' } });
+          },
+          { isolationLevel: 'Serializable' },
+        );
+      }
+    }
+  `, (rows) => {
+    assert.equal(rows.length, 1);
+    assert.deepEqual(rows[0].unresolvedCalls, []);
+    assert.ok(rows[0].resolvedHelpers.some((item) => item.endsWith('#test')));
+    assert.equal(rows[0].classification, 'SERIALIZABLE_CONFLICT_SENSITIVE');
+  });
+});
+
+test('Stage 5 row provisioning transaction remains Serializable and fully resolved', () => {
+  const row = INVENTORY.find((item) =>
+    item.path === 'src/modules/students/registration/infrastructure/student-bulk-registration-execution.repository.ts'
+    && item.entryOwner === 'StudentBulkRegistrationExecutionRepository.provisionRow',
+  );
+
+  assert.ok(row);
+  assert.equal(row.classification, 'SERIALIZABLE_CONFLICT_SENSITIVE');
+  assert.match(row.isolation, /Serializable/u);
+  assert.equal(row.externalWaitInsideTransaction, false);
+  assert.deepEqual(row.unresolvedCalls, []);
+});
+
 test('runtime ownership uses reviewed overrides instead of filename guessing', () => {
   const result = resolveRuntimeRole('src/example.ts', new Set(['api']), [{ path: 'src/example.ts', role: 'media-worker', reason: 'registered consumer', evidence: 'MediaWorkerModule provider wiring' }]);
   assert.equal(result.role, 'media-worker');

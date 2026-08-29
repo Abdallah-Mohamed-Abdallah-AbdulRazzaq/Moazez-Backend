@@ -68,4 +68,23 @@ export class LoginIdentityRepository {
       },
     });
   }
+
+  async findUsersByLoginEmails(
+    loginEmails: readonly string[],
+  ): Promise<Array<{ id: string; email: string }>> {
+    const uniqueEmails = [...new Set(loginEmails)];
+    const users: Array<{ id: string; email: string }> = [];
+    for (let index = 0; index < uniqueEmails.length; index += 500) {
+      users.push(
+        ...(await this.prisma.user.findMany({
+          where: {
+            email: { in: uniqueEmails.slice(index, index + 500) },
+            deletedAt: null,
+          },
+          select: { id: true, email: true },
+        })),
+      );
+    }
+    return users;
+  }
 }

@@ -1,6 +1,9 @@
 import { HttpStatus } from '@nestjs/common';
 import { StudentEnrollmentStatus, StudentStatus } from '@prisma/client';
-import { StudentSeatLimitPolicyService } from '../application/student-seat-limit-policy.service';
+import {
+  assertStudentSeatLimitSnapshot,
+  StudentSeatLimitPolicyService,
+} from '../application/student-seat-limit-policy.service';
 import { PlatformEntitlementStudentSeatLimitExceededException } from '../domain/platform-admin-errors';
 import { StudentSeatLimitPolicyRepository } from '../infrastructure/student-seat-limit-policy.repository';
 
@@ -161,6 +164,29 @@ describe('StudentSeatLimitPolicyService', () => {
     ]) {
       expect(serialized).not.toContain(forbidden);
     }
+  });
+
+  it('exposes the same pure seat decision for Serializable provisioning', () => {
+    expect(
+      assertStudentSeatLimitSnapshot({
+        schoolId: 'school-1',
+        reason: 'bulk_registration_execution',
+        limit: 2,
+        used: 1,
+        incrementBy: 1,
+        existingStudentHasSeat: false,
+      }),
+    ).toMatchObject({ allowed: true, incrementBy: 1 });
+    expect(() =>
+      assertStudentSeatLimitSnapshot({
+        schoolId: 'school-1',
+        reason: 'bulk_registration_execution',
+        limit: 1,
+        used: 1,
+        incrementBy: 1,
+        existingStudentHasSeat: false,
+      }),
+    ).toThrow(PlatformEntitlementStudentSeatLimitExceededException);
   });
 });
 

@@ -4,7 +4,7 @@ import { getRequestContext } from '../../common/context/request-context';
 // Models explicitly EXCLUDED from automatic school scoping.
 // Platform-level models, append-only logs, raw auth tokens, and catalogs
 // must not have schoolId injected into their queries.
-const EXCLUDED_FROM_SCHOOL_SCOPE = new Set<string>([
+export const EXCLUDED_FROM_SCHOOL_SCOPE = new Set<string>([
   'Organization',
   'School',
   'Permission',
@@ -53,6 +53,10 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
   'Guardian',
   'StudentGuardian',
   'Enrollment',
+  'StudentBulkRegistrationBatch',
+  'StudentBulkRegistrationRow',
+  'StudentCredentialBatch',
+  'StudentCredentialRow',
   'StudentDocument',
   'StudentMedicalProfile',
   'StudentNote',

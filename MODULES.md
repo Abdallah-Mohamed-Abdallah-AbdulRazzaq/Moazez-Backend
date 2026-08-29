@@ -76,6 +76,16 @@ lifecycle behavior remain deferred.
 - medical
 - notes
 - transfers-withdrawals
+- registration
+- credentials
+
+`registration` owns school-scoped student intake, including the durable CSV
+bulk-registration batch and row lifecycle, asynchronous validation, atomic
+student/account/enrollment provisioning, and bounded execution recovery.
+`credentials` owns school-scoped credential-batch audience selection,
+asynchronous credential rotation, private temporary-secret artifacts, secure
+CSV export, and artifact expiry/cleanup. Generic file APIs do not expose
+credential secret artifacts.
 
 ## Attendance
 

@@ -434,6 +434,70 @@ enum StudentEnrollmentStatus {
   @@map("student_enrollment_status")
 }
 
+enum StudentBulkRegistrationBatchStatus {
+  UPLOADED
+  VALIDATING
+  VALIDATION_FAILED
+  READY
+  EXECUTING
+  EXECUTION_PARTIAL_FAILED
+  FAILED
+  COMPLETED
+
+  @@map("student_bulk_registration_batch_status")
+}
+
+enum StudentBulkRegistrationRowStatus {
+  PENDING
+  VALID
+  INVALID
+  PROCESSING
+  CREATED
+  FAILED
+
+  @@map("student_bulk_registration_row_status")
+}
+
+enum StudentCredentialAudienceMode {
+  IMPORT_BATCH
+  SELECTED_STUDENTS
+  ACADEMIC_YEAR
+  STAGE
+  GRADE
+  SECTION
+  CLASSROOM
+  MISSING_PASSWORD
+
+  @@map("student_credential_audience_mode")
+}
+
+enum StudentCredentialMode {
+  UNIQUE_GENERATED
+  SHARED_TEMPORARY
+
+  @@map("student_credential_mode")
+}
+
+enum StudentCredentialBatchStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  PARTIAL_FAILED
+  FAILED
+
+  @@map("student_credential_batch_status")
+}
+
+enum StudentCredentialRowStatus {
+  PENDING
+  PROCESSING
+  GENERATED
+  SKIPPED
+  FAILED
+
+  @@map("student_credential_row_status")
+}
+
 enum StudentDocumentStatus {
   COMPLETE
   MISSING
@@ -1271,6 +1335,8 @@ model Organization {
   admissionRequiredDocuments         AdmissionRequiredDocument[]
   admissionWorkflowPolicies          AdmissionWorkflowPolicy[]
   students                           Student[]
+  studentBulkRegistrationBatches     StudentBulkRegistrationBatch[]
+  studentCredentialBatches           StudentCredentialBatch[]
   studentProfileCorrectionRequests   StudentProfileCorrectionRequest[]
   guardians                          Guardian[]
 
@@ -1354,6 +1420,10 @@ model School {
   guardians                             Guardian[]
   studentGuardians                      StudentGuardian[]
   enrollments                           Enrollment[]
+  studentBulkRegistrationBatches        StudentBulkRegistrationBatch[]
+  studentBulkRegistrationRows           StudentBulkRegistrationRow[]
+  studentCredentialBatches              StudentCredentialBatch[]
+  studentCredentialRows                 StudentCredentialRow[]
   studentDocuments                      StudentDocument[]
   studentProfileCorrectionRequests      StudentProfileCorrectionRequest[]
   studentMedicalProfiles                StudentMedicalProfile[]
@@ -1522,6 +1592,10 @@ model User {
   backupJobsCreated                              BackupJob[]                            @relation("BackupJobCreatedBy")
   attachmentsCreated                             Attachment[]                           @relation("AttachmentCreatedBy")
   importJobsCreated                              ImportJob[]                            @relation("ImportJobCreatedBy")
+  studentBulkRegistrationBatchesCreated          StudentBulkRegistrationBatch[]         @relation("StudentBulkRegistrationBatchCreatedBy")
+  studentBulkRegistrationRows                    StudentBulkRegistrationRow[]           @relation("StudentBulkRegistrationRowUser")
+  studentCredentialBatchesCreated                StudentCredentialBatch[]               @relation("StudentCredentialBatchCreatedBy")
+  studentCredentialRows                          StudentCredentialRow[]                 @relation("StudentCredentialRowUser")
   ownedLeads                                     Lead[]                                 @relation("LeadOwner")
   admissionInterviews                            Interview[]                            @relation("AdmissionInterviewInterviewer")
   admissionDecisionsCreated                      AdmissionDecision[]                    @relation("AdmissionDecisionDecidedBy")
@@ -2669,37 +2743,39 @@ model AcademicYear {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school                     School                      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  terms                      Term[]
-  requestedApplications      Application[]
-  applicantAdmissionRequests ApplicantAdmissionRequest[]
-  enrollments                Enrollment[]
-  attendancePolicies         AttendancePolicy[]
-  attendanceSessions         AttendanceSession[]
-  attendanceExcuseRequests   AttendanceExcuseRequest[]
-  gradeAssessments           GradeAssessment[]
-  gradeRules                 GradeRule[]
-  homeworkAssignments        HomeworkAssignment[]
-  academicCalendarEvents     AcademicCalendarEvent[]
-  subjectAllocations         SubjectAllocation[]
-  curricula                  Curriculum[]
-  lessonPlans                LessonPlan[]
-  reinforcementTasks         ReinforcementTask[]
-  reinforcementAssignments   ReinforcementAssignment[]
-  reinforcementTaskTemplates ReinforcementTaskTemplate[]
-  xpPolicies                 XpPolicy[]
-  xpLedgers                  XpLedger[]
-  heroMissions               HeroMission[]
-  heroMissionProgress        HeroMissionProgress[]
-  rewardCatalogItems         RewardCatalogItem[]
-  rewardRedemptions          RewardRedemption[]
-  behaviorRecords            BehaviorRecord[]
-  behaviorPointLedgerEntries BehaviorPointLedger[]
-  communicationConversations CommunicationConversation[]
-  timetableConfigs           TimetableConfig[]
-  timetableEntries           TimetableEntry[]
-  timetablePublications      TimetablePublication[]
-  timetableConflicts         TimetableConflict[]
+  school                         School                         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  terms                          Term[]
+  requestedApplications          Application[]
+  applicantAdmissionRequests     ApplicantAdmissionRequest[]
+  enrollments                    Enrollment[]
+  studentBulkRegistrationBatches StudentBulkRegistrationBatch[]
+  studentCredentialBatches       StudentCredentialBatch[]
+  attendancePolicies             AttendancePolicy[]
+  attendanceSessions             AttendanceSession[]
+  attendanceExcuseRequests       AttendanceExcuseRequest[]
+  gradeAssessments               GradeAssessment[]
+  gradeRules                     GradeRule[]
+  homeworkAssignments            HomeworkAssignment[]
+  academicCalendarEvents         AcademicCalendarEvent[]
+  subjectAllocations             SubjectAllocation[]
+  curricula                      Curriculum[]
+  lessonPlans                    LessonPlan[]
+  reinforcementTasks             ReinforcementTask[]
+  reinforcementAssignments       ReinforcementAssignment[]
+  reinforcementTaskTemplates     ReinforcementTaskTemplate[]
+  xpPolicies                     XpPolicy[]
+  xpLedgers                      XpLedger[]
+  heroMissions                   HeroMission[]
+  heroMissionProgress            HeroMissionProgress[]
+  rewardCatalogItems             RewardCatalogItem[]
+  rewardRedemptions              RewardRedemption[]
+  behaviorRecords                BehaviorRecord[]
+  behaviorPointLedgerEntries     BehaviorPointLedger[]
+  communicationConversations     CommunicationConversation[]
+  timetableConfigs               TimetableConfig[]
+  timetableEntries               TimetableEntry[]
+  timetablePublications          TimetablePublication[]
+  timetableConflicts             TimetableConflict[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, nameAr])
@@ -2724,38 +2800,39 @@ model Term {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school                     School                      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  academicYear               AcademicYear                @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  subjectAllocations         SubjectAllocation[]
-  teacherSubjectAllocations  TeacherSubjectAllocation[]
-  enrollments                Enrollment[]
-  attendancePolicies         AttendancePolicy[]
-  attendanceSessions         AttendanceSession[]
-  attendanceExcuseRequests   AttendanceExcuseRequest[]
-  gradeAssessments           GradeAssessment[]
-  gradeSubmissions           GradeSubmission[]
-  gradeItems                 GradeItem[]
-  gradeRules                 GradeRule[]
-  homeworkAssignments        HomeworkAssignment[]
-  academicCalendarEvents     AcademicCalendarEvent[]
-  curricula                  Curriculum[]
-  lessonPlans                LessonPlan[]
-  reinforcementTasks         ReinforcementTask[]
-  reinforcementAssignments   ReinforcementAssignment[]
-  reinforcementTaskTemplates ReinforcementTaskTemplate[]
-  xpPolicies                 XpPolicy[]
-  xpLedgers                  XpLedger[]
-  heroMissions               HeroMission[]
-  heroMissionProgress        HeroMissionProgress[]
-  rewardCatalogItems         RewardCatalogItem[]
-  rewardRedemptions          RewardRedemption[]
-  behaviorRecords            BehaviorRecord[]
-  behaviorPointLedgerEntries BehaviorPointLedger[]
-  communicationConversations CommunicationConversation[]
-  timetableConfigs           TimetableConfig[]
-  timetableEntries           TimetableEntry[]
-  timetablePublications      TimetablePublication[]
-  timetableConflicts         TimetableConflict[]
+  school                         School                         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear                   AcademicYear                   @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  subjectAllocations             SubjectAllocation[]
+  teacherSubjectAllocations      TeacherSubjectAllocation[]
+  enrollments                    Enrollment[]
+  studentBulkRegistrationBatches StudentBulkRegistrationBatch[]
+  attendancePolicies             AttendancePolicy[]
+  attendanceSessions             AttendanceSession[]
+  attendanceExcuseRequests       AttendanceExcuseRequest[]
+  gradeAssessments               GradeAssessment[]
+  gradeSubmissions               GradeSubmission[]
+  gradeItems                     GradeItem[]
+  gradeRules                     GradeRule[]
+  homeworkAssignments            HomeworkAssignment[]
+  academicCalendarEvents         AcademicCalendarEvent[]
+  curricula                      Curriculum[]
+  lessonPlans                    LessonPlan[]
+  reinforcementTasks             ReinforcementTask[]
+  reinforcementAssignments       ReinforcementAssignment[]
+  reinforcementTaskTemplates     ReinforcementTaskTemplate[]
+  xpPolicies                     XpPolicy[]
+  xpLedgers                      XpLedger[]
+  heroMissions                   HeroMission[]
+  heroMissionProgress            HeroMissionProgress[]
+  rewardCatalogItems             RewardCatalogItem[]
+  rewardRedemptions              RewardRedemption[]
+  behaviorRecords                BehaviorRecord[]
+  behaviorPointLedgerEntries     BehaviorPointLedger[]
+  communicationConversations     CommunicationConversation[]
+  timetableConfigs               TimetableConfig[]
+  timetableEntries               TimetableEntry[]
+  timetablePublications          TimetablePublication[]
+  timetableConflicts             TimetableConflict[]
 
   @@unique([id, schoolId])
   @@unique([academicYearId, nameAr])
@@ -2789,6 +2866,7 @@ model Stage {
   communicationConversations         CommunicationConversation[]
   communicationAnnouncementAudiences CommunicationAnnouncementAudience[]
   dismissalStaffAssignments          DismissalStaffAssignment[]
+  studentCredentialBatches           StudentCredentialBatch[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, nameAr])
@@ -2830,6 +2908,7 @@ model Grade {
   timetableConfigs                   TimetableConfig[]
   timetableEntries                   TimetableEntry[]
   dismissalStaffAssignments          DismissalStaffAssignment[]
+  studentCredentialBatches           StudentCredentialBatch[]
 
   @@unique([id, schoolId])
   @@unique([stageId, nameAr])
@@ -2866,6 +2945,7 @@ model Section {
   timetableConfigs                   TimetableConfig[]
   timetableEntries                   TimetableEntry[]
   dismissalStaffAssignments          DismissalStaffAssignment[]
+  studentCredentialBatches           StudentCredentialBatch[]
 
   @@unique([id, schoolId])
   @@unique([gradeId, nameAr])
@@ -2896,6 +2976,8 @@ model Classroom {
   teacherSubjectAllocations          TeacherSubjectAllocation[]
   lessonPlans                        LessonPlan[]
   enrollments                        Enrollment[]
+  studentBulkRegistrationBatches     StudentBulkRegistrationBatch[]
+  studentCredentialBatches           StudentCredentialBatch[]
   attendancePolicies                 AttendancePolicy[]
   attendanceSessions                 AttendanceSession[]
   gradeAssessments                   GradeAssessment[]
@@ -3652,6 +3734,8 @@ model Student {
   avatarFile                         File?                               @relation("StudentAvatarFile", fields: [avatarFileId], references: [id], onDelete: SetNull)
   guardians                          StudentGuardian[]
   enrollments                        Enrollment[]
+  bulkRegistrationRows               StudentBulkRegistrationRow[]
+  credentialRows                     StudentCredentialRow[]
   dismissalRequests                  DismissalRequest[]
   documents                          StudentDocument[]
   profileCorrectionRequests          StudentProfileCorrectionRequest[]
@@ -3764,11 +3848,11 @@ model Enrollment {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school                     School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  student                    Student                   @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  academicYear               AcademicYear              @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  term                       Term?                     @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  classroom                  Classroom                 @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  school                     School                       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  student                    Student                      @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  academicYear               AcademicYear                 @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term                       Term?                        @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom                  Classroom                    @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
   dismissalRequests          DismissalRequest[]
   attendanceEntries          AttendanceEntry[]
   gradeItems                 GradeItem[]
@@ -3783,6 +3867,7 @@ model Enrollment {
   behaviorPointLedgerEntries BehaviorPointLedger[]
   homeworkTargets            HomeworkTarget[]
   homeworkSubmissions        HomeworkSubmission[]
+  bulkRegistrationRows       StudentBulkRegistrationRow[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -3794,6 +3879,165 @@ model Enrollment {
   @@index([schoolId, academicYearId, termId, status])
   @@index([deletedAt])
   @@map("student_enrollments")
+}
+
+model StudentBulkRegistrationBatch {
+  id                String                             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String                             @map("school_id") @db.Uuid
+  organizationId    String                             @map("organization_id") @db.Uuid
+  sourceImportJobId String                             @map("source_import_job_id") @db.Uuid
+  academicYearId    String                             @map("academic_year_id") @db.Uuid
+  termId            String?                            @map("term_id") @db.Uuid
+  classroomId       String                             @map("classroom_id") @db.Uuid
+  enrollmentDate    DateTime                           @map("enrollment_date") @db.Date
+  templateVersion   Int                                @default(1) @map("template_version")
+  status            StudentBulkRegistrationBatchStatus @default(UPLOADED)
+  totalRows         Int                                @default(0) @map("total_rows")
+  validRows         Int                                @default(0) @map("valid_rows")
+  invalidRows       Int                                @default(0) @map("invalid_rows")
+  createdRows       Int                                @default(0) @map("created_rows")
+  failedRows        Int                                @default(0) @map("failed_rows")
+  createdById       String                             @map("created_by_id") @db.Uuid
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  validatedAt DateTime? @map("validated_at")
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+
+  school            School                       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  organization      Organization                 @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  sourceImportJob   ImportJob                    @relation("StudentBulkRegistrationBatchSourceImportJob", fields: [sourceImportJobId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  academicYear      AcademicYear                 @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term              Term?                        @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom         Classroom                    @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  createdBy         User                         @relation("StudentBulkRegistrationBatchCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  rows              StudentBulkRegistrationRow[]
+  credentialBatches StudentCredentialBatch[]     @relation("StudentCredentialBatchSourceRegistrationBatch")
+
+  @@unique([id, schoolId], map: "student_bulk_batches_id_school_key")
+  @@unique([sourceImportJobId, schoolId], map: "student_bulk_batches_source_import_job_key")
+  @@index([schoolId, status, createdAt(sort: Desc)], map: "student_bulk_batches_school_status_created_idx")
+  @@index([schoolId, academicYearId, classroomId], map: "student_bulk_batches_school_year_classroom_idx")
+  @@index([organizationId], map: "student_bulk_batches_organization_idx")
+  @@index([termId], map: "student_bulk_batches_term_idx")
+  @@index([classroomId], map: "student_bulk_batches_classroom_idx")
+  @@index([createdById], map: "student_bulk_batches_created_by_idx")
+  @@map("student_bulk_registration_batches")
+}
+
+model StudentBulkRegistrationRow {
+  id                 String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId           String                           @map("school_id") @db.Uuid
+  batchId            String                           @map("batch_id") @db.Uuid
+  rowNumber          Int                              @map("row_number")
+  normalizedDataJson Json                             @map("normalized_data_json")
+  rowHash            String                           @map("row_hash")
+  status             StudentBulkRegistrationRowStatus @default(PENDING)
+  errorsJson         Json?                            @map("errors_json")
+  studentId          String?                          @map("student_id") @db.Uuid
+  userId             String?                          @map("user_id") @db.Uuid
+  enrollmentId       String?                          @map("enrollment_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school     School                       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  batch      StudentBulkRegistrationBatch @relation(fields: [batchId, schoolId], references: [id, schoolId], onDelete: Cascade)
+  student    Student?                     @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  user       User?                        @relation("StudentBulkRegistrationRowUser", fields: [userId], references: [id], onDelete: Restrict)
+  enrollment Enrollment?                  @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([batchId, rowNumber], map: "student_bulk_rows_batch_row_number_key")
+  @@index([schoolId, batchId, status], map: "student_bulk_rows_school_batch_status_idx")
+  @@index([batchId, rowHash], map: "student_bulk_rows_batch_hash_idx")
+  @@index([studentId], map: "student_bulk_rows_student_idx")
+  @@index([userId], map: "student_bulk_rows_user_idx")
+  @@index([enrollmentId], map: "student_bulk_rows_enrollment_idx")
+  @@map("student_bulk_registration_rows")
+}
+
+model StudentCredentialBatch {
+  id                        String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                  String                        @map("school_id") @db.Uuid
+  organizationId            String                        @map("organization_id") @db.Uuid
+  audienceMode              StudentCredentialAudienceMode @map("audience_mode")
+  credentialMode            StudentCredentialMode         @map("credential_mode")
+  sourceRegistrationBatchId String?                       @map("source_registration_batch_id") @db.Uuid
+  academicYearId            String?                       @map("academic_year_id") @db.Uuid
+  stageId                   String?                       @map("stage_id") @db.Uuid
+  gradeId                   String?                       @map("grade_id") @db.Uuid
+  sectionId                 String?                       @map("section_id") @db.Uuid
+  classroomId               String?                       @map("classroom_id") @db.Uuid
+  secretArtifactFileId      String?                       @unique(map: "student_credential_batches_secret_file_key") @map("secret_artifact_file_id") @db.Uuid
+  secretArtifactVersion     Int?                          @map("secret_artifact_version")
+  secretArtifactStagedAt    DateTime?                     @map("secret_artifact_staged_at")
+  secretArtifactExpiresAt   DateTime?                     @map("secret_artifact_expires_at")
+  status                    StudentCredentialBatchStatus  @default(PENDING)
+  totalRows                 Int                           @default(0) @map("total_rows")
+  generatedRows             Int                           @default(0) @map("generated_rows")
+  skippedRows               Int                           @default(0) @map("skipped_rows")
+  failedRows                Int                           @default(0) @map("failed_rows")
+  createdById               String                        @map("created_by_id") @db.Uuid
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+
+  school                  School                        @relation(fields: [schoolId], references: [id], onDelete: Restrict, map: "student_cred_batches_school_fkey")
+  organization            Organization                  @relation(fields: [organizationId], references: [id], onDelete: Restrict, map: "student_cred_batches_organization_fkey")
+  sourceRegistrationBatch StudentBulkRegistrationBatch? @relation("StudentCredentialBatchSourceRegistrationBatch", fields: [sourceRegistrationBatchId, schoolId], references: [id, schoolId], onDelete: Restrict, map: "student_cred_batches_source_registration_fkey")
+  academicYear            AcademicYear?                 @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict, map: "student_cred_batches_academic_year_fkey")
+  stage                   Stage?                        @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict, map: "student_cred_batches_stage_fkey")
+  grade                   Grade?                        @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict, map: "student_cred_batches_grade_fkey")
+  section                 Section?                      @relation(fields: [sectionId, schoolId], references: [id, schoolId], onDelete: Restrict, map: "student_cred_batches_section_fkey")
+  classroom               Classroom?                    @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict, map: "student_cred_batches_classroom_fkey")
+  createdBy               User                          @relation("StudentCredentialBatchCreatedBy", fields: [createdById], references: [id], onDelete: Restrict, map: "student_cred_batches_created_by_fkey")
+  secretArtifactFile      File?                         @relation("StudentCredentialBatchSecretArtifact", fields: [secretArtifactFileId], references: [id], onDelete: SetNull, map: "student_cred_batches_secret_file_fkey")
+  rows                    StudentCredentialRow[]
+
+  @@unique([id, schoolId], map: "student_credential_batches_id_school_key")
+  @@index([schoolId, status, createdAt(sort: Desc)], map: "student_credential_batches_school_status_created_idx")
+  @@index([schoolId, audienceMode, createdAt(sort: Desc)], map: "student_credential_batches_school_audience_created_idx")
+  @@index([sourceRegistrationBatchId], map: "student_cred_batches_source_registration_idx")
+  @@index([academicYearId], map: "student_cred_batches_academic_year_idx")
+  @@index([stageId], map: "student_cred_batches_stage_idx")
+  @@index([gradeId], map: "student_cred_batches_grade_idx")
+  @@index([sectionId], map: "student_cred_batches_section_idx")
+  @@index([classroomId], map: "student_cred_batches_classroom_idx")
+  @@index([createdById], map: "student_cred_batches_created_by_idx")
+  @@index([organizationId], map: "student_cred_batches_organization_idx")
+  @@map("student_credential_batches")
+}
+
+model StudentCredentialRow {
+  id                      String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                String                     @map("school_id") @db.Uuid
+  batchId                 String                     @map("batch_id") @db.Uuid
+  studentId               String                     @map("student_id") @db.Uuid
+  userId                  String?                    @map("user_id") @db.Uuid
+  status                  StudentCredentialRowStatus @default(PENDING)
+  errorsJson              Json?                      @map("errors_json")
+  credentialVersionBefore Int?                       @map("credential_version_before")
+  credentialVersionAfter  Int?                       @map("credential_version_after")
+  generatedAt             DateTime?                  @map("generated_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school  School                 @relation(fields: [schoolId], references: [id], onDelete: Restrict, map: "student_cred_rows_school_fkey")
+  batch   StudentCredentialBatch @relation(fields: [batchId, schoolId], references: [id, schoolId], onDelete: Cascade, map: "student_cred_rows_batch_fkey")
+  student Student                @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict, map: "student_cred_rows_student_fkey")
+  user    User?                  @relation("StudentCredentialRowUser", fields: [userId], references: [id], onDelete: Restrict, map: "student_cred_rows_user_fkey")
+
+  @@unique([id, schoolId], map: "student_credential_rows_id_school_key")
+  @@unique([batchId, studentId], map: "student_credential_rows_batch_student_key")
+  @@unique([batchId, userId], map: "student_credential_rows_batch_user_key")
+  @@index([schoolId, batchId, status], map: "student_credential_rows_school_batch_status_idx")
+  @@index([studentId], map: "student_credential_rows_student_idx")
+  @@index([userId], map: "student_credential_rows_user_idx")
+  @@map("student_credential_rows")
 }
 
 model StudentDocument {
@@ -6566,6 +6810,7 @@ model File {
   communicationAnnouncementImages      CommunicationAnnouncement[]           @relation("CommunicationAnnouncementImageFile")
   communicationAnnouncementAttachments CommunicationAnnouncementAttachment[]
   schoolProfileLogos                   SchoolProfile[]                       @relation("SchoolProfileLogoFile")
+  studentCredentialSecretArtifacts     StudentCredentialBatch[]              @relation("StudentCredentialBatchSecretArtifact")
   uploadSession                        FileUploadSession?
 
   @@unique([bucket, objectKey])
@@ -6667,10 +6912,12 @@ model ImportJob {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  school       School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  uploadedFile File   @relation("ImportJobUploadedFile", fields: [uploadedFileId], references: [id], onDelete: Restrict)
-  createdBy    User?  @relation("ImportJobCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  school                       School                        @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  uploadedFile                 File                          @relation("ImportJobUploadedFile", fields: [uploadedFileId], references: [id], onDelete: Restrict)
+  createdBy                    User?                         @relation("ImportJobCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  studentBulkRegistrationBatch StudentBulkRegistrationBatch? @relation("StudentBulkRegistrationBatchSourceImportJob")
 
+  @@unique([id, schoolId], map: "import_jobs_id_school_id_key")
   @@index([schoolId])
   @@index([schoolId, status, createdAt(sort: Desc)])
   @@index([schoolId, type])

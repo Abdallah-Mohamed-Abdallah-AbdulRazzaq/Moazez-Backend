@@ -60,6 +60,33 @@ export function buildCompletedImportJobReport(
   });
 }
 
+export function buildBulkRegistrationValidationReport(input: {
+  file: ImportReportFileInput;
+  rowCount: number;
+  invalidRowCount: number;
+  batchErrors: string[];
+}): ImportJobReportData {
+  const warnings =
+    input.invalidRowCount > 0
+      ? ['One or more rows failed semantic validation.']
+      : [];
+  const report = buildImportJobReport({
+    status: ImportJobStatus.COMPLETED,
+    file: input.file,
+    warnings,
+    errors: [...input.batchErrors],
+  });
+  report.rowCount = input.rowCount;
+  report.summary.rowCount = input.rowCount;
+  return report;
+}
+
+export function readImportJobBatchValidationErrors(value: unknown): string[] {
+  return isRecord(value) && isStringArray(value.errors)
+    ? [...value.errors]
+    : [];
+}
+
 export function buildFailedImportJobReport(
   file: ImportReportFileInput,
   message: string,
@@ -216,7 +243,7 @@ function buildImportJobReport(input: {
   };
 }
 
-function isRecord(value: unknown): value is Record<string, any> {
+function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 

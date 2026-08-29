@@ -124,22 +124,27 @@ describe('Platform Administrator bootstrap operator CLI', () => {
       process.execPath,
       [
         '--require',
-        'ts-node/register',
+        'ts-node/register/transpile-only',
         'src/platform-admin-bootstrap.ts',
         ...VALID_ARGUMENTS,
       ],
       {
         cwd: repositoryRoot,
         encoding: 'utf8',
-        env: { ...process.env, NODE_ENV: 'production' },
+        env: {
+          ...process.env,
+          NODE_ENV: 'production',
+          TS_NODE_PROJECT: 'tsconfig.json',
+        },
         input: `${PASSWORD}\n`,
         timeout: 30_000,
         windowsHide: true,
       },
     );
 
-    expect(processResult.status).toBe(2);
+    expect(processResult.error).toBeUndefined();
     expect(processResult.signal).toBeNull();
+    expect(processResult.status).toBe(2);
     expect(processResult.stdout.trim()).toBe(
       'BOOTSTRAP_STATUS=BLOCKED\nREASON=ENVIRONMENT_MISMATCH',
     );

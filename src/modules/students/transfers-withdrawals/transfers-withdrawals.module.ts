@@ -4,6 +4,7 @@ import { StructureRepository } from '../../academics/structure/infrastructure/st
 import { AuthRepository } from '../../iam/auth/infrastructure/auth.repository';
 import { EnrollmentsRepository } from '../enrollments/infrastructure/enrollments.repository';
 import { EnrollmentPlacementService } from '../enrollments/domain/enrollment-placement.service';
+import { StudentPlacementCapacityPolicyService } from '../enrollments/domain/student-placement-capacity-policy.service';
 import { StudentsRecordsModule } from '../students/students.module';
 import { PromoteStudentEnrollmentUseCase } from './application/promote-student-enrollment.use-case';
 import { TransferStudentEnrollmentUseCase } from './application/transfer-student-enrollment.use-case';
@@ -20,6 +21,7 @@ import { PromotionPlacementService } from './domain/promotion-placement.service'
     TermsRepository,
     AuthRepository,
     EnrollmentPlacementService,
+    StudentPlacementCapacityPolicyService,
     PromotionPlacementService,
     TransferStudentEnrollmentUseCase,
     WithdrawStudentEnrollmentUseCase,

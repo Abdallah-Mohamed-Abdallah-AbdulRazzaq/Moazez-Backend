@@ -46,6 +46,24 @@ import { NodemailerEmailTransport } from '../../modules/settings/email/delivery/
 import { EmailSecretCrypto } from '../../modules/settings/email/domain/email-secret-crypto';
 import { EmailSettingsRepository } from '../../modules/settings/email/infrastructure/email-settings.repository';
 import { UserCredentialsRepository } from '../../modules/settings/users/credentials/infrastructure/user-credentials.repository';
+import { LoginIdentityRepository } from '../../modules/settings/login-identity/infrastructure/login-identity.repository';
+import { EnrollmentsRepository } from '../../modules/students/enrollments/infrastructure/enrollments.repository';
+import { StudentPlacementCapacityPolicyService } from '../../modules/students/enrollments/domain/student-placement-capacity-policy.service';
+import { StructureRepository } from '../../modules/academics/structure/infrastructure/structure.repository';
+import { TermsRepository } from '../../modules/academics/structure/infrastructure/terms.repository';
+import { StudentSeatLimitPolicyRepository } from '../../modules/platform-admin/infrastructure/student-seat-limit-policy.repository';
+import { StudentSeatLimitPolicyService } from '../../modules/platform-admin/application/student-seat-limit-policy.service';
+import { StudentBulkRegistrationPlacementService } from '../../modules/students/registration/domain/student-bulk-registration-placement.service';
+import { StudentBulkRegistrationRepository } from '../../modules/students/registration/infrastructure/student-bulk-registration.repository';
+import { ProcessStudentBulkRegistrationValidationUseCase } from '../../modules/students/registration/application/process-student-bulk-registration-validation.use-case';
+import { ProcessStudentBulkRegistrationExecutionUseCase } from '../../modules/students/registration/application/process-student-bulk-registration-execution.use-case';
+import { StudentBulkRegistrationExecutionRepository } from '../../modules/students/registration/infrastructure/student-bulk-registration-execution.repository';
+import { StudentBulkRegistrationExecutionReconciliationService } from '../../modules/students/registration/application/student-bulk-registration-execution-reconciliation.service';
+import { StudentCredentialBatchRepository } from '../../modules/students/credentials/infrastructure/student-credential-batch.repository';
+import { StudentCredentialSecretArtifactService } from '../../modules/students/credentials/application/student-credential-secret-artifact.service';
+import { ProcessStudentCredentialBatchUseCase } from '../../modules/students/credentials/application/process-student-credential-batch.use-case';
+import { StudentCredentialBatchReconciliationService } from '../../modules/students/credentials/application/student-credential-batch-reconciliation.service';
+import { StudentCredentialSecretArtifactCleanupService } from '../../modules/students/credentials/application/student-credential-secret-artifact-cleanup.service';
 
 export const CORE_WORKER_CONSUMER_PROVIDERS = Object.freeze([
   CommunicationNotificationGenerationWorker,
@@ -86,6 +104,24 @@ const CORE_WORKER_SUPPORT_PROVIDERS: Provider[] = [
   ImportJobsRepository,
   ProcessImportValidationUseCase,
   ImportValidationReconciliationService,
+  LoginIdentityRepository,
+  EnrollmentsRepository,
+  StudentPlacementCapacityPolicyService,
+  StructureRepository,
+  TermsRepository,
+  StudentSeatLimitPolicyRepository,
+  StudentSeatLimitPolicyService,
+  StudentBulkRegistrationPlacementService,
+  StudentBulkRegistrationRepository,
+  StudentBulkRegistrationExecutionRepository,
+  StudentBulkRegistrationExecutionReconciliationService,
+  ProcessStudentBulkRegistrationValidationUseCase,
+  ProcessStudentBulkRegistrationExecutionUseCase,
+  StudentCredentialBatchRepository,
+  StudentCredentialSecretArtifactService,
+  ProcessStudentCredentialBatchUseCase,
+  StudentCredentialBatchReconciliationService,
+  StudentCredentialSecretArtifactCleanupService,
   DismissalRequestsExpiryRepository,
   DismissalRealtimeRepository,
   DismissalRealtimeEventsService,

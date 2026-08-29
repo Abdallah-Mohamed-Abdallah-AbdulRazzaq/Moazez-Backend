@@ -6,13 +6,7 @@ import {
 import { PlatformEntitlementStudentSeatLimitExceededException } from '../domain/platform-admin-errors';
 import { StudentSeatLimitPolicyRepository } from '../infrastructure/student-seat-limit-policy.repository';
 
-export type StudentSeatLimitReason =
-  | 'student_create'
-  | 'enrollment_create'
-  | 'admissions_handoff'
-  | 'promotion'
-  | 'transfer'
-  | string;
+export type StudentSeatLimitReason = string;
 
 export interface AssertCanIncreaseActiveStudentSeatsCommand {
   schoolId: string;
@@ -33,6 +27,56 @@ export interface StudentSeatLimitDecision {
   calculation: ActiveStudentSeatCalculation;
 }
 
+export interface StudentSeatLimitSnapshot {
+  schoolId: string;
+  reason: StudentSeatLimitReason;
+  limit: number | null;
+  used: number;
+  incrementBy?: number;
+  existingStudentHasSeat: boolean;
+}
+
+export function assertStudentSeatLimitSnapshot(
+  snapshot: StudentSeatLimitSnapshot,
+): StudentSeatLimitDecision {
+  const requestedIncrement = normalizeIncrement(snapshot.incrementBy);
+  const incrementBy = snapshot.existingStudentHasSeat
+    ? Math.max(requestedIncrement - 1, 0)
+    : requestedIncrement;
+  const wouldIncreaseActiveSeats = incrementBy > 0;
+  const remaining =
+    snapshot.limit === null
+      ? null
+      : Math.max(snapshot.limit - snapshot.used, 0);
+
+  const decision: StudentSeatLimitDecision = {
+    schoolId: snapshot.schoolId,
+    reason: snapshot.reason,
+    limit: snapshot.limit,
+    used: snapshot.used,
+    remaining,
+    incrementBy,
+    wouldIncreaseActiveSeats,
+    allowed:
+      !wouldIncreaseActiveSeats ||
+      snapshot.limit === null ||
+      snapshot.used + incrementBy <= snapshot.limit,
+    calculation: ACTIVE_STUDENT_SEAT_CALCULATION,
+  };
+
+  if (!decision.allowed && snapshot.limit !== null) {
+    throw new PlatformEntitlementStudentSeatLimitExceededException({
+      schoolId: snapshot.schoolId,
+      limit: snapshot.limit,
+      used: snapshot.used,
+      remaining: remaining ?? 0,
+      calculation: ACTIVE_STUDENT_SEAT_CALCULATION,
+    });
+  }
+
+  return decision;
+}
+
 @Injectable()
 export class StudentSeatLimitPolicyService {
   constructor(private readonly repository: StudentSeatLimitPolicyRepository) {}
@@ -40,8 +84,6 @@ export class StudentSeatLimitPolicyService {
   async assertCanIncreaseActiveStudentSeats(
     command: AssertCanIncreaseActiveStudentSeatsCommand,
   ): Promise<StudentSeatLimitDecision> {
-    const requestedIncrement = normalizeIncrement(command.incrementBy);
-
     const [entitlement, used, existingStudentHasSeat] = await Promise.all([
       this.repository.findEntitlementForCurrentSchool(),
       this.repository.countActiveStudentSeatsForCurrentSchool(),
@@ -52,39 +94,14 @@ export class StudentSeatLimitPolicyService {
         : Promise.resolve(false),
     ]);
 
-    const limit = entitlement?.studentSeatLimit ?? null;
-    const incrementBy = existingStudentHasSeat
-      ? Math.max(requestedIncrement - 1, 0)
-      : requestedIncrement;
-    const wouldIncreaseActiveSeats = incrementBy > 0;
-    const remaining = limit === null ? null : Math.max(limit - used, 0);
-
-    const decision: StudentSeatLimitDecision = {
+    return assertStudentSeatLimitSnapshot({
       schoolId: command.schoolId,
       reason: command.reason,
-      limit,
+      limit: entitlement?.studentSeatLimit ?? null,
       used,
-      remaining,
-      incrementBy,
-      wouldIncreaseActiveSeats,
-      allowed:
-        !wouldIncreaseActiveSeats ||
-        limit === null ||
-        used + incrementBy <= limit,
-      calculation: ACTIVE_STUDENT_SEAT_CALCULATION,
-    };
-
-    if (!decision.allowed && limit !== null) {
-      throw new PlatformEntitlementStudentSeatLimitExceededException({
-        schoolId: command.schoolId,
-        limit,
-        used,
-        remaining: remaining ?? 0,
-        calculation: ACTIVE_STUDENT_SEAT_CALCULATION,
-      });
-    }
-
-    return decision;
+      incrementBy: command.incrementBy,
+      existingStudentHasSeat,
+    });
   }
 }
 

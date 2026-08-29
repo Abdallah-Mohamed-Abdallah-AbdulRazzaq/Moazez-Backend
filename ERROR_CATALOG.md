@@ -183,18 +183,34 @@ does not change that global behavior.
 
 ### Students
 
-| Code                                       | HTTP | Message                                             |
-| ------------------------------------------ | ---- | --------------------------------------------------- |
-| `students.enrollment.placement_conflict`   | 409  | Classroom capacity exceeded or placement conflict   |
-| `students.enrollment.inactive_year`        | 422  | Academic year is not active                         |
-| `students.enrollment.already_withdrawn`    | 409  | Student is already withdrawn                        |
-| `students.guardian.primary_required`       | 422  | At least one primary guardian is required           |
-| `students.account.already_linked`          | 409  | Student account is already linked                   |
-| `students.account.user_already_linked`     | 409  | User is already linked to another account           |
-| `students.account.user_type_mismatch`      | 422  | User type does not match the requested account link |
-| `students.account.student_role_missing`    | 422  | Student role is missing or invalid                  |
-| `students.account.parent_role_missing`     | 422  | Parent role is missing or invalid                   |
-| `students.guardian.account_already_linked` | 409  | Guardian account is already linked                  |
+| Code                                                           | HTTP | Message                                              |
+| -------------------------------------------------------------- | ---- | ---------------------------------------------------- |
+| `students.enrollment.placement_conflict`                       | 409  | Classroom capacity exceeded or placement conflict    |
+| `students.enrollment.inactive_year`                            | 422  | Academic year is not active                          |
+| `students.enrollment.already_withdrawn`                        | 409  | Student is already withdrawn                         |
+| `students.guardian.primary_required`                           | 422  | At least one primary guardian is required            |
+| `students.account.already_linked`                              | 409  | Student account is already linked                    |
+| `students.account.user_already_linked`                         | 409  | User is already linked to another account            |
+| `students.account.user_type_mismatch`                          | 422  | User type does not match the requested account link  |
+| `students.account.student_role_missing`                        | 422  | Student role is missing or invalid                   |
+| `students.account.parent_role_missing`                         | 422  | Parent role is missing or invalid                    |
+| `students.guardian.account_already_linked`                     | 409  | Guardian account is already linked                   |
+| `students.bulk_registration.execution_tenant_ineligible`       | 409  | Bulk registration execution tenant is not eligible   |
+| `students.bulk_registration.execution_recovery_window_expired` | 409  | Bulk registration execution recovery window expired  |
+| `students.credentials.audience_invalid`                        | 422  | Student credential audience is invalid               |
+| `students.credentials.no_eligible_students`                    | 422  | No eligible students matched the credential audience |
+| `students.credentials.target_ineligible`                       | 409  | Student credential target is no longer eligible      |
+| `students.credentials.credential_version_changed`              | 409  | Student credential target version changed            |
+| `students.credentials.password_already_provisioned`            | 409  | Student password was already provisioned             |
+| `students.credentials.execution_invariant_invalid`             | 409  | Student credential execution state is invalid        |
+| `students.credentials.execution_tenant_ineligible`             | 409  | Student credential execution tenant is not eligible  |
+| `students.credentials.execution_recovery_window_expired`       | 409  | Student credential recovery window expired           |
+| `students.credentials.secret_artifact_unavailable`             | 409  | Student credential secret artifact is unavailable    |
+| `students.credentials.secret_artifact_expired`                 | 409  | Student credential secret artifact has expired       |
+| `students.credentials.secret_artifact_invalid`                 | 409  | Student credential secret artifact is invalid        |
+| `students.credentials.export_not_ready`                        | 409  | Student credential export is not ready                |
+| `students.credentials.export_empty`                            | 409  | Student credential export has no generated rows       |
+| `students.credentials.export_too_large`                        | 413  | Student credential export exceeds the maximum size    |
 
 ### Academics
 

@@ -13,10 +13,7 @@ import {
   runReferenceDataBootstrapCli,
 } from './reference-data-bootstrap';
 
-const VALID_STAGING_ARGUMENTS = [
-  '--execute',
-  '--environment=staging',
-] as const;
+const VALID_STAGING_ARGUMENTS = ['--execute', '--environment=staging'] as const;
 const VALID_PRODUCTION_ARGUMENTS = [
   '--execute',
   '--environment=production',
@@ -140,10 +137,7 @@ describe('authorization reference-data bootstrap operator CLI', () => {
       expect(assertEnvironment).not.toHaveBeenCalled();
       expect(createApplicationContext).not.toHaveBeenCalled();
       expect(outputs).toEqual([
-        [
-          'REFERENCE_BOOTSTRAP_STATUS=BLOCKED',
-          'REASON=' + reason,
-        ].join('\n'),
+        ['REFERENCE_BOOTSTRAP_STATUS=BLOCKED', 'REASON=' + reason].join('\n'),
       ]);
     },
   );
@@ -282,7 +276,10 @@ describe('authorization reference-data bootstrap operator CLI', () => {
     );
 
     expect(exitCode).toBe(2);
-    expect(assertEnvironment).toHaveBeenCalledWith('production', rawEnvironment);
+    expect(assertEnvironment).toHaveBeenCalledWith(
+      'production',
+      rawEnvironment,
+    );
     expect(createApplicationContext).not.toHaveBeenCalled();
     expect(execute).not.toHaveBeenCalled();
     expect(calls).toEqual(['environment', 'output']);
@@ -358,7 +355,7 @@ describe('authorization reference-data bootstrap operator CLI', () => {
       process.execPath,
       [
         '--require',
-        'ts-node/register',
+        'ts-node/register/transpile-only',
         'src/reference-data-bootstrap.ts',
         ...VALID_STAGING_ARGUMENTS,
       ],
@@ -369,12 +366,15 @@ describe('authorization reference-data bootstrap operator CLI', () => {
           ...process.env,
           NODE_ENV: 'production',
           DATABASE_URL: SYNTHETIC_DATABASE_URL,
+          TS_NODE_PROJECT: 'tsconfig.json',
         },
         timeout: 30_000,
         windowsHide: true,
       },
     );
 
+    expect(processResult.error).toBeUndefined();
+    expect(processResult.signal).toBeNull();
     expect(processResult.status).toBe(2);
     expect(processResult.stdout.trim()).toBe(
       'REFERENCE_BOOTSTRAP_STATUS=BLOCKED\nREASON=ENVIRONMENT_MISMATCH',

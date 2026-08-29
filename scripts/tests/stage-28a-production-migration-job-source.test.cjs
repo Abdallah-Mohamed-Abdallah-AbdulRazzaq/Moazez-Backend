@@ -17,6 +17,8 @@ const PRODUCTION_ROOT =
   'infra/gcp/backend-runtime/environments/production/migration';
 const TEST_PATH =
   'scripts/tests/stage-28a-production-migration-job-source.test.cjs';
+const STAGE_29_TEST_PATH =
+  'scripts/tests/stage-29a-production-runtime-source.test.cjs';
 const PLAN_CI_PATH = 'scripts/ci/plan-ci.cjs';
 
 const ROOT_FILES = Object.freeze([
@@ -86,8 +88,6 @@ const PROTECTED_BLOBS = Object.freeze({
     '2f4f601fe8b62423eb1b0894b339d37438b98d58',
   'scripts/migrations/run-governed-migration-job.cjs':
     '8b5718310297149950a047ddfa5204ea0a69cdb4',
-  'scripts/tests/prd3-g04-governed-migration-job.test.cjs':
-    'bbb9c61f06159c9d51761796e9e8caebb71f8635',
 });
 
 const UNCHANGED_STAGING_BLOBS = Object.freeze({
@@ -385,6 +385,41 @@ function candidateFilesFromCommittedRange() {
   ].sort();
 }
 
+function candidateFilesFromMaintenanceRange() {
+  const candidate = process.env.CI_CANDIDATE_SHA || 'HEAD';
+  const workingTreeFiles = execFileSync(
+    'git',
+    ['diff', '--name-only', candidate, '--'],
+    {
+      cwd: REPOSITORY_ROOT,
+      encoding: 'utf8',
+      windowsHide: true,
+    },
+  )
+    .split(/\r?\n/u)
+    .filter(Boolean)
+    .map((file) => file.replace(/\\/gu, '/'));
+  if (workingTreeFiles.length > 0) {
+    return [...new Set(workingTreeFiles)].sort();
+  }
+  return [
+    ...new Set(
+      execFileSync(
+        'git',
+        ['diff', '--name-only', `${candidate}^`, candidate, '--'],
+        {
+          cwd: REPOSITORY_ROOT,
+          encoding: 'utf8',
+          windowsHide: true,
+        },
+      )
+        .split(/\r?\n/u)
+        .filter(Boolean)
+        .map((file) => file.replace(/\\/gu, '/')),
+    ),
+  ].sort();
+}
+
 function assertStage28CandidateScope(candidateFiles) {
   const normalized = [
     ...new Set(candidateFiles.map((file) => file.replace(/\\/gu, '/'))),
@@ -398,6 +433,70 @@ function assertStage28CandidateScope(candidateFiles) {
   );
   assert.deepEqual(unauthorized, []);
   return true;
+}
+
+function isStage28OperationalPath(file) {
+  return (
+    file.startsWith(`${MODULE_ROOT}/`) ||
+    file.startsWith(`${STAGING_ROOT}/`) ||
+    file.startsWith(`${PRODUCTION_ROOT}/`) ||
+    file === PLAN_CI_PATH
+  );
+}
+
+function assertCommittedStage28CandidateScope(
+  candidateFiles,
+  maintenanceFiles,
+) {
+  const committedCandidates =
+    candidateFiles ?? candidateFilesFromCommittedRange();
+  const normalized = [
+    ...new Set(committedCandidates.map((file) => file.replace(/\\/gu, '/'))),
+  ].sort();
+  const normalizedMaintenance = [
+    ...new Set(
+      (
+        maintenanceFiles ??
+        (candidateFiles === undefined
+          ? candidateFilesFromMaintenanceRange()
+          : committedCandidates)
+      ).map((file) => file.replace(/\\/gu, '/')),
+    ),
+  ].sort();
+  const maintenanceScopeActive =
+    candidateFiles === undefined || maintenanceFiles !== undefined;
+  const verifierRetouched =
+    maintenanceScopeActive &&
+    normalizedMaintenance.some(
+      (file) => file === TEST_PATH || file === STAGE_29_TEST_PATH,
+    );
+  if (verifierRetouched) {
+    const stage28MaintenancePaths = normalizedMaintenance.filter(
+      (file) =>
+        isStage28OperationalPath(file) ||
+        file === TEST_PATH ||
+        file === STAGE_29_TEST_PATH,
+    );
+    assert.deepEqual(
+      stage28MaintenancePaths,
+      [STAGE_29_TEST_PATH, TEST_PATH].sort(),
+    );
+  }
+
+  const historicalVerifierPairPresent =
+    normalized.includes(TEST_PATH) && normalized.includes(STAGE_29_TEST_PATH);
+  if (historicalVerifierPairPresent) {
+    const stage28OwnedPaths = normalized.filter(
+      (file) =>
+        isStage28OperationalPath(file) ||
+        file === TEST_PATH ||
+        file === STAGE_29_TEST_PATH,
+    );
+    assert.deepEqual(stage28OwnedPaths, [STAGE_29_TEST_PATH, TEST_PATH].sort());
+    return false;
+  }
+
+  return assertStage28CandidateScope(normalized);
 }
 
 test('Production migration root has exactly the six governed source files', () => {
@@ -869,7 +968,7 @@ test('Terraform contains no execution hooks, fixed execution metadata, or secret
   assert.equal(contract.timeoutSeconds, 1200);
 });
 
-test('Existing Migration contract, runner, and PRD3-G04 TAP remain unchanged', () => {
+test('Existing Migration contract and runner remain unchanged', () => {
   for (const [file, expectedBlob] of Object.entries(PROTECTED_BLOBS)) {
     assert.equal(
       gitBlobHash(normalizedSource(file)),
@@ -900,7 +999,107 @@ test('Stage 28A and PRD3-G04 retain exact independent CI ownership', () => {
 });
 
 test('Committed Stage 28A candidate scope contains only authorized paths when active', () => {
-  assertStage28CandidateScope(candidateFilesFromCommittedRange());
+  assertCommittedStage28CandidateScope();
+});
+
+test('Committed scope preserves Stage 28 activation and delegates only Stage 28A/29A verifier maintenance', () => {
+  assert.equal(
+    assertCommittedStage28CandidateScope(['src/example-future-change.ts']),
+    false,
+  );
+  assert.equal(
+    assertCommittedStage28CandidateScope([`${PRODUCTION_ROOT}/variables.tf`]),
+    true,
+  );
+  assert.throws(
+    () =>
+      assertCommittedStage28CandidateScope([
+        `${PRODUCTION_ROOT}/main.tf`,
+        'src/example-unrelated-change.ts',
+      ]),
+    { code: 'ERR_ASSERTION' },
+  );
+  assert.equal(
+    assertCommittedStage28CandidateScope([
+      TEST_PATH,
+      STAGE_29_TEST_PATH,
+      'src/example-future-change.ts',
+    ]),
+    false,
+  );
+  assert.throws(
+    () =>
+      assertCommittedStage28CandidateScope([
+        TEST_PATH,
+        STAGE_29_TEST_PATH,
+        `${PRODUCTION_ROOT}/main.tf`,
+      ]),
+    { code: 'ERR_ASSERTION' },
+  );
+});
+
+test('Committed Stage 28 verifier delegation persists across later product commits and fails closed on re-touch', () => {
+  const historicalFullRange = [
+    TEST_PATH,
+    STAGE_29_TEST_PATH,
+    'prisma/schema.prisma',
+    'src/infrastructure/database/school-scope.extension.ts',
+    'src/modules/students/registration/application/create-student-bulk-registration.use-case.ts',
+    'test/e2e/student-bulk-registration-intake.e2e-spec.ts',
+  ];
+
+  assert.equal(
+    assertCommittedStage28CandidateScope(historicalFullRange, [
+      'src/modules/students/registration/application/create-student-bulk-registration.use-case.ts',
+      'test/e2e/student-bulk-registration-intake.e2e-spec.ts',
+    ]),
+    false,
+  );
+  assert.equal(
+    assertCommittedStage28CandidateScope(
+      [
+        ...historicalFullRange,
+        'src/modules/students/future-stage4.use-case.ts',
+      ],
+      ['src/modules/students/future-stage4.use-case.ts'],
+    ),
+    false,
+  );
+  assert.throws(
+    () =>
+      assertCommittedStage28CandidateScope(
+        [...historicalFullRange, `${PRODUCTION_ROOT}/main.tf`],
+        ['src/modules/students/future-stage4.use-case.ts'],
+      ),
+    { code: 'ERR_ASSERTION' },
+  );
+  assert.throws(
+    () =>
+      assertCommittedStage28CandidateScope(historicalFullRange, [TEST_PATH]),
+    { code: 'ERR_ASSERTION' },
+  );
+  assert.throws(
+    () =>
+      assertCommittedStage28CandidateScope(historicalFullRange, [
+        STAGE_29_TEST_PATH,
+      ]),
+    { code: 'ERR_ASSERTION' },
+  );
+  assert.equal(
+    assertCommittedStage28CandidateScope(historicalFullRange, [
+      TEST_PATH,
+      STAGE_29_TEST_PATH,
+    ]),
+    false,
+  );
+  assert.throws(
+    () =>
+      assertCommittedStage28CandidateScope(
+        [...historicalFullRange, `${PRODUCTION_ROOT}/main.tf`],
+        [TEST_PATH, STAGE_29_TEST_PATH, `${PRODUCTION_ROOT}/main.tf`],
+      ),
+    { code: 'ERR_ASSERTION' },
+  );
 });
 
 test('Candidate scope ignores unrelated PRs and rejects every mixed Stage 28A candidate', () => {

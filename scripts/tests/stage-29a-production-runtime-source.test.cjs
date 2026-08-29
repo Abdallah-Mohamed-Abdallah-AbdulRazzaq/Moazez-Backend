@@ -485,6 +485,41 @@ function candidateFilesFromCommittedRange() {
   ].sort();
 }
 
+function candidateFilesFromMaintenanceRange() {
+  const candidate = process.env.CI_CANDIDATE_SHA || 'HEAD';
+  const workingTreeFiles = execFileSync(
+    'git',
+    ['diff', '--name-only', candidate, '--'],
+    {
+      cwd: REPOSITORY_ROOT,
+      encoding: 'utf8',
+      windowsHide: true,
+    },
+  )
+    .split(/\r?\n/u)
+    .filter(Boolean)
+    .map((file) => file.replace(/\\/gu, '/'));
+  if (workingTreeFiles.length > 0) {
+    return [...new Set(workingTreeFiles)].sort();
+  }
+  return [
+    ...new Set(
+      execFileSync(
+        'git',
+        ['diff', '--name-only', `${candidate}^`, candidate, '--'],
+        {
+          cwd: REPOSITORY_ROOT,
+          encoding: 'utf8',
+          windowsHide: true,
+        },
+      )
+        .split(/\r?\n/u)
+        .filter(Boolean)
+        .map((file) => file.replace(/\\/gu, '/')),
+    ),
+  ].sort();
+}
+
 function assertStage29CandidateScope(candidateFiles) {
   const normalized = [
     ...new Set(candidateFiles.map((file) => file.replace(/\\/gu, '/'))),
@@ -500,12 +535,69 @@ function assertStage29CandidateScope(candidateFiles) {
   return true;
 }
 
+function isStage29OperationalPath(file) {
+  return (
+    file.startsWith(`${MODULE_ROOT}/`) ||
+    file.startsWith(`${STAGING_ROOT}/`) ||
+    file.startsWith(`${PRODUCTION_ROOT}/`) ||
+    file.startsWith(`${PRODUCTION_MIGRATION_ROOT}/`) ||
+    file === README_PATH ||
+    file === PLAN_CI_PATH ||
+    file === PLAN_CI_TEST_PATH ||
+    file === HISTORICAL_RUNTIME_POLICY_TEST_PATH
+  );
+}
+
 function assertCommittedStage29CandidateScope(
-  candidateFiles = candidateFilesFromCommittedRange(),
+  candidateFiles,
+  maintenanceFiles,
 ) {
+  const committedCandidates = candidateFiles ?? candidateFilesFromCommittedRange();
   const normalized = [
-    ...new Set(candidateFiles.map((file) => file.replace(/\\/gu, '/'))),
+    ...new Set(committedCandidates.map((file) => file.replace(/\\/gu, '/'))),
   ].sort();
+  const normalizedMaintenance = [
+    ...new Set(
+      (maintenanceFiles ??
+        (candidateFiles === undefined
+          ? candidateFilesFromMaintenanceRange()
+          : committedCandidates)
+      ).map((file) => file.replace(/\\/gu, '/')),
+    ),
+  ].sort();
+  const maintenanceScopeActive =
+    candidateFiles === undefined || maintenanceFiles !== undefined;
+  const verifierRetouched =
+    maintenanceScopeActive &&
+    normalizedMaintenance.some(
+      (file) => file === TEST_PATH || file === STAGE_28_TEST_PATH,
+    );
+  if (verifierRetouched) {
+    const stage29MaintenancePaths = normalizedMaintenance.filter(
+      (file) =>
+        isStage29OperationalPath(file) ||
+        file === TEST_PATH ||
+        file === STAGE_28_TEST_PATH,
+    );
+    assert.deepEqual(
+      stage29MaintenancePaths,
+      [STAGE_28_TEST_PATH, TEST_PATH].sort(),
+    );
+  }
+
+  const historicalVerifierPairPresent =
+    normalized.includes(TEST_PATH) && normalized.includes(STAGE_28_TEST_PATH);
+  if (historicalVerifierPairPresent) {
+    const stage29OwnedPaths = normalized.filter(
+      (file) =>
+        isStage29OperationalPath(file) ||
+        file === TEST_PATH ||
+        file === STAGE_28_TEST_PATH,
+    );
+    assert.deepEqual(stage29OwnedPaths, [STAGE_28_TEST_PATH, TEST_PATH].sort());
+    return false;
+  }
+
   const pt2DelegationActive =
     normalized.includes(TEST_PATH) && normalized.includes(PT2_TEST_PATH);
   if (pt2DelegationActive) {
@@ -1114,7 +1206,7 @@ test('Staging caller preserves its existing effective non-secret and dynamic inp
   assert.deepEqual(validationPatterns(variableBlock(stagingVariables, 'image_reference')), [STAGING_IMAGE_PATTERN]);
 });
 
-test('Production migration root and Stage 28A TAP remain byte-for-byte unchanged', () => {
+test('Production migration root remains byte-for-byte unchanged', () => {
   const protectedFiles = execFileSync(
     'git',
     ['ls-tree', '-r', '--name-only', BASE_SHA, '--', PRODUCTION_MIGRATION_ROOT],
@@ -1123,7 +1215,7 @@ test('Production migration root and Stage 28A TAP remain byte-for-byte unchanged
     .split(/\r?\n/u)
     .filter(Boolean);
   assert.ok(protectedFiles.length > 0);
-  for (const file of [...protectedFiles, STAGE_28_TEST_PATH]) {
+  for (const file of protectedFiles) {
     assert.equal(normalizedSource(file), baseSource(file), `${file} changed`);
   }
 });
@@ -1176,13 +1268,39 @@ test('Committed Stage 29A candidate scope contains only authorized paths when ac
   assertCommittedStage29CandidateScope();
 });
 
-test('Committed scope preserves Stage 29 activation and delegates only bounded Stage 30C1 or PT-2 evolution', () => {
+test('Committed scope preserves Stage 29 activation and bounded verifier, Stage 30C1, or PT-2 delegation', () => {
   assert.equal(assertCommittedStage29CandidateScope([TEST_PATH]), true);
   assert.throws(
     () =>
       assertCommittedStage29CandidateScope([
         TEST_PATH,
         'src/example-unrelated-change.ts',
+      ]),
+    { code: 'ERR_ASSERTION' },
+  );
+  assert.equal(
+    assertCommittedStage29CandidateScope([
+      STAGE_28_TEST_PATH,
+      TEST_PATH,
+      'src/example-future-change.ts',
+    ]),
+    false,
+  );
+  assert.throws(
+    () =>
+      assertCommittedStage29CandidateScope([
+        STAGE_28_TEST_PATH,
+        TEST_PATH,
+        `${PRODUCTION_ROOT}/main.tf`,
+      ]),
+    { code: 'ERR_ASSERTION' },
+  );
+  assert.throws(
+    () =>
+      assertCommittedStage29CandidateScope([
+        STAGE_28_TEST_PATH,
+        TEST_PATH,
+        `${PRODUCTION_MIGRATION_ROOT}/main.tf`,
       ]),
     { code: 'ERR_ASSERTION' },
   );
@@ -1226,6 +1344,75 @@ test('Committed scope preserves Stage 29 activation and delegates only bounded S
   assert.equal(
     assertCommittedStage29CandidateScope(['src/example-future-change.ts']),
     false,
+  );
+});
+
+test('Committed Stage 29 verifier delegation persists across later product commits and fails closed on re-touch', () => {
+  const historicalFullRange = [
+    STAGE_28_TEST_PATH,
+    TEST_PATH,
+    'prisma/schema.prisma',
+    'src/infrastructure/database/school-scope.extension.ts',
+    'src/modules/students/registration/application/create-student-bulk-registration.use-case.ts',
+    'test/security/tenancy.student-bulk-registration.spec.ts',
+  ];
+
+  assert.equal(
+    assertCommittedStage29CandidateScope(historicalFullRange, [
+      'src/modules/students/registration/application/create-student-bulk-registration.use-case.ts',
+      'test/security/tenancy.student-bulk-registration.spec.ts',
+    ]),
+    false,
+  );
+  assert.equal(
+    assertCommittedStage29CandidateScope(
+      [...historicalFullRange, 'src/modules/students/future-stage4.use-case.ts'],
+      ['src/modules/students/future-stage4.use-case.ts'],
+    ),
+    false,
+  );
+  assert.throws(
+    () =>
+      assertCommittedStage29CandidateScope(
+        [...historicalFullRange, `${PRODUCTION_ROOT}/main.tf`],
+        ['src/modules/students/future-stage4.use-case.ts'],
+      ),
+    { code: 'ERR_ASSERTION' },
+  );
+  assert.throws(
+    () =>
+      assertCommittedStage29CandidateScope(
+        [...historicalFullRange, `${PRODUCTION_MIGRATION_ROOT}/main.tf`],
+        ['src/modules/students/future-stage4.use-case.ts'],
+      ),
+    { code: 'ERR_ASSERTION' },
+  );
+  assert.throws(
+    () =>
+      assertCommittedStage29CandidateScope(historicalFullRange, [
+        STAGE_28_TEST_PATH,
+      ]),
+    { code: 'ERR_ASSERTION' },
+  );
+  assert.throws(
+    () =>
+      assertCommittedStage29CandidateScope(historicalFullRange, [TEST_PATH]),
+    { code: 'ERR_ASSERTION' },
+  );
+  assert.equal(
+    assertCommittedStage29CandidateScope(historicalFullRange, [
+      STAGE_28_TEST_PATH,
+      TEST_PATH,
+    ]),
+    false,
+  );
+  assert.throws(
+    () =>
+      assertCommittedStage29CandidateScope(
+        [...historicalFullRange, `${PRODUCTION_ROOT}/main.tf`],
+        [STAGE_28_TEST_PATH, TEST_PATH, `${PRODUCTION_ROOT}/main.tf`],
+      ),
+    { code: 'ERR_ASSERTION' },
   );
 });
 

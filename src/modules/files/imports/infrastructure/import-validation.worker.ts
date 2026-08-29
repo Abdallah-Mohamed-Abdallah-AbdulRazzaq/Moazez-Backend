@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Optional } from '@nestjs/common';
 import { Worker } from 'bullmq';
 import {
   createRequestContext,
@@ -9,34 +9,89 @@ import {
   FILES_IMPORT_QUEUE_NAME,
   FILES_IMPORT_RECONCILE_JOB_NAME,
   FILES_IMPORT_VALIDATE_JOB_NAME,
-  ImportValidationJobData,
+  FilesImportQueueJobData,
+  STUDENT_BULK_REGISTRATION_EXECUTE_JOB_NAME,
+  isStudentBulkRegistrationExecutionJobData,
+  isStudentCredentialBatchExecutionJobData,
 } from '../domain/import-job.types';
 import { ProcessImportValidationUseCase } from '../application/process-import-validation.use-case';
 import { ImportValidationReconciliationService } from '../application/import-validation-reconciliation.service';
 import { ImportJobsRepository } from './import-jobs.repository';
+import { STUDENTS_BULK_REGISTRATION_IMPORT_TYPE } from '../domain/import-upload.constraints';
+import { ProcessStudentBulkRegistrationValidationUseCase } from '../../../students/registration/application/process-student-bulk-registration-validation.use-case';
+import { ProcessStudentBulkRegistrationExecutionUseCase } from '../../../students/registration/application/process-student-bulk-registration-execution.use-case';
+import { StudentBulkRegistrationExecutionReconciliationService } from '../../../students/registration/application/student-bulk-registration-execution-reconciliation.service';
+import { STUDENT_CREDENTIAL_BATCH_EXECUTE_JOB_NAME } from '../../../students/credentials/domain/student-credential.constants';
+import { ProcessStudentCredentialBatchUseCase } from '../../../students/credentials/application/process-student-credential-batch.use-case';
+import { StudentCredentialBatchReconciliationService } from '../../../students/credentials/application/student-credential-batch-reconciliation.service';
+import { StudentCredentialSecretArtifactCleanupService } from '../../../students/credentials/application/student-credential-secret-artifact-cleanup.service';
 
 @Injectable()
 export class ImportValidationWorker implements OnModuleInit {
-  private worker: Worker<ImportValidationJobData, void, string> | null = null;
+  private worker: Worker<FilesImportQueueJobData, void, string> | null = null;
 
   constructor(
     private readonly bullmqService: BullmqService,
     private readonly processImportValidationUseCase: ProcessImportValidationUseCase,
     private readonly reconciliationService: ImportValidationReconciliationService,
+    private readonly studentBulkRegistrationExecutionReconciliationService: StudentBulkRegistrationExecutionReconciliationService,
     private readonly importJobsRepository: ImportJobsRepository,
+    @Optional()
+    private readonly processStudentBulkRegistrationValidationUseCase?: ProcessStudentBulkRegistrationValidationUseCase,
+    @Optional()
+    private readonly processStudentBulkRegistrationExecutionUseCase?: ProcessStudentBulkRegistrationExecutionUseCase,
+    @Optional()
+    private readonly processStudentCredentialBatchUseCase?: ProcessStudentCredentialBatchUseCase,
+    @Optional()
+    private readonly studentCredentialBatchReconciliationService?: StudentCredentialBatchReconciliationService,
+    @Optional()
+    private readonly studentCredentialSecretArtifactCleanupService?: StudentCredentialSecretArtifactCleanupService,
   ) {}
 
   onModuleInit(): void {
     this.worker = this.bullmqService.createWorker<
-      ImportValidationJobData,
+      FilesImportQueueJobData,
       void
     >(FILES_IMPORT_QUEUE_NAME, async (job) => {
       if (job.name === FILES_IMPORT_RECONCILE_JOB_NAME) {
         await this.reconciliationService.reconcile();
+        await this.studentBulkRegistrationExecutionReconciliationService.reconcile();
+        await this.studentCredentialBatchReconciliationService?.reconcile();
+        await this.studentCredentialSecretArtifactCleanupService?.reconcile();
+        return;
+      }
+      if (job.name === STUDENT_CREDENTIAL_BATCH_EXECUTE_JOB_NAME) {
+        if (!isStudentCredentialBatchExecutionJobData(job.data)) {
+          throw new Error('student_credential_execution_payload_invalid');
+        }
+        if (!this.processStudentCredentialBatchUseCase) {
+          throw new Error('student_credential_execution_processor_missing');
+        }
+        await this.processStudentCredentialBatchUseCase.execute(
+          job.data.batchId,
+        );
+        return;
+      }
+      if (job.name === STUDENT_BULK_REGISTRATION_EXECUTE_JOB_NAME) {
+        if (!isStudentBulkRegistrationExecutionJobData(job.data)) {
+          throw new Error('bulk_registration_execution_payload_invalid');
+        }
+        if (!this.processStudentBulkRegistrationExecutionUseCase) {
+          throw new Error('bulk_registration_execution_processor_missing');
+        }
+        await this.processStudentBulkRegistrationExecutionUseCase.execute(
+          job.data.batchId,
+        );
         return;
       }
       if (job.name !== FILES_IMPORT_VALIDATE_JOB_NAME) {
         throw new Error('files_import_job_unknown');
+      }
+      if (
+        !('importJobId' in job.data) ||
+        typeof job.data.importJobId !== 'string'
+      ) {
+        throw new Error('files_import_validation_payload_invalid');
       }
       const persisted = await this.importJobsRepository.findRecoveryContextById(
         job.data.importJobId,
@@ -65,9 +120,22 @@ export class ImportValidationWorker implements OnModuleInit {
         roleId: 'queue:files-import-validation',
         permissions: [],
       };
-      await runWithRequestContext(context, () =>
-        this.processImportValidationUseCase.execute(persisted.id),
-      );
+      await runWithRequestContext(context, async () => {
+        if (persisted.type === 'students_basic') {
+          await this.processImportValidationUseCase.execute(persisted.id);
+          return;
+        }
+        if (persisted.type === STUDENTS_BULK_REGISTRATION_IMPORT_TYPE) {
+          if (!this.processStudentBulkRegistrationValidationUseCase) {
+            throw new Error('bulk_registration_validation_processor_missing');
+          }
+          await this.processStudentBulkRegistrationValidationUseCase.execute(
+            persisted.id,
+          );
+          return;
+        }
+        throw new Error('files_import_persisted_type_unknown');
+      });
     });
   }
 }

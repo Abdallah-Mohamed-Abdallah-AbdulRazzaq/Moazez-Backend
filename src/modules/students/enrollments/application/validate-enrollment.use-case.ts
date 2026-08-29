@@ -9,6 +9,7 @@ import {
   StudentEnrollmentPlacementConflictException,
 } from '../domain/enrollment.exceptions';
 import { EnrollmentPlacementService } from '../domain/enrollment-placement.service';
+import { StudentPlacementCapacityPolicyService } from '../domain/student-placement-capacity-policy.service';
 import {
   ValidateEnrollmentDto,
   ValidateEnrollmentResponseDto,
@@ -19,6 +20,7 @@ export class ValidateEnrollmentUseCase {
   constructor(
     private readonly enrollmentPlacementService: EnrollmentPlacementService,
     private readonly enrollApplicationHandoffUseCase: EnrollApplicationHandoffUseCase,
+    private readonly studentPlacementCapacityPolicy: StudentPlacementCapacityPolicyService,
   ) {}
 
   async execute(
@@ -26,13 +28,25 @@ export class ValidateEnrollmentUseCase {
   ): Promise<ValidateEnrollmentResponseDto> {
     try {
       const handoff = command.applicationId
-        ? await this.enrollApplicationHandoffUseCase.execute(command.applicationId)
+        ? await this.enrollApplicationHandoffUseCase.execute(
+            command.applicationId,
+          )
         : null;
 
-      await this.enrollmentPlacementService.resolvePlacement(command, {
-        handoff,
-        allowMatchingActiveEnrollment: Boolean(command.enrollmentId),
-        ignoreEnrollmentId: command.enrollmentId,
+      const resolvedPlacement =
+        await this.enrollmentPlacementService.resolvePlacement(command, {
+          handoff,
+          allowMatchingActiveEnrollment: Boolean(command.enrollmentId),
+          ignoreEnrollmentId: command.enrollmentId,
+        });
+
+      await this.studentPlacementCapacityPolicy.assertCanPlace({
+        academicYearId: resolvedPlacement.academicYear.id,
+        classroom: resolvedPlacement.classroom,
+        excludeEnrollmentId:
+          resolvedPlacement.activeEnrollment?.id === command.enrollmentId
+            ? command.enrollmentId
+            : undefined,
       });
 
       return {

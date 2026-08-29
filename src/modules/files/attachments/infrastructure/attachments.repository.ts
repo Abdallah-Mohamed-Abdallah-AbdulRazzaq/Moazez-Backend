@@ -3,26 +3,28 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import { AttachmentRecord } from '../domain/attachment-record';
 
-const ATTACHMENT_RECORD_ARGS = Prisma.validator<Prisma.AttachmentDefaultArgs>()({
-  select: {
-    id: true,
-    fileId: true,
-    schoolId: true,
-    resourceType: true,
-    resourceId: true,
-    createdById: true,
-    createdAt: true,
-    file: {
-      select: {
-        id: true,
-        originalName: true,
-        mimeType: true,
-        sizeBytes: true,
-        visibility: true,
+const ATTACHMENT_RECORD_ARGS = Prisma.validator<Prisma.AttachmentDefaultArgs>()(
+  {
+    select: {
+      id: true,
+      fileId: true,
+      schoolId: true,
+      resourceType: true,
+      resourceId: true,
+      createdById: true,
+      createdAt: true,
+      file: {
+        select: {
+          id: true,
+          originalName: true,
+          mimeType: true,
+          sizeBytes: true,
+          visibility: true,
+        },
       },
     },
   },
-});
+);
 
 type AttachmentRecordRow = Prisma.AttachmentGetPayload<
   typeof ATTACHMENT_RECORD_ARGS
@@ -59,7 +61,10 @@ export class AttachmentsRepository {
     attachmentId: string,
   ): Promise<AttachmentRecord | null> {
     const attachment = await this.scopedPrisma.attachment.findFirst({
-      where: { id: attachmentId },
+      where: {
+        id: attachmentId,
+        file: { studentCredentialSecretArtifacts: { none: {} } },
+      },
       ...ATTACHMENT_RECORD_ARGS,
     });
 
@@ -74,6 +79,7 @@ export class AttachmentsRepository {
       where: {
         resourceType: params.resourceType,
         resourceId: params.resourceId,
+        file: { studentCredentialSecretArtifacts: { none: {} } },
       },
       orderBy: { createdAt: 'asc' },
       ...ATTACHMENT_RECORD_ARGS,
