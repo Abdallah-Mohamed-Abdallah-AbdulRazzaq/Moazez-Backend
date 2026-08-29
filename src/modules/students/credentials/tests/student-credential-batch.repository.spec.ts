@@ -3,14 +3,17 @@ import {
   MembershipStatus,
   OrganizationStatus,
   SchoolStatus,
+  StudentBulkRegistrationRowStatus,
   StudentCredentialAudienceMode,
   StudentCredentialBatchStatus,
   StudentCredentialRowStatus,
+  StudentEnrollmentStatus,
   StudentStatus,
   UserStatus,
   UserType,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import type { StudentCredentialAudienceSelection } from '../domain/student-credential.types';
 import { StudentCredentialBatchRepository } from '../infrastructure/student-credential-batch.repository';
 
 describe('StudentCredentialBatchRepository row atomicity', () => {
@@ -48,6 +51,7 @@ describe('StudentCredentialBatchRepository row atomicity', () => {
         {
           studentId: 'student-1',
           userId: 'user-1',
+          enrollmentId: 'enrollment-1',
           credentialVersion: 3,
         },
       ],
@@ -60,8 +64,10 @@ describe('StudentCredentialBatchRepository row atomicity', () => {
           rows: {
             createMany: {
               data: [
-                expect.not.objectContaining({
-                  schoolId: expect.anything(),
+                expect.objectContaining({
+                  studentId: 'student-1',
+                  userId: 'user-1',
+                  enrollmentId: 'enrollment-1',
                 }),
               ],
             },
@@ -69,6 +75,15 @@ describe('StudentCredentialBatchRepository row atomicity', () => {
         }),
       }),
     );
+    const createCall = tx.studentCredentialBatch.create.mock.calls[0] as [
+      {
+        data: {
+          rows: { createMany: { data: Array<Record<string, unknown>> } };
+        };
+      },
+    ];
+    const rowData = createCall[0].data.rows.createMany.data[0];
+    expect(rowData).not.toHaveProperty('schoolId');
   });
 
   it('changes password, revokes sessions, records the row, increments the batch, and audits in one SERIALIZABLE transaction', async () => {
@@ -189,6 +204,205 @@ describe('StudentCredentialBatchRepository row atomicity', () => {
       credentialVersionAfter: 4,
     });
     expect(prisma.$transaction).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('StudentCredentialBatchRepository placement provenance', () => {
+  it('preserves the exact CREATED import-row Student, User, and Enrollment provenance', async () => {
+    const fixture = audiencePrismaFixture({
+      source: {
+        schoolId: 'school-1',
+        rows: [
+          {
+            schoolId: 'school-1',
+            studentId: 'student-1',
+            userId: 'user-1',
+            enrollmentId: 'enrollment-1',
+            enrollment: {
+              id: 'enrollment-1',
+              schoolId: 'school-1',
+              studentId: 'student-1',
+            },
+          },
+        ],
+      },
+    });
+    const repository = new StudentCredentialBatchRepository(fixture.prisma);
+
+    const result = await repository.resolveAudienceCandidates(
+      scopeFixture(),
+      audienceSelection(StudentCredentialAudienceMode.IMPORT_BATCH),
+    );
+
+    expect(result.references.get('student-1')).toEqual({
+      studentId: 'student-1',
+      expectedUserId: 'user-1',
+      enrollmentId: 'enrollment-1',
+    });
+    expect(
+      fixture.scoped.studentBulkRegistrationBatch.findFirst,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          rows: expect.objectContaining({
+            where: {
+              status: StudentBulkRegistrationRowStatus.CREATED,
+            },
+            orderBy: { rowNumber: 'asc' },
+          }),
+        }),
+      }),
+    );
+  });
+
+  it.each([
+    {
+      schoolId: 'school-1',
+      studentId: 'student-1',
+      userId: 'user-1',
+      enrollmentId: null,
+      enrollment: null,
+    },
+    {
+      schoolId: 'school-1',
+      studentId: 'student-1',
+      userId: 'user-1',
+      enrollmentId: 'enrollment-1',
+      enrollment: {
+        id: 'enrollment-1',
+        schoolId: 'school-2',
+        studentId: 'student-1',
+      },
+    },
+    {
+      schoolId: 'school-1',
+      studentId: 'student-1',
+      userId: 'user-1',
+      enrollmentId: 'enrollment-1',
+      enrollment: {
+        id: 'enrollment-1',
+        schoolId: 'school-1',
+        studentId: 'student-2',
+      },
+    },
+  ])(
+    'fails closed for structurally inconsistent import provenance',
+    async (row) => {
+      const fixture = audiencePrismaFixture({
+        source: { schoolId: 'school-1', rows: [row] },
+      });
+      const repository = new StudentCredentialBatchRepository(fixture.prisma);
+
+      await expect(
+        repository.resolveAudienceCandidates(
+          scopeFixture(),
+          audienceSelection(StudentCredentialAudienceMode.IMPORT_BATCH),
+        ),
+      ).rejects.toMatchObject({
+        code: 'students.credentials.audience_invalid',
+        details: {
+          reasonCode: 'source_registration_batch_provenance_invalid',
+        },
+      });
+    },
+  );
+
+  it.each([
+    StudentCredentialAudienceMode.ACADEMIC_YEAR,
+    StudentCredentialAudienceMode.STAGE,
+    StudentCredentialAudienceMode.GRADE,
+    StudentCredentialAudienceMode.SECTION,
+    StudentCredentialAudienceMode.CLASSROOM,
+  ])(
+    'selects deterministic matched Enrollment provenance for %s',
+    async (audienceMode) => {
+      const fixture = audiencePrismaFixture({
+        academicEnrollments: [
+          { id: 'enrollment-new', studentId: 'student-1' },
+          { id: 'enrollment-old', studentId: 'student-1' },
+          { id: 'enrollment-2', studentId: 'student-2' },
+        ],
+      });
+      const repository = new StudentCredentialBatchRepository(fixture.prisma);
+
+      const result = await repository.resolveAudienceCandidates(
+        scopeFixture(),
+        academicAudienceSelection(audienceMode),
+      );
+
+      expect(result.references.get('student-1')?.enrollmentId).toBe(
+        'enrollment-new',
+      );
+      expect(result.references.get('student-2')?.enrollmentId).toBe(
+        'enrollment-2',
+      );
+      expect(fixture.scoped.enrollment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: [
+            { studentId: 'asc' },
+            { enrolledAt: 'desc' },
+            { createdAt: 'desc' },
+            { id: 'asc' },
+          ],
+        }),
+      );
+    },
+  );
+
+  it('selects an optional current active Enrollment deterministically for selected Students', async () => {
+    const fixture = audiencePrismaFixture({
+      students: [{ id: 'student-1' }],
+      currentEnrollments: [
+        { id: 'current-enrollment', studentId: 'student-1' },
+        { id: 'older-enrollment', studentId: 'student-1' },
+      ],
+    });
+    const repository = new StudentCredentialBatchRepository(fixture.prisma);
+
+    const result = await repository.resolveAudienceCandidates(
+      scopeFixture(),
+      audienceSelection(StudentCredentialAudienceMode.SELECTED_STUDENTS),
+    );
+
+    expect(result.references.get('student-1')?.enrollmentId).toBe(
+      'current-enrollment',
+    );
+    expect(fixture.scoped.enrollment.findMany).toHaveBeenCalledWith({
+      where: {
+        studentId: { in: ['student-1'] },
+        status: StudentEnrollmentStatus.ACTIVE,
+        deletedAt: null,
+        academicYear: { is: { isActive: true, deletedAt: null } },
+      },
+      orderBy: [
+        { studentId: 'asc' },
+        { academicYear: { startDate: 'desc' } },
+        { enrolledAt: 'desc' },
+        { createdAt: 'desc' },
+        { id: 'asc' },
+      ],
+      select: { id: true, studentId: true },
+    });
+  });
+
+  it('keeps missing-password Students eligible for evaluation when no current Enrollment exists', async () => {
+    const fixture = audiencePrismaFixture({
+      students: [{ id: 'student-1' }],
+      currentEnrollments: [],
+    });
+    const repository = new StudentCredentialBatchRepository(fixture.prisma);
+
+    const result = await repository.resolveAudienceCandidates(
+      scopeFixture(),
+      audienceSelection(StudentCredentialAudienceMode.MISSING_PASSWORD),
+    );
+
+    expect(result.totalMatched).toBe(1);
+    expect(result.references.get('student-1')).toEqual({
+      studentId: 'student-1',
+      expectedUserId: null,
+      enrollmentId: null,
+    });
   });
 });
 
@@ -382,5 +596,97 @@ function transactionFixture() {
     },
     session: { updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
     auditLog: { create: jest.fn().mockResolvedValue({}) },
+  };
+}
+
+function scopeFixture() {
+  return {
+    schoolId: 'school-1',
+    organizationId: 'organization-1',
+    actorId: 'actor-1',
+    userType: UserType.SCHOOL_USER,
+    roleId: 'role-1',
+  };
+}
+
+function audienceSelection(audienceMode: StudentCredentialAudienceMode) {
+  return {
+    audienceMode,
+    sourceRegistrationBatchId:
+      audienceMode === StudentCredentialAudienceMode.IMPORT_BATCH
+        ? 'source-batch-1'
+        : null,
+    academicYearId:
+      audienceMode === StudentCredentialAudienceMode.ACADEMIC_YEAR
+        ? 'academic-year-1'
+        : null,
+    stageId: null,
+    gradeId: null,
+    sectionId: null,
+    classroomId: null,
+    studentIds:
+      audienceMode === StudentCredentialAudienceMode.SELECTED_STUDENTS
+        ? ['student-1']
+        : [],
+  } as StudentCredentialAudienceSelection;
+}
+
+function academicAudienceSelection(
+  audienceMode: StudentCredentialAudienceMode,
+): StudentCredentialAudienceSelection {
+  return {
+    audienceMode,
+    sourceRegistrationBatchId: null,
+    studentIds: [],
+    academicYearId: 'academic-year-1',
+    stageId:
+      audienceMode === StudentCredentialAudienceMode.STAGE ? 'stage-1' : null,
+    gradeId:
+      audienceMode === StudentCredentialAudienceMode.GRADE ? 'grade-1' : null,
+    sectionId:
+      audienceMode === StudentCredentialAudienceMode.SECTION
+        ? 'section-1'
+        : null,
+    classroomId:
+      audienceMode === StudentCredentialAudienceMode.CLASSROOM
+        ? 'classroom-1'
+        : null,
+  };
+}
+
+function audiencePrismaFixture(input: {
+  source?: unknown;
+  students?: unknown[];
+  academicEnrollments?: unknown[];
+  currentEnrollments?: unknown[];
+}) {
+  const enrollmentFindMany = jest
+    .fn()
+    .mockResolvedValueOnce(
+      input.academicEnrollments ?? input.currentEnrollments ?? [],
+    );
+  const scoped = {
+    studentBulkRegistrationBatch: {
+      findFirst: jest.fn().mockResolvedValue(input.source ?? null),
+    },
+    student: {
+      findMany: jest.fn().mockResolvedValue(input.students ?? []),
+    },
+    academicYear: {
+      findFirst: jest.fn().mockResolvedValue({ id: 'academic-year-1' }),
+    },
+    stage: { findFirst: jest.fn().mockResolvedValue({ id: 'stage-1' }) },
+    grade: { findFirst: jest.fn().mockResolvedValue({ id: 'grade-1' }) },
+    section: {
+      findFirst: jest.fn().mockResolvedValue({ id: 'section-1' }),
+    },
+    classroom: {
+      findFirst: jest.fn().mockResolvedValue({ id: 'classroom-1' }),
+    },
+    enrollment: { findMany: enrollmentFindMany },
+  };
+  return {
+    scoped,
+    prisma: { scoped } as unknown as PrismaService,
   };
 }

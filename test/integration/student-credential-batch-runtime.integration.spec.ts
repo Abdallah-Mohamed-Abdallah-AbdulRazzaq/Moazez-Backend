@@ -3,7 +3,6 @@ import {
   FileVisibility,
   MembershipStatus,
   OrganizationStatus,
-  PrismaClient,
   SchoolStatus,
   StudentCredentialAudienceMode,
   StudentCredentialBatchStatus,
@@ -12,6 +11,10 @@ import {
   UserStatus,
   UserType,
 } from '@prisma/client';
+import {
+  createRequestContext,
+  runWithRequestContext,
+} from '../../src/common/context/request-context';
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
 import { StudentCredentialBatchRepository } from '../../src/modules/students/credentials/infrastructure/student-credential-batch.repository';
 import { assertDisposablePostgresTarget } from '../helpers/disposable-postgres-target';
@@ -19,17 +22,15 @@ import { assertDisposablePostgresTarget } from '../helpers/disposable-postgres-t
 jest.setTimeout(60_000);
 
 describe('Student credential batch atomic concurrency', () => {
-  let prisma: PrismaClient;
+  let prisma: PrismaService;
   let repository: StudentCredentialBatchRepository;
   const cleanupSchoolIds: string[] = [];
 
   beforeAll(async () => {
     assertDisposableTestDatabase();
-    prisma = new PrismaClient();
+    prisma = new PrismaService();
     await prisma.$connect();
-    repository = new StudentCredentialBatchRepository(
-      prisma as unknown as PrismaService,
-    );
+    repository = new StudentCredentialBatchRepository(prisma);
   });
 
   afterAll(async () => {
@@ -98,9 +99,101 @@ describe('Student credential batch atomic concurrency', () => {
     expect(
       rows.filter((row) => row.status === StudentCredentialRowStatus.SKIPPED),
     ).toHaveLength(1);
+    expect(rows.map((row) => row.enrollmentId)).toEqual([
+      fixture.enrollmentId,
+      fixture.enrollmentId,
+    ]);
     expect(batches.map((batch) => batch.generatedRows).sort()).toEqual([0, 1]);
     expect(batches.map((batch) => batch.skippedRows).sort()).toEqual([0, 1]);
     expect(generatedAudits).toBe(1);
+  });
+
+  it('persists selected-audience current Enrollment provenance through the tenant-scoped repository', async () => {
+    const fixture = await createFixture();
+
+    const resolution = await inSchoolScope(fixture, () =>
+      repository.resolveAudienceCandidates(
+        {
+          schoolId: fixture.schoolId,
+          organizationId: fixture.organizationId,
+          actorId: fixture.actorId,
+          userType: UserType.SCHOOL_USER,
+          roleId: fixture.roleId,
+        },
+        {
+          audienceMode: StudentCredentialAudienceMode.SELECTED_STUDENTS,
+          sourceRegistrationBatchId: null,
+          studentIds: [fixture.studentId],
+          academicYearId: null,
+          stageId: null,
+          gradeId: null,
+          sectionId: null,
+          classroomId: null,
+        },
+      ),
+    );
+
+    expect(resolution.references.get(fixture.studentId)?.enrollmentId).toBe(
+      fixture.enrollmentId,
+    );
+
+    const batch = await repository.createBatch({
+      scope: {
+        schoolId: fixture.schoolId,
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        userType: UserType.SCHOOL_USER,
+        roleId: fixture.roleId,
+      },
+      selection: {
+        audienceMode: StudentCredentialAudienceMode.SELECTED_STUDENTS,
+        sourceRegistrationBatchId: null,
+        studentIds: [fixture.studentId],
+        academicYearId: null,
+        stageId: null,
+        gradeId: null,
+        sectionId: null,
+        classroomId: null,
+      },
+      credentialMode: StudentCredentialMode.UNIQUE_GENERATED,
+      targets: [
+        {
+          studentId: fixture.studentId,
+          userId: fixture.studentUserId,
+          enrollmentId: fixture.enrollmentId,
+          credentialVersion: 0,
+        },
+      ],
+    });
+    const row = await prisma.studentCredentialRow.findFirstOrThrow({
+      where: { batchId: batch.id },
+    });
+
+    expect(row.enrollmentId).toBe(fixture.enrollmentId);
+    expect(row.schoolId).toBe(fixture.schoolId);
+
+    const legacyCompatibleBatch = await prisma.studentCredentialBatch.create({
+      data: {
+        schoolId: fixture.schoolId,
+        organizationId: fixture.organizationId,
+        audienceMode: StudentCredentialAudienceMode.SELECTED_STUDENTS,
+        credentialMode: StudentCredentialMode.UNIQUE_GENERATED,
+        status: StudentCredentialBatchStatus.PENDING,
+        totalRows: 1,
+        createdById: fixture.actorId,
+        rows: {
+          create: {
+            studentId: fixture.studentId,
+            userId: fixture.studentUserId,
+            status: StudentCredentialRowStatus.PENDING,
+            credentialVersionBefore: 0,
+          },
+        },
+      },
+      select: { rows: { select: { enrollmentId: true } } },
+    });
+
+    expect(legacyCompatibleBatch.rows[0]?.enrollmentId).toBeNull();
   });
 
   async function createFixture() {
@@ -178,6 +271,56 @@ describe('Student credential batch atomic concurrency', () => {
         expiresAt: new Date(Date.now() + 60_000),
       },
     });
+    const academicYear = await prisma.academicYear.create({
+      data: {
+        schoolId: school.id,
+        nameAr: `عام ${suffix}`,
+        nameEn: `Year ${suffix}`,
+        startDate: new Date('2026-09-01T00:00:00.000Z'),
+        endDate: new Date('2027-06-30T00:00:00.000Z'),
+        isActive: true,
+      },
+    });
+    const stage = await prisma.stage.create({
+      data: {
+        schoolId: school.id,
+        nameAr: `مرحلة ${suffix}`,
+        nameEn: `Stage ${suffix}`,
+      },
+    });
+    const grade = await prisma.grade.create({
+      data: {
+        schoolId: school.id,
+        stageId: stage.id,
+        nameAr: `صف ${suffix}`,
+        nameEn: `Grade ${suffix}`,
+      },
+    });
+    const section = await prisma.section.create({
+      data: {
+        schoolId: school.id,
+        gradeId: grade.id,
+        nameAr: `شعبة ${suffix}`,
+        nameEn: `Section ${suffix}`,
+      },
+    });
+    const classroom = await prisma.classroom.create({
+      data: {
+        schoolId: school.id,
+        sectionId: section.id,
+        nameAr: `فصل ${suffix}`,
+        nameEn: `Classroom ${suffix}`,
+      },
+    });
+    const enrollment = await prisma.enrollment.create({
+      data: {
+        schoolId: school.id,
+        studentId: student.id,
+        academicYearId: academicYear.id,
+        classroomId: classroom.id,
+        enrolledAt: new Date('2026-09-01T00:00:00.000Z'),
+      },
+    });
 
     const rows: Array<{
       id: string;
@@ -217,6 +360,7 @@ describe('Student credential batch atomic concurrency', () => {
             create: {
               studentId: student.id,
               userId: studentUser.id,
+              enrollmentId: enrollment.id,
               status: StudentCredentialRowStatus.PENDING,
               credentialVersionBefore: 0,
             },
@@ -231,9 +375,13 @@ describe('Student credential batch atomic concurrency', () => {
       });
     }
     return {
+      organizationId: organization.id,
       schoolId: school.id,
+      actorId: actor.id,
+      roleId: role.id,
       studentId: student.id,
       studentUserId: studentUser.id,
+      enrollmentId: enrollment.id,
       sessionId: session.id,
       batchIds: rows.map((row) => row.batchId),
       rows,
@@ -266,7 +414,13 @@ describe('Student credential batch atomic concurrency', () => {
     await prisma.studentCredentialBatch.deleteMany({ where: { schoolId } });
     await prisma.auditLog.deleteMany({ where: { schoolId } });
     await prisma.session.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.enrollment.deleteMany({ where: { schoolId } });
     await prisma.student.deleteMany({ where: { schoolId } });
+    await prisma.classroom.deleteMany({ where: { schoolId } });
+    await prisma.section.deleteMany({ where: { schoolId } });
+    await prisma.grade.deleteMany({ where: { schoolId } });
+    await prisma.stage.deleteMany({ where: { schoolId } });
+    await prisma.academicYear.deleteMany({ where: { schoolId } });
     await prisma.membership.deleteMany({ where: { schoolId } });
     await prisma.file.deleteMany({ where: { id: { in: fileIds } } });
     await prisma.role.deleteMany({ where: { schoolId } });
@@ -275,6 +429,27 @@ describe('Student credential batch atomic concurrency', () => {
     await prisma.organization.delete({ where: { id: school.organizationId } });
   }
 });
+
+async function inSchoolScope<T>(
+  fixture: {
+    actorId: string;
+    organizationId: string;
+    schoolId: string;
+    roleId: string;
+  },
+  callback: () => Promise<T>,
+): Promise<T> {
+  const context = createRequestContext('credential-placement-integration');
+  context.actor = { id: fixture.actorId, userType: UserType.SCHOOL_USER };
+  context.activeMembership = {
+    membershipId: 'credential-placement-membership',
+    organizationId: fixture.organizationId,
+    schoolId: fixture.schoolId,
+    roleId: fixture.roleId,
+    permissions: [],
+  };
+  return runWithRequestContext(context, callback);
+}
 
 function assertDisposableTestDatabase(): void {
   assertDisposablePostgresTarget({

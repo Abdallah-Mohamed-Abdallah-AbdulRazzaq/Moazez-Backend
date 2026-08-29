@@ -42,6 +42,7 @@ export class CreateStudentCredentialBatchUseCase {
       targets: resolution.eligible.map((target) => ({
         studentId: target.studentId,
         userId: target.userId,
+        enrollmentId: target.enrollmentId,
         credentialVersion: target.credentialVersion,
       })),
     });

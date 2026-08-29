@@ -19,6 +19,7 @@ import {
   parseStudentCredentialAudience,
   parseStudentCredentialMode,
 } from '../domain/student-credential-audience';
+import { STUDENT_CREDENTIAL_MODE_API_VALUES } from '../domain/student-credential.types';
 import { StudentCredentialBatchRepository } from '../infrastructure/student-credential-batch.repository';
 
 const UUIDS = {
@@ -30,6 +31,7 @@ const UUIDS = {
   grade: '00000000-0000-4000-8000-000000000006',
   section: '00000000-0000-4000-8000-000000000007',
   classroom: '00000000-0000-4000-8000-000000000008',
+  enrollment: '00000000-0000-4000-8000-000000000009',
 } as const;
 
 describe('student credential audience contracts', () => {
@@ -88,6 +90,10 @@ describe('student credential audience contracts', () => {
   });
 
   it('accepts only the two external credential modes', () => {
+    expect(STUDENT_CREDENTIAL_MODE_API_VALUES).toEqual([
+      'unique_generated',
+      'shared_temporary',
+    ]);
     expect(
       parseStudentCredentialMode({
         audienceMode: 'missing_password',
@@ -104,6 +110,54 @@ describe('student credential audience contracts', () => {
         code: 'students.credentials.audience_invalid',
       }),
     );
+    expect(() =>
+      parseStudentCredentialMode({
+        audienceMode: 'missing_password',
+        credentialMode: 'shared_admin_provided',
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        code: 'students.credentials.audience_invalid',
+      }),
+    );
+  });
+
+  it('keeps a missing-password Student eligible when optional placement is unavailable', async () => {
+    const repository = {
+      resolveAudienceCandidates: jest.fn().mockResolvedValue({
+        students: [studentFixture()],
+        totalMatched: 1,
+        missingSelectedStudents: 0,
+        references: new Map([
+          [
+            UUIDS.student,
+            {
+              studentId: UUIDS.student,
+              expectedUserId: null,
+              enrollmentId: null,
+            },
+          ],
+        ]),
+      }),
+    };
+    const service = new StudentCredentialAudienceService(
+      repository as unknown as StudentCredentialBatchRepository,
+    );
+
+    const result = await service.resolve(scope(), {
+      audienceMode: StudentCredentialAudienceMode.MISSING_PASSWORD,
+      sourceRegistrationBatchId: null,
+      studentIds: [],
+      academicYearId: null,
+      stageId: null,
+      gradeId: null,
+      sectionId: null,
+      classroomId: null,
+    });
+
+    expect(result.eligible).toHaveLength(1);
+    expect(result.eligible[0]?.enrollmentId).toBeNull();
+    expect(result.skipped).toBe(0);
   });
 
   it('partitions current tenant eligibility and reports inaccessible selected ids only as an aggregate', async () => {
@@ -118,7 +172,24 @@ describe('student credential audience contracts', () => {
         ],
         totalMatched: 3,
         missingSelectedStudents: 1,
-        expectedUserIds: new Map<string, string>(),
+        references: new Map([
+          [
+            UUIDS.student,
+            {
+              studentId: UUIDS.student,
+              expectedUserId: null,
+              enrollmentId: UUIDS.enrollment,
+            },
+          ],
+          [
+            UUIDS.student2,
+            {
+              studentId: UUIDS.student2,
+              expectedUserId: null,
+              enrollmentId: null,
+            },
+          ],
+        ]),
       }),
     };
     const service = new StudentCredentialAudienceService(
@@ -136,6 +207,7 @@ describe('student credential audience contracts', () => {
     });
 
     expect(result.eligible).toHaveLength(1);
+    expect(result.eligible[0]?.enrollmentId).toBe(UUIDS.enrollment);
     expect(result.skippedReasons).toEqual({
       inaccessible_or_not_found: 1,
       password_already_present: 1,
@@ -151,6 +223,7 @@ describe('student credential audience contracts', () => {
           {
             studentId: UUIDS.student,
             userId: '00000000-0000-4000-8000-000000000011',
+            enrollmentId: UUIDS.enrollment,
             credentialVersion: 0,
             fullName: 'Student One',
             username: 'student.one',
@@ -186,6 +259,11 @@ describe('student credential audience contracts', () => {
     );
 
     expect(result.status).toBe('pending');
+    expect(repository.createBatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targets: [expect.objectContaining({ enrollmentId: UUIDS.enrollment })],
+      }),
+    );
     expect(repository.createBatch.mock.invocationCallOrder[0]).toBeLessThan(
       bullmq.ensureJobFromPersistedTruth.mock.invocationCallOrder[0],
     );
