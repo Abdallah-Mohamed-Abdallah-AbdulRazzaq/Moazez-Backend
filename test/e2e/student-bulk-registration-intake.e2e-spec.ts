@@ -277,7 +277,10 @@ describe('Student bulk registration intake flow (e2e)', () => {
       'attachment; filename="student-bulk-registration-v1.csv"',
     );
     expect(template.text).toBe(
-      'first_name_en,father_name_en,grandfather_name_en,family_name_en,first_name_ar,father_name_ar,grandfather_name_ar,family_name_ar,date_of_birth,gender,nationality,username,contact_email,student_phone\r\n',
+      '\uFEFFfirst_name_en,father_name_en,grandfather_name_en,family_name_en,first_name_ar,father_name_ar,grandfather_name_ar,family_name_ar,date_of_birth,gender,nationality,username,contact_email,student_phone\r\n',
+    );
+    expect(Buffer.from(template.text, 'utf8').subarray(0, 3)).toEqual(
+      Buffer.from([0xef, 0xbb, 0xbf]),
     );
 
     const upload = await request(app.getHttpServer())

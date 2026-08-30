@@ -2,7 +2,10 @@ import {
   SchoolLoginSettingsStatus,
   type SchoolLoginSettings,
 } from '@prisma/client';
-import { STUDENT_BULK_REGISTRATION_TEMPLATE_HEADERS } from '../domain/student-bulk-registration.constants';
+import {
+  STUDENT_BULK_REGISTRATION_TEMPLATE_CSV,
+  STUDENT_BULK_REGISTRATION_TEMPLATE_HEADERS,
+} from '../domain/student-bulk-registration.constants';
 import {
   collectCandidateLoginEmails,
   parseStudentBulkRegistrationCsv,
@@ -51,6 +54,26 @@ describe('student bulk registration CSV contract', () => {
     expect(result.batchErrors).toEqual([]);
     expect(result.rows[0].normalizedData.firstNameEn).toBe('Sara, Noor');
     expect(result.rows[0].normalizedData.fatherNameEn).toBe('A "quoted" name');
+  });
+
+  it('round-trips the generated BOM template through the existing parser', () => {
+    const result = parseStudentBulkRegistrationCsv(
+      Buffer.from(
+        `${STUDENT_BULK_REGISTRATION_TEMPLATE_CSV}${csvRow(validRow)}\r\n`,
+        'utf8',
+      ),
+    );
+
+    expect(result.batchErrors).toEqual([]);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({
+      rowNumber: 2,
+      normalizedData: {
+        firstNameEn: 'Sara',
+        familyNameEn: 'Hassan',
+        username: 'sara.hassan',
+      },
+    });
   });
 
   it.each([

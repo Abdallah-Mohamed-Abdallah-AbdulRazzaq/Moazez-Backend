@@ -174,6 +174,9 @@ describe('StudentBulkRegistrationController API contract', () => {
       'attachment; filename="student-bulk-registration-v1.csv"',
     );
     expect(response.text).toBe(STUDENT_BULK_REGISTRATION_TEMPLATE_CSV);
+    expect(Buffer.from(response.text, 'utf8').subarray(0, 3)).toEqual(
+      Buffer.from([0xef, 0xbb, 0xbf]),
+    );
   });
 
   it('binds the multipart field named file and returns 201', async () => {
