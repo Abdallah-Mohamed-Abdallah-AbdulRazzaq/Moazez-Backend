@@ -39,6 +39,10 @@ export class CreateStudentCredentialBatchDto extends StudentCredentialAudienceDt
   @ApiProperty({ enum: STUDENT_CREDENTIAL_MODE_API_VALUES })
   @Allow()
   credentialMode!: unknown;
+
+  @ApiPropertyOptional({ type: String, format: 'password', writeOnly: true })
+  @Allow()
+  sharedPassword?: unknown;
 }
 
 export class StudentCredentialPreviewSampleItemDto {

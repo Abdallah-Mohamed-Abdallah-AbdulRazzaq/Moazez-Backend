@@ -10,12 +10,14 @@ import type { StudentsScope } from '../../students/domain/students-scope';
 import type { StudentCredentialAudienceSelection } from '../domain/student-credential.types';
 import {
   StudentCredentialBatchRepository,
+  type StudentCredentialAudienceReference,
   type StudentCredentialAudienceStudent,
 } from '../infrastructure/student-credential-batch.repository';
 
 export interface StudentCredentialEligibleTarget {
   studentId: string;
   userId: string;
+  enrollmentId: string | null;
   credentialVersion: number;
   fullName: string;
   username: string | null;
@@ -54,11 +56,7 @@ export class StudentCredentialAudienceService {
     }
 
     for (const student of result.students) {
-      const reason = ineligibilityReason(
-        student,
-        selection,
-        result.expectedUserIds,
-      );
+      const reason = ineligibilityReason(student, selection, result.references);
       if (reason) {
         incrementReason(skippedReasons, reason);
         continue;
@@ -67,6 +65,7 @@ export class StudentCredentialAudienceService {
       eligible.push({
         studentId: student.id,
         userId: user.id,
+        enrollmentId: result.references.get(student.id)?.enrollmentId ?? null,
         credentialVersion: user.credentialVersion,
         fullName: `${student.firstName} ${student.lastName}`.trim(),
         username: user.username,
@@ -91,13 +90,13 @@ export class StudentCredentialAudienceService {
 function ineligibilityReason(
   student: StudentCredentialAudienceStudent,
   selection: StudentCredentialAudienceSelection,
-  expectedUserIds: ReadonlyMap<string, string>,
+  references: ReadonlyMap<string, StudentCredentialAudienceReference>,
 ): string | null {
   if (student.status !== StudentStatus.ACTIVE || student.deletedAt !== null) {
     return 'student_inactive';
   }
   if (!student.userId || !student.user) return 'student_account_missing';
-  const expectedUserId = expectedUserIds.get(student.id);
+  const expectedUserId = references.get(student.id)?.expectedUserId;
   if (expectedUserId && expectedUserId !== student.user.id) {
     return 'student_account_changed';
   }

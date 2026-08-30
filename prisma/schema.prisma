@@ -474,6 +474,7 @@ enum StudentCredentialAudienceMode {
 enum StudentCredentialMode {
   UNIQUE_GENERATED
   SHARED_TEMPORARY
+  SHARED_ADMIN_PROVIDED
 
   @@map("student_credential_mode")
 }
@@ -3868,6 +3869,7 @@ model Enrollment {
   homeworkTargets            HomeworkTarget[]
   homeworkSubmissions        HomeworkSubmission[]
   bulkRegistrationRows       StudentBulkRegistrationRow[]
+  credentialRows             StudentCredentialRow[]        @relation("StudentCredentialRowEnrollment")
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -4017,6 +4019,7 @@ model StudentCredentialRow {
   batchId                 String                     @map("batch_id") @db.Uuid
   studentId               String                     @map("student_id") @db.Uuid
   userId                  String?                    @map("user_id") @db.Uuid
+  enrollmentId            String?                    @map("enrollment_id") @db.Uuid
   status                  StudentCredentialRowStatus @default(PENDING)
   errorsJson              Json?                      @map("errors_json")
   credentialVersionBefore Int?                       @map("credential_version_before")
@@ -4030,6 +4033,7 @@ model StudentCredentialRow {
   batch   StudentCredentialBatch @relation(fields: [batchId, schoolId], references: [id, schoolId], onDelete: Cascade, map: "student_cred_rows_batch_fkey")
   student Student                @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict, map: "student_cred_rows_student_fkey")
   user    User?                  @relation("StudentCredentialRowUser", fields: [userId], references: [id], onDelete: Restrict, map: "student_cred_rows_user_fkey")
+  enrollment Enrollment?        @relation("StudentCredentialRowEnrollment", fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict, map: "student_cred_rows_enrollment_fkey")
 
   @@unique([id, schoolId], map: "student_credential_rows_id_school_key")
   @@unique([batchId, studentId], map: "student_credential_rows_batch_student_key")
@@ -4037,6 +4041,7 @@ model StudentCredentialRow {
   @@index([schoolId, batchId, status], map: "student_credential_rows_school_batch_status_idx")
   @@index([studentId], map: "student_credential_rows_student_idx")
   @@index([userId], map: "student_credential_rows_user_idx")
+  @@index([schoolId, enrollmentId], map: "student_cred_rows_school_enrollment_idx")
   @@map("student_credential_rows")
 }
 

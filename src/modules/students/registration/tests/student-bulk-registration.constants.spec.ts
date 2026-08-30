@@ -6,6 +6,7 @@ import {
 import { normalizeImportJobType } from '../../../files/imports/validators/import-job.validator';
 import {
   STUDENT_BULK_REGISTRATION_TEMPLATE_CSV,
+  STUDENT_BULK_REGISTRATION_TEMPLATE_FILENAME,
   STUDENT_BULK_REGISTRATION_TEMPLATE_HEADERS,
   STUDENT_BULK_REGISTRATION_TEMPLATE_VERSION,
 } from '../domain/student-bulk-registration.constants';
@@ -34,13 +35,27 @@ describe('student bulk registration intake constants', () => {
       STUDENT_BULK_REGISTRATION_TEMPLATE_HEADERS.length,
     );
     expect(STUDENT_BULK_REGISTRATION_TEMPLATE_CSV).toBe(
-      `${STUDENT_BULK_REGISTRATION_TEMPLATE_HEADERS.join(',')}\r\n`,
+      `\uFEFF${STUDENT_BULK_REGISTRATION_TEMPLATE_HEADERS.join(',')}\r\n`,
     );
     expect(STUDENT_BULK_REGISTRATION_TEMPLATE_CSV.split('\r\n')).toEqual([
-      STUDENT_BULK_REGISTRATION_TEMPLATE_HEADERS.join(','),
+      `\uFEFF${STUDENT_BULK_REGISTRATION_TEMPLATE_HEADERS.join(',')}`,
       '',
     ]);
-    expect(STUDENT_BULK_REGISTRATION_TEMPLATE_CSV).not.toContain('\uFEFF');
+    const templateBytes = Buffer.from(
+      STUDENT_BULK_REGISTRATION_TEMPLATE_CSV,
+      'utf8',
+    );
+    expect(templateBytes.subarray(0, 3)).toEqual(
+      Buffer.from([0xef, 0xbb, 0xbf]),
+    );
+    expect(
+      [...STUDENT_BULK_REGISTRATION_TEMPLATE_CSV].filter(
+        (character) => character === '\uFEFF',
+      ),
+    ).toHaveLength(1);
+    expect(STUDENT_BULK_REGISTRATION_TEMPLATE_FILENAME).toBe(
+      'student-bulk-registration-v1.csv',
+    );
     expect(STUDENT_BULK_REGISTRATION_TEMPLATE_CSV).not.toMatch(/password/iu);
     expect(STUDENT_BULK_REGISTRATION_TEMPLATE_CSV).not.toMatch(
       /(?:academic_year|term_id|stage_id|grade_id|section_id|classroom_id|enrollment_date)/u,

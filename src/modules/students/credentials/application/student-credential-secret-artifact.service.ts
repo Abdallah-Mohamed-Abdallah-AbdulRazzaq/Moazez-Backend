@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
   FileVisibility,
+  StudentCredentialBatchStatus,
   StudentCredentialMode,
   StudentCredentialRowStatus,
 } from '@prisma/client';
@@ -60,6 +61,13 @@ export class StudentCredentialSecretArtifactService {
     if (hasAnyMetadata) {
       throw new StudentCredentialSecretArtifactException(
         STUDENT_CREDENTIAL_SECRET_ARTIFACT_INVALID_CODE,
+      );
+    }
+    if (
+      input.batch.credentialMode === StudentCredentialMode.SHARED_ADMIN_PROVIDED
+    ) {
+      throw new StudentCredentialSecretArtifactException(
+        STUDENT_CREDENTIAL_SECRET_ARTIFACT_UNAVAILABLE_CODE,
       );
     }
     if (
@@ -139,6 +147,126 @@ export class StudentCredentialSecretArtifactService {
       );
     }
     return this.readAndVerify(persisted, input.rows, input.now);
+  }
+
+  async stageAdminProvidedArtifact(input: {
+    batch: StudentCredentialExecutionBatch;
+    rows: StudentCredentialExecutionRow[];
+    sharedPassword: string;
+    now: Date;
+  }): Promise<StudentCredentialSecretArtifact> {
+    const hasPointer = input.batch.secretArtifactFileId !== null;
+    const hasAnyMetadata =
+      hasPointer ||
+      input.batch.secretArtifactVersion !== null ||
+      input.batch.secretArtifactStagedAt !== null ||
+      input.batch.secretArtifactExpiresAt !== null;
+    if (hasPointer) {
+      const artifact = await this.readAndVerify(
+        input.batch,
+        input.rows,
+        input.now,
+      );
+      assertExactAdminProvidedPassword(artifact, input.sharedPassword);
+      return artifact;
+    }
+    if (
+      hasAnyMetadata ||
+      input.batch.credentialMode !==
+        StudentCredentialMode.SHARED_ADMIN_PROVIDED ||
+      input.batch.status !== StudentCredentialBatchStatus.PENDING ||
+      input.batch.startedAt !== null ||
+      input.batch.generatedRows !== 0 ||
+      input.batch.skippedRows !== 0 ||
+      input.batch.failedRows !== 0 ||
+      input.rows.some(
+        (row) => row.status !== StudentCredentialRowStatus.PENDING,
+      )
+    ) {
+      throw new StudentCredentialSecretArtifactException(
+        STUDENT_CREDENTIAL_SECRET_ARTIFACT_INVALID_CODE,
+      );
+    }
+
+    const artifact = buildAdminProvidedArtifact(
+      input.batch,
+      input.rows,
+      input.sharedPassword,
+      input.now,
+    );
+    const body = Buffer.from(JSON.stringify(artifact), 'utf8');
+    if (body.byteLength > STUDENT_CREDENTIAL_SECRET_ARTIFACT_MAX_BYTES) {
+      throw new StudentCredentialSecretArtifactException(
+        STUDENT_CREDENTIAL_SECRET_ARTIFACT_INVALID_CODE,
+      );
+    }
+    const checksumSha256 = createHash('sha256').update(body).digest('hex');
+    const objectKey = studentCredentialSecretArtifactObjectKey({
+      schoolId: input.batch.schoolId,
+      batchId: input.batch.id,
+    });
+    const stored = await this.storage.saveObject({
+      objectKey,
+      body,
+      sizeBytes: body.byteLength,
+      visibility: FileVisibility.PRIVATE,
+      contentType: STUDENT_CREDENTIAL_SECRET_ARTIFACT_MIME,
+      metadata: {
+        purpose: 'student-credential-secret-artifact',
+        batchId: input.batch.id,
+        artifactVersion: String(STUDENT_CREDENTIAL_SECRET_ARTIFACT_VERSION),
+        sha256: checksumSha256,
+      },
+    });
+    try {
+      await this.repository.attachPendingAdminProvidedSecretArtifact({
+        batchId: input.batch.id,
+        schoolId: input.batch.schoolId,
+        organizationId: input.batch.organizationId,
+        uploaderId: input.batch.createdById,
+        bucket: stored.bucket,
+        objectKey,
+        originalName: STUDENT_CREDENTIAL_SECRET_ARTIFACT_ORIGINAL_NAME,
+        mimeType: STUDENT_CREDENTIAL_SECRET_ARTIFACT_MIME,
+        sizeBytes: BigInt(body.byteLength),
+        checksumSha256,
+        artifactVersion: STUDENT_CREDENTIAL_SECRET_ARTIFACT_VERSION,
+        stagedAt: input.now,
+        expiresAt: new Date(
+          input.now.getTime() + STUDENT_CREDENTIAL_SECRET_ARTIFACT_TTL_MS,
+        ),
+      });
+    } catch {
+      const persisted = await this.repository
+        .findExecutionBatchById(input.batch.id)
+        .catch(() => null);
+      if (persisted?.secretArtifactFileId) {
+        const existing = await this.readAndVerify(
+          persisted,
+          input.rows,
+          input.now,
+        );
+        assertExactAdminProvidedPassword(existing, input.sharedPassword);
+        return existing;
+      }
+      await this.storage
+        .deleteObjectAndConfirmAbsent({ bucket: stored.bucket, objectKey })
+        .catch(() => undefined);
+      throw new StudentCredentialSecretArtifactException(
+        STUDENT_CREDENTIAL_SECRET_ARTIFACT_UNAVAILABLE_CODE,
+      );
+    }
+    const persisted = await this.repository.findExecutionBatchById(
+      input.batch.id,
+    );
+    if (!persisted) {
+      throw new StudentCredentialExecutionInvariantException(
+        'artifact_batch_disappeared',
+      );
+    }
+    const verified = await this.readAndVerify(persisted, input.rows, input.now);
+    assertExactAdminProvidedPassword(verified, input.sharedPassword);
+    return verified;
   }
 
   async readAndVerify(
@@ -250,22 +378,33 @@ function buildArtifact(
   rows: StudentCredentialExecutionRow[],
   now: Date,
 ): StudentCredentialSecretArtifact {
-  if (rows.length !== batch.totalRows || rows.some((row) => !row.userId)) {
-    throw new StudentCredentialExecutionInvariantException(
-      'artifact_row_set_invalid',
-    );
-  }
+  assertArtifactRows(batch, rows);
   const used = new Set<string>();
-  const shared =
-    batch.credentialMode === StudentCredentialMode.SHARED_TEMPORARY
-      ? generateUniquePassword(used)
-      : null;
-  const entries = rows.map<StudentCredentialArtifactEntry>((row) => ({
-    rowId: row.id,
-    studentId: row.studentId,
-    userId: row.userId!,
-    temporaryPassword: shared ?? generateUniquePassword(used),
-  }));
+  let entries: StudentCredentialArtifactEntry[];
+  switch (batch.credentialMode) {
+    case StudentCredentialMode.UNIQUE_GENERATED:
+      entries = rows.map((row) => ({
+        rowId: row.id,
+        studentId: row.studentId,
+        userId: row.userId!,
+        temporaryPassword: generateUniquePassword(used),
+      }));
+      break;
+    case StudentCredentialMode.SHARED_TEMPORARY: {
+      const sharedPassword = generateUniquePassword(used);
+      entries = rows.map((row) => ({
+        rowId: row.id,
+        studentId: row.studentId,
+        userId: row.userId!,
+        temporaryPassword: sharedPassword,
+      }));
+      break;
+    }
+    case StudentCredentialMode.SHARED_ADMIN_PROVIDED:
+      throw new StudentCredentialSecretArtifactException(
+        STUDENT_CREDENTIAL_SECRET_ARTIFACT_UNAVAILABLE_CODE,
+      );
+  }
   return {
     version: STUDENT_CREDENTIAL_SECRET_ARTIFACT_VERSION,
     batchId: batch.id,
@@ -273,6 +412,52 @@ function buildArtifact(
     createdAt: now.toISOString(),
     entries,
   };
+}
+
+function buildAdminProvidedArtifact(
+  batch: StudentCredentialExecutionBatch,
+  rows: StudentCredentialExecutionRow[],
+  sharedPassword: string,
+  now: Date,
+): StudentCredentialSecretArtifact {
+  assertArtifactRows(batch, rows);
+  return {
+    version: STUDENT_CREDENTIAL_SECRET_ARTIFACT_VERSION,
+    batchId: batch.id,
+    credentialMode: 'shared_admin_provided',
+    createdAt: now.toISOString(),
+    entries: rows.map((row) => ({
+      rowId: row.id,
+      studentId: row.studentId,
+      userId: row.userId!,
+      temporaryPassword: sharedPassword,
+    })),
+  };
+}
+
+function assertArtifactRows(
+  batch: StudentCredentialExecutionBatch,
+  rows: StudentCredentialExecutionRow[],
+): void {
+  if (rows.length !== batch.totalRows || rows.some((row) => !row.userId)) {
+    throw new StudentCredentialExecutionInvariantException(
+      'artifact_row_set_invalid',
+    );
+  }
+}
+
+function assertExactAdminProvidedPassword(
+  artifact: StudentCredentialSecretArtifact,
+  sharedPassword: string,
+): void {
+  if (
+    artifact.credentialMode !== 'shared_admin_provided' ||
+    artifact.entries.some((entry) => entry.temporaryPassword !== sharedPassword)
+  ) {
+    throw new StudentCredentialSecretArtifactException(
+      STUDENT_CREDENTIAL_SECRET_ARTIFACT_INVALID_CODE,
+    );
+  }
 }
 
 function generateUniquePassword(used: Set<string>): string {
@@ -367,6 +552,8 @@ function parseAndVerifyArtifact(
   if (
     (batch.credentialMode === StudentCredentialMode.SHARED_TEMPORARY &&
       distinctPasswords !== 1) ||
+    (batch.credentialMode === StudentCredentialMode.SHARED_ADMIN_PROVIDED &&
+      distinctPasswords !== 1) ||
     (batch.credentialMode === StudentCredentialMode.UNIQUE_GENERATED &&
       distinctPasswords !== parsed.entries.length)
   ) {
@@ -395,7 +582,8 @@ function isExactArtifact(
     value.version !== STUDENT_CREDENTIAL_SECRET_ARTIFACT_VERSION ||
     typeof value.batchId !== 'string' ||
     (value.credentialMode !== 'unique_generated' &&
-      value.credentialMode !== 'shared_temporary') ||
+      value.credentialMode !== 'shared_temporary' &&
+      value.credentialMode !== 'shared_admin_provided') ||
     typeof value.createdAt !== 'string' ||
     !Number.isFinite(Date.parse(value.createdAt)) ||
     !Array.isArray(value.entries)

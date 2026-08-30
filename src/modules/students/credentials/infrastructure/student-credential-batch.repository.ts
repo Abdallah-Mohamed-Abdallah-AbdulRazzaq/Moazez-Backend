@@ -110,6 +110,7 @@ const EXECUTION_ROW_SELECT =
     batchId: true,
     studentId: true,
     userId: true,
+    enrollmentId: true,
     status: true,
     credentialVersionBefore: true,
     credentialVersionAfter: true,
@@ -163,7 +164,13 @@ export interface StudentCredentialAudienceQueryResult {
   students: StudentCredentialAudienceStudent[];
   totalMatched: number;
   missingSelectedStudents: number;
-  expectedUserIds: ReadonlyMap<string, string>;
+  references: ReadonlyMap<string, StudentCredentialAudienceReference>;
+}
+
+export interface StudentCredentialAudienceReference {
+  studentId: string;
+  expectedUserId: string | null;
+  enrollmentId: string | null;
 }
 
 export type StudentCredentialRowCounts = Record<
@@ -182,6 +189,7 @@ export interface StudentCredentialExportRow {
   batchId: string;
   studentId: string;
   userId: string | null;
+  enrollmentId: string | null;
   status: StudentCredentialRowStatus;
   credentialVersionAfter: number | null;
   generatedAt: Date | null;
@@ -214,6 +222,54 @@ export interface StudentCredentialExportRow {
       status: MembershipStatus;
       deletedAt: Date | null;
     }>;
+  } | null;
+  enrollment: {
+    id: string;
+    schoolId: string;
+    studentId: string;
+    academicYearId: string;
+    classroomId: string;
+    status: StudentEnrollmentStatus;
+    deletedAt: Date | null;
+    academicYear: {
+      id: string;
+      schoolId: string;
+      nameEn: string;
+      nameAr: string;
+      isActive: boolean;
+      deletedAt: Date | null;
+    };
+    classroom: {
+      id: string;
+      schoolId: string;
+      sectionId: string;
+      nameEn: string;
+      nameAr: string;
+      deletedAt: Date | null;
+      section: {
+        id: string;
+        schoolId: string;
+        gradeId: string;
+        nameEn: string;
+        nameAr: string;
+        deletedAt: Date | null;
+        grade: {
+          id: string;
+          schoolId: string;
+          stageId: string;
+          nameEn: string;
+          nameAr: string;
+          deletedAt: Date | null;
+          stage: {
+            id: string;
+            schoolId: string;
+            nameEn: string;
+            nameAr: string;
+            deletedAt: Date | null;
+          };
+        };
+      };
+    };
   } | null;
 }
 
@@ -270,6 +326,25 @@ export class StudentCredentialBatchRepository {
       select: AUDIENCE_STUDENT_SELECT,
     });
 
+    if (
+      selection.audienceMode ===
+        StudentCredentialAudienceMode.SELECTED_STUDENTS ||
+      selection.audienceMode === StudentCredentialAudienceMode.MISSING_PASSWORD
+    ) {
+      const currentEnrollmentIds =
+        await this.resolveOptionalCurrentEnrollmentIds(
+          students.map((student) => student.id),
+        );
+      for (const student of students) {
+        const reference = references.get(student.id);
+        references.set(student.id, {
+          studentId: student.id,
+          expectedUserId: reference?.expectedUserId ?? null,
+          enrollmentId: currentEnrollmentIds.get(student.id) ?? null,
+        });
+      }
+    }
+
     const totalMatched =
       selection.audienceMode === StudentCredentialAudienceMode.MISSING_PASSWORD
         ? students.length
@@ -283,7 +358,7 @@ export class StudentCredentialBatchRepository {
       students,
       totalMatched,
       missingSelectedStudents,
-      expectedUserIds: references,
+      references,
     };
   }
 
@@ -294,6 +369,7 @@ export class StudentCredentialBatchRepository {
     targets: Array<{
       studentId: string;
       userId: string;
+      enrollmentId: string | null;
       credentialVersion: number;
     }>;
   }): Promise<StudentCredentialBatchRecord> {
@@ -321,6 +397,7 @@ export class StudentCredentialBatchRepository {
               data: input.targets.map((target) => ({
                 studentId: target.studentId,
                 userId: target.userId,
+                enrollmentId: target.enrollmentId,
                 status: StudentCredentialRowStatus.PENDING,
                 credentialVersionBefore: target.credentialVersion,
                 credentialVersionAfter: null,
@@ -390,6 +467,7 @@ export class StudentCredentialBatchRepository {
         batchId: true,
         studentId: true,
         userId: true,
+        enrollmentId: true,
         status: true,
         credentialVersionAfter: true,
         generatedAt: true,
@@ -432,6 +510,66 @@ export class StudentCredentialBatchRepository {
                 userType: true,
                 status: true,
                 deletedAt: true,
+              },
+            },
+          },
+        },
+        enrollment: {
+          select: {
+            id: true,
+            schoolId: true,
+            studentId: true,
+            academicYearId: true,
+            classroomId: true,
+            status: true,
+            deletedAt: true,
+            academicYear: {
+              select: {
+                id: true,
+                schoolId: true,
+                nameEn: true,
+                nameAr: true,
+                isActive: true,
+                deletedAt: true,
+              },
+            },
+            classroom: {
+              select: {
+                id: true,
+                schoolId: true,
+                sectionId: true,
+                nameEn: true,
+                nameAr: true,
+                deletedAt: true,
+                section: {
+                  select: {
+                    id: true,
+                    schoolId: true,
+                    gradeId: true,
+                    nameEn: true,
+                    nameAr: true,
+                    deletedAt: true,
+                    grade: {
+                      select: {
+                        id: true,
+                        schoolId: true,
+                        stageId: true,
+                        nameEn: true,
+                        nameAr: true,
+                        deletedAt: true,
+                        stage: {
+                          select: {
+                            id: true,
+                            schoolId: true,
+                            nameEn: true,
+                            nameAr: true,
+                            deletedAt: true,
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
               },
             },
           },
@@ -500,6 +638,23 @@ export class StudentCredentialBatchRepository {
         schoolId: input.schoolId,
         status: StudentCredentialBatchStatus.PENDING,
         startedAt: null,
+        OR: [
+          {
+            credentialMode: {
+              in: [
+                StudentCredentialMode.UNIQUE_GENERATED,
+                StudentCredentialMode.SHARED_TEMPORARY,
+              ],
+            },
+          },
+          {
+            credentialMode: StudentCredentialMode.SHARED_ADMIN_PROVIDED,
+            secretArtifactFileId: { not: null },
+            secretArtifactVersion: 1,
+            secretArtifactStagedAt: { not: null },
+            secretArtifactExpiresAt: { not: null },
+          },
+        ],
       },
       data: {
         status: StudentCredentialBatchStatus.PROCESSING,
@@ -576,6 +731,126 @@ export class StudentCredentialBatchRepository {
           schoolId: input.schoolId,
           organizationId: input.organizationId,
           status: StudentCredentialBatchStatus.PROCESSING,
+          secretArtifactFileId: null,
+          secretArtifactVersion: null,
+          secretArtifactStagedAt: null,
+          secretArtifactExpiresAt: null,
+        },
+        data: {
+          secretArtifactFileId: file.id,
+          secretArtifactVersion: input.artifactVersion,
+          secretArtifactStagedAt: input.stagedAt,
+          secretArtifactExpiresAt: input.expiresAt,
+        },
+      });
+      if (attached.count !== 1) {
+        throw new StudentCredentialExecutionInvariantException(
+          'artifact_attachment_conflict',
+        );
+      }
+      return file.id;
+    });
+  }
+
+  async attachPendingAdminProvidedSecretArtifact(input: {
+    batchId: string;
+    schoolId: string;
+    organizationId: string;
+    uploaderId: string;
+    bucket: string;
+    objectKey: string;
+    originalName: string;
+    mimeType: string;
+    sizeBytes: bigint;
+    checksumSha256: string;
+    artifactVersion: number;
+    stagedAt: Date;
+    expiresAt: Date;
+  }): Promise<string> {
+    return this.prisma.$transaction(async (tx) => {
+      const batch = await tx.studentCredentialBatch.findFirst({
+        where: {
+          id: input.batchId,
+          schoolId: input.schoolId,
+          organizationId: input.organizationId,
+          credentialMode: StudentCredentialMode.SHARED_ADMIN_PROVIDED,
+          status: StudentCredentialBatchStatus.PENDING,
+          startedAt: null,
+          generatedRows: 0,
+          skippedRows: 0,
+          failedRows: 0,
+        },
+        select: {
+          totalRows: true,
+          secretArtifactFileId: true,
+          secretArtifactVersion: true,
+          secretArtifactStagedAt: true,
+          secretArtifactExpiresAt: true,
+        },
+      });
+      if (!batch) {
+        throw new StudentCredentialExecutionInvariantException(
+          'admin_artifact_batch_not_pending',
+        );
+      }
+      if (batch.secretArtifactFileId) return batch.secretArtifactFileId;
+      if (
+        batch.secretArtifactVersion !== null ||
+        batch.secretArtifactStagedAt !== null ||
+        batch.secretArtifactExpiresAt !== null
+      ) {
+        throw new StudentCredentialExecutionInvariantException(
+          'artifact_staging_incomplete',
+        );
+      }
+      const [allRows, pendingRows] = await Promise.all([
+        tx.studentCredentialRow.count({
+          where: { batchId: input.batchId, schoolId: input.schoolId },
+        }),
+        tx.studentCredentialRow.count({
+          where: {
+            batchId: input.batchId,
+            schoolId: input.schoolId,
+            status: StudentCredentialRowStatus.PENDING,
+          },
+        }),
+      ]);
+      if (
+        batch.totalRows <= 0 ||
+        allRows !== batch.totalRows ||
+        pendingRows !== batch.totalRows
+      ) {
+        throw new StudentCredentialExecutionInvariantException(
+          'admin_artifact_rows_not_pending',
+        );
+      }
+
+      const file = await tx.file.create({
+        data: {
+          schoolId: input.schoolId,
+          organizationId: input.organizationId,
+          uploaderId: input.uploaderId,
+          bucket: input.bucket,
+          objectKey: input.objectKey,
+          originalName: input.originalName,
+          mimeType: input.mimeType,
+          sizeBytes: input.sizeBytes,
+          checksumSha256: input.checksumSha256,
+          visibility: FileVisibility.PRIVATE,
+        },
+        select: { id: true },
+      });
+      const attached = await tx.studentCredentialBatch.updateMany({
+        where: {
+          id: input.batchId,
+          schoolId: input.schoolId,
+          organizationId: input.organizationId,
+          credentialMode: StudentCredentialMode.SHARED_ADMIN_PROVIDED,
+          status: StudentCredentialBatchStatus.PENDING,
+          startedAt: null,
+          generatedRows: 0,
+          skippedRows: 0,
+          failedRows: 0,
           secretArtifactFileId: null,
           secretArtifactVersion: null,
           secretArtifactStagedAt: null,
@@ -1249,12 +1524,17 @@ export class StudentCredentialBatchRepository {
   private async resolveAudienceReferences(
     scope: StudentsScope,
     selection: StudentCredentialAudienceSelection,
-  ): Promise<Map<string, string>> {
+  ): Promise<Map<string, StudentCredentialAudienceReference>> {
     switch (selection.audienceMode) {
       case StudentCredentialAudienceMode.IMPORT_BATCH:
-        return this.resolveImportBatchReferences(selection);
+        return this.resolveImportBatchReferences(scope, selection);
       case StudentCredentialAudienceMode.SELECTED_STUDENTS:
-        return new Map(selection.studentIds.map((id) => [id, '']));
+        return new Map(
+          selection.studentIds.map((studentId) => [
+            studentId,
+            { studentId, expectedUserId: null, enrollmentId: null },
+          ]),
+        );
       case StudentCredentialAudienceMode.MISSING_PASSWORD:
         return new Map();
       default:
@@ -1263,8 +1543,9 @@ export class StudentCredentialBatchRepository {
   }
 
   private async resolveImportBatchReferences(
+    scope: StudentsScope,
     selection: StudentCredentialAudienceSelection,
-  ): Promise<Map<string, string>> {
+  ): Promise<Map<string, StudentCredentialAudienceReference>> {
     const source =
       await this.scopedPrisma.studentBulkRegistrationBatch.findFirst({
         where: {
@@ -1277,13 +1558,21 @@ export class StudentCredentialBatchRepository {
           },
         },
         select: {
+          schoolId: true,
           rows: {
             where: {
               status: StudentBulkRegistrationRowStatus.CREATED,
-              studentId: { not: null },
-              userId: { not: null },
             },
-            select: { studentId: true, userId: true },
+            orderBy: { rowNumber: 'asc' },
+            select: {
+              schoolId: true,
+              studentId: true,
+              userId: true,
+              enrollmentId: true,
+              enrollment: {
+                select: { id: true, schoolId: true, studentId: true },
+              },
+            },
           },
         },
       });
@@ -1292,10 +1581,39 @@ export class StudentCredentialBatchRepository {
         'source_registration_batch_invalid',
       );
     }
-    const references = new Map<string, string>();
+    const references = new Map<string, StudentCredentialAudienceReference>();
     for (const row of source.rows) {
-      if (row.studentId && row.userId)
-        references.set(row.studentId, row.userId);
+      if (
+        source.schoolId !== scope.schoolId ||
+        row.schoolId !== scope.schoolId ||
+        !row.studentId ||
+        !row.userId ||
+        !row.enrollmentId ||
+        !row.enrollment ||
+        row.enrollment.id !== row.enrollmentId ||
+        row.enrollment.schoolId !== scope.schoolId ||
+        row.enrollment.studentId !== row.studentId
+      ) {
+        throw new StudentCredentialAudienceInvalidException(
+          'source_registration_batch_provenance_invalid',
+        );
+      }
+      const reference: StudentCredentialAudienceReference = {
+        studentId: row.studentId,
+        expectedUserId: row.userId,
+        enrollmentId: row.enrollmentId,
+      };
+      const existing = references.get(row.studentId);
+      if (
+        existing &&
+        (existing.expectedUserId !== reference.expectedUserId ||
+          existing.enrollmentId !== reference.enrollmentId)
+      ) {
+        throw new StudentCredentialAudienceInvalidException(
+          'source_registration_batch_provenance_invalid',
+        );
+      }
+      references.set(row.studentId, reference);
     }
     return references;
   }
@@ -1303,7 +1621,7 @@ export class StudentCredentialBatchRepository {
   private async resolveAcademicReferences(
     scope: StudentsScope,
     selection: StudentCredentialAudienceSelection,
-  ): Promise<Map<string, string>> {
+  ): Promise<Map<string, StudentCredentialAudienceReference>> {
     await this.assertAcademicSelector(scope, selection);
     const classroomWhere: Prisma.ClassroomWhereInput = { deletedAt: null };
     switch (selection.audienceMode) {
@@ -1339,10 +1657,56 @@ export class StudentCredentialBatchRepository {
         deletedAt: null,
         classroom: classroomWhere,
       },
-      distinct: ['studentId'],
-      select: { studentId: true },
+      orderBy: [
+        { studentId: 'asc' },
+        { enrolledAt: 'desc' },
+        { createdAt: 'desc' },
+        { id: 'asc' },
+      ],
+      select: { id: true, studentId: true },
     });
-    return new Map(enrollments.map((item) => [item.studentId, '']));
+    const references = new Map<string, StudentCredentialAudienceReference>();
+    for (const enrollment of enrollments) {
+      if (!references.has(enrollment.studentId)) {
+        references.set(enrollment.studentId, {
+          studentId: enrollment.studentId,
+          expectedUserId: null,
+          enrollmentId: enrollment.id,
+        });
+      }
+    }
+    return references;
+  }
+
+  private async resolveOptionalCurrentEnrollmentIds(
+    studentIds: string[],
+  ): Promise<Map<string, string>> {
+    if (studentIds.length === 0) return new Map();
+    const enrollments = await this.scopedPrisma.enrollment.findMany({
+      where: {
+        studentId: { in: studentIds },
+        status: StudentEnrollmentStatus.ACTIVE,
+        deletedAt: null,
+        academicYear: {
+          is: { isActive: true, deletedAt: null },
+        },
+      },
+      orderBy: [
+        { studentId: 'asc' },
+        { academicYear: { startDate: 'desc' } },
+        { enrolledAt: 'desc' },
+        { createdAt: 'desc' },
+        { id: 'asc' },
+      ],
+      select: { id: true, studentId: true },
+    });
+    const currentEnrollmentIds = new Map<string, string>();
+    for (const enrollment of enrollments) {
+      if (!currentEnrollmentIds.has(enrollment.studentId)) {
+        currentEnrollmentIds.set(enrollment.studentId, enrollment.id);
+      }
+    }
+    return currentEnrollmentIds;
   }
 
   private async assertAcademicSelector(

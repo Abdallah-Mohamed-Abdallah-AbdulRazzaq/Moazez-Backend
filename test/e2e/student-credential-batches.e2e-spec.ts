@@ -6,6 +6,7 @@ import {
   ImportJobStatus,
   MembershipStatus,
   PrismaClient,
+  StudentEnrollmentStatus,
   StudentBulkRegistrationBatchStatus,
   StudentBulkRegistrationRowStatus,
   StudentCredentialBatchStatus,
@@ -26,6 +27,7 @@ import { StudentCredentialSecretArtifactCleanupService } from '../../src/modules
 import { studentCredentialBatchExecutionJobId } from '../../src/modules/students/credentials/domain/student-credential.constants';
 import { StudentCredentialBatchRepository } from '../../src/modules/students/credentials/infrastructure/student-credential-batch.repository';
 import { FILES_IMPORT_QUEUE_NAME } from '../../src/modules/files/imports/domain/import-job.types';
+import { STUDENT_CREDENTIAL_EXPORT_HEADERS } from '../../src/modules/students/credentials/domain/student-credential-export.csv';
 
 const GLOBAL_PREFIX = '/api/v1';
 const DEMO_ADMIN_EMAIL = 'admin@academy.moazez.dev';
@@ -60,6 +62,7 @@ describe('Student credential batches (e2e)', () => {
     objectKey: string;
   }> = [];
   const createdSessionIds: string[] = [];
+  const createdEnrollmentIds: string[] = [];
 
   beforeAll(async () => {
     prisma = new PrismaClient();
@@ -220,6 +223,11 @@ describe('Student credential batches (e2e)', () => {
     if (sourceRegistrationBatchId) {
       await prisma.studentBulkRegistrationBatch.deleteMany({
         where: { id: sourceRegistrationBatchId },
+      });
+    }
+    if (createdEnrollmentIds.length > 0) {
+      await prisma.enrollment.deleteMany({
+        where: { id: { in: createdEnrollmentIds } },
       });
     }
     if (sourceImportJobId) {
@@ -527,13 +535,203 @@ describe('Student credential batches (e2e)', () => {
     });
     expect(sharedSessions.every((item) => item.revokedAt !== null)).toBe(true);
 
+    const adminProvidedPassword = 'F2Admin!Pass123';
+    const customVersionsBefore = new Map(
+      (
+        await prisma.user.findMany({
+          where: { id: { in: [studentUserId, secondStudentUserId] } },
+          select: { id: true, credentialVersion: true },
+        })
+      ).map((user) => [user.id, user.credentialVersion]),
+    );
+    const customSessions = await Promise.all(
+      [studentUserId, secondStudentUserId].map((userId, index) =>
+        prisma.session.create({
+          data: {
+            userId,
+            refreshTokenHash: `${TEST_SUFFIX}-custom-${index}`,
+            expiresAt: new Date(Date.now() + 60_000),
+          },
+        }),
+      ),
+    );
+    createdSessionIds.push(...customSessions.map((session) => session.id));
+
+    const customCreated = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/students-guardians/credential-batches`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        audienceMode: 'selected_students',
+        studentIds: [studentId, secondStudentId],
+        credentialMode: 'shared_admin_provided',
+        sharedPassword: adminProvidedPassword,
+      })
+      .expect(202);
+    const customBatchId = (customCreated.body as { id: string }).id;
+    createdBatchIds.push(customBatchId);
+    expect(customCreated.body).toMatchObject({
+      credentialMode: 'shared_admin_provided',
+      status: 'pending',
+      counters: {
+        totalRows: 2,
+        generatedRows: 0,
+        skippedRows: 0,
+        failedRows: 0,
+      },
+    });
+    expect(JSON.stringify(customCreated.body)).not.toContain(
+      adminProvidedPassword,
+    );
+
+    const stagedCustomBatch =
+      await prisma.studentCredentialBatch.findUniqueOrThrow({
+        where: { id: customBatchId },
+        include: { rows: true, secretArtifactFile: true },
+      });
+    expect(stagedCustomBatch).toMatchObject({
+      status: StudentCredentialBatchStatus.PENDING,
+      startedAt: null,
+      secretArtifactVersion: 1,
+    });
+    expect(stagedCustomBatch.secretArtifactFile).toMatchObject({
+      visibility: FileVisibility.PRIVATE,
+      mimeType: 'application/vnd.moazez.student-credentials+json',
+    });
+    const customArtifact = {
+      id: stagedCustomBatch.secretArtifactFile!.id,
+      bucket: stagedCustomBatch.secretArtifactFile!.bucket,
+      objectKey: stagedCustomBatch.secretArtifactFile!.objectKey,
+    };
+    createdArtifacts.push(customArtifact);
+    const customSecret = JSON.parse(
+      (
+        await readStream(
+          await storage.getObject({
+            bucket: customArtifact.bucket,
+            objectKey: customArtifact.objectKey,
+          }),
+        )
+      ).toString('utf8'),
+    ) as {
+      credentialMode: string;
+      entries: Array<{ userId: string; temporaryPassword: string }>;
+    };
+    expect(customSecret.credentialMode).toBe('shared_admin_provided');
+    expect(customSecret.entries).toHaveLength(2);
+    expect(
+      customSecret.entries.every(
+        (entry) => entry.temporaryPassword === adminProvidedPassword,
+      ),
+    ).toBe(true);
+    const queuedCustomJob = await bullmq
+      .getQueue(FILES_IMPORT_QUEUE_NAME)
+      .getJob(studentCredentialBatchExecutionJobId(customBatchId));
+    expect(queuedCustomJob?.data).toEqual({ batchId: customBatchId });
+    expect(JSON.stringify(queuedCustomJob?.data)).not.toContain(
+      adminProvidedPassword,
+    );
+    const customCreateAudit = await prisma.auditLog.findFirstOrThrow({
+      where: {
+        resourceId: customBatchId,
+        action: 'iam.credentials.student_batch.create',
+      },
+    });
+    const queuedCustomData = queuedCustomJob?.data as unknown;
+    expect(
+      JSON.stringify(
+        {
+          batch: stagedCustomBatch,
+          audit: customCreateAudit,
+          queue: queuedCustomData,
+        },
+        (_key, value: unknown): unknown =>
+          typeof value === 'bigint' ? value.toString() : value,
+      ),
+    ).not.toContain(adminProvidedPassword);
+
+    await processor.execute(customBatchId);
+
+    const completedCustomBatch =
+      await prisma.studentCredentialBatch.findUniqueOrThrow({
+        where: { id: customBatchId },
+        include: { rows: true, secretArtifactFile: true },
+      });
+    expect(completedCustomBatch).toMatchObject({
+      status: StudentCredentialBatchStatus.COMPLETED,
+      generatedRows: 2,
+      secretArtifactFileId: customArtifact.id,
+    });
+    expect(completedCustomBatch.secretArtifactFile?.checksumSha256).toBe(
+      stagedCustomBatch.secretArtifactFile?.checksumSha256,
+    );
+    expect(
+      completedCustomBatch.rows.every(
+        (row) =>
+          row.status === StudentCredentialRowStatus.GENERATED &&
+          !JSON.stringify(row.errorsJson).includes(adminProvidedPassword),
+      ),
+    ).toBe(true);
+    const customUsers = await prisma.user.findMany({
+      where: { id: { in: [studentUserId, secondStudentUserId] } },
+      orderBy: { id: 'asc' },
+    });
+    expect(customUsers[0].passwordHash).not.toBe(customUsers[1].passwordHash);
+    for (const customUser of customUsers) {
+      await expect(
+        passwordService.verify(customUser.passwordHash!, adminProvidedPassword),
+      ).resolves.toBe(true);
+      expect(customUser.mustChangePassword).toBe(true);
+      expect(customUser.credentialVersion).toBe(
+        customVersionsBefore.get(customUser.id)! + 1,
+      );
+    }
+    const revokedCustomSessions = await prisma.session.findMany({
+      where: { id: { in: customSessions.map((session) => session.id) } },
+    });
+    expect(
+      revokedCustomSessions.every((session) => session.revokedAt !== null),
+    ).toBe(true);
+
+    const customGet = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/credential-batches/${customBatchId}`,
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(customGet.body).toMatchObject({
+      credentialMode: 'shared_admin_provided',
+      status: 'completed',
+    });
+    expect(JSON.stringify(customGet.body)).not.toMatch(
+      /sharedPassword|temporaryPassword|secretArtifact|objectKey|checksum/iu,
+    );
+    const customExport = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/credential-batches/${customBatchId}/export`,
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .buffer(true)
+      .parse((response, callback) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
+        response.on('end', () => callback(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
+    expect((customExport.body as Buffer).toString('utf8')).toContain(
+      adminProvidedPassword,
+    );
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/files/${customArtifact.id}/download`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(404);
+
     const actor = await prisma.user.findUniqueOrThrow({
       where: { email: DEMO_ADMIN_EMAIL },
       select: { id: true },
     });
     const [academicYear, classroom] = await Promise.all([
       prisma.academicYear.findFirstOrThrow({
-        where: { schoolId, deletedAt: null },
+        where: { schoolId, isActive: true, deletedAt: null },
         select: { id: true },
       }),
       prisma.classroom.findFirstOrThrow({
@@ -583,6 +781,35 @@ describe('Student credential batches (e2e)', () => {
       },
     });
     sourceRegistrationBatchId = sourceBatch.id;
+    const [sourceEnrollment, secondSourceEnrollment] = await Promise.all([
+      prisma.enrollment.create({
+        data: {
+          schoolId,
+          studentId,
+          academicYearId: sourceBatch.academicYearId,
+          termId: sourceBatch.termId,
+          classroomId: sourceBatch.classroomId,
+          status: StudentEnrollmentStatus.ACTIVE,
+          enrolledAt: sourceBatch.enrollmentDate,
+          endedAt: null,
+          exitReason: null,
+        },
+      }),
+      prisma.enrollment.create({
+        data: {
+          schoolId,
+          studentId: secondStudentId,
+          academicYearId: sourceBatch.academicYearId,
+          termId: sourceBatch.termId,
+          classroomId: sourceBatch.classroomId,
+          status: StudentEnrollmentStatus.ACTIVE,
+          enrolledAt: sourceBatch.enrollmentDate,
+          endedAt: null,
+          exitReason: null,
+        },
+      }),
+    ]);
+    createdEnrollmentIds.push(sourceEnrollment.id, secondSourceEnrollment.id);
     await prisma.studentBulkRegistrationRow.createMany({
       data: [
         {
@@ -594,6 +821,7 @@ describe('Student credential batches (e2e)', () => {
           status: StudentBulkRegistrationRowStatus.CREATED,
           studentId,
           userId: studentUserId,
+          enrollmentId: sourceEnrollment.id,
         },
         {
           schoolId,
@@ -604,6 +832,7 @@ describe('Student credential batches (e2e)', () => {
           status: StudentBulkRegistrationRowStatus.CREATED,
           studentId: secondStudentId,
           userId: secondStudentUserId,
+          enrollmentId: secondSourceEnrollment.id,
         },
       ],
     });
@@ -651,6 +880,111 @@ describe('Student credential batches (e2e)', () => {
       skippedRows: 0,
       failedRows: 0,
     });
+    expect(importCredentialBatch.rows).toHaveLength(2);
+    expect(
+      new Set(importCredentialBatch.rows.map((row) => row.studentId)).size,
+    ).toBe(2);
+    expect(
+      new Set(importCredentialBatch.rows.map((row) => row.userId)).size,
+    ).toBe(2);
+    expect(
+      importCredentialBatch.rows.find((row) => row.studentId === studentId),
+    ).toMatchObject({
+      studentId,
+      userId: studentUserId,
+      enrollmentId: sourceEnrollment.id,
+    });
+    expect(
+      importCredentialBatch.rows.find(
+        (row) => row.studentId === secondStudentId,
+      ),
+    ).toMatchObject({
+      studentId: secondStudentId,
+      userId: secondStudentUserId,
+      enrollmentId: secondSourceEnrollment.id,
+    });
+    const persistedSourcePlacement = await prisma.enrollment.findUniqueOrThrow({
+      where: { id: sourceEnrollment.id },
+      select: {
+        academicYear: { select: { id: true, nameEn: true, nameAr: true } },
+        classroom: {
+          select: {
+            id: true,
+            nameEn: true,
+            nameAr: true,
+            section: {
+              select: {
+                id: true,
+                nameEn: true,
+                nameAr: true,
+                grade: {
+                  select: {
+                    id: true,
+                    nameEn: true,
+                    nameAr: true,
+                    stage: {
+                      select: { id: true, nameEn: true, nameAr: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const importExport = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/credential-batches/${importCredentialBatchId}/export`,
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .buffer(true)
+      .parse((response, callback) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
+        response.on('end', () => callback(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
+    const exportRows = decodeCredentialExport(importExport.body as Buffer);
+    expect(exportRows.headers).toEqual(STUDENT_CREDENTIAL_EXPORT_HEADERS);
+    expect(exportRows.rows).toHaveLength(2);
+    const exportByStudent = new Map(
+      exportRows.rows.map((row) => [row.student_id, row]),
+    );
+    for (const [exportedStudentId, sourceEnrollmentId] of [
+      [studentId, sourceEnrollment.id],
+      [secondStudentId, secondSourceEnrollment.id],
+    ] as const) {
+      const exportedRow = exportByStudent.get(exportedStudentId);
+      expect(exportedRow).toMatchObject({
+        credential_status: 'temporary_credential',
+        placement_status: 'current',
+        academic_year_id: persistedSourcePlacement.academicYear.id,
+        academic_year_name: academicDisplayName(
+          persistedSourcePlacement.academicYear,
+        ),
+        stage_id: persistedSourcePlacement.classroom.section.grade.stage.id,
+        stage_name: academicDisplayName(
+          persistedSourcePlacement.classroom.section.grade.stage,
+        ),
+        grade_id: persistedSourcePlacement.classroom.section.grade.id,
+        grade_name: academicDisplayName(
+          persistedSourcePlacement.classroom.section.grade,
+        ),
+        section_id: persistedSourcePlacement.classroom.section.id,
+        section_name: academicDisplayName(
+          persistedSourcePlacement.classroom.section,
+        ),
+        classroom_id: persistedSourcePlacement.classroom.id,
+        classroom_name: academicDisplayName(persistedSourcePlacement.classroom),
+      });
+      expect(exportedRow?.temporary_password).toBeTruthy();
+      expect(
+        importCredentialBatch.rows.find(
+          (row) => row.studentId === exportedStudentId,
+        )?.enrollmentId,
+      ).toBe(sourceEnrollmentId);
+    }
     const importArtifact = {
       id: importCredentialBatch.secretArtifactFile!.id,
       bucket: importCredentialBatch.secretArtifactFile!.bucket,
@@ -660,9 +994,15 @@ describe('Student credential batches (e2e)', () => {
     const finalUsers = await prisma.user.findMany({
       where: { id: { in: [studentUserId, secondStudentUserId] } },
     });
-    expect(finalUsers.map((item) => item.credentialVersion).sort()).toEqual([
-      2, 3,
-    ]);
+    expect(
+      finalUsers
+        .map((item) => item.credentialVersion)
+        .sort((left, right) => left - right),
+    ).toEqual(
+      [studentUserId, secondStudentUserId]
+        .map((userId) => customVersionsBefore.get(userId)! + 2)
+        .sort((left, right) => left - right),
+    );
 
     const partialCreated = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/students-guardians/credential-batches`)
@@ -1003,6 +1343,41 @@ async function readStream(stream: Readable): Promise<Buffer> {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
   }
   return Buffer.concat(chunks);
+}
+
+function decodeCredentialExport(body: Buffer): {
+  headers: string[];
+  rows: Array<Record<string, string>>;
+} {
+  const [headerLine, ...dataLines] = body
+    .toString('utf8')
+    .replace(/^\uFEFF/u, '')
+    .split('\r\n')
+    .filter((line) => line.length > 0);
+  const headers = decodeQuotedCsvRow(headerLine);
+  return {
+    headers,
+    rows: dataLines.map((line) => {
+      const values = decodeQuotedCsvRow(line);
+      return Object.fromEntries(
+        headers.map((header, index) => [header, values[index]]),
+      );
+    }),
+  };
+}
+
+function decodeQuotedCsvRow(line: string): string[] {
+  return line
+    .slice(1, -1)
+    .split('","')
+    .map((value) => value.replaceAll('""', '"'));
+}
+
+function academicDisplayName(input: {
+  nameEn: string;
+  nameAr: string;
+}): string {
+  return input.nameEn.trim() || input.nameAr.trim();
 }
 
 async function waitForJobState(

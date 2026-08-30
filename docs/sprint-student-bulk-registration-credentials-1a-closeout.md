@@ -1,5 +1,10 @@
 # Student bulk registration and credentials 1A closeout
 
+> **Historical record:** This document records the original PR #100 / 1A
+> source closeout. The authoritative post-PR-100 follow-up contract is recorded
+> in
+> `docs/sprint-student-bulk-registration-credentials-followup-1a-closeout.md`.
+
 ## Scope and outcome
 
 This sprint adds a school-scoped, asynchronous workflow for importing students,

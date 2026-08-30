@@ -3,6 +3,7 @@ import {
   OrganizationStatus,
   SchoolStatus,
   StudentCredentialBatchStatus,
+  StudentCredentialMode,
   StudentCredentialRowStatus,
 } from '@prisma/client';
 import { BullmqService } from '../../../../infrastructure/queue/bullmq.service';
@@ -13,6 +14,7 @@ import {
   STUDENT_CREDENTIAL_EXECUTION_RECOVERY_WINDOW_EXPIRED_CODE,
   STUDENT_CREDENTIAL_EXECUTION_RECOVERY_WINDOW_MS,
   STUDENT_CREDENTIAL_EXECUTION_TENANT_INELIGIBLE_CODE,
+  STUDENT_CREDENTIAL_SECRET_ARTIFACT_UNAVAILABLE_CODE,
   studentCredentialBatchExecutionJobId,
 } from '../domain/student-credential.constants';
 import {
@@ -76,6 +78,7 @@ export class StudentCredentialBatchReconciliationService {
       (sum, count) => sum + count,
       0,
     );
+    const artifactMetadata = artifactMetadataState(candidate);
     if (
       candidate.totalRows <= 0 ||
       counted !== candidate.totalRows ||
@@ -90,10 +93,17 @@ export class StudentCredentialBatchReconciliationService {
           counts[StudentCredentialRowStatus.PENDING] !== candidate.totalRows ||
           candidate.generatedRows !== 0 ||
           candidate.skippedRows !== 0 ||
-          candidate.failedRows !== 0 ||
-          hasAnyArtifactMetadata(candidate))) ||
+          candidate.failedRows !== 0)) ||
       (candidate.status === StudentCredentialBatchStatus.PROCESSING &&
-        candidate.startedAt === null)
+        candidate.startedAt === null) ||
+      (candidate.status === StudentCredentialBatchStatus.PENDING &&
+        candidate.credentialMode ===
+          StudentCredentialMode.SHARED_ADMIN_PROVIDED &&
+        artifactMetadata === 'partial') ||
+      (candidate.status === StudentCredentialBatchStatus.PENDING &&
+        candidate.credentialMode !==
+          StudentCredentialMode.SHARED_ADMIN_PROVIDED &&
+        artifactMetadata !== 'none')
     ) {
       return 'blockedInvariant';
     }
@@ -109,11 +119,39 @@ export class StudentCredentialBatchReconciliationService {
       candidate.status === StudentCredentialBatchStatus.PENDING
         ? candidate.createdAt
         : candidate.startedAt!;
-    if (
+    const recoveryExpired =
       recoveryAnchor.getTime() +
         STUDENT_CREDENTIAL_EXECUTION_RECOVERY_WINDOW_MS <=
-      now.getTime()
+      now.getTime();
+    if (
+      candidate.status === StudentCredentialBatchStatus.PENDING &&
+      candidate.credentialMode ===
+        StudentCredentialMode.SHARED_ADMIN_PROVIDED &&
+      artifactMetadata === 'none'
     ) {
+      if (!recoveryExpired) return 'preserved';
+      try {
+        await this.artifactService.deletePotentialOrphanSecretArtifact({
+          schoolId: candidate.schoolId,
+          batchId: candidate.id,
+        });
+      } catch {
+        return 'preserved';
+      }
+      await this.repository.terminalizeRemainingPendingRows({
+        batchId: candidate.id,
+        schoolId: candidate.schoolId,
+        reasonCode: STUDENT_CREDENTIAL_SECRET_ARTIFACT_UNAVAILABLE_CODE,
+        occurredAt: now,
+      });
+      await this.repository.finalizeBatch({
+        batchId: candidate.id,
+        schoolId: candidate.schoolId,
+        completedAt: now,
+      });
+      return 'terminalized';
+    }
+    if (recoveryExpired) {
       await this.terminalize(
         candidate,
         now,
@@ -128,6 +166,20 @@ export class StudentCredentialBatchReconciliationService {
         STUDENT_CREDENTIAL_EXECUTION_TENANT_INELIGIBLE_CODE,
       );
       return 'terminalized';
+    }
+    if (
+      candidate.status === StudentCredentialBatchStatus.PENDING &&
+      candidate.credentialMode === StudentCredentialMode.SHARED_ADMIN_PROVIDED
+    ) {
+      const rows = await this.repository.listExecutionRows({
+        batchId: candidate.id,
+        schoolId: candidate.schoolId,
+      });
+      try {
+        await this.artifactService.readAndVerify(candidate, rows, now);
+      } catch {
+        return 'blockedInvariant';
+      }
     }
     const ensured = await this.bullmq.ensureJobFromPersistedTruth(
       FILES_IMPORT_QUEUE_NAME,
@@ -170,15 +222,19 @@ export class StudentCredentialBatchReconciliationService {
   }
 }
 
-function hasAnyArtifactMetadata(
+function artifactMetadataState(
   candidate: StudentCredentialRecoveryCandidate,
-): boolean {
-  return (
-    candidate.secretArtifactFileId !== null ||
-    candidate.secretArtifactVersion !== null ||
-    candidate.secretArtifactStagedAt !== null ||
-    candidate.secretArtifactExpiresAt !== null
-  );
+): 'none' | 'complete' | 'partial' {
+  const values = [
+    candidate.secretArtifactFileId,
+    candidate.secretArtifactVersion,
+    candidate.secretArtifactStagedAt,
+    candidate.secretArtifactExpiresAt,
+  ];
+  const present = values.filter((value) => value !== null).length;
+  if (present === 0) return 'none';
+  if (present === values.length) return 'complete';
+  return 'partial';
 }
 
 function isTenantEligible(

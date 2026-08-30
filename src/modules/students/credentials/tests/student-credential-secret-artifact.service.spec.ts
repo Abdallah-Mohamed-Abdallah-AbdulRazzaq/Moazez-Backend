@@ -21,6 +21,7 @@ import {
 } from '../infrastructure/student-credential-batch.repository';
 
 describe('StudentCredentialSecretArtifactService', () => {
+  const adminPassword = 'F2Admin!Pass123';
   it.each([
     [StudentCredentialMode.UNIQUE_GENERATED, false],
     [StudentCredentialMode.SHARED_TEMPORARY, true],
@@ -94,6 +95,132 @@ describe('StudentCredentialSecretArtifactService', () => {
     expect(second).toEqual(first);
     expect(fixture.storage.saveObject).not.toHaveBeenCalled();
     expect(fixture.repository.attachSecretArtifact).toHaveBeenCalledTimes(1);
+  });
+
+  it('pre-stages the exact administrator password on a PENDING batch and verifies it before returning', async () => {
+    const fixture = createFixture(StudentCredentialMode.SHARED_ADMIN_PROVIDED, {
+      status: StudentCredentialBatchStatus.PENDING,
+      startedAt: null,
+    });
+
+    const artifact = await fixture.service.stageAdminProvidedArtifact({
+      batch: fixture.initialBatch,
+      rows: fixture.rows,
+      sharedPassword: adminPassword,
+      now: fixture.now,
+    });
+
+    expect(fixture.repository.attachSecretArtifact).not.toHaveBeenCalled();
+    expect(
+      fixture.repository.attachPendingAdminProvidedSecretArtifact,
+    ).toHaveBeenCalledTimes(1);
+    expect(artifact).toMatchObject({
+      version: 1,
+      credentialMode: 'shared_admin_provided',
+    });
+    expect(
+      new Set(artifact.entries.map((entry) => entry.temporaryPassword)),
+    ).toEqual(new Set([adminPassword]));
+    expect(fixture.storage.saveObject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        visibility: FileVisibility.PRIVATE,
+        contentType: STUDENT_CREDENTIAL_SECRET_ARTIFACT_MIME,
+      }),
+    );
+  });
+
+  it('never generates a replacement for custom mode without a persisted pointer', async () => {
+    const fixture = createFixture(StudentCredentialMode.SHARED_ADMIN_PROVIDED);
+
+    await expect(
+      fixture.service.ensureArtifact({
+        batch: fixture.initialBatch,
+        rows: fixture.rows,
+        now: fixture.now,
+      }),
+    ).rejects.toMatchObject({
+      code: 'students.credentials.secret_artifact_unavailable',
+    });
+    expect(fixture.storage.saveObject).not.toHaveBeenCalled();
+  });
+
+  it('fails closed rather than overwriting a concurrently staged different administrator password', async () => {
+    const fixture = createFixture(StudentCredentialMode.SHARED_ADMIN_PROVIDED, {
+      status: StudentCredentialBatchStatus.PENDING,
+      startedAt: null,
+    });
+    await fixture.service.stageAdminProvidedArtifact({
+      batch: fixture.initialBatch,
+      rows: fixture.rows,
+      sharedPassword: adminPassword,
+      now: fixture.now,
+    });
+    fixture.storage.saveObject.mockClear();
+
+    await expect(
+      fixture.service.stageAdminProvidedArtifact({
+        batch: fixture.persistedBatch(),
+        rows: fixture.rows,
+        sharedPassword: 'Different!Pass123',
+        now: fixture.now,
+      }),
+    ).rejects.toMatchObject({
+      code: 'students.credentials.secret_artifact_invalid',
+    });
+    expect(fixture.storage.saveObject).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when a custom artifact has expired', async () => {
+    const fixture = createFixture(StudentCredentialMode.SHARED_ADMIN_PROVIDED, {
+      status: StudentCredentialBatchStatus.PENDING,
+      startedAt: null,
+    });
+    await fixture.service.stageAdminProvidedArtifact({
+      batch: fixture.initialBatch,
+      rows: fixture.rows,
+      sharedPassword: adminPassword,
+      now: fixture.now,
+    });
+
+    await expect(
+      fixture.service.ensureArtifact({
+        batch: fixture.persistedBatch(),
+        rows: fixture.rows,
+        now: new Date('2026-08-29T10:00:00.000Z'),
+      }),
+    ).rejects.toMatchObject({
+      code: 'students.credentials.secret_artifact_expired',
+    });
+    expect(fixture.storage.saveObject).toHaveBeenCalledTimes(1);
+  });
+
+  it('confirms deterministic orphan absence when a custom pending attach fails', async () => {
+    const fixture = createFixture(StudentCredentialMode.SHARED_ADMIN_PROVIDED, {
+      status: StudentCredentialBatchStatus.PENDING,
+      startedAt: null,
+    });
+    fixture.repository.attachPendingAdminProvidedSecretArtifact.mockRejectedValueOnce(
+      new Error('database_attach_failed'),
+    );
+    fixture.repository.findExecutionBatchById.mockResolvedValueOnce(
+      fixture.initialBatch,
+    );
+
+    await expect(
+      fixture.service.stageAdminProvidedArtifact({
+        batch: fixture.initialBatch,
+        rows: fixture.rows,
+        sharedPassword: adminPassword,
+        now: fixture.now,
+      }),
+    ).rejects.toMatchObject({
+      code: 'students.credentials.secret_artifact_unavailable',
+    });
+    expect(fixture.storage.deleteObjectAndConfirmAbsent).toHaveBeenCalledWith({
+      bucket: 'private-bucket',
+      objectKey:
+        'schools/school-1/files/student-credential-batch-batch-1-v1.json',
+    });
   });
 
   it('fails closed when readback bytes do not match persisted checksum', async () => {
@@ -199,16 +326,26 @@ describe('StudentCredentialSecretArtifactService', () => {
   });
 });
 
-function createFixture(credentialMode: StudentCredentialMode) {
+function createFixture(
+  credentialMode: StudentCredentialMode,
+  batchOverrides: Partial<StudentCredentialExecutionBatch> = {},
+) {
   const now = new Date('2026-08-27T10:00:00.000Z');
   let storedBody = Buffer.alloc(0);
   let attached:
     | Parameters<StudentCredentialBatchRepository['attachSecretArtifact']>[0]
+    | Parameters<
+        StudentCredentialBatchRepository['attachPendingAdminProvidedSecretArtifact']
+      >[0]
     | null = null;
-  const initialBatch = batchFixture(credentialMode, now);
+  const initialBatch = batchFixture(credentialMode, now, batchOverrides);
   const rows = rowFixtures();
   const repository = {
     attachSecretArtifact: jest.fn(async (input) => {
+      attached = input;
+      return 'file-1';
+    }),
+    attachPendingAdminProvidedSecretArtifact: jest.fn(async (input) => {
       attached = input;
       return 'file-1';
     }),

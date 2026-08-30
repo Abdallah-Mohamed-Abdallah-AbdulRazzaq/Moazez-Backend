@@ -14,7 +14,11 @@ const EXPECTED_AUDIENCE_MODES = [
   'CLASSROOM',
   'MISSING_PASSWORD',
 ];
-const EXPECTED_CREDENTIAL_MODES = ['UNIQUE_GENERATED', 'SHARED_TEMPORARY'];
+const EXPECTED_CREDENTIAL_MODES = [
+  'UNIQUE_GENERATED',
+  'SHARED_TEMPORARY',
+  'SHARED_ADMIN_PROVIDED',
+];
 const EXPECTED_BATCH_STATUSES = [
   'PENDING',
   'PROCESSING',
@@ -178,7 +182,7 @@ describe('student credential persistence contract', () => {
     });
   });
 
-  it('binds credential rows to their school, batch, and Student identity', () => {
+  it('binds credential rows to their school, batch, Student, and optional Enrollment identity', () => {
     const row = getGeneratedModel('StudentCredentialRow');
 
     expect(getField(row, 'batch')).toMatchObject({
@@ -202,8 +206,18 @@ describe('student credential persistence contract', () => {
       relationFromFields: ['userId'],
       relationOnDelete: 'Restrict',
     });
+    expect(getField(row, 'enrollment')).toMatchObject({
+      type: 'Enrollment',
+      isRequired: false,
+      relationName: 'StudentCredentialRowEnrollment',
+      relationFromFields: ['enrollmentId', 'schoolId'],
+      relationToFields: ['id', 'schoolId'],
+      relationOnDelete: 'Restrict',
+    });
     expect(getField(row, 'studentId').isRequired).toBe(true);
     expect(getField(row, 'userId').isRequired).toBe(false);
+    expect(getField(row, 'enrollmentId').isRequired).toBe(false);
+    expect(getField(row, 'enrollmentId').dbName).toBe('enrollment_id');
   });
 
   it('enforces per-school and per-batch identities with bounded indexes', () => {
@@ -225,6 +239,7 @@ describe('student credential persistence contract', () => {
       '@@index([schoolId, audienceMode, createdAt(sort: Desc)]',
     );
     expect(rowSchema).toContain('@@index([schoolId, batchId, status]');
+    expect(rowSchema).toContain('@@index([schoolId, enrollmentId]');
   });
 
   it('stores only secret-artifact metadata and row version evidence', () => {
@@ -287,6 +302,36 @@ describe('student credential persistence contract', () => {
     );
     expect(sql).not.toMatch(
       /^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:FUNCTION|TRIGGER|VIEW)\b/imu,
+    );
+  });
+
+  it('owns exactly one additive placement-context migration', () => {
+    const migrationsRoot = join(ROOT, 'prisma/migrations');
+    const migrationDirectories = readdirSync(migrationsRoot).filter((entry) =>
+      /^\d{14}_student_credential_admin_mode_placement_context$/u.test(entry),
+    );
+
+    expect(migrationDirectories).toEqual([
+      '20260829223100_student_credential_admin_mode_placement_context',
+    ]);
+    const sql = readFileSync(
+      join(migrationsRoot, migrationDirectories[0], 'migration.sql'),
+      'utf8',
+    );
+
+    expect(sql).toContain(
+      `ALTER TYPE "student_credential_mode" ADD VALUE 'SHARED_ADMIN_PROVIDED'`,
+    );
+    expect(sql).toContain(
+      'ALTER TABLE "student_credential_rows" ADD COLUMN     "enrollment_id" UUID',
+    );
+    expect(sql).toContain('student_cred_rows_school_enrollment_idx');
+    expect(sql).toContain('student_cred_rows_enrollment_fkey');
+    expect(sql).toContain(
+      'FOREIGN KEY ("enrollment_id", "school_id") REFERENCES "student_enrollments"("id", "school_id") ON DELETE RESTRICT',
+    );
+    expect(sql).not.toMatch(
+      /^\s*(?:DROP\s+(?:TABLE|COLUMN|TYPE|INDEX|CONSTRAINT)|TRUNCATE\b|DELETE\b|UPDATE\b|ALTER\s+TABLE\b.*\b(?:DROP|ALTER\s+COLUMN)\b)/imu,
     );
   });
 });
