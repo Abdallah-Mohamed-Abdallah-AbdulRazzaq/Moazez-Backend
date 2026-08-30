@@ -534,6 +534,196 @@ describe('Student credential batches (e2e)', () => {
     });
     expect(sharedSessions.every((item) => item.revokedAt !== null)).toBe(true);
 
+    const adminProvidedPassword = 'F2Admin!Pass123';
+    const customVersionsBefore = new Map(
+      (
+        await prisma.user.findMany({
+          where: { id: { in: [studentUserId, secondStudentUserId] } },
+          select: { id: true, credentialVersion: true },
+        })
+      ).map((user) => [user.id, user.credentialVersion]),
+    );
+    const customSessions = await Promise.all(
+      [studentUserId, secondStudentUserId].map((userId, index) =>
+        prisma.session.create({
+          data: {
+            userId,
+            refreshTokenHash: `${TEST_SUFFIX}-custom-${index}`,
+            expiresAt: new Date(Date.now() + 60_000),
+          },
+        }),
+      ),
+    );
+    createdSessionIds.push(...customSessions.map((session) => session.id));
+
+    const customCreated = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/students-guardians/credential-batches`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        audienceMode: 'selected_students',
+        studentIds: [studentId, secondStudentId],
+        credentialMode: 'shared_admin_provided',
+        sharedPassword: adminProvidedPassword,
+      })
+      .expect(202);
+    const customBatchId = (customCreated.body as { id: string }).id;
+    createdBatchIds.push(customBatchId);
+    expect(customCreated.body).toMatchObject({
+      credentialMode: 'shared_admin_provided',
+      status: 'pending',
+      counters: {
+        totalRows: 2,
+        generatedRows: 0,
+        skippedRows: 0,
+        failedRows: 0,
+      },
+    });
+    expect(JSON.stringify(customCreated.body)).not.toContain(
+      adminProvidedPassword,
+    );
+
+    const stagedCustomBatch =
+      await prisma.studentCredentialBatch.findUniqueOrThrow({
+        where: { id: customBatchId },
+        include: { rows: true, secretArtifactFile: true },
+      });
+    expect(stagedCustomBatch).toMatchObject({
+      status: StudentCredentialBatchStatus.PENDING,
+      startedAt: null,
+      secretArtifactVersion: 1,
+    });
+    expect(stagedCustomBatch.secretArtifactFile).toMatchObject({
+      visibility: FileVisibility.PRIVATE,
+      mimeType: 'application/vnd.moazez.student-credentials+json',
+    });
+    const customArtifact = {
+      id: stagedCustomBatch.secretArtifactFile!.id,
+      bucket: stagedCustomBatch.secretArtifactFile!.bucket,
+      objectKey: stagedCustomBatch.secretArtifactFile!.objectKey,
+    };
+    createdArtifacts.push(customArtifact);
+    const customSecret = JSON.parse(
+      (
+        await readStream(
+          await storage.getObject({
+            bucket: customArtifact.bucket,
+            objectKey: customArtifact.objectKey,
+          }),
+        )
+      ).toString('utf8'),
+    ) as {
+      credentialMode: string;
+      entries: Array<{ userId: string; temporaryPassword: string }>;
+    };
+    expect(customSecret.credentialMode).toBe('shared_admin_provided');
+    expect(customSecret.entries).toHaveLength(2);
+    expect(
+      customSecret.entries.every(
+        (entry) => entry.temporaryPassword === adminProvidedPassword,
+      ),
+    ).toBe(true);
+    const queuedCustomJob = await bullmq
+      .getQueue(FILES_IMPORT_QUEUE_NAME)
+      .getJob(studentCredentialBatchExecutionJobId(customBatchId));
+    expect(queuedCustomJob?.data).toEqual({ batchId: customBatchId });
+    expect(JSON.stringify(queuedCustomJob?.data)).not.toContain(
+      adminProvidedPassword,
+    );
+    const customCreateAudit = await prisma.auditLog.findFirstOrThrow({
+      where: {
+        resourceId: customBatchId,
+        action: 'iam.credentials.student_batch.create',
+      },
+    });
+    const queuedCustomData = queuedCustomJob?.data as unknown;
+    expect(
+      JSON.stringify(
+        {
+          batch: stagedCustomBatch,
+          audit: customCreateAudit,
+          queue: queuedCustomData,
+        },
+        (_key, value: unknown): unknown =>
+          typeof value === 'bigint' ? value.toString() : value,
+      ),
+    ).not.toContain(adminProvidedPassword);
+
+    await processor.execute(customBatchId);
+
+    const completedCustomBatch =
+      await prisma.studentCredentialBatch.findUniqueOrThrow({
+        where: { id: customBatchId },
+        include: { rows: true, secretArtifactFile: true },
+      });
+    expect(completedCustomBatch).toMatchObject({
+      status: StudentCredentialBatchStatus.COMPLETED,
+      generatedRows: 2,
+      secretArtifactFileId: customArtifact.id,
+    });
+    expect(completedCustomBatch.secretArtifactFile?.checksumSha256).toBe(
+      stagedCustomBatch.secretArtifactFile?.checksumSha256,
+    );
+    expect(
+      completedCustomBatch.rows.every(
+        (row) =>
+          row.status === StudentCredentialRowStatus.GENERATED &&
+          !JSON.stringify(row.errorsJson).includes(adminProvidedPassword),
+      ),
+    ).toBe(true);
+    const customUsers = await prisma.user.findMany({
+      where: { id: { in: [studentUserId, secondStudentUserId] } },
+      orderBy: { id: 'asc' },
+    });
+    expect(customUsers[0].passwordHash).not.toBe(customUsers[1].passwordHash);
+    for (const customUser of customUsers) {
+      await expect(
+        passwordService.verify(customUser.passwordHash!, adminProvidedPassword),
+      ).resolves.toBe(true);
+      expect(customUser.mustChangePassword).toBe(true);
+      expect(customUser.credentialVersion).toBe(
+        customVersionsBefore.get(customUser.id)! + 1,
+      );
+    }
+    const revokedCustomSessions = await prisma.session.findMany({
+      where: { id: { in: customSessions.map((session) => session.id) } },
+    });
+    expect(
+      revokedCustomSessions.every((session) => session.revokedAt !== null),
+    ).toBe(true);
+
+    const customGet = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/credential-batches/${customBatchId}`,
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(customGet.body).toMatchObject({
+      credentialMode: 'shared_admin_provided',
+      status: 'completed',
+    });
+    expect(JSON.stringify(customGet.body)).not.toMatch(
+      /sharedPassword|temporaryPassword|secretArtifact|objectKey|checksum/iu,
+    );
+    const customExport = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/credential-batches/${customBatchId}/export`,
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .buffer(true)
+      .parse((response, callback) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
+        response.on('end', () => callback(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
+    expect((customExport.body as Buffer).toString('utf8')).toContain(
+      adminProvidedPassword,
+    );
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/files/${customArtifact.id}/download`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(404);
+
     const actor = await prisma.user.findUniqueOrThrow({
       where: { email: DEMO_ADMIN_EMAIL },
       select: { id: true },
@@ -721,9 +911,15 @@ describe('Student credential batches (e2e)', () => {
     const finalUsers = await prisma.user.findMany({
       where: { id: { in: [studentUserId, secondStudentUserId] } },
     });
-    expect(finalUsers.map((item) => item.credentialVersion).sort()).toEqual([
-      2, 3,
-    ]);
+    expect(
+      finalUsers
+        .map((item) => item.credentialVersion)
+        .sort((left, right) => left - right),
+    ).toEqual(
+      [studentUserId, secondStudentUserId]
+        .map((userId) => customVersionsBefore.get(userId)! + 2)
+        .sort((left, right) => left - right),
+    );
 
     const partialCreated = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/students-guardians/credential-batches`)

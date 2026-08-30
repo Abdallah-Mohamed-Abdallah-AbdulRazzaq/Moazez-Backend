@@ -20,6 +20,7 @@ export type StudentCredentialAudienceApiValue =
 export const STUDENT_CREDENTIAL_MODE_API_VALUES = [
   'unique_generated',
   'shared_temporary',
+  'shared_admin_provided',
 ] as const;
 
 export type StudentCredentialModeApiValue =
@@ -38,6 +39,12 @@ export interface StudentCredentialAudienceCommand {
 
 export interface CreateStudentCredentialBatchCommand extends StudentCredentialAudienceCommand {
   credentialMode: unknown;
+  sharedPassword?: unknown;
+}
+
+export interface StudentCredentialModeSelection {
+  credentialMode: StudentCredentialMode;
+  sharedPassword: string | null;
 }
 
 export interface StudentCredentialAudienceSelection {

@@ -2,12 +2,15 @@ import {
   StudentCredentialAudienceMode,
   StudentCredentialMode,
 } from '@prisma/client';
+import { CredentialPasswordPolicyFailedException } from '../../../settings/users/credentials/domain/credential.exceptions';
+import { validateAdminProvidedPassword } from '../../../settings/users/credentials/domain/credential-password.policy';
 import { StudentCredentialAudienceInvalidException } from './student-credential.exceptions';
 import {
   type CreateStudentCredentialBatchCommand,
   type StudentCredentialAudienceApiValue,
   type StudentCredentialAudienceCommand,
   type StudentCredentialAudienceSelection,
+  type StudentCredentialModeSelection,
   type StudentCredentialModeApiValue,
 } from './student-credential.types';
 import { STUDENT_CREDENTIAL_SELECTED_STUDENTS_MAX } from './student-credential.constants';
@@ -107,15 +110,40 @@ export function parseStudentCredentialAudience(
 export function parseStudentCredentialMode(
   command: CreateStudentCredentialBatchCommand,
 ): StudentCredentialMode {
+  return parseStudentCredentialModeSelection(command).credentialMode;
+}
+
+export function parseStudentCredentialModeSelection(
+  command: CreateStudentCredentialBatchCommand,
+): StudentCredentialModeSelection {
   if (
     command.credentialMode !== 'unique_generated' &&
-    command.credentialMode !== 'shared_temporary'
+    command.credentialMode !== 'shared_temporary' &&
+    command.credentialMode !== 'shared_admin_provided'
   ) {
     throw new StudentCredentialAudienceInvalidException(
       'credential_mode_invalid',
     );
   }
-  return mapCredentialModeFromApi(command.credentialMode);
+
+  const credentialMode = mapCredentialModeFromApi(command.credentialMode);
+  if (credentialMode !== StudentCredentialMode.SHARED_ADMIN_PROVIDED) {
+    if (command.sharedPassword !== undefined) {
+      throw new StudentCredentialAudienceInvalidException(
+        'shared_password_not_allowed',
+      );
+    }
+    return { credentialMode, sharedPassword: null };
+  }
+
+  if (typeof command.sharedPassword !== 'string') {
+    throw new CredentialPasswordPolicyFailedException(['password_required']);
+  }
+  const validation = validateAdminProvidedPassword(command.sharedPassword);
+  if (!validation.valid) {
+    throw new CredentialPasswordPolicyFailedException(validation.reasons);
+  }
+  return { credentialMode, sharedPassword: command.sharedPassword };
 }
 
 function parseAudienceMode(value: unknown): StudentCredentialAudienceApiValue {

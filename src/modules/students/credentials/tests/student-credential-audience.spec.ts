@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument -- Jest asymmetric error matchers are intentionally passed through to toThrow. */
 import {
   MembershipStatus,
+  OrganizationStatus,
+  SchoolStatus,
   StudentCredentialAudienceMode,
   StudentCredentialMode,
   StudentCredentialBatchStatus,
@@ -13,13 +15,17 @@ import {
   runWithRequestContext,
 } from '../../../../common/context/request-context';
 import { BullmqService } from '../../../../infrastructure/queue/bullmq.service';
+import { CredentialPasswordPolicyFailedException } from '../../../settings/users/credentials/domain/credential.exceptions';
 import { CreateStudentCredentialBatchUseCase } from '../application/create-student-credential-batch.use-case';
 import { StudentCredentialAudienceService } from '../application/student-credential-audience.service';
+import { StudentCredentialSecretArtifactService } from '../application/student-credential-secret-artifact.service';
 import {
   parseStudentCredentialAudience,
   parseStudentCredentialMode,
+  parseStudentCredentialModeSelection,
 } from '../domain/student-credential-audience';
 import { STUDENT_CREDENTIAL_MODE_API_VALUES } from '../domain/student-credential.types';
+import { StudentCredentialSecretArtifactException } from '../domain/student-credential.exceptions';
 import { StudentCredentialBatchRepository } from '../infrastructure/student-credential-batch.repository';
 
 const UUIDS = {
@@ -33,6 +39,7 @@ const UUIDS = {
   classroom: '00000000-0000-4000-8000-000000000008',
   enrollment: '00000000-0000-4000-8000-000000000009',
 } as const;
+const VALID_ADMIN_PASSWORD = 'F2Admin!Pass123';
 
 describe('student credential audience contracts', () => {
   it.each([
@@ -89,10 +96,11 @@ describe('student credential audience contracts', () => {
     }
   });
 
-  it('accepts only the two external credential modes', () => {
+  it('accepts the three external credential modes', () => {
     expect(STUDENT_CREDENTIAL_MODE_API_VALUES).toEqual([
       'unique_generated',
       'shared_temporary',
+      'shared_admin_provided',
     ]);
     expect(
       parseStudentCredentialMode({
@@ -114,12 +122,93 @@ describe('student credential audience contracts', () => {
       parseStudentCredentialMode({
         audienceMode: 'missing_password',
         credentialMode: 'shared_admin_provided',
+        sharedPassword: VALID_ADMIN_PASSWORD,
       }),
-    ).toThrow(
-      expect.objectContaining({
-        code: 'students.credentials.audience_invalid',
+    ).not.toThrow();
+  });
+
+  it.each(['unique_generated', 'shared_temporary'] as const)(
+    'rejects sharedPassword for %s with a safe audience reason',
+    (credentialMode) => {
+      expect(() =>
+        parseStudentCredentialModeSelection({
+          audienceMode: 'missing_password',
+          credentialMode,
+          sharedPassword: VALID_ADMIN_PASSWORD,
+        }),
+      ).toThrow(
+        expect.objectContaining({
+          code: 'students.credentials.audience_invalid',
+          details: { reasonCode: 'shared_password_not_allowed' },
+        }),
+      );
+    },
+  );
+
+  it.each([undefined, null, 123, {}])(
+    'requires a string password for shared_admin_provided (%p)',
+    (sharedPassword) => {
+      expect(() =>
+        parseStudentCredentialModeSelection({
+          audienceMode: 'missing_password',
+          credentialMode: 'shared_admin_provided',
+          sharedPassword,
+        }),
+      ).toThrow(
+        expect.objectContaining({
+          code: 'iam.credentials.password_policy_failed',
+          httpStatus: 422,
+          details: { reasons: ['password_required'] },
+        }),
+      );
+    },
+  );
+
+  it.each([
+    ['Short1!', 'password_too_short'],
+    ['lowercase123!', 'password_missing_uppercase'],
+    ['UPPERCASE123!', 'password_missing_lowercase'],
+    ['NoNumbersHere!', 'password_missing_number'],
+    ['NoSymbols1234', 'password_missing_symbol'],
+    ['Password123!', 'password_common'],
+  ])(
+    'reuses the canonical password policy for %s',
+    (sharedPassword, reason) => {
+      let caught: unknown;
+      try {
+        parseStudentCredentialModeSelection({
+          audienceMode: 'missing_password',
+          credentialMode: 'shared_admin_provided',
+          sharedPassword,
+        });
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(CredentialPasswordPolicyFailedException);
+      if (!(caught instanceof CredentialPasswordPolicyFailedException)) {
+        throw new Error('expected password policy exception');
+      }
+      expect(caught.code).toBe('iam.credentials.password_policy_failed');
+      expect(caught.httpStatus).toBe(422);
+      expect(caught.details).toEqual({
+        reasons: expect.arrayContaining([reason]) as string[],
+      });
+      expect(JSON.stringify(caught)).not.toContain(sharedPassword);
+    },
+  );
+
+  it('preserves the exact accepted administrator password without normalization', () => {
+    const exactPassword = '  F2Admin!Pass123  ';
+    expect(
+      parseStudentCredentialModeSelection({
+        audienceMode: 'missing_password',
+        credentialMode: 'shared_admin_provided',
+        sharedPassword: exactPassword,
       }),
-    );
+    ).toEqual({
+      credentialMode: StudentCredentialMode.SHARED_ADMIN_PROVIDED,
+      sharedPassword: exactPassword,
+    });
   });
 
   it('keeps a missing-password Student eligible when optional placement is unavailable', async () => {
@@ -248,6 +337,7 @@ describe('student credential audience contracts', () => {
       audience as never,
       repository as unknown as StudentCredentialBatchRepository,
       bullmq as unknown as BullmqService,
+      {} as StudentCredentialSecretArtifactService,
     );
 
     const result = await inScope(() =>
@@ -276,6 +366,165 @@ describe('student credential audience contracts', () => {
         attempts: 3,
       }),
     );
+  });
+
+  it('stages and verifies admin-provided plaintext before enqueueing only batchId', async () => {
+    const batch = batchFixture({
+      credentialMode: StudentCredentialMode.SHARED_ADMIN_PROVIDED,
+    });
+    const executionBatch = {
+      ...batch,
+      secretArtifactFileId: null,
+      secretArtifactVersion: null,
+      secretArtifactStagedAt: null,
+      secretArtifactExpiresAt: null,
+      secretArtifactFile: null,
+      createdBy: { userType: UserType.SCHOOL_USER },
+      school: {
+        id: 'school-1',
+        organizationId: 'organization-1',
+        status: 'ACTIVE',
+        deletedAt: null,
+        organization: {
+          id: 'organization-1',
+          status: 'ACTIVE',
+          deletedAt: null,
+        },
+      },
+    };
+    const rows = [
+      {
+        id: 'row-1',
+        schoolId: 'school-1',
+        batchId: batch.id,
+        studentId: UUIDS.student,
+        userId: '00000000-0000-4000-8000-000000000011',
+        enrollmentId: UUIDS.enrollment,
+        status: 'PENDING',
+        credentialVersionBefore: 0,
+        credentialVersionAfter: null,
+        generatedAt: null,
+      },
+    ];
+    const audience = {
+      resolve: jest.fn().mockResolvedValue({
+        totalMatched: 1,
+        eligible: [
+          {
+            studentId: UUIDS.student,
+            userId: rows[0].userId,
+            enrollmentId: UUIDS.enrollment,
+            credentialVersion: 0,
+          },
+        ],
+        skipped: 0,
+        skippedReasons: {},
+      }),
+    };
+    const repository = {
+      createBatch: jest.fn().mockResolvedValue(batch),
+      findExecutionBatchById: jest.fn().mockResolvedValue(executionBatch),
+      listExecutionRows: jest.fn().mockResolvedValue(rows),
+    };
+    const artifact = {
+      stageAdminProvidedArtifact: jest.fn().mockResolvedValue({}),
+    };
+    const bullmq = {
+      ensureJobFromPersistedTruth: jest.fn().mockResolvedValue('created'),
+    };
+    const useCase = new CreateStudentCredentialBatchUseCase(
+      audience as never,
+      repository as unknown as StudentCredentialBatchRepository,
+      bullmq as unknown as BullmqService,
+      artifact as unknown as StudentCredentialSecretArtifactService,
+    );
+
+    const response = await inScope(() =>
+      useCase.execute({
+        audienceMode: 'selected_students',
+        studentIds: [UUIDS.student],
+        credentialMode: 'shared_admin_provided',
+        sharedPassword: VALID_ADMIN_PASSWORD,
+      }),
+    );
+
+    expect(response.credentialMode).toBe('shared_admin_provided');
+    expect(JSON.stringify(response)).not.toContain(VALID_ADMIN_PASSWORD);
+    expect(repository.createBatch.mock.invocationCallOrder[0]).toBeLessThan(
+      artifact.stageAdminProvidedArtifact.mock.invocationCallOrder[0],
+    );
+    expect(
+      artifact.stageAdminProvidedArtifact.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      bullmq.ensureJobFromPersistedTruth.mock.invocationCallOrder[0],
+    );
+    expect(artifact.stageAdminProvidedArtifact).toHaveBeenCalledWith(
+      expect.objectContaining({ sharedPassword: VALID_ADMIN_PASSWORD }),
+    );
+    expect(bullmq.ensureJobFromPersistedTruth).toHaveBeenCalledWith(
+      'files-imports',
+      'execute-student-credential-batch',
+      { batchId: batch.id },
+      expect.any(Object),
+    );
+    expect(
+      JSON.stringify(bullmq.ensureJobFromPersistedTruth.mock.calls),
+    ).not.toContain(VALID_ADMIN_PASSWORD);
+  });
+
+  it('terminalizes a custom batch without enqueue when staging fails and orphan absence is confirmed', async () => {
+    const fixture = customCreateFixture();
+
+    await expect(
+      inScope(() =>
+        fixture.useCase.execute({
+          audienceMode: 'selected_students',
+          studentIds: [UUIDS.student],
+          credentialMode: 'shared_admin_provided',
+          sharedPassword: VALID_ADMIN_PASSWORD,
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'students.credentials.secret_artifact_unavailable',
+    });
+
+    expect(fixture.bullmq.ensureJobFromPersistedTruth).not.toHaveBeenCalled();
+    expect(
+      fixture.artifact.deletePotentialOrphanSecretArtifact,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      fixture.repository.terminalizeRemainingPendingRows,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reasonCode: 'students.credentials.secret_artifact_unavailable',
+      }),
+    );
+    expect(fixture.repository.finalizeBatch).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves a custom batch fail-closed and unqueued when orphan absence cannot be confirmed', async () => {
+    const fixture = customCreateFixture(
+      new Error('storage_temporarily_unavailable'),
+    );
+
+    await expect(
+      inScope(() =>
+        fixture.useCase.execute({
+          audienceMode: 'selected_students',
+          studentIds: [UUIDS.student],
+          credentialMode: 'shared_admin_provided',
+          sharedPassword: VALID_ADMIN_PASSWORD,
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'students.credentials.secret_artifact_unavailable',
+    });
+
+    expect(fixture.bullmq.ensureJobFromPersistedTruth).not.toHaveBeenCalled();
+    expect(
+      fixture.repository.terminalizeRemainingPendingRows,
+    ).not.toHaveBeenCalled();
+    expect(fixture.repository.finalizeBatch).not.toHaveBeenCalled();
   });
 });
 
@@ -337,7 +586,7 @@ function studentFixture(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function batchFixture() {
+function batchFixture(overrides: Record<string, unknown> = {}) {
   const now = new Date('2026-08-27T10:00:00.000Z');
   return {
     id: 'batch-1',
@@ -361,5 +610,93 @@ function batchFixture() {
     updatedAt: now,
     startedAt: null,
     completedAt: null,
+    ...overrides,
+  };
+}
+
+function customCreateFixture(cleanupError?: Error) {
+  const batch = batchFixture({
+    credentialMode: StudentCredentialMode.SHARED_ADMIN_PROVIDED,
+  });
+  const executionBatch = {
+    ...batch,
+    secretArtifactFileId: null,
+    secretArtifactVersion: null,
+    secretArtifactStagedAt: null,
+    secretArtifactExpiresAt: null,
+    secretArtifactFile: null,
+    createdBy: { userType: UserType.SCHOOL_USER },
+    school: {
+      id: 'school-1',
+      organizationId: 'organization-1',
+      status: SchoolStatus.ACTIVE,
+      deletedAt: null,
+      organization: {
+        id: 'organization-1',
+        status: OrganizationStatus.ACTIVE,
+        deletedAt: null,
+      },
+    },
+  };
+  const repository = {
+    createBatch: jest.fn().mockResolvedValue(batch),
+    findExecutionBatchById: jest.fn().mockResolvedValue(executionBatch),
+    listExecutionRows: jest.fn().mockResolvedValue([
+      {
+        id: 'row-1',
+        schoolId: 'school-1',
+        batchId: batch.id,
+        studentId: UUIDS.student,
+        userId: '00000000-0000-4000-8000-000000000011',
+        enrollmentId: UUIDS.enrollment,
+        status: 'PENDING',
+        credentialVersionBefore: 0,
+        credentialVersionAfter: null,
+        generatedAt: null,
+      },
+    ]),
+    terminalizeRemainingPendingRows: jest.fn().mockResolvedValue(1),
+    finalizeBatch: jest
+      .fn()
+      .mockResolvedValue(StudentCredentialBatchStatus.FAILED),
+  };
+  const artifact = {
+    stageAdminProvidedArtifact: jest
+      .fn()
+      .mockRejectedValue(
+        new StudentCredentialSecretArtifactException(
+          'students.credentials.secret_artifact_unavailable',
+        ),
+      ),
+    deletePotentialOrphanSecretArtifact: cleanupError
+      ? jest.fn().mockRejectedValue(cleanupError)
+      : jest.fn().mockResolvedValue(undefined),
+  };
+  const bullmq = { ensureJobFromPersistedTruth: jest.fn() };
+  const audience = {
+    resolve: jest.fn().mockResolvedValue({
+      totalMatched: 1,
+      eligible: [
+        {
+          studentId: UUIDS.student,
+          userId: '00000000-0000-4000-8000-000000000011',
+          enrollmentId: UUIDS.enrollment,
+          credentialVersion: 0,
+        },
+      ],
+      skipped: 0,
+      skippedReasons: {},
+    }),
+  };
+  return {
+    repository,
+    artifact,
+    bullmq,
+    useCase: new CreateStudentCredentialBatchUseCase(
+      audience as never,
+      repository as unknown as StudentCredentialBatchRepository,
+      bullmq as unknown as BullmqService,
+      artifact as unknown as StudentCredentialSecretArtifactService,
+    ),
   };
 }

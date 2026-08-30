@@ -6,6 +6,7 @@ import {
   StudentBulkRegistrationRowStatus,
   StudentCredentialAudienceMode,
   StudentCredentialBatchStatus,
+  StudentCredentialMode,
   StudentCredentialRowStatus,
   StudentEnrollmentStatus,
   StudentStatus,
@@ -15,6 +16,104 @@ import {
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import type { StudentCredentialAudienceSelection } from '../domain/student-credential.types';
 import { StudentCredentialBatchRepository } from '../infrastructure/student-credential-batch.repository';
+
+describe('StudentCredentialBatchRepository custom artifact gates', () => {
+  it('allows generated PENDING claims while requiring complete custom artifact metadata', async () => {
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const repository = new StudentCredentialBatchRepository({
+      studentCredentialBatch: { updateMany },
+    } as unknown as PrismaService);
+
+    await expect(
+      repository.claimBatch({
+        batchId: 'batch-1',
+        schoolId: 'school-1',
+        startedAt: new Date('2026-08-30T10:00:00Z'),
+      }),
+    ).resolves.toBe(true);
+
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: StudentCredentialBatchStatus.PENDING,
+          startedAt: null,
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              credentialMode: StudentCredentialMode.SHARED_ADMIN_PROVIDED,
+              secretArtifactFileId: { not: null },
+              secretArtifactVersion: 1,
+              secretArtifactStagedAt: { not: null },
+              secretArtifactExpiresAt: { not: null },
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
+
+  it('attaches a custom artifact only to an untouched PENDING custom batch with all rows pending', async () => {
+    const tx = {
+      studentCredentialBatch: {
+        findFirst: jest.fn().mockResolvedValue({
+          totalRows: 2,
+          secretArtifactFileId: null,
+          secretArtifactVersion: null,
+          secretArtifactStagedAt: null,
+          secretArtifactExpiresAt: null,
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      studentCredentialRow: {
+        count: jest.fn().mockResolvedValue(2),
+      },
+      file: { create: jest.fn().mockResolvedValue({ id: 'file-1' }) },
+    };
+    const repository = new StudentCredentialBatchRepository({
+      $transaction: jest.fn(async (callback) => callback(tx)),
+    } as unknown as PrismaService);
+    const stagedAt = new Date('2026-08-30T10:00:00Z');
+    const expiresAt = new Date('2026-08-31T10:00:00Z');
+
+    await expect(
+      repository.attachPendingAdminProvidedSecretArtifact({
+        batchId: 'batch-1',
+        schoolId: 'school-1',
+        organizationId: 'organization-1',
+        uploaderId: 'actor-1',
+        bucket: 'private-bucket',
+        objectKey: 'private-key',
+        originalName: 'student-credential-secret-v1.json',
+        mimeType: 'application/vnd.moazez.student-credentials+json',
+        sizeBytes: 100n,
+        checksumSha256: 'a'.repeat(64),
+        artifactVersion: 1,
+        stagedAt,
+        expiresAt,
+      }),
+    ).resolves.toBe('file-1');
+
+    expect(tx.studentCredentialBatch.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          credentialMode: StudentCredentialMode.SHARED_ADMIN_PROVIDED,
+          status: StudentCredentialBatchStatus.PENDING,
+          startedAt: null,
+          generatedRows: 0,
+          skippedRows: 0,
+          failedRows: 0,
+        }),
+      }),
+    );
+    expect(tx.file.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          visibility: 'PRIVATE',
+          checksumSha256: 'a'.repeat(64),
+        }),
+      }),
+    );
+  });
+});
 
 describe('StudentCredentialBatchRepository row atomicity', () => {
   it('creates tenant-owned rows through the batch composite relation without an invalid nested school field', async () => {

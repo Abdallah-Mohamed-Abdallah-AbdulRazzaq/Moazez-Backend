@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/unbound-method -- route metadata assertions intentionally inspect detached Nest controller methods. */
 import { HttpStatus } from '@nestjs/common';
 import { HTTP_CODE_METADATA, PATH_METADATA } from '@nestjs/common/constants';
+import { DECORATORS } from '@nestjs/swagger/dist/constants';
 import { REQUIRED_PERMISSIONS_METADATA } from '../../../../common/decorators/required-permissions.decorator';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import { FilesRepository } from '../../../files/uploads/infrastructure/files.repository';
@@ -9,9 +10,33 @@ import { ExportStudentCredentialBatchUseCase } from '../application/export-stude
 import { GetStudentCredentialBatchUseCase } from '../application/get-student-credential-batch.use-case';
 import { PreviewStudentCredentialBatchUseCase } from '../application/preview-student-credential-batch.use-case';
 import { StudentCredentialBatchController } from '../controller/student-credential-batch.controller';
+import {
+  CreateStudentCredentialBatchDto,
+  StudentCredentialBatchResponseDto,
+} from '../dto/student-credential-batch.dto';
 import type { Response } from 'express';
 
 describe('student credential API and secret file boundary', () => {
+  it('documents the administrator password only as a write-only request field', () => {
+    expect(
+      Reflect.getMetadata(
+        DECORATORS.API_MODEL_PROPERTIES,
+        CreateStudentCredentialBatchDto.prototype,
+        'sharedPassword',
+      ),
+    ).toMatchObject({
+      format: 'password',
+      required: false,
+      writeOnly: true,
+    });
+    expect(
+      Reflect.getMetadata(
+        DECORATORS.API_MODEL_PROPERTIES_ARRAY,
+        StudentCredentialBatchResponseDto.prototype,
+      ),
+    ).not.toContain(':sharedPassword');
+  });
+
   it('keeps the exact routes, status codes, and composed permissions', () => {
     const prototype = StudentCredentialBatchController.prototype;
     expect(

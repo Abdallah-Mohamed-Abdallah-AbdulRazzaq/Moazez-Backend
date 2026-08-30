@@ -528,6 +528,23 @@ export class StudentCredentialBatchRepository {
         schoolId: input.schoolId,
         status: StudentCredentialBatchStatus.PENDING,
         startedAt: null,
+        OR: [
+          {
+            credentialMode: {
+              in: [
+                StudentCredentialMode.UNIQUE_GENERATED,
+                StudentCredentialMode.SHARED_TEMPORARY,
+              ],
+            },
+          },
+          {
+            credentialMode: StudentCredentialMode.SHARED_ADMIN_PROVIDED,
+            secretArtifactFileId: { not: null },
+            secretArtifactVersion: 1,
+            secretArtifactStagedAt: { not: null },
+            secretArtifactExpiresAt: { not: null },
+          },
+        ],
       },
       data: {
         status: StudentCredentialBatchStatus.PROCESSING,
@@ -604,6 +621,126 @@ export class StudentCredentialBatchRepository {
           schoolId: input.schoolId,
           organizationId: input.organizationId,
           status: StudentCredentialBatchStatus.PROCESSING,
+          secretArtifactFileId: null,
+          secretArtifactVersion: null,
+          secretArtifactStagedAt: null,
+          secretArtifactExpiresAt: null,
+        },
+        data: {
+          secretArtifactFileId: file.id,
+          secretArtifactVersion: input.artifactVersion,
+          secretArtifactStagedAt: input.stagedAt,
+          secretArtifactExpiresAt: input.expiresAt,
+        },
+      });
+      if (attached.count !== 1) {
+        throw new StudentCredentialExecutionInvariantException(
+          'artifact_attachment_conflict',
+        );
+      }
+      return file.id;
+    });
+  }
+
+  async attachPendingAdminProvidedSecretArtifact(input: {
+    batchId: string;
+    schoolId: string;
+    organizationId: string;
+    uploaderId: string;
+    bucket: string;
+    objectKey: string;
+    originalName: string;
+    mimeType: string;
+    sizeBytes: bigint;
+    checksumSha256: string;
+    artifactVersion: number;
+    stagedAt: Date;
+    expiresAt: Date;
+  }): Promise<string> {
+    return this.prisma.$transaction(async (tx) => {
+      const batch = await tx.studentCredentialBatch.findFirst({
+        where: {
+          id: input.batchId,
+          schoolId: input.schoolId,
+          organizationId: input.organizationId,
+          credentialMode: StudentCredentialMode.SHARED_ADMIN_PROVIDED,
+          status: StudentCredentialBatchStatus.PENDING,
+          startedAt: null,
+          generatedRows: 0,
+          skippedRows: 0,
+          failedRows: 0,
+        },
+        select: {
+          totalRows: true,
+          secretArtifactFileId: true,
+          secretArtifactVersion: true,
+          secretArtifactStagedAt: true,
+          secretArtifactExpiresAt: true,
+        },
+      });
+      if (!batch) {
+        throw new StudentCredentialExecutionInvariantException(
+          'admin_artifact_batch_not_pending',
+        );
+      }
+      if (batch.secretArtifactFileId) return batch.secretArtifactFileId;
+      if (
+        batch.secretArtifactVersion !== null ||
+        batch.secretArtifactStagedAt !== null ||
+        batch.secretArtifactExpiresAt !== null
+      ) {
+        throw new StudentCredentialExecutionInvariantException(
+          'artifact_staging_incomplete',
+        );
+      }
+      const [allRows, pendingRows] = await Promise.all([
+        tx.studentCredentialRow.count({
+          where: { batchId: input.batchId, schoolId: input.schoolId },
+        }),
+        tx.studentCredentialRow.count({
+          where: {
+            batchId: input.batchId,
+            schoolId: input.schoolId,
+            status: StudentCredentialRowStatus.PENDING,
+          },
+        }),
+      ]);
+      if (
+        batch.totalRows <= 0 ||
+        allRows !== batch.totalRows ||
+        pendingRows !== batch.totalRows
+      ) {
+        throw new StudentCredentialExecutionInvariantException(
+          'admin_artifact_rows_not_pending',
+        );
+      }
+
+      const file = await tx.file.create({
+        data: {
+          schoolId: input.schoolId,
+          organizationId: input.organizationId,
+          uploaderId: input.uploaderId,
+          bucket: input.bucket,
+          objectKey: input.objectKey,
+          originalName: input.originalName,
+          mimeType: input.mimeType,
+          sizeBytes: input.sizeBytes,
+          checksumSha256: input.checksumSha256,
+          visibility: FileVisibility.PRIVATE,
+        },
+        select: { id: true },
+      });
+      const attached = await tx.studentCredentialBatch.updateMany({
+        where: {
+          id: input.batchId,
+          schoolId: input.schoolId,
+          organizationId: input.organizationId,
+          credentialMode: StudentCredentialMode.SHARED_ADMIN_PROVIDED,
+          status: StudentCredentialBatchStatus.PENDING,
+          startedAt: null,
+          generatedRows: 0,
+          skippedRows: 0,
+          failedRows: 0,
           secretArtifactFileId: null,
           secretArtifactVersion: null,
           secretArtifactStagedAt: null,
