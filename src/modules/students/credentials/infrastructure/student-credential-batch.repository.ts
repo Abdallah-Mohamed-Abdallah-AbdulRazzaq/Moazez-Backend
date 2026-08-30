@@ -189,6 +189,7 @@ export interface StudentCredentialExportRow {
   batchId: string;
   studentId: string;
   userId: string | null;
+  enrollmentId: string | null;
   status: StudentCredentialRowStatus;
   credentialVersionAfter: number | null;
   generatedAt: Date | null;
@@ -221,6 +222,54 @@ export interface StudentCredentialExportRow {
       status: MembershipStatus;
       deletedAt: Date | null;
     }>;
+  } | null;
+  enrollment: {
+    id: string;
+    schoolId: string;
+    studentId: string;
+    academicYearId: string;
+    classroomId: string;
+    status: StudentEnrollmentStatus;
+    deletedAt: Date | null;
+    academicYear: {
+      id: string;
+      schoolId: string;
+      nameEn: string;
+      nameAr: string;
+      isActive: boolean;
+      deletedAt: Date | null;
+    };
+    classroom: {
+      id: string;
+      schoolId: string;
+      sectionId: string;
+      nameEn: string;
+      nameAr: string;
+      deletedAt: Date | null;
+      section: {
+        id: string;
+        schoolId: string;
+        gradeId: string;
+        nameEn: string;
+        nameAr: string;
+        deletedAt: Date | null;
+        grade: {
+          id: string;
+          schoolId: string;
+          stageId: string;
+          nameEn: string;
+          nameAr: string;
+          deletedAt: Date | null;
+          stage: {
+            id: string;
+            schoolId: string;
+            nameEn: string;
+            nameAr: string;
+            deletedAt: Date | null;
+          };
+        };
+      };
+    };
   } | null;
 }
 
@@ -418,6 +467,7 @@ export class StudentCredentialBatchRepository {
         batchId: true,
         studentId: true,
         userId: true,
+        enrollmentId: true,
         status: true,
         credentialVersionAfter: true,
         generatedAt: true,
@@ -460,6 +510,66 @@ export class StudentCredentialBatchRepository {
                 userType: true,
                 status: true,
                 deletedAt: true,
+              },
+            },
+          },
+        },
+        enrollment: {
+          select: {
+            id: true,
+            schoolId: true,
+            studentId: true,
+            academicYearId: true,
+            classroomId: true,
+            status: true,
+            deletedAt: true,
+            academicYear: {
+              select: {
+                id: true,
+                schoolId: true,
+                nameEn: true,
+                nameAr: true,
+                isActive: true,
+                deletedAt: true,
+              },
+            },
+            classroom: {
+              select: {
+                id: true,
+                schoolId: true,
+                sectionId: true,
+                nameEn: true,
+                nameAr: true,
+                deletedAt: true,
+                section: {
+                  select: {
+                    id: true,
+                    schoolId: true,
+                    gradeId: true,
+                    nameEn: true,
+                    nameAr: true,
+                    deletedAt: true,
+                    grade: {
+                      select: {
+                        id: true,
+                        schoolId: true,
+                        stageId: true,
+                        nameEn: true,
+                        nameAr: true,
+                        deletedAt: true,
+                        stage: {
+                          select: {
+                            id: true,
+                            schoolId: true,
+                            nameEn: true,
+                            nameAr: true,
+                            deletedAt: true,
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
               },
             },
           },

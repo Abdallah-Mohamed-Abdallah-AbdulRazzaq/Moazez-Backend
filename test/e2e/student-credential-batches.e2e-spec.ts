@@ -27,6 +27,7 @@ import { StudentCredentialSecretArtifactCleanupService } from '../../src/modules
 import { studentCredentialBatchExecutionJobId } from '../../src/modules/students/credentials/domain/student-credential.constants';
 import { StudentCredentialBatchRepository } from '../../src/modules/students/credentials/infrastructure/student-credential-batch.repository';
 import { FILES_IMPORT_QUEUE_NAME } from '../../src/modules/files/imports/domain/import-job.types';
+import { STUDENT_CREDENTIAL_EXPORT_HEADERS } from '../../src/modules/students/credentials/domain/student-credential-export.csv';
 
 const GLOBAL_PREFIX = '/api/v1';
 const DEMO_ADMIN_EMAIL = 'admin@academy.moazez.dev';
@@ -730,7 +731,7 @@ describe('Student credential batches (e2e)', () => {
     });
     const [academicYear, classroom] = await Promise.all([
       prisma.academicYear.findFirstOrThrow({
-        where: { schoolId, deletedAt: null },
+        where: { schoolId, isActive: true, deletedAt: null },
         select: { id: true },
       }),
       prisma.classroom.findFirstOrThrow({
@@ -902,6 +903,88 @@ describe('Student credential batches (e2e)', () => {
       userId: secondStudentUserId,
       enrollmentId: secondSourceEnrollment.id,
     });
+    const persistedSourcePlacement = await prisma.enrollment.findUniqueOrThrow({
+      where: { id: sourceEnrollment.id },
+      select: {
+        academicYear: { select: { id: true, nameEn: true, nameAr: true } },
+        classroom: {
+          select: {
+            id: true,
+            nameEn: true,
+            nameAr: true,
+            section: {
+              select: {
+                id: true,
+                nameEn: true,
+                nameAr: true,
+                grade: {
+                  select: {
+                    id: true,
+                    nameEn: true,
+                    nameAr: true,
+                    stage: {
+                      select: { id: true, nameEn: true, nameAr: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const importExport = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/credential-batches/${importCredentialBatchId}/export`,
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .buffer(true)
+      .parse((response, callback) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
+        response.on('end', () => callback(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
+    const exportRows = decodeCredentialExport(importExport.body as Buffer);
+    expect(exportRows.headers).toEqual(STUDENT_CREDENTIAL_EXPORT_HEADERS);
+    expect(exportRows.rows).toHaveLength(2);
+    const exportByStudent = new Map(
+      exportRows.rows.map((row) => [row.student_id, row]),
+    );
+    for (const [exportedStudentId, sourceEnrollmentId] of [
+      [studentId, sourceEnrollment.id],
+      [secondStudentId, secondSourceEnrollment.id],
+    ] as const) {
+      const exportedRow = exportByStudent.get(exportedStudentId);
+      expect(exportedRow).toMatchObject({
+        credential_status: 'temporary_credential',
+        placement_status: 'current',
+        academic_year_id: persistedSourcePlacement.academicYear.id,
+        academic_year_name: academicDisplayName(
+          persistedSourcePlacement.academicYear,
+        ),
+        stage_id: persistedSourcePlacement.classroom.section.grade.stage.id,
+        stage_name: academicDisplayName(
+          persistedSourcePlacement.classroom.section.grade.stage,
+        ),
+        grade_id: persistedSourcePlacement.classroom.section.grade.id,
+        grade_name: academicDisplayName(
+          persistedSourcePlacement.classroom.section.grade,
+        ),
+        section_id: persistedSourcePlacement.classroom.section.id,
+        section_name: academicDisplayName(
+          persistedSourcePlacement.classroom.section,
+        ),
+        classroom_id: persistedSourcePlacement.classroom.id,
+        classroom_name: academicDisplayName(persistedSourcePlacement.classroom),
+      });
+      expect(exportedRow?.temporary_password).toBeTruthy();
+      expect(
+        importCredentialBatch.rows.find(
+          (row) => row.studentId === exportedStudentId,
+        )?.enrollmentId,
+      ).toBe(sourceEnrollmentId);
+    }
     const importArtifact = {
       id: importCredentialBatch.secretArtifactFile!.id,
       bucket: importCredentialBatch.secretArtifactFile!.bucket,
@@ -1260,6 +1343,41 @@ async function readStream(stream: Readable): Promise<Buffer> {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
   }
   return Buffer.concat(chunks);
+}
+
+function decodeCredentialExport(body: Buffer): {
+  headers: string[];
+  rows: Array<Record<string, string>>;
+} {
+  const [headerLine, ...dataLines] = body
+    .toString('utf8')
+    .replace(/^\uFEFF/u, '')
+    .split('\r\n')
+    .filter((line) => line.length > 0);
+  const headers = decodeQuotedCsvRow(headerLine);
+  return {
+    headers,
+    rows: dataLines.map((line) => {
+      const values = decodeQuotedCsvRow(line);
+      return Object.fromEntries(
+        headers.map((header, index) => [header, values[index]]),
+      );
+    }),
+  };
+}
+
+function decodeQuotedCsvRow(line: string): string[] {
+  return line
+    .slice(1, -1)
+    .split('","')
+    .map((value) => value.replaceAll('""', '"'));
+}
+
+function academicDisplayName(input: {
+  nameEn: string;
+  nameAr: string;
+}): string {
+  return input.nameEn.trim() || input.nameAr.trim();
 }
 
 async function waitForJobState(

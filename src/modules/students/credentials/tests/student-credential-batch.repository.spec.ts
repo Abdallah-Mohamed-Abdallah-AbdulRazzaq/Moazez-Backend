@@ -115,6 +115,100 @@ describe('StudentCredentialBatchRepository custom artifact gates', () => {
   });
 });
 
+describe('StudentCredentialBatchRepository export placement query', () => {
+  it('loads exact Enrollment provenance and Academic Structure in one nested query', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const forbiddenPlacementLookup = jest.fn();
+    const repository = new StudentCredentialBatchRepository({
+      scoped: {
+        studentCredentialRow: { findMany },
+        enrollment: { findFirst: forbiddenPlacementLookup },
+        academicYear: { findFirst: forbiddenPlacementLookup },
+        stage: { findFirst: forbiddenPlacementLookup },
+        grade: { findFirst: forbiddenPlacementLookup },
+        section: { findFirst: forbiddenPlacementLookup },
+        classroom: { findFirst: forbiddenPlacementLookup },
+      },
+    } as unknown as PrismaService);
+
+    await expect(
+      repository.listGeneratedExportRows({
+        batchId: 'batch-1',
+        schoolId: 'school-1',
+        organizationId: 'organization-1',
+      }),
+    ).resolves.toEqual([]);
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          batchId: 'batch-1',
+          schoolId: 'school-1',
+          status: StudentCredentialRowStatus.GENERATED,
+        },
+        select: expect.objectContaining({
+          enrollmentId: true,
+          enrollment: {
+            select: expect.objectContaining({
+              id: true,
+              schoolId: true,
+              studentId: true,
+              academicYearId: true,
+              classroomId: true,
+              status: true,
+              deletedAt: true,
+              academicYear: {
+                select: {
+                  id: true,
+                  schoolId: true,
+                  nameEn: true,
+                  nameAr: true,
+                  isActive: true,
+                  deletedAt: true,
+                },
+              },
+              classroom: {
+                select: expect.objectContaining({
+                  id: true,
+                  schoolId: true,
+                  sectionId: true,
+                  nameEn: true,
+                  nameAr: true,
+                  deletedAt: true,
+                  section: {
+                    select: expect.objectContaining({
+                      id: true,
+                      schoolId: true,
+                      gradeId: true,
+                      grade: {
+                        select: expect.objectContaining({
+                          id: true,
+                          schoolId: true,
+                          stageId: true,
+                          stage: {
+                            select: expect.objectContaining({
+                              id: true,
+                              schoolId: true,
+                              nameEn: true,
+                              nameAr: true,
+                              deletedAt: true,
+                            }),
+                          },
+                        }),
+                      },
+                    }),
+                  },
+                }),
+              },
+            }),
+          },
+        }),
+      }),
+    );
+    expect(forbiddenPlacementLookup).not.toHaveBeenCalled();
+  });
+});
+
 describe('StudentCredentialBatchRepository row atomicity', () => {
   it('creates tenant-owned rows through the batch composite relation without an invalid nested school field', async () => {
     const tx = {

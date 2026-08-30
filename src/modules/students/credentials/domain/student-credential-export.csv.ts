@@ -10,12 +10,28 @@ export const STUDENT_CREDENTIAL_EXPORT_HEADERS = [
   'credential_status',
   'must_change_password',
   'generated_at',
+  'placement_status',
+  'academic_year_id',
+  'academic_year_name',
+  'stage_id',
+  'stage_name',
+  'grade_id',
+  'grade_name',
+  'section_id',
+  'section_name',
+  'classroom_id',
+  'classroom_name',
 ] as const;
 
 export type StudentCredentialExportStatus =
   | 'temporary_credential'
   | 'credential_changed'
   | 'account_ineligible';
+
+export type StudentCredentialPlacementStatus =
+  | 'current'
+  | 'historical'
+  | 'unavailable';
 
 export interface StudentCredentialExportCsvRow {
   studentId: string;
@@ -26,6 +42,17 @@ export interface StudentCredentialExportCsvRow {
   credentialStatus: StudentCredentialExportStatus;
   mustChangePassword: string;
   generatedAt: string;
+  placementStatus: StudentCredentialPlacementStatus;
+  academicYearId: string;
+  academicYearName: string;
+  stageId: string;
+  stageName: string;
+  gradeId: string;
+  gradeName: string;
+  sectionId: string;
+  sectionName: string;
+  classroomId: string;
+  classroomName: string;
 }
 
 export function renderStudentCredentialExportCsv(
@@ -54,6 +81,17 @@ export function renderStudentCredentialExportCsv(
       row.credentialStatus,
       row.mustChangePassword,
       row.generatedAt,
+      row.placementStatus,
+      row.academicYearId,
+      row.academicYearName,
+      row.stageId,
+      row.stageName,
+      row.gradeId,
+      row.gradeName,
+      row.sectionId,
+      row.sectionName,
+      row.classroomId,
+      row.classroomName,
     ]);
   }
   return Buffer.from(chunks.join(''), 'utf8');

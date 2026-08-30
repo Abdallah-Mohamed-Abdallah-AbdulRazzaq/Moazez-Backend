@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
   MembershipStatus,
+  StudentEnrollmentStatus,
   StudentCredentialBatchStatus,
   StudentStatus,
   UserStatus,
@@ -12,6 +13,7 @@ import {
   renderStudentCredentialExportCsv,
   type StudentCredentialExportCsvRow,
   type StudentCredentialExportStatus,
+  type StudentCredentialPlacementStatus,
 } from '../domain/student-credential-export.csv';
 import {
   StudentCredentialExecutionInvariantException,
@@ -102,6 +104,7 @@ export class ExportStudentCredentialBatchUseCase {
         row,
         batch.organizationId,
       );
+      const placement = resolveStudentCredentialPlacementContext(row);
       if (credentialStatus === 'temporary_credential') {
         counts.temporaryCredentialsExported += 1;
       } else if (credentialStatus === 'credential_changed') {
@@ -122,6 +125,7 @@ export class ExportStudentCredentialBatchUseCase {
         mustChangePassword:
           credentialStatus === 'temporary_credential' ? 'true' : '',
         generatedAt: row.generatedAt?.toISOString() ?? '',
+        ...placement,
       };
     });
     const body = renderStudentCredentialExportCsv(csvRows);
@@ -136,6 +140,105 @@ export class ExportStudentCredentialBatchUseCase {
       filename: `student-credentials-${batch.id}.csv`,
     };
   }
+}
+
+type StudentCredentialPlacementContext = Pick<
+  StudentCredentialExportCsvRow,
+  | 'placementStatus'
+  | 'academicYearId'
+  | 'academicYearName'
+  | 'stageId'
+  | 'stageName'
+  | 'gradeId'
+  | 'gradeName'
+  | 'sectionId'
+  | 'sectionName'
+  | 'classroomId'
+  | 'classroomName'
+>;
+
+const UNAVAILABLE_PLACEMENT: StudentCredentialPlacementContext = {
+  placementStatus: 'unavailable',
+  academicYearId: '',
+  academicYearName: '',
+  stageId: '',
+  stageName: '',
+  gradeId: '',
+  gradeName: '',
+  sectionId: '',
+  sectionName: '',
+  classroomId: '',
+  classroomName: '',
+};
+
+function resolveStudentCredentialPlacementContext(
+  row: StudentCredentialExportRow,
+): StudentCredentialPlacementContext {
+  if (row.enrollmentId === null) return UNAVAILABLE_PLACEMENT;
+
+  const enrollment = row.enrollment;
+  const academicYear = enrollment?.academicYear;
+  const classroom = enrollment?.classroom;
+  const section = classroom?.section;
+  const grade = section?.grade;
+  const stage = grade?.stage;
+  if (
+    !enrollment ||
+    !academicYear ||
+    !classroom ||
+    !section ||
+    !grade ||
+    !stage ||
+    enrollment.id !== row.enrollmentId ||
+    enrollment.schoolId !== row.schoolId ||
+    enrollment.studentId !== row.studentId ||
+    academicYear.id !== enrollment.academicYearId ||
+    academicYear.schoolId !== row.schoolId ||
+    classroom.id !== enrollment.classroomId ||
+    classroom.schoolId !== row.schoolId ||
+    section.id !== classroom.sectionId ||
+    section.schoolId !== row.schoolId ||
+    grade.id !== section.gradeId ||
+    grade.schoolId !== row.schoolId ||
+    stage.id !== grade.stageId ||
+    stage.schoolId !== row.schoolId
+  ) {
+    throw new StudentCredentialExecutionInvariantException(
+      'export_placement_provenance_invalid',
+    );
+  }
+
+  const placementStatus: StudentCredentialPlacementStatus =
+    enrollment.status === StudentEnrollmentStatus.ACTIVE &&
+    enrollment.deletedAt === null &&
+    academicYear.isActive &&
+    academicYear.deletedAt === null &&
+    stage.deletedAt === null &&
+    grade.deletedAt === null &&
+    section.deletedAt === null &&
+    classroom.deletedAt === null
+      ? 'current'
+      : 'historical';
+  return {
+    placementStatus,
+    academicYearId: academicYear.id,
+    academicYearName: academicDisplayName(academicYear),
+    stageId: stage.id,
+    stageName: academicDisplayName(stage),
+    gradeId: grade.id,
+    gradeName: academicDisplayName(grade),
+    sectionId: section.id,
+    sectionName: academicDisplayName(section),
+    classroomId: classroom.id,
+    classroomName: academicDisplayName(classroom),
+  };
+}
+
+function academicDisplayName(input: {
+  nameEn: string;
+  nameAr: string;
+}): string {
+  return input.nameEn.trim() || input.nameAr.trim();
 }
 
 function currentCredentialStatus(

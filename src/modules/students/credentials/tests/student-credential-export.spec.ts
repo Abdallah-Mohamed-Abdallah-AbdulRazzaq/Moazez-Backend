@@ -3,6 +3,7 @@ import {
   MembershipStatus,
   OrganizationStatus,
   SchoolStatus,
+  StudentEnrollmentStatus,
   StudentCredentialAudienceMode,
   StudentCredentialBatchStatus,
   StudentCredentialMode,
@@ -21,6 +22,7 @@ import {
   neutralizeSpreadsheetFormula,
   renderStudentCredentialExportCsv,
   STUDENT_CREDENTIAL_EXPORT_HEADERS,
+  type StudentCredentialExportCsvRow,
   type StudentCredentialExportStatus,
 } from '../domain/student-credential-export.csv';
 import { STUDENT_CREDENTIAL_EXPORT_MAX_BYTES } from '../domain/student-credential.constants';
@@ -233,6 +235,7 @@ describe('student credential CSV export', () => {
         credentialStatus: '+SUM(A1:A2)' as StudentCredentialExportStatus,
         mustChangePassword: 'true',
         generatedAt: '2026-08-27T12:00:00.000Z',
+        ...csvPlacement(),
       },
     ]).toString('utf8');
     expect(body).toContain('"\'=1+1"');
@@ -241,6 +244,177 @@ describe('student credential CSV export', () => {
     expect(body).toContain('"\'\tsecret"');
     expect(body).toContain('"\'+SUM(A1:A2)"');
     expect(body).not.toContain('sep=');
+  });
+
+  it('exports the exact current placement persisted on the credential row', async () => {
+    const generatedAt = new Date('2026-08-27T12:00:00.000Z');
+    const row = exportRow('row-1', 'student-1', 'user-1', generatedAt);
+    row.enrollmentId = 'enrollment-a';
+    row.enrollment = enrollmentFixture({ id: 'enrollment-a' });
+    row.enrollment.academicYear.nameEn = '  Year One  ';
+    row.enrollment.classroom.section.grade.stage.nameEn = '  ';
+    row.enrollment.classroom.section.grade.stage.nameAr = '  المرحلة الأولى  ';
+    const fixture = createFixture({
+      exportRows: [row],
+      executionRows: [executionRowFromExport(row)],
+    });
+
+    const values = exportedDataRow(
+      (await withScope(() => fixture.service.execute(BATCH_ID))).body,
+    );
+
+    expect(values).toMatchObject({
+      credential_status: 'temporary_credential',
+      temporary_password: 'Secret-1!',
+      placement_status: 'current',
+      academic_year_id: 'academic-year-a',
+      academic_year_name: 'Year One',
+      stage_id: 'stage-a',
+      stage_name: 'المرحلة الأولى',
+      grade_id: 'grade-a',
+      grade_name: 'Grade A',
+      section_id: 'section-a',
+      section_name: 'Section A',
+      classroom_id: 'classroom-a',
+      classroom_name: 'Classroom A',
+    });
+  });
+
+  it.each([
+    {
+      condition: 'inactive enrollment',
+      mutate: (row: StudentCredentialExportRow) => {
+        row.enrollment!.status = StudentEnrollmentStatus.WITHDRAWN;
+      },
+    },
+    {
+      condition: 'inactive academic year',
+      mutate: (row: StudentCredentialExportRow) => {
+        row.enrollment!.academicYear.isActive = false;
+      },
+    },
+    {
+      condition: 'soft-deleted academic node',
+      mutate: (row: StudentCredentialExportRow) => {
+        row.enrollment!.classroom.section.grade.stage.deletedAt = new Date();
+      },
+    },
+  ])('marks a valid $condition placement as historical', async ({ mutate }) => {
+    const generatedAt = new Date('2026-08-27T12:00:00.000Z');
+    const row = exportRow('row-1', 'student-1', 'user-1', generatedAt);
+    row.enrollmentId = 'enrollment-a';
+    row.enrollment = enrollmentFixture({ id: 'enrollment-a' });
+    mutate(row);
+    const fixture = createFixture({
+      exportRows: [row],
+      executionRows: [executionRowFromExport(row)],
+    });
+
+    const values = exportedDataRow(
+      (await withScope(() => fixture.service.execute(BATCH_ID))).body,
+    );
+
+    expect(values.credential_status).toBe('temporary_credential');
+    expect(values.temporary_password).toBe('Secret-1!');
+    expect(values.placement_status).toBe('historical');
+    expect(values.enrollment_id).toBeUndefined();
+    expect(values.classroom_id).toBe('classroom-a');
+  });
+
+  it('exports unavailable placement only for a null persisted enrollment id', async () => {
+    const fixture = createFixture();
+
+    const values = exportedDataRow(
+      (await withScope(() => fixture.service.execute(BATCH_ID))).body,
+    );
+
+    expect(values.credential_status).toBe('temporary_credential');
+    expect(values.temporary_password).toBe('Secret-1!');
+    expect(values.placement_status).toBe('unavailable');
+    for (const header of STUDENT_CREDENTIAL_EXPORT_HEADERS.slice(9)) {
+      expect(values[header]).toBe('');
+    }
+  });
+
+  it('keeps historical export provenance on enrollment A when a newer enrollment B exists', async () => {
+    const generatedAt = new Date('2026-08-27T12:00:00.000Z');
+    const row = exportRow('row-1', 'student-1', 'user-1', generatedAt);
+    row.enrollmentId = 'enrollment-a';
+    row.enrollment = enrollmentFixture({
+      id: 'enrollment-a',
+      status: StudentEnrollmentStatus.WITHDRAWN,
+    });
+    const fixture = createFixture({
+      exportRows: [row],
+      executionRows: [executionRowFromExport(row)],
+    });
+    const newerEnrollmentB = enrollmentFixture({
+      id: 'enrollment-b',
+      academicYearId: 'academic-year-b',
+      classroomId: 'classroom-b',
+    });
+
+    const csv = (
+      await withScope(() => fixture.service.execute(BATCH_ID))
+    ).body.toString('utf8');
+
+    expect(csv).toContain('"historical"');
+    expect(csv).toContain('"academic-year-a"');
+    expect(csv).toContain('"classroom-a"');
+    expect(csv).not.toContain(newerEnrollmentB.academicYearId);
+    expect(csv).not.toContain(newerEnrollmentB.classroomId);
+  });
+
+  it('fails closed for corrupt non-null placement provenance', async () => {
+    const generatedAt = new Date('2026-08-27T12:00:00.000Z');
+    const row = exportRow('row-1', 'student-1', 'user-1', generatedAt);
+    row.enrollmentId = 'enrollment-a';
+    row.enrollment = enrollmentFixture({ id: 'enrollment-a' });
+    row.enrollment.classroom.section.grade.stage.schoolId = 'foreign-school';
+    const fixture = createFixture({
+      exportRows: [row],
+      executionRows: [executionRowFromExport(row)],
+    });
+
+    await expect(
+      withScope(() => fixture.service.execute(BATCH_ID)),
+    ).rejects.toMatchObject({
+      code: 'students.credentials.execution_invariant_invalid',
+      details: { reasonCode: 'export_placement_provenance_invalid' },
+    });
+    expect(fixture.repository.recordExportAudit).not.toHaveBeenCalled();
+  });
+
+  it('neutralizes formulas in every placement name through the shared encoder', () => {
+    const body = renderStudentCredentialExportCsv([
+      {
+        studentId: 'student',
+        studentName: 'Student',
+        username: 'student',
+        loginEmail: 'student@example.test',
+        temporaryPassword: 'Secret-1!',
+        credentialStatus: 'temporary_credential',
+        mustChangePassword: 'true',
+        generatedAt: '2026-08-27T12:00:00.000Z',
+        ...csvPlacement({
+          academicYearName: '=YEAR()',
+          stageName: '+STAGE()',
+          gradeName: '-GRADE()',
+          sectionName: '@SECTION()',
+          classroomName: '  =CLASSROOM()',
+        }),
+      },
+    ]).toString('utf8');
+
+    for (const value of [
+      "'=YEAR()",
+      "'+STAGE()",
+      "'-GRADE()",
+      "'@SECTION()",
+      "'  =CLASSROOM()",
+    ]) {
+      expect(body).toContain(`"${value}"`);
+    }
   });
 
   it('renders the exact deterministic UTF-8 CSV structure', () => {
@@ -254,6 +428,7 @@ describe('student credential CSV export', () => {
         credentialStatus: 'temporary_credential' as const,
         mustChangePassword: 'true',
         generatedAt: '2026-08-27T12:00:00.000Z',
+        ...csvPlacement(),
       },
     ];
 
@@ -261,13 +436,34 @@ describe('student credential CSV export', () => {
     const second = renderStudentCredentialExportCsv(rows);
     const expected =
       `\uFEFF${STUDENT_CREDENTIAL_EXPORT_HEADERS.map((value) => `"${value}"`).join(',')}\r\n` +
-      '"student,1","أحمد ""Ahmed""\nStudent","","safe@example.test","MZ-safe-value","temporary_credential","true","2026-08-27T12:00:00.000Z"\r\n';
+      '"student,1","أحمد ""Ahmed""\nStudent","","safe@example.test","MZ-safe-value","temporary_credential","true","2026-08-27T12:00:00.000Z","unavailable","","","","","","","","","",""\r\n';
 
     expect(first.equals(second)).toBe(true);
     expect(first.toString('utf8')).toBe(expected);
     expect(first.subarray(0, 3)).toEqual(Buffer.from([0xef, 0xbb, 0xbf]));
     expect(first.toString('utf8').endsWith('\r\n')).toBe(true);
-    expect(STUDENT_CREDENTIAL_EXPORT_HEADERS).toHaveLength(8);
+    expect(STUDENT_CREDENTIAL_EXPORT_HEADERS).toEqual([
+      'student_id',
+      'student_name',
+      'username',
+      'login_email',
+      'temporary_password',
+      'credential_status',
+      'must_change_password',
+      'generated_at',
+      'placement_status',
+      'academic_year_id',
+      'academic_year_name',
+      'stage_id',
+      'stage_name',
+      'grade_id',
+      'grade_name',
+      'section_id',
+      'section_name',
+      'classroom_id',
+      'classroom_name',
+    ]);
+    expect(STUDENT_CREDENTIAL_EXPORT_HEADERS).toHaveLength(19);
   });
 
   it('fails closed before returning a CSV that exceeds the byte bound', () => {
@@ -284,6 +480,7 @@ describe('student credential CSV export', () => {
             credentialStatus: 'temporary_credential',
             mustChangePassword: 'true',
             generatedAt: '2026-08-27T12:00:00.000Z',
+            ...csvPlacement(),
           },
         ],
         16,
@@ -437,6 +634,7 @@ function exportRow(
     batchId: BATCH_ID,
     studentId,
     userId,
+    enrollmentId: null,
     status: StudentCredentialRowStatus.GENERATED,
     credentialVersionAfter: 2,
     generatedAt,
@@ -472,7 +670,121 @@ function exportRow(
         },
       ],
     },
+    enrollment: null,
   };
+}
+
+function enrollmentFixture(
+  input: {
+    id?: string;
+    academicYearId?: string;
+    classroomId?: string;
+    status?: StudentEnrollmentStatus;
+  } = {},
+): NonNullable<StudentCredentialExportRow['enrollment']> {
+  const academicYearId = input.academicYearId ?? 'academic-year-a';
+  const classroomId = input.classroomId ?? 'classroom-a';
+  return {
+    id: input.id ?? 'enrollment-a',
+    schoolId: SCHOOL_ID,
+    studentId: 'student-1',
+    academicYearId,
+    classroomId,
+    status: input.status ?? StudentEnrollmentStatus.ACTIVE,
+    deletedAt: null,
+    academicYear: {
+      id: academicYearId,
+      schoolId: SCHOOL_ID,
+      nameEn: 'Year A',
+      nameAr: 'العام أ',
+      isActive: true,
+      deletedAt: null,
+    },
+    classroom: {
+      id: classroomId,
+      schoolId: SCHOOL_ID,
+      sectionId: 'section-a',
+      nameEn: 'Classroom A',
+      nameAr: 'الفصل أ',
+      deletedAt: null,
+      section: {
+        id: 'section-a',
+        schoolId: SCHOOL_ID,
+        gradeId: 'grade-a',
+        nameEn: 'Section A',
+        nameAr: 'الشعبة أ',
+        deletedAt: null,
+        grade: {
+          id: 'grade-a',
+          schoolId: SCHOOL_ID,
+          stageId: 'stage-a',
+          nameEn: 'Grade A',
+          nameAr: 'الصف أ',
+          deletedAt: null,
+          stage: {
+            id: 'stage-a',
+            schoolId: SCHOOL_ID,
+            nameEn: 'Stage A',
+            nameAr: 'المرحلة أ',
+            deletedAt: null,
+          },
+        },
+      },
+    },
+  };
+}
+
+function csvPlacement(
+  overrides: Partial<
+    Pick<
+      StudentCredentialExportCsvRow,
+      | 'placementStatus'
+      | 'academicYearId'
+      | 'academicYearName'
+      | 'stageId'
+      | 'stageName'
+      | 'gradeId'
+      | 'gradeName'
+      | 'sectionId'
+      | 'sectionName'
+      | 'classroomId'
+      | 'classroomName'
+    >
+  > = {},
+) {
+  return {
+    placementStatus: 'unavailable' as const,
+    academicYearId: '',
+    academicYearName: '',
+    stageId: '',
+    stageName: '',
+    gradeId: '',
+    gradeName: '',
+    sectionId: '',
+    sectionName: '',
+    classroomId: '',
+    classroomName: '',
+    ...overrides,
+  };
+}
+
+function exportedDataRow(body: Buffer): Record<string, string> {
+  const [headerLine, dataLine] = body
+    .toString('utf8')
+    .replace(/^\uFEFF/u, '')
+    .split('\r\n');
+  const headers = decodeQuotedCsvRow(headerLine);
+  const values = decodeQuotedCsvRow(dataLine);
+  return Object.fromEntries(
+    headers.map((header, index) => [header, values[index]]),
+  );
+}
+
+function decodeQuotedCsvRow(line: string): string[] {
+  return line
+    .slice(1, -1)
+    .split('","')
+    .map((value) => value.replaceAll('""', '"'));
 }
 
 function executionRowFromExport(
