@@ -19,7 +19,13 @@ const TEST_PATH =
   'scripts/tests/stage-28a-production-migration-job-source.test.cjs';
 const STAGE_29_TEST_PATH =
   'scripts/tests/stage-29a-production-runtime-source.test.cjs';
+const STAGE_30C1_TEST_PATH =
+  'scripts/tests/stage-30c1-production-frontend-edge-source.test.cjs';
 const PLAN_CI_PATH = 'scripts/ci/plan-ci.cjs';
+const PLAN_CI_TEST_PATH = 'scripts/tests/plan-ci.test.cjs';
+const DAY2_D1_DEPLOYMENT_CONTROL_ROOT = 'scripts/deployment-control';
+const DAY2_D1_HANDOFF_PATH =
+  'docs/governance/day2-release-orchestration-devops-handoff.md';
 
 const ROOT_FILES = Object.freeze([
   '.terraform.lock.hcl',
@@ -444,6 +450,20 @@ function isStage28OperationalPath(file) {
   );
 }
 
+function isDay2D1ReleaseOrchestrationPath(file) {
+  return (
+    file.startsWith('infra/gcp/backend-runtime/') ||
+    file.startsWith('infra/gcp/edge/') ||
+    file.startsWith(`${DAY2_D1_DEPLOYMENT_CONTROL_ROOT}/`) ||
+    file === DAY2_D1_HANDOFF_PATH ||
+    file === PLAN_CI_PATH ||
+    file === PLAN_CI_TEST_PATH ||
+    file === TEST_PATH ||
+    file === STAGE_29_TEST_PATH ||
+    file === STAGE_30C1_TEST_PATH
+  );
+}
+
 function assertCommittedStage28CandidateScope(
   candidateFiles,
   maintenanceFiles,
@@ -465,6 +485,32 @@ function assertCommittedStage28CandidateScope(
   ].sort();
   const maintenanceScopeActive =
     candidateFiles === undefined || maintenanceFiles !== undefined;
+  const day2D1MaintenanceActive =
+    maintenanceScopeActive &&
+    normalizedMaintenance.includes(STAGE_29_TEST_PATH) &&
+    normalizedMaintenance.some(
+      (file) =>
+        file.startsWith(
+          'infra/gcp/backend-runtime/modules/runtime-environment/',
+        ) ||
+        file.startsWith(
+          'infra/gcp/backend-runtime/environments/nonprod/runtime/',
+        ) ||
+        file.startsWith(
+          'infra/gcp/backend-runtime/environments/production/runtime/',
+        ) ||
+        file.startsWith('infra/gcp/edge/') ||
+        file.startsWith(`${DAY2_D1_DEPLOYMENT_CONTROL_ROOT}/`),
+    );
+  if (day2D1MaintenanceActive) {
+    assert.deepEqual(
+      normalizedMaintenance.filter(
+        (file) => !isDay2D1ReleaseOrchestrationPath(file),
+      ),
+      [],
+    );
+    return false;
+  }
   const verifierRetouched =
     maintenanceScopeActive &&
     normalizedMaintenance.some(
@@ -1002,7 +1048,7 @@ test('Committed Stage 28A candidate scope contains only authorized paths when ac
   assertCommittedStage28CandidateScope();
 });
 
-test('Committed scope preserves Stage 28 activation and delegates only Stage 28A/29A verifier maintenance', () => {
+test('Committed scope preserves Stage 28 activation and delegates bounded verifier or Day-2 D1 maintenance', () => {
   assert.equal(
     assertCommittedStage28CandidateScope(['src/example-future-change.ts']),
     false,
@@ -1034,6 +1080,29 @@ test('Committed scope preserves Stage 28 activation and delegates only Stage 28A
         STAGE_29_TEST_PATH,
         `${PRODUCTION_ROOT}/main.tf`,
       ]),
+    { code: 'ERR_ASSERTION' },
+  );
+  const day2D1Scope = [
+    TEST_PATH,
+    STAGE_29_TEST_PATH,
+    STAGE_30C1_TEST_PATH,
+    PLAN_CI_PATH,
+    PLAN_CI_TEST_PATH,
+    'infra/gcp/backend-runtime/modules/runtime-environment/main.tf',
+    'infra/gcp/edge/modules/edge-environment/main.tf',
+    `${DAY2_D1_DEPLOYMENT_CONTROL_ROOT}/runtime-release-control.cjs`,
+    DAY2_D1_HANDOFF_PATH,
+  ];
+  assert.equal(
+    assertCommittedStage28CandidateScope(day2D1Scope, day2D1Scope),
+    false,
+  );
+  assert.throws(
+    () =>
+      assertCommittedStage28CandidateScope(
+        [...day2D1Scope, 'src/example-unrelated-change.ts'],
+        [...day2D1Scope, 'src/example-unrelated-change.ts'],
+      ),
     { code: 'ERR_ASSERTION' },
   );
 });

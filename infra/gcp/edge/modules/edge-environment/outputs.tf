@@ -48,3 +48,23 @@ output "https_forwarding_rule_name" {
   description = "Global HTTPS forwarding rule name."
   value       = google_compute_global_forwarding_rule.https.name
 }
+
+output "candidate_serverless_neg_name" {
+  description = "Optional staging candidate-tagged API NEG name."
+  value       = var.candidate_edge_enabled ? google_compute_region_network_endpoint_group.api_candidate[0].name : null
+}
+
+output "candidate_backend_service_name" {
+  description = "Optional staging candidate API backend service name."
+  value       = var.candidate_edge_enabled ? google_compute_backend_service.api_candidate[0].name : null
+}
+
+output "candidate_smoke_public_path" {
+  description = "Exact existing-hostname path routed only to the candidate backend when enabled."
+  value       = var.candidate_edge_enabled ? local.candidate_smoke_public_path : null
+}
+
+output "candidate_smoke_backend_path" {
+  description = "Existing protected application path used by candidate smoke verification."
+  value       = var.candidate_edge_enabled ? local.candidate_smoke_backend_path : null
+}

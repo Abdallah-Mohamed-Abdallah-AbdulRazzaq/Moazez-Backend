@@ -31,6 +31,9 @@ const HISTORICAL_RUNTIME_POLICY_TEST_PATH =
 const PLAN_CI_PATH = 'scripts/ci/plan-ci.cjs';
 const PLAN_CI_TEST_PATH = 'scripts/tests/plan-ci.test.cjs';
 const README_PATH = 'infra/gcp/backend-runtime/README.md';
+const DAY2_D1_DEPLOYMENT_CONTROL_ROOT = 'scripts/deployment-control';
+const DAY2_D1_HANDOFF_PATH =
+  'docs/governance/day2-release-orchestration-devops-handoff.md';
 
 const ROOT_FILES = Object.freeze([
   '.terraform.lock.hcl',
@@ -88,8 +91,22 @@ const FCM_DELIVERY_MODES = Object.freeze([
 const STAGE_27_DIGEST =
   'aa1f4099f35cd5d4e6961e925f32aa52fb604e832f230d6c02d5051c8f6fdb41';
 
+const RUNTIME_IMAGE_VARIABLES = Object.freeze([
+  'api_image_reference',
+  'core_worker_image_reference',
+  'media_worker_image_reference',
+  'maintenance_scheduler_image_reference',
+]);
+
+const API_TRAFFIC_VARIABLES = Object.freeze([
+  'api_traffic_mode',
+  'api_stable_revision',
+  'api_candidate_tag',
+]);
+
 const ROOT_VARIABLES = Object.freeze([
-  'image_reference',
+  ...RUNTIME_IMAGE_VARIABLES,
+  ...API_TRAFFIC_VARIABLES,
   'fcm_delivery_mode',
   'queue_redis_host',
   'queue_redis_port',
@@ -105,8 +122,9 @@ const ROOT_VARIABLES = Object.freeze([
 const MODULE_VARIABLES = Object.freeze([
   'environment',
   'fcm_delivery_mode',
-  'image_reference',
-  ...ROOT_VARIABLES.slice(2),
+  ...RUNTIME_IMAGE_VARIABLES,
+  ...API_TRAFFIC_VARIABLES,
+  ...ROOT_VARIABLES.slice(8),
 ]);
 
 const PRODUCTION_CONTRACT = Object.freeze({
@@ -548,6 +566,20 @@ function isStage29OperationalPath(file) {
   );
 }
 
+function isDay2D1ReleaseOrchestrationPath(file) {
+  return (
+    file.startsWith('infra/gcp/backend-runtime/') ||
+    file.startsWith('infra/gcp/edge/') ||
+    file.startsWith(`${DAY2_D1_DEPLOYMENT_CONTROL_ROOT}/`) ||
+    file === DAY2_D1_HANDOFF_PATH ||
+    file === PLAN_CI_PATH ||
+    file === PLAN_CI_TEST_PATH ||
+    file === STAGE_28_TEST_PATH ||
+    file === TEST_PATH ||
+    file === STAGE_30C1_TEST_PATH
+  );
+}
+
 function assertCommittedStage29CandidateScope(
   candidateFiles,
   maintenanceFiles,
@@ -567,6 +599,23 @@ function assertCommittedStage29CandidateScope(
   ].sort();
   const maintenanceScopeActive =
     candidateFiles === undefined || maintenanceFiles !== undefined;
+  const day2D1MaintenanceActive =
+    maintenanceScopeActive &&
+    normalizedMaintenance.includes(TEST_PATH) &&
+    normalizedMaintenance.some(
+      (file) =>
+        file.startsWith('infra/gcp/edge/') ||
+        file.startsWith(`${DAY2_D1_DEPLOYMENT_CONTROL_ROOT}/`),
+    );
+  if (day2D1MaintenanceActive) {
+    assert.deepEqual(
+      normalizedMaintenance.filter(
+        (file) => !isDay2D1ReleaseOrchestrationPath(file),
+      ),
+      [],
+    );
+    return false;
+  }
   const verifierRetouched =
     maintenanceScopeActive &&
     normalizedMaintenance.some(
@@ -680,7 +729,14 @@ test('Production root contains one shared-module caller and no direct resource o
     source: '"../../../modules/runtime-environment"',
     environment: '"production"',
     fcm_delivery_mode: 'var.fcm_delivery_mode',
-    image_reference: 'var.image_reference',
+    api_image_reference: 'var.api_image_reference',
+    core_worker_image_reference: 'var.core_worker_image_reference',
+    media_worker_image_reference: 'var.media_worker_image_reference',
+    maintenance_scheduler_image_reference:
+      'var.maintenance_scheduler_image_reference',
+    api_traffic_mode: 'var.api_traffic_mode',
+    api_stable_revision: 'var.api_stable_revision',
+    api_candidate_tag: 'var.api_candidate_tag',
     queue_redis_host: 'var.queue_redis_host',
     queue_redis_port: 'var.queue_redis_port',
     queue_redis_ca_pem: 'var.queue_redis_ca_pem',
@@ -696,15 +752,26 @@ test('Production root contains one shared-module caller and no direct resource o
   assert.doesNotMatch(main, /https:\/\//u);
 });
 
-test('Production root requires exactly eleven release and runtime variables with no defaults', () => {
+test('Production root exposes exactly seventeen governed release and runtime variables', () => {
   const variables = normalizedHclSource(`${PRODUCTION_ROOT}/variables.tf`);
   assert.deepEqual(variableNames(variables), ROOT_VARIABLES);
-  for (const name of ROOT_VARIABLES) {
+  for (const name of ROOT_VARIABLES.filter(
+    (candidate) => !API_TRAFFIC_VARIABLES.includes(candidate),
+  )) {
     assertRequiredVariable(
       variables,
       name,
       name.endsWith('_port') ? 'number' : 'string',
     );
+  }
+  assert.equal(
+    assignmentExpression(variableBlock(variables, 'api_traffic_mode'), 'default'),
+    '"normal"',
+  );
+  for (const name of ['api_stable_revision', 'api_candidate_tag']) {
+    const block = variableBlock(variables, name);
+    assert.equal(assignmentExpression(block, 'default'), 'null');
+    assert.equal(assignmentExpression(block, 'nullable'), 'true');
   }
   for (const name of ['queue_redis_ca_pem', 'realtime_redis_ca_pem']) {
     assert.equal(assignmentExpression(variableBlock(variables, name), 'sensitive'), 'true');
@@ -728,10 +795,8 @@ test('Production FCM delivery mode is required and accepts exactly the governed 
   }
 });
 
-test('Production immutable image validation accepts only its exact digest package', () => {
+test('Each Production runtime image accepts only its exact immutable digest package', () => {
   const variables = normalizedHclSource(`${PRODUCTION_ROOT}/variables.tf`);
-  const image = assertRequiredVariable(variables, 'image_reference', 'string');
-  assert.deepEqual(validationPatterns(image), [PRODUCTION_IMAGE_PATTERN]);
   const policy = new RegExp(PRODUCTION_IMAGE_PATTERN, 'u');
   const approved = `me-central2-docker.pkg.dev/moazez-production/moazez-production-containers/moazez-backend@sha256:${'a'.repeat(64)}`;
   const staging = `me-central2-docker.pkg.dev/moazez-nonprod-91001421934/moazez-staging-containers/moazez-backend@sha256:${'b'.repeat(64)}`;
@@ -744,6 +809,10 @@ test('Production immutable image validation accepts only its exact digest packag
     `${approved}extra`,
   ]) {
     assert.equal(policy.test(rejected), false, rejected);
+  }
+  for (const name of RUNTIME_IMAGE_VARIABLES) {
+    const image = assertRequiredVariable(variables, name, 'string');
+    assert.deepEqual(validationPatterns(image), [PRODUCTION_IMAGE_PATTERN]);
   }
 });
 
@@ -793,7 +862,9 @@ test('Production encryption key IDs are required and use the exact governed rege
 test('Shared module exposes only the closed selector and approved dynamic inputs', () => {
   const variables = normalizedHclSource(`${MODULE_ROOT}/variables.tf`);
   assert.deepEqual(variableNames(variables), MODULE_VARIABLES);
-  for (const name of MODULE_VARIABLES) {
+  for (const name of MODULE_VARIABLES.filter(
+    (candidate) => !API_TRAFFIC_VARIABLES.includes(candidate),
+  )) {
     assert.doesNotMatch(variableBlock(variables, name), /^\s*default\s*=/mu);
   }
   const environment = assertRequiredVariable(variables, 'environment', 'string');
@@ -813,10 +884,12 @@ test('Shared module exposes only the closed selector and approved dynamic inputs
     deliveryMode.replace(/\s+/gu, ''),
     /condition=contains\(\["disabled","dry_run","send_enabled"\],var[.]fcm_delivery_mode\)/u,
   );
-  assert.deepEqual(validationPatterns(variableBlock(variables, 'image_reference')), [
-    STAGING_IMAGE_PATTERN,
-    PRODUCTION_IMAGE_PATTERN,
-  ]);
+  for (const name of RUNTIME_IMAGE_VARIABLES) {
+    assert.deepEqual(validationPatterns(variableBlock(variables, name)), [
+      STAGING_IMAGE_PATTERN,
+      PRODUCTION_IMAGE_PATTERN,
+    ]);
+  }
 });
 
 test('Closed environment map contains the exact governed Production infrastructure contract', () => {
@@ -903,17 +976,41 @@ test('Shared module owns exactly one API service and three governed worker pools
 
 test('Every runtime resource binds the selected environment to its matching image package', () => {
   const main = normalizedHclSource(`${MODULE_ROOT}/main.tf`);
-  assert.equal(
-    assignmentExpression(main, 'image_matches_environment'),
-    'can(regex(local.selected.image_pattern, var.image_reference))',
-  );
-  for (const [type, name] of [
-    ['google_cloud_run_v2_service', 'api'],
-    ['google_cloud_run_v2_worker_pool', 'core'],
-    ['google_cloud_run_v2_worker_pool', 'media'],
-    ['google_cloud_run_v2_worker_pool', 'maintenance_scheduler'],
+  for (const [type, name, variable, policyLocal] of [
+    [
+      'google_cloud_run_v2_service',
+      'api',
+      'api_image_reference',
+      'api_image_matches_environment',
+    ],
+    [
+      'google_cloud_run_v2_worker_pool',
+      'core',
+      'core_worker_image_reference',
+      'core_worker_image_matches_environment',
+    ],
+    [
+      'google_cloud_run_v2_worker_pool',
+      'media',
+      'media_worker_image_reference',
+      'media_worker_image_matches_environment',
+    ],
+    [
+      'google_cloud_run_v2_worker_pool',
+      'maintenance_scheduler',
+      'maintenance_scheduler_image_reference',
+      'maintenance_image_matches_environment',
+    ],
   ]) {
+    assert.equal(
+      assignmentExpression(main, policyLocal),
+      `can(regex(local.selected.image_pattern, var.${variable}))`,
+    );
     const resource = resourceBlock(main, type, name);
+    assert.equal(
+      assignmentExpression(resourceContainer(resource, name), 'image'),
+      `var.${variable}`,
+    );
     const lifecycle = extractBlock(resource, /^\s*lifecycle\s*\{/mu, `${name} lifecycle`);
     assert.equal(assignmentExpression(lifecycle, 'prevent_destroy'), 'true');
     const precondition = extractBlock(
@@ -921,7 +1018,10 @@ test('Every runtime resource binds the selected environment to its matching imag
       /^\s*precondition\s*\{/mu,
       `${name} image precondition`,
     );
-    assert.equal(assignmentExpression(precondition, 'condition'), 'local.image_matches_environment');
+    assert.equal(
+      assignmentExpression(precondition, 'condition'),
+      `local.${policyLocal}`,
+    );
   }
   const stagingPolicy = new RegExp(STAGING_IMAGE_PATTERN, 'u');
   const productionPolicy = new RegExp(PRODUCTION_IMAGE_PATTERN, 'u');
@@ -1148,7 +1248,7 @@ test('Production API remains Dark and no Stage 30 edge or public IAM resource ex
   );
 });
 
-test('Production outputs expose only non-sensitive runtime identities and the image reference', () => {
+test('Production outputs expose only non-sensitive runtime and release identities', () => {
   const outputs = normalizedHclSource(`${PRODUCTION_ROOT}/outputs.tf`);
   const expected = {
     api_service_name: 'module.runtime_environment.api_service_name',
@@ -1157,7 +1257,16 @@ test('Production outputs expose only non-sensitive runtime identities and the im
     media_worker_pool_name: 'module.runtime_environment.media_worker_pool_name',
     maintenance_scheduler_pool_name:
       'module.runtime_environment.maintenance_scheduler_pool_name',
-    image_reference: 'module.runtime_environment.image_reference',
+    api_image_reference: 'module.runtime_environment.api_image_reference',
+    core_worker_image_reference:
+      'module.runtime_environment.core_worker_image_reference',
+    media_worker_image_reference:
+      'module.runtime_environment.media_worker_image_reference',
+    maintenance_scheduler_image_reference:
+      'module.runtime_environment.maintenance_scheduler_image_reference',
+    api_traffic_mode: 'module.runtime_environment.api_traffic_mode',
+    api_candidate_revision: 'module.runtime_environment.api_candidate_revision',
+    api_candidate_tag: 'module.runtime_environment.api_candidate_tag',
   };
   assert.deepEqual(outputNames(outputs), Object.keys(expected));
   for (const [name, value] of Object.entries(expected)) {
@@ -1176,14 +1285,21 @@ function variableOrOutputBlock(source, kind, name) {
   );
 }
 
-test('Staging caller preserves its existing effective non-secret and dynamic input contract', () => {
+test('Staging caller preserves existing settings while exposing governed release inputs', () => {
   const main = normalizedHclSource(`${STAGING_ROOT}/main.tf`);
   const module = extractBlock(main, /^module\s+"runtime_environment"\s*\{/mu, 'Staging runtime module');
   assert.deepEqual(blockAssignmentExpressions(module), {
     source: '"../../../modules/runtime-environment"',
     environment: '"staging"',
     fcm_delivery_mode: '"dry_run"',
-    image_reference: 'var.image_reference',
+    api_image_reference: 'var.api_image_reference',
+    core_worker_image_reference: 'var.core_worker_image_reference',
+    media_worker_image_reference: 'var.media_worker_image_reference',
+    maintenance_scheduler_image_reference:
+      'var.maintenance_scheduler_image_reference',
+    api_traffic_mode: 'var.api_traffic_mode',
+    api_stable_revision: 'var.api_stable_revision',
+    api_candidate_tag: 'var.api_candidate_tag',
     queue_redis_host: 'var.queue_redis_host',
     queue_redis_port: 'var.queue_redis_port',
     queue_redis_ca_pem: 'var.queue_redis_ca_pem',
@@ -1195,7 +1311,9 @@ test('Staging caller preserves its existing effective non-secret and dynamic inp
       '"staging-email-20260815"',
     app_device_token_encryption_active_key_id: '"staging-device-20260815"',
   });
-  for (const file of ROOT_FILES.filter((file) => file !== 'main.tf')) {
+  for (const file of ROOT_FILES.filter(
+    (file) => !['main.tf', 'outputs.tf', 'variables.tf'].includes(file),
+  )) {
     assert.equal(
       normalizedSource(`${STAGING_ROOT}/${file}`),
       baseSource(`${STAGING_ROOT}/${file}`),
@@ -1203,7 +1321,11 @@ test('Staging caller preserves its existing effective non-secret and dynamic inp
     );
   }
   const stagingVariables = normalizedHclSource(`${STAGING_ROOT}/variables.tf`);
-  assert.deepEqual(validationPatterns(variableBlock(stagingVariables, 'image_reference')), [STAGING_IMAGE_PATTERN]);
+  for (const name of RUNTIME_IMAGE_VARIABLES) {
+    assert.deepEqual(validationPatterns(variableBlock(stagingVariables, name)), [
+      STAGING_IMAGE_PATTERN,
+    ]);
+  }
 });
 
 test('Production migration root remains byte-for-byte unchanged', () => {

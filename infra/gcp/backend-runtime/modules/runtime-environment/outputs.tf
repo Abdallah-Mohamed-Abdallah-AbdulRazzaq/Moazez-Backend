@@ -23,7 +23,37 @@ output "maintenance_scheduler_pool_name" {
   value       = google_cloud_run_v2_worker_pool.maintenance_scheduler.name
 }
 
-output "image_reference" {
-  description = "Immutable backend image digest configured on all four runtime resources."
-  value       = var.image_reference
+output "api_image_reference" {
+  description = "Immutable backend image digest configured only on the API service."
+  value       = var.api_image_reference
+}
+
+output "core_worker_image_reference" {
+  description = "Immutable backend image digest configured only on the Core Worker pool."
+  value       = var.core_worker_image_reference
+}
+
+output "media_worker_image_reference" {
+  description = "Immutable backend image digest configured only on the Media Worker pool."
+  value       = var.media_worker_image_reference
+}
+
+output "maintenance_scheduler_image_reference" {
+  description = "Immutable backend image digest configured only on the Maintenance Scheduler pool."
+  value       = var.maintenance_scheduler_image_reference
+}
+
+output "api_traffic_mode" {
+  description = "Governed API traffic mode represented by this configuration."
+  value       = var.api_traffic_mode
+}
+
+output "api_candidate_revision" {
+  description = "Deterministic API candidate revision name in candidate modes, otherwise null."
+  value       = local.api_candidate_revision
+}
+
+output "api_candidate_tag" {
+  description = "Deterministic API candidate tag in candidate modes, otherwise null."
+  value       = var.api_candidate_tag
 }

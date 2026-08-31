@@ -12,4 +12,7 @@ module "edge_environment" {
   api_service_name              = "moazez-production-api"
   platform_admin_service_name   = "moazez-production-platform-admin"
   school_dashboard_service_name = "moazez-production-school-dashboard"
+
+  candidate_edge_enabled = false
+  candidate_api_tag      = null
 }

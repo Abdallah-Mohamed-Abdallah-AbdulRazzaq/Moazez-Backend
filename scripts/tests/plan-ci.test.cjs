@@ -73,6 +73,10 @@ test('repository inventory combines tracked and untracked nonignored files deter
 
 test('canonical routing preserves every dedicated service and invariant profile', () => {
   const expectedProfiles = new Map([
+    [
+      'scripts/deployment-control/tests/runtime-release-control.test.cjs',
+      'runtime-governance',
+    ],
     ['src/modules/example/example.spec.ts', 'unit'],
     ['src/bootstrap/example.integration.spec.ts', 'source-integration'],
     ['test/security/tenancy.example.spec.ts', 'security'],
