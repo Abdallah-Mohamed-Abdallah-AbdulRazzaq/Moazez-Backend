@@ -45,6 +45,21 @@ Before making changes, always read:
 13. `ERROR_CATALOG.md`
 14. All `adr/ADR-*.md` files in numerical order
 
+## Workspace and Terraform Hygiene (Mandatory)
+
+For any task involving Git, worktrees, local repository selection, branch
+creation, repository synchronization, Terraform, DevOps artifacts, or workspace
+cleanup, read and follow `WORKSPACE_HYGIENE_RULES.md` before any mutation.
+
+Hard stops:
+
+- Treat the latest verified `origin/main` as repository source authority.
+- Do not develop in unexplained dirty or stale worktrees; use a clean
+  task-specific worktree.
+- Never automatically clean or delete preserved or unknown Terraform artifacts.
+- Never perform destructive Git or workspace cleanup without explicit
+  task-specific authorization after classification.
+
 ## Implementation Rules
 
 - Never put business logic inside controllers.
