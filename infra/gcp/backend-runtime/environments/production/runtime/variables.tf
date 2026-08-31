@@ -1,13 +1,93 @@
-variable "image_reference" {
-  description = "Immutable digest reference shared by the Production API and all three worker pools."
+variable "api_image_reference" {
+  description = "Immutable digest reference used only by the Production API service."
   type        = string
 
   validation {
     condition = can(regex(
       "^me-central2-docker[.]pkg[.]dev/moazez-production/moazez-production-containers/moazez-backend@sha256:[a-f0-9]{64}$",
-      var.image_reference,
+      var.api_image_reference,
     ))
-    error_message = "image_reference must be the approved Production backend package pinned by a lowercase sha256 digest."
+    error_message = "api_image_reference must be the approved Production backend package pinned by a lowercase sha256 digest."
+  }
+}
+
+variable "core_worker_image_reference" {
+  description = "Immutable digest reference used only by the Production Core Worker pool."
+  type        = string
+
+  validation {
+    condition = can(regex(
+      "^me-central2-docker[.]pkg[.]dev/moazez-production/moazez-production-containers/moazez-backend@sha256:[a-f0-9]{64}$",
+      var.core_worker_image_reference,
+    ))
+    error_message = "core_worker_image_reference must be the approved Production backend package pinned by a lowercase sha256 digest."
+  }
+}
+
+variable "media_worker_image_reference" {
+  description = "Immutable digest reference used only by the Production Media Worker pool."
+  type        = string
+
+  validation {
+    condition = can(regex(
+      "^me-central2-docker[.]pkg[.]dev/moazez-production/moazez-production-containers/moazez-backend@sha256:[a-f0-9]{64}$",
+      var.media_worker_image_reference,
+    ))
+    error_message = "media_worker_image_reference must be the approved Production backend package pinned by a lowercase sha256 digest."
+  }
+}
+
+variable "maintenance_scheduler_image_reference" {
+  description = "Immutable digest reference used only by the Production Maintenance Scheduler pool."
+  type        = string
+
+  validation {
+    condition = can(regex(
+      "^me-central2-docker[.]pkg[.]dev/moazez-production/moazez-production-containers/moazez-backend@sha256:[a-f0-9]{64}$",
+      var.maintenance_scheduler_image_reference,
+    ))
+    error_message = "maintenance_scheduler_image_reference must be the approved Production backend package pinned by a lowercase sha256 digest."
+  }
+}
+
+variable "api_traffic_mode" {
+  description = "Governed Production API traffic state."
+  type        = string
+  default     = "normal"
+
+  validation {
+    condition     = contains(["normal", "candidate_no_traffic", "candidate_promoted"], var.api_traffic_mode)
+    error_message = "api_traffic_mode must be normal, candidate_no_traffic, or candidate_promoted."
+  }
+}
+
+variable "api_stable_revision" {
+  description = "Verified live stable Production API revision required by candidate traffic modes; null in normal mode."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition = (
+      var.api_stable_revision == null ||
+      can(regex("^moazez-production-api-[a-z0-9][a-z0-9-]{0,39}[a-z0-9]$", var.api_stable_revision))
+    )
+    error_message = "api_stable_revision must be null or a full revision name for moazez-production-api."
+  }
+}
+
+variable "api_candidate_tag" {
+  description = "Image-derived deterministic Production API candidate tag required by candidate traffic modes."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition = (
+      var.api_candidate_tag == null ||
+      can(regex("^candidate-[a-f0-9]{12}$", var.api_candidate_tag))
+    )
+    error_message = "api_candidate_tag must be null or candidate- followed by exactly 12 lowercase hexadecimal characters."
   }
 }
 

@@ -47,6 +47,11 @@ const MEDIA_RUNTIME_JEST_FILES = new Set([
 ]);
 
 const ACTIVE_TAP_OWNERS = Object.freeze({
+  'scripts/deployment-control/tests/runtime-release-control.test.cjs':
+    Object.freeze({
+      owner: 'day2-release-orchestration-governance',
+      profile: 'runtime-governance',
+    }),
   'scripts/tests/aggregate-ci.test.cjs': Object.freeze({
     owner: 'ci-orchestrator',
     profile: 'orchestrator',
@@ -381,6 +386,7 @@ function isDiscoverableTest(file) {
     /^src\/.+\.spec\.ts$/u.test(file) ||
     /^test\/.+(?:\.spec\.ts|\.e2e-spec\.ts)$/u.test(file) ||
     /^scripts\/tests\/[^/]+\.test\.cjs$/u.test(file) ||
+    Object.hasOwn(ACTIVE_TAP_OWNERS, file) ||
     HISTORICAL_MANUAL_TAP_FILES.has(file)
   );
 }
@@ -550,6 +556,7 @@ function classifyTestFile(rawFile) {
   }
   if (
     /^scripts\/tests\/[^/]+\.test\.cjs$/u.test(file) ||
+    Object.hasOwn(ACTIVE_TAP_OWNERS, file) ||
     HISTORICAL_MANUAL_TAP_FILES.has(file)
   ) {
     return classifyTapFile(file);

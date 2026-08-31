@@ -12,12 +12,12 @@ Migration and long-running runtime resources use independent roots and state
 prefixes. There is no remote-state lookup or Terraform dependency between
 them.
 
-| Environment | Root | Remote state prefix | Managed resources |
-| --- | --- | --- | --- |
-| Staging | `environments/nonprod/migration` | `backend-runtime/staging/migration` | 1 `google_cloud_run_v2_job` |
-| Staging | `environments/nonprod/runtime` | `backend-runtime/staging/runtime` | 1 `google_cloud_run_v2_service` and 3 `google_cloud_run_v2_worker_pool` resources |
-| Production | `environments/production/migration` | `backend-runtime/production/migration` | 1 `google_cloud_run_v2_job` |
-| Production | `environments/production/runtime` | `backend-runtime/production/runtime` | 1 `google_cloud_run_v2_service` and 3 `google_cloud_run_v2_worker_pool` resources |
+| Environment | Root                                | Remote state prefix                    | Managed resources                                                                 |
+| ----------- | ----------------------------------- | -------------------------------------- | --------------------------------------------------------------------------------- |
+| Staging     | `environments/nonprod/migration`    | `backend-runtime/staging/migration`    | 1 `google_cloud_run_v2_job`                                                       |
+| Staging     | `environments/nonprod/runtime`      | `backend-runtime/staging/runtime`      | 1 `google_cloud_run_v2_service` and 3 `google_cloud_run_v2_worker_pool` resources |
+| Production  | `environments/production/migration` | `backend-runtime/production/migration` | 1 `google_cloud_run_v2_job`                                                       |
+| Production  | `environments/production/runtime`   | `backend-runtime/production/runtime`   | 1 `google_cloud_run_v2_service` and 3 `google_cloud_run_v2_worker_pool` resources |
 
 The Staging roots reference the externally owned state bucket
 `moazez-nonprod-91001421934-tfstate`. The Production roots reference
@@ -51,11 +51,37 @@ is not recreated by the runtime module.
 
 ## Release-time inputs
 
-Runtime roots accept immutable image references in their exact environment
-package. Mutable tags are rejected, and the selected environment is bound to
-the matching package. The concrete approved image digest is supplied later by
-DevOps when producing a saved plan; reusable source does not pin a release
-digest.
+Runtime roots accept four independent immutable image references:
+
+| Input                                   | Sole image consumer                                     |
+| --------------------------------------- | ------------------------------------------------------- |
+| `api_image_reference`                   | `google_cloud_run_v2_service.api`                       |
+| `core_worker_image_reference`           | `google_cloud_run_v2_worker_pool.core`                  |
+| `media_worker_image_reference`          | `google_cloud_run_v2_worker_pool.media`                 |
+| `maintenance_scheduler_image_reference` | `google_cloud_run_v2_worker_pool.maintenance_scheduler` |
+
+There is no shared or fallback `image_reference`. Each input retains the exact
+environment package validation, rejects mutable tags, and cannot select the
+other environment's Artifact Registry repository. The concrete approved image
+digest is supplied later by DevOps when producing a governed saved plan;
+reusable source does not pin a release digest.
+
+The API additionally accepts this closed traffic contract:
+
+| `api_traffic_mode` | `api_stable_revision` | `api_candidate_tag` | Stable traffic | Candidate traffic |
+| --- | --- | --- | --- | --- | --- |
+| `normal` (default) | `null` | `null` | Existing provider behavior | No explicit candidate |
+| `candidate_no_traffic` | Required verified live revision | Required deterministic tag | 100% | 0% |
+| `candidate_promoted` | Same verified revision | Same deterministic tag | 0% | 100% |
+
+The candidate tag must equal
+`candidate-${substr(sha256(api_image_reference), 0, 12)}`. The candidate
+revision is the existing API service name plus that tag, for example
+`moazez-staging-api-candidate-<12 hex>`. Candidate modes fail closed when the
+stable revision or tag is missing, the tag does not match the image, the
+stable revision belongs to another service, or stable and candidate identities
+collide. Promotion retains the exact candidate image and revision so its
+expected Terraform diff is traffic-only.
 
 Queue and Realtime Redis remain separate DevOps runtime inputs. Each family is
 provided as host, integer TLS port, and sensitive CA PEM. Terraform constructs
@@ -113,8 +139,15 @@ resource for either environment.
 
 ## Governed release order
 
-Terraform source defines resources but does not execute the release. A later
-authorized workflow supplies the immutable image and runtime inputs, handles
-the independently governed Migration Job, validates its outcome, and only
-then promotes the runtime roles. Stage 29 source preparation does not deploy
-Production, make a plan ready, or authorize Production traffic.
+Terraform source defines resources but does not execute the release. The
+deployment-control adapter in `scripts/deployment-control` maps the unchanged
+release contract to independently reviewed operations in this order: Core
+Worker, Media Worker, API candidate at zero normal traffic, Maintenance
+Scheduler, protected candidate smoke, then API traffic promotion. The API
+candidate gate uses this runtime root before the separate staging edge root.
+
+A later authorized workflow supplies the immutable images and runtime inputs,
+binds every external saved plan to the source SHA and live state
+lineage/serial, reviews it, and records apply and live-verification evidence.
+This source preparation does not create a saved plan, apply Terraform, deploy
+Staging or Production, execute a migration, or authorize traffic.

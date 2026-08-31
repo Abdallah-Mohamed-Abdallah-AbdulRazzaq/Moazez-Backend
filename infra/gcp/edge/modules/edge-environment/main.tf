@@ -1,5 +1,12 @@
 locals {
-  name_prefix = "moazez-${var.environment}"
+  name_prefix                  = "moazez-${var.environment}"
+  candidate_smoke_public_path  = "/.well-known/moazez/candidate-readiness"
+  candidate_smoke_backend_path = "/api/v1/auth/me"
+  candidate_edge_contract_valid = var.candidate_edge_enabled ? (
+    var.environment == "staging" &&
+    var.candidate_api_tag != null &&
+    can(regex("^candidate-[a-f0-9]{12}$", var.candidate_api_tag))
+  ) : var.candidate_api_tag == null
 
   hostnames = {
     api     = var.api_hostname
@@ -81,6 +88,38 @@ resource "google_compute_backend_service" "service" {
   }
 }
 
+resource "google_compute_region_network_endpoint_group" "api_candidate" {
+  count = var.candidate_edge_enabled ? 1 : 0
+
+  project               = var.project_id
+  region                = var.region
+  name                  = "${local.name_prefix}-api-candidate-neg"
+  network_endpoint_type = "SERVERLESS"
+
+  cloud_run {
+    service = var.api_service_name
+    tag     = var.candidate_api_tag
+  }
+}
+
+resource "google_compute_backend_service" "api_candidate" {
+  count = var.candidate_edge_enabled ? 1 : 0
+
+  project               = var.project_id
+  name                  = "${local.name_prefix}-api-candidate-backend"
+  protocol              = "HTTP"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  security_policy       = google_compute_security_policy.edge.self_link
+
+  custom_request_headers = [
+    "X-Moazez-Client-IP:{client_ip_address}"
+  ]
+
+  backend {
+    group = google_compute_region_network_endpoint_group.api_candidate[0].id
+  }
+}
+
 resource "google_compute_url_map" "edge" {
   project = var.project_id
   name    = "${local.name_prefix}-edge-url-map"
@@ -105,6 +144,21 @@ resource "google_compute_url_map" "edge" {
   path_matcher {
     name            = "api"
     default_service = google_compute_backend_service.service["api"].id
+
+    dynamic "path_rule" {
+      for_each = var.candidate_edge_enabled ? [local.candidate_smoke_public_path] : []
+
+      content {
+        paths   = [path_rule.value]
+        service = google_compute_backend_service.api_candidate[0].id
+
+        route_action {
+          url_rewrite {
+            path_prefix_rewrite = local.candidate_smoke_backend_path
+          }
+        }
+      }
+    }
   }
 
   path_matcher {
@@ -115,6 +169,13 @@ resource "google_compute_url_map" "edge" {
   path_matcher {
     name            = "schools"
     default_service = google_compute_backend_service.service["schools"].id
+  }
+
+  lifecycle {
+    precondition {
+      condition     = local.candidate_edge_contract_valid
+      error_message = "Candidate edge routing is staging-only, requires candidate_api_tag when enabled, and requires a null tag when disabled."
+    }
   }
 }
 

@@ -20,9 +20,14 @@ const EDGE_NONPROD_ROOT = 'infra/gcp/edge/environments/nonprod';
 const EDGE_MODULE = 'infra/gcp/edge/modules/edge-environment';
 const TEST_PATH =
   'scripts/tests/stage-30c1-production-frontend-edge-source.test.cjs';
+const HISTORICAL_STAGE28_REMEDIATION_PATH =
+  'scripts/tests/stage-28a-production-migration-job-source.test.cjs';
 const HISTORICAL_STAGE29_REMEDIATION_PATH =
   'scripts/tests/stage-29a-production-runtime-source.test.cjs';
 const PLAN_CI_PATH = 'scripts/ci/plan-ci.cjs';
+const PLAN_CI_TEST_PATH = 'scripts/tests/plan-ci.test.cjs';
+const DAY2_D1_HANDOFF_PATH =
+  'docs/governance/day2-release-orchestration-devops-handoff.md';
 
 const TERRAFORM_ROOT_FILES = Object.freeze([
   '.terraform.lock.hcl',
@@ -342,6 +347,20 @@ function assertStage30C1CandidateScope(candidateFiles) {
     [],
   );
   return true;
+}
+
+function isDay2D1ReleaseOrchestrationPath(file) {
+  return (
+    file.startsWith('infra/gcp/backend-runtime/') ||
+    file.startsWith('infra/gcp/edge/') ||
+    file.startsWith('scripts/deployment-control/') ||
+    file === DAY2_D1_HANDOFF_PATH ||
+    file === HISTORICAL_STAGE28_REMEDIATION_PATH ||
+    file === HISTORICAL_STAGE29_REMEDIATION_PATH ||
+    file === PLAN_CI_PATH ||
+    file === PLAN_CI_TEST_PATH ||
+    file === TEST_PATH
+  );
 }
 
 test('Stage 30C1 domains have exactly the governed source structure and ignore policy', () => {
@@ -899,13 +918,102 @@ test('Production Edge root is the exact governed shared-module caller', () => {
   );
 });
 
-test('Production Edge reuses unchanged shared source and preserves nonprod byte-for-byte', () => {
-  assertTreeUnchanged(EDGE_MODULE);
-  assertTreeUnchanged(EDGE_NONPROD_ROOT);
+test('Production Edge remains default-disabled while staging gains only the tagged candidate path', () => {
+  assert.deepEqual(filesInDirectory(EDGE_MODULE), MODULE_FILES);
+  assert.deepEqual(
+    filesInDirectory(EDGE_NONPROD_ROOT),
+    [...TERRAFORM_ROOT_FILES, 'variables.tf'].sort(),
+  );
+  for (const file of ['.terraform.lock.hcl', 'providers.tf', 'versions.tf']) {
+    assert.equal(
+      normalizedSource(`${EDGE_NONPROD_ROOT}/${file}`),
+      baseSource(`${EDGE_NONPROD_ROOT}/${file}`),
+      `${file} changed from the governed nonprod edge baseline`,
+    );
+  }
+
+  const productionMain = normalizedHclSource(`${EDGE_ROOT}/main.tf`);
+  assert.equal(
+    assignmentExpression(productionMain, 'candidate_edge_enabled'),
+    'false',
+  );
+  assert.equal(
+    assignmentExpression(productionMain, 'candidate_api_tag'),
+    'null',
+  );
+
+  const nonprodMain = normalizedHclSource(`${EDGE_NONPROD_ROOT}/main.tf`);
+  assert.equal(
+    assignmentExpression(nonprodMain, 'candidate_edge_enabled'),
+    'var.candidate_edge_enabled',
+  );
+  assert.equal(
+    assignmentExpression(nonprodMain, 'candidate_api_tag'),
+    'var.candidate_api_tag',
+  );
+
+  const moduleMain = normalizedHclSource(`${EDGE_MODULE}/main.tf`);
   assert.match(
-    normalizedHclSource(`${EDGE_MODULE}/main.tf`),
+    moduleMain,
     /resource\s+"google_project_service"\s+"certificate_manager"/u,
   );
+  const normalNeg = resourceBlock(
+    moduleMain,
+    'google_compute_region_network_endpoint_group',
+    'service',
+  );
+  assert.doesNotMatch(normalNeg, /^\s*tag\s*=/mu);
+  const candidateNeg = resourceBlock(
+    moduleMain,
+    'google_compute_region_network_endpoint_group',
+    'api_candidate',
+  );
+  assert.equal(
+    assignmentExpression(candidateNeg, 'count'),
+    'var.candidate_edge_enabled ? 1 : 0',
+  );
+  assert.equal(
+    assignmentExpression(candidateNeg, 'tag'),
+    'var.candidate_api_tag',
+  );
+  const candidateBackend = resourceBlock(
+    moduleMain,
+    'google_compute_backend_service',
+    'api_candidate',
+  );
+  assert.equal(
+    assignmentExpression(candidateBackend, 'security_policy'),
+    'google_compute_security_policy.edge.self_link',
+  );
+  assert.match(
+    moduleMain,
+    /candidate_smoke_public_path\s*=\s*"\/\.well-known\/moazez\/candidate-readiness"/u,
+  );
+  assert.match(
+    moduleMain,
+    /candidate_smoke_backend_path\s*=\s*"\/api\/v1\/auth\/me"/u,
+  );
+  assert.equal(
+    (moduleMain.match(/^resource\s+"google_compute_global_address"/gmu) ?? [])
+      .length,
+    1,
+  );
+  assert.equal(
+    (
+      moduleMain.match(/^resource\s+"google_compute_target_https_proxy"/gmu) ??
+      []
+    ).length,
+    1,
+  );
+  assert.equal(
+    (
+      moduleMain.match(
+        /^resource\s+"google_certificate_manager_certificate"/gmu,
+      ) ?? []
+    ).length,
+    1,
+  );
+  assert.doesNotMatch(moduleMain, /resource\s+"google_dns_/u);
 });
 
 test('READMEs preserve source-only, build-time, and Dark pre-DNS boundaries', () => {
@@ -948,8 +1056,21 @@ test('Stage 30C1 TAP has exactly one canonical pull-request ownership assignment
   });
 });
 
-test('Committed Stage 30C1 candidate scope is a subset of the 29 authorized paths when active', () => {
-  assertStage30C1CandidateScope(candidateFilesFromCommittedRange());
+test('Committed Stage 30C1 scope remains bounded or delegates to Day-2 D1 orchestration', () => {
+  const candidateFiles = candidateFilesFromCommittedRange();
+  const day2D1Active = candidateFiles.some(
+    (file) =>
+      file.startsWith('scripts/deployment-control/') ||
+      file.includes('/tests/candidate-route.tftest.hcl'),
+  );
+  if (day2D1Active) {
+    assert.deepEqual(
+      candidateFiles.filter((file) => !isDay2D1ReleaseOrchestrationPath(file)),
+      [],
+    );
+    return;
+  }
+  assertStage30C1CandidateScope(candidateFiles);
 });
 
 test('Candidate scope activation accepts each domain and rejects mixed or later-stage source', () => {

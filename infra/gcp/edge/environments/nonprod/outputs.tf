@@ -33,3 +33,19 @@ output "https_proxy_name" {
 output "https_forwarding_rule_name" {
   value = module.edge_environment.https_forwarding_rule_name
 }
+
+output "candidate_serverless_neg_name" {
+  value = module.edge_environment.candidate_serverless_neg_name
+}
+
+output "candidate_backend_service_name" {
+  value = module.edge_environment.candidate_backend_service_name
+}
+
+output "candidate_smoke_public_path" {
+  value = module.edge_environment.candidate_smoke_public_path
+}
+
+output "candidate_smoke_backend_path" {
+  value = module.edge_environment.candidate_smoke_backend_path
+}

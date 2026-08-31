@@ -12,4 +12,7 @@ module "edge_environment" {
   api_service_name              = "moazez-staging-api"
   platform_admin_service_name   = "moazez-staging-platform-admin"
   school_dashboard_service_name = "moazez-staging-school-dashboard"
+
+  candidate_edge_enabled = var.candidate_edge_enabled
+  candidate_api_tag      = var.candidate_api_tag
 }

@@ -139,10 +139,31 @@ locals {
     }
   }
 
-  selected                  = local.approved_environment[var.environment]
-  image_matches_environment = can(regex(local.selected.image_pattern, var.image_reference))
-  queue_redis_url           = format("rediss://%s:%d", var.queue_redis_host, var.queue_redis_port)
-  realtime_redis_url        = format("rediss://%s:%d", var.realtime_redis_host, var.realtime_redis_port)
+  selected                               = local.approved_environment[var.environment]
+  api_image_matches_environment          = can(regex(local.selected.image_pattern, var.api_image_reference))
+  core_worker_image_matches_environment  = can(regex(local.selected.image_pattern, var.core_worker_image_reference))
+  media_worker_image_matches_environment = can(regex(local.selected.image_pattern, var.media_worker_image_reference))
+  maintenance_image_matches_environment  = can(regex(local.selected.image_pattern, var.maintenance_scheduler_image_reference))
+  api_candidate_mode                     = var.api_traffic_mode != "normal"
+  api_expected_candidate_tag             = "candidate-${substr(sha256(var.api_image_reference), 0, 12)}"
+  api_candidate_revision                 = local.api_candidate_mode && var.api_candidate_tag != null ? "${local.selected.api_service_name}-${var.api_candidate_tag}" : null
+  api_candidate_inputs_valid             = try(var.api_stable_revision != null && var.api_candidate_tag == local.api_expected_candidate_tag && startswith(var.api_stable_revision, "${local.selected.api_service_name}-") && var.api_stable_revision != local.api_candidate_revision, false)
+  api_traffic_contract_valid             = var.api_traffic_mode == "normal" ? var.api_stable_revision == null && var.api_candidate_tag == null : local.api_candidate_inputs_valid
+  queue_redis_url                        = format("rediss://%s:%d", var.queue_redis_host, var.queue_redis_port)
+  realtime_redis_url                     = format("rediss://%s:%d", var.realtime_redis_host, var.realtime_redis_port)
+
+  api_traffic_targets = local.api_candidate_mode ? [
+    {
+      revision = var.api_stable_revision
+      percent  = var.api_traffic_mode == "candidate_no_traffic" ? 100 : 0
+      tag      = null
+    },
+    {
+      revision = local.api_candidate_revision
+      percent  = var.api_traffic_mode == "candidate_no_traffic" ? 0 : 100
+      tag      = var.api_candidate_tag
+    },
+  ] : []
 
   fcm_delivery_contracts = {
     disabled = {
@@ -247,11 +268,12 @@ resource "google_cloud_run_v2_service" "api" {
   }
 
   template {
+    revision                         = local.api_candidate_revision
     service_account                  = local.selected.api_service_account
     max_instance_request_concurrency = 40
 
     containers {
-      image = var.image_reference
+      image = var.api_image_reference
 
       ports {
         container_port = 3000
@@ -323,12 +345,28 @@ resource "google_cloud_run_v2_service" "api" {
     }
   }
 
+  dynamic "traffic" {
+    for_each = local.api_traffic_targets
+
+    content {
+      type     = "TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION"
+      revision = traffic.value.revision
+      percent  = traffic.value.percent
+      tag      = traffic.value.tag
+    }
+  }
+
   lifecycle {
     prevent_destroy = true
 
     precondition {
-      condition     = local.image_matches_environment
-      error_message = "image_reference must use the immutable backend package governed for the selected environment."
+      condition     = local.api_image_matches_environment
+      error_message = "api_image_reference must use the immutable backend package governed for the selected environment."
+    }
+
+    precondition {
+      condition     = local.api_traffic_contract_valid
+      error_message = "API traffic inputs are contradictory: normal requires null stable revision/tag; candidate modes require the verified service revision and the image-derived candidate tag with distinct stable/candidate identities."
     }
   }
 }
@@ -348,7 +386,7 @@ resource "google_cloud_run_v2_worker_pool" "core" {
     service_account = local.selected.core_worker_service_account
 
     containers {
-      image   = var.image_reference
+      image   = var.core_worker_image_reference
       command = ["node", "dist/core-worker"]
 
       dynamic "env" {
@@ -414,8 +452,8 @@ resource "google_cloud_run_v2_worker_pool" "core" {
     prevent_destroy = true
 
     precondition {
-      condition     = local.image_matches_environment
-      error_message = "image_reference must use the immutable backend package governed for the selected environment."
+      condition     = local.core_worker_image_matches_environment
+      error_message = "core_worker_image_reference must use the immutable backend package governed for the selected environment."
     }
   }
 }
@@ -435,7 +473,7 @@ resource "google_cloud_run_v2_worker_pool" "media" {
     service_account = local.selected.media_worker_service_account
 
     containers {
-      image   = var.image_reference
+      image   = var.media_worker_image_reference
       command = ["node", "dist/media-worker"]
 
       dynamic "env" {
@@ -496,8 +534,8 @@ resource "google_cloud_run_v2_worker_pool" "media" {
     prevent_destroy = true
 
     precondition {
-      condition     = local.image_matches_environment
-      error_message = "image_reference must use the immutable backend package governed for the selected environment."
+      condition     = local.media_worker_image_matches_environment
+      error_message = "media_worker_image_reference must use the immutable backend package governed for the selected environment."
     }
   }
 }
@@ -517,7 +555,7 @@ resource "google_cloud_run_v2_worker_pool" "maintenance_scheduler" {
     service_account = local.selected.maintenance_service_account
 
     containers {
-      image   = var.image_reference
+      image   = var.maintenance_scheduler_image_reference
       command = ["node", "dist/maintenance-scheduler"]
 
       dynamic "env" {
@@ -563,8 +601,8 @@ resource "google_cloud_run_v2_worker_pool" "maintenance_scheduler" {
     prevent_destroy = true
 
     precondition {
-      condition     = local.image_matches_environment
-      error_message = "image_reference must use the immutable backend package governed for the selected environment."
+      condition     = local.maintenance_image_matches_environment
+      error_message = "maintenance_scheduler_image_reference must use the immutable backend package governed for the selected environment."
     }
   }
 }
