@@ -59,16 +59,22 @@ in this file.
       "maintenanceScheduler": "<current-staging-image-by-digest>"
     },
     "runtimeState": {
-      "lineage": "<runtime-state-uuid>",
+      "lineage": "<opaque-runtime-state-lineage>",
       "serial": 0
     },
     "edgeState": {
-      "lineage": "<edge-state-uuid>",
+      "lineage": "<opaque-edge-state-lineage>",
       "serial": 0
     }
   }
 }
 ```
+
+Terraform state lineage is treated as an opaque exact identity token. The
+deployment controller does not interpret UUID version or variant semantics.
+Lineage is preserved exactly and compared for exact equality, without
+normalization or mutation. State serial remains a non-negative safe integer
+and must increase after a successful apply.
 
 The tag formula is exact:
 
