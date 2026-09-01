@@ -8,12 +8,13 @@ It is staging-only. It never invokes Terraform, Google Cloud, a database, or a
 smoke request. In particular, `record-apply` records evidence for an apply that
 was separately authorized and executed; it does not perform an apply.
 
-## Release context input
+## Normal manifest v1 release context
 
 Prepare a JSON context outside the source repository with this shape. Values
 shown in angle brackets must come from governed live discovery or owner
 evidence. Do not put Redis CA payloads, tokens, credentials, or other secrets
-in this file.
+in this file. Normal construction omits `executionMode`, produces
+`manifestVersion=1`, and retains the existing Core-first sequence.
 
 ```json
 {
@@ -91,6 +92,92 @@ moazez-staging-api-${candidateTag}
 The stable revision must be the full revision discovered from the live
 `moazez-staging-api` service, not a source default or guessed value.
 
+## Recovery manifest v2 context
+
+Recovery is an explicit, separately authorized execution. Set
+`executionMode="recovery"`; use a new `executionId` that differs from the
+failed release execution ID; and set
+`resumeGateId="api-no-traffic-promotion"`. Recovery input is strict and must
+not contain an operator-supplied top-level `candidateTag`. The controller
+derives the identity from the immutable image and attempt.
+
+The exact recovery metadata object is:
+
+```json
+{
+  "recoveryAttempt": 1,
+  "failedReleaseExecutionId": "<failed-execution-id>",
+  "failedManifestRef": "<durable-failed-manifest-reference>",
+  "failedGateId": "api-no-traffic-promotion",
+  "failedOperationId": "api-candidate-runtime",
+  "failedPlanSha256": "<exact-64-character-lowercase-sha256>",
+  "failureEvidenceRef": "<durable-failure-evidence-reference>"
+}
+```
+
+`recoveryAttempt` is a safe integer from `1` through `999999999999999`.
+Given base tag `candidate-${sha256(full image reference)[0:12]}`, attempt `N`
+derives `${baseTag}-rN` and revision
+`moazez-staging-api-${baseTag}-rN`. The controller does not accept timestamps,
+UUIDs, numeric strings, leading-zero ordinals, or arbitrary discriminators.
+
+Recovery predecessor evidence contains these six exact ordered passed records,
+each with a non-empty durable `evidenceRef`:
+
+```text
+artifact-and-checksum-preflight
+backup-and-data-authority-checkpoint
+migration-job
+migration-status-and-drift-verification
+core-worker-promotion
+media-worker-promotion
+```
+
+Core and Media are historical predecessor evidence in v2. They are not mutable
+recovery gates and have no Terraform operation objects. The four v2 gates are
+API Runtime then API Edge, Maintenance Scheduler, protected smoke, and traffic
+promotion.
+
+The strict recovery `liveDiscovery` records:
+
+- `apiTrafficMode="failed_zero_traffic_candidate"`, the stable revision at
+  exactly 100%, and the failed candidate image/tag/revision at exactly 0%;
+- exact API, Core Worker, Media Worker, and Maintenance Scheduler images;
+- independently discovered runtime and edge lineage/serial values;
+- absence of the candidate NEG, backend, and smoke route;
+- a `complete-base-family` revision inventory for service
+  `moazez-staging-api` and the exact image-derived base tag.
+
+Every inventory entry requires `revision` and `imageReference`. A live `tag`
+is optional because preserved Cloud Run revisions need not remain traffic-tagged.
+Duplicate revisions, different-image family entries, or omission of the failed
+revision are rejected. The attempt must equal the maximum existing family
+ordinal plus one, and its derived revision must not already exist.
+
+The API, Core Worker, and Media Worker live images must already equal the
+approved immutable candidate image. Recovery API variables retain that image;
+Maintenance keeps its discovered pre-promotion image. The recovery API
+operation binds directly to the discovered runtime state. API Edge binds
+directly to the independently discovered edge state. Maintenance binds to the
+verified API Runtime successor state, and traffic promotion binds to the
+verified Maintenance successor state.
+
+The recovery API resource allowlist is exactly:
+
+```text
+template[0].revision
+traffic
+template[0].containers[0].startup_probe[0].initial_delay_seconds
+template[0].containers[0].startup_probe[0].period_seconds
+template[0].containers[0].startup_probe[0].timeout_seconds
+template[0].containers[0].startup_probe[0].failure_threshold
+```
+
+It intentionally excludes `template[0].containers[0].image` and all broad
+container/template/probe paths. Normal v1 retains its existing API image
+permission for the initial promotion. Recovery never deletes the failed
+revision and never automatically creates a later attempt after failure.
+
 ## External artifact convention
 
 A recommended root convention is:
@@ -111,10 +198,15 @@ SAVED_PLAN=
 <saved-plan-root>\staging\<backend-runtime|edge>\<execution-id>\<gate-and-operation>.tfplan
 ```
 
-All paths are rejected unless absolute and outside the repository. The old
-saved-plan SHA256
+All paths are rejected unless absolute and outside the repository. The
+historical saved-plan SHA256
 `ccc0473c853e0ea2a47e8cb6700acf3a80a454907130ce9992049e7d7ded43e7`
 is permanently rejected, as is any duplicate plan hash in one manifest.
+Normal v1 contains that one blocker. Recovery v2 additionally requires the
+exact full lowercase SHA256 of the failed plan from DevOps evidence and places
+both hashes in `blockedSavedPlanHashes`. Prefix-only evidence such as
+`19cc9769...` is invalid and is never completed or hard-coded by source. Plan
+registration checks the manifest blocklist.
 
 ## Exact CLI surface
 

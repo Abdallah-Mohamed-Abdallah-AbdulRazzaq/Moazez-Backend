@@ -5,10 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const { execFileSync } = require('node:child_process');
-const {
-  ACTIVE_TAP_OWNERS,
-  classifyTestFile,
-} = require('../ci/plan-ci.cjs');
+const { ACTIVE_TAP_OWNERS, classifyTestFile } = require('../ci/plan-ci.cjs');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
 const BASE_SHA = 'd1939edc059b19c70ae6292ed64de3013ec3309c';
@@ -18,8 +15,7 @@ const PRODUCTION_ROOT =
   'infra/gcp/backend-runtime/environments/production/runtime';
 const PRODUCTION_MIGRATION_ROOT =
   'infra/gcp/backend-runtime/environments/production/migration';
-const TEST_PATH =
-  'scripts/tests/stage-29a-production-runtime-source.test.cjs';
+const TEST_PATH = 'scripts/tests/stage-29a-production-runtime-source.test.cjs';
 const STAGE_28_TEST_PATH =
   'scripts/tests/stage-28a-production-migration-job-source.test.cjs';
 const STAGE_30C1_TEST_PATH =
@@ -83,6 +79,9 @@ const PRODUCTION_IMAGE_PATTERN =
 const API_URL_PATTERN =
   '^https://[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?([.][A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*([:](6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}|[1-9][0-9]{0,3}))?/?$';
 const KEY_ID_PATTERN = '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$';
+const NORMAL_CANDIDATE_TAG_PATTERN = '^candidate-[a-f0-9]{12}$';
+const STAGING_RECOVERY_CANDIDATE_TAG_PATTERN =
+  '^candidate-[a-f0-9]{12}(-r[1-9][0-9]{0,14})?$';
 const FCM_DELIVERY_MODES = Object.freeze([
   'disabled',
   'dry_run',
@@ -135,8 +134,7 @@ const PRODUCTION_CONTRACT = Object.freeze({
   api_service_name: 'moazez-production-api',
   core_worker_pool_name: 'moazez-production-core-worker',
   media_worker_pool_name: 'moazez-production-media-worker',
-  maintenance_scheduler_pool_name:
-    'moazez-production-maintenance-scheduler',
+  maintenance_scheduler_pool_name: 'moazez-production-maintenance-scheduler',
   api_service_account:
     'moazez-api-runtime@moazez-production.iam.gserviceaccount.com',
   core_worker_service_account:
@@ -147,8 +145,7 @@ const PRODUCTION_CONTRACT = Object.freeze({
     'moazez-maintenance-scheduler@moazez-production.iam.gserviceaccount.com',
   node_environment: 'production',
   trusted_proxy_mode: 'none',
-  cors_origins:
-    'https://schools.moazez.cloud,https://admin.moazez.cloud',
+  cors_origins: 'https://schools.moazez.cloud,https://admin.moazez.cloud',
   image_pattern: PRODUCTION_IMAGE_PATTERN,
   storage_private_bucket: 'moazez-production-91001421934-private',
   storage_published_bucket: 'moazez-production-91001421934-published',
@@ -431,7 +428,11 @@ function environmentContractBlock(main, environment) {
 
 function assertContract(block, expected) {
   for (const [name, value] of Object.entries(expected)) {
-    assert.equal(assignmentExpression(block, name), JSON.stringify(value), name);
+    assert.equal(
+      assignmentExpression(block, name),
+      JSON.stringify(value),
+      name,
+    );
   }
 }
 
@@ -441,9 +442,9 @@ function secretMap(environmentBlock, mapName) {
     new RegExp(`^\\s*${mapName}\\s*=\\s*\\{`, 'mu'),
     mapName,
   );
-  const names = [
-    ...map.matchAll(/^\s*([A-Z][A-Z0-9_]*)\s*=\s*\{/gmu),
-  ].map((match) => match[1]);
+  const names = [...map.matchAll(/^\s*([A-Z][A-Z0-9_]*)\s*=\s*\{/gmu)].map(
+    (match) => match[1],
+  );
   return Object.fromEntries(
     names.map((name) => {
       const block = extractBlock(
@@ -471,12 +472,12 @@ function resourceBlock(main, type, name) {
 }
 
 function resourceContainer(resource, label) {
-  const template = extractBlock(resource, /^\s*template\s*\{/mu, `${label} template`);
-  return extractBlock(
-    template,
-    /^\s*containers\s*\{/mu,
-    `${label} container`,
+  const template = extractBlock(
+    resource,
+    /^\s*template\s*\{/mu,
+    `${label} template`,
   );
+  return extractBlock(template, /^\s*containers\s*\{/mu, `${label} container`);
 }
 
 function fixedEnvironmentNames(container) {
@@ -584,13 +585,15 @@ function assertCommittedStage29CandidateScope(
   candidateFiles,
   maintenanceFiles,
 ) {
-  const committedCandidates = candidateFiles ?? candidateFilesFromCommittedRange();
+  const committedCandidates =
+    candidateFiles ?? candidateFilesFromCommittedRange();
   const normalized = [
     ...new Set(committedCandidates.map((file) => file.replace(/\\/gu, '/'))),
   ].sort();
   const normalizedMaintenance = [
     ...new Set(
-      (maintenanceFiles ??
+      (
+        maintenanceFiles ??
         (candidateFiles === undefined
           ? candidateFilesFromMaintenanceRange()
           : committedCandidates)
@@ -704,12 +707,20 @@ test('Production backend, provider, versions, and lock selection are exact', () 
     region: '"me-central2"',
   });
   assert.match(versions, /required_version\s*=\s*">= 1[.]6[.]0, < 2[.]0[.]0"/u);
-  assert.match(versions, /bucket\s*=\s*"moazez-production-91001421934-tfstate"/u);
-  assert.match(versions, /prefix\s*=\s*"backend-runtime\/production\/runtime"/u);
+  assert.match(
+    versions,
+    /bucket\s*=\s*"moazez-production-91001421934-tfstate"/u,
+  );
+  assert.match(
+    versions,
+    /prefix\s*=\s*"backend-runtime\/production\/runtime"/u,
+  );
   assert.match(versions, /source\s*=\s*"hashicorp\/google"/u);
   assert.match(versions, /version\s*=\s*">= 7[.]40[.]0, < 8[.]0[.]0"/u);
 
-  const productionLock = normalizedSource(`${PRODUCTION_ROOT}/.terraform.lock.hcl`);
+  const productionLock = normalizedSource(
+    `${PRODUCTION_ROOT}/.terraform.lock.hcl`,
+  );
   const stagingLock = normalizedSource(`${STAGING_ROOT}/.terraform.lock.hcl`);
   assert.equal(productionLock, stagingLock);
   assert.match(productionLock, /version\s*=\s*"7[.]44[.]0"/u);
@@ -765,7 +776,10 @@ test('Production root exposes exactly seventeen governed release and runtime var
     );
   }
   assert.equal(
-    assignmentExpression(variableBlock(variables, 'api_traffic_mode'), 'default'),
+    assignmentExpression(
+      variableBlock(variables, 'api_traffic_mode'),
+      'default',
+    ),
     '"normal"',
   );
   for (const name of ['api_stable_revision', 'api_candidate_tag']) {
@@ -774,7 +788,51 @@ test('Production root exposes exactly seventeen governed release and runtime var
     assert.equal(assignmentExpression(block, 'nullable'), 'true');
   }
   for (const name of ['queue_redis_ca_pem', 'realtime_redis_ca_pem']) {
-    assert.equal(assignmentExpression(variableBlock(variables, name), 'sensitive'), 'true');
+    assert.equal(
+      assignmentExpression(variableBlock(variables, name), 'sensitive'),
+      'true',
+    );
+  }
+});
+
+test('Staging recovery candidate shape is bounded while Production remains base-only', () => {
+  const moduleVariables = normalizedHclSource(`${MODULE_ROOT}/variables.tf`);
+  const stagingVariables = normalizedHclSource(`${STAGING_ROOT}/variables.tf`);
+  const productionVariables = normalizedHclSource(
+    `${PRODUCTION_ROOT}/variables.tf`,
+  );
+
+  assert.deepEqual(
+    validationPatterns(variableBlock(moduleVariables, 'api_candidate_tag')),
+    [STAGING_RECOVERY_CANDIDATE_TAG_PATTERN],
+  );
+  assert.deepEqual(
+    validationPatterns(variableBlock(stagingVariables, 'api_candidate_tag')),
+    [STAGING_RECOVERY_CANDIDATE_TAG_PATTERN],
+  );
+  assert.deepEqual(
+    validationPatterns(variableBlock(productionVariables, 'api_candidate_tag')),
+    [NORMAL_CANDIDATE_TAG_PATTERN],
+  );
+
+  const recoveryPolicy = new RegExp(
+    STAGING_RECOVERY_CANDIDATE_TAG_PATTERN,
+    'u',
+  );
+  for (const accepted of [
+    'candidate-0123456789ab',
+    'candidate-0123456789ab-r1',
+    'candidate-0123456789ab-r999999999999999',
+  ]) {
+    assert.equal(recoveryPolicy.test(accepted), true, accepted);
+  }
+  for (const rejected of [
+    'candidate-0123456789ab-r0',
+    'candidate-0123456789ab-r01',
+    'candidate-0123456789ab-r1x',
+    'candidate-0123456789ab-r1000000000000000',
+  ]) {
+    assert.equal(recoveryPolicy.test(rejected), false, rejected);
   }
 });
 
@@ -838,7 +896,10 @@ test('Production API URL is required and accepts only a canonical HTTPS origin',
   ]) {
     assert.equal(policy.test(rejected), false, rejected);
   }
-  assert.equal(normalizedSource(`${PRODUCTION_ROOT}/main.tf`).includes('api.moazez.cloud'), false);
+  assert.equal(
+    normalizedSource(`${PRODUCTION_ROOT}/main.tf`).includes('api.moazez.cloud'),
+    false,
+  );
 });
 
 test('Production encryption key IDs are required and use the exact governed regex', () => {
@@ -867,7 +928,11 @@ test('Shared module exposes only the closed selector and approved dynamic inputs
   )) {
     assert.doesNotMatch(variableBlock(variables, name), /^\s*default\s*=/mu);
   }
-  const environment = assertRequiredVariable(variables, 'environment', 'string');
+  const environment = assertRequiredVariable(
+    variables,
+    'environment',
+    'string',
+  );
   assert.match(
     environment.replace(/\s+/gu, ''),
     /condition=contains\(\["staging","production"\],var[.]environment\)/u,
@@ -896,7 +961,10 @@ test('Closed environment map contains the exact governed Production infrastructu
   const main = normalizedHclSource(`${MODULE_ROOT}/main.tf`);
   const production = environmentContractBlock(main, 'production');
   assertContract(production, PRODUCTION_CONTRACT);
-  assert.equal(assignmentExpression(main, 'selected'), 'local.approved_environment[var.environment]');
+  assert.equal(
+    assignmentExpression(main, 'selected'),
+    'local.approved_environment[var.environment]',
+  );
 });
 
 test('Closed environment map preserves the exact governed Staging infrastructure contract', () => {
@@ -956,7 +1024,10 @@ test('Production and Staging secret maps are exact and every version is numeric 
     }
   }
   assert.doesNotMatch(main, /\blatest\b/iu);
-  assert.doesNotMatch(main, /google_secret_manager_secret_version|secret_data|secret_payload/iu);
+  assert.doesNotMatch(
+    main,
+    /google_secret_manager_secret_version|secret_data|secret_payload/iu,
+  );
 });
 
 test('Shared module owns exactly one API service and three governed worker pools', () => {
@@ -971,7 +1042,10 @@ test('Shared module owns exactly one API service and three governed worker pools
     ['google_cloud_run_v2_worker_pool', 'maintenance_scheduler'],
   ]);
   assert.equal((main.match(/^data\s+"/gmu) ?? []).length, 0);
-  assert.doesNotMatch(main, /google_cloud_run_v2_job|resource\s+"[^"]*migration/iu);
+  assert.doesNotMatch(
+    main,
+    /google_cloud_run_v2_job|resource\s+"[^"]*migration/iu,
+  );
 });
 
 test('Every runtime resource binds the selected environment to its matching image package', () => {
@@ -1011,7 +1085,11 @@ test('Every runtime resource binds the selected environment to its matching imag
       assignmentExpression(resourceContainer(resource, name), 'image'),
       `var.${variable}`,
     );
-    const lifecycle = extractBlock(resource, /^\s*lifecycle\s*\{/mu, `${name} lifecycle`);
+    const lifecycle = extractBlock(
+      resource,
+      /^\s*lifecycle\s*\{/mu,
+      `${name} lifecycle`,
+    );
     assert.equal(assignmentExpression(lifecycle, 'prevent_destroy'), 'true');
     const precondition = extractBlock(
       lifecycle,
@@ -1045,8 +1123,12 @@ test('Redis endpoints remain separate host-port inputs and Terraform constructs 
   );
   const rootVariables = normalizedHclSource(`${PRODUCTION_ROOT}/variables.tf`);
   assert.equal(variableNames(rootVariables).includes('queue_redis_url'), false);
-  assert.equal(variableNames(rootVariables).includes('realtime_redis_url'), false);
-  const terraform = GOVERNED_TERRAFORM_PATHS.map(normalizedHclSource).join('\n');
+  assert.equal(
+    variableNames(rootVariables).includes('realtime_redis_url'),
+    false,
+  );
+  const terraform =
+    GOVERNED_TERRAFORM_PATHS.map(normalizedHclSource).join('\n');
   assert.doesNotMatch(terraform, /\b(?:[0-9]{1,3}[.]){3}[0-9]{1,3}\b/u);
   assert.doesNotMatch(terraform, /-----BEGIN (?:CERTIFICATE|PUBLIC KEY)-----/u);
 });
@@ -1054,17 +1136,42 @@ test('Redis endpoints remain separate host-port inputs and Terraform constructs 
 test('API and Core receive Queue plus Realtime Redis while Media and Maintenance receive Queue only', () => {
   const main = normalizedHclSource(`${MODULE_ROOT}/main.tf`);
   const environments = {
-    api: extractBlock(main, /^\s*api_environment\s*=\s*merge\([^\{]+\{/mu, 'API environment'),
-    core: extractBlock(main, /^\s*core_worker_environment\s*=\s*merge\([^\{]+\{/mu, 'Core environment'),
-    media: extractBlock(main, /^\s*media_worker_environment\s*=\s*merge\([^\{]+\{/mu, 'Media environment'),
-    maintenance: extractBlock(main, /^\s*maintenance_scheduler_environment\s*=\s*merge\([^\{]+\{/mu, 'Maintenance environment'),
+    api: extractBlock(
+      main,
+      /^\s*api_environment\s*=\s*merge\([^\{]+\{/mu,
+      'API environment',
+    ),
+    core: extractBlock(
+      main,
+      /^\s*core_worker_environment\s*=\s*merge\([^\{]+\{/mu,
+      'Core environment',
+    ),
+    media: extractBlock(
+      main,
+      /^\s*media_worker_environment\s*=\s*merge\([^\{]+\{/mu,
+      'Media environment',
+    ),
+    maintenance: extractBlock(
+      main,
+      /^\s*maintenance_scheduler_environment\s*=\s*merge\([^\{]+\{/mu,
+      'Maintenance environment',
+    ),
   };
   for (const name of ['api', 'core']) {
-    assert.equal(assignmentExpression(environments[name], 'QUEUE_REDIS_URL'), 'local.queue_redis_url');
-    assert.equal(assignmentExpression(environments[name], 'REALTIME_REDIS_URL'), 'local.realtime_redis_url');
+    assert.equal(
+      assignmentExpression(environments[name], 'QUEUE_REDIS_URL'),
+      'local.queue_redis_url',
+    );
+    assert.equal(
+      assignmentExpression(environments[name], 'REALTIME_REDIS_URL'),
+      'local.realtime_redis_url',
+    );
   }
   for (const name of ['media', 'maintenance']) {
-    assert.equal(assignmentExpression(environments[name], 'QUEUE_REDIS_URL'), 'local.queue_redis_url');
+    assert.equal(
+      assignmentExpression(environments[name], 'QUEUE_REDIS_URL'),
+      'local.queue_redis_url',
+    );
     assert.doesNotMatch(environments[name], /REALTIME_REDIS/u);
   }
 
@@ -1072,34 +1179,50 @@ test('API and Core receive Queue plus Realtime Redis while Media and Maintenance
     api: resourceBlock(main, 'google_cloud_run_v2_service', 'api'),
     core: resourceBlock(main, 'google_cloud_run_v2_worker_pool', 'core'),
     media: resourceBlock(main, 'google_cloud_run_v2_worker_pool', 'media'),
-    maintenance: resourceBlock(main, 'google_cloud_run_v2_worker_pool', 'maintenance_scheduler'),
+    maintenance: resourceBlock(
+      main,
+      'google_cloud_run_v2_worker_pool',
+      'maintenance_scheduler',
+    ),
   };
-  assert.deepEqual(fixedEnvironmentNames(resourceContainer(resources.api, 'api')), [
-    'QUEUE_REDIS_TLS_CA_PEM',
-    'REALTIME_REDIS_TLS_CA_PEM',
-  ]);
-  assert.deepEqual(fixedEnvironmentNames(resourceContainer(resources.core, 'core')), [
-    'QUEUE_REDIS_TLS_CA_PEM',
-    'REALTIME_REDIS_TLS_CA_PEM',
-  ]);
-  assert.deepEqual(fixedEnvironmentNames(resourceContainer(resources.media, 'media')), [
-    'QUEUE_REDIS_TLS_CA_PEM',
-  ]);
-  assert.deepEqual(fixedEnvironmentNames(resourceContainer(resources.maintenance, 'maintenance')), [
-    'QUEUE_REDIS_TLS_CA_PEM',
-  ]);
+  assert.deepEqual(
+    fixedEnvironmentNames(resourceContainer(resources.api, 'api')),
+    ['QUEUE_REDIS_TLS_CA_PEM', 'REALTIME_REDIS_TLS_CA_PEM'],
+  );
+  assert.deepEqual(
+    fixedEnvironmentNames(resourceContainer(resources.core, 'core')),
+    ['QUEUE_REDIS_TLS_CA_PEM', 'REALTIME_REDIS_TLS_CA_PEM'],
+  );
+  assert.deepEqual(
+    fixedEnvironmentNames(resourceContainer(resources.media, 'media')),
+    ['QUEUE_REDIS_TLS_CA_PEM'],
+  );
+  assert.deepEqual(
+    fixedEnvironmentNames(
+      resourceContainer(resources.maintenance, 'maintenance'),
+    ),
+    ['QUEUE_REDIS_TLS_CA_PEM'],
+  );
 });
 
 test('Common and role-specific application environment contracts remain exact', () => {
   const main = normalizedHclSource(`${MODULE_ROOT}/main.tf`);
-  const common = extractBlock(main, /^\s*common_environment\s*=\s*\{/mu, 'common environment');
+  const common = extractBlock(
+    main,
+    /^\s*common_environment\s*=\s*\{/mu,
+    'common environment',
+  );
   assert.deepEqual(blockAssignmentExpressions(common), {
     NODE_ENV: 'local.selected.node_environment',
     APP_SHUTDOWN_TIMEOUT_MS: '"15000"',
     LOG_LEVEL: '"info"',
   });
 
-  const api = extractBlock(main, /^\s*api_environment\s*=\s*merge\([^\{]+\{/mu, 'API environment');
+  const api = extractBlock(
+    main,
+    /^\s*api_environment\s*=\s*merge\([^\{]+\{/mu,
+    'API environment',
+  );
   assert.deepEqual(blockAssignmentExpressions(api), {
     APP_PORT: '"3000"',
     APP_PROBE_PORT: '"9090"',
@@ -1128,9 +1251,21 @@ test('Common and role-specific application environment contracts remain exact', 
     GCS_SIGNING_SERVICE_ACCOUNT: 'local.selected.gcs_signing_service_account',
   });
 
-  const core = extractBlock(main, /^\s*core_worker_environment\s*=\s*merge\([^\{]+\{/mu, 'Core environment');
-  const media = extractBlock(main, /^\s*media_worker_environment\s*=\s*merge\([^\{]+\{/mu, 'Media environment');
-  const maintenance = extractBlock(main, /^\s*maintenance_scheduler_environment\s*=\s*merge\([^\{]+\{/mu, 'Maintenance environment');
+  const core = extractBlock(
+    main,
+    /^\s*core_worker_environment\s*=\s*merge\([^\{]+\{/mu,
+    'Core environment',
+  );
+  const media = extractBlock(
+    main,
+    /^\s*media_worker_environment\s*=\s*merge\([^\{]+\{/mu,
+    'Media environment',
+  );
+  const maintenance = extractBlock(
+    main,
+    /^\s*maintenance_scheduler_environment\s*=\s*merge\([^\{]+\{/mu,
+    'Maintenance environment',
+  );
   assert.deepEqual(blockAssignmentExpressions(core), {
     APP_PROBE_PORT: '"9090"',
     APP_URL: 'var.api_url',
@@ -1175,15 +1310,24 @@ test('Common and role-specific application environment contracts remain exact', 
   ]) {
     assert.doesNotMatch(environment, /\b(?:FIREBASE_|FCM_)/u, name);
   }
-  assert.equal((main.match(/GCS_SIGNING_SERVICE_ACCOUNT\s*=/gu) ?? []).length, 1);
+  assert.equal(
+    (main.match(/GCS_SIGNING_SERVICE_ACCOUNT\s*=/gu) ?? []).length,
+    1,
+  );
 });
 
 test('Cloud Run commands, scaling, probes, Direct VPC, and deletion protection remain governed', () => {
   const main = normalizedHclSource(`${MODULE_ROOT}/main.tf`);
   const api = resourceBlock(main, 'google_cloud_run_v2_service', 'api');
-  assert.equal(assignmentExpression(api, 'project'), 'local.selected.project_id');
+  assert.equal(
+    assignmentExpression(api, 'project'),
+    'local.selected.project_id',
+  );
   assert.equal(assignmentExpression(api, 'location'), 'local.selected.region');
-  assert.equal(assignmentExpression(api, 'name'), 'local.selected.api_service_name');
+  assert.equal(
+    assignmentExpression(api, 'name'),
+    'local.selected.api_service_name',
+  );
   assert.equal(assignmentExpression(api, 'deletion_protection'), 'true');
   const apiScaling = extractBlock(api, /^\s*scaling\s*\{/mu, 'API scaling');
   assert.deepEqual(blockAssignmentExpressions(apiScaling), {
@@ -1191,28 +1335,73 @@ test('Cloud Run commands, scaling, probes, Direct VPC, and deletion protection r
     max_instance_count: '4',
   });
   const apiTemplate = extractBlock(api, /^\s*template\s*\{/mu, 'API template');
-  assert.equal(assignmentExpression(apiTemplate, 'max_instance_request_concurrency'), '40');
+  assert.equal(
+    assignmentExpression(apiTemplate, 'max_instance_request_concurrency'),
+    '40',
+  );
   const apiContainer = resourceContainer(api, 'api');
-  assert.equal(assignmentExpression(extractBlock(apiContainer, /^\s*ports\s*\{/mu, 'API port'), 'container_port'), '3000');
-  for (const [kind, expectedPath] of [
-    ['startup_probe', '/internal/probes/api/startup'],
-    ['liveness_probe', '/internal/probes/api/liveness'],
-    ['readiness_probe', '/internal/probes/api/readiness'],
+  assert.equal(
+    assignmentExpression(
+      extractBlock(apiContainer, /^\s*ports\s*\{/mu, 'API port'),
+      'container_port',
+    ),
+    '3000',
+  );
+  for (const [kind, expectedAssignments] of [
+    [
+      'startup_probe',
+      {
+        failure_threshold: '12',
+        initial_delay_seconds: '10',
+        timeout_seconds: '2',
+        period_seconds: '5',
+        path: '"/internal/probes/api/startup"',
+        port: '9090',
+      },
+    ],
+    [
+      'liveness_probe',
+      {
+        path: '"/internal/probes/api/liveness"',
+        port: '9090',
+      },
+    ],
+    [
+      'readiness_probe',
+      {
+        path: '"/internal/probes/api/readiness"',
+        port: '9090',
+      },
+    ],
   ]) {
-    const probe = extractBlock(apiContainer, new RegExp(`^\\s*${kind}\\s*\\{`, 'mu'), kind);
-    const httpGet = extractBlock(probe, /^\s*http_get\s*\{/mu, `${kind} http_get`);
-    assert.equal(assignmentExpression(httpGet, 'path'), JSON.stringify(expectedPath));
-    assert.equal(assignmentExpression(httpGet, 'port'), '9090');
+    const probe = extractBlock(
+      apiContainer,
+      new RegExp(`^\\s*${kind}\\s*\\{`, 'mu'),
+      kind,
+    );
+    assert.deepEqual(blockAssignmentExpressions(probe), expectedAssignments);
   }
 
   for (const [name, command, probeRole] of [
     ['core', '["node", "dist/core-worker"]', 'core-worker'],
     ['media', '["node", "dist/media-worker"]', 'media-worker'],
-    ['maintenance_scheduler', '["node", "dist/maintenance-scheduler"]', 'maintenance-scheduler'],
+    [
+      'maintenance_scheduler',
+      '["node", "dist/maintenance-scheduler"]',
+      'maintenance-scheduler',
+    ],
   ]) {
-    const resource = resourceBlock(main, 'google_cloud_run_v2_worker_pool', name);
+    const resource = resourceBlock(
+      main,
+      'google_cloud_run_v2_worker_pool',
+      name,
+    );
     assert.equal(assignmentExpression(resource, 'deletion_protection'), 'true');
-    const scaling = extractBlock(resource, /^\s*scaling\s*\{/mu, `${name} scaling`);
+    const scaling = extractBlock(
+      resource,
+      /^\s*scaling\s*\{/mu,
+      `${name} scaling`,
+    );
     assert.deepEqual(blockAssignmentExpressions(scaling), {
       scaling_mode: '"MANUAL"',
       manual_instance_count: '1',
@@ -1220,27 +1409,58 @@ test('Cloud Run commands, scaling, probes, Direct VPC, and deletion protection r
     const container = resourceContainer(resource, name);
     assert.equal(assignmentExpression(container, 'command'), command);
     for (const kind of ['startup', 'liveness']) {
-      const probe = extractBlock(container, new RegExp(`^\\s*${kind}_probe\\s*\\{`, 'mu'), `${name} ${kind}`);
-      const httpGet = extractBlock(probe, /^\s*http_get\s*\{/mu, `${name} ${kind} http_get`);
-      assert.equal(assignmentExpression(httpGet, 'path'), JSON.stringify(`/internal/probes/${probeRole}/${kind}`));
-      assert.equal(assignmentExpression(httpGet, 'port'), '9090');
+      const probe = extractBlock(
+        container,
+        new RegExp(`^\\s*${kind}_probe\\s*\\{`, 'mu'),
+        `${name} ${kind}`,
+      );
+      assert.deepEqual(blockAssignmentExpressions(probe), {
+        path: JSON.stringify(`/internal/probes/${probeRole}/${kind}`),
+        port: '9090',
+      });
     }
   }
 
-  assert.equal((main.match(/egress\s*=\s*"PRIVATE_RANGES_ONLY"/gu) ?? []).length, 4);
-  assert.equal((main.match(/network\s*=\s*local[.]selected[.]network/gu) ?? []).length, 4);
-  assert.equal((main.match(/subnetwork\s*=\s*local[.]selected[.]subnetwork/gu) ?? []).length, 4);
+  assert.equal(
+    (main.match(/egress\s*=\s*"PRIVATE_RANGES_ONLY"/gu) ?? []).length,
+    4,
+  );
+  assert.equal(
+    (main.match(/network\s*=\s*local[.]selected[.]network/gu) ?? []).length,
+    4,
+  );
+  assert.equal(
+    (main.match(/subnetwork\s*=\s*local[.]selected[.]subnetwork/gu) ?? [])
+      .length,
+    4,
+  );
 });
 
 test('Production API remains Dark and no Stage 30 edge or public IAM resource exists', () => {
-  const terraform = GOVERNED_TERRAFORM_PATHS.map(normalizedHclSource).join('\n');
+  const terraform =
+    GOVERNED_TERRAFORM_PATHS.map(normalizedHclSource).join('\n');
   const main = normalizedHclSource(`${MODULE_ROOT}/main.tf`);
   const api = resourceBlock(main, 'google_cloud_run_v2_service', 'api');
-  assert.equal(assignmentExpression(api, 'ingress'), '"INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"');
+  assert.equal(
+    assignmentExpression(api, 'ingress'),
+    '"INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"',
+  );
   assert.equal(assignmentExpression(api, 'default_uri_disabled'), 'true');
   assert.equal(assignmentExpression(api, 'invoker_iam_disabled'), 'true');
-  assert.equal(assignmentExpression(environmentContractBlock(main, 'production'), 'trusted_proxy_mode'), '"none"');
-  assert.equal(assignmentExpression(environmentContractBlock(main, 'staging'), 'trusted_proxy_mode'), '"gcp_external_alb"');
+  assert.equal(
+    assignmentExpression(
+      environmentContractBlock(main, 'production'),
+      'trusted_proxy_mode',
+    ),
+    '"none"',
+  );
+  assert.equal(
+    assignmentExpression(
+      environmentContractBlock(main, 'staging'),
+      'trusted_proxy_mode',
+    ),
+    '"gcp_external_alb"',
+  );
   assert.doesNotMatch(terraform, /allUsers|google_cloud_run_v2_service_iam_/u);
   assert.doesNotMatch(
     terraform,
@@ -1270,9 +1490,18 @@ test('Production outputs expose only non-sensitive runtime and release identitie
   };
   assert.deepEqual(outputNames(outputs), Object.keys(expected));
   for (const [name, value] of Object.entries(expected)) {
-    assert.equal(assignmentExpression(variableOrOutputBlock(outputs, 'output', name), 'value'), value);
+    assert.equal(
+      assignmentExpression(
+        variableOrOutputBlock(outputs, 'output', name),
+        'value',
+      ),
+      value,
+    );
   }
-  assert.doesNotMatch(outputs, /redis|ca_pem|secret|api_url|encryption_active_key/iu);
+  assert.doesNotMatch(
+    outputs,
+    /redis|ca_pem|secret|api_url|encryption_active_key/iu,
+  );
   const moduleOutputs = normalizedHclSource(`${MODULE_ROOT}/outputs.tf`);
   assert.doesNotMatch(moduleOutputs, /\bstaging\b|\bproduction\b/iu);
 });
@@ -1287,7 +1516,11 @@ function variableOrOutputBlock(source, kind, name) {
 
 test('Staging caller preserves existing settings while exposing governed release inputs', () => {
   const main = normalizedHclSource(`${STAGING_ROOT}/main.tf`);
-  const module = extractBlock(main, /^module\s+"runtime_environment"\s*\{/mu, 'Staging runtime module');
+  const module = extractBlock(
+    main,
+    /^module\s+"runtime_environment"\s*\{/mu,
+    'Staging runtime module',
+  );
   assert.deepEqual(blockAssignmentExpressions(module), {
     source: '"../../../modules/runtime-environment"',
     environment: '"staging"',
@@ -1307,8 +1540,7 @@ test('Staging caller preserves existing settings while exposing governed release
     realtime_redis_port: 'var.realtime_redis_port',
     realtime_redis_ca_pem: 'var.realtime_redis_ca_pem',
     api_url: '"https://staging-api.moazez.cloud"',
-    settings_email_secret_encryption_active_key_id:
-      '"staging-email-20260815"',
+    settings_email_secret_encryption_active_key_id: '"staging-email-20260815"',
     app_device_token_encryption_active_key_id: '"staging-device-20260815"',
   });
   for (const file of ROOT_FILES.filter(
@@ -1322,9 +1554,10 @@ test('Staging caller preserves existing settings while exposing governed release
   }
   const stagingVariables = normalizedHclSource(`${STAGING_ROOT}/variables.tf`);
   for (const name of RUNTIME_IMAGE_VARIABLES) {
-    assert.deepEqual(validationPatterns(variableBlock(stagingVariables, name)), [
-      STAGING_IMAGE_PATTERN,
-    ]);
+    assert.deepEqual(
+      validationPatterns(variableBlock(stagingVariables, name)),
+      [STAGING_IMAGE_PATTERN],
+    );
   }
 });
 
@@ -1343,10 +1576,17 @@ test('Production migration root remains byte-for-byte unchanged', () => {
 });
 
 test('Terraform source contains no release digest, secret payload, live Redis address, or forbidden output', () => {
-  const terraform = GOVERNED_TERRAFORM_PATHS.map(normalizedHclSource).join('\n');
+  const terraform =
+    GOVERNED_TERRAFORM_PATHS.map(normalizedHclSource).join('\n');
   assert.equal(terraform.includes(STAGE_27_DIGEST), false);
-  assert.doesNotMatch(terraform, /-----BEGIN (?:CERTIFICATE|PRIVATE KEY|PUBLIC KEY)-----/u);
-  assert.doesNotMatch(terraform, /google_secret_manager_secret_version|secret_data|secret_payload/iu);
+  assert.doesNotMatch(
+    terraform,
+    /-----BEGIN (?:CERTIFICATE|PRIVATE KEY|PUBLIC KEY)-----/u,
+  );
+  assert.doesNotMatch(
+    terraform,
+    /google_secret_manager_secret_version|secret_data|secret_payload/iu,
+  );
   assert.doesNotMatch(terraform, /postgres(?:ql)?:\/\//iu);
   assert.doesNotMatch(terraform, /\b(?:[0-9]{1,3}[.]){3}[0-9]{1,3}\b/u);
 });
@@ -1370,12 +1610,21 @@ test('README documents both environments, independent state, DevOps inputs, and 
   ]) {
     assert.ok(readme.includes(required), required);
   }
-  assert.match(readme, /Production runtime state is intentionally independent from Production\s+migration state/u);
-  assert.match(readme, /invoker_iam_disabled=true.*must\s+not be described as IAM-authenticated protection/su);
+  assert.match(
+    readme,
+    /Production runtime state is intentionally independent from Production\s+migration state/u,
+  );
+  assert.match(
+    readme,
+    /invoker_iam_disabled=true.*must\s+not be described as IAM-authenticated protection/su,
+  );
 });
 
 test('Stage 29A TAP has exactly one canonical pull-request ownership assignment', () => {
-  assert.equal(Object.keys(ACTIVE_TAP_OWNERS).filter((file) => file === TEST_PATH).length, 1);
+  assert.equal(
+    Object.keys(ACTIVE_TAP_OWNERS).filter((file) => file === TEST_PATH).length,
+    1,
+  );
   assert.deepEqual(classifyTestFile(TEST_PATH), {
     file: TEST_PATH,
     kind: 'node-tap',
@@ -1488,7 +1737,10 @@ test('Committed Stage 29 verifier delegation persists across later product commi
   );
   assert.equal(
     assertCommittedStage29CandidateScope(
-      [...historicalFullRange, 'src/modules/students/future-stage4.use-case.ts'],
+      [
+        ...historicalFullRange,
+        'src/modules/students/future-stage4.use-case.ts',
+      ],
       ['src/modules/students/future-stage4.use-case.ts'],
     ),
     false,
@@ -1539,7 +1791,10 @@ test('Committed Stage 29 verifier delegation persists across later product commi
 });
 
 test('Candidate scope ignores unrelated PRs and rejects every mixed Stage 29A candidate', () => {
-  assert.equal(assertStage29CandidateScope(['src/example-future-change.ts']), false);
+  assert.equal(
+    assertStage29CandidateScope(['src/example-future-change.ts']),
+    false,
+  );
   assert.equal(assertStage29CandidateScope([STAGE_30C1_TEST_PATH]), false);
   assert.equal(assertStage29CandidateScope([PT2_TEST_PATH]), false);
   assert.equal(
@@ -1554,7 +1809,10 @@ test('Candidate scope ignores unrelated PRs and rejects every mixed Stage 29A ca
     ]),
     false,
   );
-  assert.equal(assertStage29CandidateScope([`${PRODUCTION_ROOT}/variables.tf`]), true);
+  assert.equal(
+    assertStage29CandidateScope([`${PRODUCTION_ROOT}/variables.tf`]),
+    true,
+  );
   assert.equal(
     assertStage29CandidateScope([
       `${PRODUCTION_ROOT}/main.tf`,

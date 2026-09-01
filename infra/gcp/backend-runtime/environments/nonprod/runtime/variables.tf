@@ -77,7 +77,7 @@ variable "api_stable_revision" {
 }
 
 variable "api_candidate_tag" {
-  description = "Image-derived deterministic staging API candidate tag required by candidate traffic modes."
+  description = "Image-derived deterministic staging API candidate tag, optionally with a canonical recovery-attempt suffix, required by candidate traffic modes."
   type        = string
   default     = null
   nullable    = true
@@ -85,9 +85,9 @@ variable "api_candidate_tag" {
   validation {
     condition = (
       var.api_candidate_tag == null ||
-      can(regex("^candidate-[a-f0-9]{12}$", var.api_candidate_tag))
+      can(regex("^candidate-[a-f0-9]{12}(-r[1-9][0-9]{0,14})?$", var.api_candidate_tag))
     )
-    error_message = "api_candidate_tag must be null or candidate- followed by exactly 12 lowercase hexadecimal characters."
+    error_message = "api_candidate_tag must be null, candidate- followed by exactly 12 lowercase hexadecimal characters, or that base followed by a canonical -rN recovery suffix of at most 15 digits."
   }
 }
 

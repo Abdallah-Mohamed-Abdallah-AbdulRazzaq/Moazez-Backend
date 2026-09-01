@@ -55,7 +55,7 @@ variable "candidate_edge_enabled" {
 }
 
 variable "candidate_api_tag" {
-  description = "Deterministic Cloud Run candidate tag used by the optional staging candidate NEG."
+  description = "Deterministic Cloud Run base or recovery candidate tag used by the optional staging candidate NEG."
   type        = string
   default     = null
   nullable    = true
@@ -63,8 +63,8 @@ variable "candidate_api_tag" {
   validation {
     condition = (
       var.candidate_api_tag == null ||
-      can(regex("^candidate-[a-f0-9]{12}$", var.candidate_api_tag))
+      can(regex("^candidate-[a-f0-9]{12}(-r[1-9][0-9]{0,14})?$", var.candidate_api_tag))
     )
-    error_message = "candidate_api_tag must be null or candidate- followed by exactly 12 lowercase hexadecimal characters."
+    error_message = "candidate_api_tag must be null, candidate- followed by exactly 12 lowercase hexadecimal characters, or that base followed by a canonical -rN recovery suffix of at most 15 digits."
   }
 }

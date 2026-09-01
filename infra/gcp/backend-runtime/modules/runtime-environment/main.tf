@@ -146,8 +146,9 @@ locals {
   maintenance_image_matches_environment  = can(regex(local.selected.image_pattern, var.maintenance_scheduler_image_reference))
   api_candidate_mode                     = var.api_traffic_mode != "normal"
   api_expected_candidate_tag             = "candidate-${substr(sha256(var.api_image_reference), 0, 12)}"
+  api_candidate_tag_matches_image        = try(var.api_candidate_tag == local.api_expected_candidate_tag || can(regex("^${local.api_expected_candidate_tag}-r[1-9][0-9]{0,14}$", var.api_candidate_tag)), false)
   api_candidate_revision                 = local.api_candidate_mode && var.api_candidate_tag != null ? "${local.selected.api_service_name}-${var.api_candidate_tag}" : null
-  api_candidate_inputs_valid             = try(var.api_stable_revision != null && var.api_candidate_tag == local.api_expected_candidate_tag && startswith(var.api_stable_revision, "${local.selected.api_service_name}-") && var.api_stable_revision != local.api_candidate_revision, false)
+  api_candidate_inputs_valid             = try(var.api_stable_revision != null && local.api_candidate_tag_matches_image && startswith(var.api_stable_revision, "${local.selected.api_service_name}-") && var.api_stable_revision != local.api_candidate_revision, false)
   api_traffic_contract_valid             = var.api_traffic_mode == "normal" ? var.api_stable_revision == null && var.api_candidate_tag == null : local.api_candidate_inputs_valid
   queue_redis_url                        = format("rediss://%s:%d", var.queue_redis_host, var.queue_redis_port)
   realtime_redis_url                     = format("rediss://%s:%d", var.realtime_redis_host, var.realtime_redis_port)
@@ -314,6 +315,11 @@ resource "google_cloud_run_v2_service" "api" {
       }
 
       startup_probe {
+        failure_threshold     = 12
+        initial_delay_seconds = 10
+        timeout_seconds       = 2
+        period_seconds        = 5
+
         http_get {
           path = "/internal/probes/api/startup"
           port = 9090
