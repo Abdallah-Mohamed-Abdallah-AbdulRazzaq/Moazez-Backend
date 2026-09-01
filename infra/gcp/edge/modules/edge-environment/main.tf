@@ -5,7 +5,7 @@ locals {
   candidate_edge_contract_valid = var.candidate_edge_enabled ? (
     var.environment == "staging" &&
     var.candidate_api_tag != null &&
-    can(regex("^candidate-[a-f0-9]{12}$", var.candidate_api_tag))
+    can(regex("^candidate-[a-f0-9]{12}(-r[1-9][0-9]{0,14})?$", var.candidate_api_tag))
   ) : var.candidate_api_tag == null
 
   hostnames = {

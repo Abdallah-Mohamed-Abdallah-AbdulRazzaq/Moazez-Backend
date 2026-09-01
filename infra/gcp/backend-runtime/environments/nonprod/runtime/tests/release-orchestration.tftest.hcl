@@ -90,6 +90,86 @@ run "candidate_promoted_flips_only_revision_traffic_semantics" {
   }
 }
 
+run "recovery_attempt_one_pins_exact_revision_at_zero_traffic" {
+  command = plan
+
+  variables {
+    api_traffic_mode    = "candidate_no_traffic"
+    api_stable_revision = "moazez-staging-api-stable01"
+    api_candidate_tag   = "candidate-be1b01ce47ad-r1"
+  }
+
+  assert {
+    condition     = module.runtime_environment.api_candidate_revision == "moazez-staging-api-candidate-be1b01ce47ad-r1" && module.runtime_environment.api_candidate_tag == var.api_candidate_tag
+    error_message = "Recovery attempt one must preserve the exact image-derived tag and revision."
+  }
+
+  assert {
+    condition     = module.runtime_environment.api_traffic_mode == "candidate_no_traffic" && module.runtime_environment.api_image_reference == var.api_image_reference
+    error_message = "Recovery attempt one must retain the approved API image and zero-traffic mode."
+  }
+}
+
+run "recovery_attempt_two_promotes_the_same_exact_revision" {
+  command = plan
+
+  variables {
+    api_traffic_mode    = "candidate_promoted"
+    api_stable_revision = "moazez-staging-api-stable01"
+    api_candidate_tag   = "candidate-be1b01ce47ad-r2"
+  }
+
+  assert {
+    condition     = module.runtime_environment.api_candidate_revision == "moazez-staging-api-candidate-be1b01ce47ad-r2" && module.runtime_environment.api_candidate_tag == var.api_candidate_tag
+    error_message = "Recovery attempt two promotion must retain the exact recovered tag and revision."
+  }
+
+  assert {
+    condition     = module.runtime_environment.api_traffic_mode == "candidate_promoted" && module.runtime_environment.api_image_reference == var.api_image_reference
+    error_message = "Recovery promotion must retain the approved API image."
+  }
+}
+
+run "recovery_tag_rejects_zero_attempt" {
+  command = plan
+
+  variables {
+    api_candidate_tag = "candidate-be1b01ce47ad-r0"
+  }
+
+  expect_failures = [var.api_candidate_tag]
+}
+
+run "recovery_tag_rejects_leading_zero_attempt" {
+  command = plan
+
+  variables {
+    api_candidate_tag = "candidate-be1b01ce47ad-r01"
+  }
+
+  expect_failures = [var.api_candidate_tag]
+}
+
+run "recovery_tag_rejects_non_numeric_suffix" {
+  command = plan
+
+  variables {
+    api_candidate_tag = "candidate-be1b01ce47ad-r1x"
+  }
+
+  expect_failures = [var.api_candidate_tag]
+}
+
+run "recovery_tag_rejects_overlong_attempt" {
+  command = plan
+
+  variables {
+    api_candidate_tag = "candidate-be1b01ce47ad-r1000000000000000"
+  }
+
+  expect_failures = [var.api_candidate_tag]
+}
+
 run "invalid_traffic_mode_is_rejected" {
   command = plan
 

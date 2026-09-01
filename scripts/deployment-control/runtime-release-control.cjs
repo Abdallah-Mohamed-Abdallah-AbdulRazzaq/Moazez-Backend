@@ -15,6 +15,8 @@ const CONTRACT_PATH = path.join(
   'release-sequence.contract.json',
 );
 const FIRST_REMAINING_GATE_ID = 'core-worker-promotion';
+const RECOVERY_RESUME_GATE_ID = 'api-no-traffic-promotion';
+const MAX_RECOVERY_ATTEMPT = 999999999999999;
 const BLOCKED_SAVED_PLAN_SHA256 =
   'ccc0473c853e0ea2a47e8cb6700acf3a80a454907130ce9992049e7d7ded43e7';
 const SMOKE_PUBLIC_PATH = '/.well-known/moazez/candidate-readiness';
@@ -55,6 +57,22 @@ const SUPPORTED_GATE_BUILDERS = Object.freeze({
   'protected-readiness-and-smoke': true,
   'traffic-promotion': true,
 });
+
+const RECOVERY_PREDECESSOR_STAGE_IDS = Object.freeze([
+  'artifact-and-checksum-preflight',
+  'backup-and-data-authority-checkpoint',
+  'migration-job',
+  'migration-status-and-drift-verification',
+  'core-worker-promotion',
+  'media-worker-promotion',
+]);
+
+const RECOVERY_GATE_IDS = Object.freeze([
+  RECOVERY_RESUME_GATE_ID,
+  'maintenance-scheduler-promotion',
+  'protected-readiness-and-smoke',
+  'traffic-promotion',
+]);
 
 class DeploymentControlError extends Error {
   constructor(code, message) {
@@ -280,8 +298,26 @@ function loadReleaseContract() {
   });
 }
 
-function expectedCandidateTag(imageReference) {
-  return `candidate-${sha256(imageReference).slice(0, 12)}`;
+function requireRecoveryAttempt(value, label = 'recoveryAttempt') {
+  if (
+    !Number.isSafeInteger(value) ||
+    value < 1 ||
+    value > MAX_RECOVERY_ATTEMPT
+  ) {
+    fail(
+      'RECOVERY_ATTEMPT_INVALID',
+      `${label} must be an integer from 1 through ${MAX_RECOVERY_ATTEMPT}.`,
+    );
+  }
+  return value;
+}
+
+function expectedCandidateTag(imageReference, recoveryAttempt = null) {
+  const baseTag = `candidate-${sha256(imageReference).slice(0, 12)}`;
+  if (recoveryAttempt === null || recoveryAttempt === undefined) {
+    return baseTag;
+  }
+  return `${baseTag}-r${requireRecoveryAttempt(recoveryAttempt)}`;
 }
 
 function stagingImagePattern() {
@@ -291,6 +327,416 @@ function stagingImagePattern() {
 function validateImageReference(value, label) {
   requireString(value, label, stagingImagePattern());
   return value;
+}
+
+function recoveryContractWindow(contract) {
+  const resumeIndex = contract.contract.stages.findIndex(
+    (stage) => stage.id === RECOVERY_RESUME_GATE_ID,
+  );
+  const predecessorStages = contract.contract.stages.slice(0, resumeIndex);
+  const recoveryStages = contract.contract.stages.slice(resumeIndex);
+  if (
+    resumeIndex < 0 ||
+    !isDeepStrictEqual(
+      predecessorStages.map((stage) => stage.id),
+      RECOVERY_PREDECESSOR_STAGE_IDS,
+    ) ||
+    !isDeepStrictEqual(
+      recoveryStages.map((stage) => stage.id),
+      RECOVERY_GATE_IDS,
+    )
+  ) {
+    fail(
+      'CONTRACT_UNSUPPORTED',
+      'the authoritative contract does not contain the approved API-first recovery window.',
+    );
+  }
+  return { predecessorStages, recoveryStages };
+}
+
+function validateRecoveryPredecessorEvidence(inputStages, predecessorStages) {
+  if (
+    !Array.isArray(inputStages) ||
+    inputStages.length !== predecessorStages.length
+  ) {
+    fail(
+      'PREDECESSOR_EVIDENCE_REQUIRED',
+      'recovery predecessor evidence must cover the first six stages.',
+    );
+  }
+  return predecessorStages.map((stage, index) => {
+    const supplied = requireExactKeys(
+      inputStages[index],
+      ['id', 'status', 'evidenceRef'],
+      `completedPredecessorStages[${index}]`,
+    );
+    if (supplied.id !== stage.id || supplied.status !== 'passed') {
+      fail(
+        'PREDECESSOR_EVIDENCE_REQUIRED',
+        `predecessor stage ${stage.id} must be passed in contract order.`,
+      );
+    }
+    return {
+      id: stage.id,
+      status: 'passed',
+      evidenceRef: requireString(
+        supplied.evidenceRef,
+        `completedPredecessorStages[${index}].evidenceRef`,
+      ),
+    };
+  });
+}
+
+function validateRecoveryMetadata(value, label = 'recovery') {
+  const recovery = requireExactKeys(
+    value,
+    [
+      'recoveryAttempt',
+      'failedReleaseExecutionId',
+      'failedManifestRef',
+      'failedGateId',
+      'failedOperationId',
+      'failedPlanSha256',
+      'failureEvidenceRef',
+    ],
+    label,
+  );
+  const normalized = {
+    recoveryAttempt: requireRecoveryAttempt(
+      recovery.recoveryAttempt,
+      `${label}.recoveryAttempt`,
+    ),
+    failedReleaseExecutionId: requireString(
+      recovery.failedReleaseExecutionId,
+      `${label}.failedReleaseExecutionId`,
+      /^[a-z0-9][a-z0-9._-]{2,80}$/u,
+    ),
+    failedManifestRef: requireString(
+      recovery.failedManifestRef,
+      `${label}.failedManifestRef`,
+    ),
+    failedGateId: requireString(recovery.failedGateId, `${label}.failedGateId`),
+    failedOperationId: requireString(
+      recovery.failedOperationId,
+      `${label}.failedOperationId`,
+    ),
+    failedPlanSha256: requireString(
+      recovery.failedPlanSha256,
+      `${label}.failedPlanSha256`,
+      /^[a-f0-9]{64}$/u,
+    ),
+    failureEvidenceRef: requireString(
+      recovery.failureEvidenceRef,
+      `${label}.failureEvidenceRef`,
+    ),
+  };
+  if (
+    normalized.failedGateId !== RECOVERY_RESUME_GATE_ID ||
+    normalized.failedOperationId !== 'api-candidate-runtime'
+  ) {
+    fail(
+      'RECOVERY_BOUNDARY_UNSUPPORTED',
+      'recovery is supported only for the failed API runtime operation.',
+    );
+  }
+  if (normalized.failedPlanSha256 === BLOCKED_SAVED_PLAN_SHA256) {
+    fail(
+      'FAILED_PLAN_HASH_INVALID',
+      'the recovery failed-plan hash must differ from the historical blocker.',
+    );
+  }
+  return normalized;
+}
+
+function candidateFamilyOrdinal(tag, baseTag, label) {
+  if (tag === baseTag) return 0;
+  const match = new RegExp(`^${baseTag}-r([1-9][0-9]{0,14})$`, 'u').exec(tag);
+  if (!match) {
+    fail(
+      'RECOVERY_CANDIDATE_FAMILY_MISMATCH',
+      `${label} is not a canonical member of the approved candidate family.`,
+    );
+  }
+  const ordinal = Number(match[1]);
+  if (!Number.isSafeInteger(ordinal) || ordinal > MAX_RECOVERY_ATTEMPT) {
+    fail(
+      'RECOVERY_CANDIDATE_FAMILY_MISMATCH',
+      `${label} has an unsupported recovery ordinal.`,
+    );
+  }
+  return ordinal;
+}
+
+function validateRecoveryLiveDiscovery(
+  value,
+  candidateImageReference,
+  recoveryAttempt,
+  label = 'liveDiscovery',
+) {
+  const live = requireExactKeys(
+    value,
+    [
+      'evidenceRef',
+      'discoveredAt',
+      'apiTrafficMode',
+      'stableApiRevision',
+      'stableApiTrafficPercent',
+      'failedCandidate',
+      'runtimeImages',
+      'runtimeState',
+      'edgeState',
+      'candidateEdgeResources',
+      'candidateRevisionInventory',
+    ],
+    label,
+  );
+  const evidenceRef = requireString(live.evidenceRef, `${label}.evidenceRef`);
+  const discoveredAt = requireIsoTimestamp(
+    live.discoveredAt,
+    `${label}.discoveredAt`,
+  );
+  if (
+    live.apiTrafficMode !== 'failed_zero_traffic_candidate' ||
+    live.stableApiTrafficPercent !== 100
+  ) {
+    fail(
+      'RECOVERY_LIVE_BASELINE_UNSAFE',
+      'recovery requires stable API traffic at 100% and an explicit failed zero-traffic candidate baseline.',
+    );
+  }
+  const stableApiRevision = requireString(
+    live.stableApiRevision,
+    `${label}.stableApiRevision`,
+    /^moazez-staging-api-[a-z0-9][a-z0-9-]{0,42}[a-z0-9]$/u,
+  );
+  const runtimeImages = requireExactKeys(
+    live.runtimeImages,
+    ['api', 'coreWorker', 'mediaWorker', 'maintenanceScheduler'],
+    `${label}.runtimeImages`,
+  );
+  const currentImages = {
+    api: validateImageReference(
+      runtimeImages.api,
+      `${label}.runtimeImages.api`,
+    ),
+    coreWorker: validateImageReference(
+      runtimeImages.coreWorker,
+      `${label}.runtimeImages.coreWorker`,
+    ),
+    mediaWorker: validateImageReference(
+      runtimeImages.mediaWorker,
+      `${label}.runtimeImages.mediaWorker`,
+    ),
+    maintenanceScheduler: validateImageReference(
+      runtimeImages.maintenanceScheduler,
+      `${label}.runtimeImages.maintenanceScheduler`,
+    ),
+  };
+  if (
+    currentImages.api !== candidateImageReference ||
+    currentImages.coreWorker !== candidateImageReference ||
+    currentImages.mediaWorker !== candidateImageReference
+  ) {
+    fail(
+      'RECOVERY_LIVE_BASELINE_UNSAFE',
+      'the live API, Core Worker, and Media Worker images must equal the approved candidate image.',
+    );
+  }
+
+  const baseTag = expectedCandidateTag(candidateImageReference);
+  const failed = requireExactKeys(
+    live.failedCandidate,
+    ['imageReference', 'tag', 'revision', 'trafficPercent'],
+    `${label}.failedCandidate`,
+  );
+  const failedTag = requireString(failed.tag, `${label}.failedCandidate.tag`);
+  candidateFamilyOrdinal(failedTag, baseTag, `${label}.failedCandidate.tag`);
+  const failedRevision = `moazez-staging-api-${failedTag}`;
+  if (
+    failed.imageReference !== candidateImageReference ||
+    failed.revision !== failedRevision ||
+    failed.trafficPercent !== 0 ||
+    stableApiRevision === failedRevision
+  ) {
+    fail(
+      'RECOVERY_LIVE_BASELINE_UNSAFE',
+      'failed candidate evidence does not preserve the approved zero-traffic revision identity.',
+    );
+  }
+  const failedCandidate = {
+    imageReference: candidateImageReference,
+    tag: failedTag,
+    revision: failedRevision,
+    trafficPercent: 0,
+  };
+
+  const candidateEdgeResources = requireExactKeys(
+    live.candidateEdgeResources,
+    [
+      'candidateNegPresent',
+      'candidateBackendPresent',
+      'candidateSmokeRoutePresent',
+    ],
+    `${label}.candidateEdgeResources`,
+  );
+  if (
+    candidateEdgeResources.candidateNegPresent !== false ||
+    candidateEdgeResources.candidateBackendPresent !== false ||
+    candidateEdgeResources.candidateSmokeRoutePresent !== false
+  ) {
+    fail(
+      'RECOVERY_LIVE_BASELINE_UNSAFE',
+      'candidate edge resources must be absent before API recovery.',
+    );
+  }
+
+  const inventory = requireExactKeys(
+    live.candidateRevisionInventory,
+    ['evidenceRef', 'service', 'baseTag', 'completeness', 'revisions'],
+    `${label}.candidateRevisionInventory`,
+  );
+  const inventoryEvidenceRef = requireString(
+    inventory.evidenceRef,
+    `${label}.candidateRevisionInventory.evidenceRef`,
+  );
+  if (
+    inventory.service !== 'moazez-staging-api' ||
+    inventory.baseTag !== baseTag ||
+    inventory.completeness !== 'complete-base-family' ||
+    !Array.isArray(inventory.revisions)
+  ) {
+    fail(
+      'RECOVERY_REVISION_INVENTORY_INVALID',
+      'candidate revision inventory must be complete for the exact service and image-derived base family.',
+    );
+  }
+  const seenRevisions = new Set();
+  let maxOrdinal = -1;
+  const revisions = inventory.revisions.map((entry, index) => {
+    const entryLabel = `${label}.candidateRevisionInventory.revisions[${index}]`;
+    const keys = Object.keys(requireObject(entry, entryLabel)).sort();
+    if (
+      !isDeepStrictEqual(keys, ['imageReference', 'revision']) &&
+      !isDeepStrictEqual(keys, ['imageReference', 'revision', 'tag'])
+    ) {
+      fail(
+        'MANIFEST_SCHEMA_MISMATCH',
+        `${entryLabel} contains unexpected fields.`,
+      );
+    }
+    const revision = requireString(entry.revision, `${entryLabel}.revision`);
+    const prefix = `${inventory.service}-`;
+    if (!revision.startsWith(prefix)) {
+      fail(
+        'RECOVERY_REVISION_INVENTORY_INVALID',
+        `${entryLabel}.revision is outside the declared service.`,
+      );
+    }
+    const tag = revision.slice(prefix.length);
+    const ordinal = candidateFamilyOrdinal(
+      tag,
+      baseTag,
+      `${entryLabel}.revision`,
+    );
+    if (
+      entry.imageReference !== candidateImageReference ||
+      seenRevisions.has(revision)
+    ) {
+      fail(
+        'RECOVERY_REVISION_INVENTORY_INVALID',
+        'candidate revision inventory contains a duplicate or different-image family entry.',
+      );
+    }
+    if (Object.hasOwn(entry, 'tag') && entry.tag !== tag) {
+      fail(
+        'RECOVERY_REVISION_INVENTORY_INVALID',
+        `${entryLabel}.tag does not match its revision identity.`,
+      );
+    }
+    seenRevisions.add(revision);
+    maxOrdinal = Math.max(maxOrdinal, ordinal);
+    return Object.hasOwn(entry, 'tag')
+      ? { revision, imageReference: candidateImageReference, tag }
+      : { revision, imageReference: candidateImageReference };
+  });
+  if (!seenRevisions.has(failedRevision)) {
+    fail(
+      'RECOVERY_REVISION_INVENTORY_INVALID',
+      'the failed candidate revision must be present in the complete inventory.',
+    );
+  }
+  if (maxOrdinal >= MAX_RECOVERY_ATTEMPT) {
+    fail(
+      'RECOVERY_ATTEMPT_EXHAUSTED',
+      'the candidate family has exhausted the supported recovery-attempt range.',
+    );
+  }
+  const requiredAttempt = maxOrdinal + 1;
+  const candidateTag = expectedCandidateTag(
+    candidateImageReference,
+    recoveryAttempt,
+  );
+  const candidateRevision = `moazez-staging-api-${candidateTag}`;
+  if (
+    recoveryAttempt !== requiredAttempt ||
+    seenRevisions.has(candidateRevision) ||
+    stableApiRevision === candidateRevision
+  ) {
+    fail(
+      'RECOVERY_ATTEMPT_MISMATCH',
+      'recoveryAttempt must be exactly one greater than the maximum existing family ordinal and must not reuse a revision.',
+    );
+  }
+
+  const runtimeState = requireState(
+    requireExactKeys(
+      live.runtimeState,
+      ['lineage', 'serial'],
+      `${label}.runtimeState`,
+    ),
+    `${label}.runtimeState`,
+  );
+  const edgeState = requireState(
+    requireExactKeys(
+      live.edgeState,
+      ['lineage', 'serial'],
+      `${label}.edgeState`,
+    ),
+    `${label}.edgeState`,
+  );
+  return {
+    liveDiscovery: {
+      evidenceRef,
+      discoveredAt,
+      apiTrafficMode: 'failed_zero_traffic_candidate',
+      stableApiRevision,
+      stableApiTrafficPercent: 100,
+      failedCandidate,
+      runtimeImages: currentImages,
+      runtimeState,
+      edgeState,
+      candidateEdgeResources: {
+        candidateNegPresent: false,
+        candidateBackendPresent: false,
+        candidateSmokeRoutePresent: false,
+      },
+      candidateRevisionInventory: {
+        evidenceRef: inventoryEvidenceRef,
+        service: 'moazez-staging-api',
+        baseTag,
+        completeness: 'complete-base-family',
+        revisions,
+      },
+    },
+    currentImages,
+    stableApiRevision,
+    runtimeState,
+    edgeState,
+    baseTag,
+    candidateTag,
+    candidateRevision,
+    maxOrdinal,
+  };
 }
 
 function validatePredecessorEvidence(inputStages, predecessorStages) {
@@ -502,6 +948,7 @@ function buildVerificationOperation(context, definition) {
 function buildGateOperations(context, gate, gateIndex) {
   const current = context.currentImages;
   const candidate = context.candidateImageReference;
+  const recovery = context.executionMode === 'recovery';
   const normalTraffic = ['normal', null, null];
   const candidateTraffic = [
     'candidate_no_traffic',
@@ -587,16 +1034,28 @@ function buildGateOperations(context, gate, gateIndex) {
             ...candidateTraffic,
           ),
           expectedResourceAddressAllowlist: [RUNTIME_RESOURCE_ADDRESSES.api],
-          expectedChangeType:
-            'update-in-place:api-image-plus-explicit-zero-traffic-candidate',
+          expectedChangeType: recovery
+            ? 'update-in-place:api-revision-traffic-and-startup-probe-only'
+            : 'update-in-place:api-image-plus-explicit-zero-traffic-candidate',
           allowedAttributeChanges: {
-            [RUNTIME_RESOURCE_ADDRESSES.api]: [
-              'template[0].containers[0].image',
-              'template[0].revision',
-              'traffic',
-            ],
+            [RUNTIME_RESOURCE_ADDRESSES.api]: recovery
+              ? [
+                  'template[0].revision',
+                  'traffic',
+                  'template[0].containers[0].startup_probe[0].initial_delay_seconds',
+                  'template[0].containers[0].startup_probe[0].period_seconds',
+                  'template[0].containers[0].startup_probe[0].timeout_seconds',
+                  'template[0].containers[0].startup_probe[0].failure_threshold',
+                ]
+              : [
+                  'template[0].containers[0].image',
+                  'template[0].revision',
+                  'traffic',
+                ],
           },
-          statePrecondition: statePrecondition(null, 'media-worker-runtime'),
+          statePrecondition: recovery
+            ? statePrecondition(context.runtimeState)
+            : statePrecondition(null, 'media-worker-runtime'),
           verificationExpectation: {
             image: candidate,
             revision: context.candidateRevision,
@@ -709,7 +1168,7 @@ function buildGateOperations(context, gate, gateIndex) {
   }
 }
 
-function buildManifest(input) {
+function buildManifestV1(input) {
   requireObject(input, 'context');
   const contract = loadReleaseContract();
   const sourceSha = requireString(
@@ -884,6 +1343,177 @@ function buildManifest(input) {
   };
   validateManifest(manifest);
   return manifest;
+}
+
+function buildRecoveryManifest(input) {
+  requireExactKeys(
+    input,
+    [
+      'executionMode',
+      'executionId',
+      'repository',
+      'sourceSha',
+      'environment',
+      'candidateImageReference',
+      'recovery',
+      'resumeGateId',
+      'completedPredecessorStages',
+      'liveDiscovery',
+      'externalTfDataRoot',
+      'externalSavedPlanRoot',
+    ],
+    'context',
+  );
+  if (input.executionMode !== 'recovery') {
+    fail(
+      'MANIFEST_UNSUPPORTED',
+      'recovery manifest construction requires executionMode=recovery.',
+    );
+  }
+  if (input.resumeGateId !== RECOVERY_RESUME_GATE_ID) {
+    fail(
+      'RECOVERY_BOUNDARY_UNSUPPORTED',
+      `resumeGateId must equal ${RECOVERY_RESUME_GATE_ID}.`,
+    );
+  }
+  const contract = loadReleaseContract();
+  const { predecessorStages, recoveryStages } =
+    recoveryContractWindow(contract);
+  const sourceSha = requireString(
+    input.sourceSha,
+    'sourceSha',
+    /^[a-f0-9]{40}$/u,
+  );
+  if (sourceSha !== currentSourceSha()) {
+    fail(
+      'SOURCE_SHA_MISMATCH',
+      'sourceSha must equal the current repository HEAD.',
+    );
+  }
+  if (input.repository !== REPOSITORY) {
+    fail('REPOSITORY_MISMATCH', `repository must equal ${REPOSITORY}.`);
+  }
+  if (input.environment !== 'staging') {
+    fail('ENVIRONMENT_UNSUPPORTED', 'the recovery adapter is staging-only.');
+  }
+  const executionId = requireString(
+    input.executionId,
+    'executionId',
+    /^[a-z0-9][a-z0-9._-]{2,80}$/u,
+  );
+  const recovery = validateRecoveryMetadata(input.recovery);
+  if (executionId === recovery.failedReleaseExecutionId) {
+    fail(
+      'RECOVERY_EXECUTION_ID_REUSE',
+      'the recovery executionId must differ from the failed release execution ID.',
+    );
+  }
+  const candidateImageReference = validateImageReference(
+    input.candidateImageReference,
+    'candidateImageReference',
+  );
+  const live = validateRecoveryLiveDiscovery(
+    input.liveDiscovery,
+    candidateImageReference,
+    recovery.recoveryAttempt,
+  );
+  const tfDataRoot = requireExternalAbsolutePath(
+    input.externalTfDataRoot,
+    'externalTfDataRoot',
+  );
+  const savedPlanRoot = requireExternalAbsolutePath(
+    input.externalSavedPlanRoot,
+    'externalSavedPlanRoot',
+  );
+  const predecessorEvidence = validateRecoveryPredecessorEvidence(
+    input.completedPredecessorStages,
+    predecessorStages,
+  );
+  const context = {
+    executionMode: 'recovery',
+    executionId,
+    sourceSha,
+    environment: 'staging',
+    candidateImageReference,
+    candidateTag: live.candidateTag,
+    candidateRevision: live.candidateRevision,
+    stableApiRevision: live.stableApiRevision,
+    currentImages: live.currentImages,
+    runtimeState: live.runtimeState,
+    edgeState: live.edgeState,
+    tfDataRoot,
+    savedPlanRoot,
+  };
+  const gates = recoveryStages.map((gate, gateIndex) => ({
+    id: gate.id,
+    sequence: gateIndex + 1,
+    blocking: true,
+    status: 'pending',
+    operations: buildGateOperations(context, gate, gateIndex),
+  }));
+  const manifest = {
+    manifestVersion: 2,
+    executionMode: 'recovery',
+    resumeGateId: RECOVERY_RESUME_GATE_ID,
+    releaseExecutionId: executionId,
+    repository: REPOSITORY,
+    sourceSha,
+    environment: 'staging',
+    authoritativeContract: {
+      path: 'config/deployment/release-sequence.contract.json',
+      sha256: contract.contractSha256,
+      contractVersion: contract.contract.contractVersion,
+      failurePolicy: contract.contract.failurePolicy,
+      automaticRetryAllowed: contract.contract.automaticRetryAllowed,
+    },
+    recovery,
+    predecessorEvidence,
+    liveDiscovery: live.liveDiscovery,
+    candidate: {
+      imageReference: candidateImageReference,
+      tag: live.candidateTag,
+      revision: live.candidateRevision,
+    },
+    externalArtifactRoots: {
+      tfDataRoot,
+      savedPlanRoot,
+    },
+    releaseStatus: 'pending',
+    failedGateId: null,
+    gates,
+    candidateEdgeCleanupTemplate: {
+      authoritativeReleaseGate: false,
+      requiresSeparatePostReleaseApproval: true,
+      terraformRoot: EDGE_ROOT,
+      requiredVariables: {
+        candidate_edge_enabled: false,
+        candidate_api_tag: null,
+      },
+      expectedResourceAddressAllowlist: EDGE_CANDIDATE_RESOURCE_ADDRESSES,
+      expectedChangeType:
+        'destroy-candidate-neg-and-backend-plus-remove-narrow-url-map-route',
+    },
+    blockedSavedPlanHashes: [
+      BLOCKED_SAVED_PLAN_SHA256,
+      recovery.failedPlanSha256,
+    ],
+  };
+  validateManifest(manifest);
+  return manifest;
+}
+
+function buildManifest(input) {
+  const context = requireObject(input, 'context');
+  if (!Object.hasOwn(context, 'executionMode')) {
+    return buildManifestV1(context);
+  }
+  if (context.executionMode === 'recovery') {
+    return buildRecoveryManifest(context);
+  }
+  fail(
+    'MANIFEST_UNSUPPORTED',
+    'executionMode is unsupported; omit it for v1 or use recovery.',
+  );
 }
 
 function flattenOperations(manifest) {
@@ -1424,7 +2054,7 @@ function validateReleaseLifecycle(manifest) {
   }
 }
 
-function validateManifest(manifest) {
+function validateManifestV1(manifest) {
   requireExactKeys(
     manifest,
     [
@@ -1703,7 +2333,10 @@ function validateManifest(manifest) {
       );
       if (operation.kind === 'terraform' && operation.planEvidence?.sha256) {
         if (
-          operation.planEvidence.sha256 === BLOCKED_SAVED_PLAN_SHA256 ||
+          (Array.isArray(manifest.blockedSavedPlanHashes) &&
+            manifest.blockedSavedPlanHashes.includes(
+              operation.planEvidence.sha256,
+            )) ||
           hashes.has(operation.planEvidence.sha256)
         ) {
           fail(
@@ -1751,6 +2384,303 @@ function validateManifest(manifest) {
   );
   validateReleaseLifecycle(manifest);
   return manifest;
+}
+
+function validateRecoveryManifestV2(manifest) {
+  requireExactKeys(
+    manifest,
+    [
+      'manifestVersion',
+      'executionMode',
+      'resumeGateId',
+      'releaseExecutionId',
+      'repository',
+      'sourceSha',
+      'environment',
+      'authoritativeContract',
+      'recovery',
+      'predecessorEvidence',
+      'liveDiscovery',
+      'candidate',
+      'externalArtifactRoots',
+      'releaseStatus',
+      'failedGateId',
+      'gates',
+      'candidateEdgeCleanupTemplate',
+      'blockedSavedPlanHashes',
+    ],
+    'manifest',
+  );
+  if (manifest.manifestVersion !== 2 || manifest.executionMode !== 'recovery') {
+    fail(
+      'MANIFEST_UNSUPPORTED',
+      'manifestVersion 2 requires executionMode=recovery.',
+    );
+  }
+  if (manifest.resumeGateId !== RECOVERY_RESUME_GATE_ID) {
+    fail(
+      'RECOVERY_BOUNDARY_UNSUPPORTED',
+      `manifest.resumeGateId must equal ${RECOVERY_RESUME_GATE_ID}.`,
+    );
+  }
+  const executionId = requireString(
+    manifest.releaseExecutionId,
+    'manifest.releaseExecutionId',
+    /^[a-z0-9][a-z0-9._-]{2,80}$/u,
+  );
+  if (manifest.repository !== REPOSITORY) {
+    fail('REPOSITORY_MISMATCH', 'manifest repository is not authoritative.');
+  }
+  const sourceSha = requireString(
+    manifest.sourceSha,
+    'manifest.sourceSha',
+    /^[a-f0-9]{40}$/u,
+  );
+  if (manifest.environment !== 'staging') {
+    fail('ENVIRONMENT_UNSUPPORTED', 'manifest environment must be staging.');
+  }
+
+  const contract = loadReleaseContract();
+  const { predecessorStages, recoveryStages } =
+    recoveryContractWindow(contract);
+  requireExactValue(
+    requireExactKeys(
+      manifest.authoritativeContract,
+      [
+        'path',
+        'sha256',
+        'contractVersion',
+        'failurePolicy',
+        'automaticRetryAllowed',
+      ],
+      'manifest.authoritativeContract',
+    ),
+    {
+      path: 'config/deployment/release-sequence.contract.json',
+      sha256: contract.contractSha256,
+      contractVersion: contract.contract.contractVersion,
+      failurePolicy: contract.contract.failurePolicy,
+      automaticRetryAllowed: contract.contract.automaticRetryAllowed,
+    },
+    'manifest.authoritativeContract',
+  );
+
+  const recovery = validateRecoveryMetadata(
+    manifest.recovery,
+    'manifest.recovery',
+  );
+  requireExactValue(manifest.recovery, recovery, 'manifest.recovery');
+  if (executionId === recovery.failedReleaseExecutionId) {
+    fail(
+      'RECOVERY_EXECUTION_ID_REUSE',
+      'the recovery execution ID must differ from the failed execution ID.',
+    );
+  }
+  const predecessorEvidence = validateRecoveryPredecessorEvidence(
+    manifest.predecessorEvidence,
+    predecessorStages,
+  );
+  requireExactValue(
+    manifest.predecessorEvidence,
+    predecessorEvidence,
+    'manifest.predecessorEvidence',
+  );
+
+  const candidate = requireExactKeys(
+    manifest.candidate,
+    ['imageReference', 'tag', 'revision'],
+    'manifest.candidate',
+  );
+  const candidateImageReference = validateImageReference(
+    candidate.imageReference,
+    'manifest.candidate.imageReference',
+  );
+  const expectedTag = expectedCandidateTag(
+    candidateImageReference,
+    recovery.recoveryAttempt,
+  );
+  const expectedRevision = `moazez-staging-api-${expectedTag}`;
+  requireExactValue(
+    candidate,
+    {
+      imageReference: candidateImageReference,
+      tag: expectedTag,
+      revision: expectedRevision,
+    },
+    'manifest.candidate',
+  );
+  const live = validateRecoveryLiveDiscovery(
+    manifest.liveDiscovery,
+    candidateImageReference,
+    recovery.recoveryAttempt,
+    'manifest.liveDiscovery',
+  );
+  requireExactValue(
+    manifest.liveDiscovery,
+    live.liveDiscovery,
+    'manifest.liveDiscovery',
+  );
+  if (
+    live.candidateTag !== expectedTag ||
+    live.candidateRevision !== expectedRevision
+  ) {
+    fail(
+      'CANDIDATE_IDENTITY_MISMATCH',
+      'manifest candidate identity differs from the live inventory-derived recovery attempt.',
+    );
+  }
+
+  const externalRoots = requireExactKeys(
+    manifest.externalArtifactRoots,
+    ['tfDataRoot', 'savedPlanRoot'],
+    'manifest.externalArtifactRoots',
+  );
+  const tfDataRoot = requireExternalAbsolutePath(
+    externalRoots.tfDataRoot,
+    'manifest.externalArtifactRoots.tfDataRoot',
+  );
+  const savedPlanRoot = requireExternalAbsolutePath(
+    externalRoots.savedPlanRoot,
+    'manifest.externalArtifactRoots.savedPlanRoot',
+  );
+  requireExactValue(
+    externalRoots,
+    { tfDataRoot, savedPlanRoot },
+    'manifest.externalArtifactRoots',
+  );
+  requireExactValue(
+    manifest.blockedSavedPlanHashes,
+    [BLOCKED_SAVED_PLAN_SHA256, recovery.failedPlanSha256],
+    'manifest.blockedSavedPlanHashes',
+  );
+
+  const expectedContext = {
+    executionMode: 'recovery',
+    executionId,
+    sourceSha,
+    environment: 'staging',
+    candidateImageReference,
+    candidateTag: expectedTag,
+    candidateRevision: expectedRevision,
+    stableApiRevision: live.stableApiRevision,
+    currentImages: live.currentImages,
+    runtimeState: live.runtimeState,
+    edgeState: live.edgeState,
+    tfDataRoot,
+    savedPlanRoot,
+  };
+  const expectedGates = recoveryStages.map((gate, gateIndex) => ({
+    id: gate.id,
+    sequence: gateIndex + 1,
+    blocking: true,
+    operations: buildGateOperations(expectedContext, gate, gateIndex),
+  }));
+  if (
+    !Array.isArray(manifest.gates) ||
+    manifest.gates.length !== expectedGates.length ||
+    manifest.gates.some((gate, index) => gate.id !== expectedGates[index].id)
+  ) {
+    fail(
+      'GATE_ORDER_MISMATCH',
+      'recovery manifest gate order differs from the approved API-first window.',
+    );
+  }
+
+  const hashes = new Set();
+  for (const [gateIndex, gate] of manifest.gates.entries()) {
+    const expectedGate = expectedGates[gateIndex];
+    requireExactKeys(
+      gate,
+      ['id', 'sequence', 'blocking', 'status', 'operations'],
+      `manifest.gates[${gateIndex}]`,
+    );
+    requireExactValue(
+      {
+        id: gate.id,
+        sequence: gate.sequence,
+        blocking: gate.blocking,
+      },
+      {
+        id: expectedGate.id,
+        sequence: expectedGate.sequence,
+        blocking: expectedGate.blocking,
+      },
+      `manifest.gates[${gateIndex}]`,
+    );
+    if (
+      !Array.isArray(gate.operations) ||
+      gate.operations.length !== expectedGate.operations.length
+    ) {
+      fail(
+        'MANIFEST_SPEC_MISMATCH',
+        `${gate.id} operation count differs from the recovery specification.`,
+      );
+    }
+    for (const [operationIndex, operation] of gate.operations.entries()) {
+      const expectedOperation = expectedGate.operations[operationIndex];
+      requireExactValue(
+        immutableOperationSpecification(operation),
+        immutableOperationSpecification(expectedOperation),
+        `${gate.id}.${expectedOperation.id}`,
+      );
+      if (operation.kind === 'terraform' && operation.planEvidence?.sha256) {
+        if (
+          manifest.blockedSavedPlanHashes.includes(
+            operation.planEvidence.sha256,
+          ) ||
+          hashes.has(operation.planEvidence.sha256)
+        ) {
+          fail(
+            'PLAN_REUSE_FORBIDDEN',
+            'saved plan hash is blocked or duplicated.',
+          );
+        }
+        hashes.add(operation.planEvidence.sha256);
+      }
+      const label = `${gate.id}.${expectedOperation.id}`;
+      if (operation.kind === 'terraform') {
+        validateTerraformLifecycle(operation, label);
+        validateStatePrecondition(
+          manifest,
+          operation,
+          expectedOperation,
+          label,
+        );
+      } else {
+        validateVerificationLifecycle(operation, label);
+      }
+    }
+  }
+
+  requireExactValue(
+    manifest.candidateEdgeCleanupTemplate,
+    {
+      authoritativeReleaseGate: false,
+      requiresSeparatePostReleaseApproval: true,
+      terraformRoot: EDGE_ROOT,
+      requiredVariables: {
+        candidate_edge_enabled: false,
+        candidate_api_tag: null,
+      },
+      expectedResourceAddressAllowlist: EDGE_CANDIDATE_RESOURCE_ADDRESSES,
+      expectedChangeType:
+        'destroy-candidate-neg-and-backend-plus-remove-narrow-url-map-route',
+    },
+    'manifest.candidateEdgeCleanupTemplate',
+  );
+  validateReleaseLifecycle(manifest);
+  return manifest;
+}
+
+function validateManifest(manifest) {
+  const candidate = requireObject(manifest, 'manifest');
+  if (candidate.manifestVersion === 1) {
+    return validateManifestV1(candidate);
+  }
+  if (candidate.manifestVersion === 2) {
+    return validateRecoveryManifestV2(candidate);
+  }
+  fail('MANIFEST_UNSUPPORTED', 'manifestVersion must be 1 or 2.');
 }
 
 function registerPlan(manifest, options) {
@@ -1818,7 +2748,7 @@ function registerPlan(manifest, options) {
   }
   const planSha = sha256(planBytes);
   if (
-    planSha === BLOCKED_SAVED_PLAN_SHA256 ||
+    manifest.blockedSavedPlanHashes.includes(planSha) ||
     flattenOperations(manifest).some(
       ({ operation: candidate }) =>
         candidate !== operation && candidate.planEvidence?.sha256 === planSha,
@@ -2090,7 +3020,10 @@ function recordVerification(manifest, options) {
   }
   if (manifest.gates.every((candidate) => candidate.status === 'passed')) {
     manifest.releaseStatus = 'complete';
-  } else if (manifest.releaseStatus === 'pending') {
+  } else if (
+    manifest.releaseStatus === 'pending' &&
+    manifest.gates.some((candidate) => candidate.status === 'passed')
+  ) {
     manifest.releaseStatus = 'in-progress';
   }
   return manifest;
@@ -2242,6 +3175,10 @@ module.exports = Object.freeze({
   BLOCKED_SAVED_PLAN_SHA256,
   DeploymentControlError,
   EDGE_CANDIDATE_RESOURCE_ADDRESSES,
+  MAX_RECOVERY_ATTEMPT,
+  RECOVERY_GATE_IDS,
+  RECOVERY_PREDECESSOR_STAGE_IDS,
+  RECOVERY_RESUME_GATE_ID,
   REPOSITORY,
   RUNTIME_RESOURCE_ADDRESSES,
   SMOKE_BACKEND_PATH,

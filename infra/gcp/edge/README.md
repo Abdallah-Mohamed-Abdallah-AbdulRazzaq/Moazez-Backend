@@ -16,15 +16,21 @@ certificate, proxy, forwarding rule, or parallel ingress architecture.
 
 The two candidate inputs are:
 
-| Input                    | Disabled contract | Enabled contract               |
-| ------------------------ | ----------------- | ------------------------------ |
-| `candidate_edge_enabled` | `false`           | `true`, Staging only           |
-| `candidate_api_tag`      | `null`            | `candidate-<12 lowercase hex>` |
+| Input                    | Disabled contract | Enabled contract                                                 |
+| ------------------------ | ----------------- | ---------------------------------------------------------------- |
+| `candidate_edge_enabled` | `false`           | `true`, Staging only                                             |
+| `candidate_api_tag`      | `null`            | `candidate-<12 lowercase hex>` or that base plus canonical `-rN` |
 
 Production passes `false` and `null` explicitly and exposes no override. The
 module also rejects an enabled candidate route unless `environment` is
 `staging`, rejects an enabled route without a valid tag, and rejects a stale
 tag while the capability is disabled.
+
+The recovery suffix range is `1` through `999999999999999`, with no leading
+zero. Edge validates canonical shape only because it does not own the image
+reference. Deployment control and the runtime module bind the exact tag to the
+approved immutable image. The Production edge caller remains disabled with a
+null tag.
 
 When enabled in the nonprod root, Terraform adds only:
 
@@ -58,6 +64,13 @@ an ordered suboperation. After candidate verification and normal traffic
 promotion, disabling the candidate inputs removes only the tagged NEG,
 candidate backend, and exact route. Cleanup is intentionally outside the six
 authoritative release gates and requires separate post-release approval.
+
+Normal manifest v1 reaches this gate after Core and Media promotion. Recovery
+manifest v2 treats those stages as passed evidence, binds API Runtime directly
+to rediscovered runtime state, then binds this API Edge operation directly to
+independently rediscovered edge state. The same candidate NEG, backend security
+posture, and single authenticated smoke route are used; no recovery-specific
+edge resource or security bypass is introduced.
 
 Native tests live under `environments/nonprod/tests`. Initialize and run them
 only with an external `TF_DATA_DIR` and backend-disabled initialization.

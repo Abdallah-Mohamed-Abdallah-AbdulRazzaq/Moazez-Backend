@@ -68,20 +68,27 @@ reusable source does not pin a release digest.
 
 The API additionally accepts this closed traffic contract:
 
-| `api_traffic_mode` | `api_stable_revision` | `api_candidate_tag` | Stable traffic | Candidate traffic |
-| --- | --- | --- | --- | --- | --- |
-| `normal` (default) | `null` | `null` | Existing provider behavior | No explicit candidate |
-| `candidate_no_traffic` | Required verified live revision | Required deterministic tag | 100% | 0% |
-| `candidate_promoted` | Same verified revision | Same deterministic tag | 0% | 100% |
+| `api_traffic_mode`     | `api_stable_revision`           | `api_candidate_tag`        | Stable traffic             | Candidate traffic     |
+| ---------------------- | ------------------------------- | -------------------------- | -------------------------- | --------------------- |
+| `normal` (default)     | `null`                          | `null`                     | Existing provider behavior | No explicit candidate |
+| `candidate_no_traffic` | Required verified live revision | Required deterministic tag | 100%                       | 0%                    |
+| `candidate_promoted`   | Same verified revision          | Same deterministic tag     | 0%                         | 100%                  |
 
-The candidate tag must equal
-`candidate-${substr(sha256(api_image_reference), 0, 12)}`. The candidate
-revision is the existing API service name plus that tag, for example
-`moazez-staging-api-candidate-<12 hex>`. Candidate modes fail closed when the
-stable revision or tag is missing, the tag does not match the image, the
-stable revision belongs to another service, or stable and candidate identities
-collide. Promotion retains the exact candidate image and revision so its
-expected Terraform diff is traffic-only.
+The normal candidate tag equals
+`candidate-${substr(sha256(api_image_reference), 0, 12)}`. Staging recovery may
+use only that same image-derived base followed by `-rN`, where `N` is canonical
+and ranges from `1` through `999999999999999`. The candidate revision is the
+existing API service name plus the exact tag, for example
+`moazez-staging-api-candidate-<12 hex>-r1`. Candidate modes fail closed when the
+stable revision or tag is missing, the tag belongs to another image, the
+recovery suffix is noncanonical, the stable revision belongs to another
+service, or stable and candidate identities collide. Promotion retains the
+exact candidate image and revision so its expected Terraform diff is
+traffic-only.
+
+The Production runtime root remains base-only. This Staging recovery feature
+does not widen Production's `api_candidate_tag` input contract, even though the
+shared module contains the image-bound implementation used by Staging.
 
 Queue and Realtime Redis remain separate DevOps runtime inputs. Each family is
 provided as host, integer TLS port, and sensitive CA PEM. Terraform constructs
@@ -112,6 +119,12 @@ Both environments use Direct VPC with `PRIVATE_RANGES_ONLY` egress. The API
 uses port 3000, management probes on port 9090, min instances 1, max instances
 4, and concurrency 40. Each worker pool uses `MANUAL` scaling with exactly one
 instance and keeps its role-specific command and probe topology.
+
+The API startup probe keeps
+`/internal/probes/api/startup` on management port `9090` and explicitly uses
+`initial_delay_seconds=10`, `period_seconds=5`, `timeout_seconds=2`, and
+`failure_threshold=12`. API liveness/readiness and every worker startup and
+liveness probe retain their existing path, port, and timing behavior.
 
 Storage roles remain asymmetric by design: API, Core Worker, and Media Worker
 receive their approved GCS bucket configuration; only API receives
@@ -145,6 +158,14 @@ release contract to independently reviewed operations in this order: Core
 Worker, Media Worker, API candidate at zero normal traffic, Maintenance
 Scheduler, protected candidate smoke, then API traffic promotion. The API
 candidate gate uses this runtime root before the separate staging edge root.
+
+Normal manifest v1 retains that full Core-first order. Recovery manifest v2 is
+an API-first execution window only after durable evidence proves the first six
+contract stages already passed. It creates no Core or Media operation: API
+Runtime and API Edge run first, followed by Maintenance, protected smoke, and
+traffic promotion. Recovery retains the same application image, binds the API
+plan directly to rediscovered runtime state, and excludes image changes from
+the API attribute allowlist.
 
 A later authorized workflow supplies the immutable images and runtime inputs,
 binds every external saved plan to the source SHA and live state

@@ -56,6 +56,88 @@ function makeContext(temporaryRoot) {
   };
 }
 
+function hashText(value) {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function makeRecoveryContext(
+  temporaryRoot,
+  { recoveryAttempt = 1, failedPlanSha256 = 'd'.repeat(64) } = {},
+) {
+  const baseTag = control.expectedCandidateTag(CANDIDATE_IMAGE);
+  const ordinals = Array.from(
+    { length: recoveryAttempt },
+    (_, ordinal) => ordinal,
+  );
+  const tagForOrdinal = (ordinal) =>
+    ordinal === 0
+      ? baseTag
+      : control.expectedCandidateTag(CANDIDATE_IMAGE, ordinal);
+  const failedTag = tagForOrdinal(ordinals.at(-1));
+  return {
+    executionMode: 'recovery',
+    executionId: `day2-staging-recovery-${recoveryAttempt}`,
+    repository: control.REPOSITORY,
+    sourceSha: control.currentSourceSha(),
+    environment: 'staging',
+    candidateImageReference: CANDIDATE_IMAGE,
+    recovery: {
+      recoveryAttempt,
+      failedReleaseExecutionId: 'day2-staging-failed-001',
+      failedManifestRef: 'evidence:failed-manifest',
+      failedGateId: control.RECOVERY_RESUME_GATE_ID,
+      failedOperationId: 'api-candidate-runtime',
+      failedPlanSha256,
+      failureEvidenceRef: 'evidence:failed-api-runtime',
+    },
+    resumeGateId: control.RECOVERY_RESUME_GATE_ID,
+    completedPredecessorStages: control.RECOVERY_PREDECESSOR_STAGE_IDS.map(
+      (id) => ({ id, status: 'passed', evidenceRef: `evidence:${id}` }),
+    ),
+    liveDiscovery: {
+      evidenceRef: 'evidence:recovery-live-discovery',
+      discoveredAt: RECORDED_AT,
+      apiTrafficMode: 'failed_zero_traffic_candidate',
+      stableApiRevision: 'moazez-staging-api-stable01',
+      stableApiTrafficPercent: 100,
+      failedCandidate: {
+        imageReference: CANDIDATE_IMAGE,
+        tag: failedTag,
+        revision: `moazez-staging-api-${failedTag}`,
+        trafficPercent: 0,
+      },
+      runtimeImages: {
+        api: CANDIDATE_IMAGE,
+        coreWorker: CANDIDATE_IMAGE,
+        mediaWorker: CANDIDATE_IMAGE,
+        maintenanceScheduler: stagingImage('5'),
+      },
+      runtimeState: { lineage: LIVE_RUNTIME_LINEAGE, serial: 31 },
+      edgeState: { lineage: LIVE_EDGE_LINEAGE, serial: 47 },
+      candidateEdgeResources: {
+        candidateNegPresent: false,
+        candidateBackendPresent: false,
+        candidateSmokeRoutePresent: false,
+      },
+      candidateRevisionInventory: {
+        evidenceRef: 'evidence:complete-revision-inventory',
+        service: 'moazez-staging-api',
+        baseTag,
+        completeness: 'complete-base-family',
+        revisions: ordinals.map((ordinal) => {
+          const tag = tagForOrdinal(ordinal);
+          return {
+            revision: `moazez-staging-api-${tag}`,
+            imageReference: CANDIDATE_IMAGE,
+          };
+        }),
+      },
+    },
+    externalTfDataRoot: path.join(temporaryRoot, 'tfdata'),
+    externalSavedPlanRoot: path.join(temporaryRoot, 'plans'),
+  };
+}
+
 function withTemporaryRoot(callback) {
   const temporaryRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), 'moazez-day2-release-control-'),
@@ -216,6 +298,622 @@ test('remaining gate order is read from the unchanged authoritative contract', (
   });
 });
 
+test('normal manifest v1 identity, predecessor window, gates, and blocker remain backward compatible', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const contract = control.loadReleaseContract();
+    const manifest = control.buildManifest(makeContext(temporaryRoot));
+    assert.equal(manifest.manifestVersion, 1);
+    assert.equal(Object.hasOwn(manifest, 'executionMode'), false);
+    assert.equal(
+      manifest.candidate.tag,
+      control.expectedCandidateTag(CANDIDATE_IMAGE),
+    );
+    assert.equal(
+      manifest.candidate.revision,
+      `moazez-staging-api-${control.expectedCandidateTag(CANDIDATE_IMAGE)}`,
+    );
+    assert.deepEqual(
+      manifest.predecessorEvidence.map((stage) => stage.id),
+      contract.predecessorStages.map((stage) => stage.id),
+    );
+    assert.deepEqual(
+      manifest.gates.map((gate) => gate.id),
+      contract.remainingStages.map((stage) => stage.id),
+    );
+    assert.deepEqual(manifest.blockedSavedPlanHashes, [
+      control.BLOCKED_SAVED_PLAN_SHA256,
+    ]);
+  });
+});
+
+test('recovery manifest v2 derives deterministic attempts and contains only the API-first window', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    for (const recoveryAttempt of [1, 2]) {
+      const context = makeRecoveryContext(temporaryRoot, {
+        recoveryAttempt,
+      });
+      const first = control.buildManifest(context);
+      const second = control.buildManifest(structuredClone(context));
+      const expectedTag = control.expectedCandidateTag(
+        CANDIDATE_IMAGE,
+        recoveryAttempt,
+      );
+      assert.equal(first.manifestVersion, 2);
+      assert.equal(first.executionMode, 'recovery');
+      assert.equal(first.resumeGateId, control.RECOVERY_RESUME_GATE_ID);
+      assert.equal(first.candidate.tag, expectedTag);
+      assert.equal(
+        first.candidate.revision,
+        `moazez-staging-api-${expectedTag}`,
+      );
+      assert.deepEqual(first.candidate, second.candidate);
+      assert.equal(first.predecessorEvidence.length, 6);
+      assert.deepEqual(
+        first.predecessorEvidence.map((stage) => stage.id),
+        control.RECOVERY_PREDECESSOR_STAGE_IDS,
+      );
+      assert.deepEqual(
+        first.gates.map((gate) => gate.id),
+        control.RECOVERY_GATE_IDS,
+      );
+      assert.equal(first.gates.length, 4);
+      const serializedOperations = first.gates.flatMap((gate) =>
+        gate.operations.map((candidate) => candidate.id),
+      );
+      assert.equal(serializedOperations.includes('core-worker-runtime'), false);
+      assert.equal(
+        serializedOperations.includes('media-worker-runtime'),
+        false,
+      );
+      assert.notEqual(
+        first.releaseExecutionId,
+        first.recovery.failedReleaseExecutionId,
+      );
+      assert.equal(
+        first.liveDiscovery.candidateRevisionInventory.revisions.every(
+          (entry) => !Object.hasOwn(entry, 'tag'),
+        ),
+        true,
+      );
+    }
+  });
+});
+
+test('recovery attempt accepts only safe integers in the canonical governed range', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    for (const invalidAttempt of [
+      0,
+      -1,
+      1.5,
+      '1',
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      control.MAX_RECOVERY_ATTEMPT + 1,
+      Number.MAX_SAFE_INTEGER + 1,
+    ]) {
+      const context = makeRecoveryContext(temporaryRoot);
+      context.recovery.recoveryAttempt = invalidAttempt;
+      assert.throws(() => control.buildManifest(context), {
+        code: 'RECOVERY_ATTEMPT_INVALID',
+      });
+    }
+    assert.equal(
+      control.expectedCandidateTag(
+        CANDIDATE_IMAGE,
+        control.MAX_RECOVERY_ATTEMPT,
+      ),
+      `${control.expectedCandidateTag(CANDIDATE_IMAGE)}-r999999999999999`,
+    );
+  });
+});
+
+test('recovery construction rejects implicit mode, operator candidate tags, reused execution IDs, and alternate resume gates', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const implicit = makeRecoveryContext(temporaryRoot);
+    delete implicit.executionMode;
+    assert.throws(() => control.buildManifest(implicit));
+
+    const suppliedTag = makeRecoveryContext(temporaryRoot);
+    suppliedTag.candidateTag = control.expectedCandidateTag(CANDIDATE_IMAGE, 1);
+    assert.throws(() => control.buildManifest(suppliedTag), {
+      code: 'MANIFEST_SCHEMA_MISMATCH',
+    });
+
+    const reusedExecution = makeRecoveryContext(temporaryRoot);
+    reusedExecution.executionId =
+      reusedExecution.recovery.failedReleaseExecutionId;
+    assert.throws(() => control.buildManifest(reusedExecution), {
+      code: 'RECOVERY_EXECUTION_ID_REUSE',
+    });
+
+    const alternateGate = makeRecoveryContext(temporaryRoot);
+    alternateGate.resumeGateId = 'maintenance-scheduler-promotion';
+    assert.throws(() => control.buildManifest(alternateGate), {
+      code: 'RECOVERY_BOUNDARY_UNSUPPORTED',
+    });
+
+    const extraRuntimeStateField = makeRecoveryContext(temporaryRoot);
+    extraRuntimeStateField.liveDiscovery.runtimeState.unexpected = true;
+    assert.throws(() => control.buildManifest(extraRuntimeStateField), {
+      code: 'MANIFEST_SCHEMA_MISMATCH',
+    });
+
+    const extraEdgeStateField = makeRecoveryContext(temporaryRoot);
+    extraEdgeStateField.liveDiscovery.edgeState.unexpected = true;
+    assert.throws(() => control.buildManifest(extraEdgeStateField), {
+      code: 'MANIFEST_SCHEMA_MISMATCH',
+    });
+
+    const unsupportedManifest = control.buildManifest(
+      makeRecoveryContext(temporaryRoot),
+    );
+    unsupportedManifest.manifestVersion = 3;
+    assert.throws(() => control.validateManifest(unsupportedManifest), {
+      code: 'MANIFEST_UNSUPPORTED',
+    });
+  });
+});
+
+test('recovery requires six exact ordered passed predecessor evidence records', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const missing = makeRecoveryContext(temporaryRoot);
+    missing.completedPredecessorStages.pop();
+    assert.throws(() => control.buildManifest(missing), {
+      code: 'PREDECESSOR_EVIDENCE_REQUIRED',
+    });
+
+    const reordered = makeRecoveryContext(temporaryRoot);
+    [
+      reordered.completedPredecessorStages[4],
+      reordered.completedPredecessorStages[5],
+    ] = [
+      reordered.completedPredecessorStages[5],
+      reordered.completedPredecessorStages[4],
+    ];
+    assert.throws(() => control.buildManifest(reordered), {
+      code: 'PREDECESSOR_EVIDENCE_REQUIRED',
+    });
+
+    const duplicate = makeRecoveryContext(temporaryRoot);
+    duplicate.completedPredecessorStages[5] = structuredClone(
+      duplicate.completedPredecessorStages[4],
+    );
+    assert.throws(() => control.buildManifest(duplicate), {
+      code: 'PREDECESSOR_EVIDENCE_REQUIRED',
+    });
+
+    const failed = makeRecoveryContext(temporaryRoot);
+    failed.completedPredecessorStages[5].status = 'failed';
+    assert.throws(() => control.buildManifest(failed), {
+      code: 'PREDECESSOR_EVIDENCE_REQUIRED',
+    });
+
+    const extra = makeRecoveryContext(temporaryRoot);
+    extra.completedPredecessorStages[0].unexpected = true;
+    assert.throws(() => control.buildManifest(extra), {
+      code: 'MANIFEST_SCHEMA_MISMATCH',
+    });
+  });
+});
+
+test('complete revision inventory enforces image-bound monotonic non-reuse without requiring tags', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const attemptThree = control.buildManifest(
+      makeRecoveryContext(temporaryRoot, { recoveryAttempt: 3 }),
+    );
+    assert.equal(
+      attemptThree.candidate.tag,
+      control.expectedCandidateTag(CANDIDATE_IMAGE, 3),
+    );
+    assert.deepEqual(
+      attemptThree.liveDiscovery.candidateRevisionInventory.revisions.map(
+        (entry) => entry.revision,
+      ),
+      [0, 1, 2].map((ordinal) => {
+        const tag =
+          ordinal === 0
+            ? control.expectedCandidateTag(CANDIDATE_IMAGE)
+            : control.expectedCandidateTag(CANDIDATE_IMAGE, ordinal);
+        return `moazez-staging-api-${tag}`;
+      }),
+    );
+
+    const optionalTag = makeRecoveryContext(temporaryRoot);
+    optionalTag.liveDiscovery.candidateRevisionInventory.revisions[0].tag =
+      control.expectedCandidateTag(CANDIDATE_IMAGE);
+    assert.equal(
+      control.buildManifest(optionalTag).liveDiscovery
+        .candidateRevisionInventory.revisions[0].tag,
+      control.expectedCandidateTag(CANDIDATE_IMAGE),
+    );
+
+    const missingFailedRevision = makeRecoveryContext(temporaryRoot);
+    missingFailedRevision.liveDiscovery.candidateRevisionInventory.revisions =
+      [];
+    assert.throws(() => control.buildManifest(missingFailedRevision), {
+      code: 'RECOVERY_REVISION_INVENTORY_INVALID',
+    });
+
+    const duplicateRevision = makeRecoveryContext(temporaryRoot);
+    duplicateRevision.liveDiscovery.candidateRevisionInventory.revisions.push(
+      structuredClone(
+        duplicateRevision.liveDiscovery.candidateRevisionInventory.revisions[0],
+      ),
+    );
+    assert.throws(() => control.buildManifest(duplicateRevision), {
+      code: 'RECOVERY_REVISION_INVENTORY_INVALID',
+    });
+
+    const differentImage = makeRecoveryContext(temporaryRoot);
+    differentImage.liveDiscovery.candidateRevisionInventory.revisions[0].imageReference =
+      stagingImage('a');
+    assert.throws(() => control.buildManifest(differentImage), {
+      code: 'RECOVERY_REVISION_INVENTORY_INVALID',
+    });
+
+    const outOfOrderAttempt = makeRecoveryContext(temporaryRoot);
+    outOfOrderAttempt.recovery.recoveryAttempt = 2;
+    assert.throws(() => control.buildManifest(outOfOrderAttempt), {
+      code: 'RECOVERY_ATTEMPT_MISMATCH',
+    });
+
+    const existingResultRevision = makeRecoveryContext(temporaryRoot);
+    const existingTag = control.expectedCandidateTag(CANDIDATE_IMAGE, 1);
+    existingResultRevision.liveDiscovery.candidateRevisionInventory.revisions.push(
+      {
+        revision: `moazez-staging-api-${existingTag}`,
+        imageReference: CANDIDATE_IMAGE,
+      },
+    );
+    assert.throws(() => control.buildManifest(existingResultRevision), {
+      code: 'RECOVERY_ATTEMPT_MISMATCH',
+    });
+  });
+});
+
+test('recovery failed-plan evidence is full, lowercase, distinct, and dynamically blocklisted', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const failedPlanText = 'exact-current-failed-plan-bytes';
+    const failedPlanSha256 = hashText(failedPlanText);
+    const context = makeRecoveryContext(temporaryRoot, {
+      failedPlanSha256,
+    });
+    const manifest = control.buildManifest(context);
+    assert.deepEqual(manifest.blockedSavedPlanHashes, [
+      control.BLOCKED_SAVED_PLAN_SHA256,
+      failedPlanSha256,
+    ]);
+
+    const target = operation(
+      manifest,
+      control.RECOVERY_RESUME_GATE_ID,
+      'api-candidate-runtime',
+    );
+    fs.mkdirSync(path.dirname(target.savedPlanPath), { recursive: true });
+    fs.writeFileSync(target.savedPlanPath, failedPlanText);
+    assert.throws(
+      () =>
+        control.registerPlan(manifest, {
+          gateId: control.RECOVERY_RESUME_GATE_ID,
+          operationId: 'api-candidate-runtime',
+          planPath: target.savedPlanPath,
+          sourceSha: manifest.sourceSha,
+          environment: manifest.environment,
+          terraformRoot: target.terraformRoot,
+          lineage: target.statePrecondition.lineage,
+          serial: target.statePrecondition.serial,
+          recordedAt: RECORDED_AT,
+        }),
+      { code: 'PLAN_REUSE_FORBIDDEN' },
+    );
+
+    for (const blockedHash of manifest.blockedSavedPlanHashes) {
+      const tampered = control.buildManifest(structuredClone(context));
+      const tamperedTarget = operation(
+        tampered,
+        control.RECOVERY_RESUME_GATE_ID,
+        'api-candidate-runtime',
+      );
+      tamperedTarget.planEvidence.sha256 = blockedHash;
+      assert.throws(() => control.validateManifest(tampered), {
+        code: 'PLAN_REUSE_FORBIDDEN',
+      });
+    }
+
+    const missing = makeRecoveryContext(temporaryRoot);
+    delete missing.recovery.failedPlanSha256;
+    assert.throws(() => control.buildManifest(missing), {
+      code: 'MANIFEST_SCHEMA_MISMATCH',
+    });
+    for (const invalidHash of ['19cc9769', 'A'.repeat(64), 'g'.repeat(64)]) {
+      const invalid = makeRecoveryContext(temporaryRoot);
+      invalid.recovery.failedPlanSha256 = invalidHash;
+      assert.throws(() => control.buildManifest(invalid), {
+        code: 'INVALID_INPUT',
+      });
+    }
+    const historicalCollision = makeRecoveryContext(temporaryRoot);
+    historicalCollision.recovery.failedPlanSha256 =
+      control.BLOCKED_SAVED_PLAN_SHA256;
+    assert.throws(() => control.buildManifest(historicalCollision), {
+      code: 'FAILED_PLAN_HASH_INVALID',
+    });
+  });
+});
+
+test('recovery live baseline requires exact traffic, same promoted images, and absent candidate edge resources', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const mutations = [
+      (context) => {
+        context.liveDiscovery.stableApiTrafficPercent = 99;
+      },
+      (context) => {
+        context.liveDiscovery.failedCandidate.trafficPercent = 1;
+      },
+      (context) => {
+        context.liveDiscovery.failedCandidate.imageReference =
+          stagingImage('a');
+      },
+      (context) => {
+        context.liveDiscovery.runtimeImages.api = stagingImage('a');
+      },
+      (context) => {
+        context.liveDiscovery.runtimeImages.coreWorker = stagingImage('a');
+      },
+      (context) => {
+        context.liveDiscovery.runtimeImages.mediaWorker = stagingImage('a');
+      },
+      (context) => {
+        context.liveDiscovery.candidateEdgeResources.candidateNegPresent = true;
+      },
+      (context) => {
+        context.liveDiscovery.candidateEdgeResources.candidateBackendPresent = true;
+      },
+      (context) => {
+        context.liveDiscovery.candidateEdgeResources.candidateSmokeRoutePresent = true;
+      },
+    ];
+    for (const mutate of mutations) {
+      const context = makeRecoveryContext(temporaryRoot);
+      mutate(context);
+      assert.throws(() => control.buildManifest(context), {
+        code: 'RECOVERY_LIVE_BASELINE_UNSAFE',
+      });
+    }
+  });
+});
+
+test('recovery gate state bindings and API attribute allowlist are exact and image-immutable', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const context = makeRecoveryContext(temporaryRoot);
+    const manifest = control.buildManifest(context);
+    const api = operation(
+      manifest,
+      control.RECOVERY_RESUME_GATE_ID,
+      'api-candidate-runtime',
+    );
+    const edge = operation(
+      manifest,
+      control.RECOVERY_RESUME_GATE_ID,
+      'api-candidate-edge',
+    );
+    const maintenance = operation(
+      manifest,
+      'maintenance-scheduler-promotion',
+      'maintenance-scheduler-runtime',
+    );
+    const traffic = operation(
+      manifest,
+      'traffic-promotion',
+      'api-traffic-promotion',
+    );
+    assert.deepEqual(api.statePrecondition, {
+      lineage: context.liveDiscovery.runtimeState.lineage,
+      serial: context.liveDiscovery.runtimeState.serial,
+      boundFromOperationId: null,
+      status: 'bound',
+    });
+    assert.deepEqual(edge.statePrecondition, {
+      lineage: context.liveDiscovery.edgeState.lineage,
+      serial: context.liveDiscovery.edgeState.serial,
+      boundFromOperationId: null,
+      status: 'bound',
+    });
+    assert.deepEqual(maintenance.statePrecondition, {
+      lineage: null,
+      serial: null,
+      boundFromOperationId: 'api-candidate-runtime',
+      status: 'awaiting-predecessor',
+    });
+    assert.deepEqual(traffic.statePrecondition, {
+      lineage: null,
+      serial: null,
+      boundFromOperationId: 'maintenance-scheduler-runtime',
+      status: 'awaiting-predecessor',
+    });
+    assert.deepEqual(api.allowedAttributeChanges, {
+      [control.RUNTIME_RESOURCE_ADDRESSES.api]: [
+        'template[0].revision',
+        'traffic',
+        'template[0].containers[0].startup_probe[0].initial_delay_seconds',
+        'template[0].containers[0].startup_probe[0].period_seconds',
+        'template[0].containers[0].startup_probe[0].timeout_seconds',
+        'template[0].containers[0].startup_probe[0].failure_threshold',
+      ],
+    });
+    const allowed =
+      api.allowedAttributeChanges[control.RUNTIME_RESOURCE_ADDRESSES.api];
+    assert.equal(allowed.includes('template[0].containers[0].image'), false);
+    assert.equal(allowed.includes('template'), false);
+    assert.equal(allowed.includes('containers'), false);
+    assert.equal(allowed.includes('startup_probe'), false);
+    assert.equal(api.requiredVariables.api_image_reference, CANDIDATE_IMAGE);
+    assert.equal(
+      api.requiredVariables.maintenance_scheduler_image_reference,
+      context.liveDiscovery.runtimeImages.maintenanceScheduler,
+    );
+    assert.deepEqual(traffic.allowedAttributeChanges, {
+      [control.RUNTIME_RESOURCE_ADDRESSES.api]: ['traffic'],
+    });
+  });
+});
+
+test('recovery stop-after-first-failure blocks the exact remaining API-first window', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const apiFailure = control.buildManifest(
+      makeRecoveryContext(temporaryRoot),
+    );
+    registerAndApprove(
+      apiFailure,
+      control.RECOVERY_RESUME_GATE_ID,
+      'api-candidate-runtime',
+      'recovery-api-runtime-failure',
+    );
+    control.recordApply(apiFailure, {
+      gateId: control.RECOVERY_RESUME_GATE_ID,
+      operationId: 'api-candidate-runtime',
+      result: 'failed',
+      evidenceRef: 'apply:recovery-api-runtime-failed',
+      recordedAt: RECORDED_AT,
+    });
+    assert.equal(
+      operation(
+        apiFailure,
+        control.RECOVERY_RESUME_GATE_ID,
+        'api-candidate-edge',
+      ).status,
+      'blocked',
+    );
+    assert.equal(
+      apiFailure.gates.slice(1).every((gate) => gate.status === 'blocked'),
+      true,
+    );
+
+    const edgeFailure = control.buildManifest(
+      makeRecoveryContext(temporaryRoot),
+    );
+    applyAndVerifyTerraform(
+      edgeFailure,
+      control.RECOVERY_RESUME_GATE_ID,
+      'api-candidate-runtime',
+      'recovery-api-runtime-before-edge-failure',
+      {
+        observedImage: edgeFailure.candidate.imageReference,
+        observedRevision: edgeFailure.candidate.revision,
+        observedCandidateTag: edgeFailure.candidate.tag,
+        observedStablePercent: 100,
+        observedCandidatePercent: 0,
+      },
+    );
+    registerAndApprove(
+      edgeFailure,
+      control.RECOVERY_RESUME_GATE_ID,
+      'api-candidate-edge',
+      'recovery-api-edge-failure',
+    );
+    control.recordApply(edgeFailure, {
+      gateId: control.RECOVERY_RESUME_GATE_ID,
+      operationId: 'api-candidate-edge',
+      result: 'failed',
+      evidenceRef: 'apply:recovery-api-edge-failed',
+      recordedAt: RECORDED_AT,
+    });
+    assert.equal(
+      edgeFailure.gates.slice(1).every((gate) => gate.status === 'blocked'),
+      true,
+    );
+
+    const maintenanceFailure = control.buildManifest(
+      makeRecoveryContext(temporaryRoot),
+    );
+    passThroughApiCandidate(maintenanceFailure);
+    registerAndApprove(
+      maintenanceFailure,
+      'maintenance-scheduler-promotion',
+      'maintenance-scheduler-runtime',
+      'recovery-maintenance-failure',
+    );
+    control.recordApply(maintenanceFailure, {
+      gateId: 'maintenance-scheduler-promotion',
+      operationId: 'maintenance-scheduler-runtime',
+      result: 'failed',
+      evidenceRef: 'apply:recovery-maintenance-failed',
+      recordedAt: RECORDED_AT,
+    });
+    assert.equal(
+      maintenanceFailure.gates
+        .slice(2)
+        .every((gate) => gate.status === 'blocked'),
+      true,
+    );
+
+    const smokeFailure = control.buildManifest(
+      makeRecoveryContext(temporaryRoot),
+    );
+    passThroughApiCandidate(smokeFailure);
+    passThroughMaintenance(smokeFailure);
+    control.recordVerification(smokeFailure, {
+      gateId: 'protected-readiness-and-smoke',
+      operationId: 'protected-candidate-smoke',
+      result: 'failed',
+      evidenceRef: 'verify:recovery-smoke-failed',
+      recordedAt: RECORDED_AT,
+    });
+    assert.equal(
+      smokeFailure.gates.find((gate) => gate.id === 'traffic-promotion').status,
+      'blocked',
+    );
+  });
+});
+
+test('complete recovery flow preserves lifecycle single consumption through traffic promotion', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const manifest = control.buildManifest(makeRecoveryContext(temporaryRoot));
+    passThroughApiCandidate(manifest);
+    passThroughMaintenance(manifest);
+    passThroughProtectedSmoke(manifest);
+    applyAndVerifyTerraform(
+      manifest,
+      'traffic-promotion',
+      'api-traffic-promotion',
+      'recovery-traffic-promotion',
+      {
+        observedImage: manifest.candidate.imageReference,
+        observedRevision: manifest.candidate.revision,
+        observedCandidateTag: manifest.candidate.tag,
+        observedStablePercent: 0,
+        observedCandidatePercent: 100,
+      },
+    );
+    assert.equal(manifest.releaseStatus, 'complete');
+    assert.equal(
+      manifest.gates.every((gate) => gate.status === 'passed'),
+      true,
+    );
+    for (const gate of manifest.gates) {
+      for (const target of gate.operations.filter(
+        (candidate) => candidate.kind === 'terraform',
+      )) {
+        assert.equal(target.apply.attempted, true);
+        assert.equal(target.singleConsumptionStatus, 'consumed-success');
+      }
+    }
+    assert.throws(
+      () =>
+        control.recordApply(manifest, {
+          gateId: 'traffic-promotion',
+          operationId: 'api-traffic-promotion',
+          result: 'succeeded',
+          evidenceRef: 'apply:recovery-traffic-reuse',
+          postLineage: LIVE_RUNTIME_LINEAGE,
+          postSerial: 99,
+          recordedAt: RECORDED_AT,
+        }),
+      { code: 'RELEASE_ALREADY_COMPLETE' },
+    );
+  });
+});
+
 test('operation specs isolate each runtime resource and model API runtime then edge suboperations', () => {
   withTemporaryRoot((temporaryRoot) => {
     const manifest = control.buildManifest(makeContext(temporaryRoot));
@@ -339,10 +1037,7 @@ test('Terraform state lineages accept opaque identities and preserve exact bytes
       context.liveDiscovery.runtimeState.lineage = runtimeLineage;
       context.liveDiscovery.edgeState.lineage = edgeLineage;
       const manifest = control.buildManifest(context);
-      assert.equal(
-        manifest.liveDiscovery.runtimeState.lineage,
-        runtimeLineage,
-      );
+      assert.equal(manifest.liveDiscovery.runtimeState.lineage, runtimeLineage);
       assert.equal(manifest.liveDiscovery.edgeState.lineage, edgeLineage);
     }
 

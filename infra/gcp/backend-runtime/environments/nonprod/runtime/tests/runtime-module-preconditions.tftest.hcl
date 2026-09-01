@@ -44,6 +44,36 @@ run "normal_default_keeps_provider_revision_and_isolates_runtime_images" {
     condition     = google_cloud_run_v2_worker_pool.maintenance_scheduler.template[0].containers[0].image == var.maintenance_scheduler_image_reference
     error_message = "The Maintenance Scheduler must use only maintenance_scheduler_image_reference."
   }
+
+  assert {
+    condition     = google_cloud_run_v2_service.api.template[0].containers[0].startup_probe[0].initial_delay_seconds == 10 && google_cloud_run_v2_service.api.template[0].containers[0].startup_probe[0].period_seconds == 5 && google_cloud_run_v2_service.api.template[0].containers[0].startup_probe[0].timeout_seconds == 2 && google_cloud_run_v2_service.api.template[0].containers[0].startup_probe[0].failure_threshold == 12
+    error_message = "The API startup probe must retain the exact 10/5/2/12 initialization budget."
+  }
+
+  assert {
+    condition     = google_cloud_run_v2_service.api.template[0].containers[0].startup_probe[0].http_get[0].path == "/internal/probes/api/startup" && google_cloud_run_v2_service.api.template[0].containers[0].startup_probe[0].http_get[0].port == 9090
+    error_message = "The API startup probe must retain its management path and port."
+  }
+
+  assert {
+    condition     = google_cloud_run_v2_service.api.template[0].containers[0].liveness_probe[0].http_get[0].path == "/internal/probes/api/liveness" && google_cloud_run_v2_service.api.template[0].containers[0].liveness_probe[0].http_get[0].port == 9090 && google_cloud_run_v2_service.api.template[0].containers[0].readiness_probe[0].http_get[0].path == "/internal/probes/api/readiness" && google_cloud_run_v2_service.api.template[0].containers[0].readiness_probe[0].http_get[0].port == 9090
+    error_message = "The API liveness and readiness probes must retain their management paths and ports."
+  }
+
+  assert {
+    condition     = google_cloud_run_v2_worker_pool.core.template[0].containers[0].startup_probe[0].http_get[0].path == "/internal/probes/core-worker/startup" && google_cloud_run_v2_worker_pool.core.template[0].containers[0].startup_probe[0].http_get[0].port == 9090 && google_cloud_run_v2_worker_pool.core.template[0].containers[0].liveness_probe[0].http_get[0].path == "/internal/probes/core-worker/liveness" && google_cloud_run_v2_worker_pool.core.template[0].containers[0].liveness_probe[0].http_get[0].port == 9090
+    error_message = "The Core Worker probes must remain unchanged."
+  }
+
+  assert {
+    condition     = google_cloud_run_v2_worker_pool.media.template[0].containers[0].startup_probe[0].http_get[0].path == "/internal/probes/media-worker/startup" && google_cloud_run_v2_worker_pool.media.template[0].containers[0].startup_probe[0].http_get[0].port == 9090 && google_cloud_run_v2_worker_pool.media.template[0].containers[0].liveness_probe[0].http_get[0].path == "/internal/probes/media-worker/liveness" && google_cloud_run_v2_worker_pool.media.template[0].containers[0].liveness_probe[0].http_get[0].port == 9090
+    error_message = "The Media Worker probes must remain unchanged."
+  }
+
+  assert {
+    condition     = google_cloud_run_v2_worker_pool.maintenance_scheduler.template[0].containers[0].startup_probe[0].http_get[0].path == "/internal/probes/maintenance-scheduler/startup" && google_cloud_run_v2_worker_pool.maintenance_scheduler.template[0].containers[0].startup_probe[0].http_get[0].port == 9090 && google_cloud_run_v2_worker_pool.maintenance_scheduler.template[0].containers[0].liveness_probe[0].http_get[0].path == "/internal/probes/maintenance-scheduler/liveness" && google_cloud_run_v2_worker_pool.maintenance_scheduler.template[0].containers[0].liveness_probe[0].http_get[0].port == 9090
+    error_message = "The Maintenance Scheduler probes must remain unchanged."
+  }
 }
 
 run "candidate_no_traffic_pins_stable_and_tags_zero_percent_candidate" {
@@ -109,6 +139,54 @@ run "candidate_promoted_flips_only_revision_traffic_semantics" {
   }
 }
 
+run "recovery_attempt_one_pins_exact_revision_at_zero_traffic" {
+  command = plan
+
+  module {
+    source = "../../../modules/runtime-environment"
+  }
+
+  variables {
+    api_traffic_mode    = "candidate_no_traffic"
+    api_stable_revision = "moazez-staging-api-stable01"
+    api_candidate_tag   = "candidate-be1b01ce47ad-r1"
+  }
+
+  assert {
+    condition     = google_cloud_run_v2_service.api.template[0].containers[0].image == var.api_image_reference && google_cloud_run_v2_service.api.template[0].revision == "moazez-staging-api-candidate-be1b01ce47ad-r1"
+    error_message = "Recovery attempt one must retain the approved image and exact revision."
+  }
+
+  assert {
+    condition     = google_cloud_run_v2_service.api.traffic[0].revision == var.api_stable_revision && google_cloud_run_v2_service.api.traffic[0].percent == 100 && google_cloud_run_v2_service.api.traffic[1].revision == "moazez-staging-api-candidate-be1b01ce47ad-r1" && google_cloud_run_v2_service.api.traffic[1].percent == 0 && google_cloud_run_v2_service.api.traffic[1].tag == var.api_candidate_tag
+    error_message = "Recovery attempt one must retain stable 100 and candidate zero traffic."
+  }
+}
+
+run "recovery_attempt_two_promotion_reuses_exact_revision" {
+  command = plan
+
+  module {
+    source = "../../../modules/runtime-environment"
+  }
+
+  variables {
+    api_traffic_mode    = "candidate_promoted"
+    api_stable_revision = "moazez-staging-api-stable01"
+    api_candidate_tag   = "candidate-be1b01ce47ad-r2"
+  }
+
+  assert {
+    condition     = google_cloud_run_v2_service.api.template[0].containers[0].image == var.api_image_reference && google_cloud_run_v2_service.api.template[0].revision == "moazez-staging-api-candidate-be1b01ce47ad-r2"
+    error_message = "Recovery promotion must retain the approved image and exact recovered revision."
+  }
+
+  assert {
+    condition     = google_cloud_run_v2_service.api.traffic[0].revision == var.api_stable_revision && google_cloud_run_v2_service.api.traffic[0].percent == 0 && google_cloud_run_v2_service.api.traffic[1].revision == "moazez-staging-api-candidate-be1b01ce47ad-r2" && google_cloud_run_v2_service.api.traffic[1].percent == 100 && google_cloud_run_v2_service.api.traffic[1].tag == var.api_candidate_tag
+    error_message = "Recovery promotion must flip traffic using the same recovered tag and revision."
+  }
+}
+
 run "candidate_no_traffic_rejects_missing_stable_revision" {
   command = plan
 
@@ -149,7 +227,7 @@ run "candidate_no_traffic_rejects_non_deterministic_candidate_tag" {
   variables {
     api_traffic_mode    = "candidate_no_traffic"
     api_stable_revision = "moazez-staging-api-stable01"
-    api_candidate_tag   = "candidate-111111111111"
+    api_candidate_tag   = "candidate-111111111111-r1"
   }
 
   expect_failures = [google_cloud_run_v2_service.api]

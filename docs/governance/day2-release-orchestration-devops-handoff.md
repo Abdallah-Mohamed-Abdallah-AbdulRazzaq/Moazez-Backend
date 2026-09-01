@@ -60,7 +60,21 @@ The Staging runtime root also continues to require ephemeral Queue and Realtime
 Redis host, port, and CA PEM inputs. The CA values are sensitive and must never
 be placed in the release manifest.
 
-## API traffic contract
+The API startup probe now has an explicit initialization budget while retaining
+the existing management endpoint:
+
+```text
+path=/internal/probes/api/startup
+port=9090
+initial_delay_seconds=10
+period_seconds=5
+timeout_seconds=2
+failure_threshold=12
+```
+
+API liveness/readiness and all worker probes are unchanged.
+
+## Normal manifest v1 API traffic contract
 
 Supply these three API release inputs:
 
@@ -80,7 +94,7 @@ The stable revision is a governed live-discovery input. It must be the full
 current revision name from `moazez-staging-api`; do not infer it from source or
 reuse stale evidence.
 
-The candidate tag formula is:
+The normal v1 candidate tag formula is:
 
 ```text
 candidate-${first 12 lowercase hex characters of sha256(full api_image_reference)}
@@ -110,7 +124,7 @@ The nonprod edge root accepts:
 
 ```text
 candidate_edge_enabled = false | true
-candidate_api_tag      = null | candidate-<12 lowercase hex>
+candidate_api_tag      = null | candidate-<12 lowercase hex>[-rN]
 ```
 
 Disabled requires `false` plus `null`. Enabled requires `true`, Staging, and the
@@ -187,10 +201,131 @@ The historical plan hash below is apply-forbidden and reuse-forbidden:
 ccc0473c853e0ea2a47e8cb6700acf3a80a454907130ce9992049e7d7ded43e7
 ```
 
+Normal v1 contains that one blocker. Recovery v2 also requires the exact full
+lowercase 64-character failed-plan SHA256 from DevOps evidence. The supplied
+`19cc9769...` value is only a prefix; source does not guess, complete, or
+hard-code it. Recovery plan registration rejects either hash in the manifest's
+two-entry blocklist, as well as duplicate plan bytes within the new manifest.
+
 Do not use `terraform -target`, `terraform -parallelism=1`, direct `gcloud run`
 mutation, or Cloud Console mutation as release orchestration.
 
-## Exact gate mapping
+## Recovery manifest v2 — API-first governed window
+
+Recovery does not reuse the failed manifest or execution ID. Create a new
+external context with `executionMode="recovery"`, a new `executionId`, the
+exact merged/approved D1 `sourceSha`, and
+`resumeGateId="api-no-traffic-promotion"`. No other resume gate is supported,
+and no top-level/operator `candidateTag` is accepted.
+
+The strict `recovery` object contains only:
+
+```text
+recoveryAttempt
+failedReleaseExecutionId
+failedManifestRef
+failedGateId=api-no-traffic-promotion
+failedOperationId=api-candidate-runtime
+failedPlanSha256=<exact full lowercase SHA256>
+failureEvidenceRef
+```
+
+The new execution ID must differ from `failedReleaseExecutionId`. The failed
+plan hash must be 64 lowercase hexadecimal characters and must differ from the
+preserved historical blocker.
+
+Supply six exact ordered passed predecessor records:
+
+```text
+artifact-and-checksum-preflight
+backup-and-data-authority-checkpoint
+migration-job
+migration-status-and-drift-verification
+core-worker-promotion
+media-worker-promotion
+```
+
+Each requires durable evidence. These stages are not replayed: recovery v2
+contains no Core or Media Terraform operation.
+
+Rediscover both Terraform states independently and record their exact opaque
+lineage and live serial. The runtime serial is evidence, not a reusable source
+constant; do not assume the incident's observed serial `9` remains current.
+The recovery live baseline must prove stable API traffic is exactly 100%, the
+failed candidate is exactly 0%, and the candidate NEG/backend/smoke route are
+all absent.
+
+The live API, Core Worker, and Media Worker images must equal the approved
+immutable artifact reference. Maintenance may retain its independently
+discovered pre-promotion image. The failed candidate image must equal the same
+approved image, its revision must equal `moazez-staging-api-${failedTag}`, and
+the failed revision must remain preserved.
+
+Provide a complete revision inventory for service `moazez-staging-api` and the
+exact image-derived base tag. Each entry requires `revision` and
+`imageReference`; `tag` is optional because an existing revision may no longer
+have a traffic tag. Reject duplicate revisions, different-image family
+entries, and an inventory omitting the failed revision.
+
+Candidate family ordinals are base=`0`, `-r1`=`1`, `-r2`=`2`, and so on. The
+new `recoveryAttempt` must be the maximum existing ordinal plus one, from `1`
+through `999999999999999`. The controller derives:
+
+```text
+baseTag=candidate-${first 12 lowercase hex of sha256(full image reference)}
+candidateTag=${baseTag}-r${recoveryAttempt}
+candidateRevision=moazez-staging-api-${candidateTag}
+```
+
+Existing, smaller, noncanonical, over-limit, timestamp, UUID, and arbitrary
+identities are rejected.
+
+Recovery v2 has four mutable authoritative gates in this order:
+
+```text
+api-no-traffic-promotion
+  api-candidate-runtime
+  api-candidate-edge
+maintenance-scheduler-promotion
+protected-readiness-and-smoke
+traffic-promotion
+```
+
+`api-candidate-runtime` binds directly to rediscovered runtime lineage/serial.
+Its required image variables retain the approved API/Core/Media image and the
+discovered Maintenance image. Its resource address is only the API service,
+and its exact recovery attribute allowlist is:
+
+```text
+template[0].revision
+traffic
+template[0].containers[0].startup_probe[0].initial_delay_seconds
+template[0].containers[0].startup_probe[0].period_seconds
+template[0].containers[0].startup_probe[0].timeout_seconds
+template[0].containers[0].startup_probe[0].failure_threshold
+```
+
+Image mutation is forbidden in recovery, and no broad template/container/probe
+path is allowed. The old failed revision may lose an explicit zero-percent
+traffic target when the new candidate allocation replaces it; that is not
+revision deletion.
+
+`api-candidate-edge` remains blocked until API Runtime passes and binds directly
+to rediscovered edge lineage/serial. It uses only the existing candidate NEG,
+candidate backend, and URL map address allowlist. Maintenance then binds to the
+verified API Runtime successor state and may change only the Maintenance image.
+Traffic promotion binds to the verified Maintenance successor state and may
+change only `traffic`; it must preserve the recovered image, revision, tag, and
+startup probe settings.
+
+The protected smoke request remains authenticated `GET` through the exact
+public and rewritten paths documented above. The first failed apply or live
+verification consumes or invalidates its plan, fails the current operation and
+gate, and blocks all later work. There is no automatic `r2`; any later attempt
+requires another newly authorized execution, fresh live discovery, a complete
+new inventory, and new saved plans.
+
+## Normal manifest v1 exact gate mapping
 
 The adapter reads these IDs from the unchanged authoritative contract. Do not
 shorten, rename, duplicate, or reorder them.

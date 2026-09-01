@@ -76,6 +76,103 @@ run "staging_candidate_route_targets_tagged_revision_and_reuses_security_posture
   }
 }
 
+run "recovery_attempt_one_targets_exact_candidate_tag" {
+  command = plan
+
+  module {
+    source = "../../modules/edge-environment"
+  }
+
+  variables {
+    candidate_edge_enabled = true
+    candidate_api_tag      = "candidate-be1b01ce47ad-r1"
+  }
+
+  assert {
+    condition     = google_compute_region_network_endpoint_group.api_candidate[0].cloud_run[0].tag == "candidate-be1b01ce47ad-r1" && google_compute_region_network_endpoint_group.service["api"].cloud_run[0].tag == null
+    error_message = "Recovery attempt one must target only the exact tagged candidate revision."
+  }
+
+  assert {
+    condition     = google_compute_backend_service.api_candidate[0].security_policy == google_compute_backend_service.service["api"].security_policy && google_compute_url_map.edge.path_matcher[0].path_rule[0].paths == toset(["/.well-known/moazez/candidate-readiness"])
+    error_message = "Recovery routing must preserve the candidate backend security policy and exact smoke route."
+  }
+}
+
+run "recovery_attempt_two_targets_exact_candidate_tag" {
+  command = plan
+
+  module {
+    source = "../../modules/edge-environment"
+  }
+
+  variables {
+    candidate_edge_enabled = true
+    candidate_api_tag      = "candidate-be1b01ce47ad-r2"
+  }
+
+  assert {
+    condition     = google_compute_region_network_endpoint_group.api_candidate[0].cloud_run[0].service == "moazez-staging-api" && google_compute_region_network_endpoint_group.api_candidate[0].cloud_run[0].tag == "candidate-be1b01ce47ad-r2"
+    error_message = "Recovery attempt two must reach the exact tagged candidate revision."
+  }
+}
+
+run "candidate_route_rejects_zero_recovery_attempt" {
+  command = plan
+
+  module {
+    source = "../../modules/edge-environment"
+  }
+
+  variables {
+    candidate_api_tag = "candidate-be1b01ce47ad-r0"
+  }
+
+  expect_failures = [var.candidate_api_tag]
+}
+
+run "candidate_route_rejects_leading_zero_recovery_attempt" {
+  command = plan
+
+  module {
+    source = "../../modules/edge-environment"
+  }
+
+  variables {
+    candidate_api_tag = "candidate-be1b01ce47ad-r01"
+  }
+
+  expect_failures = [var.candidate_api_tag]
+}
+
+run "candidate_route_rejects_bad_recovery_suffix" {
+  command = plan
+
+  module {
+    source = "../../modules/edge-environment"
+  }
+
+  variables {
+    candidate_api_tag = "candidate-be1b01ce47ad-r1x"
+  }
+
+  expect_failures = [var.candidate_api_tag]
+}
+
+run "candidate_route_rejects_overlong_recovery_attempt" {
+  command = plan
+
+  module {
+    source = "../../modules/edge-environment"
+  }
+
+  variables {
+    candidate_api_tag = "candidate-be1b01ce47ad-r1000000000000000"
+  }
+
+  expect_failures = [var.candidate_api_tag]
+}
+
 run "candidate_route_rejects_missing_tag" {
   command = plan
 
