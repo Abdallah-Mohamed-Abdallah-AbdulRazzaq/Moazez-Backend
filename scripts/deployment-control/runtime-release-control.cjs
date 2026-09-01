@@ -111,6 +111,25 @@ function requireString(value, label, pattern) {
   return value;
 }
 
+function requireTerraformStateLineage(value, label) {
+  if (typeof value !== 'string' || value.length === 0) {
+    fail('INVALID_INPUT', `${label} must be a non-empty string.`);
+  }
+  if (value.trim() !== value) {
+    fail(
+      'INVALID_INPUT',
+      `${label} must not have leading or trailing whitespace.`,
+    );
+  }
+  if (/[\u0000-\u001f\u007f-\u009f]/u.test(value)) {
+    fail('INVALID_INPUT', `${label} must not contain control characters.`);
+  }
+  if (Buffer.byteLength(value, 'utf8') > 1024) {
+    fail('INVALID_INPUT', `${label} must not exceed 1024 UTF-8 bytes.`);
+  }
+  return value;
+}
+
 function requireIsoTimestamp(value, label) {
   requireString(value, label);
   if (
@@ -124,15 +143,14 @@ function requireIsoTimestamp(value, label) {
 
 function requireState(value, label) {
   const state = requireObject(value, label);
-  requireString(
+  const lineage = requireTerraformStateLineage(
     state.lineage,
     `${label}.lineage`,
-    /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u,
   );
   if (!Number.isSafeInteger(state.serial) || state.serial < 0) {
     fail('INVALID_INPUT', `${label}.serial must be a non-negative integer.`);
   }
-  return Object.freeze({ lineage: state.lineage, serial: state.serial });
+  return Object.freeze({ lineage, serial: state.serial });
 }
 
 function requireExactKeys(value, expectedKeys, label) {

@@ -14,6 +14,9 @@ const CANDIDATE_IMAGE =
   'me-central2-docker.pkg.dev/moazez-nonprod-91001421934/moazez-staging-containers/moazez-backend@sha256:1a6b5f41a4dfbb4921a11fe60ccb7d46d89397353dad9aebfcb0df71017986c6';
 const LINEAGE = '123e4567-e89b-42d3-a456-426614174000';
 const EDGE_LINEAGE = '223e4567-e89b-42d3-a456-426614174000';
+const LIVE_RUNTIME_LINEAGE = '32365b63-3fda-f044-1b7f-e8d686105bac';
+const LIVE_EDGE_LINEAGE = '545dd53b-773c-667a-aa75-fb3d1f65db23';
+const OPAQUE_LINEAGE = 'terraform-lineage-opaque-identity-01';
 const RECORDED_AT = '2026-08-31T18:00:00Z';
 
 function stagingImage(hexCharacter) {
@@ -319,6 +322,184 @@ test('candidate inputs fail closed when tag, stable revision, traffic baseline, 
       () => control.buildManifest({ ...context, environment: 'production' }),
       { code: 'ENVIRONMENT_UNSUPPORTED' },
     );
+  });
+});
+
+test('Terraform state lineages accept opaque identities and preserve exact bytes', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const acceptedPairs = [
+      [LINEAGE, EDGE_LINEAGE],
+      [LIVE_RUNTIME_LINEAGE, LIVE_EDGE_LINEAGE],
+      [OPAQUE_LINEAGE, 'Terraform-Lineage-Case-Sensitive-Aa'],
+      ['terraform-lineage-cafe\u0301', LIVE_EDGE_LINEAGE],
+    ];
+
+    for (const [runtimeLineage, edgeLineage] of acceptedPairs) {
+      const context = makeContext(temporaryRoot);
+      context.liveDiscovery.runtimeState.lineage = runtimeLineage;
+      context.liveDiscovery.edgeState.lineage = edgeLineage;
+      const manifest = control.buildManifest(context);
+      assert.equal(
+        manifest.liveDiscovery.runtimeState.lineage,
+        runtimeLineage,
+      );
+      assert.equal(manifest.liveDiscovery.edgeState.lineage, edgeLineage);
+    }
+
+    const decomposedLineage = 'terraform-lineage-cafe\u0301';
+    const decomposedContext = makeContext(temporaryRoot);
+    decomposedContext.liveDiscovery.runtimeState.lineage = decomposedLineage;
+    const decomposedManifest = control.buildManifest(decomposedContext);
+    assert.equal(
+      decomposedManifest.liveDiscovery.runtimeState.lineage,
+      decomposedLineage,
+    );
+    assert.notEqual(
+      decomposedManifest.liveDiscovery.runtimeState.lineage,
+      decomposedLineage.normalize('NFC'),
+    );
+
+    const maximumUtf8Lineage = '\u00e9'.repeat(512);
+    assert.equal(Buffer.byteLength(maximumUtf8Lineage, 'utf8'), 1024);
+    const maximumContext = makeContext(temporaryRoot);
+    maximumContext.liveDiscovery.runtimeState.lineage = maximumUtf8Lineage;
+    const maximumManifest = control.buildManifest(maximumContext);
+    assert.equal(
+      maximumManifest.liveDiscovery.runtimeState.lineage,
+      maximumUtf8Lineage,
+    );
+  });
+});
+
+test('Terraform state lineages reject missing, whitespace, controls, and oversized UTF-8 values', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const missingContext = makeContext(temporaryRoot);
+    delete missingContext.liveDiscovery.runtimeState.lineage;
+    assert.throws(() => control.buildManifest(missingContext), {
+      code: 'INVALID_INPUT',
+    });
+
+    for (const lineage of [
+      '',
+      ' \t ',
+      ' lineage',
+      'lineage ',
+      'lineage\u0000token',
+      'lineage\u001ftoken',
+      'lineage\u007ftoken',
+      'lineage\u009ftoken',
+      '\u00e9'.repeat(513),
+    ]) {
+      const context = makeContext(temporaryRoot);
+      context.liveDiscovery.runtimeState.lineage = lineage;
+      assert.throws(() => control.buildManifest(context), {
+        code: 'INVALID_INPUT',
+      });
+    }
+  });
+});
+
+test('Terraform state serials remain non-negative safe integers', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    for (const serial of [0, 1, Number.MAX_SAFE_INTEGER]) {
+      const context = makeContext(temporaryRoot);
+      context.liveDiscovery.runtimeState.serial = serial;
+      const manifest = control.buildManifest(context);
+      assert.equal(manifest.liveDiscovery.runtimeState.serial, serial);
+    }
+
+    const missingContext = makeContext(temporaryRoot);
+    delete missingContext.liveDiscovery.runtimeState.serial;
+    assert.throws(() => control.buildManifest(missingContext), {
+      code: 'INVALID_INPUT',
+    });
+
+    for (const serial of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1, '6']) {
+      const context = makeContext(temporaryRoot);
+      context.liveDiscovery.runtimeState.serial = serial;
+      assert.throws(() => control.buildManifest(context), {
+        code: 'INVALID_INPUT',
+      });
+    }
+  });
+});
+
+test('register-plan binds the exact opaque lineage without canonicalization', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const context = makeContext(temporaryRoot);
+    context.liveDiscovery.runtimeState.lineage = OPAQUE_LINEAGE;
+    const manifest = control.buildManifest(context);
+    const core = operation(
+      manifest,
+      'core-worker-promotion',
+      'core-worker-runtime',
+    );
+    fs.mkdirSync(path.dirname(core.savedPlanPath), { recursive: true });
+    fs.writeFileSync(core.savedPlanPath, 'opaque-lineage-plan');
+    const options = {
+      gateId: 'core-worker-promotion',
+      operationId: 'core-worker-runtime',
+      planPath: core.savedPlanPath,
+      sourceSha: manifest.sourceSha,
+      environment: manifest.environment,
+      terraformRoot: core.terraformRoot,
+      lineage: OPAQUE_LINEAGE,
+      serial: core.statePrecondition.serial,
+      recordedAt: RECORDED_AT,
+    };
+
+    assert.throws(
+      () =>
+        control.registerPlan(manifest, {
+          ...options,
+          lineage: `${OPAQUE_LINEAGE}x`,
+        }),
+      { code: 'PLAN_BINDING_MISMATCH' },
+    );
+    assert.equal(core.status, 'pending');
+
+    control.registerPlan(manifest, options);
+    assert.equal(core.status, 'plan-registered');
+    assert.equal(core.statePrecondition.lineage, OPAQUE_LINEAGE);
+  });
+});
+
+test('record-apply requires the same exact opaque lineage and a higher serial', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const context = makeContext(temporaryRoot);
+    context.liveDiscovery.runtimeState.lineage = OPAQUE_LINEAGE;
+    context.liveDiscovery.runtimeState.serial = 0;
+    const manifest = control.buildManifest(context);
+    const core = registerAndApprove(
+      manifest,
+      'core-worker-promotion',
+      'core-worker-runtime',
+      'opaque-lineage-apply-plan',
+    );
+    const applyOptions = {
+      gateId: 'core-worker-promotion',
+      operationId: 'core-worker-runtime',
+      result: 'succeeded',
+      evidenceRef: 'apply:opaque-lineage',
+      postLineage: OPAQUE_LINEAGE,
+      postSerial: 1,
+      recordedAt: RECORDED_AT,
+    };
+
+    assert.throws(
+      () =>
+        control.recordApply(manifest, {
+          ...applyOptions,
+          postLineage: `${OPAQUE_LINEAGE}x`,
+        }),
+      { code: 'POST_APPLY_STATE_INVALID' },
+    );
+    assert.equal(core.apply.attempted, false);
+
+    control.recordApply(manifest, applyOptions);
+    assert.equal(core.apply.status, 'succeeded');
+    assert.equal(core.apply.postApplyState.lineage, OPAQUE_LINEAGE);
+    assert.equal(core.apply.postApplyState.serial, 1);
   });
 });
 
