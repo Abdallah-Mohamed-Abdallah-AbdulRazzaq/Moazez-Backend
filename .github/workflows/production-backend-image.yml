@@ -110,58 +110,66 @@ jobs:
           EXPECTED_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          EXPECTED_PACKAGE_RESOURCE="projects/${GCP_PROJECT_ID}/locations/${REGION}/repositories/${ARTIFACT_REGISTRY_REPOSITORY}/packages/${ARTIFACT_REGISTRY_PACKAGE}"
+          SOURCE_SHA_TAG="${IMAGE_PACKAGE}:${EXPECTED_SHA}"
+          printf 'SOURCE_SHA_TAG=%s\n' "$SOURCE_SHA_TAG"
 
-          if PACKAGE_RESULT="$(
-            gcloud artifacts packages list \
-              --project="$GCP_PROJECT_ID" \
-              --location="$REGION" \
-              --repository="$ARTIFACT_REGISTRY_REPOSITORY" \
-              --filter="name=\"${EXPECTED_PACKAGE_RESOURCE}\"" \
-              --format='value(name)'
-          )"; then
+          lookup_stdout_file=""
+          lookup_stderr_file=""
+          cleanup_lookup_evidence() {
+            if [[ -n "$lookup_stdout_file" ]]; then
+              rm -f -- "$lookup_stdout_file"
+            fi
+            if [[ -n "$lookup_stderr_file" ]]; then
+              rm -f -- "$lookup_stderr_file"
+            fi
+          }
+          trap cleanup_lookup_evidence EXIT
+
+          lookup_stdout_file="$(mktemp)"
+          lookup_stderr_file="$(mktemp)"
+
+          lookup_exit_code=0
+          if gcloud artifacts docker images describe \
+            "$SOURCE_SHA_TAG" \
+            --format='value(image_summary.digest)' \
+            >"$lookup_stdout_file" \
+            2>"$lookup_stderr_file"; then
             :
           else
-            echo "Artifact Registry package lookup failed." >&2
+            lookup_exit_code=$?
+          fi
+
+          if (( lookup_exit_code == 0 )); then
+            lookup_stdout_contains_nul=0
+            if IFS= read -r -d '' lookup_stdout_prefix <"$lookup_stdout_file"; then
+              lookup_stdout_contains_nul=1
+            fi
+            lookup_stdout_lines=()
+            mapfile -t lookup_stdout_lines <"$lookup_stdout_file"
+            if (( lookup_stdout_contains_nul != 0 || ${#lookup_stdout_lines[@]} != 1 )) ||
+              [[ ! "${lookup_stdout_lines[0]-}" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+              printf '%s\n' 'TAG_LOOKUP_STATUS=UNEXPECTED_FAILURE' >&2
+              echo "Artifact Registry exact source SHA tag lookup returned invalid success output." >&2
+              exit 1
+            fi
+
+            TAG_COLLISION="YES"
+            printf 'TAG_COLLISION=%s\n' "$TAG_COLLISION"
+            echo "The immutable source SHA tag already exists; overwrite is forbidden." >&2
             exit 1
           fi
 
-          if [[ -z "$PACKAGE_RESULT" ]]; then
+          lookup_stderr_lines=()
+          mapfile -t lookup_stderr_lines <"$lookup_stderr_file"
+          not_found_error_pattern='^ERROR: [(]gcloud[.]artifacts[.]docker[.]images[.]describe[)] NOT_FOUND:([[:space:]].*)?$'
+          if [[ ! -s "$lookup_stdout_file" ]] &&
+            (( ${#lookup_stderr_lines[@]} == 1 )) &&
+            [[ "${lookup_stderr_lines[0]}" =~ $not_found_error_pattern ]]; then
             TAG_COLLISION="NO"
-          elif [[ "$PACKAGE_RESULT" == "$EXPECTED_PACKAGE_RESOURCE" ]]; then
-            EXPECTED_TAG_RESOURCE="${EXPECTED_PACKAGE_RESOURCE}/tags/${EXPECTED_SHA}"
-            if TAG_RESULT="$(
-              gcloud artifacts tags list \
-                --project="$GCP_PROJECT_ID" \
-                --location="$REGION" \
-                --repository="$ARTIFACT_REGISTRY_REPOSITORY" \
-                --package="$ARTIFACT_REGISTRY_PACKAGE" \
-                --filter="name=\"${EXPECTED_TAG_RESOURCE}\"" \
-                --format='value(name)'
-            )"; then
-              :
-            else
-              echo "Artifact Registry tag lookup failed." >&2
-              exit 1
-            fi
-
-            if [[ -z "$TAG_RESULT" ]]; then
-              TAG_COLLISION="NO"
-            elif [[ "$TAG_RESULT" == "$EXPECTED_TAG_RESOURCE" ]]; then
-              TAG_COLLISION="YES"
-              echo "The immutable source SHA tag already exists." >&2
-              exit 1
-            else
-              echo "Artifact Registry tag lookup returned malformed or multiple results." >&2
-              exit 1
-            fi
+            printf 'TAG_COLLISION=%s\n' "$TAG_COLLISION"
           else
-            echo "Artifact Registry package lookup returned malformed or multiple results." >&2
-            exit 1
-          fi
-
-          if [[ "$TAG_COLLISION" != "NO" ]]; then
-            echo "The immutable source SHA tag collision gate did not pass." >&2
+            printf '%s\n' 'TAG_LOOKUP_STATUS=UNEXPECTED_FAILURE' >&2
+            echo "Artifact Registry exact source SHA tag lookup failed unexpectedly." >&2
             exit 1
           fi
 
