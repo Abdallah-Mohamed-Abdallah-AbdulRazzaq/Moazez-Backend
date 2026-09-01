@@ -2,13 +2,14 @@
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawnSync } = require('node:child_process');
 const { classifyTestFile } = require('../ci/plan-ci.cjs');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
-const BASE_SHA = '044db4860de9d2bce82f46708ca459ac5a522434';
+const BASE_SHA = 'eeac262acce930916b47c4d70f2c62e0d55af358';
 const WORKFLOW_PATH = '.github/workflows/production-backend-image.yml';
 const STAGING_WORKFLOW_PATH = '.github/workflows/staging-backend-image.yml';
 const TEST_PATH =
@@ -16,12 +17,12 @@ const TEST_PATH =
 const PLAN_CI_PATH = 'scripts/ci/plan-ci.cjs';
 const RUN_CI_SHARD_PATH = 'scripts/tests/run-ci-shard.test.cjs';
 const PLAN_CI_TEST_PATH = 'scripts/tests/plan-ci.test.cjs';
-const AUTHORIZED_CANDIDATE_PATHS = new Set([
-  WORKFLOW_PATH,
-  TEST_PATH,
-  PLAN_CI_PATH,
-  RUN_CI_SHARD_PATH,
-]);
+const AUTHORIZED_CANDIDATE_PATHS = [TEST_PATH, WORKFLOW_PATH].sort();
+const TEST_IMAGE_PACKAGE =
+  'me-central2-docker.pkg.dev/moazez-production/moazez-production-containers/moazez-backend';
+const TEST_EXPECTED_SHA = 'a'.repeat(40);
+const TEST_VALID_DIGEST = `sha256:${'b'.repeat(64)}`;
+const BUILD_AUTHORIZED_MARKER = 'BUILD_AUTHORIZED=YES';
 
 function repositoryPath(relativePath) {
   return path.join(REPOSITORY_ROOT, ...relativePath.split('/'));
@@ -56,6 +57,121 @@ function workflowStep(source, name) {
   assert.notEqual(start, -1, `missing workflow step: ${name}`);
   const next = source.indexOf('\n      - name: ', start + marker.length);
   return source.slice(start, next === -1 ? source.length : next);
+}
+
+function workflowRunBody(step) {
+  const marker = '        run: |\n';
+  const start = step.indexOf(marker);
+  assert.notEqual(start, -1, 'missing workflow run body');
+  return step
+    .slice(start + marker.length)
+    .split('\n')
+    .map((line) => {
+      if (line === '') return line;
+      assert.ok(line.startsWith('          '), 'unexpected run-body indent');
+      return line.slice(10);
+    })
+    .join('\n');
+}
+
+function bashExecutable() {
+  const gitExecPath = execFileSync('git', ['--exec-path'], {
+    cwd: REPOSITORY_ROOT,
+    encoding: 'utf8',
+    windowsHide: true,
+  }).trim();
+  const gitBash = path.resolve(
+    gitExecPath,
+    '..',
+    '..',
+    '..',
+    'bin',
+    process.platform === 'win32' ? 'bash.exe' : 'bash',
+  );
+  const candidates = [
+    process.env.MOAZEZ_TEST_BASH,
+    gitBash,
+    'C:\\Program Files\\Git\\bin\\bash.exe',
+    '/usr/bin/bash',
+    '/bin/bash',
+  ].filter(Boolean);
+  const executable = candidates.find((candidate) => fs.existsSync(candidate));
+  assert.ok(executable, 'Bash is required for the collision-step proof');
+  return executable;
+}
+
+function runCollisionStep({
+  emitNul = false,
+  exitCode,
+  stdout = '',
+  stderr = '',
+}) {
+  const workflow = normalizedSource(WORKFLOW_PATH);
+  const collisionBody = workflowRunBody(
+    workflowStep(workflow, 'Reject an existing immutable source SHA tag'),
+  );
+  const fakeGcloud = [
+    'gcloud() {',
+    '  if [[ "$#" -ne 6 ]]; then',
+    "    printf '%s\\n' 'unexpected fake gcloud argument count' >&2",
+    '    return 97',
+    '  fi',
+    '  if [[ "$1" != "artifacts" || "$2" != "docker" ||',
+    '    "$3" != "images" || "$4" != "describe" ||',
+    '    "$5" != "${IMAGE_PACKAGE}:${EXPECTED_SHA}" ||',
+    '    "$6" != "--format=value(image_summary.digest)" ]]; then',
+    "    printf '%s\\n' 'unexpected fake gcloud invocation' >&2",
+    '    return 97',
+    '  fi',
+    '  if [[ "$FAKE_GCLOUD_EMIT_NUL" == "YES" ]]; then',
+    "    printf '%s\\0\\n' \"${FAKE_GCLOUD_STDOUT-}\"",
+    '  else',
+    "    printf '%s' \"${FAKE_GCLOUD_STDOUT-}\"",
+    '  fi',
+    "  printf '%s' \"${FAKE_GCLOUD_STDERR-}\" >&2",
+    '  return "$FAKE_GCLOUD_EXIT_CODE"',
+    '}',
+  ].join('\n');
+  const temporaryDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), 'stage-27a-collision-'),
+  );
+  try {
+    const result = spawnSync(
+      bashExecutable(),
+      [
+        '--noprofile',
+        '--norc',
+        '-c',
+        `${fakeGcloud}\n${collisionBody}\nprintf '%s\\n' '${BUILD_AUTHORIZED_MARKER}'`,
+      ],
+      {
+        cwd: temporaryDirectory,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          EXPECTED_SHA: TEST_EXPECTED_SHA,
+          FAKE_GCLOUD_EMIT_NUL: emitNul ? 'YES' : 'NO',
+          FAKE_GCLOUD_EXIT_CODE: String(exitCode),
+          FAKE_GCLOUD_STDERR: stderr,
+          FAKE_GCLOUD_STDOUT: stdout,
+          IMAGE_PACKAGE: TEST_IMAGE_PACKAGE,
+          TMPDIR: '.',
+        },
+        timeout: 10_000,
+        windowsHide: true,
+      },
+    );
+    assert.equal(result.error, undefined);
+    assert.equal(result.signal, null);
+    assert.deepEqual(
+      fs.readdirSync(temporaryDirectory),
+      [],
+      'collision lookup temporary evidence was not cleaned',
+    );
+    return result;
+  } finally {
+    fs.rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
 }
 
 function assignmentCommandLines(source, variableName) {
@@ -125,10 +241,7 @@ function assertStage27CandidateScope(candidateFiles) {
     normalized.includes(WORKFLOW_PATH) || normalized.includes(TEST_PATH);
   if (!active) return;
 
-  assert.deepEqual(
-    normalized.filter((file) => !AUTHORIZED_CANDIDATE_PATHS.has(file)),
-    [],
-  );
+  assert.deepEqual(normalized, AUTHORIZED_CANDIDATE_PATHS);
   assert.equal(normalized.includes(STAGING_WORKFLOW_PATH), false);
 }
 
@@ -334,96 +447,148 @@ test('Production Artifact Registry coordinates are exact', () => {
   assert.doesNotMatch(workflow, /^\s+(?:working-directory|defaults|path):/mu);
 });
 
-test('tag collision detection is two-level, read-only, and fail closed', () => {
+test('tag collision detection describes the exact immutable Docker tag and fails closed', () => {
   const workflow = normalizedSource(WORKFLOW_PATH);
   const collisionStep = workflowStep(
     workflow,
     'Reject an existing immutable source SHA tag',
   );
-  const packageLookupIndex = collisionStep.indexOf(
-    'gcloud artifacts packages list',
-  );
-  const tagLookupIndex = collisionStep.indexOf('gcloud artifacts tags list');
-
-  assert.notEqual(packageLookupIndex, -1);
-  assert.notEqual(tagLookupIndex, -1);
-  assert.ok(packageLookupIndex < tagLookupIndex);
   assert.match(
     collisionStep,
-    /EXPECTED_PACKAGE_RESOURCE="projects\/\$\{GCP_PROJECT_ID\}\/locations\/\$\{REGION\}\/repositories\/\$\{ARTIFACT_REGISTRY_REPOSITORY\}\/packages\/\$\{ARTIFACT_REGISTRY_PACKAGE\}"/u,
-  );
-  assert.match(collisionStep, /if PACKAGE_RESULT="\$\(/u);
-  assert.match(
-    collisionStep,
-    /Artifact Registry package lookup failed[.]" >&2\n\s+exit 1/u,
-  );
-  assert.match(collisionStep, /\[\[ -z "\$PACKAGE_RESULT" \]\]/u);
-  assert.match(
-    collisionStep,
-    /"\$PACKAGE_RESULT" == "\$EXPECTED_PACKAGE_RESOURCE"/u,
-  );
-  assert.match(collisionStep, /if TAG_RESULT="\$\(/u);
-  assert.match(
-    collisionStep,
-    /Artifact Registry tag lookup failed[.]" >&2\n\s+exit 1/u,
-  );
-  assert.match(collisionStep, /\[\[ -z "\$TAG_RESULT" \]\]/u);
-  assert.match(collisionStep, /"\$TAG_RESULT" == "\$EXPECTED_TAG_RESOURCE"/u);
-  assert.match(collisionStep, /TAG_COLLISION="NO"/u);
-  assert.match(
-    collisionStep,
-    /TAG_COLLISION="YES"\n\s+echo "The immutable source SHA tag already exists[.]" >&2\n\s+exit 1/u,
+    /SOURCE_SHA_TAG="\$\{IMAGE_PACKAGE\}:\$\{EXPECTED_SHA\}"/u,
   );
   assert.match(
     collisionStep,
-    /package lookup returned malformed or multiple results[.]" >&2\n\s+exit 1/u,
+    /gcloud artifacts docker images describe \\\n+\s+"\$SOURCE_SHA_TAG" \\\n+\s+--format='value\(image_summary[.]digest\)' \\\n+\s+>"\$lookup_stdout_file" \\\n+\s+2>"\$lookup_stderr_file"/u,
   );
-  assert.match(
-    collisionStep,
-    /tag lookup returned malformed or multiple results[.]" >&2\n\s+exit 1/u,
+  assert.equal(
+    (collisionStep.match(/gcloud artifacts docker images describe/gu) ?? [])
+      .length,
+    1,
   );
-  for (const requiredFlag of [
-    '--project="$GCP_PROJECT_ID"',
-    '--location="$REGION"',
-    '--repository="$ARTIFACT_REGISTRY_REPOSITORY"',
-    '--package="$ARTIFACT_REGISTRY_PACKAGE"',
-    "--format='value(name)'",
-  ]) {
-    assert.ok(collisionStep.includes(requiredFlag), requiredFlag);
-  }
-  assert.deepEqual(assignmentCommandLines(collisionStep, 'PACKAGE_RESULT'), [
-    'gcloud artifacts packages list \\',
-    '--project="$GCP_PROJECT_ID" \\',
-    '--location="$REGION" \\',
-    '--repository="$ARTIFACT_REGISTRY_REPOSITORY" \\',
-    '--filter="name=\\"${EXPECTED_PACKAGE_RESOURCE}\\"" \\',
-    "--format='value(name)'",
-  ]);
-  assert.deepEqual(assignmentCommandLines(collisionStep, 'TAG_RESULT'), [
-    'gcloud artifacts tags list \\',
-    '--project="$GCP_PROJECT_ID" \\',
-    '--location="$REGION" \\',
-    '--repository="$ARTIFACT_REGISTRY_REPOSITORY" \\',
-    '--package="$ARTIFACT_REGISTRY_PACKAGE" \\',
-    '--filter="name=\\"${EXPECTED_TAG_RESOURCE}\\"" \\',
-    "--format='value(name)'",
-  ]);
-  assert.equal(shellAssignmentCount(collisionStep, 'PACKAGE_RESULT'), 1);
-  assert.equal(shellAssignmentCount(collisionStep, 'TAG_RESULT'), 1);
-  assert.ok(
-    collisionStep.includes(
-      '--filter="name=\\"${EXPECTED_PACKAGE_RESOURCE}\\""',
-    ),
-  );
-  assert.ok(
-    collisionStep.includes('--filter="name=\\"${EXPECTED_TAG_RESOURCE}\\""'),
-  );
-  const collisionRun = collisionStep.replace(/^\s*run:\s*[|]$/mu, '');
-  assert.doesNotMatch(collisionRun, /[|]|set \+e|<\s*<\s*\(/u);
+  assert.doesNotMatch(collisionStep, /gcloud artifacts packages list/u);
+  assert.doesNotMatch(collisionStep, /gcloud artifacts tags list/u);
   assert.doesNotMatch(
     collisionStep,
-    /gcloud artifacts \S+\s+(?:create|delete|update|move)\b/u,
+    /EXPECTED_(?:PACKAGE|TAG)_RESOURCE|\/packages\/|\/tags\//u,
   );
+
+  assert.equal((collisionStep.match(/\bmktemp\b/gu) ?? []).length, 2);
+  assert.match(collisionStep, /trap cleanup_lookup_evidence EXIT/u);
+  assert.match(collisionStep, /rm -f -- "\$lookup_stdout_file"/u);
+  assert.match(collisionStep, /rm -f -- "\$lookup_stderr_file"/u);
+  assert.match(collisionStep, /if \(\( lookup_exit_code == 0 \)\); then/u);
+  assert.match(
+    collisionStep,
+    /if IFS= read -r -d '' lookup_stdout_prefix <"\$lookup_stdout_file"; then/u,
+  );
+  assert.match(collisionStep, /lookup_stdout_contains_nul != 0/u);
+  assert.ok(collisionStep.includes('^sha256:[a-f0-9]{64}$'));
+  assert.match(
+    collisionStep,
+    /\$\{#lookup_stdout_lines\[@\]\} != 1/u,
+  );
+  assert.match(
+    collisionStep,
+    /TAG_COLLISION="YES"[\s\S]*The immutable source SHA tag already exists; overwrite is forbidden[.]" >&2[\s\S]*exit 1/u,
+  );
+
+  assert.match(collisionStep, /\[\[ ! -s "\$lookup_stdout_file" \]\]/u);
+  assert.match(
+    collisionStep,
+    /\$\{#lookup_stderr_lines\[@\]\} == 1/u,
+  );
+  assert.ok(
+    collisionStep.includes(
+      "not_found_error_pattern='^ERROR: [(]gcloud[.]artifacts[.]docker[.]images[.]describe[)] NOT_FOUND:([[:space:]].*)?$'",
+    ),
+  );
+  assert.match(collisionStep, /TAG_COLLISION="NO"/u);
+  assert.equal(
+    (collisionStep.match(/TAG_LOOKUP_STATUS=UNEXPECTED_FAILURE/gu) ?? [])
+      .length,
+    2,
+  );
+  assert.match(
+    collisionStep,
+    /Artifact Registry exact source SHA tag lookup failed unexpectedly[.]" >&2\n\s+exit 1/u,
+  );
+  const collisionRun = collisionStep.replace(/^\s*run:\s*[|]$/mu, '');
+  assert.doesNotMatch(collisionRun, /set \+e|<\s*<\s*\(|^\s*[^#\n]*\s[|]\s/mu);
+  assert.doesNotMatch(collisionStep, /(?:cat|tee)\s+"?\$lookup_/u);
+  assert.doesNotMatch(
+    collisionStep,
+    /gcloud artifacts[\s\S]*?\b(?:create|delete|update|move|add)\b/u,
+  );
+});
+
+test('existing exact tag with one valid digest refuses overwrite', () => {
+  const result = runCollisionStep({
+    exitCode: 0,
+    stdout: `${TEST_VALID_DIGEST}\n`,
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /TAG_COLLISION=YES/u);
+  assert.doesNotMatch(result.stdout, new RegExp(BUILD_AUTHORIZED_MARKER, 'u'));
+  assert.match(
+    result.stderr,
+    /The immutable source SHA tag already exists; overwrite is forbidden[.]/u,
+  );
+});
+
+test('exact command-scoped NOT_FOUND is the only continuing absence state', () => {
+  const result = runCollisionStep({
+    exitCode: 1,
+    stderr:
+      'ERROR: (gcloud.artifacts.docker.images.describe) NOT_FOUND: requested tag was not found\n',
+  });
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /TAG_COLLISION=NO/u);
+  assert.match(result.stdout, new RegExp(BUILD_AUTHORIZED_MARKER, 'u'));
+  assert.equal(result.stderr, '');
+});
+
+test('permission error fails the exact tag lookup closed', () => {
+  const result = runCollisionStep({
+    exitCode: 1,
+    stderr:
+      'ERROR: (gcloud.artifacts.docker.images.describe) PERMISSION_DENIED: denied\n',
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.doesNotMatch(result.stdout, new RegExp(BUILD_AUTHORIZED_MARKER, 'u'));
+  assert.match(result.stderr, /TAG_LOOKUP_STATUS=UNEXPECTED_FAILURE/u);
+});
+
+test('network or otherwise unexpected lookup failure fails closed', () => {
+  const result = runCollisionStep({
+    exitCode: 1,
+    stderr: 'ERROR: (proxy.transport) NOT_FOUND: network path missing\n',
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.doesNotMatch(result.stdout, new RegExp(BUILD_AUTHORIZED_MARKER, 'u'));
+  assert.match(result.stderr, /TAG_LOOKUP_STATUS=UNEXPECTED_FAILURE/u);
+});
+
+test('malformed successful lookup output fails closed', () => {
+  for (const behavior of [
+    { exitCode: 0, stdout: 'garbage\n' },
+    { emitNul: true, exitCode: 0, stdout: TEST_VALID_DIGEST },
+  ]) {
+    const result = runCollisionStep(behavior);
+
+    assert.notEqual(result.status, 0);
+    assert.doesNotMatch(
+      result.stdout,
+      new RegExp(BUILD_AUTHORIZED_MARKER, 'u'),
+    );
+    assert.doesNotMatch(result.stdout, /TAG_COLLISION=/u);
+    assert.match(result.stderr, /TAG_LOOKUP_STATUS=UNEXPECTED_FAILURE/u);
+    assert.match(result.stderr, /invalid success output/u);
+  }
 });
 
 test('Docker auth, build, and SHA-only tag contract are exact', () => {
@@ -509,7 +674,7 @@ test('local image smoke gates precede the only push', () => {
   ];
   let previousIndex = -1;
   for (const marker of orderedMarkers) {
-    const currentIndex = workflow.indexOf(marker);
+    const currentIndex = workflow.indexOf(marker, previousIndex + 1);
     assert.ok(currentIndex > previousIndex, marker);
     previousIndex = currentIndex;
   }
@@ -591,7 +756,12 @@ test('remote digest and immutable Production reference are authoritative', () =>
   const workflowEvidenceFields = [
     ...workflow.matchAll(/printf '([A-Z_]+)=%s\\n'/gu),
   ].map((match) => match[1]);
-  assert.deepEqual(workflowEvidenceFields, evidenceFields);
+  assert.deepEqual(workflowEvidenceFields, [
+    'SOURCE_SHA_TAG',
+    'TAG_COLLISION',
+    'TAG_COLLISION',
+    ...evidenceFields,
+  ]);
   assert.doesNotMatch(
     workflow,
     /(?:echo|printf)[^\n]*(?:TOKEN|CREDENTIAL|SECRET|PASSWORD|DATABASE_URL|REDIS)/iu,
@@ -627,8 +797,7 @@ test('workflow contains no Stage 28, Stage 29, or forbidden mutation behavior', 
     [
       'gcloud auth list \\',
       'if active_project="$(gcloud config get-value project)"; then',
-      'gcloud artifacts packages list \\',
-      'gcloud artifacts tags list \\',
+      'if gcloud artifacts docker images describe \\',
       'gcloud auth configure-docker "$ARTIFACT_REGISTRY_HOST" --quiet',
       'gcloud artifacts docker images describe \\',
     ],
@@ -646,14 +815,22 @@ test('candidate scope ignores future unrelated work and rejects mixed candidates
   assert.doesNotThrow(() =>
     assertStage27CandidateScope([PLAN_CI_PATH, RUN_CI_SHARD_PATH]),
   );
-  assert.doesNotThrow(() =>
-    assertStage27CandidateScope([
-      WORKFLOW_PATH,
-      TEST_PATH,
-      PLAN_CI_PATH,
-      RUN_CI_SHARD_PATH,
-    ]),
+  assert.throws(
+    () =>
+      assertStage27CandidateScope([
+        WORKFLOW_PATH,
+        TEST_PATH,
+        PLAN_CI_PATH,
+        RUN_CI_SHARD_PATH,
+      ]),
+    { code: 'ERR_ASSERTION' },
   );
+  assert.throws(() => assertStage27CandidateScope([WORKFLOW_PATH]), {
+    code: 'ERR_ASSERTION',
+  });
+  assert.throws(() => assertStage27CandidateScope([TEST_PATH]), {
+    code: 'ERR_ASSERTION',
+  });
   assert.throws(
     () =>
       assertStage27CandidateScope([
