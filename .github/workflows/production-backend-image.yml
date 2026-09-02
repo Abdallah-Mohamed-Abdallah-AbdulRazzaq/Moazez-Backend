@@ -111,67 +111,175 @@ jobs:
         run: |
           set -euo pipefail
           SOURCE_SHA_TAG="${IMAGE_PACKAGE}:${EXPECTED_SHA}"
+          MANIFEST_URL="https://${ARTIFACT_REGISTRY_HOST}/v2/${GCP_PROJECT_ID}/${ARTIFACT_REGISTRY_REPOSITORY}/${ARTIFACT_REGISTRY_PACKAGE}/manifests/${EXPECTED_SHA}"
           printf 'SOURCE_SHA_TAG=%s\n' "$SOURCE_SHA_TAG"
 
-          lookup_stdout_file=""
-          lookup_stderr_file=""
+          token_stderr_file=""
+          curl_headers_file=""
+          curl_status_file=""
+          curl_stderr_file=""
+          ACCESS_TOKEN=""
+          token_capture=""
           cleanup_lookup_evidence() {
-            if [[ -n "$lookup_stdout_file" ]]; then
-              rm -f -- "$lookup_stdout_file"
-            fi
-            if [[ -n "$lookup_stderr_file" ]]; then
-              rm -f -- "$lookup_stderr_file"
+            local cleanup_failed=0
+            local evidence_file
+            trap - EXIT
+            ACCESS_TOKEN=""
+            unset ACCESS_TOKEN
+            token_capture=""
+            unset token_capture
+            for evidence_file in \
+              "$token_stderr_file" \
+              "$curl_headers_file" \
+              "$curl_status_file" \
+              "$curl_stderr_file"; do
+              if [[ -n "$evidence_file" ]]; then
+                if ! rm -f -- "$evidence_file"; then
+                  cleanup_failed=1
+                fi
+              fi
+            done
+            if (( cleanup_failed != 0 )); then
+              echo "Unable to remove temporary registry lookup evidence." >&2
+              exit 1
             fi
           }
           trap cleanup_lookup_evidence EXIT
 
-          lookup_stdout_file="$(mktemp)"
-          lookup_stderr_file="$(mktemp)"
+          token_stderr_file="$(mktemp)"
+          curl_headers_file="$(mktemp)"
+          curl_status_file="$(mktemp)"
+          curl_stderr_file="$(mktemp)"
 
-          lookup_exit_code=0
-          if gcloud artifacts docker images describe \
-            "$SOURCE_SHA_TAG" \
-            --format='value(image_summary.digest)' \
-            >"$lookup_stdout_file" \
-            2>"$lookup_stderr_file"; then
+          token_exit_code=0
+          if token_capture="$(
+            gcloud auth print-access-token 2>"$token_stderr_file" &&
+              printf '\036'
+          )"; then
             :
           else
-            lookup_exit_code=$?
+            token_exit_code=$?
           fi
 
-          if (( lookup_exit_code == 0 )); then
-            lookup_stdout_contains_nul=0
-            if IFS= read -r -d '' lookup_stdout_prefix <"$lookup_stdout_file"; then
-              lookup_stdout_contains_nul=1
-            fi
-            lookup_stdout_lines=()
-            mapfile -t lookup_stdout_lines <"$lookup_stdout_file"
-            if (( lookup_stdout_contains_nul != 0 || ${#lookup_stdout_lines[@]} != 1 )) ||
-              [[ ! "${lookup_stdout_lines[0]-}" =~ ^sha256:[a-f0-9]{64}$ ]]; then
-              printf '%s\n' 'TAG_LOOKUP_STATUS=UNEXPECTED_FAILURE' >&2
-              echo "Artifact Registry exact source SHA tag lookup returned invalid success output." >&2
-              exit 1
-            fi
-
-            TAG_COLLISION="YES"
-            printf 'TAG_COLLISION=%s\n' "$TAG_COLLISION"
-            echo "The immutable source SHA tag already exists; overwrite is forbidden." >&2
-            exit 1
-          fi
-
-          lookup_stderr_lines=()
-          mapfile -t lookup_stderr_lines <"$lookup_stderr_file"
-          not_found_error_pattern='^ERROR: [(]gcloud[.]artifacts[.]docker[.]images[.]describe[)] NOT_FOUND:([[:space:]].*)?$'
-          if [[ ! -s "$lookup_stdout_file" ]] &&
-            (( ${#lookup_stderr_lines[@]} == 1 )) &&
-            [[ "${lookup_stderr_lines[0]}" =~ $not_found_error_pattern ]]; then
-            TAG_COLLISION="NO"
-            printf 'TAG_COLLISION=%s\n' "$TAG_COLLISION"
-          else
+          if (( token_exit_code != 0 )) ||
+            [[ "$token_capture" != *$'\036' ]]; then
+            token_capture=""
+            unset token_capture
+            ACCESS_TOKEN=""
+            unset ACCESS_TOKEN
             printf '%s\n' 'TAG_LOOKUP_STATUS=UNEXPECTED_FAILURE' >&2
-            echo "Artifact Registry exact source SHA tag lookup failed unexpectedly." >&2
+            printf '%s\n' 'TOKEN_ACQUISITION=FAIL' >&2
+            echo "Unable to acquire a valid temporary registry access token." >&2
             exit 1
           fi
+
+          ACCESS_TOKEN="${token_capture%$'\036'}"
+          token_capture=""
+          unset token_capture
+          if [[ "$ACCESS_TOKEN" == *$'\n' ]]; then
+            ACCESS_TOKEN="${ACCESS_TOKEN%$'\n'}"
+          fi
+          if [[ -z "$ACCESS_TOKEN" || "$ACCESS_TOKEN" =~ [[:space:][:cntrl:]] ]]; then
+            ACCESS_TOKEN=""
+            unset ACCESS_TOKEN
+            printf '%s\n' 'TAG_LOOKUP_STATUS=UNEXPECTED_FAILURE' >&2
+            printf '%s\n' 'TOKEN_ACQUISITION=FAIL' >&2
+            echo "Unable to acquire a valid temporary registry access token." >&2
+            exit 1
+          fi
+
+          curl_exit_code=0
+          if curl \
+            --disable \
+            --silent \
+            --show-error \
+            --head \
+            --connect-timeout 10 \
+            --max-time 30 \
+            --header "Authorization: Bearer ${ACCESS_TOKEN}" \
+            --header 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json' \
+            --dump-header "$curl_headers_file" \
+            --output /dev/null \
+            --write-out '%{http_code}' \
+            "$MANIFEST_URL" \
+            >"$curl_status_file" \
+            2>"$curl_stderr_file"; then
+            :
+          else
+            curl_exit_code=$?
+          fi
+          ACCESS_TOKEN=""
+          unset ACCESS_TOKEN
+
+          if (( curl_exit_code != 0 )); then
+            printf '%s\n' 'TAG_LOOKUP_STATUS=UNEXPECTED_FAILURE' >&2
+            printf '%s\n' 'CURL_TRANSPORT_STATUS=FAIL' >&2
+            echo "Artifact Registry manifest lookup transport failed." >&2
+            exit 1
+          fi
+
+          status_contains_nul=0
+          if IFS= read -r -d '' status_prefix <"$curl_status_file"; then
+            status_contains_nul=1
+          fi
+          HTTP_STATUS=""
+          status_has_extra_byte=0
+          if IFS= read -r -N 4 HTTP_STATUS <"$curl_status_file"; then
+            status_has_extra_byte=1
+          fi
+          if (( status_contains_nul != 0 || status_has_extra_byte != 0 )) ||
+            [[ ! "$HTTP_STATUS" =~ ^[0-9]{3}$ ]]; then
+            printf '%s\n' 'TAG_LOOKUP_STATUS=UNEXPECTED_FAILURE' >&2
+            echo "Artifact Registry manifest lookup returned an invalid HTTP status." >&2
+            exit 1
+          fi
+
+          case "$HTTP_STATUS" in
+            404)
+              TAG_COLLISION="NO"
+              printf 'TAG_COLLISION=%s\n' "$TAG_COLLISION"
+              ;;
+            200)
+              headers_contain_nul=0
+              if IFS= read -r -d '' header_prefix <"$curl_headers_file"; then
+                headers_contain_nul=1
+              fi
+              if (( headers_contain_nul != 0 )); then
+                printf '%s\n' 'TAG_LOOKUP_STATUS=UNEXPECTED_FAILURE' >&2
+                echo "Artifact Registry manifest response contained invalid digest evidence." >&2
+                exit 1
+              fi
+
+              digest_headers=()
+              while IFS= read -r header_line || [[ -n "$header_line" ]]; do
+                header_line="${header_line%$'\r'}"
+                if [[ "${header_line,,}" == docker-content-digest:* ]]; then
+                  digest_value="${header_line#*:}"
+                  digest_value="${digest_value#"${digest_value%%[![:space:]]*}"}"
+                  digest_value="${digest_value%"${digest_value##*[![:space:]]}"}"
+                  digest_headers+=("$digest_value")
+                fi
+              done <"$curl_headers_file"
+
+              if (( ${#digest_headers[@]} != 1 )) ||
+                [[ ! "${digest_headers[0]-}" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+                printf '%s\n' 'TAG_LOOKUP_STATUS=UNEXPECTED_FAILURE' >&2
+                echo "Artifact Registry manifest response contained invalid digest evidence." >&2
+                exit 1
+              fi
+
+              TAG_COLLISION="YES"
+              printf 'TAG_COLLISION=%s\n' "$TAG_COLLISION"
+              printf '%s\n' 'BUILD_AUTHORIZED=NO'
+              echo "The immutable source SHA tag already exists; overwrite is forbidden." >&2
+              exit 1
+              ;;
+            *)
+              printf '%s\n' 'TAG_LOOKUP_STATUS=UNEXPECTED_FAILURE' >&2
+              printf 'Artifact Registry manifest lookup returned unexpected HTTP status %s.\n' "$HTTP_STATUS" >&2
+              exit 1
+              ;;
+          esac
 
       - name: Configure the regional Artifact Registry credential helper
         shell: bash
