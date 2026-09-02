@@ -9,7 +9,7 @@ const { execFileSync, spawnSync } = require('node:child_process');
 const { classifyTestFile } = require('../ci/plan-ci.cjs');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
-const BASE_SHA = 'eeac262acce930916b47c4d70f2c62e0d55af358';
+const BASE_SHA = '75481368e8bf0f40b8cdb277febd79d0fd54e046';
 const WORKFLOW_PATH = '.github/workflows/production-backend-image.yml';
 const STAGING_WORKFLOW_PATH = '.github/workflows/staging-backend-image.yml';
 const TEST_PATH =
@@ -18,9 +18,18 @@ const PLAN_CI_PATH = 'scripts/ci/plan-ci.cjs';
 const RUN_CI_SHARD_PATH = 'scripts/tests/run-ci-shard.test.cjs';
 const PLAN_CI_TEST_PATH = 'scripts/tests/plan-ci.test.cjs';
 const AUTHORIZED_CANDIDATE_PATHS = [TEST_PATH, WORKFLOW_PATH].sort();
-const TEST_IMAGE_PACKAGE =
-  'me-central2-docker.pkg.dev/moazez-production/moazez-production-containers/moazez-backend';
+const TEST_ARTIFACT_REGISTRY_HOST = 'me-central2-docker.pkg.dev';
+const TEST_GCP_PROJECT_ID = 'moazez-production';
+const TEST_ARTIFACT_REGISTRY_REPOSITORY = 'moazez-production-containers';
+const TEST_ARTIFACT_REGISTRY_PACKAGE = 'moazez-backend';
+const TEST_IMAGE_PACKAGE = `${TEST_ARTIFACT_REGISTRY_HOST}/${TEST_GCP_PROJECT_ID}/${TEST_ARTIFACT_REGISTRY_REPOSITORY}/${TEST_ARTIFACT_REGISTRY_PACKAGE}`;
 const TEST_EXPECTED_SHA = 'a'.repeat(40);
+const TEST_MANIFEST_URL = `https://${TEST_ARTIFACT_REGISTRY_HOST}/v2/${TEST_GCP_PROJECT_ID}/${TEST_ARTIFACT_REGISTRY_REPOSITORY}/${TEST_ARTIFACT_REGISTRY_PACKAGE}/manifests/${TEST_EXPECTED_SHA}`;
+const TEST_ACCESS_TOKEN = 'synthetic-stage-27a-access-token';
+const TEST_ACCEPT_HEADER =
+  'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json';
+const TEST_TOKEN_STDERR = 'synthetic-token-command-diagnostic';
+const TEST_CURL_STDERR = 'synthetic-curl-diagnostic';
 const TEST_VALID_DIGEST = `sha256:${'b'.repeat(64)}`;
 const BUILD_AUTHORIZED_MARKER = 'BUILD_AUTHORIZED=YES';
 
@@ -101,77 +110,203 @@ function bashExecutable() {
 }
 
 function runCollisionStep({
-  emitNul = false,
-  exitCode,
-  stdout = '',
-  stderr = '',
+  tokenExitCode = 0,
+  tokenStdout = `${TEST_ACCESS_TOKEN}\n`,
+  tokenStderr = TEST_TOKEN_STDERR,
+  curlExitCode = 0,
+  httpStatus = '404',
+  responseHeaders = '',
+  curlStderr = TEST_CURL_STDERR,
+  statusEmitNul = false,
+  headersEmitNul = false,
+  expectCurl = true,
 }) {
   const workflow = normalizedSource(WORKFLOW_PATH);
   const collisionBody = workflowRunBody(
     workflowStep(workflow, 'Reject an existing immutable source SHA tag'),
   );
-  const fakeGcloud = [
+  const fakes = [
     'gcloud() {',
-    '  if [[ "$#" -ne 6 ]]; then',
+    "  printf '%s\\n' 'gcloud-attempt' >>\"$FAKE_CALL_LOG\"",
+    '  if [[ "$#" -ne 2 || "$1" != "auth" || "$2" != "print-access-token" ]]; then',
     "    printf '%s\\n' 'unexpected fake gcloud argument count' >&2",
     '    return 97',
     '  fi',
-    '  if [[ "$1" != "artifacts" || "$2" != "docker" ||',
-    '    "$3" != "images" || "$4" != "describe" ||',
-    '    "$5" != "${IMAGE_PACKAGE}:${EXPECTED_SHA}" ||',
-    '    "$6" != "--format=value(image_summary.digest)" ]]; then',
-    "    printf '%s\\n' 'unexpected fake gcloud invocation' >&2",
+    "  printf '%s\\n' 'gcloud-valid' >>\"$FAKE_CALL_LOG\"",
+    '  printf \'%s\' "${FAKE_TOKEN_STDOUT-}"',
+    '  printf \'%s\' "${FAKE_TOKEN_STDERR-}" >&2',
+    '  return "$FAKE_TOKEN_EXIT_CODE"',
+    '}',
+    'curl() {',
+    "  printf '%s\\n' 'curl-attempt' >>\"$FAKE_CALL_LOG\"",
+    '  if [[ -n "${token_capture+x}" ]]; then return 97; fi',
+    '  if (( "$#" == 0 )) || [[ "$1" != "--disable" ]]; then return 97; fi',
+    '  shift',
+    '  local dump_header_path=""',
+    '  local saw_accept=0',
+    '  local saw_authorization=0',
+    '  local saw_connect_timeout=0',
+    '  local saw_dump_header=0',
+    '  local saw_head=0',
+    '  local saw_manifest_url=0',
+    '  local saw_max_time=0',
+    '  local saw_output=0',
+    '  local saw_show_error=0',
+    '  local saw_silent=0',
+    '  local saw_write_out=0',
+    '  while (( "$#" > 0 )); do',
+    '    case "$1" in',
+    '      --silent)',
+    '        saw_silent=$((saw_silent + 1))',
+    '        shift',
+    '        ;;',
+    '      --show-error)',
+    '        saw_show_error=$((saw_show_error + 1))',
+    '        shift',
+    '        ;;',
+    '      --head)',
+    '        saw_head=$((saw_head + 1))',
+    '        shift',
+    '        ;;',
+    '      --connect-timeout)',
+    '        if (( "$#" < 2 )) || [[ "$2" != "10" ]]; then return 97; fi',
+    '        saw_connect_timeout=$((saw_connect_timeout + 1))',
+    '        shift 2',
+    '        ;;',
+    '      --max-time)',
+    '        if (( "$#" < 2 )) || [[ "$2" != "30" ]]; then return 97; fi',
+    '        saw_max_time=$((saw_max_time + 1))',
+    '        shift 2',
+    '        ;;',
+    '      --header)',
+    '        if (( "$#" < 2 )); then return 97; fi',
+    '        if [[ "$2" == "Authorization: Bearer ${FAKE_EXPECTED_ACCESS_TOKEN}" ]]; then',
+    '          saw_authorization=$((saw_authorization + 1))',
+    '        elif [[ "$2" == "$FAKE_EXPECTED_ACCEPT_HEADER" ]]; then',
+    '          saw_accept=$((saw_accept + 1))',
+    '        else',
+    '          return 97',
+    '        fi',
+    '        shift 2',
+    '        ;;',
+    '      --dump-header)',
+    '        if (( "$#" < 2 )) || [[ -z "$2" ]]; then return 97; fi',
+    '        dump_header_path="$2"',
+    '        saw_dump_header=$((saw_dump_header + 1))',
+    '        shift 2',
+    '        ;;',
+    '      --output)',
+    '        if (( "$#" < 2 )) || [[ "$2" != "/dev/null" ]]; then return 97; fi',
+    '        saw_output=$((saw_output + 1))',
+    '        shift 2',
+    '        ;;',
+    '      --write-out)',
+    '        if (( "$#" < 2 )) || [[ "$2" != "%{http_code}" ]]; then return 97; fi',
+    '        saw_write_out=$((saw_write_out + 1))',
+    '        shift 2',
+    '        ;;',
+    '      *)',
+    '        if [[ "$1" != "$FAKE_EXPECTED_MANIFEST_URL" ]]; then return 97; fi',
+    '        saw_manifest_url=$((saw_manifest_url + 1))',
+    '        shift',
+    '        ;;',
+    '    esac',
+    '  done',
+    '  if (( saw_accept != 1 || saw_authorization != 1 ||',
+    '    saw_connect_timeout != 1 || saw_dump_header != 1 ||',
+    '    saw_head != 1 || saw_manifest_url != 1 || saw_max_time != 1 ||',
+    '    saw_output != 1 || saw_show_error != 1 || saw_silent != 1 ||',
+    '    saw_write_out != 1 )); then',
     '    return 97',
     '  fi',
-    '  if [[ "$FAKE_GCLOUD_EMIT_NUL" == "YES" ]]; then',
-    "    printf '%s\\0\\n' \"${FAKE_GCLOUD_STDOUT-}\"",
+    "  printf '%s\\n' 'curl-valid' >>\"$FAKE_CALL_LOG\"",
+    '  if [[ "$FAKE_CURL_HEADERS_EMIT_NUL" == "YES" ]]; then',
+    '    printf \'%s\\0\' "${FAKE_RESPONSE_HEADERS-}" >"$dump_header_path"',
     '  else',
-    "    printf '%s' \"${FAKE_GCLOUD_STDOUT-}\"",
+    '    printf \'%s\' "${FAKE_RESPONSE_HEADERS-}" >"$dump_header_path"',
     '  fi',
-    "  printf '%s' \"${FAKE_GCLOUD_STDERR-}\" >&2",
-    '  return "$FAKE_GCLOUD_EXIT_CODE"',
+    '  if [[ "$FAKE_CURL_STATUS_EMIT_NUL" == "YES" ]]; then',
+    '    printf \'%s\\0\' "${FAKE_HTTP_STATUS-}"',
+    '  else',
+    '    printf \'%s\' "${FAKE_HTTP_STATUS-}"',
+    '  fi',
+    '  printf \'%s\' "${FAKE_CURL_STDERR-}" >&2',
+    '  return "$FAKE_CURL_EXIT_CODE"',
     '}',
   ].join('\n');
-  const temporaryDirectory = fs.mkdtempSync(
+  const harnessRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), 'stage-27a-collision-'),
   );
+  const evidenceDirectory = path.join(harnessRoot, 'evidence');
+  const callLogPath = path.join(harnessRoot, 'fake-call-log');
+  fs.mkdirSync(evidenceDirectory);
   try {
-    const result = spawnSync(
-      bashExecutable(),
-      [
-        '--noprofile',
-        '--norc',
-        '-c',
-        `${fakeGcloud}\n${collisionBody}\nprintf '%s\\n' '${BUILD_AUTHORIZED_MARKER}'`,
-      ],
-      {
-        cwd: temporaryDirectory,
-        encoding: 'utf8',
-        env: {
-          ...process.env,
-          EXPECTED_SHA: TEST_EXPECTED_SHA,
-          FAKE_GCLOUD_EMIT_NUL: emitNul ? 'YES' : 'NO',
-          FAKE_GCLOUD_EXIT_CODE: String(exitCode),
-          FAKE_GCLOUD_STDERR: stderr,
-          FAKE_GCLOUD_STDOUT: stdout,
-          IMAGE_PACKAGE: TEST_IMAGE_PACKAGE,
-          TMPDIR: '.',
-        },
-        timeout: 10_000,
-        windowsHide: true,
+    const collisionScript = `${fakes}\n${collisionBody}\nif [[ -n "\${ACCESS_TOKEN+x}" || -n "\${token_capture+x}" ]]; then exit 98; fi\nprintf '%s\\n' '${BUILD_AUTHORIZED_MARKER}'`;
+    const result = spawnSync(bashExecutable(), ['--noprofile', '--norc'], {
+      cwd: evidenceDirectory,
+      encoding: 'utf8',
+      input: collisionScript,
+      env: {
+        ...process.env,
+        ARTIFACT_REGISTRY_HOST: TEST_ARTIFACT_REGISTRY_HOST,
+        ARTIFACT_REGISTRY_PACKAGE: TEST_ARTIFACT_REGISTRY_PACKAGE,
+        ARTIFACT_REGISTRY_REPOSITORY: TEST_ARTIFACT_REGISTRY_REPOSITORY,
+        EXPECTED_SHA: TEST_EXPECTED_SHA,
+        FAKE_CALL_LOG: '../fake-call-log',
+        FAKE_CURL_EXIT_CODE: String(curlExitCode),
+        FAKE_CURL_HEADERS_EMIT_NUL: headersEmitNul ? 'YES' : 'NO',
+        FAKE_CURL_STATUS_EMIT_NUL: statusEmitNul ? 'YES' : 'NO',
+        FAKE_CURL_STDERR: curlStderr,
+        FAKE_EXPECTED_ACCEPT_HEADER: TEST_ACCEPT_HEADER,
+        FAKE_EXPECTED_ACCESS_TOKEN: TEST_ACCESS_TOKEN,
+        FAKE_EXPECTED_MANIFEST_URL: TEST_MANIFEST_URL,
+        FAKE_HTTP_STATUS: httpStatus,
+        FAKE_RESPONSE_HEADERS: responseHeaders,
+        FAKE_TOKEN_EXIT_CODE: String(tokenExitCode),
+        FAKE_TOKEN_STDERR: tokenStderr,
+        FAKE_TOKEN_STDOUT: tokenStdout,
+        GCP_PROJECT_ID: TEST_GCP_PROJECT_ID,
+        IMAGE_PACKAGE: TEST_IMAGE_PACKAGE,
+        TMPDIR: '.',
       },
-    );
+      timeout: 10_000,
+      windowsHide: true,
+    });
     assert.equal(result.error, undefined);
     assert.equal(result.signal, null);
+    assert.doesNotMatch(result.stdout, new RegExp(TEST_ACCESS_TOKEN, 'u'));
+    assert.doesNotMatch(result.stderr, new RegExp(TEST_ACCESS_TOKEN, 'u'));
+    assert.doesNotMatch(result.stdout, new RegExp(TEST_TOKEN_STDERR, 'u'));
+    assert.doesNotMatch(result.stderr, new RegExp(TEST_TOKEN_STDERR, 'u'));
+    assert.doesNotMatch(result.stdout, new RegExp(TEST_CURL_STDERR, 'u'));
+    assert.doesNotMatch(result.stderr, new RegExp(TEST_CURL_STDERR, 'u'));
+    const calls = fs.readFileSync(callLogPath, 'utf8').trim().split(/\r?\n/u);
     assert.deepEqual(
-      fs.readdirSync(temporaryDirectory),
+      calls,
+      expectCurl
+        ? ['gcloud-attempt', 'gcloud-valid', 'curl-attempt', 'curl-valid']
+        : ['gcloud-attempt', 'gcloud-valid'],
+    );
+    assert.deepEqual(
+      fs.readdirSync(evidenceDirectory),
       [],
       'collision lookup temporary evidence was not cleaned',
     );
     return result;
   } finally {
-    fs.rmSync(temporaryDirectory, { force: true, recursive: true });
+    fs.rmSync(harnessRoot, { force: true, recursive: true });
   }
+}
+
+function assertUnexpectedLookupFailure(result, label) {
+  assert.notEqual(result.status, 0, label);
+  assert.doesNotMatch(result.stdout, /TAG_COLLISION=/u, label);
+  assert.doesNotMatch(
+    result.stdout,
+    new RegExp(BUILD_AUTHORIZED_MARKER, 'u'),
+    label,
+  );
+  assert.match(result.stderr, /TAG_LOOKUP_STATUS=UNEXPECTED_FAILURE/u, label);
 }
 
 function assignmentCommandLines(source, variableName) {
@@ -389,8 +524,13 @@ test('Production WIF and active authentication context are exact', () => {
     assertConditionHardFails(contextStep, condition);
   }
   assert.doesNotMatch(
-    workflow,
+    contextStep,
     /set -x|print-access-token|print-identity-token|gcloud auth print/u,
+  );
+  assert.doesNotMatch(workflow, /set -x|print-identity-token/u);
+  assert.equal(
+    (workflow.match(/gcloud auth print-access-token/gu) ?? []).length,
+    1,
   );
 });
 
@@ -447,7 +587,7 @@ test('Production Artifact Registry coordinates are exact', () => {
   assert.doesNotMatch(workflow, /^\s+(?:working-directory|defaults|path):/mu);
 });
 
-test('tag collision detection describes the exact immutable Docker tag and fails closed', () => {
+test('tag collision guard uses an authenticated exact-manifest OCI HEAD and fails closed', () => {
   const workflow = normalizedSource(WORKFLOW_PATH);
   const collisionStep = workflowStep(
     workflow,
@@ -457,79 +597,128 @@ test('tag collision detection describes the exact immutable Docker tag and fails
     collisionStep,
     /SOURCE_SHA_TAG="\$\{IMAGE_PACKAGE\}:\$\{EXPECTED_SHA\}"/u,
   );
+  assert.ok(
+    collisionStep.includes(
+      'MANIFEST_URL="https://${ARTIFACT_REGISTRY_HOST}/v2/${GCP_PROJECT_ID}/${ARTIFACT_REGISTRY_REPOSITORY}/${ARTIFACT_REGISTRY_PACKAGE}/manifests/${EXPECTED_SHA}"',
+    ),
+  );
   assert.match(
     collisionStep,
-    /gcloud artifacts docker images describe \\\n+\s+"\$SOURCE_SHA_TAG" \\\n+\s+--format='value\(image_summary[.]digest\)' \\\n+\s+>"\$lookup_stdout_file" \\\n+\s+2>"\$lookup_stderr_file"/u,
+    /MANIFEST_URL=.*\/manifests\/\$\{EXPECTED_SHA\}"/u,
   );
   assert.equal(
-    (collisionStep.match(/gcloud artifacts docker images describe/gu) ?? [])
-      .length,
+    (collisionStep.match(/gcloud auth print-access-token/gu) ?? []).length,
     1,
+  );
+  assert.match(collisionStep, /token_exit_code=0/u);
+  assert.match(collisionStep, /token_exit_code != 0/u);
+  assert.match(collisionStep, /TOKEN_ACQUISITION=FAIL/u);
+  assert.match(collisionStep, /if curl \\\n+\s+--disable \\/u);
+  for (const expectedLine of [
+    '--disable \\',
+    '--silent \\',
+    '--show-error \\',
+    '--head \\',
+    '--connect-timeout 10 \\',
+    '--max-time 30 \\',
+    '--header "Authorization: Bearer ${ACCESS_TOKEN}" \\',
+    `--header '${TEST_ACCEPT_HEADER}' \\`,
+    '--dump-header "$curl_headers_file" \\',
+    '--output /dev/null \\',
+    "--write-out '%{http_code}' \\",
+    '"$MANIFEST_URL" \\',
+    '>"$curl_status_file" \\',
+  ]) {
+    assert.ok(collisionStep.includes(expectedLine), expectedLine);
+  }
+  for (const mediaType of [
+    'application/vnd.oci.image.index.v1+json',
+    'application/vnd.oci.image.manifest.v1+json',
+    'application/vnd.docker.distribution.manifest.list.v2+json',
+    'application/vnd.docker.distribution.manifest.v2+json',
+  ]) {
+    assert.equal(collisionStep.split(mediaType).length - 1, 1, mediaType);
+  }
+  assert.doesNotMatch(
+    collisionStep,
+    /(?:^|\s)(?:--fail(?:-with-body)?|--location|-L|--retry(?:-all-errors|-connrefused)?)(?:\s|$)/mu,
+  );
+  assert.doesNotMatch(
+    collisionStep,
+    /\bgcloud artifacts docker images describe\b/u,
   );
   assert.doesNotMatch(collisionStep, /gcloud artifacts packages list/u);
   assert.doesNotMatch(collisionStep, /gcloud artifacts tags list/u);
   assert.doesNotMatch(
     collisionStep,
-    /EXPECTED_(?:PACKAGE|TAG)_RESOURCE|\/packages\/|\/tags\//u,
+    /not_found_error_pattern|lookup_stderr_lines|NOT_FOUND/u,
   );
 
-  assert.equal((collisionStep.match(/\bmktemp\b/gu) ?? []).length, 2);
+  assert.equal((collisionStep.match(/\bmktemp\b/gu) ?? []).length, 4);
   assert.match(collisionStep, /trap cleanup_lookup_evidence EXIT/u);
-  assert.match(collisionStep, /rm -f -- "\$lookup_stdout_file"/u);
-  assert.match(collisionStep, /rm -f -- "\$lookup_stderr_file"/u);
-  assert.match(collisionStep, /if \(\( lookup_exit_code == 0 \)\); then/u);
+  for (const evidenceVariable of [
+    'token_stderr_file',
+    'curl_headers_file',
+    'curl_status_file',
+    'curl_stderr_file',
+  ]) {
+    assert.match(
+      collisionStep,
+      new RegExp(`"\\$${evidenceVariable}"`, 'u'),
+      evidenceVariable,
+    );
+  }
+  assert.match(collisionStep, /rm -f -- "\$evidence_file"/u);
+  assert.match(collisionStep, /ACCESS_TOKEN=""\n\s+unset ACCESS_TOKEN/u);
   assert.match(
     collisionStep,
-    /if IFS= read -r -d '' lookup_stdout_prefix <"\$lookup_stdout_file"; then/u,
+    /2>"\$curl_stderr_file"; then[\s\S]*?curl_exit_code=\$\?[\s\S]*?fi\n\s+ACCESS_TOKEN=""\n\s+unset ACCESS_TOKEN/u,
   );
-  assert.match(collisionStep, /lookup_stdout_contains_nul != 0/u);
+  assert.doesNotMatch(
+    collisionStep,
+    /(?:echo|printf)[^\n]*(?:\$\{?ACCESS_TOKEN|Authorization: Bearer)/u,
+  );
+  assert.doesNotMatch(collisionStep, /\bset\s+-x\b/u);
+  assert.match(collisionStep, /status_contains_nul != 0/u);
+  assert.match(collisionStep, /status_has_extra_byte != 0/u);
+  assert.ok(collisionStep.includes('^[0-9]{3}$'));
+  assert.match(collisionStep, /headers_contain_nul != 0/u);
   assert.ok(collisionStep.includes('^sha256:[a-f0-9]{64}$'));
+  assert.ok(collisionStep.includes('${#digest_headers[@]} != 1'));
   assert.match(
     collisionStep,
-    /\$\{#lookup_stdout_lines\[@\]\} != 1/u,
-  );
-  assert.match(
-    collisionStep,
-    /TAG_COLLISION="YES"[\s\S]*The immutable source SHA tag already exists; overwrite is forbidden[.]" >&2[\s\S]*exit 1/u,
+    /TAG_COLLISION="YES"[\s\S]*BUILD_AUTHORIZED=NO[\s\S]*The immutable source SHA tag already exists; overwrite is forbidden[.]" >&2[\s\S]*exit 1/u,
   );
 
-  assert.match(collisionStep, /\[\[ ! -s "\$lookup_stdout_file" \]\]/u);
-  assert.match(
-    collisionStep,
-    /\$\{#lookup_stderr_lines\[@\]\} == 1/u,
-  );
-  assert.ok(
-    collisionStep.includes(
-      "not_found_error_pattern='^ERROR: [(]gcloud[.]artifacts[.]docker[.]images[.]describe[)] NOT_FOUND:([[:space:]].*)?$'",
-    ),
-  );
   assert.match(collisionStep, /TAG_COLLISION="NO"/u);
-  assert.equal(
-    (collisionStep.match(/TAG_LOOKUP_STATUS=UNEXPECTED_FAILURE/gu) ?? [])
-      .length,
-    2,
-  );
-  assert.match(
-    collisionStep,
-    /Artifact Registry exact source SHA tag lookup failed unexpectedly[.]" >&2\n\s+exit 1/u,
-  );
+  assert.match(collisionStep, /CURL_TRANSPORT_STATUS=FAIL/u);
   const collisionRun = collisionStep.replace(/^\s*run:\s*[|]$/mu, '');
   assert.doesNotMatch(collisionRun, /set \+e|<\s*<\s*\(|^\s*[^#\n]*\s[|]\s/mu);
-  assert.doesNotMatch(collisionStep, /(?:cat|tee)\s+"?\$lookup_/u);
+  assert.doesNotMatch(collisionStep, /(?:cat|tee)\s+"?\$(?:token|curl)_/u);
   assert.doesNotMatch(
     collisionStep,
     /gcloud artifacts[\s\S]*?\b(?:create|delete|update|move|add)\b/u,
   );
 });
 
-test('existing exact tag with one valid digest refuses overwrite', () => {
+test('HTTP 404 is the only manifest result that authorizes the build path', () => {
+  const result = runCollisionStep({ httpStatus: '404', responseHeaders: '' });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /TAG_COLLISION=NO/u);
+  assert.match(result.stdout, new RegExp(BUILD_AUTHORIZED_MARKER, 'u'));
+  assert.equal(result.stderr, '');
+});
+
+test('HTTP 200 with one canonical digest refuses immutable-tag overwrite', () => {
   const result = runCollisionStep({
-    exitCode: 0,
-    stdout: `${TEST_VALID_DIGEST}\n`,
+    httpStatus: '200',
+    responseHeaders: `HTTP/1.1 200 OK\r\ndOcKeR-CoNtEnT-DiGeSt:\t ${TEST_VALID_DIGEST} \t\r\nContent-Length: 0\r\n\r\n`,
   });
 
   assert.notEqual(result.status, 0);
   assert.match(result.stdout, /TAG_COLLISION=YES/u);
+  assert.match(result.stdout, /BUILD_AUTHORIZED=NO/u);
   assert.doesNotMatch(result.stdout, new RegExp(BUILD_AUTHORIZED_MARKER, 'u'));
   assert.match(
     result.stderr,
@@ -537,57 +726,90 @@ test('existing exact tag with one valid digest refuses overwrite', () => {
   );
 });
 
-test('exact command-scoped NOT_FOUND is the only continuing absence state', () => {
-  const result = runCollisionStep({
-    exitCode: 1,
-    stderr:
-      'ERROR: (gcloud.artifacts.docker.images.describe) NOT_FOUND: requested tag was not found\n',
-  });
+test('HTTP 200 requires exactly one canonical Docker-Content-Digest header', () => {
+  const digestCases = [
+    { name: 'missing', responseHeaders: 'HTTP/1.1 200 OK\r\n\r\n' },
+    {
+      name: 'malformed algorithm',
+      responseHeaders: `HTTP/1.1 200 OK\r\nDocker-Content-Digest: sha512:${'b'.repeat(64)}\r\n\r\n`,
+    },
+    {
+      name: 'noncanonical uppercase digest',
+      responseHeaders: `HTTP/1.1 200 OK\r\nDocker-Content-Digest: sha256:${'B'.repeat(64)}\r\n\r\n`,
+    },
+    {
+      name: 'contradictory multiple headers',
+      responseHeaders: `HTTP/1.1 200 OK\r\nDocker-Content-Digest: ${TEST_VALID_DIGEST}\r\nDocker-Content-Digest: sha256:${'c'.repeat(64)}\r\n\r\n`,
+    },
+    {
+      name: 'identical multiple headers',
+      responseHeaders: `HTTP/1.1 200 OK\r\nDocker-Content-Digest: ${TEST_VALID_DIGEST}\r\nDocker-Content-Digest: ${TEST_VALID_DIGEST}\r\n\r\n`,
+    },
+    {
+      name: 'NUL-tainted header evidence',
+      headersEmitNul: true,
+      responseHeaders: `HTTP/1.1 200 OK\r\nDocker-Content-Digest: ${TEST_VALID_DIGEST}\r\n\r\n`,
+    },
+  ];
+  for (const behavior of digestCases) {
+    const result = runCollisionStep({ httpStatus: '200', ...behavior });
 
-  assert.equal(result.status, 0);
-  assert.match(result.stdout, /TAG_COLLISION=NO/u);
-  assert.match(result.stdout, new RegExp(BUILD_AUTHORIZED_MARKER, 'u'));
-  assert.equal(result.stderr, '');
+    assertUnexpectedLookupFailure(result, behavior.name);
+  }
 });
 
-test('permission error fails the exact tag lookup closed', () => {
-  const result = runCollisionStep({
-    exitCode: 1,
-    stderr:
-      'ERROR: (gcloud.artifacts.docker.images.describe) PERMISSION_DENIED: denied\n',
-  });
+test('redirect, authorization, throttling, and server statuses fail closed', () => {
+  for (const httpStatus of ['302', '401', '403', '429', '500']) {
+    const result = runCollisionStep({ httpStatus });
 
-  assert.notEqual(result.status, 0);
-  assert.doesNotMatch(result.stdout, new RegExp(BUILD_AUTHORIZED_MARKER, 'u'));
-  assert.match(result.stderr, /TAG_LOOKUP_STATUS=UNEXPECTED_FAILURE/u);
+    assertUnexpectedLookupFailure(result, httpStatus);
+  }
 });
 
-test('network or otherwise unexpected lookup failure fails closed', () => {
+test('curl transport failure wins over an emitted HTTP 404', () => {
   const result = runCollisionStep({
-    exitCode: 1,
-    stderr: 'ERROR: (proxy.transport) NOT_FOUND: network path missing\n',
+    curlExitCode: 28,
+    httpStatus: '404',
   });
 
-  assert.notEqual(result.status, 0);
-  assert.doesNotMatch(result.stdout, new RegExp(BUILD_AUTHORIZED_MARKER, 'u'));
-  assert.match(result.stderr, /TAG_LOOKUP_STATUS=UNEXPECTED_FAILURE/u);
+  assertUnexpectedLookupFailure(result, 'curl transport failure');
+  assert.match(result.stderr, /CURL_TRANSPORT_STATUS=FAIL/u);
 });
 
-test('malformed successful lookup output fails closed', () => {
+test('token command failure, empty output, and multiline output fail closed', () => {
   for (const behavior of [
-    { exitCode: 0, stdout: 'garbage\n' },
-    { emitNul: true, exitCode: 0, stdout: TEST_VALID_DIGEST },
+    {
+      name: 'command failure with valid-looking output',
+      tokenExitCode: 1,
+      tokenStdout: `${TEST_ACCESS_TOKEN}\n`,
+    },
+    { name: 'empty output', tokenStdout: '' },
+    {
+      name: 'multiple lines',
+      tokenStdout: `${TEST_ACCESS_TOKEN}\nsecond-line\n`,
+    },
+    { name: 'trailing blank line', tokenStdout: `${TEST_ACCESS_TOKEN}\n\n` },
+    { name: 'whitespace-only output', tokenStdout: ' \t\n' },
+  ]) {
+    const result = runCollisionStep({ ...behavior, expectCurl: false });
+
+    assertUnexpectedLookupFailure(result, behavior.name);
+    assert.match(result.stderr, /TOKEN_ACQUISITION=FAIL/u, behavior.name);
+  }
+});
+
+test('malformed and NUL-tainted HTTP statuses fail closed', () => {
+  for (const behavior of [
+    { name: 'empty', httpStatus: '' },
+    { name: 'two digits', httpStatus: '20' },
+    { name: 'four digits', httpStatus: '0200' },
+    { name: 'nonnumeric', httpStatus: 'abc' },
+    { name: 'terminal newline', httpStatus: '200\n' },
+    { name: 'NUL-tainted', httpStatus: '200', statusEmitNul: true },
   ]) {
     const result = runCollisionStep(behavior);
 
-    assert.notEqual(result.status, 0);
-    assert.doesNotMatch(
-      result.stdout,
-      new RegExp(BUILD_AUTHORIZED_MARKER, 'u'),
-    );
-    assert.doesNotMatch(result.stdout, /TAG_COLLISION=/u);
-    assert.match(result.stderr, /TAG_LOOKUP_STATUS=UNEXPECTED_FAILURE/u);
-    assert.match(result.stderr, /invalid success output/u);
+    assertUnexpectedLookupFailure(result, behavior.name);
   }
 });
 
@@ -764,7 +986,7 @@ test('remote digest and immutable Production reference are authoritative', () =>
   ]);
   assert.doesNotMatch(
     workflow,
-    /(?:echo|printf)[^\n]*(?:TOKEN|CREDENTIAL|SECRET|PASSWORD|DATABASE_URL|REDIS)/iu,
+    /(?:echo|printf)[^\n]*(?:\$\{?ACCESS_TOKEN|Authorization:\s*Bearer|CREDENTIAL|SECRET|PASSWORD|DATABASE_URL|REDIS)/iu,
   );
 });
 
@@ -780,7 +1002,7 @@ test('workflow contains no Stage 28, Stage 29, or forbidden mutation behavior', 
     /\b(?:npm|yarn|pnpm)\b/iu,
     /\b(?:canary|soak|sbom|cosign)\b/iu,
     /\b(?:deploy|promote)\s+(?:cloud run|staging)\b/iu,
-    /\bgcloud\s+auth\s+print\b/iu,
+    /\bgcloud\s+auth\s+print-identity-token\b/iu,
     /^\s+(?:env|printenv)(?:\s|$)/imu,
     /\bcat\b[^\n]*(?:credential|GOOGLE_APPLICATION_CREDENTIALS)/iu,
     /\bset\s+-x\b/u,
@@ -797,7 +1019,7 @@ test('workflow contains no Stage 28, Stage 29, or forbidden mutation behavior', 
     [
       'gcloud auth list \\',
       'if active_project="$(gcloud config get-value project)"; then',
-      'if gcloud artifacts docker images describe \\',
+      'gcloud auth print-access-token 2>"$token_stderr_file" &&',
       'gcloud auth configure-docker "$ARTIFACT_REGISTRY_HOST" --quiet',
       'gcloud artifacts docker images describe \\',
     ],
