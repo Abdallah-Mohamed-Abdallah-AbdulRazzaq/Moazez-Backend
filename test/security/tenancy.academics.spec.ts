@@ -85,6 +85,7 @@ describe('Academics tenancy isolation (security)', () => {
   let demoTimetableConfigId: string | undefined;
   let demoTimetablePeriodId: string | undefined;
   let demoTimetableEntryId: string | undefined;
+  const curriculumFixtureIds: string[] = [];
 
   beforeAll(async () => {
     prisma = new PrismaClient();
@@ -953,6 +954,14 @@ describe('Academics tenancy isolation (security)', () => {
       });
     }
 
+    for (const curriculum of [
+      { schoolId: demoSchoolId, academicYearId: demoYearId, termId: demoTermId, gradeId: demoGradeId, subjectId: demoSubjectId },
+      { schoolId: tenantBSchoolId, academicYearId: tenantBYearId, termId: tenantBTermId, gradeId: tenantBGradeId, subjectId: tenantBSubjectId },
+    ]) {
+      const row = await prisma.subjectAllocation.create({ data: { ...curriculum, weeklyHours: 1 } });
+      curriculumFixtureIds.push(row.id);
+    }
+
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -972,6 +981,7 @@ describe('Academics tenancy isolation (security)', () => {
   afterAll(async () => {
     if (app) await app.close();
     if (prisma) {
+      await prisma.subjectAllocation.deleteMany({ where: { id: { in: curriculumFixtureIds } } });
       if (demoTimetableConfigId) {
         await prisma.timetableConfig.deleteMany({
           where: { id: demoTimetableConfigId },

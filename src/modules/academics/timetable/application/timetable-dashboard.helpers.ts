@@ -1,4 +1,6 @@
 import { TimetableEntryStatus } from '@prisma/client';
+import { isActiveCurriculumRequirement } from '../../subject-allocation/domain/active-curriculum.policy';
+import { SubjectNotTaughtException } from '../../subject-allocation/domain/subject-allocation.exceptions';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 import {
   assertConfigMutable,
@@ -148,11 +150,12 @@ export async function resolveTimetableBulkItems(
       subjectId: resolved.subjectId,
     });
 
-    if (!matrixRow) {
+    if (!isActiveCurriculumRequirement(matrixRow)) {
       const issue = conflictIssue({
-        code: 'missing_subject_allocation',
-        message:
-          'Subject allocation weekly-hours row is missing for this timetable slot.',
+        code: matrixRow ? 'subject_not_taught' : 'missing_subject_allocation',
+        message: matrixRow
+          ? 'Subject is not taught for this timetable slot.'
+          : 'Subject allocation weekly-hours row is missing for this timetable slot.',
         severity: 'blocking',
         dayOfWeek: resolved.dayOfWeek,
         periodId: resolved.periodId,
@@ -162,7 +165,10 @@ export async function resolveTimetableBulkItems(
         proposedIndexes: [index],
       });
       if (!options?.collectIssues) {
-        throw new TimetableMissingSubjectAllocationException({
+        const Exception = matrixRow
+          ? SubjectNotTaughtException
+          : TimetableMissingSubjectAllocationException;
+        throw new Exception({
           index,
           termId: term.id,
           gradeId: resolved.gradeId,
@@ -205,6 +211,9 @@ export function throwIfBlockingTimetableConflicts(
   if (!first) return;
   const details = conflictDetails(first);
 
+  if (first.code === 'subject_not_taught') {
+    throw new SubjectNotTaughtException(details);
+  }
   if (first.code === 'missing_subject_allocation') {
     throw new TimetableMissingSubjectAllocationException(details);
   }

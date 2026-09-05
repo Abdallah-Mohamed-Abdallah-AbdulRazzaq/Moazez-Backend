@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { requireAcademicsScope } from '../../academics-context';
+import { isActiveCurriculumRequirement } from '../../subject-allocation/domain/active-curriculum.policy';
+import { SubjectNotTaughtException } from '../../subject-allocation/domain/subject-allocation.exceptions';
 import { ApplyTeacherAllocationToGradeDto } from '../dto/teacher-allocation.dto';
 import { ApplyTeacherAllocationToGradeResponseDto } from '../dto/teacher-allocation-response.dto';
 import {
@@ -45,6 +47,14 @@ export class ApplyTeacherAllocationToGradeUseCase {
     }
     if (!subjectAllocation) {
       throw new TeacherAllocationMissingSubjectAllocationException({
+        termId: term.id,
+        gradeId: command.gradeId,
+        subjectId: command.subjectId,
+      });
+    }
+
+    if (!isActiveCurriculumRequirement(subjectAllocation)) {
+      throw new SubjectNotTaughtException({
         termId: term.id,
         gradeId: command.gradeId,
         subjectId: command.subjectId,

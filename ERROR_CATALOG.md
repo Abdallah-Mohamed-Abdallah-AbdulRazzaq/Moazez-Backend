@@ -225,6 +225,8 @@ does not change that global behavior.
 | `academics.subject_allocation.invalid_weekly_hours` | 422  | Subject allocation weekly hours value is invalid                               |
 | `academics.subject_allocation.invalid_bulk_size`    | 422  | Subject allocation bulk request size is invalid                                |
 | `academics.subject_allocation.closed_term`          | 409  | Term is closed for subject allocation changes                                  |
+| `academics.subject_allocation.subject_not_taught`   | 422  | Subject is not taught for this grade and term                                   |
+| `academics.subject_allocation.dependency_conflict`  | 409  | Curriculum change conflicts with dependent academic records                     |
 | `academics.allocation.duplicate`                    | 409  | Teacher allocation already exists                                              |
 | `academics.allocation.invalid_scope`                | 422  | Teacher allocation scope is invalid                                            |
 | `academics.allocation.invalid_bulk_size`            | 422  | Teacher allocation bulk request size is invalid                                |
@@ -291,6 +293,20 @@ does not change that global behavior.
 | `academics.lesson_plan.item_not_found`              | 404  | Lesson plan item was not found or is outside scope                             |
 | `academics.lesson_plan.invalid_item_scope`          | 422  | Lesson plan item scope is invalid                                              |
 | `academics.lesson_plan.item_invalid_transition`     | 409  | Lesson plan item status transition is invalid                                  |
+
+`academics.subject_allocation.subject_not_taught` identifies a persisted non-positive
+weekly-hours row on a teaching write. Existing missing-row error codes remain in
+use. Details contain the requested `termId`, `gradeId`, and `subjectId` (and the
+bulk item `index` where applicable).
+
+`academics.subject_allocation.dependency_conflict` reports one blocked submitted
+pair with `termId`, `gradeId`, `subjectId`, `mutation`, `previousWeeklyHours`,
+`proposedWeeklyHours`, `teacherAllocationCount`, `draftTimetableEntryCount`,
+`publishedTimetableEntryCount`, and `publishedTimetableConfigCount`. Counts are
+limited to that school, term, grade, and subject. Deactivation blocks on any
+dependent teaching assignment or non-cancelled timetable entry; a positive hours
+change blocks on published dependencies. Omitted pairs remain unchanged and are
+outside dependency analysis. No dependent records are cascaded.
 
 `learning.content.publication_conflict` details are exactly `{ from, to }`.
 Both values are one of `DRAFT`, `PUBLISHED`, or `ARCHIVED`. No resource,

@@ -1,4 +1,6 @@
 import { MembershipStatus, UserType } from '@prisma/client';
+import { isActiveCurriculumRequirement } from '../../subject-allocation/domain/active-curriculum.policy';
+import { SubjectNotTaughtException } from '../../subject-allocation/domain/subject-allocation.exceptions';
 import {
   TeacherAllocationClosedTermException,
   TeacherAllocationDuplicatePairException,
@@ -139,21 +141,34 @@ export async function validateTeacherAllocationCandidates(
     })),
     (item) => subjectAllocationKey(item.gradeId, item.subjectId),
   );
-  const subjectAllocations =
-    await repository.findSubjectAllocationsByKeys(termId, matrixKeys);
-  const matrixRowKeys = new Set(
-    subjectAllocations.map((row) =>
+  const subjectAllocations = await repository.findSubjectAllocationsByKeys(
+    termId,
+    matrixKeys,
+  );
+  const matrixByKey = new Map(
+    subjectAllocations.map((row) => [
       subjectAllocationKey(row.gradeId, row.subjectId),
-    ),
+      row,
+    ]),
   );
 
   for (const item of resolved) {
-    if (!matrixRowKeys.has(subjectAllocationKey(item.gradeId, item.subjectId))) {
+    const matrix = matrixByKey.get(
+      subjectAllocationKey(item.gradeId, item.subjectId),
+    );
+    if (!matrix) {
       throw new TeacherAllocationMissingSubjectAllocationException({
         termId,
         gradeId: item.gradeId,
         subjectId: item.subjectId,
         classroomId: item.classroomId,
+      });
+    }
+    if (!isActiveCurriculumRequirement(matrix)) {
+      throw new SubjectNotTaughtException({
+        termId,
+        gradeId: item.gradeId,
+        subjectId: item.subjectId,
       });
     }
   }
