@@ -18,6 +18,10 @@ import { assertDisposablePostgresTarget } from '../helpers/disposable-postgres-t
 
 jest.setTimeout(60000);
 
+const LOCAL_DISPOSABLE_DATABASE_PATTERN =
+  /^moazez_test(?:_[a-z0-9]+(?:[_-][a-z0-9]+)*)?$/u;
+const CI_DISPOSABLE_DATABASE_PATTERN = /^ci_[0-9a-f]{14}$/u;
+
 describe('Curriculum mutation persistence and school isolation', () => {
   let prisma: PrismaService;
   let useCase: BulkSaveSubjectAllocationsUseCase;
@@ -33,8 +37,9 @@ describe('Curriculum mutation persistence and school isolation', () => {
       nodeEnv: process.env.NODE_ENV,
       universalRegressionMarker:
         process.env.MOAZEZ_UNIVERSAL_REGRESSION_DISPOSABLE_DB,
-      localDatabasePredicate: (name) =>
-        /^moazez_test(?:_[a-z0-9_]+)?$/.test(name),
+      localDatabasePredicate: (databaseName) =>
+        LOCAL_DISPOSABLE_DATABASE_PATTERN.test(databaseName) ||
+        CI_DISPOSABLE_DATABASE_PATTERN.test(databaseName),
       errorMessage:
         'Curriculum integrity tests require a disposable test database',
     });
