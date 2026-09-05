@@ -568,6 +568,155 @@ describe('Teacher allocation use cases', () => {
     isActive: false,
   };
 
+  describe.each(['single', 'bulk', 'apply-to-grade', 'existing bulk'] as const)(
+    '%s active curriculum guard',
+    (path) => {
+      it.each([null, 0, -1, 5])(
+        'checks weeklyHours=%s before writing',
+        async (hours) => {
+          const repository = createRepository({
+            subjectAllocations:
+              hours === null
+                ? []
+                : [subjectAllocationFixture({ weeklyHours: hours })],
+            allocations: path === 'existing bulk' ? [allocationFixture()] : [],
+          });
+          const candidate = {
+            teacherUserId: 'teacher-1',
+            subjectId: 'subject-1',
+            classroomId: 'classroom-1',
+          };
+          await withScope(async () => {
+            const operation =
+              path === 'single'
+                ? new CreateTeacherAllocationUseCase(repository).execute({
+                    termId: 'term-1',
+                    ...candidate,
+                  })
+                : path === 'apply-to-grade'
+                  ? new ApplyTeacherAllocationToGradeUseCase(
+                      repository,
+                    ).execute({
+                      termId: 'term-1',
+                      gradeId: 'grade-1',
+                      teacherUserId: 'teacher-1',
+                      subjectId: 'subject-1',
+                    })
+                  : new BulkSaveTeacherAllocationsUseCase(repository).execute({
+                      termId: 'term-1',
+                      items: [candidate],
+                    });
+            if (hours === 5) {
+              const result = await operation;
+              expect(
+                'items' in result ? result.items.length : result.subject.id,
+              ).toBe('items' in result ? 1 : 'subject-1');
+            } else {
+              await expect(operation).rejects.toMatchObject({
+                httpStatus: 422,
+                code:
+                  hours === null
+                    ? 'academics.allocation.missing_subject_allocation'
+                    : 'academics.subject_allocation.subject_not_taught',
+              });
+              expect(repository.createAllocation).not.toHaveBeenCalled();
+              expect(repository.bulkSaveAllocations).not.toHaveBeenCalled();
+            }
+          });
+        },
+      );
+    },
+  );
+
+  it('rejects apply-to-grade for an untaught subject even when the grade has no classrooms', async () => {
+    const repository = createRepository({
+      classrooms: [],
+      subjectAllocations: [subjectAllocationFixture({ weeklyHours: 0 })],
+    });
+    await withScope(async () => {
+      await expect(
+        new ApplyTeacherAllocationToGradeUseCase(repository).execute({
+          termId: 'term-1',
+          gradeId: 'grade-1',
+          teacherUserId: 'teacher-1',
+          subjectId: 'subject-1',
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.subject_allocation.subject_not_taught',
+      });
+      expect(repository.bulkSaveAllocations).not.toHaveBeenCalled();
+    });
+  });
+
+  it('excludes zero-hour rows from completeness even for a specifically selected subject', async () => {
+    const repository = createRepository({
+      subjectAllocations: [subjectAllocationFixture({ weeklyHours: 0 })],
+    });
+    await withScope(async () => {
+      const result = await new ValidateTeacherAllocationsUseCase(
+        repository,
+      ).execute({
+        termId: 'term-1',
+        gradeId: 'grade-1',
+        subjectId: 'subject-1',
+      });
+      expect(result.items).toEqual([]);
+      expect(result.summary).toMatchObject({
+        missingTeacherAssignments: 0,
+        missingSubjectAllocationRows: 0,
+      });
+    });
+  });
+
+  it.each([null, 0, -1])(
+    'surfaces stale teacher allocations with curriculum hours %s in validation and workload',
+    async (hours) => {
+      const repository = createRepository({
+        subjectAllocations:
+          hours === null
+            ? []
+            : [subjectAllocationFixture({ weeklyHours: hours })],
+        allocations: [allocationFixture()],
+      });
+      await withScope(async () => {
+        const validation = await new ValidateTeacherAllocationsUseCase(
+          repository,
+        ).execute({ termId: 'term-1' });
+        expect(validation.summary.missingTeacherAssignments).toBe(0);
+        expect(validation.items).toHaveLength(1);
+        expect(validation.items[0]).toMatchObject({
+          allocatedClassroomCount: 0,
+          missingClassroomCount: 0,
+          issues: [
+            {
+              code:
+                hours === null
+                  ? 'missing_subject_allocation_row'
+                  : 'subject_not_taught',
+              classroomIds: ['classroom-1'],
+            },
+          ],
+        });
+        expect(validation.items[0].status).not.toBe('complete');
+        const load = await new GetTeacherLoadsUseCase(repository).execute({
+          termId: 'term-1',
+        });
+        expect(load.items[0].totalWeeklyHours).toBe(0);
+        expect(load.items[0].loads[0].weeklyHours).toBe(
+          hours === null ? null : 0,
+        );
+        expect(load.items[0].warnings).toMatchObject([
+          {
+            code:
+              hours === null
+                ? 'missing_subject_allocation_weekly_hours'
+                : 'subject_not_taught',
+          },
+        ]);
+      });
+    },
+  );
+
   it('creates an allocation when the subject allocation matrix row exists', async () => {
     const repository = createRepository();
     const createUseCase = new CreateTeacherAllocationUseCase(repository);

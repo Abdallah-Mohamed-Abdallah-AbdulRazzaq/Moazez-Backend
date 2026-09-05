@@ -1069,6 +1069,16 @@ describe('Sprint 12F Schedule/Timetable final closeout (e2e)', () => {
       },
       select: { id: true },
     });
+    await prisma.subjectAllocation.create({
+      data: {
+        schoolId: params.schoolId,
+        academicYearId: params.academic.academicYearId,
+        termId: params.academic.termId,
+        gradeId: params.academic.gradeId,
+        subjectId: subject.id,
+        weeklyHours: 1,
+      },
+    });
     const allocation = await prisma.teacherSubjectAllocation.create({
       data: {
         schoolId: params.schoolId,
@@ -1553,6 +1563,9 @@ describe('Sprint 12F Schedule/Timetable final closeout (e2e)', () => {
       where: { schoolId: { in: createdSchoolIds } },
     });
     await prisma.teacherSubjectAllocation.deleteMany({
+      where: { schoolId: { in: createdSchoolIds } },
+    });
+    await prisma.subjectAllocation.deleteMany({
       where: { schoolId: { in: createdSchoolIds } },
     });
     await prisma.subject.deleteMany({

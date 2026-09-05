@@ -9,6 +9,7 @@ import {
   ComputedTimetableConflict,
   computeTimetableConflicts,
 } from '../domain/timetable-conflicts';
+import { isActiveCurriculumRequirement } from '../../subject-allocation/domain/active-curriculum.policy';
 import { classroomMatchesTimetableConfigScope } from '../domain/timetable-policy';
 import {
   TimetableConfigRecord,
@@ -263,6 +264,23 @@ async function appendEntryReferenceReasons(
           },
         ),
       );
+    }
+
+    if (classroom) {
+      const curriculum = await repository.findSubjectAllocationByKey({
+        termId: dataset.config.termId,
+        gradeId: classroom.section.gradeId,
+        subjectId: entry.subjectId,
+      });
+      if (!isActiveCurriculumRequirement(curriculum)) {
+        blockingReasons.push(
+          reason(
+            curriculum ? 'subject_not_taught' : 'missing_subject_allocation',
+            'Timetable entry is not backed by an active curriculum requirement',
+            { entryId: entry.id },
+          ),
+        );
+      }
     }
 
     if (entry.roomId) {

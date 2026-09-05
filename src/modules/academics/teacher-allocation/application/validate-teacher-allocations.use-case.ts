@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { requireAcademicsScope } from '../../academics-context';
+import { isActiveCurriculumRequirement } from '../../subject-allocation/domain/active-curriculum.policy';
 import { ValidateTeacherAllocationsQueryDto } from '../dto/teacher-allocation.dto';
 import {
   TeacherAllocationValidationItemDto,
@@ -65,25 +66,37 @@ export class ValidateTeacherAllocationsUseCase {
       }),
     ]);
 
-    const gradeIds =
-      subjectAllocations.length > 0
-        ? unique(subjectAllocations.map((row) => row.gradeId))
-        : query.gradeId
-          ? [query.gradeId]
-          : [];
+    const gradeIds = unique([
+      ...subjectAllocations.map((row) => row.gradeId),
+      ...teacherAllocations.map((row) => row.classroom.section.gradeId),
+      ...(query.gradeId ? [query.gradeId] : []),
+    ]);
     const classrooms =
       await this.teacherAllocationRepository.findClassroomsByGradeIds(gradeIds);
 
     const items =
       subjectAllocations.length > 0
-        ? buildValidationItems(subjectAllocations, classrooms, teacherAllocations)
-        : buildMissingMatrixItems({
-            grade,
-            subject,
+        ? buildValidationItems(
+            subjectAllocations.filter(isActiveCurriculumRequirement),
             classrooms,
-            requestedGradeId: query.gradeId,
-            requestedSubjectId: query.subjectId,
-          });
+            teacherAllocations,
+          )
+        : teacherAllocations.length > 0
+          ? []
+          : buildMissingMatrixItems({
+              grade,
+              subject,
+              classrooms,
+              requestedGradeId: query.gradeId,
+              requestedSubjectId: query.subjectId,
+            });
+    items.push(
+      ...buildStaleAllocationItems(
+        subjectAllocations,
+        classrooms,
+        teacherAllocations,
+      ),
+    );
 
     const missingTeacherAssignments = items.reduce(
       (sum, item) => sum + item.missingClassroomCount,
@@ -192,6 +205,52 @@ function buildValidationItems(
       issues,
     };
   });
+}
+
+function buildStaleAllocationItems(
+  subjectAllocations: SubjectAllocationMatrixRecord[],
+  classrooms: ClassroomReferenceRecord[],
+  teacherAllocations: TeacherAllocationRecord[],
+): TeacherAllocationValidationItemDto[] {
+  const matrixByKey = new Map(
+    subjectAllocations.map((row) => [`${row.gradeId}:${row.subjectId}`, row]),
+  );
+  const allocationsByKey = groupBy(
+    teacherAllocations,
+    (row) => `${row.classroom.section.gradeId}:${row.subjectId}`,
+  );
+  const items: TeacherAllocationValidationItemDto[] = [];
+  for (const [key, allocations] of allocationsByKey) {
+    const matrix = matrixByKey.get(key);
+    if (isActiveCurriculumRequirement(matrix)) continue;
+    const allocation = allocations[0];
+    const grade = allocation.classroom.section.grade;
+    items.push({
+      gradeId: grade.id,
+      grade,
+      subjectId: allocation.subjectId,
+      subject: allocation.subject,
+      weeklyHours: matrix?.weeklyHours ?? null,
+      classroomCount: classrooms.filter(
+        (row) => row.section.gradeId === grade.id,
+      ).length,
+      allocatedClassroomCount: 0,
+      missingClassroomCount: 0,
+      status: matrix ? 'incomplete' : 'missing_subject_allocation',
+      issues: [
+        {
+          code: matrix
+            ? 'subject_not_taught'
+            : 'missing_subject_allocation_row',
+          message: matrix
+            ? 'Teacher allocation is backed by an inactive curriculum requirement.'
+            : 'Teacher allocation is missing a subject allocation weekly-hours row.',
+          classroomIds: unique(allocations.map((row) => row.classroomId)),
+        },
+      ],
+    });
+  }
+  return items;
 }
 
 function buildMissingMatrixItems(input: {

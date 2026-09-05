@@ -1,7 +1,18 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import {
+  Prisma,
+  TimetableConfigStatus,
+  TimetableEntryStatus,
+  TimetablePublicationStatus,
+} from '@prisma/client';
 import { getRequestContext } from '../../../../common/context/request-context';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import {
+  classifySubjectAllocationMutation,
+  requiresCurriculumDependencyCheck,
+  SubjectAllocationDependencyCounts,
+  SubjectAllocationMutationImpact,
+} from '../domain/subject-allocation-mutation.policy';
 
 const TERM_REFERENCE_ARGS = Prisma.validator<Prisma.TermDefaultArgs>()({
   select: {
@@ -162,24 +173,59 @@ export class SubjectAllocationRepository {
 
   async bulkSaveAllocations(
     input: BulkSaveSubjectAllocationInput,
+    validateChanges: (changes: SubjectAllocationMutationImpact[]) => void,
   ): Promise<SubjectAllocationRecord[]> {
     const schoolId = this.getCurrentSchoolId();
     const affectedIds: string[] = [];
 
     return this.prisma.$transaction(async (tx) => {
+      // Interactive transactions use explicit school predicates, as do the existing writes.
+      // Load only submitted pairs. Omission has no mutation or dependency semantics.
+      const currentRows = await tx.subjectAllocation.findMany({
+        where: {
+          schoolId,
+          termId: input.termId,
+          OR: input.items.map(({ gradeId, subjectId }) => ({
+            gradeId,
+            subjectId,
+          })),
+        },
+        select: {
+          id: true,
+          gradeId: true,
+          subjectId: true,
+          weeklyHours: true,
+          deletedAt: true,
+        },
+      });
+      const currentByPair = new Map(
+        currentRows.map((row) => [`${row.gradeId}:${row.subjectId}`, row]),
+      );
+      const changes: SubjectAllocationMutationImpact[] = [];
       for (const item of input.items) {
-        const existing = await tx.subjectAllocation.findFirst({
-          where: {
-            schoolId,
-            termId: input.termId,
-            gradeId: item.gradeId,
-            subjectId: item.subjectId,
-          },
-          select: {
-            id: true,
-          },
-        });
+        const current = currentByPair.get(`${item.gradeId}:${item.subjectId}`);
+        const mutation = classifySubjectAllocationMutation(
+          current && current.deletedAt === null ? current : null,
+          item,
+        );
+        const dependencies = requiresCurriculumDependencyCheck(mutation)
+          ? await this.countCurriculumDependencies(tx, {
+              schoolId,
+              termId: input.termId,
+              ...item,
+            })
+          : {
+              teacherAllocationCount: 0,
+              draftTimetableEntryCount: 0,
+              publishedTimetableEntryCount: 0,
+              publishedTimetableConfigCount: 0,
+            };
+        changes.push({ ...mutation, dependencies });
+      }
+      validateChanges(changes);
 
+      for (const item of input.items) {
+        const existing = currentByPair.get(`${item.gradeId}:${item.subjectId}`);
         if (existing) {
           const updated = await tx.subjectAllocation.update({
             where: {
@@ -233,5 +279,73 @@ export class SubjectAllocationRepository {
         .map((id) => byId.get(id))
         .filter((record): record is SubjectAllocationRecord => Boolean(record));
     });
+  }
+
+  private async countCurriculumDependencies(
+    tx: Prisma.TransactionClient,
+    input: {
+      schoolId: string;
+      termId: string;
+      gradeId: string;
+      subjectId: string;
+    },
+  ): Promise<SubjectAllocationDependencyCounts> {
+    const { schoolId, termId, gradeId, subjectId } = input;
+    const classroom = { is: { section: { is: { gradeId } } } };
+    const publishedConfig: Prisma.TimetableConfigWhereInput = {
+      schoolId,
+      termId,
+      OR: [
+        { status: TimetableConfigStatus.ACTIVE },
+        {
+          publications: {
+            some: {
+              schoolId,
+              termId,
+              status: TimetablePublicationStatus.PUBLISHED,
+            },
+          },
+        },
+      ],
+    };
+    const entryScope: Prisma.TimetableEntryWhereInput = {
+      schoolId,
+      termId,
+      subjectId,
+      classroom,
+      status: { not: TimetableEntryStatus.CANCELLED },
+    };
+    const publishedEntry: Prisma.TimetableEntryWhereInput = {
+      OR: [
+        { status: TimetableEntryStatus.ACTIVE },
+        { timetableConfig: { is: publishedConfig } },
+      ],
+    };
+    const [
+      teacherAllocationCount,
+      draftTimetableEntryCount,
+      publishedTimetableEntryCount,
+      publishedTimetableConfigCount,
+    ] = await Promise.all([
+      tx.teacherSubjectAllocation.count({
+        where: { schoolId, termId, subjectId, classroom },
+      }),
+      tx.timetableEntry.count({
+        where: { ...entryScope, NOT: publishedEntry },
+      }),
+      tx.timetableEntry.count({ where: { ...entryScope, ...publishedEntry } }),
+      tx.timetableConfig.count({
+        where: {
+          ...publishedConfig,
+          entries: { some: entryScope },
+        },
+      }),
+    ]);
+    return {
+      teacherAllocationCount,
+      draftTimetableEntryCount,
+      publishedTimetableEntryCount,
+      publishedTimetableConfigCount,
+    };
   }
 }

@@ -1072,6 +1072,131 @@ describe('Timetable use cases', () => {
     });
   });
 
+  describe.each(['create', 'update', 'bulk create', 'bulk update'] as const)(
+    '%s curriculum guard',
+    (path) => {
+      it.each([null, 0, -1, 5])(
+        'requires active curriculum with weeklyHours=%s',
+        async (hours) => {
+          const repository = createRepository({
+            configs: [seedConfig()],
+            periods: [seedPeriod()],
+            entries: path.includes('update') ? [seedEntry()] : [],
+            subjectAllocations:
+              hours === null
+                ? []
+                : [seedSubjectAllocation({ weeklyHours: hours })],
+          });
+          const command = {
+            timetableConfigId: 'config-1',
+            periodId: 'period-1',
+            dayOfWeek: 0,
+            classroomId: 'classroom-1',
+            teacherSubjectAllocationId: 'allocation-1',
+          };
+          await withScope(async () => {
+            const operation =
+              path === 'create'
+                ? new CreateTimetableEntryUseCase(repository).execute(command)
+                : path === 'update'
+                  ? new UpdateTimetableEntryUseCase(repository).execute(
+                      'entry-1',
+                      { notes: 'Updated notes' },
+                    )
+                  : new BulkSaveTimetableEntriesUseCase(repository).execute({
+                      termId: 'term-1',
+                      items: [command],
+                    });
+            if (hours === 5) {
+              const result = await operation;
+              expect(
+                'items' in result
+                  ? result.items[0].subject.id
+                  : result.subject.id,
+              ).toBe('subject-1');
+            } else {
+              await expect(operation).rejects.toMatchObject({
+                httpStatus: 422,
+                code:
+                  hours === null
+                    ? 'academics.timetable.missing_subject_allocation'
+                    : 'academics.subject_allocation.subject_not_taught',
+              });
+              expect(repository.createEntry).not.toHaveBeenCalled();
+              expect(repository.updateEntry).not.toHaveBeenCalled();
+              expect(repository.bulkUpsertEntries).not.toHaveBeenCalled();
+            }
+          });
+        },
+      );
+    },
+  );
+
+  it('reports zero-hour curriculum as a blocking conflict without writing', async () => {
+    const repository = createRepository({
+      configs: [seedConfig()],
+      periods: [seedPeriod()],
+      subjectAllocations: [seedSubjectAllocation({ weeklyHours: 0 })],
+    });
+    await withScope(async () => {
+      const result = await new CheckTimetableConflictsUseCase(
+        repository,
+      ).execute({
+        termId: 'term-1',
+        items: [
+          {
+            periodId: 'period-1',
+            dayOfWeek: 0,
+            classroomId: 'classroom-1',
+            teacherSubjectAllocationId: 'allocation-1',
+          },
+        ],
+      });
+      expect(result.conflicts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: 'subject_not_taught',
+            severity: 'blocking',
+          }),
+        ]),
+      );
+      expect(repository.bulkUpsertEntries).not.toHaveBeenCalled();
+    });
+  });
+
+  it.each([null, 0])(
+    'does not activate stale entries during publication with curriculum hours %s',
+    async (hours) => {
+      const repository = createRepository({
+        configs: [seedConfig()],
+        periods: [seedPeriod()],
+        entries: [seedEntry()],
+        subjectAllocations:
+          hours === null ? [] : [seedSubjectAllocation({ weeklyHours: hours })],
+      });
+      await withScope(async () => {
+        await expect(
+          new PublishTimetableUseCase(repository).execute({
+            timetableConfigId: 'config-1',
+          }),
+        ).rejects.toMatchObject({
+          code: 'academics.timetable.publish_blocked',
+          details: {
+            blockingReasons: expect.arrayContaining([
+              expect.objectContaining({
+                code:
+                  hours === null
+                    ? 'missing_subject_allocation'
+                    : 'subject_not_taught',
+              }),
+            ]),
+          },
+        });
+        expect(repository.publishConfig).not.toHaveBeenCalled();
+      });
+    },
+  );
+
   it('creates, lists, gets, updates, and deletes timetable entries with derived fields', async () => {
     const repository = createRepository({
       configs: [seedConfig()],

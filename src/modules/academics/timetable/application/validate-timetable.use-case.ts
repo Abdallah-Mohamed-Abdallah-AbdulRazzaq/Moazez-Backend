@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { TimetableEntryStatus } from '@prisma/client';
 import { requireAcademicsScope } from '../../academics-context';
+import { isActiveCurriculumRequirement } from '../../subject-allocation/domain/active-curriculum.policy';
 import { TimetableDashboardQueryDto } from '../dto/timetable.dto';
 import {
   TimetableValidationIssueDto,
@@ -206,7 +207,7 @@ function buildSubjectIssues(input: {
 }): TimetableValidationIssueDto[] {
   const issues: TimetableValidationIssueDto[] = [];
 
-  if (input.row.weeklyHours > 0 && !input.hasTeacherAllocation) {
+  if (isActiveCurriculumRequirement(input.row) && !input.hasTeacherAllocation) {
     issues.push({
       code: 'missing_teacher_allocation',
       message:

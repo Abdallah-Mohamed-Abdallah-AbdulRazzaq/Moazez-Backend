@@ -1,4 +1,6 @@
 import { TimetableEntryStatus } from '@prisma/client';
+import { isActiveCurriculumRequirement } from '../../subject-allocation/domain/active-curriculum.policy';
+import { SubjectNotTaughtException } from '../../subject-allocation/domain/subject-allocation.exceptions';
 import {
   assertConfigMutable,
   assertTermWritable,
@@ -12,6 +14,7 @@ import {
   TimetableConfigNotFoundException,
   TimetableEntryConflictException,
   TimetableInvalidDayException,
+  TimetableMissingSubjectAllocationException,
   TimetablePeriodNotFoundException,
   TimetablePeriodNotInConfigException,
   TimetableRoomConflictException,
@@ -116,6 +119,17 @@ export async function resolveTimetableEntryWrite(
       classroomId: classroom.id,
     });
   }
+
+  const curriculumKey = {
+    termId: config.termId,
+    gradeId: classroom.section.gradeId,
+    subjectId: allocation.subjectId,
+  };
+  const curriculum = await repository.findSubjectAllocationByKey(curriculumKey);
+  if (!curriculum)
+    throw new TimetableMissingSubjectAllocationException(curriculumKey);
+  if (!isActiveCurriculumRequirement(curriculum))
+    throw new SubjectNotTaughtException(curriculumKey);
 
   const roomId = command.roomId ?? null;
   if (roomId) {

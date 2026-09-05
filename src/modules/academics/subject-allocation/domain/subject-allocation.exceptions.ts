@@ -56,6 +56,28 @@ export class SubjectAllocationClosedTermException extends DomainException {
   }
 }
 
+export class SubjectNotTaughtException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.subject_allocation.subject_not_taught',
+      message: 'Subject is not taught for this grade and term',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details,
+    });
+  }
+}
+
+export class SubjectAllocationDependencyConflictException extends DomainException {
+  constructor(details: Record<string, unknown>) {
+    super({
+      code: 'academics.subject_allocation.dependency_conflict',
+      message: 'Curriculum change conflicts with dependent academic records',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
+
 type PrismaErrorLike = {
   code?: string;
 };

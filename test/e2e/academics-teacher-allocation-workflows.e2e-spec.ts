@@ -412,6 +412,149 @@ describe('Academics teacher allocation workflows (e2e)', () => {
     expect(JSON.stringify(response.body)).not.toContain(`${marker}-teacher@example.test`);
   });
 
+  it('returns bounded dependency conflicts and commits none of a blocked curriculum request', async () => {
+    const where = { schoolId, termId: academic.termId };
+    const before = await prisma.subjectAllocation.findMany({
+      where,
+      orderBy: { id: 'asc' },
+    });
+    const response = await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/academics/subject-allocations/bulk`)
+      .set('Authorization', bearer(adminAuth))
+      .send({
+        termId: academic.termId,
+        items: [
+          {
+            gradeId: academic.gradeId,
+            subjectId: scienceSubjectId,
+            weeklyHours: 4,
+          },
+          {
+            gradeId: academic.gradeId,
+            subjectId: mathSubjectId,
+            weeklyHours: 0,
+          },
+        ],
+      })
+      .expect(409);
+    expect(response.body.error.code).toBe(
+      'academics.subject_allocation.dependency_conflict',
+    );
+    expect(response.body.error.details).toEqual({
+      termId: academic.termId,
+      gradeId: academic.gradeId,
+      subjectId: mathSubjectId,
+      mutation: 'DEACTIVATE',
+      previousWeeklyHours: 5,
+      proposedWeeklyHours: 0,
+      teacherAllocationCount: 2,
+      draftTimetableEntryCount: 0,
+      publishedTimetableEntryCount: 0,
+      publishedTimetableConfigCount: 0,
+    });
+    expect(
+      await prisma.subjectAllocation.findMany({
+        where,
+        orderBy: { id: 'asc' },
+      }),
+    ).toEqual(before);
+  });
+
+  it('rejects zero-hour teaching writes and surfaces stale assignments without workload or missing-teacher debt', async () => {
+    const where = {
+      schoolId,
+      termId: academic.termId,
+      gradeId: academic.gradeId,
+      subjectId: mathSubjectId,
+    };
+    await prisma.subjectAllocation.updateMany({
+      where,
+      data: { weeklyHours: 0 },
+    });
+    const before = await prisma.teacherSubjectAllocation.findMany({
+      where: { schoolId },
+      orderBy: { id: 'asc' },
+    });
+    try {
+      const item = {
+        classroomId: academic.classroomAId,
+        teacherUserId,
+        subjectId: mathSubjectId,
+      };
+      const writes = [
+        () =>
+          request(app.getHttpServer())
+            .post(`${GLOBAL_PREFIX}/academics/allocations`)
+            .send({ termId: academic.termId, ...item }),
+        () =>
+          request(app.getHttpServer())
+            .put(`${GLOBAL_PREFIX}/academics/allocations/bulk`)
+            .send({ termId: academic.termId, items: [item] }),
+        () =>
+          request(app.getHttpServer())
+            .post(`${GLOBAL_PREFIX}/academics/allocations/apply-to-grade`)
+            .send({
+              termId: academic.termId,
+              gradeId: academic.gradeId,
+              teacherUserId,
+              subjectId: mathSubjectId,
+            }),
+      ];
+      for (const write of writes) {
+        const response = await write()
+          .set('Authorization', bearer(adminAuth))
+          .expect(422);
+        expect(response.body.error.code).toBe(
+          'academics.subject_allocation.subject_not_taught',
+        );
+        expect(response.body.error.details).toEqual({
+          termId: academic.termId,
+          gradeId: academic.gradeId,
+          subjectId: mathSubjectId,
+        });
+      }
+      const validation = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/academics/allocations/validation`)
+        .query({
+          termId: academic.termId,
+          gradeId: academic.gradeId,
+          subjectId: mathSubjectId,
+        })
+        .set('Authorization', bearer(adminAuth))
+        .expect(200);
+      expect(validation.body.summary.missingTeacherAssignments).toBe(0);
+      expect(validation.body.items[0]).toMatchObject({
+        status: 'incomplete',
+        missingClassroomCount: 0,
+        allocatedClassroomCount: 0,
+        issues: [{ code: 'subject_not_taught' }],
+      });
+      const load = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/academics/allocations/teacher-loads`)
+        .query({ termId: academic.termId, teacherUserId })
+        .set('Authorization', bearer(adminAuth))
+        .expect(200);
+      expect(load.body.items[0].totalWeeklyHours).toBe(6);
+      expect(load.body.items[0].warnings).toHaveLength(2);
+      expect(
+        load.body.items[0].warnings.every(
+          (warning: { code: string }) => warning.code === 'subject_not_taught',
+        ),
+      ).toBe(true);
+      expect(
+        await prisma.teacherSubjectAllocation.findMany({
+          where: { schoolId },
+          orderBy: { id: 'asc' },
+        }),
+      ).toEqual(before);
+    } finally {
+      await prisma.subjectAllocation.updateMany({
+        where,
+        data: { weeklyHours: 5 },
+      });
+    }
+  });
+
   it('denies closed-term create, delete, bulk, apply, and clear mutations', async () => {
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/academics/allocations`)

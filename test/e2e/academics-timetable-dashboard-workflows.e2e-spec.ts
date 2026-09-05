@@ -420,6 +420,96 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
     ).resolves.toBe(beforeCount);
   });
 
+  it.each(['zero', 'missing'] as const)(
+    'rejects every teaching entry write and publication with %s curriculum',
+    async (state) => {
+      const where = {
+        schoolId,
+        termId: academic.termId,
+        gradeId: academic.gradeId,
+        subjectId: mathSubjectId,
+      };
+      await prisma.subjectAllocation.updateMany({
+        where,
+        data: state === 'zero' ? { weeklyHours: 0 } : { deletedAt: new Date() },
+      });
+      const before = await prisma.timetableEntry.findMany({
+        where: { schoolId },
+        orderBy: { id: 'asc' },
+      });
+      try {
+        const item = {
+          classroomId: academic.classroomAId,
+          teacherSubjectAllocationId: mathAllocationAId,
+          periodId: periodOneId,
+          dayOfWeek: 2,
+        };
+        const writes = [
+          () =>
+            request(app.getHttpServer())
+              .post(`${GLOBAL_PREFIX}/academics/timetable/entries`)
+              .send({ timetableConfigId: configId, ...item }),
+          () =>
+            request(app.getHttpServer())
+              .patch(
+                `${GLOBAL_PREFIX}/academics/timetable/entries/${firstEntryId}`,
+              )
+              .send({ notes: 'Stale update' }),
+          () =>
+            request(app.getHttpServer())
+              .put(`${GLOBAL_PREFIX}/academics/timetable/entries/bulk`)
+              .send({ termId: academic.termId, items: [item] }),
+          () =>
+            request(app.getHttpServer())
+              .put(`${GLOBAL_PREFIX}/academics/timetable/entries/bulk`)
+              .send({
+                termId: academic.termId,
+                items: [{ ...item, dayOfWeek: 0 }],
+              }),
+        ];
+        for (const write of writes) {
+          const response = await write()
+            .set('Authorization', bearer(adminAuth))
+            .expect(422);
+          expect(response.body.error.code).toBe(
+            state === 'zero'
+              ? 'academics.subject_allocation.subject_not_taught'
+              : 'academics.timetable.missing_subject_allocation',
+          );
+        }
+        const publish = await request(app.getHttpServer())
+          .post(`${GLOBAL_PREFIX}/academics/timetable/publish`)
+          .send({ timetableConfigId: configId })
+          .set('Authorization', bearer(adminAuth))
+          .expect(409);
+        expect(publish.body.error.code).toBe(
+          'academics.timetable.publish_blocked',
+        );
+        expect(publish.body.error.details.blockingReasons).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              code:
+                state === 'zero'
+                  ? 'subject_not_taught'
+                  : 'missing_subject_allocation',
+            }),
+          ]),
+        );
+        expect(
+          await prisma.timetableEntry.findMany({
+            where: { schoolId },
+            orderBy: { id: 'asc' },
+          }),
+        ).toEqual(before);
+      } finally {
+        await prisma.subjectAllocation.updateMany({
+          where,
+          data: { weeklyHours: 2, deletedAt: null },
+        });
+      }
+    },
+  );
+
   it('publishes, unpublishes, and deletes one draft slot without deleting others', async () => {
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/academics/timetable/publish`)

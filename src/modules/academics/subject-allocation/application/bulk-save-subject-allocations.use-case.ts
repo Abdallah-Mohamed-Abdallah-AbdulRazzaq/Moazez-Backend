@@ -12,6 +12,7 @@ import {
 } from '../domain/subject-allocation.exceptions';
 import { SubjectAllocationRepository } from '../infrastructure/subject-allocation.repository';
 import { presentSubjectAllocations } from '../presenters/subject-allocation.presenter';
+import { assertCurriculumMutationAllowed } from './assert-curriculum-mutation-allowed';
 
 const MAX_BULK_ITEMS = 500;
 const MAX_WEEKLY_HOURS = 80;
@@ -72,16 +73,19 @@ export class BulkSaveSubjectAllocationsUseCase {
 
     try {
       const allocations =
-        await this.subjectAllocationRepository.bulkSaveAllocations({
-          schoolId: scope.schoolId,
-          academicYearId: term.academicYearId,
-          termId: term.id,
-          items: command.items.map((item) => ({
-            gradeId: item.gradeId,
-            subjectId: item.subjectId,
-            weeklyHours: item.weeklyHours,
-          })),
-        });
+        await this.subjectAllocationRepository.bulkSaveAllocations(
+          {
+            schoolId: scope.schoolId,
+            academicYearId: term.academicYearId,
+            termId: term.id,
+            items: command.items.map((item) => ({
+              gradeId: item.gradeId,
+              subjectId: item.subjectId,
+              weeklyHours: item.weeklyHours,
+            })),
+          },
+          (changes) => assertCurriculumMutationAllowed(term.id, changes),
+        );
 
       return presentSubjectAllocations(allocations);
     } catch (error) {

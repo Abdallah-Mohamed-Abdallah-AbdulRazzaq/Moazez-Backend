@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { requireAcademicsScope } from '../../academics-context';
+import { isActiveCurriculumRequirement } from '../../subject-allocation/domain/active-curriculum.policy';
 import { TeacherLoadsQueryDto } from '../dto/teacher-allocation.dto';
 import {
   TeacherLoadItemDto,
@@ -97,11 +98,14 @@ function buildTeacherLoadItems(
         const matrix = matrixByKey.get(
           subjectAllocationKey(grade.id, allocation.subjectId),
         );
-        if (!matrix) {
+        if (!isActiveCurriculumRequirement(matrix)) {
           warnings.push({
-            code: 'missing_subject_allocation_weekly_hours',
-            message:
-              'Teacher allocation is missing a subject allocation weekly-hours row.',
+            code: matrix
+              ? 'subject_not_taught'
+              : 'missing_subject_allocation_weekly_hours',
+            message: matrix
+              ? 'Teacher allocation is backed by an inactive curriculum requirement.'
+              : 'Teacher allocation is missing a subject allocation weekly-hours row.',
             allocationId: allocation.id,
             subjectId: allocation.subjectId,
             classroomId: allocation.classroomId,
@@ -130,7 +134,11 @@ function buildTeacherLoadItems(
             nameAr: grade.nameAr,
             nameEn: grade.nameEn,
           },
-          weeklyHours: matrix?.weeklyHours ?? null,
+          weeklyHours: isActiveCurriculumRequirement(matrix)
+            ? matrix!.weeklyHours
+            : matrix
+              ? 0
+              : null,
         };
       });
 
