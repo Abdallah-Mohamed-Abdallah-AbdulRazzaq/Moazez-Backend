@@ -6,6 +6,7 @@ import {
   TimetablePublicationStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import { classroomMatchesTimetableConfigScope } from '../../../academics/timetable/domain/timetable-policy';
 
 const TEACHER_SCHEDULE_ENTRY_ARGS =
   Prisma.validator<Prisma.TimetableEntryDefaultArgs>()({
@@ -22,6 +23,11 @@ const TEACHER_SCHEDULE_ENTRY_ARGS =
           weekStartDay: true,
           activeDays: true,
           status: true,
+          scopeType: true,
+          stageId: true,
+          gradeId: true,
+          sectionId: true,
+          classroomId: true,
           term: {
             select: {
               startDate: true,
@@ -55,6 +61,13 @@ const TEACHER_SCHEDULE_ENTRY_ARGS =
           id: true,
           nameAr: true,
           nameEn: true,
+          sectionId: true,
+          section: {
+            select: {
+              gradeId: true,
+              grade: { select: { stageId: true } },
+            },
+          },
         },
       },
       room: {
@@ -74,6 +87,23 @@ const TEACHER_SCHEDULE_SETTINGS_ARGS =
         select: {
           weekStartDay: true,
           activeDays: true,
+          scopeType: true,
+          stageId: true,
+          gradeId: true,
+          sectionId: true,
+          classroomId: true,
+        },
+      },
+      classroom: {
+        select: {
+          id: true,
+          sectionId: true,
+          section: {
+            select: {
+              gradeId: true,
+              grade: { select: { stageId: true } },
+            },
+          },
         },
       },
     },
@@ -120,7 +150,9 @@ export class TeacherScheduleReadAdapter {
       ...TEACHER_SCHEDULE_ENTRY_ARGS,
     });
 
-    return entries.filter(entryDayIsActive);
+    return entries.filter(
+      (entry) => entryDayIsActive(entry) && entryScopeIsApplicable(entry),
+    );
   }
 
   async listPublishedEntriesForTeacherWeek(params: {
@@ -161,7 +193,9 @@ export class TeacherScheduleReadAdapter {
       ...TEACHER_SCHEDULE_ENTRY_ARGS,
     });
 
-    return entries.filter(entryDayIsActive);
+    return entries.filter(
+      (entry) => entryDayIsActive(entry) && entryScopeIsApplicable(entry),
+    );
   }
 
   async findPublishedScheduleSettings(params: {
@@ -170,11 +204,12 @@ export class TeacherScheduleReadAdapter {
   }): Promise<TeacherScheduleSettingsRecord | null> {
     if (params.allocationIds.length === 0) return null;
 
-    const entry = await this.scopedPrisma.timetableEntry.findFirst({
+    const entries = await this.scopedPrisma.timetableEntry.findMany({
       where: publishedTeacherEntryWhere(params),
       orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
       ...TEACHER_SCHEDULE_SETTINGS_ARGS,
     });
+    const entry = entries.find(entryScopeIsApplicable);
 
     if (!entry) return null;
 
@@ -262,4 +297,15 @@ function termOverlapsDateRangeWhere(params: {
 
 function entryDayIsActive(entry: TeacherScheduleEntryRecord): boolean {
   return entry.timetableConfig.activeDays.includes(entry.dayOfWeek);
+}
+
+function entryScopeIsApplicable(
+  entry:
+    | TeacherScheduleEntryRecord
+    | Prisma.TimetableEntryGetPayload<typeof TEACHER_SCHEDULE_SETTINGS_ARGS>,
+): boolean {
+  return classroomMatchesTimetableConfigScope(
+    entry.timetableConfig,
+    entry.classroom,
+  );
 }

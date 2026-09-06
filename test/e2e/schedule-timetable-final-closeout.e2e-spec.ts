@@ -854,6 +854,74 @@ describe('Sprint 12F Schedule/Timetable final closeout (e2e)', () => {
       .expect(403);
   });
 
+  it('shows an isolated published STAGE entry only when its stage matches the classroom', async () => {
+    const otherStage = await prisma.stage.create({
+      data: {
+        schoolId: schoolAId,
+        nameAr: `${marker}-other-stage-ar`,
+        nameEn: `${marker}-other-stage`,
+        sortOrder: 2,
+      },
+      select: { id: true },
+    });
+    const matchingEntryId = await createConfigPeriodAndEntry({
+      schoolId: schoolAId,
+      academic: academicA,
+      placement: ownedPlacement,
+      teacherUserId,
+      marker: 'stage-matching',
+      dayOfWeek: 2,
+      scopeType: TimetableScopeType.STAGE,
+      scopeKey: `stage:${academicA.stageId}`,
+      stageId: academicA.stageId,
+      configStatus: TimetableConfigStatus.ACTIVE,
+      entryStatus: TimetableEntryStatus.ACTIVE,
+      publish: true,
+    });
+    const otherStageEntryId = await createConfigPeriodAndEntry({
+      schoolId: schoolAId,
+      academic: academicA,
+      placement: ownedPlacement,
+      teacherUserId,
+      marker: 'stage-other-hidden',
+      dayOfWeek: 2,
+      scopeType: TimetableScopeType.STAGE,
+      scopeKey: `stage:${otherStage.id}`,
+      stageId: otherStage.id,
+      configStatus: TimetableConfigStatus.ACTIVE,
+      entryStatus: TimetableEntryStatus.ACTIVE,
+      publish: true,
+    });
+
+    const teacher = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/schedule`)
+      .query({ date: '2026-09-15' })
+      .set('Authorization', bearer(teacherAuth))
+      .expect(200);
+    const student = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/schedule`)
+      .query({ date: '2026-09-15' })
+      .set('Authorization', bearer(studentAuth))
+      .expect(200);
+    const parent = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/children/${ownedStudentId}/schedule/weekly`)
+      .set('Authorization', bearer(parentAuth))
+      .expect(200);
+
+    for (const body of [teacher.body, student.body]) {
+      expect(
+        body.items.map(
+          (item: { timetableEntryId: string }) => item.timetableEntryId,
+        ),
+      ).toEqual([matchingEntryId]);
+      expect(JSON.stringify(body)).not.toContain(otherStageEntryId);
+    }
+    expect(
+      dayItems(parent.body, '2026-09-15').map((item) => item.timetableEntryId),
+    ).toEqual([matchingEntryId]);
+    expect(JSON.stringify(parent.body)).not.toContain(otherStageEntryId);
+  });
+
   it('keeps deferred app routes and side-effect surfaces closed', async () => {
     ensurePublishedFixture();
 
@@ -1291,6 +1359,7 @@ describe('Sprint 12F Schedule/Timetable final closeout (e2e)', () => {
     dayOfWeek: number;
     scopeType: TimetableScopeType;
     scopeKey: string;
+    stageId?: string;
     gradeId?: string;
     sectionId?: string;
     classroomId?: string;
@@ -1308,6 +1377,7 @@ describe('Sprint 12F Schedule/Timetable final closeout (e2e)', () => {
         activeDays: [1, 2, 3, 4, 5],
         scopeType: params.scopeType,
         scopeKey: params.scopeKey,
+        stageId: params.stageId ?? null,
         gradeId: params.gradeId ?? null,
         sectionId: params.sectionId ?? null,
         classroomId: params.classroomId ?? null,

@@ -38,6 +38,7 @@ export function presentTimetableConfig(
     activeDays: config.activeDays,
     scopeType: config.scopeType.toLowerCase(),
     scopeKey: config.scopeKey,
+    stageId: config.stageId ?? null,
     gradeId: config.gradeId ?? null,
     sectionId: config.sectionId ?? null,
     classroomId: config.classroomId ?? null,

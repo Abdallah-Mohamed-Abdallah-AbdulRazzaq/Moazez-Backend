@@ -33,9 +33,13 @@ export class UpsertTimetableConfigUseCase {
       );
     }
 
-    const scope = await resolveTimetableScope(this.timetableRepository, command, {
-      requireWritableTerm: true,
-    });
+    const scope = await resolveTimetableScope(
+      this.timetableRepository,
+      command,
+      {
+        requireWritableTerm: true,
+      },
+    );
     const existing = await this.timetableRepository.findConfigByScope(scope);
     if (existing) {
       assertConfigMutable(existing);
@@ -47,7 +51,7 @@ export class UpsertTimetableConfigUseCase {
     const activeDays =
       command.activeDays !== undefined
         ? normalizeActiveDays(command.activeDays)
-        : existing?.activeDays ?? normalizeActiveDays();
+        : (existing?.activeDays ?? normalizeActiveDays());
 
     const name = command.name.trim();
     if (name.length === 0) {
@@ -64,6 +68,7 @@ export class UpsertTimetableConfigUseCase {
       termId: scope.termId,
       scopeType: scope.scopeType,
       scopeKey: scope.scopeKey,
+      stageId: scope.stageId,
       gradeId: scope.gradeId,
       sectionId: scope.sectionId,
       classroomId: scope.classroomId,

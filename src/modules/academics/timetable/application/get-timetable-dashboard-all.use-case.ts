@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { TimetablePublicationStatus, TimetableScopeType } from '@prisma/client';
+import { TimetablePublicationStatus } from '@prisma/client';
 import { requireAcademicsScope } from '../../academics-context';
 import { TimetableDashboardQueryDto } from '../dto/timetable.dto';
 import {
@@ -19,6 +19,7 @@ import {
   presentTimetableEntry,
   presentTimetablePeriod,
 } from '../presenters/timetable.presenter';
+import { classroomMatchesTimetableConfigScope } from '../domain/timetable-policy';
 import {
   groupBy,
   resolveReadableTimetableContext,
@@ -109,7 +110,9 @@ function buildDashboardItems(input: {
     input.periods,
     (period) => period.timetableConfigId,
   );
-  const configById = new Map(input.configs.map((config) => [config.id, config]));
+  const configById = new Map(
+    input.configs.map((config) => [config.id, config]),
+  );
   const gradeById = new Map(input.grades.map((grade) => [grade.id, grade]));
 
   return input.classrooms.map((classroom) => {
@@ -119,7 +122,9 @@ function buildDashboardItems(input: {
     const grade = gradeById.get(gradeId);
     const classroomConfigs = unique([
       ...input.configs
-        .filter((config) => configAppliesToClassroom(config, classroom))
+        .filter((config) =>
+          classroomMatchesTimetableConfigScope(config, classroom),
+        )
         .map((config) => config.id),
       ...entries.map((entry) => entry.timetableConfigId),
     ])
@@ -149,23 +154,6 @@ function buildDashboardItems(input: {
   });
 }
 
-function configAppliesToClassroom(
-  config: TimetableConfigRecord,
-  classroom: TimetableClassroomRecord,
-): boolean {
-  if (config.scopeType === TimetableScopeType.TERM) return true;
-  if (config.scopeType === TimetableScopeType.GRADE) {
-    return config.gradeId === classroom.section.gradeId;
-  }
-  if (config.scopeType === TimetableScopeType.SECTION) {
-    return config.sectionId === classroom.sectionId;
-  }
-  if (config.scopeType === TimetableScopeType.CLASSROOM) {
-    return config.classroomId === classroom.id;
-  }
-  return false;
-}
-
 function presentDashboardConfig(
   config: TimetableConfigRecord,
 ): TimetableDashboardConfigSummaryDto {
@@ -174,6 +162,7 @@ function presentDashboardConfig(
     name: config.name,
     scopeType: config.scopeType.toLowerCase(),
     scopeKey: config.scopeKey,
+    stageId: config.stageId ?? null,
     status: config.status.toLowerCase(),
     activeDays: config.activeDays,
   };

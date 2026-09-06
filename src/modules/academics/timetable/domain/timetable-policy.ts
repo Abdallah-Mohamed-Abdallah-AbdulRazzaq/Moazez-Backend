@@ -1,7 +1,4 @@
-import {
-  TimetableConfigStatus,
-  TimetableScopeType,
-} from '@prisma/client';
+import { TimetableConfigStatus, TimetableScopeType } from '@prisma/client';
 import {
   TimetableClosedTermException,
   TimetablePublishedLockedException,
@@ -37,7 +34,10 @@ export function assertWeekStartDayIsValid(weekStartDay: number): void {
   }
 }
 
-export function assertTermWritable(term: { id: string; isActive: boolean }): void {
+export function assertTermWritable(term: {
+  id: string;
+  isActive: boolean;
+}): void {
   if (!term.isActive) {
     throw new TimetableClosedTermException({ termId: term.id });
   }
@@ -58,6 +58,7 @@ export function assertConfigMutable(config: {
 export function classroomMatchesTimetableConfigScope(
   config: {
     scopeType: TimetableScopeType;
+    stageId: string | null;
     gradeId: string | null;
     sectionId: string | null;
     classroomId: string | null;
@@ -67,6 +68,9 @@ export function classroomMatchesTimetableConfigScope(
     sectionId: string;
     section: {
       gradeId: string;
+      grade: {
+        stageId: string;
+      };
     };
   },
 ): boolean {
@@ -75,6 +79,8 @@ export function classroomMatchesTimetableConfigScope(
   }
 
   return (
+    (config.scopeType === TimetableScopeType.STAGE &&
+      classroom.section.grade.stageId === config.stageId) ||
     (config.scopeType === TimetableScopeType.GRADE &&
       classroom.section.gradeId === config.gradeId) ||
     (config.scopeType === TimetableScopeType.SECTION &&

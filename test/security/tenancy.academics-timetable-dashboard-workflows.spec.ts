@@ -36,7 +36,9 @@ type AcademicFixture = {
   academicYearId: string;
   termId: string;
   closedTermId: string;
+  stageId: string;
   gradeId: string;
+  sectionId: string;
   classroomId: string;
   subjectId: string;
   missingMatrixSubjectId: string;
@@ -326,7 +328,9 @@ describe('Academics timetable dashboard tenancy isolation (security)', () => {
       .expect(403);
 
     await request(app.getHttpServer())
-      .delete(`${GLOBAL_PREFIX}/academics/timetable/entries/${fixtureA.entryId}`)
+      .delete(
+        `${GLOBAL_PREFIX}/academics/timetable/entries/${fixtureA.entryId}`,
+      )
       .set('Authorization', bearer(viewOnlyAuth))
       .expect(403);
 
@@ -428,6 +432,108 @@ describe('Academics timetable dashboard tenancy isolation (security)', () => {
       });
   });
 
+  it('keeps stage scopes tenant-safe and rejects hierarchy assertions without leaking', async () => {
+    const localOtherStage = await prisma.stage.create({
+      data: {
+        schoolId: schoolAId,
+        nameAr: `${marker}-a-other-stage-ar`,
+        nameEn: `${marker}-a-other-stage`,
+        sortOrder: 2,
+      },
+      select: { id: true },
+    });
+    let stageConfigId: string | undefined;
+
+    try {
+      await request(app.getHttpServer())
+        .put(`${GLOBAL_PREFIX}/academics/timetable/config`)
+        .set('Authorization', bearer(adminAAuth))
+        .send({
+          academicYearId: fixtureA.academicYearId,
+          termId: fixtureA.termId,
+          scopeType: TimetableScopeType.STAGE,
+          stageId: fixtureB.stageId,
+          name: `${marker}-foreign-stage`,
+        })
+        .expect(404)
+        .expect((response) => {
+          expect(response.body?.error?.code).toBe('not_found');
+        });
+
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/academics/timetable/config`)
+        .query({
+          academicYearId: fixtureA.academicYearId,
+          termId: fixtureA.termId,
+          scopeType: TimetableScopeType.STAGE,
+          stageId: fixtureB.stageId,
+        })
+        .set('Authorization', bearer(adminAAuth))
+        .expect(404)
+        .expect((response) => {
+          expect(response.body?.error?.code).toBe('not_found');
+        });
+
+      for (const scope of [
+        {
+          scopeType: TimetableScopeType.GRADE,
+          gradeId: fixtureA.gradeId,
+          stageId: localOtherStage.id,
+        },
+        {
+          scopeType: TimetableScopeType.SECTION,
+          sectionId: fixtureA.sectionId,
+          stageId: localOtherStage.id,
+        },
+        {
+          scopeType: TimetableScopeType.CLASSROOM,
+          classroomId: fixtureA.classroomId,
+          stageId: localOtherStage.id,
+        },
+      ]) {
+        await request(app.getHttpServer())
+          .put(`${GLOBAL_PREFIX}/academics/timetable/config`)
+          .set('Authorization', bearer(adminAAuth))
+          .send({
+            academicYearId: fixtureA.academicYearId,
+            termId: fixtureA.termId,
+            ...scope,
+            name: `${marker}-mismatched-${scope.scopeType.toLowerCase()}`,
+          })
+          .expect(404)
+          .expect((response) => {
+            expect(response.body?.error?.code).toBe('not_found');
+          });
+      }
+
+      const localStage = await request(app.getHttpServer())
+        .put(`${GLOBAL_PREFIX}/academics/timetable/config`)
+        .set('Authorization', bearer(adminAAuth))
+        .send({
+          academicYearId: fixtureA.academicYearId,
+          termId: fixtureA.termId,
+          scopeType: TimetableScopeType.STAGE,
+          stageId: fixtureA.stageId,
+          name: `${marker}-local-stage`,
+        })
+        .expect(200);
+      stageConfigId = localStage.body.data.id;
+      expect(localStage.body.data).toMatchObject({
+        scopeType: 'stage',
+        scopeKey: `stage:${fixtureA.stageId}`,
+        stageId: fixtureA.stageId,
+        gradeId: null,
+        sectionId: null,
+        classroomId: null,
+      });
+    } finally {
+      if (stageConfigId) {
+        await prisma.timetableConfig.delete({ where: { id: stageConfigId } });
+      }
+      await prisma.stage.delete({ where: { id: localOtherStage.id } });
+    }
+  });
+
   it('does not allow another school matrix row to satisfy local timetable writes', async () => {
     await request(app.getHttpServer())
       .put(`${GLOBAL_PREFIX}/academics/timetable/entries/bulk`)
@@ -485,7 +591,9 @@ describe('Academics timetable dashboard tenancy isolation (security)', () => {
       .expect(200);
 
     expect(JSON.stringify(schoolAResponse.body)).toContain(fixtureA.entryId);
-    expect(JSON.stringify(schoolAResponse.body)).not.toContain(fixtureB.entryId);
+    expect(JSON.stringify(schoolAResponse.body)).not.toContain(
+      fixtureB.entryId,
+    );
     expect(JSON.stringify(schoolAResponse.body)).not.toContain(teacherEmail);
     expectSafeTimetablePayload(schoolAResponse.body);
 
@@ -518,11 +626,15 @@ describe('Academics timetable dashboard tenancy isolation (security)', () => {
       })
       .expect(409)
       .expect((response) => {
-        expect(response.body?.error?.code).toBe('academics.timetable.closed_term');
+        expect(response.body?.error?.code).toBe(
+          'academics.timetable.closed_term',
+        );
       });
 
     await request(app.getHttpServer())
-      .delete(`${GLOBAL_PREFIX}/academics/timetable/entries/${fixtureA.closedEntryId}`)
+      .delete(
+        `${GLOBAL_PREFIX}/academics/timetable/entries/${fixtureA.closedEntryId}`,
+      )
       .set('Authorization', bearer(adminAAuth))
       .expect(409);
 
@@ -810,7 +922,11 @@ describe('Academics timetable dashboard tenancy isolation (security)', () => {
       },
       select: { id: true },
     });
-    const subject = await createFixtureSubject(params.schoolId, params.label, 'math');
+    const subject = await createFixtureSubject(
+      params.schoolId,
+      params.label,
+      'math',
+    );
     const missingMatrixSubject = await createFixtureSubject(
       params.schoolId,
       params.label,
@@ -948,7 +1064,9 @@ describe('Academics timetable dashboard tenancy isolation (security)', () => {
       academicYearId: academicYear.id,
       termId: term.id,
       closedTermId: closedTerm.id,
+      stageId: stage.id,
       gradeId: grade.id,
+      sectionId: section.id,
       classroomId: classroom.id,
       subjectId: subject.id,
       missingMatrixSubjectId: missingMatrixSubject.id,
@@ -1120,9 +1238,7 @@ describe('Academics timetable dashboard tenancy isolation (security)', () => {
     };
   }
 
-  async function expectNonSuccess(
-    pendingRequest: request.Test,
-  ): Promise<void> {
+  async function expectNonSuccess(pendingRequest: request.Test): Promise<void> {
     const response = await pendingRequest;
     expect(response.status).toBeGreaterThanOrEqual(400);
     expect(response.status).toBeLessThan(500);
@@ -1186,7 +1302,9 @@ describe('Academics timetable dashboard tenancy isolation (security)', () => {
   async function cleanupSecurityData(): Promise<void> {
     if (!prisma) return;
 
-    await prisma.session.deleteMany({ where: { userId: { in: createdUserIds } } });
+    await prisma.session.deleteMany({
+      where: { userId: { in: createdUserIds } },
+    });
     await prisma.auditLog.deleteMany({
       where: {
         OR: [
@@ -1217,17 +1335,27 @@ describe('Academics timetable dashboard tenancy isolation (security)', () => {
     await prisma.subjectAllocation.deleteMany({
       where: { schoolId: { in: createdSchoolIds } },
     });
-    await prisma.subject.deleteMany({ where: { schoolId: { in: createdSchoolIds } } });
+    await prisma.subject.deleteMany({
+      where: { schoolId: { in: createdSchoolIds } },
+    });
     await prisma.classroom.deleteMany({
       where: { schoolId: { in: createdSchoolIds } },
     });
-    await prisma.room.deleteMany({ where: { schoolId: { in: createdSchoolIds } } });
+    await prisma.room.deleteMany({
+      where: { schoolId: { in: createdSchoolIds } },
+    });
     await prisma.section.deleteMany({
       where: { schoolId: { in: createdSchoolIds } },
     });
-    await prisma.grade.deleteMany({ where: { schoolId: { in: createdSchoolIds } } });
-    await prisma.stage.deleteMany({ where: { schoolId: { in: createdSchoolIds } } });
-    await prisma.term.deleteMany({ where: { schoolId: { in: createdSchoolIds } } });
+    await prisma.grade.deleteMany({
+      where: { schoolId: { in: createdSchoolIds } },
+    });
+    await prisma.stage.deleteMany({
+      where: { schoolId: { in: createdSchoolIds } },
+    });
+    await prisma.term.deleteMany({
+      where: { schoolId: { in: createdSchoolIds } },
+    });
     await prisma.academicYear.deleteMany({
       where: { schoolId: { in: createdSchoolIds } },
     });

@@ -196,6 +196,11 @@ describe('Timetable use cases', () => {
             }
           : null,
       ),
+      findStageById: jest
+        .fn()
+        .mockImplementation((id: string) =>
+          id === 'stage-1' ? { id: 'stage-1', schoolId: 'school-1' } : null,
+        ),
       findGradeById: jest
         .fn()
         .mockImplementation(
@@ -219,14 +224,17 @@ describe('Timetable use cases', () => {
           async (id: string) =>
             allocations.find((allocation) => allocation.id === id) ?? null,
         ),
-      findSubjectAllocationByKey: jest.fn().mockImplementation(async (input) =>
-        subjectAllocations.find(
-          (row) =>
-            row.termId === input.termId &&
-            row.gradeId === input.gradeId &&
-            row.subjectId === input.subjectId,
-        ) ?? null,
-      ),
+      findSubjectAllocationByKey: jest
+        .fn()
+        .mockImplementation(
+          async (input) =>
+            subjectAllocations.find(
+              (row) =>
+                row.termId === input.termId &&
+                row.gradeId === input.gradeId &&
+                row.subjectId === input.subjectId,
+            ) ?? null,
+        ),
       findSubjectAllocationsByKeys: jest
         .fn()
         .mockImplementation(async (termId: string, keys) =>
@@ -240,13 +248,15 @@ describe('Timetable use cases', () => {
               ),
           ),
         ),
-      listSubjectAllocationsForTerm: jest.fn().mockImplementation(async (filters) =>
-        subjectAllocations.filter(
-          (row) =>
-            row.termId === filters.termId &&
-            (filters.gradeId ? row.gradeId === filters.gradeId : true),
+      listSubjectAllocationsForTerm: jest
+        .fn()
+        .mockImplementation(async (filters) =>
+          subjectAllocations.filter(
+            (row) =>
+              row.termId === filters.termId &&
+              (filters.gradeId ? row.gradeId === filters.gradeId : true),
+          ),
         ),
-      ),
       findConfigByScope: jest
         .fn()
         .mockImplementation(
@@ -281,6 +291,7 @@ describe('Timetable use cases', () => {
           activeDays: data.activeDays as number[],
           scopeType: data.scopeType as TimetableScopeType,
           scopeKey: String(data.scopeKey),
+          stageId: (data.stageId as string | null | undefined) ?? null,
           gradeId: (data.gradeId as string | null | undefined) ?? null,
           sectionId: (data.sectionId as string | null | undefined) ?? null,
           classroomId: (data.classroomId as string | null | undefined) ?? null,
@@ -422,22 +433,24 @@ describe('Timetable use cases', () => {
               : true,
           ),
       ),
-      listTeacherAllocationsByTerm: jest.fn().mockImplementation(async (filters) =>
-        allocations.filter((allocation) => {
-          const classroom = classrooms.find(
-            (item) => item.id === allocation.classroomId,
-          );
-          return (
-            allocation.termId === filters.termId &&
-            (filters.classroomId
-              ? allocation.classroomId === filters.classroomId
-              : true) &&
-            (filters.gradeId
-              ? classroom?.section.gradeId === filters.gradeId
-              : true)
-          );
-        }),
-      ),
+      listTeacherAllocationsByTerm: jest
+        .fn()
+        .mockImplementation(async (filters) =>
+          allocations.filter((allocation) => {
+            const classroom = classrooms.find(
+              (item) => item.id === allocation.classroomId,
+            );
+            return (
+              allocation.termId === filters.termId &&
+              (filters.classroomId
+                ? allocation.classroomId === filters.classroomId
+                : true) &&
+              (filters.gradeId
+                ? classroom?.section.gradeId === filters.gradeId
+                : true)
+            );
+          }),
+        ),
       listClassroomsByGradeIds: jest
         .fn()
         .mockImplementation(async (gradeIds: string[]) =>
@@ -595,9 +608,7 @@ describe('Timetable use cases', () => {
         .fn()
         .mockImplementation(async (configId: string) => {
           const matches = publications
-            .filter(
-              (publication) => publication.timetableConfigId === configId,
-            )
+            .filter((publication) => publication.timetableConfigId === configId)
             .sort((left, right) => right.revision - left.revision);
 
           return matches[0] ?? null;
@@ -700,6 +711,7 @@ describe('Timetable use cases', () => {
       activeDays: [0, 1, 2, 3, 4],
       scopeType: TimetableScopeType.TERM,
       scopeKey: 'term:term-1',
+      stageId: null,
       gradeId: null,
       sectionId: null,
       classroomId: null,
@@ -741,6 +753,10 @@ describe('Timetable use cases', () => {
       section: {
         id: 'section-1',
         gradeId: 'grade-1',
+        grade: {
+          id: 'grade-1',
+          stageId: 'stage-1',
+        },
       },
       ...overrides,
     };
@@ -750,6 +766,7 @@ describe('Timetable use cases', () => {
     return {
       id: 'grade-1',
       schoolId: 'school-1',
+      stageId: 'stage-1',
       nameAr: 'Grade 1',
       nameEn: 'Grade 1',
       ...overrides,
@@ -1495,7 +1512,11 @@ describe('Timetable use cases', () => {
           seedClassroom({
             id: 'classroom-2',
             sectionId: 'section-2',
-            section: { id: 'section-2', gradeId: 'grade-1' },
+            section: {
+              id: 'section-2',
+              gradeId: 'grade-1',
+              grade: { id: 'grade-1', stageId: 'stage-1' },
+            },
           }),
         ],
         entries: [
@@ -1526,7 +1547,11 @@ describe('Timetable use cases', () => {
           seedClassroom({
             id: 'classroom-2',
             sectionId: 'section-2',
-            section: { id: 'section-2', gradeId: 'grade-1' },
+            section: {
+              id: 'section-2',
+              gradeId: 'grade-1',
+              grade: { id: 'grade-1', stageId: 'stage-1' },
+            },
           }),
         ],
         entries: [
@@ -1747,7 +1772,11 @@ describe('Timetable use cases', () => {
         seedClassroom({
           id: 'classroom-2',
           sectionId: 'section-2',
-          section: { id: 'section-2', gradeId: 'grade-1' },
+          section: {
+            id: 'section-2',
+            gradeId: 'grade-1',
+            grade: { id: 'grade-1', stageId: 'stage-1' },
+          },
         }),
       ],
       allocations: [
@@ -1921,7 +1950,11 @@ describe('Timetable use cases', () => {
           sectionId: 'section-2',
           nameAr: 'Classroom 2',
           nameEn: 'Classroom 2',
-          section: { id: 'section-2', gradeId: 'grade-1' },
+          section: {
+            id: 'section-2',
+            gradeId: 'grade-1',
+            grade: { id: 'grade-1', stageId: 'stage-1' },
+          },
         }),
       ],
       entries: [
@@ -2102,7 +2135,11 @@ describe('Timetable use cases', () => {
           sectionId: 'section-2',
           nameAr: 'Classroom 2',
           nameEn: 'Classroom 2',
-          section: { id: 'section-2', gradeId: 'grade-1' },
+          section: {
+            id: 'section-2',
+            gradeId: 'grade-1',
+            grade: { id: 'grade-1', stageId: 'stage-1' },
+          },
         }),
       ],
       entries: [
