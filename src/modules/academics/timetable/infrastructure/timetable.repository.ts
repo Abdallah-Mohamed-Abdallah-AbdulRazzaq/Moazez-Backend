@@ -26,10 +26,18 @@ const TERM_ARGS = Prisma.validator<Prisma.TermDefaultArgs>()({
   },
 });
 
+const STAGE_ARGS = Prisma.validator<Prisma.StageDefaultArgs>()({
+  select: {
+    id: true,
+    schoolId: true,
+  },
+});
+
 const GRADE_ARGS = Prisma.validator<Prisma.GradeDefaultArgs>()({
   select: {
     id: true,
     schoolId: true,
+    stageId: true,
     nameAr: true,
     nameEn: true,
   },
@@ -40,6 +48,12 @@ const SECTION_ARGS = Prisma.validator<Prisma.SectionDefaultArgs>()({
     id: true,
     schoolId: true,
     gradeId: true,
+    grade: {
+      select: {
+        id: true,
+        stageId: true,
+      },
+    },
   },
 });
 
@@ -54,6 +68,12 @@ const CLASSROOM_ARGS = Prisma.validator<Prisma.ClassroomDefaultArgs>()({
       select: {
         id: true,
         gradeId: true,
+        grade: {
+          select: {
+            id: true,
+            stageId: true,
+          },
+        },
       },
     },
   },
@@ -121,6 +141,7 @@ const TIMETABLE_CONFIG_ARGS =
       activeDays: true,
       scopeType: true,
       scopeKey: true,
+      stageId: true,
       gradeId: true,
       sectionId: true,
       classroomId: true,
@@ -256,6 +277,7 @@ export type TimetableAcademicYearRecord = Prisma.AcademicYearGetPayload<
   typeof ACADEMIC_YEAR_ARGS
 >;
 export type TimetableTermRecord = Prisma.TermGetPayload<typeof TERM_ARGS>;
+export type TimetableStageRecord = Prisma.StageGetPayload<typeof STAGE_ARGS>;
 export type TimetableGradeRecord = Prisma.GradeGetPayload<typeof GRADE_ARGS>;
 export type TimetableSectionRecord = Prisma.SectionGetPayload<
   typeof SECTION_ARGS
@@ -362,6 +384,13 @@ export class TimetableRepository {
     return this.scopedPrisma.term.findFirst({
       where: { id: termId },
       ...TERM_ARGS,
+    });
+  }
+
+  findStageById(stageId: string): Promise<TimetableStageRecord | null> {
+    return this.scopedPrisma.stage.findFirst({
+      where: { id: stageId },
+      ...STAGE_ARGS,
     });
   }
 

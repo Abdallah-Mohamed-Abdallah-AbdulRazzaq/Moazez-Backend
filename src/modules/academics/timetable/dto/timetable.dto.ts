@@ -37,6 +37,10 @@ export class TimetableConfigScopeDto {
 
   @IsOptional()
   @IsUUID()
+  stageId?: string;
+
+  @IsOptional()
+  @IsUUID()
   gradeId?: string;
 
   @IsOptional()

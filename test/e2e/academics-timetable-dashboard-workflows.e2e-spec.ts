@@ -316,10 +316,12 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
       isPublished: false,
     });
     const classroomA = all.body.items.find(
-      (item: { classroomId: string }) => item.classroomId === academic.classroomAId,
+      (item: { classroomId: string }) =>
+        item.classroomId === academic.classroomAId,
     );
     const classroomB = all.body.items.find(
-      (item: { classroomId: string }) => item.classroomId === academic.classroomBId,
+      (item: { classroomId: string }) =>
+        item.classroomId === academic.classroomBId,
     );
     expect(classroomA).toMatchObject({
       classroomId: academic.classroomAId,
@@ -331,9 +333,9 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
       gradeId: academic.gradeId,
       entries: [],
     });
-    expect(classroomA.periods.map((period: { id: string }) => period.id)).toEqual(
-      expect.arrayContaining([periodOneId, periodTwoId]),
-    );
+    expect(
+      classroomA.periods.map((period: { id: string }) => period.id),
+    ).toEqual(expect.arrayContaining([periodOneId, periodTwoId]));
     expect(classroomA.entries.map((entry: { id: string }) => entry.id)).toEqual(
       expect.arrayContaining([firstEntryId, secondEntryId]),
     );
@@ -549,7 +551,9 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
       TimetableEntryStatus.DRAFT,
       TimetableEntryStatus.DRAFT,
     ]);
-    expect(latestPublication?.status).toBe(TimetablePublicationStatus.SUPERSEDED);
+    expect(latestPublication?.status).toBe(
+      TimetablePublicationStatus.SUPERSEDED,
+    );
 
     await request(app.getHttpServer())
       .delete(`${GLOBAL_PREFIX}/academics/timetable/entries/${firstEntryId}`)
@@ -584,7 +588,9 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
       })
       .expect(409)
       .expect((response) => {
-        expect(response.body?.error?.code).toBe('academics.timetable.closed_term');
+        expect(response.body?.error?.code).toBe(
+          'academics.timetable.closed_term',
+        );
       });
 
     await request(app.getHttpServer())
@@ -603,6 +609,180 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
       .set('Authorization', bearer(adminAuth))
       .send({ termId: academic.closedTermId })
       .expect(409);
+  });
+
+  it('upserts and reads hierarchical scopes with canonical stage ancestry', async () => {
+    const createdConfigIds: string[] = [];
+    const otherStage = await prisma.stage.create({
+      data: {
+        schoolId,
+        nameAr: `${marker}-other-stage-ar`,
+        nameEn: `${marker}-other-stage`,
+        sortOrder: 2,
+      },
+      select: { id: true },
+    });
+
+    try {
+      const cases = [
+        {
+          scopeType: TimetableScopeType.STAGE,
+          scope: { stageId: academic.stageId },
+          expected: {
+            stageId: academic.stageId,
+            gradeId: null,
+            sectionId: null,
+            classroomId: null,
+          },
+        },
+        {
+          scopeType: TimetableScopeType.GRADE,
+          scope: { gradeId: academic.gradeId },
+          expected: {
+            stageId: academic.stageId,
+            gradeId: academic.gradeId,
+            sectionId: null,
+            classroomId: null,
+          },
+        },
+        {
+          scopeType: TimetableScopeType.SECTION,
+          scope: { sectionId: academic.sectionAId },
+          expected: {
+            stageId: academic.stageId,
+            gradeId: academic.gradeId,
+            sectionId: academic.sectionAId,
+            classroomId: null,
+          },
+        },
+        {
+          scopeType: TimetableScopeType.CLASSROOM,
+          scope: { classroomId: academic.classroomAId },
+          expected: {
+            stageId: academic.stageId,
+            gradeId: academic.gradeId,
+            sectionId: academic.sectionAId,
+            classroomId: academic.classroomAId,
+          },
+        },
+      ];
+
+      const idsByScope = new Map<TimetableScopeType, string>();
+      for (const item of cases) {
+        const created = await request(app.getHttpServer())
+          .put(`${GLOBAL_PREFIX}/academics/timetable/config`)
+          .set('Authorization', bearer(adminAuth))
+          .send({
+            academicYearId: academic.academicYearId,
+            termId: academic.termId,
+            scopeType: item.scopeType,
+            ...item.scope,
+            name: `${marker}-${item.scopeType.toLowerCase()}-config`,
+          })
+          .expect(200);
+
+        expect(created.body.data).toMatchObject({
+          scopeType: item.scopeType.toLowerCase(),
+          scopeKey: `${item.scopeType.toLowerCase()}:${Object.values(item.scope)[0]}`,
+          ...item.expected,
+        });
+        createdConfigIds.push(created.body.data.id);
+        idsByScope.set(item.scopeType, created.body.data.id);
+
+        const read = await request(app.getHttpServer())
+          .get(`${GLOBAL_PREFIX}/academics/timetable/config`)
+          .query({
+            academicYearId: academic.academicYearId,
+            termId: academic.termId,
+            scopeType: item.scopeType,
+            ...item.scope,
+          })
+          .set('Authorization', bearer(adminAuth))
+          .expect(200);
+        expect(read.body.data).toMatchObject({
+          id: created.body.data.id,
+          ...item.expected,
+        });
+      }
+
+      const updatedStage = await request(app.getHttpServer())
+        .put(`${GLOBAL_PREFIX}/academics/timetable/config`)
+        .set('Authorization', bearer(adminAuth))
+        .send({
+          academicYearId: academic.academicYearId,
+          termId: academic.termId,
+          scopeType: TimetableScopeType.STAGE,
+          stageId: academic.stageId,
+          name: `${marker}-stage-config-updated`,
+        })
+        .expect(200);
+      expect(updatedStage.body.data).toMatchObject({
+        id: idsByScope.get(TimetableScopeType.STAGE),
+        name: `${marker}-stage-config-updated`,
+        stageId: academic.stageId,
+      });
+
+      const otherStageConfig = await request(app.getHttpServer())
+        .put(`${GLOBAL_PREFIX}/academics/timetable/config`)
+        .set('Authorization', bearer(adminAuth))
+        .send({
+          academicYearId: academic.academicYearId,
+          termId: academic.termId,
+          scopeType: TimetableScopeType.STAGE,
+          stageId: otherStage.id,
+          name: `${marker}-other-stage-config`,
+        })
+        .expect(200);
+      createdConfigIds.push(otherStageConfig.body.data.id);
+
+      const dashboard = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/academics/timetable/all`)
+        .query({ termId: academic.termId, gradeId: academic.gradeId })
+        .set('Authorization', bearer(adminAuth))
+        .expect(200);
+      const classroomA = dashboard.body.items.find(
+        (item: { classroomId: string }) =>
+          item.classroomId === academic.classroomAId,
+      );
+      const classroomB = dashboard.body.items.find(
+        (item: { classroomId: string }) =>
+          item.classroomId === academic.classroomBId,
+      );
+      expect(
+        classroomA.configs.map((config: { id: string }) => config.id),
+      ).toEqual(
+        expect.arrayContaining([
+          configId,
+          idsByScope.get(TimetableScopeType.STAGE),
+          idsByScope.get(TimetableScopeType.GRADE),
+          idsByScope.get(TimetableScopeType.SECTION),
+          idsByScope.get(TimetableScopeType.CLASSROOM),
+        ]),
+      );
+      expect(
+        classroomB.configs.map((config: { id: string }) => config.id),
+      ).toEqual(
+        expect.arrayContaining([
+          configId,
+          idsByScope.get(TimetableScopeType.STAGE),
+          idsByScope.get(TimetableScopeType.GRADE),
+        ]),
+      );
+      expect(JSON.stringify(dashboard.body)).not.toContain(
+        otherStageConfig.body.data.id,
+      );
+      expect(
+        classroomA.configs.find(
+          (config: { id: string }) =>
+            config.id === idsByScope.get(TimetableScopeType.STAGE),
+        ),
+      ).toMatchObject({ stageId: academic.stageId });
+    } finally {
+      await prisma.timetableConfig.deleteMany({
+        where: { id: { in: createdConfigIds } },
+      });
+      await prisma.stage.delete({ where: { id: otherStage.id } });
+    }
   });
 
   async function findSystemRole(key: string): Promise<{ id: string }> {
@@ -1075,7 +1255,9 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
   async function cleanupE2eData(): Promise<void> {
     if (!prisma) return;
 
-    await prisma.session.deleteMany({ where: { userId: { in: createdUserIds } } });
+    await prisma.session.deleteMany({
+      where: { userId: { in: createdUserIds } },
+    });
     await prisma.auditLog.deleteMany({
       where: {
         OR: [
@@ -1106,17 +1288,27 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
     await prisma.subjectAllocation.deleteMany({
       where: { schoolId: { in: createdSchoolIds } },
     });
-    await prisma.subject.deleteMany({ where: { schoolId: { in: createdSchoolIds } } });
+    await prisma.subject.deleteMany({
+      where: { schoolId: { in: createdSchoolIds } },
+    });
     await prisma.classroom.deleteMany({
       where: { schoolId: { in: createdSchoolIds } },
     });
-    await prisma.room.deleteMany({ where: { schoolId: { in: createdSchoolIds } } });
+    await prisma.room.deleteMany({
+      where: { schoolId: { in: createdSchoolIds } },
+    });
     await prisma.section.deleteMany({
       where: { schoolId: { in: createdSchoolIds } },
     });
-    await prisma.grade.deleteMany({ where: { schoolId: { in: createdSchoolIds } } });
-    await prisma.stage.deleteMany({ where: { schoolId: { in: createdSchoolIds } } });
-    await prisma.term.deleteMany({ where: { schoolId: { in: createdSchoolIds } } });
+    await prisma.grade.deleteMany({
+      where: { schoolId: { in: createdSchoolIds } },
+    });
+    await prisma.stage.deleteMany({
+      where: { schoolId: { in: createdSchoolIds } },
+    });
+    await prisma.term.deleteMany({
+      where: { schoolId: { in: createdSchoolIds } },
+    });
     await prisma.academicYear.deleteMany({
       where: { schoolId: { in: createdSchoolIds } },
     });

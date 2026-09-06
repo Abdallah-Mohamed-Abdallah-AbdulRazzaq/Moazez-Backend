@@ -2,6 +2,7 @@ import {
   TimetableConfigStatus,
   TimetableEntryStatus,
   TimetablePeriodType,
+  TimetableScopeType,
 } from '@prisma/client';
 import { TeacherAppAccessService } from '../../access/teacher-app-access.service';
 import { TeacherAppRequiredTeacherException } from '../../shared/teacher-app.errors';
@@ -402,6 +403,11 @@ function entryFixture(
       weekStartDay: 0,
       activeDays: [0, 1, 2, 3, 4],
       status: TimetableConfigStatus.ACTIVE,
+      scopeType: TimetableScopeType.TERM,
+      stageId: null,
+      gradeId: null,
+      sectionId: null,
+      classroomId: null,
       term: {
         startDate: new Date(Date.UTC(2026, 8, 1)),
         endDate: new Date(Date.UTC(2026, 11, 31)),
@@ -427,6 +433,11 @@ function entryFixture(
       id: 'classroom-1',
       nameAr: 'الفصل 1',
       nameEn: 'Classroom 1',
+      sectionId: 'section-1',
+      section: {
+        gradeId: 'grade-1',
+        grade: { stageId: 'stage-1' },
+      },
     },
     room: {
       id: 'room-1',

@@ -1247,6 +1247,7 @@ enum LessonPlanItemStatus {
 
 enum TimetableScopeType {
   TERM
+  STAGE
   GRADE
   SECTION
   CLASSROOM
@@ -2868,6 +2869,7 @@ model Stage {
   communicationAnnouncementAudiences CommunicationAnnouncementAudience[]
   dismissalStaffAssignments          DismissalStaffAssignment[]
   studentCredentialBatches           StudentCredentialBatch[]
+  timetableConfigs                   TimetableConfig[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, nameAr])
@@ -3448,6 +3450,7 @@ model TimetableConfig {
   activeDays     Int[]                 @default([]) @map("active_days")
   scopeType      TimetableScopeType    @default(TERM) @map("scope_type")
   scopeKey       String                @map("scope_key")
+  stageId        String?               @map("stage_id") @db.Uuid
   gradeId        String?               @map("grade_id") @db.Uuid
   sectionId      String?               @map("section_id") @db.Uuid
   classroomId    String?               @map("classroom_id") @db.Uuid
@@ -3459,6 +3462,7 @@ model TimetableConfig {
   school       School                 @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   academicYear AcademicYear           @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
   term         Term                   @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  stage        Stage?                 @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
   grade        Grade?                 @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
   section      Section?               @relation(fields: [sectionId, schoolId], references: [id, schoolId], onDelete: Restrict)
   classroom    Classroom?             @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
@@ -3472,6 +3476,7 @@ model TimetableConfig {
   @@index([schoolId])
   @@index([academicYearId])
   @@index([termId])
+  @@index([stageId])
   @@index([gradeId])
   @@index([sectionId])
   @@index([classroomId])
@@ -3869,7 +3874,7 @@ model Enrollment {
   homeworkTargets            HomeworkTarget[]
   homeworkSubmissions        HomeworkSubmission[]
   bulkRegistrationRows       StudentBulkRegistrationRow[]
-  credentialRows             StudentCredentialRow[]        @relation("StudentCredentialRowEnrollment")
+  credentialRows             StudentCredentialRow[]       @relation("StudentCredentialRowEnrollment")
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -4029,11 +4034,11 @@ model StudentCredentialRow {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  school  School                 @relation(fields: [schoolId], references: [id], onDelete: Restrict, map: "student_cred_rows_school_fkey")
-  batch   StudentCredentialBatch @relation(fields: [batchId, schoolId], references: [id, schoolId], onDelete: Cascade, map: "student_cred_rows_batch_fkey")
-  student Student                @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict, map: "student_cred_rows_student_fkey")
-  user    User?                  @relation("StudentCredentialRowUser", fields: [userId], references: [id], onDelete: Restrict, map: "student_cred_rows_user_fkey")
-  enrollment Enrollment?        @relation("StudentCredentialRowEnrollment", fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict, map: "student_cred_rows_enrollment_fkey")
+  school     School                 @relation(fields: [schoolId], references: [id], onDelete: Restrict, map: "student_cred_rows_school_fkey")
+  batch      StudentCredentialBatch @relation(fields: [batchId, schoolId], references: [id, schoolId], onDelete: Cascade, map: "student_cred_rows_batch_fkey")
+  student    Student                @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict, map: "student_cred_rows_student_fkey")
+  user       User?                  @relation("StudentCredentialRowUser", fields: [userId], references: [id], onDelete: Restrict, map: "student_cred_rows_user_fkey")
+  enrollment Enrollment?            @relation("StudentCredentialRowEnrollment", fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict, map: "student_cred_rows_enrollment_fkey")
 
   @@unique([id, schoolId], map: "student_credential_rows_id_school_key")
   @@unique([batchId, studentId], map: "student_credential_rows_batch_student_key")

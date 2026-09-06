@@ -7,6 +7,7 @@ export class TimetableConfigResponseDto {
   activeDays!: number[];
   scopeType!: string;
   scopeKey!: string;
+  stageId!: string | null;
   gradeId!: string | null;
   sectionId!: string | null;
   classroomId!: string | null;
@@ -191,6 +192,7 @@ export class TimetableDashboardConfigSummaryDto {
   name!: string;
   scopeType!: string;
   scopeKey!: string;
+  stageId!: string | null;
   status!: string;
   activeDays!: number[];
 }
@@ -213,8 +215,7 @@ export class TimetableDashboardAllResponseDto {
   items!: TimetableDashboardItemDto[];
 }
 
-export class TimetableEntriesBulkResponseDto
-  extends TimetableEntriesListResponseDto {
+export class TimetableEntriesBulkResponseDto extends TimetableEntriesListResponseDto {
   summary!: {
     requestedCount: number;
     createdCount: number;
