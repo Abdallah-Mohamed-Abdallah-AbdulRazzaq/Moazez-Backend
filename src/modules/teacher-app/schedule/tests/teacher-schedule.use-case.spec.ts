@@ -2,6 +2,7 @@ import {
   TimetableConfigStatus,
   TimetableEntryStatus,
   TimetablePeriodType,
+  TimetablePublicationStatus,
   TimetableScopeType,
 } from '@prisma/client';
 import { TeacherAppAccessService } from '../../access/teacher-app-access.service';
@@ -37,14 +38,14 @@ describe('Teacher Schedule use cases', () => {
     const result = await dailyUseCase.execute({ date: '2026-09-14' });
     const json = JSON.stringify(result);
 
-    expect(scheduleReadAdapter.listPublishedEntriesForTeacherOnDay).toHaveBeenCalledWith(
-      {
-        teacherUserId: TEACHER_ID,
-        allocationIds: ['allocation-1'],
-        dayOfWeek: 1,
-        date: new Date(Date.UTC(2026, 8, 14)),
-      },
-    );
+    expect(
+      scheduleReadAdapter.listPublishedEntriesForTeacherOnDay,
+    ).toHaveBeenCalledWith({
+      teacherUserId: TEACHER_ID,
+      allocationIds: ['allocation-1'],
+      dayOfWeek: 1,
+      date: new Date(Date.UTC(2026, 8, 14)),
+    });
     expect(result).toMatchObject({
       date: '2026-09-14',
       dayOfWeek: 1,
@@ -85,13 +86,13 @@ describe('Teacher Schedule use cases', () => {
   it('returns an empty daily schedule for a valid teacher/date with no entries', async () => {
     const { dailyUseCase } = createUseCases({ entries: [] });
 
-    await expect(
-      dailyUseCase.execute({ date: '2026-09-15' }),
-    ).resolves.toEqual({
-      date: '2026-09-15',
-      dayOfWeek: 2,
-      items: [],
-    });
+    await expect(dailyUseCase.execute({ date: '2026-09-15' })).resolves.toEqual(
+      {
+        date: '2026-09-15',
+        dayOfWeek: 2,
+        items: [],
+      },
+    );
   });
 
   it('returns an empty daily schedule when the date is outside the published term', async () => {
@@ -101,14 +102,14 @@ describe('Teacher Schedule use cases', () => {
 
     const result = await dailyUseCase.execute({ date: '2027-01-04' });
 
-    expect(scheduleReadAdapter.listPublishedEntriesForTeacherOnDay).toHaveBeenCalledWith(
-      {
-        teacherUserId: TEACHER_ID,
-        allocationIds: ['allocation-1'],
-        dayOfWeek: 1,
-        date: new Date(Date.UTC(2027, 0, 4)),
-      },
-    );
+    expect(
+      scheduleReadAdapter.listPublishedEntriesForTeacherOnDay,
+    ).toHaveBeenCalledWith({
+      teacherUserId: TEACHER_ID,
+      allocationIds: ['allocation-1'],
+      dayOfWeek: 1,
+      date: new Date(Date.UTC(2027, 0, 4)),
+    });
     expect(result).toEqual({
       date: '2027-01-04',
       dayOfWeek: 1,
@@ -159,21 +160,29 @@ describe('Teacher Schedule use cases', () => {
 
     const result = await weeklyUseCase.execute({ date: '2026-09-16' });
 
-    expect(scheduleReadAdapter.findPublishedScheduleSettings).toHaveBeenCalledWith(
-      {
-        teacherUserId: TEACHER_ID,
-        allocationIds: ['allocation-1'],
-      },
-    );
-    expect(scheduleReadAdapter.listPublishedEntriesForTeacherWeek).toHaveBeenCalledWith(
-      {
-        teacherUserId: TEACHER_ID,
-        allocationIds: ['allocation-1'],
-        dayOfWeeks: [1, 2, 3, 4, 5, 6, 0],
-        weekStartDate: new Date(Date.UTC(2026, 8, 14)),
-        weekEndDate: new Date(Date.UTC(2026, 8, 20)),
-      },
-    );
+    expect(
+      scheduleReadAdapter.findPublishedScheduleSettings,
+    ).toHaveBeenCalledWith({
+      teacherUserId: TEACHER_ID,
+      allocationIds: ['allocation-1'],
+    });
+    expect(
+      scheduleReadAdapter.listPublishedEntriesForTeacherWeek,
+    ).toHaveBeenCalledWith({
+      teacherUserId: TEACHER_ID,
+      allocationIds: ['allocation-1'],
+      effectiveTimetables: [
+        {
+          timetableConfigId: 'config-1',
+          classroomId: 'classroom-1',
+          academicYearId: 'year-1',
+          termId: 'term-1',
+        },
+      ],
+      dayOfWeeks: [1, 2, 3, 4, 5, 6, 0],
+      weekStartDate: new Date(Date.UTC(2026, 8, 14)),
+      weekEndDate: new Date(Date.UTC(2026, 8, 20)),
+    });
     expect(result.weekStartDate).toBe('2026-09-14');
     expect(result.weekEndDate).toBe('2026-09-20');
     expect(result.days).toHaveLength(7);
@@ -245,6 +254,69 @@ describe('Teacher Schedule use cases', () => {
 });
 
 describe('TeacherScheduleReadAdapter', () => {
+  it('resolves one effective timetable per teacher classroom in a bounded batch', async () => {
+    const allocationFindMany = jest
+      .fn()
+      .mockResolvedValue([
+        teacherContextFixture('allocation-a', 'classroom-a', 'section-a'),
+        teacherContextFixture('allocation-b', 'classroom-b', 'section-b'),
+      ]);
+    const configFindMany = jest.fn().mockResolvedValue([
+      effectiveTeacherConfigFixture(TimetableScopeType.TERM, {
+        id: 'term-config',
+      }),
+      effectiveTeacherConfigFixture(TimetableScopeType.STAGE, {
+        id: 'stage-config',
+      }),
+      effectiveTeacherConfigFixture(TimetableScopeType.CLASSROOM, {
+        id: 'classroom-a-config',
+        classroomId: 'classroom-a',
+      }),
+    ]);
+    const entryFindMany = jest.fn().mockResolvedValue([]);
+    const adapter = new TeacherScheduleReadAdapter({
+      scoped: {
+        teacherSubjectAllocation: { findMany: allocationFindMany },
+        timetableConfig: { findMany: configFindMany },
+        timetableEntry: { findMany: entryFindMany },
+      },
+    } as never);
+
+    await adapter.listPublishedEntriesForTeacherOnDay({
+      teacherUserId: TEACHER_ID,
+      allocationIds: ['allocation-a', 'allocation-b'],
+      dayOfWeek: 1,
+      date: new Date(Date.UTC(2026, 8, 14)),
+    });
+
+    expect(allocationFindMany).toHaveBeenCalledTimes(1);
+    expect(configFindMany).toHaveBeenCalledTimes(1);
+    expect(entryFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            {
+              OR: [
+                {
+                  timetableConfigId: 'classroom-a-config',
+                  classroomId: 'classroom-a',
+                  academicYearId: 'year-1',
+                  termId: 'term-1',
+                },
+                {
+                  timetableConfigId: 'stage-config',
+                  classroomId: 'classroom-b',
+                  academicYearId: 'year-1',
+                  termId: 'term-1',
+                },
+              ],
+            },
+          ]),
+        }),
+      }),
+    );
+  });
+
   it('queries scoped Prisma for active published teacher-owned timetable entries', async () => {
     const findMany = jest.fn().mockResolvedValue([
       entryFixture(),
@@ -268,6 +340,14 @@ describe('TeacherScheduleReadAdapter', () => {
     const result = await adapter.listPublishedEntriesForTeacherOnDay({
       teacherUserId: TEACHER_ID,
       allocationIds: ['allocation-1'],
+      effectiveTimetables: [
+        {
+          timetableConfigId: 'config-1',
+          classroomId: 'classroom-1',
+          academicYearId: 'year-1',
+          termId: 'term-1',
+        },
+      ],
       dayOfWeek: 1,
       date: new Date(Date.UTC(2026, 8, 14)),
     });
@@ -283,12 +363,6 @@ describe('TeacherScheduleReadAdapter', () => {
           },
           timetableConfig: {
             is: expect.objectContaining({
-              status: TimetableConfigStatus.ACTIVE,
-              publications: {
-                some: {
-                  status: 'PUBLISHED',
-                },
-              },
               activeDays: { has: 1 },
               term: {
                 is: {
@@ -368,6 +442,14 @@ function createUseCases(params?: {
     listPublishedEntriesForTeacherWeek: jest.fn(() => Promise.resolve(entries)),
     findPublishedScheduleSettings: jest.fn(() =>
       Promise.resolve({
+        effectiveTimetables: [
+          {
+            timetableConfigId: 'config-1',
+            classroomId: 'classroom-1',
+            academicYearId: 'year-1',
+            termId: 'term-1',
+          },
+        ],
         weekStartDay: params?.weekStartDay ?? 0,
         activeDays: [0, 1, 2, 3, 4],
       }),
@@ -460,5 +542,55 @@ function termBoundConfigFixture(): TeacherScheduleEntryRecord['timetableConfig']
       endDate: new Date(Date.UTC(2026, 8, 18)),
       deletedAt: null,
     },
+  };
+}
+
+function teacherContextFixture(
+  id: string,
+  classroomId: string,
+  sectionId: string,
+) {
+  return {
+    id,
+    schoolId: 'school-1',
+    termId: 'term-1',
+    classroomId,
+    term: { academicYearId: 'year-1' },
+    classroom: {
+      id: classroomId,
+      schoolId: 'school-1',
+      sectionId,
+      section: {
+        gradeId: sectionId === 'section-a' ? 'grade-a' : 'grade-b',
+        grade: { stageId: 'stage-1' },
+      },
+    },
+  };
+}
+
+function effectiveTeacherConfigFixture(
+  scopeType: TimetableScopeType,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    id: `config-${scopeType.toLowerCase()}`,
+    schoolId: 'school-1',
+    academicYearId: 'year-1',
+    termId: 'term-1',
+    name: 'Effective timetable',
+    weekStartDay: 0,
+    activeDays: [0, 1, 2, 3, 4],
+    status: TimetableConfigStatus.ACTIVE,
+    scopeType,
+    scopeKey: `${scopeType.toLowerCase()}:scope-id`,
+    stageId: scopeType === TimetableScopeType.STAGE ? 'stage-1' : null,
+    gradeId: scopeType === TimetableScopeType.GRADE ? 'grade-a' : null,
+    sectionId: scopeType === TimetableScopeType.SECTION ? 'section-a' : null,
+    classroomId:
+      scopeType === TimetableScopeType.CLASSROOM ? 'classroom-a' : null,
+    publications: [
+      { status: TimetablePublicationStatus.PUBLISHED, revision: 1 },
+    ],
+    ...overrides,
   };
 }

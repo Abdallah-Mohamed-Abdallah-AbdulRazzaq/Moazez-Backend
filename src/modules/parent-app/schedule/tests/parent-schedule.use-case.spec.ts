@@ -165,6 +165,7 @@ describe('Parent Schedule use cases', () => {
       classroomId: 'classroom-1',
       academicYearId: 'year-1',
       termId: 'term-1',
+      effectiveTimetableConfigIds: ['config-1'],
       dayOfWeeks: [1, 2, 3, 4, 5, 6, 0],
       weekStartDate: new Date(Date.UTC(2026, 8, 14)),
       weekEndDate: new Date(Date.UTC(2026, 8, 20)),
@@ -261,6 +262,7 @@ describe('ParentScheduleReadAdapter', () => {
       classroomId: 'classroom-1',
       academicYearId: 'year-1',
       termId: 'term-1',
+      effectiveTimetableConfigIds: ['config-1'],
       dayOfWeek: 1,
       date: new Date(Date.UTC(2026, 8, 14)),
     });
@@ -271,6 +273,7 @@ describe('ParentScheduleReadAdapter', () => {
           classroomId: 'classroom-1',
           academicYearId: 'year-1',
           termId: 'term-1',
+          timetableConfigId: { in: ['config-1'] },
           status: TimetableEntryStatus.ACTIVE,
           teacherSubjectAllocation: {
             is: {
@@ -280,14 +283,6 @@ describe('ParentScheduleReadAdapter', () => {
           },
           timetableConfig: {
             is: expect.objectContaining({
-              academicYearId: 'year-1',
-              termId: 'term-1',
-              status: TimetableConfigStatus.ACTIVE,
-              publications: {
-                some: {
-                  status: 'PUBLISHED',
-                },
-              },
               activeDays: { has: 1 },
               term: {
                 is: {
@@ -359,6 +354,7 @@ function createUseCases(params?: {
     listPublishedEntriesForChildWeek: jest.fn(() => Promise.resolve(entries)),
     findPublishedScheduleSettings: jest.fn(() =>
       Promise.resolve({
+        timetableConfigId: 'config-1',
         weekStartDay: params?.weekStartDay ?? 0,
         activeDays: [0, 1, 2, 3, 4],
       }),

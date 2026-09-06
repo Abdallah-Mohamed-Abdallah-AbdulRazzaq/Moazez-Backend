@@ -4,6 +4,7 @@ import {
   TimetableConfigStatus,
   TimetableEntryStatus,
   TimetablePeriodType,
+  TimetablePublicationStatus,
   TimetableScopeType,
   UserStatus,
   UserType,
@@ -40,15 +41,15 @@ describe('Student Schedule use cases', () => {
     const result = await dailyUseCase.execute({ date: '2026-09-14' });
     const json = JSON.stringify(result);
 
-    expect(scheduleReadAdapter.listPublishedEntriesForStudentOnDay).toHaveBeenCalledWith(
-      {
-        classroomId: 'classroom-1',
-        academicYearId: 'year-1',
-        termId: 'term-1',
-        dayOfWeek: 1,
-        date: new Date(Date.UTC(2026, 8, 14)),
-      },
-    );
+    expect(
+      scheduleReadAdapter.listPublishedEntriesForStudentOnDay,
+    ).toHaveBeenCalledWith({
+      classroomId: 'classroom-1',
+      academicYearId: 'year-1',
+      termId: 'term-1',
+      dayOfWeek: 1,
+      date: new Date(Date.UTC(2026, 8, 14)),
+    });
     expect(result).toMatchObject({
       date: '2026-09-14',
       dayOfWeek: 1,
@@ -97,15 +98,15 @@ describe('Student Schedule use cases', () => {
 
     const result = await dailyUseCase.execute({ date: '2027-01-04' });
 
-    expect(scheduleReadAdapter.listPublishedEntriesForStudentOnDay).toHaveBeenCalledWith(
-      {
-        classroomId: 'classroom-1',
-        academicYearId: 'year-1',
-        termId: 'term-1',
-        dayOfWeek: 1,
-        date: new Date(Date.UTC(2027, 0, 4)),
-      },
-    );
+    expect(
+      scheduleReadAdapter.listPublishedEntriesForStudentOnDay,
+    ).toHaveBeenCalledWith({
+      classroomId: 'classroom-1',
+      academicYearId: 'year-1',
+      termId: 'term-1',
+      dayOfWeek: 1,
+      date: new Date(Date.UTC(2027, 0, 4)),
+    });
     expect(result).toEqual({
       date: '2027-01-04',
       dayOfWeek: 1,
@@ -154,23 +155,24 @@ describe('Student Schedule use cases', () => {
 
     const result = await weeklyUseCase.execute({ date: '2026-09-16' });
 
-    expect(scheduleReadAdapter.findPublishedScheduleSettings).toHaveBeenCalledWith(
-      {
-        classroomId: 'classroom-1',
-        academicYearId: 'year-1',
-        termId: 'term-1',
-      },
-    );
-    expect(scheduleReadAdapter.listPublishedEntriesForStudentWeek).toHaveBeenCalledWith(
-      {
-        classroomId: 'classroom-1',
-        academicYearId: 'year-1',
-        termId: 'term-1',
-        dayOfWeeks: [1, 2, 3, 4, 5, 6, 0],
-        weekStartDate: new Date(Date.UTC(2026, 8, 14)),
-        weekEndDate: new Date(Date.UTC(2026, 8, 20)),
-      },
-    );
+    expect(
+      scheduleReadAdapter.findPublishedScheduleSettings,
+    ).toHaveBeenCalledWith({
+      classroomId: 'classroom-1',
+      academicYearId: 'year-1',
+      termId: 'term-1',
+    });
+    expect(
+      scheduleReadAdapter.listPublishedEntriesForStudentWeek,
+    ).toHaveBeenCalledWith({
+      classroomId: 'classroom-1',
+      academicYearId: 'year-1',
+      termId: 'term-1',
+      effectiveTimetableConfigIds: ['config-1'],
+      dayOfWeeks: [1, 2, 3, 4, 5, 6, 0],
+      weekStartDate: new Date(Date.UTC(2026, 8, 14)),
+      weekEndDate: new Date(Date.UTC(2026, 8, 20)),
+    });
     expect(result.weekStartDate).toBe('2026-09-14');
     expect(result.weekEndDate).toBe('2026-09-20');
     expect(result.days).toHaveLength(7);
@@ -241,6 +243,86 @@ describe('Student Schedule use cases', () => {
 });
 
 describe('StudentScheduleReadAdapter', () => {
+  it('returns settings from the published classroom winner even when it has no entries', async () => {
+    const timetableEntryFindMany = jest.fn();
+    const adapter = new StudentScheduleReadAdapter({
+      scoped: {
+        classroom: {
+          findFirst: jest.fn().mockResolvedValue(classroomContextFixture()),
+        },
+        timetableConfig: {
+          findMany: jest.fn().mockResolvedValue([
+            effectiveConfigFixture(TimetableScopeType.TERM, {
+              id: 'term-config',
+              weekStartDay: 0,
+              activeDays: [0, 1, 2, 3, 4],
+            }),
+            effectiveConfigFixture(TimetableScopeType.CLASSROOM, {
+              id: 'classroom-config',
+              weekStartDay: 1,
+              activeDays: [1, 2, 3],
+            }),
+          ]),
+        },
+        timetableEntry: { findMany: timetableEntryFindMany },
+      },
+    } as never);
+
+    await expect(
+      adapter.findPublishedScheduleSettings({
+        classroomId: 'classroom-1',
+        academicYearId: 'year-1',
+        termId: 'term-1',
+      }),
+    ).resolves.toEqual({
+      timetableConfigId: 'classroom-config',
+      weekStartDay: 1,
+      activeDays: [1, 2, 3],
+    });
+    expect(timetableEntryFindMany).not.toHaveBeenCalled();
+  });
+
+  it('resolves the winner before reading entries and never falls back to parent entries on an empty day', async () => {
+    const classroomFindFirst = jest
+      .fn()
+      .mockResolvedValue(classroomContextFixture());
+    const configFindMany = jest.fn().mockResolvedValue([
+      effectiveConfigFixture(TimetableScopeType.TERM, { id: 'term-config' }),
+      effectiveConfigFixture(TimetableScopeType.CLASSROOM, {
+        id: 'classroom-config',
+      }),
+    ]);
+    const entryFindMany = jest.fn().mockResolvedValue([]);
+    const adapter = new StudentScheduleReadAdapter({
+      scoped: {
+        classroom: { findFirst: classroomFindFirst },
+        timetableConfig: { findMany: configFindMany },
+        timetableEntry: { findMany: entryFindMany },
+      },
+    } as never);
+
+    await expect(
+      adapter.listPublishedEntriesForStudentOnDay({
+        classroomId: 'classroom-1',
+        academicYearId: 'year-1',
+        termId: 'term-1',
+        dayOfWeek: 2,
+        date: new Date(Date.UTC(2026, 8, 15)),
+      }),
+    ).resolves.toEqual([]);
+
+    expect(configFindMany.mock.invocationCallOrder[0]).toBeLessThan(
+      entryFindMany.mock.invocationCallOrder[0],
+    );
+    expect(entryFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          timetableConfigId: { in: ['classroom-config'] },
+        }),
+      }),
+    );
+  });
+
   it('queries scoped Prisma for active published classroom timetable entries inside the term', async () => {
     const findMany = jest.fn().mockResolvedValue([
       entryFixture(),
@@ -265,6 +347,7 @@ describe('StudentScheduleReadAdapter', () => {
       classroomId: 'classroom-1',
       academicYearId: 'year-1',
       termId: 'term-1',
+      effectiveTimetableConfigIds: ['config-1'],
       dayOfWeek: 1,
       date: new Date(Date.UTC(2026, 8, 14)),
     });
@@ -275,6 +358,7 @@ describe('StudentScheduleReadAdapter', () => {
           classroomId: 'classroom-1',
           academicYearId: 'year-1',
           termId: 'term-1',
+          timetableConfigId: { in: ['config-1'] },
           status: TimetableEntryStatus.ACTIVE,
           teacherSubjectAllocation: {
             is: {
@@ -284,14 +368,6 @@ describe('StudentScheduleReadAdapter', () => {
           },
           timetableConfig: {
             is: expect.objectContaining({
-              academicYearId: 'year-1',
-              termId: 'term-1',
-              status: TimetableConfigStatus.ACTIVE,
-              publications: {
-                some: {
-                  status: 'PUBLISHED',
-                },
-              },
               activeDays: { has: 1 },
               term: {
                 is: {
@@ -332,6 +408,7 @@ function createUseCases(params?: {
     listPublishedEntriesForStudentWeek: jest.fn(() => Promise.resolve(entries)),
     findPublishedScheduleSettings: jest.fn(() =>
       Promise.resolve({
+        timetableConfigId: 'config-1',
         weekStartDay: params?.weekStartDay ?? 0,
         activeDays: [0, 1, 2, 3, 4],
       }),
@@ -472,5 +549,44 @@ function termBoundConfigFixture(): StudentScheduleEntryRecord['timetableConfig']
       endDate: new Date(Date.UTC(2026, 8, 18)),
       deletedAt: null,
     },
+  };
+}
+
+function classroomContextFixture() {
+  return {
+    id: 'classroom-1',
+    schoolId: 'school-1',
+    sectionId: 'section-1',
+    section: {
+      gradeId: 'grade-1',
+      grade: { stageId: 'stage-1' },
+    },
+  };
+}
+
+function effectiveConfigFixture(
+  scopeType: TimetableScopeType,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    id: `config-${scopeType.toLowerCase()}`,
+    schoolId: 'school-1',
+    academicYearId: 'year-1',
+    termId: 'term-1',
+    name: 'Effective timetable',
+    weekStartDay: 0,
+    activeDays: [0, 1, 2, 3, 4],
+    status: TimetableConfigStatus.ACTIVE,
+    scopeType,
+    scopeKey: `${scopeType.toLowerCase()}:scope-id`,
+    stageId: scopeType === TimetableScopeType.STAGE ? 'stage-1' : null,
+    gradeId: scopeType === TimetableScopeType.GRADE ? 'grade-1' : null,
+    sectionId: scopeType === TimetableScopeType.SECTION ? 'section-1' : null,
+    classroomId:
+      scopeType === TimetableScopeType.CLASSROOM ? 'classroom-1' : null,
+    publications: [
+      { status: TimetablePublicationStatus.PUBLISHED, revision: 1 },
+    ],
+    ...overrides,
   };
 }

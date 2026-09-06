@@ -326,6 +326,7 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
     expect(classroomA).toMatchObject({
       classroomId: academic.classroomAId,
       gradeId: academic.gradeId,
+      effectiveConfig: null,
       configs: [{ id: configId, status: 'draft' }],
     });
     expect(classroomB).toMatchObject({
@@ -522,6 +523,28 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
         expect(response.body.status).toBe('published');
       });
 
+    const publishedDashboard = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/academics/timetable/all`)
+      .query({ termId: academic.termId, classroomId: academic.classroomAId })
+      .set('Authorization', bearer(adminAuth))
+      .expect(200);
+    expect(publishedDashboard.body.items[0]).toMatchObject({
+      effectiveConfig: {
+        id: configId,
+        scopeType: 'term',
+        status: 'active',
+      },
+      configs: [expect.objectContaining({ id: configId })],
+      periods: expect.arrayContaining([
+        expect.objectContaining({ id: periodOneId }),
+        expect.objectContaining({ id: periodTwoId }),
+      ]),
+      entries: expect.arrayContaining([
+        expect.objectContaining({ id: firstEntryId }),
+        expect.objectContaining({ id: secondEntryId }),
+      ]),
+    });
+
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/academics/timetable/unpublish`)
       .set('Authorization', bearer(adminAuth))
@@ -534,6 +557,24 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
           entriesReturnedToDraft: 2,
         });
       });
+
+    const unpublishedDashboard = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/academics/timetable/all`)
+      .query({ termId: academic.termId, classroomId: academic.classroomAId })
+      .set('Authorization', bearer(adminAuth))
+      .expect(200);
+    expect(unpublishedDashboard.body.items[0]).toMatchObject({
+      effectiveConfig: null,
+      configs: [expect.objectContaining({ id: configId })],
+      periods: expect.arrayContaining([
+        expect.objectContaining({ id: periodOneId }),
+        expect.objectContaining({ id: periodTwoId }),
+      ]),
+      entries: expect.arrayContaining([
+        expect.objectContaining({ id: firstEntryId }),
+        expect.objectContaining({ id: secondEntryId }),
+      ]),
+    });
 
     const [config, activeEntries, latestPublication] = await Promise.all([
       prisma.timetableConfig.findUnique({ where: { id: configId } }),

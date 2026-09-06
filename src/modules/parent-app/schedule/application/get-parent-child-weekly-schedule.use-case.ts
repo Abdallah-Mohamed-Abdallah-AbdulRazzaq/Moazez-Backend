@@ -49,6 +49,9 @@ export class GetParentChildWeeklyScheduleUseCase {
         classroomId: accessibleChild.classroomId,
         academicYearId: accessibleChild.academicYearId,
         termId: accessibleChild.termId,
+        effectiveTimetableConfigIds: settings
+          ? [settings.timetableConfigId]
+          : [],
         dayOfWeeks: week.days.map((day) => day.dayOfWeek),
         weekStartDate: week.days[0].utcDate,
         weekEndDate: week.days[6].utcDate,

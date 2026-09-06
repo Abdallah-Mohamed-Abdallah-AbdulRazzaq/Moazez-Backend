@@ -20,6 +20,7 @@ import {
   presentTimetablePeriod,
 } from '../presenters/timetable.presenter';
 import { classroomMatchesTimetableConfigScope } from '../domain/timetable-policy';
+import { effectiveTimetableResolver } from '../domain/effective-timetable-resolver';
 import {
   groupBy,
   resolveReadableTimetableContext,
@@ -85,22 +86,28 @@ export class GetTimetableDashboardAllUseCase {
       publishedAt: latestPublishedAt?.toISOString() ?? null,
       isPublished: Boolean(latestPublishedAt),
       items: buildDashboardItems({
+        termId: term.id,
+        academicYearId: term.academicYearId,
         configs,
         periods,
         entries,
         classrooms: selectedClassrooms,
         grades,
+        latestPublicationsByConfigId: publishedPublications,
       }),
     };
   }
 }
 
 function buildDashboardItems(input: {
+  termId: string;
+  academicYearId: string;
   configs: TimetableConfigRecord[];
   periods: TimetablePeriodRecord[];
   entries: TimetableEntryRecord[];
   classrooms: TimetableClassroomRecord[];
   grades: TimetableGradeRecord[];
+  latestPublicationsByConfigId: Map<string, TimetablePublicationRecord>;
 }): TimetableDashboardAllResponseDto['items'] {
   const entriesByClassroomId = groupBy(
     input.entries,
@@ -133,6 +140,21 @@ function buildDashboardItems(input: {
     const classroomPeriods = classroomConfigs.flatMap(
       (config) => periodsByConfigId.get(config.id) ?? [],
     );
+    const effectiveConfig = effectiveTimetableResolver.resolve(
+      input.configs.map((config) => {
+        const publication = input.latestPublicationsByConfigId.get(config.id);
+        return {
+          ...config,
+          publications: publication ? [publication] : [],
+        };
+      }),
+      {
+        schoolId: classroom.schoolId,
+        academicYearId: input.academicYearId,
+        termId: input.termId,
+        classroom,
+      },
+    );
 
     return {
       classroomId,
@@ -147,6 +169,9 @@ function buildDashboardItems(input: {
         nameAr: grade?.nameAr ?? '',
         nameEn: grade?.nameEn ?? '',
       },
+      effectiveConfig: effectiveConfig
+        ? presentDashboardConfig(effectiveConfig)
+        : null,
       configs: classroomConfigs.map(presentDashboardConfig),
       periods: classroomPeriods.map((period) => presentTimetablePeriod(period)),
       entries: entries.map((entry) => presentTimetableEntry(entry)),

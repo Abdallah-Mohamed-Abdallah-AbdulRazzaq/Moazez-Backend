@@ -38,6 +38,9 @@ export class GetStudentWeeklyScheduleUseCase {
         classroomId: context.classroomId,
         academicYearId: context.academicYearId,
         termId: context.termId,
+        effectiveTimetableConfigIds: settings
+          ? [settings.timetableConfigId]
+          : [],
         dayOfWeeks: week.days.map((day) => day.dayOfWeek),
         weekStartDate: week.days[0].utcDate,
         weekEndDate: week.days[6].utcDate,

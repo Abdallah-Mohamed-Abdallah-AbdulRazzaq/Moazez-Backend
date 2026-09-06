@@ -1,12 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import {
-  Prisma,
-  TimetableConfigStatus,
-  TimetableEntryStatus,
-  TimetablePublicationStatus,
-} from '@prisma/client';
+import { Prisma, TimetableEntryStatus } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
-import { classroomMatchesTimetableConfigScope } from '../../../academics/timetable/domain/timetable-policy';
+import {
+  EFFECTIVE_TIMETABLE_CONFIG_ARGS,
+  EffectiveTimetableConfigRecord,
+  resolveEffectiveConfigsByTerm,
+} from '../../../academics/timetable/infrastructure/effective-timetable-read';
 
 const TEACHER_SCHEDULE_ENTRY_ARGS =
   Prisma.validator<Prisma.TimetableEntryDefaultArgs>()({
@@ -80,28 +79,31 @@ const TEACHER_SCHEDULE_ENTRY_ARGS =
     },
   });
 
-const TEACHER_SCHEDULE_SETTINGS_ARGS =
-  Prisma.validator<Prisma.TimetableEntryDefaultArgs>()({
+const TEACHER_SCHEDULE_CONTEXT_ARGS =
+  Prisma.validator<Prisma.TeacherSubjectAllocationDefaultArgs>()({
     select: {
-      timetableConfig: {
+      id: true,
+      schoolId: true,
+      termId: true,
+      classroomId: true,
+      term: {
         select: {
-          weekStartDay: true,
-          activeDays: true,
-          scopeType: true,
-          stageId: true,
-          gradeId: true,
-          sectionId: true,
-          classroomId: true,
+          academicYearId: true,
         },
       },
       classroom: {
         select: {
           id: true,
+          schoolId: true,
           sectionId: true,
           section: {
             select: {
               gradeId: true,
-              grade: { select: { stageId: true } },
+              grade: {
+                select: {
+                  stageId: true,
+                },
+              },
             },
           },
         },
@@ -109,13 +111,35 @@ const TEACHER_SCHEDULE_SETTINGS_ARGS =
     },
   });
 
+type TeacherScheduleContextRecord = Prisma.TeacherSubjectAllocationGetPayload<
+  typeof TEACHER_SCHEDULE_CONTEXT_ARGS
+>;
+
 export type TeacherScheduleEntryRecord = Prisma.TimetableEntryGetPayload<
   typeof TEACHER_SCHEDULE_ENTRY_ARGS
 >;
 
+export interface TeacherEffectiveTimetableBinding {
+  timetableConfigId: string;
+  classroomId: string;
+  academicYearId: string;
+  termId: string;
+}
+
 export interface TeacherScheduleSettingsRecord {
+  effectiveTimetables: TeacherEffectiveTimetableBinding[];
   weekStartDay: number;
   activeDays: number[];
+}
+
+interface TeacherScheduleLookupParams {
+  teacherUserId: string;
+  allocationIds: string[];
+  effectiveTimetables?: TeacherEffectiveTimetableBinding[];
+}
+
+interface ResolvedTeacherTimetable extends TeacherEffectiveTimetableBinding {
+  config: EffectiveTimetableConfigRecord;
 }
 
 @Injectable()
@@ -126,21 +150,23 @@ export class TeacherScheduleReadAdapter {
     return this.prisma.scoped as unknown as PrismaService;
   }
 
-  async listPublishedEntriesForTeacherOnDay(params: {
-    teacherUserId: string;
-    allocationIds: string[];
-    dayOfWeek: number;
-    date: Date;
-  }): Promise<TeacherScheduleEntryRecord[]> {
+  async listPublishedEntriesForTeacherOnDay(
+    params: TeacherScheduleLookupParams & {
+      dayOfWeek: number;
+      date: Date;
+    },
+  ): Promise<TeacherScheduleEntryRecord[]> {
     if (params.allocationIds.length === 0) return [];
+
+    const effectiveTimetables = await this.resolveEffectiveTimetables(params);
+    if (effectiveTimetables.length === 0) return [];
 
     const entries = await this.scopedPrisma.timetableEntry.findMany({
       where: {
-        ...publishedTeacherEntryWhere(params),
+        ...effectiveTeacherEntryWhere(params, effectiveTimetables),
         dayOfWeek: params.dayOfWeek,
         timetableConfig: {
           is: {
-            ...publishedConfigWhere(),
             activeDays: { has: params.dayOfWeek },
             term: { is: termContainsDateWhere(params.date) },
           },
@@ -150,19 +176,20 @@ export class TeacherScheduleReadAdapter {
       ...TEACHER_SCHEDULE_ENTRY_ARGS,
     });
 
-    return entries.filter(
-      (entry) => entryDayIsActive(entry) && entryScopeIsApplicable(entry),
-    );
+    return entries.filter(entryDayIsActive);
   }
 
-  async listPublishedEntriesForTeacherWeek(params: {
-    teacherUserId: string;
-    allocationIds: string[];
-    dayOfWeeks: number[];
-    weekStartDate: Date;
-    weekEndDate: Date;
-  }): Promise<TeacherScheduleEntryRecord[]> {
+  async listPublishedEntriesForTeacherWeek(
+    params: TeacherScheduleLookupParams & {
+      dayOfWeeks: number[];
+      weekStartDate: Date;
+      weekEndDate: Date;
+    },
+  ): Promise<TeacherScheduleEntryRecord[]> {
     if (params.allocationIds.length === 0) return [];
+
+    const effectiveTimetables = await this.resolveEffectiveTimetables(params);
+    if (effectiveTimetables.length === 0) return [];
 
     const uniqueDays = [...new Set(params.dayOfWeeks)].sort(
       (left, right) => left - right,
@@ -170,11 +197,10 @@ export class TeacherScheduleReadAdapter {
 
     const entries = await this.scopedPrisma.timetableEntry.findMany({
       where: {
-        ...publishedTeacherEntryWhere(params),
+        ...effectiveTeacherEntryWhere(params, effectiveTimetables),
         dayOfWeek: { in: uniqueDays },
         timetableConfig: {
           is: {
-            ...publishedConfigWhere(),
             activeDays: { hasSome: uniqueDays },
             term: {
               is: termOverlapsDateRangeWhere({
@@ -193,37 +219,134 @@ export class TeacherScheduleReadAdapter {
       ...TEACHER_SCHEDULE_ENTRY_ARGS,
     });
 
-    return entries.filter(
-      (entry) => entryDayIsActive(entry) && entryScopeIsApplicable(entry),
+    return entries.filter(entryDayIsActive);
+  }
+
+  async findPublishedScheduleSettings(
+    params: TeacherScheduleLookupParams,
+  ): Promise<TeacherScheduleSettingsRecord | null> {
+    if (params.allocationIds.length === 0) return null;
+
+    const resolved = await this.loadEffectiveTimetables(params);
+    const first = resolved[0];
+    if (!first) return null;
+
+    return {
+      effectiveTimetables: resolved.map(toEffectiveTimetableBinding),
+      weekStartDay: first.config.weekStartDay,
+      activeDays: first.config.activeDays,
+    };
+  }
+
+  private async resolveEffectiveTimetables(
+    params: TeacherScheduleLookupParams,
+  ): Promise<TeacherEffectiveTimetableBinding[]> {
+    if (params.effectiveTimetables !== undefined) {
+      return params.effectiveTimetables;
+    }
+
+    return (await this.loadEffectiveTimetables(params)).map(
+      toEffectiveTimetableBinding,
     );
   }
 
-  async findPublishedScheduleSettings(params: {
-    teacherUserId: string;
-    allocationIds: string[];
-  }): Promise<TeacherScheduleSettingsRecord | null> {
-    if (params.allocationIds.length === 0) return null;
+  private async loadEffectiveTimetables(
+    params: TeacherScheduleLookupParams,
+  ): Promise<ResolvedTeacherTimetable[]> {
+    const allocations =
+      await this.scopedPrisma.teacherSubjectAllocation.findMany({
+        where: {
+          id: { in: params.allocationIds },
+          teacherUserId: params.teacherUserId,
+          term: { is: { deletedAt: null } },
+          classroom: {
+            is: {
+              deletedAt: null,
+              section: {
+                is: {
+                  deletedAt: null,
+                  grade: {
+                    is: {
+                      deletedAt: null,
+                      stage: { is: { deletedAt: null } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        ...TEACHER_SCHEDULE_CONTEXT_ARGS,
+      });
 
-    const entries = await this.scopedPrisma.timetableEntry.findMany({
-      where: publishedTeacherEntryWhere(params),
-      orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
-      ...TEACHER_SCHEDULE_SETTINGS_ARGS,
+    const contexts = uniqueTeacherContexts(allocations);
+    if (contexts.length === 0) return [];
+
+    const candidates = await this.scopedPrisma.timetableConfig.findMany({
+      where: {
+        OR: contexts.map((context) => ({
+          academicYearId: context.term.academicYearId,
+          termId: context.termId,
+        })),
+      },
+      ...EFFECTIVE_TIMETABLE_CONFIG_ARGS,
     });
-    const entry = entries.find(entryScopeIsApplicable);
 
-    if (!entry) return null;
+    return contexts.flatMap((context) => {
+      const config = resolveEffectiveConfigsByTerm(
+        candidates.filter(
+          (candidate) =>
+            candidate.academicYearId === context.term.academicYearId &&
+            candidate.termId === context.termId,
+        ),
+        context.classroom,
+      )[0];
 
-    return {
-      weekStartDay: entry.timetableConfig.weekStartDay,
-      activeDays: entry.timetableConfig.activeDays,
-    };
+      return config
+        ? [
+            {
+              timetableConfigId: config.id,
+              classroomId: context.classroomId,
+              academicYearId: context.term.academicYearId,
+              termId: context.termId,
+              config,
+            },
+          ]
+        : [];
+    });
   }
 }
 
-function publishedTeacherEntryWhere(params: {
-  teacherUserId: string;
-  allocationIds: string[];
-}): Prisma.TimetableEntryWhereInput {
+function toEffectiveTimetableBinding(
+  resolved: ResolvedTeacherTimetable,
+): TeacherEffectiveTimetableBinding {
+  return {
+    timetableConfigId: resolved.timetableConfigId,
+    classroomId: resolved.classroomId,
+    academicYearId: resolved.academicYearId,
+    termId: resolved.termId,
+  };
+}
+
+function uniqueTeacherContexts(
+  allocations: TeacherScheduleContextRecord[],
+): TeacherScheduleContextRecord[] {
+  const contexts = new Map<string, TeacherScheduleContextRecord>();
+  for (const allocation of allocations) {
+    contexts.set(`${allocation.termId}:${allocation.classroomId}`, allocation);
+  }
+
+  return [...contexts.values()].sort(
+    (left, right) =>
+      left.termId.localeCompare(right.termId) ||
+      left.classroomId.localeCompare(right.classroomId),
+  );
+}
+
+function effectiveTeacherEntryWhere(
+  params: TeacherScheduleLookupParams,
+  effectiveTimetables: TeacherEffectiveTimetableBinding[],
+): Prisma.TimetableEntryWhereInput {
   return {
     teacherUserId: params.teacherUserId,
     teacherSubjectAllocationId: { in: params.allocationIds },
@@ -258,21 +381,17 @@ function publishedTeacherEntryWhere(params: {
         },
       },
     },
-    OR: [{ roomId: null }, { room: { is: { deletedAt: null } } }],
-    timetableConfig: {
-      is: publishedConfigWhere(),
-    },
-  };
-}
-
-function publishedConfigWhere(): Prisma.TimetableConfigWhereInput {
-  return {
-    status: TimetableConfigStatus.ACTIVE,
-    publications: {
-      some: {
-        status: TimetablePublicationStatus.PUBLISHED,
+    AND: [
+      { OR: [{ roomId: null }, { room: { is: { deletedAt: null } } }] },
+      {
+        OR: effectiveTimetables.map((effective) => ({
+          timetableConfigId: effective.timetableConfigId,
+          classroomId: effective.classroomId,
+          academicYearId: effective.academicYearId,
+          termId: effective.termId,
+        })),
       },
-    },
+    ],
   };
 }
 
@@ -297,15 +416,4 @@ function termOverlapsDateRangeWhere(params: {
 
 function entryDayIsActive(entry: TeacherScheduleEntryRecord): boolean {
   return entry.timetableConfig.activeDays.includes(entry.dayOfWeek);
-}
-
-function entryScopeIsApplicable(
-  entry:
-    | TeacherScheduleEntryRecord
-    | Prisma.TimetableEntryGetPayload<typeof TEACHER_SCHEDULE_SETTINGS_ARGS>,
-): boolean {
-  return classroomMatchesTimetableConfigScope(
-    entry.timetableConfig,
-    entry.classroom,
-  );
 }

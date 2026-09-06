@@ -1,12 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import {
-  Prisma,
-  TimetableConfigStatus,
-  TimetableEntryStatus,
-  TimetablePublicationStatus,
-} from '@prisma/client';
+import { Prisma, TimetableEntryStatus } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
-import { classroomMatchesTimetableConfigScope } from '../../../academics/timetable/domain/timetable-policy';
+import { findEffectiveTimetableConfigs } from '../../../academics/timetable/infrastructure/effective-timetable-read';
 
 const STUDENT_SCHEDULE_ENTRY_ARGS =
   Prisma.validator<Prisma.TimetableEntryDefaultArgs>()({
@@ -88,40 +83,12 @@ const STUDENT_SCHEDULE_ENTRY_ARGS =
     },
   });
 
-const STUDENT_SCHEDULE_SETTINGS_ARGS =
-  Prisma.validator<Prisma.TimetableEntryDefaultArgs>()({
-    select: {
-      timetableConfig: {
-        select: {
-          weekStartDay: true,
-          activeDays: true,
-          scopeType: true,
-          stageId: true,
-          gradeId: true,
-          sectionId: true,
-          classroomId: true,
-        },
-      },
-      classroom: {
-        select: {
-          id: true,
-          sectionId: true,
-          section: {
-            select: {
-              gradeId: true,
-              grade: { select: { stageId: true } },
-            },
-          },
-        },
-      },
-    },
-  });
-
 export type StudentScheduleEntryRecord = Prisma.TimetableEntryGetPayload<
   typeof STUDENT_SCHEDULE_ENTRY_ARGS
 >;
 
 export interface StudentScheduleSettingsRecord {
+  timetableConfigId: string;
   weekStartDay: number;
   activeDays: number[];
 }
@@ -130,6 +97,7 @@ interface StudentScheduleLookupParams {
   classroomId: string;
   academicYearId: string;
   termId?: string | null;
+  effectiveTimetableConfigIds?: string[];
 }
 
 @Injectable()
@@ -146,13 +114,15 @@ export class StudentScheduleReadAdapter {
       date: Date;
     },
   ): Promise<StudentScheduleEntryRecord[]> {
+    const configIds = await this.resolveEffectiveConfigIds(params);
+    if (configIds.length === 0) return [];
+
     const entries = await this.scopedPrisma.timetableEntry.findMany({
       where: {
-        ...publishedStudentEntryWhere(params),
+        ...effectiveStudentEntryWhere(params, configIds),
         dayOfWeek: params.dayOfWeek,
         timetableConfig: {
           is: {
-            ...publishedConfigWhere(params),
             activeDays: { has: params.dayOfWeek },
             term: { is: termContainsDateWhere(params.date) },
           },
@@ -162,9 +132,7 @@ export class StudentScheduleReadAdapter {
       ...STUDENT_SCHEDULE_ENTRY_ARGS,
     });
 
-    return entries.filter(
-      (entry) => entryDayIsActive(entry) && entryScopeIsApplicable(entry),
-    );
+    return entries.filter(entryDayIsActive);
   }
 
   async listPublishedEntriesForStudentWeek(
@@ -174,17 +142,19 @@ export class StudentScheduleReadAdapter {
       weekEndDate: Date;
     },
   ): Promise<StudentScheduleEntryRecord[]> {
+    const configIds = await this.resolveEffectiveConfigIds(params);
+    if (configIds.length === 0) return [];
+
     const uniqueDays = [...new Set(params.dayOfWeeks)].sort(
       (left, right) => left - right,
     );
 
     const entries = await this.scopedPrisma.timetableEntry.findMany({
       where: {
-        ...publishedStudentEntryWhere(params),
+        ...effectiveStudentEntryWhere(params, configIds),
         dayOfWeek: { in: uniqueDays },
         timetableConfig: {
           is: {
-            ...publishedConfigWhere(params),
             activeDays: { hasSome: uniqueDays },
             term: {
               is: termOverlapsDateRangeWhere({
@@ -203,37 +173,46 @@ export class StudentScheduleReadAdapter {
       ...STUDENT_SCHEDULE_ENTRY_ARGS,
     });
 
-    return entries.filter(
-      (entry) => entryDayIsActive(entry) && entryScopeIsApplicable(entry),
-    );
+    return entries.filter(entryDayIsActive);
   }
 
   async findPublishedScheduleSettings(
     params: StudentScheduleLookupParams,
   ): Promise<StudentScheduleSettingsRecord | null> {
-    const entries = await this.scopedPrisma.timetableEntry.findMany({
-      where: publishedStudentEntryWhere(params),
-      orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
-      ...STUDENT_SCHEDULE_SETTINGS_ARGS,
-    });
-    const entry = entries.find(entryScopeIsApplicable);
-
-    if (!entry) return null;
+    const config = (
+      await findEffectiveTimetableConfigs(this.scopedPrisma, params)
+    )[0];
+    if (!config) return null;
 
     return {
-      weekStartDay: entry.timetableConfig.weekStartDay,
-      activeDays: entry.timetableConfig.activeDays,
+      timetableConfigId: config.id,
+      weekStartDay: config.weekStartDay,
+      activeDays: config.activeDays,
     };
+  }
+
+  private async resolveEffectiveConfigIds(
+    params: StudentScheduleLookupParams,
+  ): Promise<string[]> {
+    if (params.effectiveTimetableConfigIds !== undefined) {
+      return params.effectiveTimetableConfigIds;
+    }
+
+    return (await findEffectiveTimetableConfigs(this.scopedPrisma, params)).map(
+      (config) => config.id,
+    );
   }
 }
 
-function publishedStudentEntryWhere(
+function effectiveStudentEntryWhere(
   params: StudentScheduleLookupParams,
+  timetableConfigIds: string[],
 ): Prisma.TimetableEntryWhereInput {
   return {
     classroomId: params.classroomId,
     academicYearId: params.academicYearId,
     ...termIdWhere(params.termId),
+    timetableConfigId: { in: timetableConfigIds },
     status: TimetableEntryStatus.ACTIVE,
     teacherSubjectAllocation: {
       is: {
@@ -278,24 +257,6 @@ function publishedStudentEntryWhere(
         },
       },
     ],
-    timetableConfig: {
-      is: publishedConfigWhere(params),
-    },
-  };
-}
-
-function publishedConfigWhere(
-  params: StudentScheduleLookupParams,
-): Prisma.TimetableConfigWhereInput {
-  return {
-    academicYearId: params.academicYearId,
-    ...termIdWhere(params.termId),
-    status: TimetableConfigStatus.ACTIVE,
-    publications: {
-      some: {
-        status: TimetablePublicationStatus.PUBLISHED,
-      },
-    },
   };
 }
 
@@ -324,15 +285,4 @@ function termOverlapsDateRangeWhere(params: {
 
 function entryDayIsActive(entry: StudentScheduleEntryRecord): boolean {
   return entry.timetableConfig.activeDays.includes(entry.dayOfWeek);
-}
-
-function entryScopeIsApplicable(
-  entry:
-    | StudentScheduleEntryRecord
-    | Prisma.TimetableEntryGetPayload<typeof STUDENT_SCHEDULE_SETTINGS_ARGS>,
-): boolean {
-  return classroomMatchesTimetableConfigScope(
-    entry.timetableConfig,
-    entry.classroom,
-  );
 }

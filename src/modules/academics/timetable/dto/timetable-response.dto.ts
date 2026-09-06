@@ -202,6 +202,7 @@ export class TimetableDashboardItemDto {
   classroom!: TimetableDashboardClassroomContextDto;
   gradeId!: string;
   grade!: TimetableDashboardGradeContextDto;
+  effectiveConfig!: TimetableDashboardConfigSummaryDto | null;
   configs!: TimetableDashboardConfigSummaryDto[];
   periods!: TimetablePeriodResponseDto[];
   entries!: TimetableEntryResponseDto[];
