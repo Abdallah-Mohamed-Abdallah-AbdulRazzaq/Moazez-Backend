@@ -37,6 +37,7 @@ export class GetTeacherWeeklyScheduleUseCase {
       await this.scheduleReadAdapter.listPublishedEntriesForTeacherWeek({
         teacherUserId: teacherContext.teacherUserId,
         allocationIds,
+        effectiveTimetables: settings?.effectiveTimetables ?? [],
         dayOfWeeks: week.days.map((day) => day.dayOfWeek),
         weekStartDate: week.days[0].utcDate,
         weekEndDate: week.days[6].utcDate,

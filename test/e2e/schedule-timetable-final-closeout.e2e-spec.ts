@@ -854,7 +854,7 @@ describe('Sprint 12F Schedule/Timetable final closeout (e2e)', () => {
       .expect(403);
   });
 
-  it('shows an isolated published STAGE entry only when its stage matches the classroom', async () => {
+  it('resolves published timetable precedence without merging and falls back after unpublish', async () => {
     const otherStage = await prisma.stage.create({
       data: {
         schoolId: schoolAId,
@@ -893,33 +893,215 @@ describe('Sprint 12F Schedule/Timetable final closeout (e2e)', () => {
       publish: true,
     });
 
-    const teacher = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/teacher/schedule`)
-      .query({ date: '2026-09-15' })
-      .set('Authorization', bearer(teacherAuth))
-      .expect(200);
-    const student = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/student/schedule`)
-      .query({ date: '2026-09-15' })
-      .set('Authorization', bearer(studentAuth))
-      .expect(200);
-    const parent = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/parent/children/${ownedStudentId}/schedule/weekly`)
-      .set('Authorization', bearer(parentAuth))
-      .expect(200);
+    const termEntryId = await createConfigPeriodAndEntry({
+      schoolId: schoolAId,
+      academic: academicA,
+      placement: ownedPlacement,
+      teacherUserId,
+      marker: 'term-fallback',
+      dayOfWeek: 2,
+      scopeType: TimetableScopeType.TERM,
+      scopeKey: `term:${academicA.termId}`,
+      configStatus: TimetableConfigStatus.ACTIVE,
+      entryStatus: TimetableEntryStatus.ACTIVE,
+      publish: true,
+    });
+    const scopeConfigs = await prisma.timetableConfig.findMany({
+      where: {
+        schoolId: schoolAId,
+        termId: academicA.termId,
+        scopeKey: {
+          in: [
+            `section:${academicA.sectionId}`,
+            `grade:${academicA.gradeId}`,
+            `stage:${academicA.stageId}`,
+            `term:${academicA.termId}`,
+          ],
+        },
+      },
+      select: { id: true, scopeType: true },
+    });
+    const configId = (scopeType: TimetableScopeType): string => {
+      const config = scopeConfigs.find((item) => item.scopeType === scopeType);
+      if (!config) throw new Error(`Missing ${scopeType} timetable fixture`);
+      return config.id;
+    };
+    const sectionConfigId = configId(TimetableScopeType.SECTION);
+    const gradeConfigId = configId(TimetableScopeType.GRADE);
+    const stageConfigId = configId(TimetableScopeType.STAGE);
+    const termConfigId = configId(TimetableScopeType.TERM);
 
-    for (const body of [teacher.body, student.body]) {
-      expect(
-        body.items.map(
-          (item: { timetableEntryId: string }) => item.timetableEntryId,
-        ),
-      ).toEqual([matchingEntryId]);
-      expect(JSON.stringify(body)).not.toContain(otherStageEntryId);
-    }
-    expect(
-      dayItems(parent.body, '2026-09-15').map((item) => item.timetableEntryId),
-    ).toEqual([matchingEntryId]);
-    expect(JSON.stringify(parent.body)).not.toContain(otherStageEntryId);
+    await publishExistingConfig(sectionConfigId);
+    await publishExistingConfig(gradeConfigId);
+
+    const stagePeriod = await prisma.timetablePeriod.findFirstOrThrow({
+      where: { timetableConfigId: stageConfigId },
+      select: { id: true },
+    });
+    const stageOnlyGrade = await prisma.grade.create({
+      data: {
+        schoolId: schoolAId,
+        stageId: academicA.stageId,
+        nameAr: `${marker}-stage-only-grade-ar`,
+        nameEn: `${marker}-stage-only-grade`,
+        sortOrder: 2,
+      },
+      select: { id: true },
+    });
+    const stageOnlySection = await prisma.section.create({
+      data: {
+        schoolId: schoolAId,
+        gradeId: stageOnlyGrade.id,
+        nameAr: `${marker}-stage-only-section-ar`,
+        nameEn: `${marker}-stage-only-section`,
+        sortOrder: 1,
+      },
+      select: { id: true },
+    });
+    const stageOnlyClassroom = await prisma.classroom.create({
+      data: {
+        schoolId: schoolAId,
+        sectionId: stageOnlySection.id,
+        nameAr: `${marker}-stage-only-classroom-ar`,
+        nameEn: `${marker}-stage-only-classroom`,
+        sortOrder: 1,
+      },
+      select: { id: true },
+    });
+    const stageOnlySubject = await prisma.subject.create({
+      data: {
+        schoolId: schoolAId,
+        nameAr: `${marker}-stage-only-subject-ar`,
+        nameEn: `${marker}-stage-only-subject`,
+        code: `STAGE-ONLY-${suffix}`,
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    await prisma.subjectAllocation.create({
+      data: {
+        schoolId: schoolAId,
+        academicYearId: academicA.academicYearId,
+        termId: academicA.termId,
+        gradeId: stageOnlyGrade.id,
+        subjectId: stageOnlySubject.id,
+        weeklyHours: 1,
+      },
+    });
+    const teacherStageOnlyAllocation =
+      await prisma.teacherSubjectAllocation.create({
+        data: {
+          schoolId: schoolAId,
+          teacherUserId,
+          subjectId: stageOnlySubject.id,
+          classroomId: stageOnlyClassroom.id,
+          termId: academicA.termId,
+        },
+        select: { id: true },
+      });
+    const teacherSecondClassEntry = await prisma.timetableEntry.create({
+      data: {
+        schoolId: schoolAId,
+        academicYearId: academicA.academicYearId,
+        termId: academicA.termId,
+        timetableConfigId: stageConfigId,
+        periodId: stagePeriod.id,
+        dayOfWeek: 2,
+        gradeId: stageOnlyGrade.id,
+        sectionId: stageOnlySection.id,
+        classroomId: stageOnlyClassroom.id,
+        subjectId: stageOnlySubject.id,
+        teacherUserId,
+        teacherSubjectAllocationId: teacherStageOnlyAllocation.id,
+        status: TimetableEntryStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+
+    const classroomMonday = await readEffectiveScheduleEntryIds(TODAY);
+    expect(classroomMonday.student).toEqual([ownedScheduleEntryId]);
+    expect(classroomMonday.parent).toEqual([ownedScheduleEntryId]);
+    expect(classroomMonday.teacher).toEqual([ownedScheduleEntryId]);
+    expect(JSON.stringify(classroomMonday)).not.toContain(draftConfigEntryId);
+    expect(JSON.stringify(classroomMonday)).not.toContain(unpublishedEntryId);
+
+    const emptyClassroomTuesday =
+      await readEffectiveScheduleEntryIds('2026-09-15');
+    expect(emptyClassroomTuesday.student).toEqual([]);
+    expect(emptyClassroomTuesday.parent).toEqual([]);
+    expect(emptyClassroomTuesday.teacher).toEqual([teacherSecondClassEntry.id]);
+    expect(JSON.stringify(emptyClassroomTuesday)).not.toContain(
+      matchingEntryId,
+    );
+    expect(JSON.stringify(emptyClassroomTuesday)).not.toContain(termEntryId);
+    expect(JSON.stringify(emptyClassroomTuesday)).not.toContain(
+      otherStageEntryId,
+    );
+
+    await unpublishConfig(timetableConfigId);
+    const sectionMonday = await readEffectiveScheduleEntryIds(TODAY);
+    expect(sectionMonday.student).toEqual([draftConfigEntryId]);
+    expect(sectionMonday.parent).toEqual([draftConfigEntryId]);
+    expect(sectionMonday.teacher).toEqual([draftConfigEntryId]);
+
+    await unpublishConfig(sectionConfigId);
+    const gradeMonday = await readEffectiveScheduleEntryIds(TODAY);
+    expect(gradeMonday.student).toEqual([unpublishedEntryId]);
+    expect(gradeMonday.parent).toEqual([unpublishedEntryId]);
+    expect(gradeMonday.teacher).toEqual([unpublishedEntryId]);
+
+    await unpublishConfig(gradeConfigId);
+    const stageTuesday = await readEffectiveScheduleEntryIds('2026-09-15');
+    expect(stageTuesday.student).toEqual([matchingEntryId]);
+    expect(stageTuesday.parent).toEqual([matchingEntryId]);
+    expect(stageTuesday.teacher).toEqual([
+      ...[matchingEntryId, teacherSecondClassEntry.id].sort(),
+    ]);
+    expect(JSON.stringify(stageTuesday)).not.toContain(otherStageEntryId);
+    expect(JSON.stringify(stageTuesday)).not.toContain(termEntryId);
+
+    await unpublishConfig(stageConfigId);
+    const termTuesday = await readEffectiveScheduleEntryIds('2026-09-15');
+    expect(termTuesday.student).toEqual([termEntryId]);
+    expect(termTuesday.parent).toEqual([termEntryId]);
+    expect(termTuesday.teacher).toEqual([termEntryId]);
+
+    const [classroomState, sectionState, gradeState, stageState, termState] =
+      await Promise.all([
+        prisma.timetableConfig.findUnique({
+          where: { id: timetableConfigId },
+          select: { status: true },
+        }),
+        prisma.timetableConfig.findUnique({
+          where: { id: sectionConfigId },
+          select: { status: true },
+        }),
+        prisma.timetableConfig.findUnique({
+          where: { id: gradeConfigId },
+          select: { status: true },
+        }),
+        prisma.timetableConfig.findUnique({
+          where: { id: stageConfigId },
+          select: { status: true },
+        }),
+        prisma.timetableConfig.findUnique({
+          where: { id: termConfigId },
+          select: { status: true },
+        }),
+      ]);
+    expect([
+      classroomState?.status,
+      sectionState?.status,
+      gradeState?.status,
+      stageState?.status,
+      termState?.status,
+    ]).toEqual([
+      TimetableConfigStatus.DRAFT,
+      TimetableConfigStatus.DRAFT,
+      TimetableConfigStatus.DRAFT,
+      TimetableConfigStatus.DRAFT,
+      TimetableConfigStatus.ACTIVE,
+    ]);
   });
 
   it('keeps deferred app routes and side-effect surfaces closed', async () => {
@@ -1432,6 +1614,101 @@ describe('Sprint 12F Schedule/Timetable final closeout (e2e)', () => {
       select: { id: true },
     });
     return entry.id;
+  }
+
+  async function publishExistingConfig(
+    timetableConfigIdToPublish: string,
+  ): Promise<void> {
+    await prisma.$transaction([
+      prisma.timetableConfig.update({
+        where: { id: timetableConfigIdToPublish },
+        data: { status: TimetableConfigStatus.ACTIVE },
+      }),
+      prisma.timetableEntry.updateMany({
+        where: { timetableConfigId: timetableConfigIdToPublish },
+        data: { status: TimetableEntryStatus.ACTIVE },
+      }),
+      prisma.timetablePublication.create({
+        data: {
+          schoolId: schoolAId,
+          academicYearId: academicA.academicYearId,
+          termId: academicA.termId,
+          timetableConfigId: timetableConfigIdToPublish,
+          status: TimetablePublicationStatus.PUBLISHED,
+          publishedAt: new Date('2026-09-10T08:00:00.000Z'),
+          publishedByUserId: adminUserId,
+          revision: 1,
+        },
+      }),
+    ]);
+  }
+
+  async function unpublishConfig(
+    timetableConfigIdToUnpublish: string,
+  ): Promise<void> {
+    await prisma.$transaction([
+      prisma.timetablePublication.updateMany({
+        where: {
+          timetableConfigId: timetableConfigIdToUnpublish,
+          status: TimetablePublicationStatus.PUBLISHED,
+        },
+        data: { status: TimetablePublicationStatus.SUPERSEDED },
+      }),
+      prisma.timetableConfig.update({
+        where: { id: timetableConfigIdToUnpublish },
+        data: { status: TimetableConfigStatus.DRAFT },
+      }),
+      prisma.timetableEntry.updateMany({
+        where: {
+          timetableConfigId: timetableConfigIdToUnpublish,
+          status: TimetableEntryStatus.ACTIVE,
+        },
+        data: { status: TimetableEntryStatus.DRAFT },
+      }),
+    ]);
+  }
+
+  async function readEffectiveScheduleEntryIds(date: string): Promise<{
+    teacher: string[];
+    student: string[];
+    parent: string[];
+  }> {
+    const [teacher, student, parent] = await Promise.all([
+      request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/schedule`)
+        .query({ date })
+        .set('Authorization', bearer(teacherAuth))
+        .expect(200),
+      request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/student/schedule`)
+        .query({ date })
+        .set('Authorization', bearer(studentAuth))
+        .expect(200),
+      request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/parent/children/${ownedStudentId}/schedule/weekly`,
+        )
+        .set('Authorization', bearer(parentAuth))
+        .expect(200),
+    ]);
+
+    const teacherBody = teacher.body as { items: ScheduleItem[] };
+    const studentBody = student.body as { items: ScheduleItem[] };
+    const parentBody = parent.body as {
+      days: Array<{ date: string; items: ScheduleItem[] }>;
+    };
+
+    return {
+      teacher: teacherBody.items
+        .map((item: ScheduleItem) => item.timetableEntryId)
+        .sort(),
+      student: studentBody.items
+        .map((item: ScheduleItem) => item.timetableEntryId)
+        .sort(),
+      parent: dayItems(parentBody, date)
+        .map((item) => item.timetableEntryId)
+        .sort(),
+    };
   }
 
   async function login(email: string): Promise<AuthTokens> {

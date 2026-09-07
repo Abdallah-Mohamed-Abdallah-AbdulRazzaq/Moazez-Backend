@@ -1,12 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import {
-  Prisma,
-  TimetableConfigStatus,
-  TimetableEntryStatus,
-  TimetablePublicationStatus,
-} from '@prisma/client';
+import { Prisma, TimetableEntryStatus } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
-import { classroomMatchesTimetableConfigScope } from '../../../academics/timetable/domain/timetable-policy';
+import {
+  EffectiveTimetableWeekSettings,
+  findEffectiveTimetableConfigs,
+  findEffectiveTimetableWeekSettings,
+} from '../../../academics/timetable/infrastructure/effective-timetable-read';
 import type { ParentAppAccessibleChild } from '../../shared/parent-app.types';
 
 const PARENT_SCHEDULE_CHILD_ARGS =
@@ -106,35 +105,6 @@ const PARENT_SCHEDULE_ENTRY_ARGS =
     },
   });
 
-const PARENT_SCHEDULE_SETTINGS_ARGS =
-  Prisma.validator<Prisma.TimetableEntryDefaultArgs>()({
-    select: {
-      timetableConfig: {
-        select: {
-          weekStartDay: true,
-          activeDays: true,
-          scopeType: true,
-          stageId: true,
-          gradeId: true,
-          sectionId: true,
-          classroomId: true,
-        },
-      },
-      classroom: {
-        select: {
-          id: true,
-          sectionId: true,
-          section: {
-            select: {
-              gradeId: true,
-              grade: { select: { stageId: true } },
-            },
-          },
-        },
-      },
-    },
-  });
-
 export type ParentScheduleChildRecord = Prisma.EnrollmentGetPayload<
   typeof PARENT_SCHEDULE_CHILD_ARGS
 >;
@@ -143,15 +113,13 @@ export type ParentScheduleEntryRecord = Prisma.TimetableEntryGetPayload<
   typeof PARENT_SCHEDULE_ENTRY_ARGS
 >;
 
-export interface ParentScheduleSettingsRecord {
-  weekStartDay: number;
-  activeDays: number[];
-}
+export type ParentScheduleSettingsRecord = EffectiveTimetableWeekSettings;
 
 interface ParentScheduleLookupParams {
   classroomId: string;
   academicYearId: string;
   termId?: string | null;
+  effectiveTimetableConfigIds?: string[];
 }
 
 @Injectable()
@@ -182,13 +150,15 @@ export class ParentScheduleReadAdapter {
       date: Date;
     },
   ): Promise<ParentScheduleEntryRecord[]> {
+    const configIds = await this.resolveEffectiveConfigIds(params);
+    if (configIds.length === 0) return [];
+
     const entries = await this.scopedPrisma.timetableEntry.findMany({
       where: {
-        ...publishedChildEntryWhere(params),
+        ...effectiveChildEntryWhere(params, configIds),
         dayOfWeek: params.dayOfWeek,
         timetableConfig: {
           is: {
-            ...publishedConfigWhere(params),
             activeDays: { has: params.dayOfWeek },
             term: { is: termContainsDateWhere(params.date) },
           },
@@ -198,9 +168,7 @@ export class ParentScheduleReadAdapter {
       ...PARENT_SCHEDULE_ENTRY_ARGS,
     });
 
-    return entries.filter(
-      (entry) => entryDayIsActive(entry) && entryScopeIsApplicable(entry),
-    );
+    return entries.filter(entryDayIsActive);
   }
 
   async listPublishedEntriesForChildWeek(
@@ -210,17 +178,19 @@ export class ParentScheduleReadAdapter {
       weekEndDate: Date;
     },
   ): Promise<ParentScheduleEntryRecord[]> {
+    const configIds = await this.resolveEffectiveConfigIds(params);
+    if (configIds.length === 0) return [];
+
     const uniqueDays = [...new Set(params.dayOfWeeks)].sort(
       (left, right) => left - right,
     );
 
     const entries = await this.scopedPrisma.timetableEntry.findMany({
       where: {
-        ...publishedChildEntryWhere(params),
+        ...effectiveChildEntryWhere(params, configIds),
         dayOfWeek: { in: uniqueDays },
         timetableConfig: {
           is: {
-            ...publishedConfigWhere(params),
             activeDays: { hasSome: uniqueDays },
             term: {
               is: termOverlapsDateRangeWhere({
@@ -239,37 +209,37 @@ export class ParentScheduleReadAdapter {
       ...PARENT_SCHEDULE_ENTRY_ARGS,
     });
 
-    return entries.filter(
-      (entry) => entryDayIsActive(entry) && entryScopeIsApplicable(entry),
-    );
+    return entries.filter(entryDayIsActive);
   }
 
   async findPublishedScheduleSettings(
-    params: ParentScheduleLookupParams,
+    params: ParentScheduleLookupParams & { requestedDate?: Date },
   ): Promise<ParentScheduleSettingsRecord | null> {
-    const entries = await this.scopedPrisma.timetableEntry.findMany({
-      where: publishedChildEntryWhere(params),
-      orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
-      ...PARENT_SCHEDULE_SETTINGS_ARGS,
-    });
-    const entry = entries.find(entryScopeIsApplicable);
+    return findEffectiveTimetableWeekSettings(this.scopedPrisma, params);
+  }
 
-    if (!entry) return null;
+  private async resolveEffectiveConfigIds(
+    params: ParentScheduleLookupParams,
+  ): Promise<string[]> {
+    if (params.effectiveTimetableConfigIds !== undefined) {
+      return params.effectiveTimetableConfigIds;
+    }
 
-    return {
-      weekStartDay: entry.timetableConfig.weekStartDay,
-      activeDays: entry.timetableConfig.activeDays,
-    };
+    return (await findEffectiveTimetableConfigs(this.scopedPrisma, params)).map(
+      (config) => config.id,
+    );
   }
 }
 
-function publishedChildEntryWhere(
+function effectiveChildEntryWhere(
   params: ParentScheduleLookupParams,
+  timetableConfigIds: string[],
 ): Prisma.TimetableEntryWhereInput {
   return {
     classroomId: params.classroomId,
     academicYearId: params.academicYearId,
     ...termIdWhere(params.termId),
+    timetableConfigId: { in: timetableConfigIds },
     status: TimetableEntryStatus.ACTIVE,
     teacherSubjectAllocation: {
       is: {
@@ -314,24 +284,6 @@ function publishedChildEntryWhere(
         },
       },
     ],
-    timetableConfig: {
-      is: publishedConfigWhere(params),
-    },
-  };
-}
-
-function publishedConfigWhere(
-  params: ParentScheduleLookupParams,
-): Prisma.TimetableConfigWhereInput {
-  return {
-    academicYearId: params.academicYearId,
-    ...termIdWhere(params.termId),
-    status: TimetableConfigStatus.ACTIVE,
-    publications: {
-      some: {
-        status: TimetablePublicationStatus.PUBLISHED,
-      },
-    },
   };
 }
 
@@ -360,15 +312,4 @@ function termOverlapsDateRangeWhere(params: {
 
 function entryDayIsActive(entry: ParentScheduleEntryRecord): boolean {
   return entry.timetableConfig.activeDays.includes(entry.dayOfWeek);
-}
-
-function entryScopeIsApplicable(
-  entry:
-    | ParentScheduleEntryRecord
-    | Prisma.TimetableEntryGetPayload<typeof PARENT_SCHEDULE_SETTINGS_ARGS>,
-): boolean {
-  return classroomMatchesTimetableConfigScope(
-    entry.timetableConfig,
-    entry.classroom,
-  );
 }

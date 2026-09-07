@@ -4,6 +4,7 @@ import { ParentAppChildNotFoundException } from '../../shared/parent-app-errors'
 import { ParentChildWeeklyScheduleResponseDto } from '../dto/parent-schedule.dto';
 import { ParentScheduleReadAdapter } from '../infrastructure/parent-schedule-read.adapter';
 import { ParentSchedulePresenter } from '../presenters/parent-schedule.presenter';
+import { effectiveTimetableConfigIdsForDateRange } from '../../../academics/timetable/infrastructure/effective-timetable-read';
 import {
   buildParentScheduleWeek,
   DEFAULT_PARENT_SCHEDULE_WEEK_START_DAY,
@@ -39,6 +40,7 @@ export class GetParentChildWeeklyScheduleUseCase {
         classroomId: accessibleChild.classroomId,
         academicYearId: accessibleChild.academicYearId,
         termId: accessibleChild.termId,
+        requestedDate: scheduleDate.utcDate,
       });
     const week = buildParentScheduleWeek(
       scheduleDate,
@@ -49,6 +51,12 @@ export class GetParentChildWeeklyScheduleUseCase {
         classroomId: accessibleChild.classroomId,
         academicYearId: accessibleChild.academicYearId,
         termId: accessibleChild.termId,
+        effectiveTimetableConfigIds: settings
+          ? effectiveTimetableConfigIdsForDateRange(settings, {
+              startDate: week.days[0].utcDate,
+              endDate: week.days[6].utcDate,
+            })
+          : [],
         dayOfWeeks: week.days.map((day) => day.dayOfWeek),
         weekStartDate: week.days[0].utcDate,
         weekEndDate: week.days[6].utcDate,
