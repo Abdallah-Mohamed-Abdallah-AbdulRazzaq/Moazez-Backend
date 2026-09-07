@@ -1,4 +1,3 @@
-import { TimetableEntryStatus } from '@prisma/client';
 import { isActiveCurriculumRequirement } from '../../subject-allocation/domain/active-curriculum.policy';
 import { SubjectNotTaughtException } from '../../subject-allocation/domain/subject-allocation.exceptions';
 import {
@@ -22,9 +21,14 @@ import {
   TimetableTeacherConflictException,
 } from '../domain/timetable.exceptions';
 import {
+  findTimetableIntervalConflicts,
+  timetableEntryToConflictSource,
+  TimetableIntervalConflictKind,
+  TimetableIntervalConflictSource,
+} from '../domain/timetable-conflicts';
+import {
   TimetableClassroomRecord,
   TimetableConfigRecord,
-  TimetableEntryRecord,
   TimetableRepository,
 } from '../infrastructure/timetable.repository';
 
@@ -140,8 +144,12 @@ export async function resolveTimetableEntryWrite(
   }
 
   await assertNoBlockingEntryConflict(repository, {
+    schoolId: config.schoolId,
+    termId: config.termId,
     timetableConfigId: config.id,
     periodId: period.id,
+    startTime: period.startTime,
+    endTime: period.endTime,
     dayOfWeek: command.dayOfWeek,
     classroomId: classroom.id,
     teacherUserId: allocation.teacherUserId,
@@ -183,8 +191,12 @@ function assertClassroomMatchesConfigScope(
 async function assertNoBlockingEntryConflict(
   repository: TimetableRepository,
   candidate: {
+    schoolId: string;
+    termId: string;
     timetableConfigId: string;
     periodId: string;
+    startTime: string;
+    endTime: string;
     dayOfWeek: number;
     classroomId: string;
     teacherUserId: string;
@@ -193,45 +205,47 @@ async function assertNoBlockingEntryConflict(
   },
 ): Promise<void> {
   const entries = await repository.listEntriesForConflictWindow({
-    timetableConfigId: candidate.timetableConfigId,
-    periodId: candidate.periodId,
+    termId: candidate.termId,
     dayOfWeek: candidate.dayOfWeek,
+    classroomId: candidate.classroomId,
+    teacherUserId: candidate.teacherUserId,
+    roomId: candidate.roomId,
     excludeEntryId: candidate.excludeEntryId,
   });
-  const activeEntries = entries.filter(
-    (entry) => entry.status !== TimetableEntryStatus.CANCELLED,
+  const candidateSource: TimetableIntervalConflictSource = {
+    identity: 'candidate',
+    schoolId: candidate.schoolId,
+    termId: candidate.termId,
+    timetableConfigId: candidate.timetableConfigId,
+    entryId: null,
+    proposedIndex: 0,
+    classroomId: candidate.classroomId,
+    teacherUserId: candidate.teacherUserId,
+    roomId: candidate.roomId,
+    dayOfWeek: candidate.dayOfWeek,
+    periodId: candidate.periodId,
+    startTime: candidate.startTime,
+    endTime: candidate.endTime,
+  };
+  const conflicts = findTimetableIntervalConflicts([
+    candidateSource,
+    ...entries.map(timetableEntryToConflictSource),
+  ]).filter(
+    (item) =>
+      item.first.identity === candidateSource.identity ||
+      item.second.identity === candidateSource.identity,
   );
+  const conflict = (['classroom', 'teacher', 'room'] as const)
+    .map((kind) => conflicts.find((item) => item.kind === kind))
+    .find((item) => item !== undefined);
+  if (!conflict) return;
 
-  const classroomConflict = activeEntries.find(
-    (entry) => entry.classroomId === candidate.classroomId,
-  );
-  if (classroomConflict) {
-    throw new TimetableEntryConflictException(
-      conflictDetails(candidate, classroomConflict),
-    );
-  }
-
-  const teacherConflict = activeEntries.find(
-    (entry) => entry.teacherUserId === candidate.teacherUserId,
-  );
-  if (teacherConflict) {
-    throw new TimetableTeacherConflictException(
-      conflictDetails(candidate, teacherConflict),
-    );
-  }
-
-  if (!candidate.roomId) {
-    return;
-  }
-
-  const roomConflict = activeEntries.find(
-    (entry) => entry.roomId === candidate.roomId,
-  );
-  if (roomConflict) {
-    throw new TimetableRoomConflictException(
-      conflictDetails(candidate, roomConflict),
-    );
-  }
+  const conflictingSource =
+    conflict.first.identity === candidateSource.identity
+      ? conflict.second
+      : conflict.first;
+  const details = conflictDetails(candidate, conflictingSource.entryId!);
+  throwConflict(conflict.kind, details);
 }
 
 function conflictDetails(
@@ -240,14 +254,23 @@ function conflictDetails(
     periodId: string;
     dayOfWeek: number;
   },
-  conflictingEntry: TimetableEntryRecord,
+  conflictingEntryId: string,
 ): Record<string, unknown> {
   return {
     timetableConfigId: candidate.timetableConfigId,
     periodId: candidate.periodId,
     dayOfWeek: candidate.dayOfWeek,
-    conflictingEntryId: conflictingEntry.id,
+    conflictingEntryId,
   };
+}
+
+function throwConflict(
+  kind: TimetableIntervalConflictKind,
+  details: Record<string, unknown>,
+): never {
+  if (kind === 'teacher') throw new TimetableTeacherConflictException(details);
+  if (kind === 'room') throw new TimetableRoomConflictException(details);
+  throw new TimetableEntryConflictException(details);
 }
 
 function normalizeNotes(notes: string | null | undefined): string | null {

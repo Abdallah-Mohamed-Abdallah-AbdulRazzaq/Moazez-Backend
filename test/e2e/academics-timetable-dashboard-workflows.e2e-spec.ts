@@ -423,6 +423,199 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
     ).resolves.toBe(beforeCount);
   });
 
+  it('enforces partial interval conflicts across configs with check and write parity', async () => {
+    const classroomConfig = await prisma.timetableConfig.create({
+      data: {
+        schoolId,
+        academicYearId: academic.academicYearId,
+        termId: academic.termId,
+        name: `${marker}-interval-config`,
+        weekStartDay: 0,
+        activeDays: [0, 1, 2, 3, 4],
+        scopeType: TimetableScopeType.CLASSROOM,
+        scopeKey: `classroom:${academic.classroomBId}`,
+        classroomId: academic.classroomBId,
+        status: TimetableConfigStatus.DRAFT,
+      },
+      select: { id: true },
+    });
+    const overlappingPeriod = await prisma.timetablePeriod.create({
+      data: {
+        schoolId,
+        timetableConfigId: classroomConfig.id,
+        periodIndex: 1,
+        label: 'Overlapping period',
+        startTime: '08:30',
+        endTime: '09:15',
+        type: TimetablePeriodType.CLASS,
+        isInstructional: true,
+      },
+      select: { id: true },
+    });
+    const classroomConflictConfig = await prisma.timetableConfig.create({
+      data: {
+        schoolId,
+        academicYearId: academic.academicYearId,
+        termId: academic.termId,
+        name: `${marker}-classroom-conflict-config`,
+        weekStartDay: 0,
+        activeDays: [0, 1, 2, 3, 4],
+        scopeType: TimetableScopeType.CLASSROOM,
+        scopeKey: `classroom:${academic.classroomAId}`,
+        classroomId: academic.classroomAId,
+        status: TimetableConfigStatus.DRAFT,
+      },
+      select: { id: true },
+    });
+    const classroomOverlappingPeriod = await prisma.timetablePeriod.create({
+      data: {
+        schoolId,
+        timetableConfigId: classroomConflictConfig.id,
+        periodIndex: 1,
+        label: 'Classroom overlapping period',
+        startTime: '08:30',
+        endTime: '09:15',
+        type: TimetablePeriodType.CLASS,
+        isInstructional: true,
+      },
+      select: { id: true },
+    });
+
+    try {
+      const candidate = {
+        classroomId: academic.classroomBId,
+        dayOfWeek: 0,
+        periodId: overlappingPeriod.id,
+        teacherSubjectAllocationId: mathAllocationBId,
+        roomId: roomAId,
+      };
+      const before = await prisma.timetableEntry.count({
+        where: { schoolId, termId: academic.termId },
+      });
+      const checked = await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/academics/timetable/conflicts/check`)
+        .set('Authorization', bearer(adminAuth))
+        .send({ termId: academic.termId, items: [candidate] })
+        .expect(200);
+      expect(checked.body.conflicts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: 'teacher_conflict',
+            entryIds: [firstEntryId],
+            proposedIndexes: [0],
+          }),
+          expect.objectContaining({
+            code: 'room_conflict',
+            roomId: roomAId,
+            entryIds: [firstEntryId],
+            proposedIndexes: [0],
+          }),
+        ]),
+      );
+
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/academics/timetable/entries`)
+        .set('Authorization', bearer(adminAuth))
+        .send({ timetableConfigId: classroomConfig.id, ...candidate })
+        .expect(409)
+        .expect((response) => {
+          expect(response.body.error.code).toBe(
+            'academics.timetable.teacher_conflict',
+          );
+        });
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/academics/timetable/entries`)
+        .set('Authorization', bearer(adminAuth))
+        .send({
+          timetableConfigId: classroomConflictConfig.id,
+          classroomId: academic.classroomAId,
+          dayOfWeek: 0,
+          periodId: classroomOverlappingPeriod.id,
+          teacherSubjectAllocationId: mathAllocationAId,
+        })
+        .expect(409)
+        .expect((response) => {
+          expect(response.body.error.code).toBe(
+            'academics.timetable.entry_conflict',
+          );
+        });
+      await request(app.getHttpServer())
+        .put(`${GLOBAL_PREFIX}/academics/timetable/entries/bulk`)
+        .set('Authorization', bearer(adminAuth))
+        .send({ termId: academic.termId, items: [candidate] })
+        .expect(409)
+        .expect((response) => {
+          expect(response.body.error.code).toBe(
+            'academics.timetable.teacher_conflict',
+          );
+        });
+      await expect(
+        prisma.timetableEntry.count({
+          where: { schoolId, termId: academic.termId },
+        }),
+      ).resolves.toBe(before);
+
+      const crossConfigEntryId = await createTimetableEntryDirect({
+        termId: academic.termId,
+        configId: classroomConfig.id,
+        periodId: overlappingPeriod.id,
+        dayOfWeek: 0,
+        classroomId: academic.classroomBId,
+        allocationId: mathAllocationBId,
+        status: TimetableEntryStatus.DRAFT,
+      });
+      const listed = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/academics/timetable/conflicts`)
+        .query({ timetableConfigId: classroomConfig.id })
+        .set('Authorization', bearer(adminAuth))
+        .expect(200);
+      expect(listed.body.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: 'TEACHER',
+            entryIds: expect.arrayContaining([
+              firstEntryId,
+              crossConfigEntryId,
+            ]),
+          }),
+        ]),
+      );
+
+      await request(app.getHttpServer())
+        .patch(`${GLOBAL_PREFIX}/academics/timetable/entries/${firstEntryId}`)
+        .set('Authorization', bearer(adminAuth))
+        .send({ notes: 'self exclusion still checks other configs' })
+        .expect(409)
+        .expect((response) => {
+          expect(response.body.error.code).toBe(
+            'academics.timetable.teacher_conflict',
+          );
+        });
+      const validation = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/academics/timetable/validate`)
+        .query({ termId: academic.termId, classroomId: academic.classroomAId })
+        .set('Authorization', bearer(adminAuth))
+        .expect(200);
+      expect(validation.body.summary.teacherConflicts).toBe(2);
+
+      await prisma.timetableEntry.delete({ where: { id: crossConfigEntryId } });
+    } finally {
+      await prisma.timetableEntry.deleteMany({
+        where: { timetableConfigId: classroomConfig.id },
+      });
+      await prisma.timetablePeriod.deleteMany({
+        where: {
+          timetableConfigId: {
+            in: [classroomConfig.id, classroomConflictConfig.id],
+          },
+        },
+      });
+      await prisma.timetableConfig.deleteMany({
+        where: { id: { in: [classroomConfig.id, classroomConflictConfig.id] } },
+      });
+    }
+  });
+
   it.each(['zero', 'missing'] as const)(
     'rejects every teaching entry write and publication with %s curriculum',
     async (state) => {

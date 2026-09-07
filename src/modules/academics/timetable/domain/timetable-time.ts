@@ -12,6 +12,21 @@ export interface TimetableTimeRange {
   endMinute: number;
 }
 
+export interface TimetableMinuteRange {
+  startMinute: number;
+  endMinute: number;
+}
+
+/** Half-open interval overlap: touching boundaries are not a conflict. */
+export function timetableTimeRangesOverlap(
+  first: TimetableMinuteRange,
+  second: TimetableMinuteRange,
+): boolean {
+  return (
+    first.startMinute < second.endMinute && second.startMinute < first.endMinute
+  );
+}
+
 export function parseTimetableTime(value: string, field: string): number {
   const match = TIME_PATTERN.exec(value);
   if (!match) {
@@ -61,9 +76,10 @@ export function assertNoPeriodOverlap(
     .find((period) => {
       const existingStart = parseTimetableTime(period.startTime, 'startTime');
       const existingEnd = parseTimetableTime(period.endTime, 'endTime');
-      return (
-        candidate.startMinute < existingEnd && existingStart < candidate.endMinute
-      );
+      return timetableTimeRangesOverlap(candidate, {
+        startMinute: existingStart,
+        endMinute: existingEnd,
+      });
     });
 
   if (overlap) {

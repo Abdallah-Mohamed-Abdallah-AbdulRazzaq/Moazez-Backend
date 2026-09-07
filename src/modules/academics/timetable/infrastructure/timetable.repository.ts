@@ -110,6 +110,7 @@ const SUBJECT_ALLOCATION_ARGS =
       gradeId: true,
       subjectId: true,
       weeklyHours: true,
+      deletedAt: true,
       grade: {
         select: {
           id: true,
@@ -443,6 +444,7 @@ export class TimetableRepository {
         termId: input.termId,
         gradeId: input.gradeId,
         subjectId: input.subjectId,
+        deletedAt: null,
         grade: { is: { deletedAt: null } },
         subject: { is: { deletedAt: null } },
       },
@@ -459,6 +461,7 @@ export class TimetableRepository {
     return this.scopedPrisma.subjectAllocation.findMany({
       where: {
         termId,
+        deletedAt: null,
         OR: keys.map((key) => ({
           gradeId: key.gradeId,
           subjectId: key.subjectId,
@@ -477,6 +480,7 @@ export class TimetableRepository {
     return this.scopedPrisma.subjectAllocation.findMany({
       where: {
         termId: filters.termId,
+        deletedAt: null,
         ...(filters.gradeId ? { gradeId: filters.gradeId } : {}),
         grade: { is: { deletedAt: null } },
         subject: { is: { deletedAt: null } },
@@ -738,6 +742,7 @@ export class TimetableRepository {
 
     return this.scopedPrisma.classroom.findMany({
       where: {
+        deletedAt: null,
         section: {
           is: {
             gradeId: { in: gradeIds },
@@ -768,17 +773,23 @@ export class TimetableRepository {
   }
 
   listEntriesForConflictWindow(input: {
-    timetableConfigId: string;
-    periodId: string;
+    termId: string;
     dayOfWeek: number;
+    classroomId: string;
+    teacherUserId: string;
+    roomId: string | null;
     excludeEntryId?: string;
   }): Promise<TimetableEntryRecord[]> {
     return this.scopedPrisma.timetableEntry.findMany({
       where: {
-        timetableConfigId: input.timetableConfigId,
-        periodId: input.periodId,
+        termId: input.termId,
         dayOfWeek: input.dayOfWeek,
         status: { not: TimetableEntryStatus.CANCELLED },
+        OR: [
+          { classroomId: input.classroomId },
+          { teacherUserId: input.teacherUserId },
+          ...(input.roomId ? [{ roomId: input.roomId }] : []),
+        ],
         ...(input.excludeEntryId ? { NOT: { id: input.excludeEntryId } } : {}),
       },
       ...TIMETABLE_ENTRY_ARGS,

@@ -474,11 +474,13 @@ describe('Timetable use cases', () => {
         .mockImplementation(async (input) =>
           entries.filter(
             (entry) =>
-              entry.timetableConfigId === input.timetableConfigId &&
-              entry.periodId === input.periodId &&
+              entry.termId === input.termId &&
               entry.dayOfWeek === input.dayOfWeek &&
               entry.status !== TimetableEntryStatus.CANCELLED &&
-              entry.id !== input.excludeEntryId,
+              entry.id !== input.excludeEntryId &&
+              (entry.classroomId === input.classroomId ||
+                entry.teacherUserId === input.teacherUserId ||
+                (input.roomId !== null && entry.roomId === input.roomId)),
           ),
         ),
       createEntry: jest.fn().mockImplementation(async (data) => {
@@ -787,6 +789,7 @@ describe('Timetable use cases', () => {
       gradeId,
       subjectId,
       weeklyHours: 1,
+      deletedAt: null,
       grade: {
         id: gradeId,
         nameAr: 'Grade 1',
@@ -1611,6 +1614,123 @@ describe('Timetable use cases', () => {
     });
   });
 
+  it.each([
+    ['classroom', 'academics.timetable.entry_conflict'],
+    ['teacher', 'academics.timetable.teacher_conflict'],
+  ])(
+    'blocks a real cross-config partial %s overlap on create',
+    async (resource, code) => {
+      const classroom2 = seedClassroom({
+        id: 'classroom-2',
+        sectionId: 'section-2',
+        section: {
+          id: 'section-2',
+          gradeId: 'grade-1',
+          grade: { id: 'grade-1', stageId: 'stage-1' },
+        },
+      });
+      const candidatePeriod = seedPeriod({
+        id: 'period-candidate',
+        timetableConfigId: 'config-candidate',
+        startTime: '09:00',
+        endTime: '09:45',
+      });
+      const existingPeriod = seedPeriod({
+        id: 'period-existing',
+        timetableConfigId: 'config-existing',
+        startTime: '09:30',
+        endTime: '10:15',
+      });
+      const repository = createRepository({
+        configs: [
+          seedConfig({ id: 'config-candidate' }),
+          seedConfig({ id: 'config-existing', scopeKey: 'term:existing' }),
+        ],
+        periods: [candidatePeriod, existingPeriod],
+        classrooms: [seedClassroom(), classroom2],
+        entries: [
+          seedEntry({
+            id: 'entry-existing',
+            timetableConfigId: 'config-existing',
+            periodId: 'period-existing',
+            period: existingPeriod,
+            classroomId:
+              resource === 'classroom' ? 'classroom-1' : 'classroom-2',
+            teacherUserId: resource === 'classroom' ? 'teacher-2' : 'teacher-1',
+            teacherSubjectAllocationId: 'allocation-existing',
+          }),
+        ],
+      });
+
+      await withScope(async () => {
+        await expect(
+          new CreateTimetableEntryUseCase(repository).execute({
+            timetableConfigId: 'config-candidate',
+            periodId: 'period-candidate',
+            dayOfWeek: 0,
+            classroomId: 'classroom-1',
+            teacherSubjectAllocationId: 'allocation-1',
+          }),
+        ).rejects.toMatchObject({ code });
+      });
+    },
+  );
+
+  it('excludes only the updated entry and still blocks another overlapping entry', async () => {
+    const candidatePeriod = seedPeriod({
+      id: 'period-candidate',
+      startTime: '09:00',
+      endTime: '09:45',
+    });
+    const otherPeriod = seedPeriod({
+      id: 'period-other',
+      periodIndex: 2,
+      startTime: '09:30',
+      endTime: '10:15',
+    });
+    const repository = createRepository({
+      configs: [seedConfig()],
+      periods: [candidatePeriod, otherPeriod],
+      classrooms: [
+        seedClassroom(),
+        seedClassroom({
+          id: 'classroom-2',
+          sectionId: 'section-2',
+          section: {
+            id: 'section-2',
+            gradeId: 'grade-1',
+            grade: { id: 'grade-1', stageId: 'stage-1' },
+          },
+        }),
+      ],
+      entries: [
+        seedEntry({
+          id: 'entry-self',
+          periodId: 'period-candidate',
+          period: candidatePeriod,
+        }),
+        seedEntry({
+          id: 'entry-other',
+          periodId: 'period-other',
+          period: otherPeriod,
+          classroomId: 'classroom-2',
+          teacherSubjectAllocationId: 'allocation-other',
+        }),
+      ],
+    });
+
+    await withScope(async () => {
+      await expect(
+        new UpdateTimetableEntryUseCase(repository).execute('entry-self', {
+          notes: 'same interval',
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.teacher_conflict',
+      });
+      expect(repository.updateEntry).not.toHaveBeenCalled();
+    });
+  });
+
   it('returns computed conflicts for duplicate teacher slots', async () => {
     const period = seedPeriod();
     const entries: EntryRecord[] = [
@@ -1649,6 +1769,78 @@ describe('Timetable use cases', () => {
       });
       expect(response.items[0]).not.toHaveProperty('schoolId');
       expect(response.items[0]).not.toHaveProperty('organizationId');
+    });
+  });
+
+  it('lists only cross-config interval conflicts involving the requested config', async () => {
+    const requestedPeriod = seedPeriod({
+      id: 'period-requested',
+      timetableConfigId: 'config-requested',
+      startTime: '08:00',
+      endTime: '08:45',
+    });
+    const relatedPeriod = seedPeriod({
+      id: 'period-related',
+      timetableConfigId: 'config-related',
+      startTime: '08:30',
+      endTime: '09:15',
+    });
+    const unrelatedPeriod = seedPeriod({
+      id: 'period-unrelated',
+      timetableConfigId: 'config-unrelated',
+      startTime: '10:00',
+      endTime: '10:45',
+    });
+    const repository = createRepository({
+      configs: [
+        seedConfig({ id: 'config-requested' }),
+        seedConfig({ id: 'config-related', scopeKey: 'term:related' }),
+        seedConfig({ id: 'config-unrelated', scopeKey: 'term:unrelated' }),
+      ],
+      periods: [requestedPeriod, relatedPeriod, unrelatedPeriod],
+      entries: [
+        seedEntry({
+          id: 'entry-requested',
+          timetableConfigId: 'config-requested',
+          periodId: 'period-requested',
+          period: requestedPeriod,
+        }),
+        seedEntry({
+          id: 'entry-related',
+          timetableConfigId: 'config-related',
+          periodId: 'period-related',
+          period: relatedPeriod,
+          classroomId: 'classroom-2',
+          teacherSubjectAllocationId: 'allocation-related',
+        }),
+        seedEntry({
+          id: 'entry-unrelated-a',
+          timetableConfigId: 'config-unrelated',
+          periodId: 'period-unrelated',
+          period: unrelatedPeriod,
+          classroomId: 'classroom-3',
+          teacherUserId: 'teacher-3',
+        }),
+        seedEntry({
+          id: 'entry-unrelated-b',
+          timetableConfigId: 'config-unrelated',
+          periodId: 'period-unrelated',
+          period: unrelatedPeriod,
+          classroomId: 'classroom-4',
+          teacherUserId: 'teacher-3',
+        }),
+      ],
+    });
+
+    await withScope(async () => {
+      const response = await new ListTimetableConflictsUseCase(
+        repository,
+      ).execute({ timetableConfigId: 'config-requested' });
+      expect(response.items).toHaveLength(1);
+      expect(response.items[0]).toMatchObject({
+        type: 'TEACHER',
+        entryIds: ['entry-related', 'entry-requested'],
+      });
     });
   });
 
@@ -2191,6 +2383,164 @@ describe('Timetable use cases', () => {
     });
   });
 
+  it('blocks an entire bulk write for proposed partial overlaps', async () => {
+    const period1 = seedPeriod({
+      id: 'period-1',
+      startTime: '08:00',
+      endTime: '08:45',
+    });
+    const period2 = seedPeriod({
+      id: 'period-2',
+      periodIndex: 2,
+      startTime: '08:30',
+      endTime: '09:15',
+    });
+    const repository = createRepository({
+      configs: [seedConfig()],
+      periods: [period1, period2],
+      classrooms: [
+        seedClassroom(),
+        seedClassroom({
+          id: 'classroom-2',
+          sectionId: 'section-2',
+          section: {
+            id: 'section-2',
+            gradeId: 'grade-1',
+            grade: { id: 'grade-1', stageId: 'stage-1' },
+          },
+        }),
+      ],
+      allocations: [
+        seedAllocation(),
+        seedAllocation({ id: 'allocation-2', classroomId: 'classroom-2' }),
+      ],
+    });
+
+    await withScope(async () => {
+      await expect(
+        new BulkSaveTimetableEntriesUseCase(repository).execute({
+          termId: 'term-1',
+          items: [
+            {
+              classroomId: 'classroom-1',
+              dayOfWeek: 0,
+              periodId: 'period-1',
+              teacherSubjectAllocationId: 'allocation-1',
+            },
+            {
+              classroomId: 'classroom-2',
+              dayOfWeek: 0,
+              periodId: 'period-2',
+              teacherSubjectAllocationId: 'allocation-2',
+            },
+          ],
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.teacher_conflict',
+      });
+      expect(repository.bulkUpsertEntries).not.toHaveBeenCalled();
+    });
+  });
+
+  it('projects exact bulk replacement without a false self conflict', async () => {
+    const period = seedPeriod();
+    const repository = createRepository({
+      configs: [seedConfig()],
+      periods: [period],
+      entries: [seedEntry({ id: 'entry-replaced', period })],
+    });
+
+    await withScope(async () => {
+      await expect(
+        new BulkSaveTimetableEntriesUseCase(repository).execute({
+          termId: 'term-1',
+          items: [
+            {
+              classroomId: 'classroom-1',
+              dayOfWeek: 0,
+              periodId: 'period-1',
+              teacherSubjectAllocationId: 'allocation-1',
+              roomId: 'room-1',
+            },
+          ],
+        }),
+      ).resolves.toMatchObject({
+        summary: { requestedCount: 1, createdCount: 0, updatedCount: 1 },
+      });
+    });
+  });
+
+  it('keeps conflict checking and bulk writing in parity for partial overlap', async () => {
+    const period1 = seedPeriod({
+      id: 'period-1',
+      startTime: '08:00',
+      endTime: '08:45',
+    });
+    const period2 = seedPeriod({
+      id: 'period-2',
+      periodIndex: 2,
+      startTime: '08:30',
+      endTime: '09:15',
+    });
+    const seed = {
+      configs: [seedConfig()],
+      periods: [period1, period2],
+      classrooms: [
+        seedClassroom(),
+        seedClassroom({
+          id: 'classroom-2',
+          sectionId: 'section-2',
+          section: {
+            id: 'section-2',
+            gradeId: 'grade-1',
+            grade: { id: 'grade-1', stageId: 'stage-1' },
+          },
+        }),
+      ],
+      allocations: [
+        seedAllocation(),
+        seedAllocation({ id: 'allocation-2', classroomId: 'classroom-2' }),
+      ],
+      entries: [
+        seedEntry({
+          id: 'entry-existing',
+          classroomId: 'classroom-2',
+          teacherSubjectAllocationId: 'allocation-2',
+          periodId: 'period-1',
+          period: period1,
+        }),
+      ],
+    };
+    const item = {
+      classroomId: 'classroom-1',
+      dayOfWeek: 0,
+      periodId: 'period-2',
+      teacherSubjectAllocationId: 'allocation-1',
+    };
+    const checkRepository = createRepository(seed);
+    const writeRepository = createRepository(seed);
+
+    await withScope(async () => {
+      const checked = await new CheckTimetableConflictsUseCase(
+        checkRepository,
+      ).execute({ termId: 'term-1', items: [item] });
+      expect(checked.conflicts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: 'teacher_conflict' }),
+        ]),
+      );
+      await expect(
+        new BulkSaveTimetableEntriesUseCase(writeRepository).execute({
+          termId: 'term-1',
+          items: [item],
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.teacher_conflict',
+      });
+      expect(writeRepository.bulkUpsertEntries).not.toHaveBeenCalled();
+    });
+  });
+
   it('validates weekly hours and missing teacher allocations', async () => {
     const repository = createRepository({
       configs: [seedConfig()],
@@ -2240,6 +2590,91 @@ describe('Timetable use cases', () => {
           }),
         ]),
       );
+    });
+  });
+
+  it('reports stale entries outside positive canonical demand as invalid curriculum', async () => {
+    const repository = createRepository({
+      configs: [seedConfig()],
+      periods: [seedPeriod()],
+      entries: [seedEntry()],
+      subjectAllocations: [seedSubjectAllocation({ weeklyHours: 0 })],
+    });
+
+    await withScope(async () => {
+      const response = await new ValidateTimetableUseCase(repository).execute({
+        termId: 'term-1',
+      });
+      expect(response.summary).toMatchObject({
+        expectedWeeklySlots: 0,
+        actualScheduledSlots: 1,
+        missingSubjectAllocationRows: 1,
+      });
+      expect(response.items).toEqual([
+        expect.objectContaining({
+          subjectId: 'subject-1',
+          expectedWeeklyHours: null,
+          scheduledWeeklyHours: 1,
+          status: 'missing_subject_allocation',
+          issues: [
+            expect.objectContaining({ code: 'missing_subject_allocation_row' }),
+          ],
+        }),
+      ]);
+    });
+  });
+
+  it('counts a cross-config teacher partial overlap for a filtered classroom', async () => {
+    const period1 = seedPeriod({
+      id: 'period-1',
+      timetableConfigId: 'config-1',
+      startTime: '08:00',
+      endTime: '08:45',
+    });
+    const period2 = seedPeriod({
+      id: 'period-2',
+      timetableConfigId: 'config-2',
+      startTime: '08:30',
+      endTime: '09:15',
+    });
+    const repository = createRepository({
+      configs: [
+        seedConfig(),
+        seedConfig({ id: 'config-2', scopeKey: 'term:config-2' }),
+      ],
+      periods: [period1, period2],
+      classrooms: [
+        seedClassroom(),
+        seedClassroom({
+          id: 'classroom-2',
+          sectionId: 'section-2',
+          section: {
+            id: 'section-2',
+            gradeId: 'grade-1',
+            grade: { id: 'grade-1', stageId: 'stage-1' },
+          },
+        }),
+      ],
+      entries: [
+        seedEntry({ periodId: 'period-1', period: period1 }),
+        seedEntry({
+          id: 'entry-2',
+          timetableConfigId: 'config-2',
+          periodId: 'period-2',
+          period: period2,
+          classroomId: 'classroom-2',
+          teacherSubjectAllocationId: 'allocation-2',
+        }),
+      ],
+    });
+
+    await withScope(async () => {
+      const response = await new ValidateTimetableUseCase(repository).execute({
+        termId: 'term-1',
+        classroomId: 'classroom-1',
+      });
+      expect(response.summary.teacherConflicts).toBe(1);
+      expect(response.summary.classroomConflicts).toBe(0);
     });
   });
 
