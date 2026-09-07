@@ -2593,6 +2593,51 @@ describe('Timetable use cases', () => {
     });
   });
 
+  it('does not report missing curriculum debt for zero-hour-only curriculum', async () => {
+    const repository = createRepository({
+      subjectAllocations: [seedSubjectAllocation({ weeklyHours: 0 })],
+    });
+
+    await withScope(async () => {
+      const response = await new ValidateTimetableUseCase(repository).execute({
+        termId: 'term-1',
+      });
+
+      expect(response.summary).toMatchObject({
+        expectedWeeklySlots: 0,
+        actualScheduledSlots: 0,
+        missingTeacherAllocations: 0,
+        underScheduledSubjects: 0,
+        overScheduledSubjects: 0,
+        missingSubjectAllocationRows: 0,
+      });
+      expect(response.items).toEqual([]);
+    });
+  });
+
+  it('reports missing curriculum setup when a classroom grade has no allocation rows', async () => {
+    const repository = createRepository({ subjectAllocations: [] });
+
+    await withScope(async () => {
+      const response = await new ValidateTimetableUseCase(repository).execute({
+        termId: 'term-1',
+        gradeId: 'grade-1',
+      });
+
+      expect(response.summary.missingSubjectAllocationRows).toBe(1);
+      expect(response.items).toEqual([
+        expect.objectContaining({
+          classroomId: 'classroom-1',
+          subjectId: null,
+          status: 'missing_subject_allocation',
+          issues: [
+            expect.objectContaining({ code: 'missing_subject_allocation_row' }),
+          ],
+        }),
+      ]);
+    });
+  });
+
   it('reports stale entries outside positive canonical demand as invalid curriculum', async () => {
     const repository = createRepository({
       configs: [seedConfig()],

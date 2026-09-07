@@ -80,6 +80,9 @@ export class ValidateTimetableUseCase {
       grades,
       demand: reconciledDemand,
       entries: selectedEntries,
+      configuredGradeIds: new Set(
+        subjectAllocations.map((allocation) => allocation.gradeId),
+      ),
     });
     const conflictCounts = countExistingConflicts(termEntries, selectedEntries);
 
@@ -121,6 +124,7 @@ function buildValidationItems(input: {
   grades: TimetableGradeRecord[];
   demand: ReconciledTimetableDemand[];
   entries: TimetableEntryRecord[];
+  configuredGradeIds: Set<string>;
 }): TimetableValidationItemDto[] {
   const gradesById = new Map(input.grades.map((grade) => [grade.id, grade]));
   const items = input.demand.map((demand) =>
@@ -184,13 +188,14 @@ function buildValidationItems(input: {
     Array.from(staleEntries.values()).map((entries) => entries[0].classroomId),
   );
   for (const classroom of input.classrooms) {
+    const gradeId = classroom.section.gradeId;
     if (
       classroomsWithDemand.has(classroom.id) ||
-      classroomsWithStaleEntries.has(classroom.id)
+      classroomsWithStaleEntries.has(classroom.id) ||
+      input.configuredGradeIds.has(gradeId)
     ) {
       continue;
     }
-    const gradeId = classroom.section.gradeId;
     const grade = gradesById.get(gradeId);
     items.push({
       classroomId: classroom.id,

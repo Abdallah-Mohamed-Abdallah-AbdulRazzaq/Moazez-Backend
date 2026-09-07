@@ -1,4 +1,5 @@
 import { TimetableEntryStatus } from '@prisma/client';
+import * as activeCurriculumPolicy from '../../subject-allocation/domain/active-curriculum.policy';
 import {
   buildCanonicalTimetableDemand,
   CanonicalTimetableDemand,
@@ -12,6 +13,35 @@ import {
 } from '../infrastructure/timetable.repository';
 
 describe('canonical timetable demand', () => {
+  it('delegates taught classification to the central active-curriculum policy', () => {
+    const allocations = [
+      subjectAllocation({ id: 'positive', weeklyHours: 1 }),
+      subjectAllocation({ id: 'zero', weeklyHours: 0 }),
+      subjectAllocation({ id: 'negative', weeklyHours: -1 }),
+    ];
+    const policy = jest.spyOn(
+      activeCurriculumPolicy,
+      'isActiveCurriculumRequirement',
+    );
+
+    try {
+      const demand = buildCanonicalTimetableDemand({
+        subjectAllocations: allocations,
+        classrooms: [classroom({ id: 'classroom-a' })],
+        teacherAllocations: [],
+      });
+
+      expect(demand).toHaveLength(1);
+      expect(demand[0].subjectAllocation.id).toBe('positive');
+      expect(policy).toHaveBeenCalledTimes(3);
+      for (const allocation of allocations) {
+        expect(policy).toHaveBeenCalledWith(allocation);
+      }
+    } finally {
+      policy.mockRestore();
+    }
+  });
+
   it('expands positive weekly periods per classroom and keeps every teacher allocation id', () => {
     const demand = buildCanonicalTimetableDemand({
       subjectAllocations: [

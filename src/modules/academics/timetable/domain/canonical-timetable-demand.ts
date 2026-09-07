@@ -1,4 +1,5 @@
 import { TimetableEntryStatus } from '@prisma/client';
+import { isActiveCurriculumRequirement } from '../../subject-allocation/domain/active-curriculum.policy';
 import {
   TimetableClassroomRecord,
   TimetableEntryRecord,
@@ -47,7 +48,12 @@ export function buildCanonicalTimetableDemand(input: {
   const demand: CanonicalTimetableDemand[] = [];
 
   for (const allocation of input.subjectAllocations) {
-    if (allocation.deletedAt !== null || allocation.weeklyHours <= 0) continue;
+    if (
+      allocation.deletedAt !== null ||
+      !isActiveCurriculumRequirement(allocation)
+    ) {
+      continue;
+    }
 
     for (const classroom of classroomsByGrade.get(allocation.gradeId) ?? []) {
       if (classroom.schoolId !== allocation.schoolId) continue;
