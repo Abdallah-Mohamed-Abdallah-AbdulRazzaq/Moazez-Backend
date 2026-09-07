@@ -356,6 +356,12 @@ describe('Academics timetable dashboard tenancy isolation (security)', () => {
     );
 
     await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/academics/timetable/conflicts`)
+      .query({ timetableConfigId: fixtureB.configId })
+      .set('Authorization', bearer(adminAAuth))
+      .expect(404);
+
+    await request(app.getHttpServer())
       .put(`${GLOBAL_PREFIX}/academics/timetable/entries/bulk`)
       .set('Authorization', bearer(adminAAuth))
       .send({

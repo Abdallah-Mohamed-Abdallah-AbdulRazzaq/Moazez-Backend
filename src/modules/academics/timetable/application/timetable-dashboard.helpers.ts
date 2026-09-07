@@ -8,6 +8,12 @@ import {
   classroomMatchesTimetableConfigScope,
 } from '../domain/timetable-policy';
 import {
+  findTimetableIntervalConflicts,
+  timetableConflictMessage,
+  timetableEntryToConflictSource,
+  TimetableIntervalConflictSource,
+} from '../domain/timetable-conflicts';
+import {
   TimetableAllocationMismatchException,
   TimetableAllocationNotFoundException,
   TimetableClassroomNotFoundException,
@@ -45,18 +51,6 @@ export interface ResolvedTimetableBulkItem extends BulkTimetableEntryInput {
   index: number;
   period: TimetablePeriodRecord;
   config: TimetableConfigRecord;
-}
-
-export interface TimetableConflictSource {
-  kind: 'existing' | 'proposed';
-  entryId: string | null;
-  proposedIndex: number | null;
-  classroomId: string;
-  teacherUserId: string;
-  roomId: string | null;
-  dayOfWeek: number;
-  periodId: string;
-  periodKey: string;
 }
 
 export async function resolveReadableTimetableContext(
@@ -143,7 +137,12 @@ export async function resolveTimetableBulkItems(
   const issues: TimetableConflictCheckItemDto[] = [];
 
   for (const [index, item] of items.entries()) {
-    const resolved = await resolveTimetableBulkItem(repository, term, item, index);
+    const resolved = await resolveTimetableBulkItem(
+      repository,
+      term,
+      item,
+      index,
+    );
     const matrixRow = await repository.findSubjectAllocationByKey({
       termId: term.id,
       gradeId: resolved.gradeId,
@@ -189,19 +188,68 @@ export function buildTimetableConflictCheckItems(input: {
   proposedItems: ResolvedTimetableBulkItem[];
   issues?: TimetableConflictCheckItemDto[];
 }): TimetableConflictCheckItemDto[] {
-  const proposedSlotKeys = new Set(
-    input.proposedItems.map((item) => timetableSlotKey(item)),
+  const proposedIdentityKeys = new Set(
+    input.proposedItems.map((item) => timetableBulkUpsertIdentityKey(item)),
   );
+  const replacedEntryIds = new Set<string>();
+  for (const key of proposedIdentityKeys) {
+    const replacedEntry = input.existingEntries
+      .filter((entry) => timetableBulkUpsertIdentityKey(entry) === key)
+      .sort(
+        (left, right) =>
+          left.createdAt.getTime() - right.createdAt.getTime() ||
+          left.id.localeCompare(right.id),
+      )[0];
+    if (replacedEntry) replacedEntryIds.add(replacedEntry.id);
+  }
   const existingSources = input.existingEntries
     .filter((entry) => entry.status !== TimetableEntryStatus.CANCELLED)
-    .filter((entry) => !proposedSlotKeys.has(timetableSlotKey(entry)))
-    .map(existingEntryToConflictSource);
+    .filter((entry) => !replacedEntryIds.has(entry.id))
+    .map(timetableEntryToConflictSource);
   const proposedSources = input.proposedItems.map(proposedItemToConflictSource);
 
-  return [
-    ...(input.issues ?? []),
-    ...findGroupedConflictItems([...existingSources, ...proposedSources]),
-  ];
+  const conflictItems = findTimetableIntervalConflicts([
+    ...existingSources,
+    ...proposedSources,
+  ])
+    .filter(
+      (conflict) =>
+        conflict.first.proposedIndex !== null ||
+        conflict.second.proposedIndex !== null,
+    )
+    .sort(
+      (left, right) =>
+        conflictKindPriority(left.kind) - conflictKindPriority(right.kind),
+    )
+    .map((conflict) => {
+      const proposal =
+        conflict.first.proposedIndex !== null
+          ? conflict.first
+          : conflict.second;
+      return conflictIssue({
+        code: `${conflict.kind}_conflict`,
+        message: timetableConflictMessage(conflict.kind),
+        severity: 'blocking',
+        dayOfWeek: proposal.dayOfWeek,
+        periodId: proposal.periodId,
+        classroomId:
+          conflict.kind === 'classroom' ? proposal.classroomId : null,
+        teacherUserId:
+          conflict.kind === 'teacher' ? proposal.teacherUserId : null,
+        roomId: conflict.kind === 'room' ? proposal.roomId : null,
+        entryIds: [conflict.first.entryId, conflict.second.entryId]
+          .filter((entryId): entryId is string => entryId !== null)
+          .sort(),
+        proposedIndexes: [
+          conflict.first.proposedIndex,
+          conflict.second.proposedIndex,
+        ]
+          .filter((index): index is number => index !== null)
+          .sort((left, right) => left - right),
+      });
+    });
+
+  return [...(input.issues ?? []), ...conflictItems];
 }
 
 export function throwIfBlockingTimetableConflicts(
@@ -230,7 +278,10 @@ export function throwIfBlockingTimetableConflicts(
   throw new TimetableEntryConflictException(details);
 }
 
-export function subjectAllocationKey(gradeId: string, subjectId: string): string {
+export function subjectAllocationKey(
+  gradeId: string,
+  subjectId: string,
+): string {
   return `${gradeId}:${subjectId}`;
 }
 
@@ -240,6 +291,17 @@ export function timetableSlotKey(input: {
   periodId: string;
 }): string {
   return `${input.classroomId}:${input.dayOfWeek}:${input.periodId}`;
+}
+
+/** Mirrors TimetableRepository.bulkUpsertEntries replacement lookup. */
+export function timetableBulkUpsertIdentityKey(input: {
+  schoolId: string;
+  termId: string;
+  classroomId: string;
+  dayOfWeek: number;
+  periodId: string;
+}): string {
+  return `${input.schoolId}:${input.termId}:${input.classroomId}:${input.dayOfWeek}:${input.periodId}`;
 }
 
 export function groupBy<T>(
@@ -258,74 +320,18 @@ export function unique<T>(items: T[]): T[] {
   return [...new Set(items)];
 }
 
+function conflictKindPriority(kind: 'classroom' | 'teacher' | 'room'): number {
+  if (kind === 'classroom') return 0;
+  if (kind === 'teacher') return 1;
+  return 2;
+}
+
 export function matrixByGradeSubject(
   rows: TimetableSubjectAllocationRecord[],
 ): Map<string, TimetableSubjectAllocationRecord> {
   return new Map(
     rows.map((row) => [subjectAllocationKey(row.gradeId, row.subjectId), row]),
   );
-}
-
-function findGroupedConflictItems(
-  sources: TimetableConflictSource[],
-): TimetableConflictCheckItemDto[] {
-  return [
-    ...findConflictGroup(sources, 'classroom_conflict', (source) =>
-      source.classroomId,
-    ),
-    ...findConflictGroup(sources, 'teacher_conflict', (source) =>
-      source.teacherUserId,
-    ),
-    ...findConflictGroup(sources, 'room_conflict', (source) => source.roomId),
-  ];
-}
-
-function findConflictGroup(
-  sources: TimetableConflictSource[],
-  code: 'classroom_conflict' | 'teacher_conflict' | 'room_conflict',
-  getResourceId: (source: TimetableConflictSource) => string | null,
-): TimetableConflictCheckItemDto[] {
-  const groups = new Map<string, TimetableConflictSource[]>();
-  for (const source of sources) {
-    const resourceId = getResourceId(source);
-    if (!resourceId) continue;
-
-    const key = `${source.dayOfWeek}:${source.periodKey}:${resourceId}`;
-    groups.set(key, [...(groups.get(key) ?? []), source]);
-  }
-
-  const conflicts: TimetableConflictCheckItemDto[] = [];
-  for (const group of groups.values()) {
-    if (
-      group.length < 2 ||
-      !group.some((source) => source.kind === 'proposed')
-    ) {
-      continue;
-    }
-
-    conflicts.push(
-      conflictIssue({
-        code,
-        message: messageForConflictCode(code),
-        severity: 'blocking',
-        dayOfWeek: group[0].dayOfWeek,
-        periodId: group[0].periodId,
-        classroomId:
-          code === 'classroom_conflict' ? group[0].classroomId : null,
-        teacherUserId:
-          code === 'teacher_conflict' ? group[0].teacherUserId : null,
-        roomId: code === 'room_conflict' ? group[0].roomId : null,
-        entryIds: group
-          .map((source) => source.entryId)
-          .filter((entryId): entryId is string => Boolean(entryId)),
-        proposedIndexes: group
-          .map((source) => source.proposedIndex)
-          .filter((index): index is number => index !== null),
-      }),
-    );
-  }
-
-  return conflicts;
 }
 
 async function resolveTimetableBulkItem(
@@ -338,7 +344,10 @@ async function resolveTimetableBulkItem(
 
   const period = await repository.findPeriodById(item.periodId);
   if (!period) {
-    throw new TimetablePeriodNotFoundException({ index, periodId: item.periodId });
+    throw new TimetablePeriodNotFoundException({
+      index,
+      periodId: item.periodId,
+    });
   }
 
   const config = await repository.findConfigById(period.timetableConfigId);
@@ -434,27 +443,14 @@ function assertTeacherAllocationMatchesItem(
   }
 }
 
-function existingEntryToConflictSource(
-  entry: TimetableEntryRecord,
-): TimetableConflictSource {
-  return {
-    kind: 'existing',
-    entryId: entry.id,
-    proposedIndex: null,
-    classroomId: entry.classroomId,
-    teacherUserId: entry.teacherUserId,
-    roomId: entry.roomId ?? null,
-    dayOfWeek: entry.dayOfWeek,
-    periodId: entry.periodId,
-    periodKey: periodKey(entry.period),
-  };
-}
-
 function proposedItemToConflictSource(
   item: ResolvedTimetableBulkItem,
-): TimetableConflictSource {
+): TimetableIntervalConflictSource {
   return {
-    kind: 'proposed',
+    identity: `proposed:${item.index.toString().padStart(6, '0')}`,
+    schoolId: item.schoolId,
+    termId: item.termId,
+    timetableConfigId: item.timetableConfigId,
     entryId: null,
     proposedIndex: item.index,
     classroomId: item.classroomId,
@@ -462,12 +458,9 @@ function proposedItemToConflictSource(
     roomId: item.roomId,
     dayOfWeek: item.dayOfWeek,
     periodId: item.periodId,
-    periodKey: periodKey(item.period),
+    startTime: item.period.startTime,
+    endTime: item.period.endTime,
   };
-}
-
-function periodKey(period: { startTime: string; endTime: string }): string {
-  return `${period.startTime}-${period.endTime}`;
 }
 
 function conflictIssue(input: {
@@ -509,16 +502,4 @@ function conflictDetails(
     entryIds: conflict.entryIds,
     proposedIndexes: conflict.proposedIndexes,
   };
-}
-
-function messageForConflictCode(
-  code: 'classroom_conflict' | 'teacher_conflict' | 'room_conflict',
-): string {
-  if (code === 'classroom_conflict') {
-    return 'Classroom has more than one timetable entry in this period.';
-  }
-  if (code === 'teacher_conflict') {
-    return 'Teacher is assigned to more than one timetable entry in this period.';
-  }
-  return 'Room is assigned to more than one timetable entry in this period.';
 }

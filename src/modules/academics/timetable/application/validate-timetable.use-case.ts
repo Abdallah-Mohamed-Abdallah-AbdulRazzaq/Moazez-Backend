@@ -1,7 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { TimetableEntryStatus } from '@prisma/client';
+import { TimetableConflictType, TimetableEntryStatus } from '@prisma/client';
 import { requireAcademicsScope } from '../../academics-context';
-import { isActiveCurriculumRequirement } from '../../subject-allocation/domain/active-curriculum.policy';
+import {
+  buildCanonicalTimetableDemand,
+  canonicalTimetableDemandKey,
+  reconcileCanonicalTimetableDemand,
+  ReconciledTimetableDemand,
+} from '../domain/canonical-timetable-demand';
+import { computeTimetableConflicts } from '../domain/timetable-conflicts';
 import { TimetableDashboardQueryDto } from '../dto/timetable.dto';
 import {
   TimetableValidationIssueDto,
@@ -13,11 +19,8 @@ import {
   TimetableEntryRecord,
   TimetableGradeRecord,
   TimetableRepository,
-  TimetableSubjectAllocationRecord,
-  TimetableTeacherAllocationRecord,
 } from '../infrastructure/timetable.repository';
 import {
-  groupBy,
   resolveReadableTimetableContext,
   unique,
 } from './timetable-dashboard.helpers';
@@ -35,54 +38,68 @@ export class ValidateTimetableUseCase {
       this.timetableRepository,
       query,
     );
-    const matrixRows =
+    const subjectAllocations =
       await this.timetableRepository.listSubjectAllocationsForTerm({
         termId: term.id,
         gradeId: classroom?.section.gradeId ?? query.gradeId,
       });
     const selectedGradeIds = unique([
-      ...matrixRows.map((row) => row.gradeId),
+      ...subjectAllocations.map((allocation) => allocation.gradeId),
       ...(classroom ? [classroom.section.gradeId] : []),
       ...(query.gradeId ? [query.gradeId] : []),
     ]);
-    const [classrooms, grades, teacherAllocations, entries] = await Promise.all([
-      classroom
-        ? Promise.resolve([classroom])
-        : this.timetableRepository.listClassroomsByGradeIds(selectedGradeIds),
-      this.timetableRepository.listGradesByIds(selectedGradeIds),
-      this.timetableRepository.listTeacherAllocationsByTerm({
-        termId: term.id,
-        gradeId: query.gradeId,
-        classroomId: query.classroomId,
-      }),
-      this.timetableRepository.listEntriesByTerm({
-        termId: term.id,
-        gradeId: query.gradeId,
-        classroomId: query.classroomId,
-      }),
-    ]);
-
+    const [classrooms, grades, teacherAllocations, termEntries] =
+      await Promise.all([
+        classroom
+          ? Promise.resolve([classroom])
+          : this.timetableRepository.listClassroomsByGradeIds(selectedGradeIds),
+        this.timetableRepository.listGradesByIds(selectedGradeIds),
+        this.timetableRepository.listTeacherAllocationsByTerm({
+          termId: term.id,
+          gradeId: query.gradeId,
+          classroomId: query.classroomId,
+        }),
+        this.timetableRepository.listEntriesByTerm({ termId: term.id }),
+      ]);
+    const selectedEntries = termEntries.filter(
+      (entry) =>
+        (!query.gradeId || entry.gradeId === query.gradeId) &&
+        (!query.classroomId || entry.classroomId === query.classroomId),
+    );
+    const demand = buildCanonicalTimetableDemand({
+      subjectAllocations,
+      classrooms,
+      teacherAllocations,
+    });
+    const reconciledDemand = reconcileCanonicalTimetableDemand(
+      demand,
+      selectedEntries,
+    );
     const items = buildValidationItems({
       classrooms,
       grades,
-      matrixRows,
-      teacherAllocations,
-      entries,
+      demand: reconciledDemand,
+      entries: selectedEntries,
+      configuredGradeIds: new Set(
+        subjectAllocations.map((allocation) => allocation.gradeId),
+      ),
     });
-    const conflictCounts = countExistingConflicts(entries);
+    const conflictCounts = countExistingConflicts(termEntries, selectedEntries);
 
     return {
       termId: term.id,
       academicYearId: term.academicYearId,
       summary: {
         classroomsChecked: classrooms.length,
-        expectedWeeklySlots: items.reduce(
-          (sum, item) => sum + (item.expectedWeeklyHours ?? 0),
+        expectedWeeklySlots: reconciledDemand.reduce(
+          (sum, item) => sum + item.requiredWeeklySlots,
           0,
         ),
-        actualScheduledSlots: entries.filter(isSchedulableEntry).length,
+        actualScheduledSlots: selectedEntries.filter(isSchedulableEntry).length,
         missingTeacherAllocations: items.filter((item) =>
-          item.issues.some((issue) => issue.code === 'missing_teacher_allocation'),
+          item.issues.some(
+            (issue) => issue.code === 'missing_teacher_allocation',
+          ),
         ).length,
         underScheduledSubjects: items.filter((item) =>
           item.issues.some((issue) => issue.code === 'under_scheduled_subject'),
@@ -105,140 +122,183 @@ export class ValidateTimetableUseCase {
 function buildValidationItems(input: {
   classrooms: TimetableClassroomRecord[];
   grades: TimetableGradeRecord[];
-  matrixRows: TimetableSubjectAllocationRecord[];
-  teacherAllocations: TimetableTeacherAllocationRecord[];
+  demand: ReconciledTimetableDemand[];
   entries: TimetableEntryRecord[];
+  configuredGradeIds: Set<string>;
 }): TimetableValidationItemDto[] {
   const gradesById = new Map(input.grades.map((grade) => [grade.id, grade]));
-  const matrixRowsByGrade = groupBy(input.matrixRows, (row) => row.gradeId);
-  const teacherAllocationsByClassSubject = groupBy(
-    input.teacherAllocations,
-    (allocation) => `${allocation.classroomId}:${allocation.subjectId}`,
+  const items = input.demand.map((demand) =>
+    demandToValidationItem(demand, gradesById.get(demand.gradeId)),
   );
-  const entriesByClassSubject = groupBy(
-    input.entries.filter(isSchedulableEntry),
-    (entry) => `${entry.classroomId}:${entry.subjectId}`,
+  const demandKeys = new Set(
+    input.demand.map((demand) => canonicalTimetableDemandKey(demand)),
   );
-  const items: TimetableValidationItemDto[] = [];
+  const staleEntries = new Map<string, TimetableEntryRecord[]>();
 
-  for (const classroom of input.classrooms) {
-    const gradeId = classroom.section.gradeId;
-    const grade = gradesById.get(gradeId);
-    const rows = matrixRowsByGrade.get(gradeId) ?? [];
-
-    if (rows.length === 0) {
-      items.push({
-        classroomId: classroom.id,
-        classroom: {
-          id: classroom.id,
-          nameAr: classroom.nameAr,
-          nameEn: classroom.nameEn,
-        },
-        gradeId,
-        grade: {
-          id: gradeId,
-          nameAr: grade?.nameAr ?? '',
-          nameEn: grade?.nameEn ?? '',
-        },
-        subjectId: null,
-        subject: null,
-        expectedWeeklyHours: null,
-        scheduledWeeklyHours: 0,
-        status: 'missing_subject_allocation',
-        issues: [
-          {
-            code: 'missing_subject_allocation_row',
-            message:
-              'No subject allocation weekly-hours rows exist for this classroom grade.',
-            details: { gradeId },
+  for (const entry of input.entries.filter(isSchedulableEntry)) {
+    const key = canonicalTimetableDemandKey(entry);
+    if (demandKeys.has(key)) continue;
+    staleEntries.set(key, [...(staleEntries.get(key) ?? []), entry]);
+  }
+  for (const entries of staleEntries.values()) {
+    const first = entries[0];
+    const grade = gradesById.get(first.gradeId);
+    items.push({
+      classroomId: first.classroomId,
+      classroom: {
+        id: first.classroom.id,
+        nameAr: first.classroom.nameAr,
+        nameEn: first.classroom.nameEn,
+      },
+      gradeId: first.gradeId,
+      grade: {
+        id: first.gradeId,
+        nameAr: grade?.nameAr ?? '',
+        nameEn: grade?.nameEn ?? '',
+      },
+      subjectId: first.subjectId,
+      subject: {
+        id: first.subject.id,
+        nameAr: first.subject.nameAr,
+        nameEn: first.subject.nameEn,
+        code: first.subject.code ?? null,
+        color: null,
+      },
+      expectedWeeklyHours: null,
+      scheduledWeeklyHours: entries.length,
+      status: 'missing_subject_allocation',
+      issues: [
+        {
+          code: 'missing_subject_allocation_row',
+          message:
+            'Scheduled entries are not backed by an active subject allocation.',
+          details: {
+            gradeId: first.gradeId,
+            subjectId: first.subjectId,
           },
-        ],
-      });
-      continue;
-    }
-
-    for (const row of rows) {
-      const key = `${classroom.id}:${row.subjectId}`;
-      const scheduledWeeklyHours = (entriesByClassSubject.get(key) ?? []).length;
-      const hasTeacherAllocation =
-        (teacherAllocationsByClassSubject.get(key) ?? []).length > 0;
-      const issues = buildSubjectIssues({
-        row,
-        hasTeacherAllocation,
-        scheduledWeeklyHours,
-      });
-
-      items.push({
-        classroomId: classroom.id,
-        classroom: {
-          id: classroom.id,
-          nameAr: classroom.nameAr,
-          nameEn: classroom.nameEn,
         },
-        gradeId,
-        grade: {
-          id: gradeId,
-          nameAr: grade?.nameAr ?? row.grade.nameAr,
-          nameEn: grade?.nameEn ?? row.grade.nameEn,
-        },
-        subjectId: row.subjectId,
-        subject: {
-          id: row.subject.id,
-          nameAr: row.subject.nameAr,
-          nameEn: row.subject.nameEn,
-          code: row.subject.code ?? null,
-          color: row.subject.color ?? null,
-        },
-        expectedWeeklyHours: row.weeklyHours,
-        scheduledWeeklyHours,
-        status: statusForIssues(issues),
-        issues,
-      });
-    }
+      ],
+    });
   }
 
-  return items;
+  const classroomsWithDemand = new Set(
+    input.demand.map((demand) => demand.classroomId),
+  );
+  const classroomsWithStaleEntries = new Set(
+    Array.from(staleEntries.values()).map((entries) => entries[0].classroomId),
+  );
+  for (const classroom of input.classrooms) {
+    const gradeId = classroom.section.gradeId;
+    if (
+      classroomsWithDemand.has(classroom.id) ||
+      classroomsWithStaleEntries.has(classroom.id) ||
+      input.configuredGradeIds.has(gradeId)
+    ) {
+      continue;
+    }
+    const grade = gradesById.get(gradeId);
+    items.push({
+      classroomId: classroom.id,
+      classroom: {
+        id: classroom.id,
+        nameAr: classroom.nameAr,
+        nameEn: classroom.nameEn,
+      },
+      gradeId,
+      grade: {
+        id: gradeId,
+        nameAr: grade?.nameAr ?? '',
+        nameEn: grade?.nameEn ?? '',
+      },
+      subjectId: null,
+      subject: null,
+      expectedWeeklyHours: null,
+      scheduledWeeklyHours: 0,
+      status: 'missing_subject_allocation',
+      issues: [
+        {
+          code: 'missing_subject_allocation_row',
+          message:
+            'No active subject allocation weekly-hours rows exist for this classroom grade.',
+          details: { gradeId },
+        },
+      ],
+    });
+  }
+
+  return items.sort((left, right) =>
+    `${left.classroomId}:${left.subjectId ?? ''}`.localeCompare(
+      `${right.classroomId}:${right.subjectId ?? ''}`,
+    ),
+  );
 }
 
-function buildSubjectIssues(input: {
-  row: TimetableSubjectAllocationRecord;
-  hasTeacherAllocation: boolean;
-  scheduledWeeklyHours: number;
-}): TimetableValidationIssueDto[] {
-  const issues: TimetableValidationIssueDto[] = [];
+function demandToValidationItem(
+  demand: ReconciledTimetableDemand,
+  grade: TimetableGradeRecord | undefined,
+): TimetableValidationItemDto {
+  const issues = buildDemandIssues(demand);
+  const allocation = demand.subjectAllocation;
+  return {
+    classroomId: demand.classroomId,
+    classroom: {
+      id: demand.classroom.id,
+      nameAr: demand.classroom.nameAr,
+      nameEn: demand.classroom.nameEn,
+    },
+    gradeId: demand.gradeId,
+    grade: {
+      id: demand.gradeId,
+      nameAr: grade?.nameAr ?? allocation.grade.nameAr,
+      nameEn: grade?.nameEn ?? allocation.grade.nameEn,
+    },
+    subjectId: demand.subjectId,
+    subject: {
+      id: allocation.subject.id,
+      nameAr: allocation.subject.nameAr,
+      nameEn: allocation.subject.nameEn,
+      code: allocation.subject.code ?? null,
+      color: allocation.subject.color ?? null,
+    },
+    expectedWeeklyHours: demand.requiredWeeklySlots,
+    scheduledWeeklyHours: demand.scheduledWeeklySlots,
+    status: statusForIssues(issues),
+    issues,
+  };
+}
 
-  if (isActiveCurriculumRequirement(input.row) && !input.hasTeacherAllocation) {
+function buildDemandIssues(
+  demand: ReconciledTimetableDemand,
+): TimetableValidationIssueDto[] {
+  const issues: TimetableValidationIssueDto[] = [];
+  if (demand.teacherSubjectAllocationIds.length === 0) {
     issues.push({
       code: 'missing_teacher_allocation',
       message:
         'Subject is missing a teacher allocation for this classroom and term.',
-      details: {
-        subjectId: input.row.subjectId,
-        gradeId: input.row.gradeId,
-      },
+      details: { subjectId: demand.subjectId, gradeId: demand.gradeId },
     });
   }
-  if (input.scheduledWeeklyHours < input.row.weeklyHours) {
+  if (demand.scheduledWeeklySlots < demand.requiredWeeklySlots) {
     issues.push({
       code: 'under_scheduled_subject',
       message: 'Scheduled periods are below weekly hours.',
       details: {
-        expectedWeeklyHours: input.row.weeklyHours,
-        scheduledWeeklyHours: input.scheduledWeeklyHours,
+        expectedWeeklyHours: demand.requiredWeeklySlots,
+        scheduledWeeklyHours: demand.scheduledWeeklySlots,
       },
     });
   }
-  if (input.scheduledWeeklyHours > input.row.weeklyHours) {
+  if (demand.scheduledWeeklySlots > demand.requiredWeeklySlots) {
     issues.push({
       code: 'over_scheduled_subject',
       message: 'Scheduled periods exceed weekly hours.',
       details: {
-        expectedWeeklyHours: input.row.weeklyHours,
-        scheduledWeeklyHours: input.scheduledWeeklyHours,
+        expectedWeeklyHours: demand.requiredWeeklySlots,
+        scheduledWeeklyHours: demand.scheduledWeeklySlots,
       },
     });
   }
-
   return issues;
 }
 
@@ -257,42 +317,27 @@ function statusForIssues(
   return 'complete';
 }
 
-function countExistingConflicts(entries: TimetableEntryRecord[]): {
-  classroom: number;
-  teacher: number;
-  room: number;
-} {
-  const schedulableEntries = entries.filter(isSchedulableEntry);
-
-  return {
-    classroom: countGroupedConflicts(
-      schedulableEntries,
-      (entry) => entry.classroomId,
-    ),
-    teacher: countGroupedConflicts(
-      schedulableEntries,
-      (entry) => entry.teacherUserId,
-    ),
-    room: countGroupedConflicts(
-      schedulableEntries,
-      (entry) => entry.roomId ?? null,
-    ),
-  };
-}
-
-function countGroupedConflicts(
-  entries: TimetableEntryRecord[],
-  getResourceId: (entry: TimetableEntryRecord) => string | null,
-): number {
-  const groups = groupBy(
-    entries.filter((entry) => Boolean(getResourceId(entry))),
-    (entry) =>
-      `${entry.dayOfWeek}:${entry.period.startTime}-${entry.period.endTime}:${getResourceId(
-        entry,
-      )}`,
+function countExistingConflicts(
+  termEntries: TimetableEntryRecord[],
+  selectedEntries: TimetableEntryRecord[],
+): { classroom: number; teacher: number; room: number } {
+  const selectedEntryIds = new Set(selectedEntries.map((entry) => entry.id));
+  const conflicts = computeTimetableConflicts(termEntries).filter((conflict) =>
+    conflict.entryIds.some((entryId) => selectedEntryIds.has(entryId)),
   );
 
-  return Array.from(groups.values()).filter((group) => group.length > 1).length;
+  return {
+    classroom: conflicts.filter(
+      (conflict) =>
+        conflict.conflictType === TimetableConflictType.CLASSROOM_SLOT,
+    ).length,
+    teacher: conflicts.filter(
+      (conflict) => conflict.conflictType === TimetableConflictType.TEACHER,
+    ).length,
+    room: conflicts.filter(
+      (conflict) => conflict.conflictType === TimetableConflictType.ROOM,
+    ).length,
+  };
 }
 
 function isSchedulableEntry(entry: TimetableEntryRecord): boolean {
