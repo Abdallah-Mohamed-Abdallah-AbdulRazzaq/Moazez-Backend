@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, TimetableEntryStatus } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
-import { findEffectiveTimetableConfigs } from '../../../academics/timetable/infrastructure/effective-timetable-read';
+import {
+  EffectiveTimetableWeekSettings,
+  findEffectiveTimetableConfigs,
+  findEffectiveTimetableWeekSettings,
+} from '../../../academics/timetable/infrastructure/effective-timetable-read';
 
 const STUDENT_SCHEDULE_ENTRY_ARGS =
   Prisma.validator<Prisma.TimetableEntryDefaultArgs>()({
@@ -87,11 +91,7 @@ export type StudentScheduleEntryRecord = Prisma.TimetableEntryGetPayload<
   typeof STUDENT_SCHEDULE_ENTRY_ARGS
 >;
 
-export interface StudentScheduleSettingsRecord {
-  timetableConfigId: string;
-  weekStartDay: number;
-  activeDays: number[];
-}
+export type StudentScheduleSettingsRecord = EffectiveTimetableWeekSettings;
 
 interface StudentScheduleLookupParams {
   classroomId: string;
@@ -177,18 +177,9 @@ export class StudentScheduleReadAdapter {
   }
 
   async findPublishedScheduleSettings(
-    params: StudentScheduleLookupParams,
+    params: StudentScheduleLookupParams & { requestedDate?: Date },
   ): Promise<StudentScheduleSettingsRecord | null> {
-    const config = (
-      await findEffectiveTimetableConfigs(this.scopedPrisma, params)
-    )[0];
-    if (!config) return null;
-
-    return {
-      timetableConfigId: config.id,
-      weekStartDay: config.weekStartDay,
-      activeDays: config.activeDays,
-    };
+    return findEffectiveTimetableWeekSettings(this.scopedPrisma, params);
   }
 
   private async resolveEffectiveConfigIds(

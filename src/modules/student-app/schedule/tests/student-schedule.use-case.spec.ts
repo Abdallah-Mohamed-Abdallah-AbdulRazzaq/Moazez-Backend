@@ -17,6 +17,7 @@ import { GetStudentWeeklyScheduleUseCase } from '../application/get-student-week
 import {
   StudentScheduleEntryRecord,
   StudentScheduleReadAdapter,
+  StudentScheduleSettingsRecord,
 } from '../infrastructure/student-schedule-read.adapter';
 
 describe('Student Schedule use cases', () => {
@@ -161,6 +162,7 @@ describe('Student Schedule use cases', () => {
       classroomId: 'classroom-1',
       academicYearId: 'year-1',
       termId: 'term-1',
+      requestedDate: new Date(Date.UTC(2026, 8, 16)),
     });
     expect(
       scheduleReadAdapter.listPublishedEntriesForStudentWeek,
@@ -194,6 +196,147 @@ describe('Student Schedule use cases', () => {
         }),
       ],
     });
+  });
+
+  it('uses the first-term settings and winner when a nullable-term enrollment requests a first-term week', async () => {
+    const settings = scheduleSettingsFixture({
+      weekStartDay: 1,
+      activeDays: [1, 2, 3, 4, 5],
+      effectiveTimetables: [
+        effectiveTimetableBindingFixture({
+          timetableConfigId: 'config-a',
+          termId: 'term-a',
+          termStartDate: new Date(Date.UTC(2026, 0, 1)),
+          termEndDate: new Date(Date.UTC(2026, 5, 30)),
+          weekStartDay: 1,
+        }),
+        effectiveTimetableBindingFixture({
+          timetableConfigId: 'config-b',
+          termId: 'term-b',
+          termStartDate: new Date(Date.UTC(2026, 6, 1)),
+          termEndDate: new Date(Date.UTC(2026, 11, 31)),
+          weekStartDay: 0,
+        }),
+      ],
+    });
+    const { weeklyUseCase, scheduleReadAdapter } = createUseCases({
+      termId: null,
+      settings,
+      entries: [
+        entryFixture({
+          id: 'entry-a',
+          dayOfWeek: 3,
+          termId: 'term-a',
+          timetableConfig: {
+            ...entryFixture().timetableConfig,
+            id: 'config-a',
+            term: {
+              startDate: new Date(Date.UTC(2026, 0, 1)),
+              endDate: new Date(Date.UTC(2026, 5, 30)),
+              deletedAt: null,
+            },
+          },
+        }),
+      ],
+    });
+
+    const result = await weeklyUseCase.execute({ date: '2026-03-11' });
+
+    expect(result.weekStartDate).toBe('2026-03-09');
+    expect(
+      scheduleReadAdapter.listPublishedEntriesForStudentWeek,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        termId: null,
+        effectiveTimetableConfigIds: ['config-a'],
+      }),
+    );
+    expect(result.days.find((day) => day.date === '2026-03-11')?.items).toEqual(
+      [expect.objectContaining({ timetableEntryId: 'entry-a' })],
+    );
+  });
+
+  it('uses second-term settings and retains both term winners when a nullable-term week crosses the boundary', async () => {
+    const settings = scheduleSettingsFixture({
+      weekStartDay: 0,
+      activeDays: [0, 1, 2, 3, 4],
+      effectiveTimetables: [
+        effectiveTimetableBindingFixture({
+          timetableConfigId: 'config-a',
+          termId: 'term-a',
+          termStartDate: new Date(Date.UTC(2026, 8, 13)),
+          termEndDate: new Date(Date.UTC(2026, 8, 15)),
+          weekStartDay: 1,
+        }),
+        effectiveTimetableBindingFixture({
+          timetableConfigId: 'config-b',
+          termId: 'term-b',
+          termStartDate: new Date(Date.UTC(2026, 8, 16)),
+          termEndDate: new Date(Date.UTC(2026, 11, 31)),
+          weekStartDay: 0,
+        }),
+      ],
+    });
+    const { weeklyUseCase, scheduleReadAdapter } = createUseCases({
+      termId: null,
+      settings,
+      entries: [
+        entryFixture({
+          id: 'entry-a',
+          dayOfWeek: 0,
+          termId: 'term-a',
+          timetableConfig: {
+            ...entryFixture().timetableConfig,
+            id: 'config-a',
+            term: {
+              startDate: new Date(Date.UTC(2026, 8, 13)),
+              endDate: new Date(Date.UTC(2026, 8, 15)),
+              deletedAt: null,
+            },
+          },
+        }),
+        entryFixture({
+          id: 'entry-b',
+          dayOfWeek: 3,
+          termId: 'term-b',
+          timetableConfig: {
+            ...entryFixture().timetableConfig,
+            id: 'config-b',
+            term: {
+              startDate: new Date(Date.UTC(2026, 8, 16)),
+              endDate: new Date(Date.UTC(2026, 11, 31)),
+              deletedAt: null,
+            },
+          },
+        }),
+      ],
+    });
+
+    const result = await weeklyUseCase.execute({ date: '2026-09-16' });
+
+    expect(result.weekStartDate).toBe('2026-09-13');
+    expect(
+      scheduleReadAdapter.findPublishedScheduleSettings,
+    ).toHaveBeenCalledWith({
+      classroomId: 'classroom-1',
+      academicYearId: 'year-1',
+      termId: null,
+      requestedDate: new Date(Date.UTC(2026, 8, 16)),
+    });
+    expect(
+      scheduleReadAdapter.listPublishedEntriesForStudentWeek,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        termId: null,
+        effectiveTimetableConfigIds: ['config-a', 'config-b'],
+      }),
+    );
+    expect(result.days.find((day) => day.date === '2026-09-13')?.items).toEqual(
+      [expect.objectContaining({ timetableEntryId: 'entry-a' })],
+    );
+    expect(result.days.find((day) => day.date === '2026-09-16')?.items).toEqual(
+      [expect.objectContaining({ timetableEntryId: 'entry-b' })],
+    );
   });
 
   it('suppresses weekly items outside term boundaries while preserving seven days', async () => {
@@ -243,6 +386,75 @@ describe('Student Schedule use cases', () => {
 });
 
 describe('StudentScheduleReadAdapter', () => {
+  it('selects requested-date settings without collapsing nullable-term winners to the first term', async () => {
+    const adapter = new StudentScheduleReadAdapter({
+      scoped: {
+        classroom: {
+          findFirst: jest.fn().mockResolvedValue(classroomContextFixture()),
+        },
+        timetableConfig: {
+          findMany: jest.fn().mockResolvedValue([
+            effectiveConfigFixture(TimetableScopeType.TERM, {
+              id: 'config-a',
+              termId: 'term-a',
+              weekStartDay: 0,
+              activeDays: [0, 1, 2, 3, 4],
+              term: {
+                startDate: new Date(Date.UTC(2026, 0, 1)),
+                endDate: new Date(Date.UTC(2026, 5, 30)),
+                deletedAt: null,
+              },
+            }),
+            effectiveConfigFixture(TimetableScopeType.TERM, {
+              id: 'config-b-parent',
+              termId: 'term-b',
+              weekStartDay: 0,
+              activeDays: [0, 1, 2, 3, 4],
+              term: {
+                startDate: new Date(Date.UTC(2026, 6, 1)),
+                endDate: new Date(Date.UTC(2026, 11, 31)),
+                deletedAt: null,
+              },
+            }),
+            effectiveConfigFixture(TimetableScopeType.CLASSROOM, {
+              id: 'config-b',
+              termId: 'term-b',
+              weekStartDay: 2,
+              activeDays: [2, 3, 4, 5],
+              term: {
+                startDate: new Date(Date.UTC(2026, 6, 1)),
+                endDate: new Date(Date.UTC(2026, 11, 31)),
+                deletedAt: null,
+              },
+            }),
+          ]),
+        },
+      },
+    } as never);
+
+    await expect(
+      adapter.findPublishedScheduleSettings({
+        classroomId: 'classroom-1',
+        academicYearId: 'year-1',
+        termId: null,
+        requestedDate: new Date(Date.UTC(2026, 8, 16)),
+      }),
+    ).resolves.toMatchObject({
+      weekStartDay: 2,
+      activeDays: [2, 3, 4, 5],
+      effectiveTimetables: [
+        expect.objectContaining({
+          timetableConfigId: 'config-a',
+          termId: 'term-a',
+        }),
+        expect.objectContaining({
+          timetableConfigId: 'config-b',
+          termId: 'term-b',
+        }),
+      ],
+    });
+  });
+
   it('returns settings from the published classroom winner even when it has no entries', async () => {
     const timetableEntryFindMany = jest.fn();
     const adapter = new StudentScheduleReadAdapter({
@@ -273,11 +485,21 @@ describe('StudentScheduleReadAdapter', () => {
         classroomId: 'classroom-1',
         academicYearId: 'year-1',
         termId: 'term-1',
+        requestedDate: new Date(Date.UTC(2026, 8, 16)),
       }),
     ).resolves.toEqual({
-      timetableConfigId: 'classroom-config',
       weekStartDay: 1,
       activeDays: [1, 2, 3],
+      effectiveTimetables: [
+        {
+          timetableConfigId: 'classroom-config',
+          termId: 'term-1',
+          termStartDate: new Date(Date.UTC(2026, 8, 1)),
+          termEndDate: new Date(Date.UTC(2026, 11, 31)),
+          weekStartDay: 1,
+          activeDays: [1, 2, 3],
+        },
+      ],
     });
     expect(timetableEntryFindMany).not.toHaveBeenCalled();
   });
@@ -389,6 +611,8 @@ describe('StudentScheduleReadAdapter', () => {
 function createUseCases(params?: {
   entries?: StudentScheduleEntryRecord[];
   weekStartDay?: number;
+  termId?: string | null;
+  settings?: StudentScheduleSettingsRecord | null;
 }): {
   dailyUseCase: GetStudentDailyScheduleUseCase;
   weeklyUseCase: GetStudentWeeklyScheduleUseCase;
@@ -396,9 +620,16 @@ function createUseCases(params?: {
   scheduleReadAdapter: jest.Mocked<StudentScheduleReadAdapter>;
 } {
   const entries = params?.entries ?? [entryFixture()];
+  const termId = params?.termId === undefined ? 'term-1' : params.termId;
+  const settings =
+    params && 'settings' in params
+      ? params.settings
+      : scheduleSettingsFixture({
+          weekStartDay: params?.weekStartDay ?? 0,
+        });
   const accessService = {
     getCurrentStudentWithEnrollment: jest.fn(() =>
-      Promise.resolve(currentStudentFixture()),
+      Promise.resolve(currentStudentFixture(termId)),
     ),
   } as unknown as jest.Mocked<StudentAppAccessService>;
   const scheduleReadAdapter = {
@@ -406,13 +637,7 @@ function createUseCases(params?: {
       Promise.resolve(entries),
     ),
     listPublishedEntriesForStudentWeek: jest.fn(() => Promise.resolve(entries)),
-    findPublishedScheduleSettings: jest.fn(() =>
-      Promise.resolve({
-        timetableConfigId: 'config-1',
-        weekStartDay: params?.weekStartDay ?? 0,
-        activeDays: [0, 1, 2, 3, 4],
-      }),
-    ),
+    findPublishedScheduleSettings: jest.fn(() => Promise.resolve(settings)),
   } as unknown as jest.Mocked<StudentScheduleReadAdapter>;
 
   return {
@@ -429,7 +654,9 @@ function createUseCases(params?: {
   };
 }
 
-function currentStudentFixture(): StudentAppCurrentStudentWithEnrollment {
+function currentStudentFixture(
+  termId: string | null = 'term-1',
+): StudentAppCurrentStudentWithEnrollment {
   return {
     context: {
       studentUserId: 'student-user-1',
@@ -442,7 +669,7 @@ function currentStudentFixture(): StudentAppCurrentStudentWithEnrollment {
       enrollmentId: 'enrollment-1',
       classroomId: 'classroom-1',
       academicYearId: 'year-1',
-      termId: 'term-1',
+      termId,
     },
     student: {
       id: 'student-1',
@@ -463,7 +690,7 @@ function currentStudentFixture(): StudentAppCurrentStudentWithEnrollment {
       schoolId: 'school-1',
       studentId: 'student-1',
       academicYearId: 'year-1',
-      termId: 'term-1',
+      termId,
       classroomId: 'classroom-1',
       status: StudentEnrollmentStatus.ACTIVE,
       deletedAt: null,
@@ -584,9 +811,41 @@ function effectiveConfigFixture(
     sectionId: scopeType === TimetableScopeType.SECTION ? 'section-1' : null,
     classroomId:
       scopeType === TimetableScopeType.CLASSROOM ? 'classroom-1' : null,
+    term: {
+      startDate: new Date(Date.UTC(2026, 8, 1)),
+      endDate: new Date(Date.UTC(2026, 11, 31)),
+      deletedAt: null,
+    },
     publications: [
       { status: TimetablePublicationStatus.PUBLISHED, revision: 1 },
     ],
+    ...overrides,
+  };
+}
+
+function scheduleSettingsFixture(
+  overrides: Partial<StudentScheduleSettingsRecord> = {},
+): StudentScheduleSettingsRecord {
+  return {
+    weekStartDay: 0,
+    activeDays: [0, 1, 2, 3, 4],
+    effectiveTimetables: [effectiveTimetableBindingFixture()],
+    ...overrides,
+  };
+}
+
+function effectiveTimetableBindingFixture(
+  overrides: Partial<
+    StudentScheduleSettingsRecord['effectiveTimetables'][number]
+  > = {},
+): StudentScheduleSettingsRecord['effectiveTimetables'][number] {
+  return {
+    timetableConfigId: 'config-1',
+    termId: 'term-1',
+    termStartDate: new Date(Date.UTC(2026, 8, 1)),
+    termEndDate: new Date(Date.UTC(2026, 11, 31)),
+    weekStartDay: 0,
+    activeDays: [0, 1, 2, 3, 4],
     ...overrides,
   };
 }
