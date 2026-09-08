@@ -748,6 +748,22 @@ export class TimetableRepository {
     });
   }
 
+  listClassrooms(): Promise<TimetableClassroomRecord[]> {
+    return this.scopedPrisma.classroom.findMany({
+      where: {
+        deletedAt: null,
+        section: {
+          is: {
+            deletedAt: null,
+            grade: { is: { deletedAt: null } },
+          },
+        },
+      },
+      orderBy: [{ nameEn: 'asc' }, { nameAr: 'asc' }],
+      ...CLASSROOM_ARGS,
+    });
+  }
+
   listClassroomsByGradeIds(
     gradeIds: string[],
   ): Promise<TimetableClassroomRecord[]> {

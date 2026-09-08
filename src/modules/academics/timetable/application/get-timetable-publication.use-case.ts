@@ -29,10 +29,7 @@ export class GetTimetablePublicationUseCase {
       this.timetableRepository.findLatestPublicationByConfigId(config.id),
       loadTimetablePublicationDataset(this.timetableRepository, config),
     ]);
-    const readiness = await buildTimetablePublishReadiness(
-      this.timetableRepository,
-      dataset,
-    );
+    const readiness = buildTimetablePublishReadiness(dataset);
 
     return presentTimetablePublication({
       config,

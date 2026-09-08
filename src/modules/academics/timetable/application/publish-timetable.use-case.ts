@@ -49,10 +49,7 @@ export class PublishTimetableUseCase {
       this.timetableRepository,
       config,
     );
-    const readiness = await buildTimetablePublishReadiness(
-      this.timetableRepository,
-      dataset,
-    );
+    const readiness = buildTimetablePublishReadiness(dataset);
     if (!readiness.canPublish) {
       throwReadinessException(config.id, readiness.blockingReasons);
     }
@@ -65,18 +62,15 @@ export class PublishTimetableUseCase {
       publishedAt: new Date(),
       publishedByUserId: scope.actorId,
     });
-    const refreshedReadiness = await buildTimetablePublishReadiness(
-      this.timetableRepository,
-      {
-        ...dataset,
-        config: result.config,
-        entries: dataset.entries.map((entry) =>
-          entry.status === TimetableEntryStatus.DRAFT
-            ? { ...entry, status: TimetableEntryStatus.ACTIVE }
-            : entry,
-        ),
-      },
-    );
+    const refreshedReadiness = buildTimetablePublishReadiness({
+      ...dataset,
+      config: result.config,
+      entries: dataset.entries.map((entry) =>
+        entry.status === TimetableEntryStatus.DRAFT
+          ? { ...entry, status: TimetableEntryStatus.ACTIVE }
+          : entry,
+      ),
+    });
 
     return presentTimetablePublication({
       config: result.config,

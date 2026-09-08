@@ -457,6 +457,7 @@ describe('Timetable use cases', () => {
             );
           }),
         ),
+      listClassrooms: jest.fn().mockResolvedValue(classrooms),
       listClassroomsByGradeIds: jest
         .fn()
         .mockImplementation(async (gradeIds: string[]) =>
@@ -1661,6 +1662,17 @@ describe('Timetable use cases', () => {
       );
     });
   });
+
+  async function expectPublicationMutationNotRun(
+    repository: TimetableRepository,
+  ): Promise<void> {
+    expect((await repository.findConfigById('config-1'))?.status).toBe(
+      TimetableConfigStatus.DRAFT,
+    );
+    expect(
+      await repository.findLatestPublicationByConfigId('config-1'),
+    ).toBeNull();
+  }
 
   it.each([
     [
@@ -3039,6 +3051,773 @@ describe('Timetable use cases', () => {
       expect(response.summary.classroomConflicts).toBe(0);
     });
   });
+
+  it.each([
+    [TimetableScopeType.TERM, null, null, null, null, ['a', 'b', 'c', 'd']],
+    [TimetableScopeType.STAGE, 'stage-1', null, null, null, ['a', 'b', 'c']],
+    [TimetableScopeType.GRADE, null, 'grade-1', null, null, ['a', 'b']],
+    [TimetableScopeType.SECTION, null, null, 'section-1', null, ['a']],
+    [TimetableScopeType.CLASSROOM, null, null, null, 'a', ['a']],
+  ])(
+    'derives %s publication classrooms from the persisted config scope',
+    async (
+      scopeType,
+      stageId,
+      gradeId,
+      sectionId,
+      classroomId,
+      expectedClassroomIds,
+    ) => {
+      const classrooms = [
+        seedClassroom({ id: 'a' }),
+        seedClassroom({
+          id: 'b',
+          sectionId: 'section-2',
+          section: {
+            id: 'section-2',
+            gradeId: 'grade-1',
+            grade: { id: 'grade-1', stageId: 'stage-1' },
+          },
+        }),
+        seedClassroom({
+          id: 'c',
+          sectionId: 'section-3',
+          section: {
+            id: 'section-3',
+            gradeId: 'grade-2',
+            grade: { id: 'grade-2', stageId: 'stage-1' },
+          },
+        }),
+        seedClassroom({
+          id: 'd',
+          sectionId: 'section-4',
+          section: {
+            id: 'section-4',
+            gradeId: 'grade-3',
+            grade: { id: 'grade-3', stageId: 'stage-2' },
+          },
+        }),
+      ];
+      const repository = createRepository({
+        configs: [
+          seedConfig({
+            scopeType,
+            stageId,
+            gradeId,
+            sectionId,
+            classroomId,
+          }),
+        ],
+        periods: [seedPeriod()],
+        classrooms,
+        grades: [
+          seedGrade(),
+          seedGrade({ id: 'grade-2' }),
+          seedGrade({ id: 'grade-3', stageId: 'stage-2' }),
+        ],
+        subjectAllocations: [],
+      });
+
+      await withScope(async () => {
+        const response = await new GetTimetablePreviewUseCase(
+          repository,
+        ).execute({ timetableConfigId: 'config-1' });
+        const missingRows = response.publishReadiness.blockingReasons
+          .filter((item) => item.code === 'missing_subject_allocation_row')
+          .map((item) => item.details?.classroomId)
+          .sort();
+
+        expect(missingRows).toEqual(expectedClassroomIds);
+      });
+    },
+  );
+
+  it('does not let an out-of-scope classroom defect block publication', async () => {
+    const scopedClassroom = seedClassroom({ id: 'classroom-1' });
+    const unrelatedClassroom = seedClassroom({
+      id: 'classroom-outside',
+      sectionId: 'section-outside',
+      section: {
+        id: 'section-outside',
+        gradeId: 'grade-outside',
+        grade: { id: 'grade-outside', stageId: 'stage-outside' },
+      },
+    });
+    const repository = createRepository({
+      configs: [
+        seedConfig({
+          scopeType: TimetableScopeType.CLASSROOM,
+          scopeKey: 'classroom:classroom-1',
+          classroomId: 'classroom-1',
+        }),
+      ],
+      periods: [seedPeriod()],
+      entries: [seedEntry()],
+      classrooms: [scopedClassroom, unrelatedClassroom],
+      grades: [seedGrade(), seedGrade({ id: 'grade-outside' })],
+    });
+
+    await withScope(async () => {
+      const preview = await new GetTimetablePreviewUseCase(repository).execute({
+        timetableConfigId: 'config-1',
+      });
+      expect(preview.publishReadiness).toMatchObject({
+        canPublish: true,
+        blockingReasons: [],
+      });
+    });
+  });
+
+  it.each([
+    [0, 'under_scheduled_subject', 'academics.timetable.no_entries'],
+    [2, 'under_scheduled_subject', 'academics.timetable.publish_blocked'],
+    [3, null, null],
+    [4, 'over_scheduled_subject', 'academics.timetable.publish_blocked'],
+  ])(
+    'enforces exact weekly-slot demand with %i scheduled entries',
+    async (entryCount, expectedReason, expectedException) => {
+      const period = seedPeriod();
+      const entries = Array.from({ length: entryCount }, (_, index) =>
+        seedEntry({
+          id: 'entry-' + (index + 1),
+          dayOfWeek: index,
+          period,
+        }),
+      );
+      const repository = createRepository({
+        configs: [seedConfig()],
+        periods: [period],
+        entries,
+        subjectAllocations: [seedSubjectAllocation({ weeklyHours: 3 })],
+      });
+
+      await withScope(async () => {
+        const preview = await new GetTimetablePreviewUseCase(
+          repository,
+        ).execute({
+          timetableConfigId: 'config-1',
+        });
+        const publication = await new GetTimetablePublicationUseCase(
+          repository,
+        ).execute({ timetableConfigId: 'config-1' });
+        expect(publication.blockingReasons).toEqual(
+          preview.publishReadiness.blockingReasons,
+        );
+
+        if (expectedReason) {
+          expect(preview.publishReadiness.canPublish).toBe(false);
+          expect(preview.publishReadiness.blockingReasons).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({ code: expectedReason }),
+            ]),
+          );
+          await expect(
+            new PublishTimetableUseCase(repository).execute({
+              timetableConfigId: 'config-1',
+            }),
+          ).rejects.toMatchObject({
+            code: expectedException,
+            ...(expectedException === 'academics.timetable.publish_blocked'
+              ? {
+                  details: {
+                    blockingReasons: preview.publishReadiness.blockingReasons,
+                  },
+                }
+              : {}),
+          });
+          await expectPublicationMutationNotRun(repository);
+          return;
+        }
+
+        expect(preview.publishReadiness).toMatchObject({
+          canPublish: true,
+          blockingReasons: [],
+        });
+        await expect(
+          new PublishTimetableUseCase(repository).execute({
+            timetableConfigId: 'config-1',
+          }),
+        ).resolves.toMatchObject({ status: 'published', revision: 1 });
+      });
+    },
+  );
+
+  it('blocks publication when canonical demand has no teacher allocation', async () => {
+    const repository = createRepository({
+      configs: [seedConfig()],
+      periods: [seedPeriod()],
+      entries: [
+        seedEntry({
+          subjectId: 'subject-2',
+          teacherSubjectAllocationId: 'allocation-science',
+          subject: {
+            id: 'subject-2',
+            nameAr: 'Science',
+            nameEn: 'Science',
+            code: 'SCI',
+          },
+        }),
+      ],
+      allocations: [
+        seedAllocation({
+          id: 'allocation-science',
+          subjectId: 'subject-2',
+        }),
+      ],
+      subjectAllocations: [
+        seedSubjectAllocation({ weeklyHours: 1 }),
+        seedSubjectAllocation({ subjectId: 'subject-2', weeklyHours: 1 }),
+      ],
+    });
+
+    await withScope(async () => {
+      const preview = await new GetTimetablePreviewUseCase(repository).execute({
+        timetableConfigId: 'config-1',
+      });
+      expect(preview.publishReadiness.blockingReasons).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: 'missing_teacher_allocation' }),
+        ]),
+      );
+      const publication = await new GetTimetablePublicationUseCase(
+        repository,
+      ).execute({ timetableConfigId: 'config-1' });
+      expect(publication.blockingReasons).toEqual(
+        preview.publishReadiness.blockingReasons,
+      );
+      await expect(
+        new PublishTimetableUseCase(repository).execute({
+          timetableConfigId: 'config-1',
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.publish_blocked',
+        details: {
+          blockingReasons: preview.publishReadiness.blockingReasons,
+        },
+      });
+      await expectPublicationMutationNotRun(repository);
+    });
+  });
+
+  it('blocks publication when a scheduled subject has no allocation row', async () => {
+    const repository = createRepository({
+      configs: [seedConfig()],
+      periods: [seedPeriod()],
+      entries: [seedEntry()],
+      subjectAllocations: [],
+    });
+
+    await withScope(async () => {
+      const preview = await new GetTimetablePreviewUseCase(repository).execute({
+        timetableConfigId: 'config-1',
+      });
+      expect(preview.publishReadiness.blockingReasons).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: 'missing_subject_allocation_row' }),
+          expect.objectContaining({ code: 'missing_subject_allocation' }),
+        ]),
+      );
+      await expect(
+        new PublishTimetableUseCase(repository).execute({
+          timetableConfigId: 'config-1',
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.publish_blocked',
+      });
+      await expectPublicationMutationNotRun(repository);
+    });
+  });
+
+  it('preserves zero-hour no-debt semantics while blocking stale entries', async () => {
+    const validRepository = createRepository({
+      configs: [seedConfig()],
+      periods: [seedPeriod()],
+      entries: [
+        seedEntry({
+          subjectId: 'subject-2',
+          teacherSubjectAllocationId: 'allocation-science',
+          subject: {
+            id: 'subject-2',
+            nameAr: 'Science',
+            nameEn: 'Science',
+            code: 'SCI',
+          },
+        }),
+      ],
+      allocations: [
+        seedAllocation({
+          id: 'allocation-science',
+          subjectId: 'subject-2',
+        }),
+      ],
+      subjectAllocations: [
+        seedSubjectAllocation({ weeklyHours: 0 }),
+        seedSubjectAllocation({ subjectId: 'subject-2', weeklyHours: 1 }),
+      ],
+    });
+    const staleRepository = createRepository({
+      configs: [seedConfig()],
+      periods: [seedPeriod()],
+      entries: [seedEntry()],
+      subjectAllocations: [seedSubjectAllocation({ weeklyHours: 0 })],
+    });
+
+    await withScope(async () => {
+      const validPreview = await new GetTimetablePreviewUseCase(
+        validRepository,
+      ).execute({ timetableConfigId: 'config-1' });
+      expect(validPreview.publishReadiness).toMatchObject({
+        canPublish: true,
+        blockingReasons: [],
+      });
+
+      const stalePreview = await new GetTimetablePreviewUseCase(
+        staleRepository,
+      ).execute({ timetableConfigId: 'config-1' });
+      expect(stalePreview.publishReadiness.blockingReasons).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: 'subject_not_taught' }),
+          expect.objectContaining({ code: 'missing_subject_allocation_row' }),
+        ]),
+      );
+      await expect(
+        new PublishTimetableUseCase(staleRepository).execute({
+          timetableConfigId: 'config-1',
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.publish_blocked',
+      });
+      await expectPublicationMutationNotRun(staleRepository);
+    });
+  });
+
+  it.each([
+    [TimetableScopeType.TERM, TimetableScopeType.CLASSROOM],
+    [TimetableScopeType.CLASSROOM, TimetableScopeType.TERM],
+  ])(
+    'does not let a %s config borrow entries from a %s config',
+    async (candidateScope, otherScope) => {
+      const candidateConfig = seedConfig({
+        scopeType: candidateScope,
+        scopeKey:
+          candidateScope === TimetableScopeType.TERM
+            ? 'term:term-1'
+            : 'classroom:classroom-1',
+        classroomId:
+          candidateScope === TimetableScopeType.CLASSROOM
+            ? 'classroom-1'
+            : null,
+      });
+      const otherConfig = seedConfig({
+        id: 'config-other',
+        scopeType: otherScope,
+        scopeKey:
+          otherScope === TimetableScopeType.TERM
+            ? 'term:other'
+            : 'classroom:other',
+        classroomId:
+          otherScope === TimetableScopeType.CLASSROOM ? 'classroom-1' : null,
+      });
+      const candidatePeriod = seedPeriod();
+      const otherPeriod = seedPeriod({
+        id: 'period-other',
+        timetableConfigId: 'config-other',
+      });
+      const candidateEntries = [0, 1].map((dayOfWeek, index) =>
+        seedEntry({
+          id: 'candidate-' + index,
+          dayOfWeek,
+          period: candidatePeriod,
+        }),
+      );
+      const otherEntries = [2, 3, 4].map((dayOfWeek, index) =>
+        seedEntry({
+          id: 'other-' + index,
+          timetableConfigId: 'config-other',
+          periodId: 'period-other',
+          dayOfWeek,
+          period: otherPeriod,
+        }),
+      );
+      const repository = createRepository({
+        configs: [candidateConfig, otherConfig],
+        periods: [candidatePeriod, otherPeriod],
+        entries: [...candidateEntries, ...otherEntries],
+        subjectAllocations: [seedSubjectAllocation({ weeklyHours: 5 })],
+      });
+
+      await withScope(async () => {
+        const preview = await new GetTimetablePreviewUseCase(
+          repository,
+        ).execute({
+          timetableConfigId: 'config-1',
+        });
+        const underScheduled = preview.publishReadiness.blockingReasons.find(
+          (reason) => reason.code === 'under_scheduled_subject',
+        );
+        expect(underScheduled?.details).toMatchObject({
+          expectedWeeklyHours: 5,
+          scheduledWeeklyHours: 2,
+        });
+        await expect(
+          new PublishTimetableUseCase(repository).execute({
+            timetableConfigId: 'config-1',
+          }),
+        ).rejects.toMatchObject({
+          code: 'academics.timetable.publish_blocked',
+        });
+        await expectPublicationMutationNotRun(repository);
+      });
+    },
+  );
+
+  it.each([
+    ['CLASSROOM', 'classroom'],
+    ['TEACHER', 'teacher'],
+    ['ROOM', 'room'],
+  ])(
+    'blocks a real cross-config %s partial interval conflict',
+    async (expectedType, kind) => {
+      const candidateConfig = seedConfig({
+        scopeType: TimetableScopeType.CLASSROOM,
+        scopeKey: 'classroom:classroom-1',
+        classroomId: 'classroom-1',
+      });
+      const otherConfig = seedConfig({
+        id: 'config-other',
+        scopeKey: 'term:other',
+      });
+      const candidatePeriod = seedPeriod({
+        startTime: '08:00',
+        endTime: '08:45',
+      });
+      const otherPeriod = seedPeriod({
+        id: 'period-other',
+        timetableConfigId: 'config-other',
+        startTime: '08:30',
+        endTime: '09:15',
+      });
+      const classroomTwo = seedClassroom({
+        id: 'classroom-2',
+        sectionId: 'section-2',
+        section: {
+          id: 'section-2',
+          gradeId: 'grade-1',
+          grade: { id: 'grade-1', stageId: 'stage-1' },
+        },
+      });
+      const candidateRoomId = kind === 'room' ? 'room-1' : null;
+      const otherClassroomId =
+        kind === 'classroom' ? 'classroom-1' : 'classroom-2';
+      const otherTeacherId = kind === 'teacher' ? 'teacher-1' : 'teacher-2';
+      const otherRoomId = kind === 'room' ? 'room-1' : null;
+      const repository = createRepository({
+        configs: [candidateConfig, otherConfig],
+        periods: [candidatePeriod, otherPeriod],
+        classrooms: [seedClassroom(), classroomTwo],
+        rooms: [seedRoom()],
+        allocations: [
+          seedAllocation(),
+          seedAllocation({
+            id: 'allocation-other',
+            classroomId: otherClassroomId,
+            teacherUserId: otherTeacherId,
+          }),
+        ],
+        entries: [
+          seedEntry({ roomId: candidateRoomId, period: candidatePeriod }),
+          seedEntry({
+            id: 'entry-other',
+            timetableConfigId: 'config-other',
+            periodId: 'period-other',
+            classroomId: otherClassroomId,
+            sectionId:
+              otherClassroomId === 'classroom-1' ? 'section-1' : 'section-2',
+            teacherUserId: otherTeacherId,
+            teacherSubjectAllocationId: 'allocation-other',
+            roomId: otherRoomId,
+            period: otherPeriod,
+          }),
+        ],
+      });
+
+      await withScope(async () => {
+        const preview = await new GetTimetablePreviewUseCase(
+          repository,
+        ).execute({
+          timetableConfigId: 'config-1',
+        });
+        expect(preview.publishReadiness.canPublish).toBe(false);
+        expect(preview.conflicts).toEqual([
+          expect.objectContaining({ type: expectedType }),
+        ]);
+        expect(preview.publishReadiness.blockingReasons).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ code: 'conflicts' }),
+          ]),
+        );
+        const publication = await new GetTimetablePublicationUseCase(
+          repository,
+        ).execute({ timetableConfigId: 'config-1' });
+        expect(publication.blockingReasons).toEqual(
+          preview.publishReadiness.blockingReasons,
+        );
+        await expect(
+          new PublishTimetableUseCase(repository).execute({
+            timetableConfigId: 'config-1',
+          }),
+        ).rejects.toMatchObject({
+          code: 'academics.timetable.publish_blocked',
+          details: {
+            blockingReasons: preview.publishReadiness.blockingReasons,
+          },
+        });
+        await expectPublicationMutationNotRun(repository);
+      });
+    },
+  );
+
+  it.each([
+    ['cancelled overlap', TimetableEntryStatus.CANCELLED, '08:30', '09:15'],
+    ['adjacent interval', TimetableEntryStatus.DRAFT, '08:45', '09:30'],
+  ])(
+    'does not block publication for a %s in another config',
+    async (_case, otherStatus, otherStartTime, otherEndTime) => {
+      const candidatePeriod = seedPeriod({
+        startTime: '08:00',
+        endTime: '08:45',
+      });
+      const otherPeriod = seedPeriod({
+        id: 'period-other',
+        timetableConfigId: 'config-other',
+        startTime: otherStartTime,
+        endTime: otherEndTime,
+      });
+      const repository = createRepository({
+        configs: [
+          seedConfig({
+            scopeType: TimetableScopeType.CLASSROOM,
+            scopeKey: 'classroom:classroom-1',
+            classroomId: 'classroom-1',
+          }),
+          seedConfig({ id: 'config-other', scopeKey: 'term:other' }),
+        ],
+        periods: [candidatePeriod, otherPeriod],
+        entries: [
+          seedEntry({ period: candidatePeriod }),
+          seedEntry({
+            id: 'entry-other',
+            timetableConfigId: 'config-other',
+            periodId: 'period-other',
+            status: otherStatus,
+            period: otherPeriod,
+          }),
+        ],
+      });
+
+      await withScope(async () => {
+        const preview = await new GetTimetablePreviewUseCase(
+          repository,
+        ).execute({
+          timetableConfigId: 'config-1',
+        });
+        expect(preview.conflicts).toEqual([]);
+        expect(preview.publishReadiness).toMatchObject({
+          canPublish: true,
+          blockingReasons: [],
+        });
+      });
+    },
+  );
+
+  it('ignores conflicts entirely between unrelated configs', async () => {
+    const candidatePeriod = seedPeriod({
+      startTime: '10:00',
+      endTime: '10:45',
+    });
+    const otherPeriod = seedPeriod({
+      id: 'period-other',
+      timetableConfigId: 'config-other',
+      startTime: '08:00',
+      endTime: '08:45',
+    });
+    const thirdPeriod = seedPeriod({
+      id: 'period-third',
+      timetableConfigId: 'config-third',
+      startTime: '08:30',
+      endTime: '09:15',
+    });
+    const classroomTwo = seedClassroom({
+      id: 'classroom-2',
+      sectionId: 'section-2',
+      section: {
+        id: 'section-2',
+        gradeId: 'grade-1',
+        grade: { id: 'grade-1', stageId: 'stage-1' },
+      },
+    });
+    const classroomThree = seedClassroom({
+      id: 'classroom-3',
+      sectionId: 'section-3',
+      section: {
+        id: 'section-3',
+        gradeId: 'grade-1',
+        grade: { id: 'grade-1', stageId: 'stage-1' },
+      },
+    });
+    const repository = createRepository({
+      configs: [
+        seedConfig({
+          scopeType: TimetableScopeType.CLASSROOM,
+          scopeKey: 'classroom:classroom-1',
+          classroomId: 'classroom-1',
+        }),
+        seedConfig({ id: 'config-other', scopeKey: 'term:other' }),
+        seedConfig({ id: 'config-third', scopeKey: 'term:third' }),
+      ],
+      periods: [candidatePeriod, otherPeriod, thirdPeriod],
+      classrooms: [seedClassroom(), classroomTwo, classroomThree],
+      allocations: [
+        seedAllocation(),
+        seedAllocation({
+          id: 'allocation-other',
+          classroomId: 'classroom-2',
+        }),
+        seedAllocation({
+          id: 'allocation-third',
+          classroomId: 'classroom-3',
+        }),
+      ],
+      entries: [
+        seedEntry({ period: candidatePeriod }),
+        seedEntry({
+          id: 'entry-other',
+          timetableConfigId: 'config-other',
+          periodId: 'period-other',
+          classroomId: 'classroom-2',
+          sectionId: 'section-2',
+          teacherSubjectAllocationId: 'allocation-other',
+          period: otherPeriod,
+        }),
+        seedEntry({
+          id: 'entry-third',
+          timetableConfigId: 'config-third',
+          periodId: 'period-third',
+          classroomId: 'classroom-3',
+          sectionId: 'section-3',
+          teacherSubjectAllocationId: 'allocation-third',
+          period: thirdPeriod,
+        }),
+      ],
+    });
+
+    await withScope(async () => {
+      const preview = await new GetTimetablePreviewUseCase(repository).execute({
+        timetableConfigId: 'config-1',
+      });
+      expect(preview.conflicts).toEqual([]);
+      expect(preview.publishReadiness).toMatchObject({
+        canPublish: true,
+        blockingReasons: [],
+      });
+    });
+  });
+
+  it.each([
+    ['null room', null, null, 30, null],
+    ['missing room', 'room-missing', null, 30, 'room_not_found'],
+    [
+      'inactive room',
+      'room-1',
+      seedRoom({ isActive: false, capacity: 30 }),
+      30,
+      'room_inactive',
+    ],
+    [
+      'insufficient room',
+      'room-1',
+      seedRoom({ capacity: 29 }),
+      30,
+      'room_capacity_insufficient',
+    ],
+    ['equal capacity', 'room-1', seedRoom({ capacity: 30 }), 30, null],
+    ['greater capacity', 'room-1', seedRoom({ capacity: 31 }), 30, null],
+    [
+      'unspecified room capacity',
+      'room-1',
+      seedRoom({ capacity: null }),
+      30,
+      null,
+    ],
+    [
+      'unspecified classroom capacity',
+      'room-1',
+      seedRoom({ capacity: 1 }),
+      null,
+      null,
+    ],
+  ])(
+    'enforces publication room eligibility for %s',
+    async (_case, roomId, room, classroomCapacity, expectedReason) => {
+      const classroom = seedClassroom({ capacity: classroomCapacity });
+      const repository = createRepository({
+        configs: [seedConfig()],
+        periods: [seedPeriod()],
+        classrooms: [classroom],
+        rooms: room ? [room] : [],
+        entries: [
+          seedEntry({
+            roomId,
+            classroom: {
+              id: classroom.id,
+              nameAr: classroom.nameAr,
+              nameEn: classroom.nameEn,
+              capacity: classroom.capacity,
+            },
+          }),
+        ],
+      });
+
+      await withScope(async () => {
+        const preview = await new GetTimetablePreviewUseCase(
+          repository,
+        ).execute({
+          timetableConfigId: 'config-1',
+        });
+        if (expectedReason) {
+          expect(preview.publishReadiness.canPublish).toBe(false);
+          expect(preview.publishReadiness.blockingReasons).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({ code: expectedReason }),
+            ]),
+          );
+          const publication = await new GetTimetablePublicationUseCase(
+            repository,
+          ).execute({ timetableConfigId: 'config-1' });
+          expect(publication.blockingReasons).toEqual(
+            preview.publishReadiness.blockingReasons,
+          );
+          await expect(
+            new PublishTimetableUseCase(repository).execute({
+              timetableConfigId: 'config-1',
+            }),
+          ).rejects.toMatchObject({
+            code: 'academics.timetable.publish_blocked',
+            details: {
+              blockingReasons: preview.publishReadiness.blockingReasons,
+            },
+          });
+          await expectPublicationMutationNotRun(repository);
+          return;
+        }
+
+        expect(preview.publishReadiness).toMatchObject({
+          canPublish: true,
+          blockingReasons: [],
+        });
+      });
+    },
+  );
 
   it('unpublishes idempotently without deleting entries', async () => {
     const repository = createRepository({

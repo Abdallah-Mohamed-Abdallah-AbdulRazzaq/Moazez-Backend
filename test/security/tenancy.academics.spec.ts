@@ -955,10 +955,24 @@ describe('Academics tenancy isolation (security)', () => {
     }
 
     for (const curriculum of [
-      { schoolId: demoSchoolId, academicYearId: demoYearId, termId: demoTermId, gradeId: demoGradeId, subjectId: demoSubjectId },
-      { schoolId: tenantBSchoolId, academicYearId: tenantBYearId, termId: tenantBTermId, gradeId: tenantBGradeId, subjectId: tenantBSubjectId },
+      {
+        schoolId: demoSchoolId,
+        academicYearId: demoYearId,
+        termId: demoTermId,
+        gradeId: demoGradeId,
+        subjectId: demoSubjectId,
+      },
+      {
+        schoolId: tenantBSchoolId,
+        academicYearId: tenantBYearId,
+        termId: tenantBTermId,
+        gradeId: tenantBGradeId,
+        subjectId: tenantBSubjectId,
+      },
     ]) {
-      const row = await prisma.subjectAllocation.create({ data: { ...curriculum, weeklyHours: 1 } });
+      const row = await prisma.subjectAllocation.create({
+        data: { ...curriculum, weeklyHours: 1 },
+      });
       curriculumFixtureIds.push(row.id);
     }
 
@@ -981,7 +995,9 @@ describe('Academics tenancy isolation (security)', () => {
   afterAll(async () => {
     if (app) await app.close();
     if (prisma) {
-      await prisma.subjectAllocation.deleteMany({ where: { id: { in: curriculumFixtureIds } } });
+      await prisma.subjectAllocation.deleteMany({
+        where: { id: { in: curriculumFixtureIds } },
+      });
       if (demoTimetableConfigId) {
         await prisma.timetableConfig.deleteMany({
           where: { id: demoTimetableConfigId },
@@ -1240,6 +1256,8 @@ describe('Academics tenancy isolation (security)', () => {
         name: 'Academics Scope A Timetable',
         weekStartDay: 0,
         activeDays: [0, 1, 2, 3, 4],
+        scopeType: TimetableScopeType.CLASSROOM,
+        classroomId: demoClassroomId,
       })
       .expect(200);
 
@@ -1884,6 +1902,8 @@ describe('Academics tenancy isolation (security)', () => {
         academicYearId: demoYearId,
         termId: demoTermId,
         name: 'Should Not Mutate Published Timetable',
+        scopeType: TimetableScopeType.CLASSROOM,
+        classroomId: demoClassroomId,
       })
       .expect(409)
       .expect((response) => {

@@ -488,6 +488,46 @@ describe('Sprint 12F Schedule/Timetable final closeout (e2e)', () => {
     });
     expectNoTenantIds(entryResponse.body);
 
+    const [secondSubjectForOwnedClassroom, unlinkedSubjectForOwnedClassroom] =
+      await Promise.all([
+        prisma.teacherSubjectAllocation.create({
+          data: {
+            schoolId: schoolAId,
+            teacherUserId: teacherBUserId,
+            subjectId: secondPlacement.subjectId,
+            classroomId: ownedPlacement.classroomId,
+            termId: academicA.termId,
+          },
+          select: { id: true },
+        }),
+        prisma.teacherSubjectAllocation.create({
+          data: {
+            schoolId: schoolAId,
+            teacherUserId: teacherBUserId,
+            subjectId: unlinkedPlacement.subjectId,
+            classroomId: ownedPlacement.classroomId,
+            termId: academicA.termId,
+          },
+          select: { id: true },
+        }),
+      ]);
+    for (const [dayOfWeek, teacherSubjectAllocationId] of [
+      [3, secondSubjectForOwnedClassroom.id],
+      [4, unlinkedSubjectForOwnedClassroom.id],
+    ] as const) {
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/academics/timetable/entries`)
+        .set('Authorization', bearer(adminAuth))
+        .send({
+          timetableConfigId,
+          periodId: timetablePeriodId,
+          dayOfWeek,
+          classroomId: ownedPlacement.classroomId,
+          teacherSubjectAllocationId,
+        })
+        .expect(201);
+    }
+
     const previewResponse = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/academics/timetable/preview`)
       .query({ timetableConfigId })
@@ -543,7 +583,7 @@ describe('Sprint 12F Schedule/Timetable final closeout (e2e)', () => {
       summary: {
         periodsCount: 1,
         instructionalPeriodsCount: 1,
-        entriesCount: 1,
+        entriesCount: 3,
         conflictsCount: 0,
       },
     });

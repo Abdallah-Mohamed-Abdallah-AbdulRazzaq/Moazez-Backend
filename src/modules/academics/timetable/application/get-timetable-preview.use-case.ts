@@ -29,10 +29,7 @@ export class GetTimetablePreviewUseCase {
       this.timetableRepository,
       config,
     );
-    const publishReadiness = await buildTimetablePublishReadiness(
-      this.timetableRepository,
-      dataset,
-    );
+    const publishReadiness = buildTimetablePublishReadiness(dataset);
 
     return presentTimetablePreview({
       config,
