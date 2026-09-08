@@ -33,6 +33,7 @@ import { GetTimetableConfigUseCase } from '../application/get-timetable-config.u
 import { GetTimetableEntryUseCase } from '../application/get-timetable-entry.use-case';
 import { GetTimetablePreviewUseCase } from '../application/get-timetable-preview.use-case';
 import { GetTimetablePublicationUseCase } from '../application/get-timetable-publication.use-case';
+import { GenerateTimetableUseCase } from '../application/generate-timetable.use-case';
 import { ListTimetableConflictsUseCase } from '../application/list-timetable-conflicts.use-case';
 import { ListTimetableEntriesUseCase } from '../application/list-timetable-entries.use-case';
 import { ListTimetablePeriodsUseCase } from '../application/list-timetable-periods.use-case';
@@ -47,6 +48,7 @@ import {
   CheckTimetableConflictsDto,
   CreateTimetableEntryDto,
   CreateTimetablePeriodDto,
+  GenerateTimetableDto,
   GetTimetableConfigQueryDto,
   ListTimetableEntriesQueryDto,
   PublishTimetableDto,
@@ -66,6 +68,7 @@ import {
   TimetableDashboardAllResponseDto,
   TimetableEntriesListResponseDto,
   TimetableEntriesBulkResponseDto,
+  TimetableGenerationResponseDto,
   TimetableEntryResponseDto,
   TimetablePeriodResponseDto,
   TimetablePeriodsListResponseDto,
@@ -101,6 +104,7 @@ export class TimetableController {
     private readonly unpublishTimetableUseCase: UnpublishTimetableUseCase,
     private readonly validateTimetableUseCase: ValidateTimetableUseCase,
     private readonly checkTimetableConflictsUseCase: CheckTimetableConflictsUseCase,
+    private readonly generateTimetableUseCase: GenerateTimetableUseCase,
   ) {}
 
   @Get('all')
@@ -274,6 +278,18 @@ export class TimetableController {
     @Query() query: TimetableConfigIdQueryDto,
   ): Promise<TimetablePublicationResponseDto> {
     return this.getPublicationUseCase.execute(query);
+  }
+
+  @Post('generate')
+  @HttpCode(HttpStatus.OK)
+  @RequiredPermissions('academics.structure.manage')
+  @ApiOperation({ summary: 'Fill missing draft timetable demand' })
+  @ApiBody({ type: GenerateTimetableDto })
+  @ApiOkResponse({ type: TimetableGenerationResponseDto })
+  generate(
+    @Body() dto: GenerateTimetableDto,
+  ): Promise<TimetableGenerationResponseDto> {
+    return this.generateTimetableUseCase.execute(dto);
   }
 
   @Post('publish')

@@ -303,3 +303,30 @@ export class TimetableConflictCheckResponseDto {
   hasConflicts!: boolean;
   conflicts!: TimetableConflictCheckItemDto[];
 }
+
+export class TimetableGenerationUnresolvedDto {
+  code!:
+    | 'missing_teacher_allocation'
+    | 'no_feasible_slot'
+    | 'existing_over_scheduled'
+    | 'search_budget_exhausted';
+  classroomId!: string | null;
+  subjectId!: string | null;
+  requiredWeeklySlots!: number | null;
+  scheduledWeeklySlots!: number | null;
+  remainingWeeklySlots!: number;
+}
+
+export class TimetableGenerationResponseDto {
+  timetableConfigId!: string;
+  createdCount!: number;
+  existingCount!: number;
+  remainingDemandCount!: number;
+  complete!: boolean;
+  createdEntryIds!: string[];
+  unresolved!: TimetableGenerationUnresolvedDto[];
+  searchNodesVisited!: number;
+  searchBudgetExhausted!: boolean;
+  validation!: TimetableValidationResponseDto;
+  publishReadiness!: TimetablePublishReadinessResponseDto;
+}

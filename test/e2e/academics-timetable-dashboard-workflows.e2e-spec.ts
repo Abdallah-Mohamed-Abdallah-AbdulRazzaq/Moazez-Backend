@@ -18,6 +18,13 @@ import * as argon2 from 'argon2';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
+import {
+  createRequestContext,
+  runWithRequestContext,
+  setActiveMembership,
+  setActor,
+} from '../../src/common/context/request-context';
+import { TimetableRepository } from '../../src/modules/academics/timetable/infrastructure/timetable.repository';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'Sprint22DTimetable123!';
@@ -41,6 +48,16 @@ type ExpressLayer = {
 type AuthTokens = {
   accessToken: string;
   refreshToken: string;
+};
+
+type GeneratorResponseBody = {
+  timetableConfigId: string;
+  createdCount: number;
+  remainingDemandCount: number;
+  complete: boolean;
+  unresolved: unknown[];
+  searchBudgetExhausted: boolean;
+  publishReadiness: { canPublish: boolean };
 };
 
 type AcademicBase = {
@@ -255,6 +272,7 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
         'POST /api/v1/academics/timetable/entries',
         'PUT /api/v1/academics/timetable/entries/bulk',
         'DELETE /api/v1/academics/timetable/entries/:entryId',
+        'POST /api/v1/academics/timetable/generate',
         'GET /api/v1/academics/timetable/preview',
         'GET /api/v1/academics/timetable/conflicts',
         'GET /api/v1/academics/timetable/publication',
@@ -1424,6 +1442,284 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
         where: { id: { in: createdConfigIds } },
       });
       await prisma.stage.delete({ where: { id: otherStage.id } });
+    }
+  });
+
+  it('generates a complete draft atomically, serializes concurrent runs, and remains publish-compatible', async () => {
+    await prisma.teacherSubjectAllocation.findFirstOrThrow({
+      where: {
+        schoolId,
+        teacherUserId,
+        termId: academic.termId,
+        subjectId: scienceSubjectId,
+        classroomId: academic.classroomAId,
+      },
+      select: { id: true },
+    });
+    const generatorConfig = await prisma.timetableConfig.create({
+      data: {
+        schoolId,
+        academicYearId: academic.academicYearId,
+        termId: academic.termId,
+        name: `${marker}-generator-config`,
+        weekStartDay: 0,
+        activeDays: [0, 1, 2, 3, 4],
+        scopeType: TimetableScopeType.CLASSROOM,
+        scopeKey: `classroom:${academic.classroomAId}`,
+        stageId: academic.stageId,
+        gradeId: academic.gradeId,
+        sectionId: academic.sectionAId,
+        classroomId: academic.classroomAId,
+        status: TimetableConfigStatus.DRAFT,
+      },
+      select: { id: true },
+    });
+
+    try {
+      await Promise.all([
+        createTimetablePeriod({
+          configId: generatorConfig.id,
+          index: 1,
+          label: 'Generator 1',
+          startTime: '18:00',
+          endTime: '18:45',
+        }),
+        createTimetablePeriod({
+          configId: generatorConfig.id,
+          index: 2,
+          label: 'Generator 2',
+          startTime: '19:00',
+          endTime: '19:45',
+        }),
+        createTimetablePeriod({
+          configId: generatorConfig.id,
+          index: 3,
+          label: 'Generator 3',
+          startTime: '20:00',
+          endTime: '20:45',
+        }),
+      ]);
+      const publicationsBefore = await prisma.timetablePublication.findMany({
+        where: { schoolId },
+        select: {
+          id: true,
+          timetableConfigId: true,
+          status: true,
+          revision: true,
+        },
+        orderBy: { id: 'asc' },
+      });
+
+      const [firstRun, secondRun] = await Promise.all([
+        request(app.getHttpServer())
+          .post(`${GLOBAL_PREFIX}/academics/timetable/generate`)
+          .set('Authorization', bearer(adminAuth))
+          .send({ timetableConfigId: generatorConfig.id }),
+        request(app.getHttpServer())
+          .post(`${GLOBAL_PREFIX}/academics/timetable/generate`)
+          .set('Authorization', bearer(adminAuth))
+          .send({ timetableConfigId: generatorConfig.id }),
+      ]);
+
+      expect([firstRun.status, secondRun.status]).toEqual([200, 200]);
+      const firstBody = firstRun.body as unknown as GeneratorResponseBody;
+      const secondBody = secondRun.body as unknown as GeneratorResponseBody;
+      expect(
+        [firstBody.createdCount, secondBody.createdCount].sort(
+          (left, right) => left - right,
+        ),
+      ).toEqual([0, 3]);
+      for (const body of [firstBody, secondBody]) {
+        expectSafeTimetablePayload(body);
+        expect(body.timetableConfigId).toBe(generatorConfig.id);
+        expect(body.searchBudgetExhausted).toBe(false);
+      }
+
+      const generatedEntries = await prisma.timetableEntry.findMany({
+        where: { timetableConfigId: generatorConfig.id },
+        select: {
+          id: true,
+          subjectId: true,
+          status: true,
+          roomId: true,
+          timetableConfigId: true,
+        },
+        orderBy: { id: 'asc' },
+      });
+      expect(generatedEntries).toHaveLength(3);
+      expect(
+        generatedEntries.filter((entry) => entry.subjectId === mathSubjectId),
+      ).toHaveLength(2);
+      expect(
+        generatedEntries.filter(
+          (entry) => entry.subjectId === scienceSubjectId,
+        ),
+      ).toHaveLength(1);
+      expect(
+        generatedEntries.every(
+          (entry) =>
+            entry.status === TimetableEntryStatus.DRAFT &&
+            entry.roomId === null &&
+            entry.timetableConfigId === generatorConfig.id,
+        ),
+      ).toBe(true);
+      await expect(
+        prisma.timetableConfig.findUniqueOrThrow({
+          where: { id: generatorConfig.id },
+          select: { status: true },
+        }),
+      ).resolves.toEqual({ status: TimetableConfigStatus.DRAFT });
+      await expect(
+        prisma.timetablePublication.findMany({
+          where: { schoolId },
+          select: {
+            id: true,
+            timetableConfigId: true,
+            status: true,
+            revision: true,
+          },
+          orderBy: { id: 'asc' },
+        }),
+      ).resolves.toEqual(publicationsBefore);
+
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/academics/timetable/generate`)
+        .set('Authorization', bearer(adminAuth))
+        .send({ timetableConfigId: generatorConfig.id })
+        .expect(200)
+        .expect((response) => {
+          const body = response.body as unknown as GeneratorResponseBody;
+          expect(body.createdCount).toBe(0);
+          expect(body.remainingDemandCount).toBe(0);
+          expect(body.complete).toBe(true);
+          expect(body.unresolved).toEqual([]);
+          expect(body.publishReadiness.canPublish).toBe(true);
+        });
+
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/academics/timetable/preview`)
+        .query({ timetableConfigId: generatorConfig.id })
+        .set('Authorization', bearer(adminAuth))
+        .expect(200)
+        .expect((response) => {
+          const body = response.body as unknown as {
+            conflicts: unknown[];
+            publishReadiness: { canPublish: boolean };
+          };
+          expect(body.conflicts).toEqual([]);
+          expect(body.publishReadiness.canPublish).toBe(true);
+        });
+
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/academics/timetable/publish`)
+        .set('Authorization', bearer(adminAuth))
+        .send({ timetableConfigId: generatorConfig.id })
+        .expect(200)
+        .expect((response) => {
+          const body = response.body as unknown as {
+            status: string;
+            canPublish: boolean;
+          };
+          expect(body.status).toBe('published');
+          expect(body.canPublish).toBe(false);
+        });
+    } finally {
+      await prisma.timetablePublication.deleteMany({
+        where: { timetableConfigId: generatorConfig.id },
+      });
+      await prisma.timetableEntry.deleteMany({
+        where: { timetableConfigId: generatorConfig.id },
+      });
+      await prisma.timetablePeriod.deleteMany({
+        where: { timetableConfigId: generatorConfig.id },
+      });
+      await prisma.timetableConfig.delete({
+        where: { id: generatorConfig.id },
+      });
+    }
+  });
+
+  it('rolls back every generated row when one row in the bulk insert is invalid', async () => {
+    const atomicConfig = await prisma.timetableConfig.create({
+      data: {
+        schoolId,
+        academicYearId: academic.academicYearId,
+        termId: academic.termId,
+        name: `${marker}-atomic-config`,
+        weekStartDay: 0,
+        activeDays: [0, 1],
+        scopeType: TimetableScopeType.CLASSROOM,
+        scopeKey: `atomic:${academic.classroomAId}`,
+        stageId: academic.stageId,
+        gradeId: academic.gradeId,
+        sectionId: academic.sectionAId,
+        classroomId: academic.classroomAId,
+        status: TimetableConfigStatus.DRAFT,
+      },
+      select: { id: true },
+    });
+    const atomicPeriodId = await createTimetablePeriod({
+      configId: atomicConfig.id,
+      index: 1,
+      label: 'Atomic Period',
+      startTime: '21:00',
+      endTime: '21:45',
+    });
+
+    try {
+      const repository = app.get(TimetableRepository);
+      await expect(
+        runWithRequestContext(createRequestContext(), async () => {
+          setActor({ id: teacherUserId, userType: UserType.SCHOOL_USER });
+          setActiveMembership({
+            membershipId: randomUUID(),
+            organizationId,
+            schoolId,
+            roleId: randomUUID(),
+            permissions: ['academics.structure.manage'],
+          });
+          return repository.generateEntriesAtomically(
+            atomicConfig.id,
+            (snapshot) => {
+              const base = {
+                schoolId,
+                academicYearId: academic.academicYearId,
+                termId: academic.termId,
+                timetableConfigId: atomicConfig.id,
+                gradeId: academic.gradeId,
+                sectionId: academic.sectionAId,
+                classroomId: academic.classroomAId,
+                subjectId: mathSubjectId,
+                teacherUserId,
+                teacherSubjectAllocationId: mathAllocationAId,
+                roomId: null,
+              };
+              expect(snapshot.candidateEntries).toEqual([]);
+              return {
+                entries: [
+                  { ...base, periodId: atomicPeriodId, dayOfWeek: 0 },
+                  { ...base, periodId: randomUUID(), dayOfWeek: 1 },
+                ],
+                value: null,
+              };
+            },
+          );
+        }),
+      ).rejects.toThrow();
+
+      await expect(
+        prisma.timetableEntry.count({
+          where: { timetableConfigId: atomicConfig.id },
+        }),
+      ).resolves.toBe(0);
+    } finally {
+      await prisma.timetableEntry.deleteMany({
+        where: { timetableConfigId: atomicConfig.id },
+      });
+      await prisma.timetablePeriod.deleteMany({
+        where: { timetableConfigId: atomicConfig.id },
+      });
+      await prisma.timetableConfig.delete({ where: { id: atomicConfig.id } });
     }
   });
 

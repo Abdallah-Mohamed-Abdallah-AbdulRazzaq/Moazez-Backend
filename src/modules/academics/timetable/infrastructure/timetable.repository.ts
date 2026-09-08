@@ -342,6 +342,35 @@ export interface BulkSaveTimetableEntriesResult {
   updatedCount: number;
 }
 
+export interface TimetableGenerationSnapshot {
+  config: TimetableConfigRecord;
+  academicYear: TimetableAcademicYearRecord | null;
+  term: TimetableTermRecord | null;
+  periods: TimetablePeriodRecord[];
+  candidateEntries: TimetableEntryRecord[];
+  termEntries: TimetableEntryRecord[];
+  classrooms: TimetableClassroomRecord[];
+  grades: TimetableGradeRecord[];
+  subjectAllocations: TimetableSubjectAllocationRecord[];
+  teacherAllocations: TimetableTeacherAllocationRecord[];
+  rooms: TimetableRoomRecord[];
+}
+
+export interface TimetableGenerationTransactionDecision<T> {
+  entries: BulkTimetableEntryInput[];
+  value: T;
+}
+
+export type TimetableGenerationTransactionResult<T> =
+  | { status: 'not_found' }
+  | {
+      status: 'created';
+      value: T;
+      createdEntryIds: string[];
+      before: TimetableGenerationSnapshot;
+      after: TimetableGenerationSnapshot;
+    };
+
 export interface UnpublishTimetableResult {
   unpublishedCount: number;
   entriesReturnedToDraft: number;
@@ -374,6 +403,274 @@ export class TimetableRepository {
     }
 
     return schoolId;
+  }
+
+  async loadGenerationSnapshot(
+    timetableConfigId: string,
+  ): Promise<TimetableGenerationSnapshot | null> {
+    const config = await this.findConfigById(timetableConfigId);
+    if (!config) return null;
+
+    const [
+      academicYear,
+      term,
+      periods,
+      candidateEntries,
+      termEntries,
+      classrooms,
+      subjectAllocations,
+      teacherAllocations,
+    ] = await Promise.all([
+      this.findAcademicYearById(config.academicYearId),
+      this.findTermById(config.termId),
+      this.listPeriods(config.id),
+      this.listEntriesForConfig(config.id),
+      this.listEntriesByTerm({ termId: config.termId }),
+      this.listClassrooms(),
+      this.listSubjectAllocationsForTerm({ termId: config.termId }),
+      this.listTeacherAllocationsByTerm({ termId: config.termId }),
+    ]);
+    const gradeIds = uniqueStrings([
+      ...classrooms.map((classroom) => classroom.section.gradeId),
+      ...candidateEntries.map((entry) => entry.gradeId),
+      ...subjectAllocations.map((allocation) => allocation.gradeId),
+    ]);
+    const roomIds = uniqueStrings(
+      candidateEntries
+        .filter((entry) => entry.status !== TimetableEntryStatus.CANCELLED)
+        .map((entry) => entry.roomId)
+        .filter((roomId): roomId is string => roomId !== null),
+    );
+    const [grades, rooms] = await Promise.all([
+      this.listGradesByIds(gradeIds),
+      this.findRoomsByIds(roomIds),
+    ]);
+
+    return {
+      config,
+      academicYear,
+      term,
+      periods,
+      candidateEntries,
+      termEntries,
+      classrooms,
+      grades,
+      subjectAllocations,
+      teacherAllocations,
+      rooms,
+    };
+  }
+
+  async generateEntriesAtomically<T>(
+    timetableConfigId: string,
+    plan: (
+      snapshot: TimetableGenerationSnapshot,
+    ) => TimetableGenerationTransactionDecision<T>,
+  ): Promise<TimetableGenerationTransactionResult<T>> {
+    const schoolId = this.getCurrentSchoolId();
+
+    return this.prisma.$transaction(
+      async (tx) => {
+        const lockedConfigs = await tx.$queryRaw<
+          Array<{ id: string; termId: string }>
+        >(Prisma.sql`
+          SELECT "id", "term_id" AS "termId"
+          FROM "timetable_configs"
+          WHERE "id" = ${timetableConfigId}::uuid
+            AND "school_id" = ${schoolId}::uuid
+          LIMIT 1
+          FOR UPDATE
+        `);
+        const lockedConfig = lockedConfigs[0];
+        if (!lockedConfig) return { status: 'not_found' as const };
+
+        await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          SELECT "id"
+          FROM "terms"
+          WHERE "id" = ${lockedConfig.termId}::uuid
+            AND "school_id" = ${schoolId}::uuid
+            AND "deleted_at" IS NULL
+          LIMIT 1
+          FOR UPDATE
+        `);
+
+        const config = await tx.timetableConfig.findFirst({
+          where: { id: timetableConfigId, schoolId },
+          ...TIMETABLE_CONFIG_ARGS,
+        });
+        if (!config) return { status: 'not_found' as const };
+
+        const before = await this.loadGenerationSnapshotWithClient(
+          tx,
+          schoolId,
+          config,
+        );
+        const decision = plan(before);
+        assertGenerationEntriesBelongToLockedScope(
+          decision.entries,
+          schoolId,
+          config,
+        );
+        const created =
+          decision.entries.length === 0
+            ? []
+            : await tx.timetableEntry.createManyAndReturn({
+                data: decision.entries.map((entry) => ({
+                  ...entry,
+                  notes: null,
+                  status: TimetableEntryStatus.DRAFT,
+                })),
+                select: { id: true },
+              });
+        const after = await this.loadGenerationSnapshotWithClient(
+          tx,
+          schoolId,
+          config,
+        );
+
+        return {
+          status: 'created' as const,
+          value: decision.value,
+          createdEntryIds: created.map((entry) => entry.id).sort(),
+          before,
+          after,
+        };
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+        maxWait: 5_000,
+        timeout: 30_000,
+      },
+    );
+  }
+
+  private async loadGenerationSnapshotWithClient(
+    tx: Prisma.TransactionClient,
+    schoolId: string,
+    config: TimetableConfigRecord,
+  ): Promise<TimetableGenerationSnapshot> {
+    const [
+      academicYear,
+      term,
+      periods,
+      candidateEntries,
+      termEntries,
+      classrooms,
+      subjectAllocations,
+      teacherAllocations,
+    ] = await Promise.all([
+      tx.academicYear.findFirst({
+        where: { id: config.academicYearId, schoolId, deletedAt: null },
+        ...ACADEMIC_YEAR_ARGS,
+      }),
+      tx.term.findFirst({
+        where: { id: config.termId, schoolId, deletedAt: null },
+        ...TERM_ARGS,
+      }),
+      tx.timetablePeriod.findMany({
+        where: { schoolId, timetableConfigId: config.id },
+        orderBy: [{ periodIndex: 'asc' }, { id: 'asc' }],
+        ...TIMETABLE_PERIOD_ARGS,
+      }),
+      tx.timetableEntry.findMany({
+        where: { schoolId, timetableConfigId: config.id },
+        orderBy: [
+          { classroomId: 'asc' },
+          { dayOfWeek: 'asc' },
+          { period: { periodIndex: 'asc' } },
+          { createdAt: 'asc' },
+          { id: 'asc' },
+        ],
+        ...TIMETABLE_ENTRY_ARGS,
+      }),
+      tx.timetableEntry.findMany({
+        where: { schoolId, termId: config.termId },
+        orderBy: [
+          { classroomId: 'asc' },
+          { dayOfWeek: 'asc' },
+          { period: { periodIndex: 'asc' } },
+          { createdAt: 'asc' },
+          { id: 'asc' },
+        ],
+        ...TIMETABLE_ENTRY_ARGS,
+      }),
+      tx.classroom.findMany({
+        where: {
+          schoolId,
+          deletedAt: null,
+          section: {
+            is: {
+              deletedAt: null,
+              grade: { is: { deletedAt: null } },
+            },
+          },
+        },
+        orderBy: [{ id: 'asc' }],
+        ...CLASSROOM_ARGS,
+      }),
+      tx.subjectAllocation.findMany({
+        where: {
+          schoolId,
+          termId: config.termId,
+          deletedAt: null,
+          grade: { is: { deletedAt: null } },
+          subject: { is: { deletedAt: null } },
+        },
+        orderBy: [{ gradeId: 'asc' }, { subjectId: 'asc' }, { id: 'asc' }],
+        ...SUBJECT_ALLOCATION_ARGS,
+      }),
+      tx.teacherSubjectAllocation.findMany({
+        where: { schoolId, termId: config.termId },
+        orderBy: [
+          { classroomId: 'asc' },
+          { subjectId: 'asc' },
+          { teacherUserId: 'asc' },
+          { id: 'asc' },
+        ],
+        ...TEACHER_ALLOCATION_ARGS,
+      }),
+    ]);
+    const gradeIds = uniqueStrings([
+      ...classrooms.map((classroom) => classroom.section.gradeId),
+      ...candidateEntries.map((entry) => entry.gradeId),
+      ...subjectAllocations.map((allocation) => allocation.gradeId),
+    ]);
+    const roomIds = uniqueStrings(
+      candidateEntries
+        .filter((entry) => entry.status !== TimetableEntryStatus.CANCELLED)
+        .map((entry) => entry.roomId)
+        .filter((roomId): roomId is string => roomId !== null),
+    );
+    const [grades, rooms] = await Promise.all([
+      gradeIds.length === 0
+        ? Promise.resolve([])
+        : tx.grade.findMany({
+            where: { schoolId, id: { in: gradeIds }, deletedAt: null },
+            orderBy: [{ id: 'asc' }],
+            ...GRADE_ARGS,
+          }),
+      roomIds.length === 0
+        ? Promise.resolve([])
+        : tx.room.findMany({
+            where: { schoolId, id: { in: roomIds }, deletedAt: null },
+            orderBy: [{ id: 'asc' }],
+            ...ROOM_ARGS,
+          }),
+    ]);
+
+    return {
+      config,
+      academicYear,
+      term,
+      periods,
+      candidateEntries,
+      termEntries,
+      classrooms,
+      grades,
+      subjectAllocations,
+      teacherAllocations,
+      rooms,
+    };
   }
 
   findAcademicYearById(
@@ -1071,4 +1368,27 @@ export class TimetableRepository {
       };
     });
   }
+}
+
+function assertGenerationEntriesBelongToLockedScope(
+  entries: BulkTimetableEntryInput[],
+  schoolId: string,
+  config: TimetableConfigRecord,
+): void {
+  if (
+    entries.some(
+      (entry) =>
+        entry.schoolId !== schoolId ||
+        entry.academicYearId !== config.academicYearId ||
+        entry.termId !== config.termId ||
+        entry.timetableConfigId !== config.id ||
+        entry.roomId !== null,
+    )
+  ) {
+    throw new Error('Timetable generation entries do not match locked scope');
+  }
+}
+
+function uniqueStrings(items: string[]): string[] {
+  return [...new Set(items)].sort();
 }
