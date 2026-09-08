@@ -1,22 +1,27 @@
 import {
   TimetableConfigStatus,
-  TimetableConflictSeverity,
-  TimetableConflictStatus,
   TimetableEntryStatus,
   TimetableScopeType,
 } from '@prisma/client';
-import {
-  ComputedTimetableConflict,
-  computeTimetableConflicts,
-} from '../domain/timetable-conflicts';
 import { isActiveCurriculumRequirement } from '../../subject-allocation/domain/active-curriculum.policy';
+import { ComputedTimetableConflict } from '../domain/timetable-conflicts';
 import { classroomMatchesTimetableConfigScope } from '../domain/timetable-policy';
 import {
+  TimetableAcademicYearRecord,
+  TimetableClassroomRecord,
   TimetableConfigRecord,
   TimetableEntryRecord,
   TimetablePeriodRecord,
   TimetableRepository,
+  TimetableRoomRecord,
+  TimetableSubjectAllocationRecord,
+  TimetableTeacherAllocationRecord,
+  TimetableTermRecord,
 } from '../infrastructure/timetable.repository';
+import {
+  AuthoritativeTimetableValidation,
+  buildAuthoritativeTimetableValidation,
+} from './timetable-validation';
 
 export interface TimetablePublishBlockingReason {
   code: string;
@@ -37,8 +42,17 @@ export interface TimetablePublishReadinessSummary {
 
 export interface TimetablePublicationDataset {
   config: TimetableConfigRecord;
+  academicYear: TimetableAcademicYearRecord | null;
+  term: TimetableTermRecord | null;
   periods: TimetablePeriodRecord[];
   entries: TimetableEntryRecord[];
+  allClassrooms: TimetableClassroomRecord[];
+  scopeClassrooms: TimetableClassroomRecord[];
+  subjectAllocations: TimetableSubjectAllocationRecord[];
+  teacherAllocations: TimetableTeacherAllocationRecord[];
+  rooms: TimetableRoomRecord[];
+  termEntries: TimetableEntryRecord[];
+  validation: AuthoritativeTimetableValidation;
   conflicts: ComputedTimetableConflict[];
 }
 
@@ -53,46 +67,87 @@ export async function loadTimetablePublicationDataset(
   repository: TimetableRepository,
   config: TimetableConfigRecord,
 ): Promise<TimetablePublicationDataset> {
-  const [periods, entries] = await Promise.all([
+  const [
+    academicYear,
+    term,
+    periods,
+    entries,
+    allClassrooms,
+    subjectAllocations,
+    teacherAllocations,
+    termEntries,
+  ] = await Promise.all([
+    repository.findAcademicYearById(config.academicYearId),
+    repository.findTermById(config.termId),
     repository.listPeriods(config.id),
     repository.listEntriesForConfig(config.id),
+    repository.listClassrooms(),
+    repository.listSubjectAllocationsForTerm({ termId: config.termId }),
+    repository.listTeacherAllocationsByTerm({ termId: config.termId }),
+    repository.listEntriesByTerm({ termId: config.termId }),
   ]);
+  const scopeClassrooms = allClassrooms.filter((classroom) =>
+    classroomMatchesTimetableConfigScope(config, classroom),
+  );
+  const gradeIds = unique([
+    ...scopeClassrooms.map((classroom) => classroom.section.gradeId),
+    ...entries.map((entry) => entry.gradeId),
+    ...subjectAllocations.map((allocation) => allocation.gradeId),
+  ]);
+  const roomIds = unique(
+    entries
+      .filter(isSchedulableEntry)
+      .map((entry) => entry.roomId)
+      .filter((roomId): roomId is string => roomId !== null),
+  );
+  const [grades, rooms] = await Promise.all([
+    repository.listGradesByIds(gradeIds),
+    repository.findRoomsByIds(roomIds),
+  ]);
+  const validation = buildAuthoritativeTimetableValidation({
+    termId: config.termId,
+    academicYearId: config.academicYearId,
+    classrooms: scopeClassrooms,
+    grades,
+    subjectAllocations,
+    teacherAllocations,
+    entries,
+    conflictEntries: termEntries,
+    rooms,
+  });
 
   return {
     config,
+    academicYear,
+    term,
     periods,
     entries,
-    conflicts: computeTimetableConflicts(entries),
+    allClassrooms,
+    scopeClassrooms,
+    subjectAllocations,
+    teacherAllocations,
+    rooms,
+    termEntries,
+    validation,
+    conflicts: validation.conflicts,
   };
 }
 
-export async function buildTimetablePublishReadiness(
-  repository: TimetableRepository,
+export function buildTimetablePublishReadiness(
   dataset: TimetablePublicationDataset,
-): Promise<TimetablePublishReadiness> {
+): TimetablePublishReadiness {
   const blockingReasons: TimetablePublishBlockingReason[] = [];
   const instructionalPeriods = dataset.periods.filter(
     (period) => period.isInstructional,
   );
-  const schedulableEntries = dataset.entries.filter(
-    (entry) => entry.status !== TimetableEntryStatus.CANCELLED,
-  );
-  const blockingConflicts = dataset.conflicts.filter(
-    (conflict) =>
-      conflict.severity === TimetableConflictSeverity.BLOCKING &&
-      conflict.status === TimetableConflictStatus.OPEN,
-  );
+  const schedulableEntries = dataset.entries.filter(isSchedulableEntry);
 
   if (dataset.config.status !== TimetableConfigStatus.DRAFT) {
     blockingReasons.push(
-      reason(
-        'not_draft',
-        'Only draft timetable configs can be published',
-        {
-          timetableConfigId: dataset.config.id,
-          status: dataset.config.status,
-        },
-      ),
+      reason('not_draft', 'Only draft timetable configs can be published', {
+        timetableConfigId: dataset.config.id,
+        status: dataset.config.status,
+      }),
     );
   }
 
@@ -114,28 +169,30 @@ export async function buildTimetablePublishReadiness(
     );
   }
 
-  if (blockingConflicts.length > 0) {
+  if (dataset.conflicts.length > 0) {
     blockingReasons.push(
       reason('conflicts', 'Timetable has blocking scheduling conflicts', {
-        count: blockingConflicts.length,
+        count: dataset.conflicts.length,
       }),
     );
   }
 
-  await appendAcademicContextReasons(repository, dataset, blockingReasons);
-  await appendEntryReferenceReasons(repository, dataset, blockingReasons);
+  appendAcademicContextReasons(dataset, blockingReasons);
+  appendEntryReferenceReasons(dataset, blockingReasons);
+  appendAuthoritativeValidationReasons(dataset, blockingReasons);
 
+  const normalizedReasons = normalizeReasons(blockingReasons);
   return {
     canPublish:
       dataset.config.status === TimetableConfigStatus.DRAFT &&
-      blockingReasons.length === 0,
-    blockingReasons,
+      normalizedReasons.length === 0,
+    blockingReasons: normalizedReasons,
     warnings: [],
     summary: {
       periodsCount: dataset.periods.length,
       instructionalPeriodsCount: instructionalPeriods.length,
       entriesCount: dataset.entries.length,
-      conflictsCount: blockingConflicts.length,
+      conflictsCount: dataset.conflicts.length,
       activeDays: dataset.config.activeDays,
       scopeType: dataset.config.scopeType,
       academicYearId: dataset.config.academicYearId,
@@ -144,17 +201,11 @@ export async function buildTimetablePublishReadiness(
   };
 }
 
-async function appendAcademicContextReasons(
-  repository: TimetableRepository,
+function appendAcademicContextReasons(
   dataset: TimetablePublicationDataset,
   blockingReasons: TimetablePublishBlockingReason[],
-): Promise<void> {
-  const [academicYear, term] = await Promise.all([
-    repository.findAcademicYearById(dataset.config.academicYearId),
-    repository.findTermById(dataset.config.termId),
-  ]);
-
-  if (!academicYear) {
+): void {
+  if (!dataset.academicYear) {
     blockingReasons.push(
       reason('invalid_academic_context', 'Academic year is invalid', {
         academicYearId: dataset.config.academicYearId,
@@ -162,7 +213,10 @@ async function appendAcademicContextReasons(
     );
   }
 
-  if (!term || term.academicYearId !== dataset.config.academicYearId) {
+  if (
+    !dataset.term ||
+    dataset.term.academicYearId !== dataset.config.academicYearId
+  ) {
     blockingReasons.push(
       reason('invalid_academic_context', 'Term is invalid', {
         termId: dataset.config.termId,
@@ -172,28 +226,37 @@ async function appendAcademicContextReasons(
     return;
   }
 
-  if (!term.isActive) {
+  if (!dataset.term.isActive) {
     blockingReasons.push(
       reason('term_closed', 'Term is closed for timetable changes', {
-        termId: term.id,
+        termId: dataset.term.id,
       }),
     );
   }
 }
 
-async function appendEntryReferenceReasons(
-  repository: TimetableRepository,
+function appendEntryReferenceReasons(
   dataset: TimetablePublicationDataset,
   blockingReasons: TimetablePublishBlockingReason[],
-): Promise<void> {
+): void {
   const periodsById = new Map(
     dataset.periods.map((period) => [period.id, period]),
   );
-  const schedulableEntries = dataset.entries.filter(
-    (entry) => entry.status !== TimetableEntryStatus.CANCELLED,
+  const classroomsById = new Map(
+    dataset.allClassrooms.map((classroom) => [classroom.id, classroom]),
   );
+  const allocationsById = new Map(
+    dataset.teacherAllocations.map((allocation) => [allocation.id, allocation]),
+  );
+  const curriculumByKey = new Map(
+    dataset.subjectAllocations.map((allocation) => [
+      curriculumKey(allocation.gradeId, allocation.subjectId),
+      allocation,
+    ]),
+  );
+  const roomsById = new Map(dataset.rooms.map((room) => [room.id, room]));
 
-  for (const entry of schedulableEntries) {
+  for (const entry of dataset.entries.filter(isSchedulableEntry)) {
     const period = periodsById.get(entry.periodId);
     if (!period || period.timetableConfigId !== dataset.config.id) {
       blockingReasons.push(
@@ -215,7 +278,7 @@ async function appendEntryReferenceReasons(
       );
     }
 
-    const classroom = await repository.findClassroomById(entry.classroomId);
+    const classroom = classroomsById.get(entry.classroomId);
     if (!classroom) {
       blockingReasons.push(
         reason(
@@ -224,7 +287,9 @@ async function appendEntryReferenceReasons(
           { entryId: entry.id, classroomId: entry.classroomId },
         ),
       );
-    } else if (!classroomMatchesTimetableConfigScope(dataset.config, classroom)) {
+    } else if (
+      !classroomMatchesTimetableConfigScope(dataset.config, classroom)
+    ) {
       blockingReasons.push(
         reason(
           'classroom_scope_mismatch',
@@ -234,9 +299,7 @@ async function appendEntryReferenceReasons(
       );
     }
 
-    const allocation = await repository.findTeacherAllocationById(
-      entry.teacherSubjectAllocationId,
-    );
+    const allocation = allocationsById.get(entry.teacherSubjectAllocationId);
     if (!allocation) {
       blockingReasons.push(
         reason(
@@ -266,36 +329,81 @@ async function appendEntryReferenceReasons(
       );
     }
 
-    if (classroom) {
-      const curriculum = await repository.findSubjectAllocationByKey({
-        termId: dataset.config.termId,
-        gradeId: classroom.section.gradeId,
-        subjectId: entry.subjectId,
-      });
-      if (!isActiveCurriculumRequirement(curriculum)) {
-        blockingReasons.push(
-          reason(
-            curriculum ? 'subject_not_taught' : 'missing_subject_allocation',
-            'Timetable entry is not backed by an active curriculum requirement',
-            { entryId: entry.id },
-          ),
-        );
-      }
+    const curriculum = curriculumByKey.get(
+      curriculumKey(entry.gradeId, entry.subjectId),
+    );
+    if (!isActiveCurriculumRequirement(curriculum)) {
+      blockingReasons.push(
+        reason(
+          curriculum ? 'subject_not_taught' : 'missing_subject_allocation',
+          'Timetable entry is not backed by an active curriculum requirement',
+          { entryId: entry.id },
+        ),
+      );
     }
 
-    if (entry.roomId) {
-      const room = await repository.findRoomById(entry.roomId);
-      if (!room) {
-        blockingReasons.push(
-          reason(
-            'invalid_room_reference',
-            'Timetable entry references an invalid room',
-            { entryId: entry.id, roomId: entry.roomId },
-          ),
-        );
-      }
+    if (entry.roomId && !roomsById.has(entry.roomId)) {
+      blockingReasons.push(
+        reason(
+          'invalid_room_reference',
+          'Timetable entry references an invalid room',
+          { entryId: entry.id, roomId: entry.roomId },
+        ),
+      );
     }
   }
+}
+
+function appendAuthoritativeValidationReasons(
+  dataset: TimetablePublicationDataset,
+  blockingReasons: TimetablePublishBlockingReason[],
+): void {
+  for (const item of dataset.validation.response.items) {
+    for (const issue of item.issues) {
+      blockingReasons.push(
+        reason(issue.code, issue.message, {
+          classroomId: item.classroomId,
+          subjectId: item.subjectId,
+          ...issue.details,
+        }),
+      );
+    }
+  }
+}
+
+function normalizeReasons(
+  reasons: TimetablePublishBlockingReason[],
+): TimetablePublishBlockingReason[] {
+  const uniqueReasons = new Map<string, TimetablePublishBlockingReason>();
+  for (const item of reasons) {
+    const key = [
+      item.code,
+      item.message,
+      JSON.stringify(item.details ?? {}),
+    ].join(':');
+    uniqueReasons.set(key, item);
+  }
+  return Array.from(uniqueReasons.values()).sort((left, right) =>
+    reasonSortKey(left).localeCompare(reasonSortKey(right)),
+  );
+}
+
+function reasonSortKey(item: TimetablePublishBlockingReason): string {
+  return [item.code, item.message, JSON.stringify(item.details ?? {})].join(
+    ':',
+  );
+}
+
+function curriculumKey(gradeId: string, subjectId: string): string {
+  return gradeId + ':' + subjectId;
+}
+
+function unique<T>(items: T[]): T[] {
+  return [...new Set(items)];
+}
+
+function isSchedulableEntry(entry: TimetableEntryRecord): boolean {
+  return entry.status !== TimetableEntryStatus.CANCELLED;
 }
 
 function reason(

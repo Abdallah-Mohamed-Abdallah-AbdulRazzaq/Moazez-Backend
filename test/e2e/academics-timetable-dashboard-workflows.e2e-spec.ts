@@ -378,6 +378,103 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
     expectSafeTimetablePayload(response.body);
   });
 
+  it('keeps preview, publication, and blocked publish in parity without database mutations', async () => {
+    const before = await Promise.all([
+      prisma.timetableConfig.findUniqueOrThrow({
+        where: { id: configId },
+        select: { status: true, updatedAt: true },
+      }),
+      prisma.timetableEntry.findMany({
+        where: { timetableConfigId: configId },
+        orderBy: { id: 'asc' },
+        select: { id: true, status: true, updatedAt: true },
+      }),
+      prisma.timetablePublication.findMany({
+        where: { timetableConfigId: configId },
+        orderBy: { revision: 'asc' },
+        select: {
+          id: true,
+          revision: true,
+          status: true,
+          publishedAt: true,
+          publishedByUserId: true,
+        },
+      }),
+    ]);
+
+    const preview = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/academics/timetable/preview`)
+      .query({ timetableConfigId: configId })
+      .set('Authorization', bearer(adminAuth))
+      .expect(200);
+    const publication = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/academics/timetable/publication`)
+      .query({ timetableConfigId: configId })
+      .set('Authorization', bearer(adminAuth))
+      .expect(200);
+    const publish = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/timetable/publish`)
+      .send({ timetableConfigId: configId })
+      .set('Authorization', bearer(adminAuth))
+      .expect(409);
+
+    const previewBody = preview.body as {
+      publishReadiness: {
+        canPublish: boolean;
+        blockingReasons: Array<{ code: string }>;
+      };
+    };
+    const publicationBody = publication.body as {
+      canPublish: boolean;
+      blockingReasons: Array<{ code: string }>;
+    };
+    const publishBody = publish.body as {
+      error: {
+        code: string;
+        details: { blockingReasons: Array<{ code: string }> };
+      };
+    };
+    expect(previewBody.publishReadiness.canPublish).toBe(false);
+    expect(publicationBody.canPublish).toBe(false);
+    expect(publishBody.error.code).toBe('academics.timetable.publish_blocked');
+    expect(publicationBody.blockingReasons).toEqual(
+      previewBody.publishReadiness.blockingReasons,
+    );
+    expect(publishBody.error.details.blockingReasons).toEqual(
+      previewBody.publishReadiness.blockingReasons,
+    );
+    expect(previewBody.publishReadiness.blockingReasons).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'missing_teacher_allocation' }),
+        expect.objectContaining({ code: 'under_scheduled_subject' }),
+      ]),
+    );
+
+    const after = await Promise.all([
+      prisma.timetableConfig.findUniqueOrThrow({
+        where: { id: configId },
+        select: { status: true, updatedAt: true },
+      }),
+      prisma.timetableEntry.findMany({
+        where: { timetableConfigId: configId },
+        orderBy: { id: 'asc' },
+        select: { id: true, status: true, updatedAt: true },
+      }),
+      prisma.timetablePublication.findMany({
+        where: { timetableConfigId: configId },
+        orderBy: { revision: 'asc' },
+        select: {
+          id: true,
+          revision: true,
+          status: true,
+          publishedAt: true,
+          publishedByUserId: true,
+        },
+      }),
+    ]);
+    expect(after).toEqual(before);
+  });
+
   it('enforces room eligibility, validation, and lifecycle integrity', async () => {
     const inactiveRoom = await prisma.room.create({
       data: {
@@ -897,6 +994,89 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
   );
 
   it('publishes, unpublishes, and deletes one draft slot without deleting others', async () => {
+    const scienceAllocationAId = await createTeacherAllocation({
+      termId: academic.termId,
+      subjectId: scienceSubjectId,
+      classroomId: academic.classroomAId,
+    });
+    const scienceAllocationBId = await createTeacherAllocation({
+      termId: academic.termId,
+      subjectId: scienceSubjectId,
+      classroomId: academic.classroomBId,
+    });
+    const additionalEntryIds = [
+      await createTimetableEntryDirect({
+        termId: academic.termId,
+        configId,
+        periodId: periodOneId,
+        dayOfWeek: 1,
+        classroomId: academic.classroomBId,
+        allocationId: mathAllocationBId,
+        status: TimetableEntryStatus.DRAFT,
+      }),
+      await createTimetableEntryDirect({
+        termId: academic.termId,
+        configId,
+        periodId: periodTwoId,
+        dayOfWeek: 1,
+        classroomId: academic.classroomBId,
+        allocationId: mathAllocationBId,
+        status: TimetableEntryStatus.DRAFT,
+      }),
+      await createTimetableEntryDirect({
+        termId: academic.termId,
+        configId,
+        periodId: periodOneId,
+        dayOfWeek: 2,
+        classroomId: academic.classroomAId,
+        allocationId: scienceAllocationAId,
+        status: TimetableEntryStatus.DRAFT,
+      }),
+      await createTimetableEntryDirect({
+        termId: academic.termId,
+        configId,
+        periodId: periodOneId,
+        dayOfWeek: 3,
+        classroomId: academic.classroomBId,
+        allocationId: scienceAllocationBId,
+        status: TimetableEntryStatus.DRAFT,
+      }),
+    ];
+    const otherConfigEntriesBefore = await prisma.timetableEntry.findMany({
+      where: { timetableConfigId: { not: configId } },
+      orderBy: { id: 'asc' },
+      select: { id: true, status: true, updatedAt: true },
+    });
+    const [readyPreview, readyPublication] = await Promise.all([
+      request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/academics/timetable/preview`)
+        .query({ timetableConfigId: configId })
+        .set('Authorization', bearer(adminAuth))
+        .expect(200),
+      request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/academics/timetable/publication`)
+        .query({ timetableConfigId: configId })
+        .set('Authorization', bearer(adminAuth))
+        .expect(200),
+    ]);
+    expect(
+      (
+        readyPreview.body as {
+          publishReadiness: {
+            canPublish: boolean;
+            blockingReasons: Array<{ code: string }>;
+          };
+        }
+      ).publishReadiness,
+    ).toMatchObject({
+      canPublish: true,
+      blockingReasons: [],
+    });
+    expect(readyPublication.body).toMatchObject({
+      canPublish: true,
+      blockingReasons: [],
+    });
+
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/academics/timetable/publish`)
       .set('Authorization', bearer(adminAuth))
@@ -905,6 +1085,26 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
       .expect((response) => {
         expect(response.body.status).toBe('published');
       });
+
+    const [publishedCandidateEntries, otherConfigEntriesAfterPublish] =
+      await Promise.all([
+        prisma.timetableEntry.findMany({
+          where: { timetableConfigId: configId },
+          select: { status: true },
+        }),
+        prisma.timetableEntry.findMany({
+          where: { timetableConfigId: { not: configId } },
+          orderBy: { id: 'asc' },
+          select: { id: true, status: true, updatedAt: true },
+        }),
+      ]);
+    expect(publishedCandidateEntries).toHaveLength(6);
+    expect(
+      publishedCandidateEntries.every(
+        (entry) => entry.status === TimetableEntryStatus.ACTIVE,
+      ),
+    ).toBe(true);
+    expect(otherConfigEntriesAfterPublish).toEqual(otherConfigEntriesBefore);
 
     const publishedDashboard = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/academics/timetable/all`)
@@ -937,7 +1137,7 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
         expect(response.body.summary).toEqual({
           configsChecked: 1,
           unpublishedCount: 1,
-          entriesReturnedToDraft: 2,
+          entriesReturnedToDraft: 6,
         });
       });
 
@@ -962,7 +1162,11 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
     const [config, activeEntries, latestPublication] = await Promise.all([
       prisma.timetableConfig.findUnique({ where: { id: configId } }),
       prisma.timetableEntry.findMany({
-        where: { id: { in: [firstEntryId, secondEntryId] } },
+        where: {
+          id: {
+            in: [firstEntryId, secondEntryId, ...additionalEntryIds],
+          },
+        },
         select: { id: true, status: true },
       }),
       prisma.timetablePublication.findFirst({
@@ -971,13 +1175,22 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
       }),
     ]);
     expect(config?.status).toBe(TimetableConfigStatus.DRAFT);
-    expect(activeEntries.map((entry) => entry.status)).toEqual([
-      TimetableEntryStatus.DRAFT,
-      TimetableEntryStatus.DRAFT,
-    ]);
+    expect(activeEntries).toHaveLength(6);
+    expect(
+      activeEntries.every(
+        (entry) => entry.status === TimetableEntryStatus.DRAFT,
+      ),
+    ).toBe(true);
     expect(latestPublication?.status).toBe(
       TimetablePublicationStatus.SUPERSEDED,
     );
+    await expect(
+      prisma.timetableEntry.findMany({
+        where: { timetableConfigId: { not: configId } },
+        orderBy: { id: 'asc' },
+        select: { id: true, status: true, updatedAt: true },
+      }),
+    ).resolves.toEqual(otherConfigEntriesBefore);
 
     await request(app.getHttpServer())
       .delete(`${GLOBAL_PREFIX}/academics/timetable/entries/${firstEntryId}`)
@@ -987,12 +1200,17 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
         expect(response.body).toEqual({ ok: true });
       });
 
-    await expect(
-      prisma.timetableEntry.findMany({
-        where: { timetableConfigId: configId },
-        select: { id: true },
-      }),
-    ).resolves.toEqual([{ id: secondEntryId }]);
+    const remainingEntries = await prisma.timetableEntry.findMany({
+      where: { timetableConfigId: configId },
+      select: { id: true },
+    });
+    expect(remainingEntries).toHaveLength(5);
+    expect(remainingEntries.map((entry) => entry.id)).not.toContain(
+      firstEntryId,
+    );
+    expect(remainingEntries.map((entry) => entry.id)).toEqual(
+      expect.arrayContaining([secondEntryId, ...additionalEntryIds]),
+    );
   });
 
   it('denies closed-term bulk, delete, publish, and unpublish mutations', async () => {
