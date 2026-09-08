@@ -1,4 +1,5 @@
 import { TimetableEntryStatus } from '@prisma/client';
+import { RoomSchedulingEligibility } from '../../rooms/domain/room-scheduling.policy';
 import { isActiveCurriculumRequirement } from '../../subject-allocation/domain/active-curriculum.policy';
 import { SubjectNotTaughtException } from '../../subject-allocation/domain/subject-allocation.exceptions';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
@@ -26,10 +27,13 @@ import {
   TimetableMissingSubjectAllocationException,
   TimetablePeriodNotFoundException,
   TimetablePeriodNotInConfigException,
+  TimetableRoomCapacityInsufficientException,
   TimetableRoomConflictException,
+  TimetableRoomInactiveException,
   TimetableRoomNotFoundException,
   TimetableTeacherConflictException,
 } from '../domain/timetable.exceptions';
+import { evaluateTimetableRoomScheduling } from '../domain/timetable-room-scheduling';
 import {
   BulkTimetableEntryInput,
   TimetableClassroomRecord,
@@ -51,6 +55,13 @@ export interface ResolvedTimetableBulkItem extends BulkTimetableEntryInput {
   index: number;
   period: TimetablePeriodRecord;
   config: TimetableConfigRecord;
+}
+
+interface ResolvedTimetableBulkItemResult {
+  resolved: ResolvedTimetableBulkItem;
+  roomEligibility: RoomSchedulingEligibility | null;
+  roomCapacity: number | null;
+  classroomCapacity: number | null;
 }
 
 export async function resolveReadableTimetableContext(
@@ -137,12 +148,53 @@ export async function resolveTimetableBulkItems(
   const issues: TimetableConflictCheckItemDto[] = [];
 
   for (const [index, item] of items.entries()) {
-    const resolved = await resolveTimetableBulkItem(
+    const result = await resolveTimetableBulkItem(
       repository,
       term,
       item,
       index,
     );
+    const resolved = result.resolved;
+    if (result.roomEligibility && !result.roomEligibility.eligible) {
+      const eligibility = result.roomEligibility;
+      if (eligibility.reason === 'room_not_found') {
+        throw new TimetableRoomNotFoundException({
+          index,
+          roomId: resolved.roomId,
+        });
+      }
+
+      const roomIssue = conflictIssue({
+        code: eligibility.reason,
+        message:
+          eligibility.reason === 'room_inactive'
+            ? 'Room is not available for timetable scheduling.'
+            : 'Room capacity is insufficient for this classroom.',
+        severity: 'blocking',
+        dayOfWeek: resolved.dayOfWeek,
+        periodId: resolved.periodId,
+        classroomId: resolved.classroomId,
+        teacherUserId: resolved.teacherUserId,
+        roomId: resolved.roomId,
+        proposedIndexes: [index],
+      });
+      if (!options?.collectIssues) {
+        if (eligibility.reason === 'room_inactive') {
+          throw new TimetableRoomInactiveException({
+            index,
+            roomId: resolved.roomId,
+          });
+        }
+        throw new TimetableRoomCapacityInsufficientException({
+          index,
+          roomId: resolved.roomId,
+          roomCapacity: result.roomCapacity,
+          classroomId: resolved.classroomId,
+          classroomCapacity: result.classroomCapacity,
+        });
+      }
+      issues.push(roomIssue);
+    }
     const matrixRow = await repository.findSubjectAllocationByKey({
       termId: term.id,
       gradeId: resolved.gradeId,
@@ -339,7 +391,7 @@ async function resolveTimetableBulkItem(
   term: TimetableTermRecord,
   item: TimetableBulkEntryItemDto,
   index: number,
-): Promise<ResolvedTimetableBulkItem> {
+): Promise<ResolvedTimetableBulkItemResult> {
   assertTermWritable(term);
 
   const period = await repository.findPeriodById(item.periodId);
@@ -397,30 +449,36 @@ async function resolveTimetableBulkItem(
   assertTeacherAllocationMatchesItem(allocation, item, term.id, index);
 
   const roomId = item.roomId ?? null;
+  let roomEligibility: RoomSchedulingEligibility | null = null;
+  let roomCapacity: number | null = null;
   if (roomId) {
     const room = await repository.findRoomById(roomId);
-    if (!room) {
-      throw new TimetableRoomNotFoundException({ index, roomId });
-    }
+    roomEligibility = evaluateTimetableRoomScheduling(room, classroom);
+    roomCapacity = room?.capacity ?? null;
   }
 
   return {
-    index,
-    schoolId: config.schoolId,
-    academicYearId: config.academicYearId,
-    termId: term.id,
-    timetableConfigId: config.id,
-    periodId: period.id,
-    dayOfWeek: item.dayOfWeek,
-    gradeId: classroom.section.gradeId,
-    sectionId: classroom.sectionId,
-    classroomId: classroom.id,
-    subjectId: allocation.subjectId,
-    teacherUserId: allocation.teacherUserId,
-    teacherSubjectAllocationId: allocation.id,
-    roomId,
-    period,
-    config,
+    resolved: {
+      index,
+      schoolId: config.schoolId,
+      academicYearId: config.academicYearId,
+      termId: term.id,
+      timetableConfigId: config.id,
+      periodId: period.id,
+      dayOfWeek: item.dayOfWeek,
+      gradeId: classroom.section.gradeId,
+      sectionId: classroom.sectionId,
+      classroomId: classroom.id,
+      subjectId: allocation.subjectId,
+      teacherUserId: allocation.teacherUserId,
+      teacherSubjectAllocationId: allocation.id,
+      roomId,
+      period,
+      config,
+    },
+    roomEligibility,
+    roomCapacity,
+    classroomCapacity: classroom.capacity,
   };
 }
 

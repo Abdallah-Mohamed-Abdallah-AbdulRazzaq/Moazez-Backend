@@ -245,6 +245,8 @@ does not change that global behavior.
 | `academics.timetable.allocation_not_found`          | 404  | Timetable teacher allocation was not found or is outside scope                 |
 | `academics.timetable.allocation_mismatch`           | 422  | Teacher allocation does not match this timetable entry                         |
 | `academics.timetable.room_not_found`                | 404  | Timetable room was not found or is outside scope                               |
+| `academics.timetable.room_inactive`                 | 422  | Room is not available for timetable scheduling                                 |
+| `academics.timetable.room_capacity_insufficient`    | 422  | Room capacity is insufficient for the classroom                                |
 | `academics.timetable.entry_not_mutable`             | 409  | Timetable entry cannot be changed in its current state                         |
 | `academics.timetable.invalid_time_range`            | 422  | Timetable period time range is invalid                                         |
 | `academics.timetable.period_overlap`                | 409  | Timetable period overlaps another period                                       |
@@ -260,6 +262,7 @@ does not change that global behavior.
 | `academics.timetable.entry_conflict`                | 409  | Timetable entry has a scheduling conflict                                      |
 | `academics.timetable.teacher_conflict`              | 409  | Teacher is already scheduled in this period                                    |
 | `academics.timetable.room_conflict`                 | 409  | Room is already scheduled in this period                                       |
+| `academics.rooms.scheduling_dependency`             | 409  | Room is required by current scheduling state                                   |
 | `academics.timetable.invalid_bulk_size`             | 422  | Timetable bulk request size is invalid                                         |
 | `academics.timetable.duplicate_slot`                | 422  | Timetable bulk request contains duplicate classroom slots                      |
 | `academics.timetable.missing_subject_allocation`    | 422  | Subject allocation weekly-hours row is required before scheduling              |

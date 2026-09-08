@@ -17,7 +17,6 @@ import {
   TimetablePeriodNotFoundException,
   TimetablePeriodNotInConfigException,
   TimetableRoomConflictException,
-  TimetableRoomNotFoundException,
   TimetableTeacherConflictException,
 } from '../domain/timetable.exceptions';
 import {
@@ -26,6 +25,7 @@ import {
   TimetableIntervalConflictKind,
   TimetableIntervalConflictSource,
 } from '../domain/timetable-conflicts';
+import { assertTimetableRoomScheduling } from '../domain/timetable-room-scheduling';
 import {
   TimetableClassroomRecord,
   TimetableConfigRecord,
@@ -138,9 +138,7 @@ export async function resolveTimetableEntryWrite(
   const roomId = command.roomId ?? null;
   if (roomId) {
     const room = await repository.findRoomById(roomId);
-    if (!room) {
-      throw new TimetableRoomNotFoundException({ roomId });
-    }
+    assertTimetableRoomScheduling(room, classroom, { roomId });
   }
 
   await assertNoBlockingEntryConflict(repository, {

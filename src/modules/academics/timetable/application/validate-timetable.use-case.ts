@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { TimetableConflictType, TimetableEntryStatus } from '@prisma/client';
 import { requireAcademicsScope } from '../../academics-context';
+import { RoomSchedulingPolicy } from '../../rooms/domain/room-scheduling.policy';
 import {
   buildCanonicalTimetableDemand,
   canonicalTimetableDemandKey,
@@ -19,6 +20,7 @@ import {
   TimetableEntryRecord,
   TimetableGradeRecord,
   TimetableRepository,
+  TimetableRoomRecord,
 } from '../infrastructure/timetable.repository';
 import {
   resolveReadableTimetableContext,
@@ -66,6 +68,14 @@ export class ValidateTimetableUseCase {
         (!query.gradeId || entry.gradeId === query.gradeId) &&
         (!query.classroomId || entry.classroomId === query.classroomId),
     );
+    const rooms = await this.timetableRepository.findRoomsByIds(
+      unique(
+        selectedEntries
+          .filter(isSchedulableEntry)
+          .map((entry) => entry.roomId)
+          .filter((roomId): roomId is string => roomId !== null),
+      ),
+    );
     const demand = buildCanonicalTimetableDemand({
       subjectAllocations,
       classrooms,
@@ -84,6 +94,7 @@ export class ValidateTimetableUseCase {
         subjectAllocations.map((allocation) => allocation.gradeId),
       ),
     });
+    appendRoomValidationIssues(items, selectedEntries, rooms);
     const conflictCounts = countExistingConflicts(termEntries, selectedEntries);
 
     return {
@@ -117,6 +128,63 @@ export class ValidateTimetableUseCase {
       items,
     };
   }
+}
+
+function appendRoomValidationIssues(
+  items: TimetableValidationItemDto[],
+  entries: TimetableEntryRecord[],
+  rooms: TimetableRoomRecord[],
+): void {
+  const itemsByDemandKey = new Map(
+    items.map((item) => [validationItemKey(item), item]),
+  );
+  const roomsById = new Map(rooms.map((room) => [room.id, room]));
+
+  for (const entry of entries.filter(isSchedulableEntry)) {
+    if (!entry.roomId) continue;
+
+    const item = itemsByDemandKey.get(validationItemKey(entry));
+    if (!item) continue;
+
+    const room = roomsById.get(entry.roomId) ?? null;
+    const eligibility = RoomSchedulingPolicy.evaluate(room, entry.classroom);
+    if (eligibility.eligible) continue;
+
+    if (eligibility.reason === 'room_not_found') {
+      item.issues.push({
+        code: 'room_not_found',
+        message: 'Scheduled room is missing or no longer available.',
+        details: { entryId: entry.id, roomId: entry.roomId },
+      });
+      continue;
+    }
+    if (eligibility.reason === 'room_inactive') {
+      item.issues.push({
+        code: 'room_inactive',
+        message: 'Scheduled room is inactive.',
+        details: { entryId: entry.id, roomId: entry.roomId },
+      });
+      continue;
+    }
+    item.issues.push({
+      code: 'room_capacity_insufficient',
+      message: 'Scheduled room capacity is insufficient for the classroom.',
+      details: {
+        entryId: entry.id,
+        roomId: entry.roomId,
+        roomCapacity: room!.capacity,
+        classroomId: entry.classroomId,
+        classroomCapacity: entry.classroom.capacity,
+      },
+    });
+  }
+}
+
+function validationItemKey(input: {
+  classroomId: string;
+  subjectId: string | null;
+}): string {
+  return `${input.classroomId}:${input.subjectId ?? ''}`;
 }
 
 function buildValidationItems(input: {

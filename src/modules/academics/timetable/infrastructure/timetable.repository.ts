@@ -64,6 +64,7 @@ const CLASSROOM_ARGS = Prisma.validator<Prisma.ClassroomDefaultArgs>()({
     sectionId: true,
     nameAr: true,
     nameEn: true,
+    capacity: true,
     section: {
       select: {
         id: true,
@@ -85,6 +86,8 @@ const ROOM_ARGS = Prisma.validator<Prisma.RoomDefaultArgs>()({
     schoolId: true,
     nameAr: true,
     nameEn: true,
+    capacity: true,
+    isActive: true,
   },
 });
 
@@ -202,6 +205,7 @@ const TIMETABLE_ENTRY_ARGS =
           id: true,
           nameAr: true,
           nameEn: true,
+          capacity: true,
         },
       },
       subject: {
@@ -420,7 +424,16 @@ export class TimetableRepository {
 
   findRoomById(roomId: string): Promise<TimetableRoomRecord | null> {
     return this.scopedPrisma.room.findFirst({
-      where: { id: roomId },
+      where: { id: roomId, deletedAt: null },
+      ...ROOM_ARGS,
+    });
+  }
+
+  findRoomsByIds(roomIds: string[]): Promise<TimetableRoomRecord[]> {
+    if (roomIds.length === 0) return Promise.resolve([]);
+
+    return this.scopedPrisma.room.findMany({
+      where: { id: { in: roomIds }, deletedAt: null },
       ...ROOM_ARGS,
     });
   }

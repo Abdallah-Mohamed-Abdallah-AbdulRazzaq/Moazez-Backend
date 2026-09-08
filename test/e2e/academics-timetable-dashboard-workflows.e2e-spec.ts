@@ -378,6 +378,196 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
     expectSafeTimetablePayload(response.body);
   });
 
+  it('enforces room eligibility, validation, and lifecycle integrity', async () => {
+    const inactiveRoom = await prisma.room.create({
+      data: {
+        schoolId,
+        nameAr: `${marker}-inactive-room-ar`,
+        nameEn: `${marker}-inactive-room`,
+        capacity: 40,
+        isActive: false,
+      },
+      select: { id: true },
+    });
+    const undersizedRoom = await prisma.room.create({
+      data: {
+        schoolId,
+        nameAr: `${marker}-undersized-room-ar`,
+        nameEn: `${marker}-undersized-room`,
+        capacity: 29,
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    const freeRoom = await createRoom('free');
+    const historicalRoom = await createRoom('historical');
+    const defaultRoom = await createRoom('default');
+    const item = {
+      classroomId: academic.classroomAId,
+      dayOfWeek: 0,
+      periodId: periodOneId,
+      teacherSubjectAllocationId: mathAllocationAId,
+    };
+    const expectValidationRoomIssue = async (code: string): Promise<void> => {
+      const validation = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/academics/timetable/validate`)
+        .query({ termId: academic.termId, classroomId: academic.classroomAId })
+        .set('Authorization', bearer(adminAuth))
+        .expect(200);
+      expect(validation.body.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            issues: expect.arrayContaining([expect.objectContaining({ code })]),
+          }),
+        ]),
+      );
+    };
+
+    try {
+      for (const [roomId, checkCode, writeCode] of [
+        [inactiveRoom.id, 'room_inactive', 'academics.timetable.room_inactive'],
+        [
+          undersizedRoom.id,
+          'room_capacity_insufficient',
+          'academics.timetable.room_capacity_insufficient',
+        ],
+      ]) {
+        const checked = await request(app.getHttpServer())
+          .post(`${GLOBAL_PREFIX}/academics/timetable/conflicts/check`)
+          .set('Authorization', bearer(adminAuth))
+          .send({
+            termId: academic.termId,
+            items: [{ ...item, roomId }],
+          })
+          .expect(200);
+        expect(checked.body).toMatchObject({
+          hasConflicts: true,
+          conflicts: [expect.objectContaining({ code: checkCode })],
+        });
+
+        await request(app.getHttpServer())
+          .put(`${GLOBAL_PREFIX}/academics/timetable/entries/bulk`)
+          .set('Authorization', bearer(adminAuth))
+          .send({
+            termId: academic.termId,
+            items: [{ ...item, roomId }],
+          })
+          .expect(422)
+          .expect((response) => {
+            expect(response.body.error.code).toBe(writeCode);
+          });
+      }
+      await expect(
+        prisma.timetableEntry.findUniqueOrThrow({
+          where: { id: firstEntryId },
+          select: { roomId: true },
+        }),
+      ).resolves.toEqual({ roomId: roomAId });
+
+      const lifecycleMutations = [
+        { method: 'patch' as const, body: { isActive: false } },
+        { method: 'patch' as const, body: { capacity: 29 } },
+        { method: 'delete' as const },
+      ];
+      for (const mutation of lifecycleMutations) {
+        const pending = request(app.getHttpServer())
+          [mutation.method](`${GLOBAL_PREFIX}/academics/rooms/${roomAId}`)
+          .set('Authorization', bearer(adminAuth));
+        if ('body' in mutation) pending.send(mutation.body);
+        await pending.expect(409).expect((response) => {
+          expect(response.body.error.code).toBe(
+            'academics.rooms.scheduling_dependency',
+          );
+          expect(response.body.error.details).toEqual(
+            expect.objectContaining({ activeTimetableEntryCount: 1 }),
+          );
+        });
+      }
+
+      await prisma.room.update({
+        where: { id: roomAId },
+        data: { isActive: false },
+      });
+      await expectValidationRoomIssue('room_inactive');
+      await prisma.room.update({
+        where: { id: roomAId },
+        data: { isActive: true, capacity: 29 },
+      });
+      await expectValidationRoomIssue('room_capacity_insufficient');
+      await prisma.room.update({
+        where: { id: roomAId },
+        data: { capacity: 40, deletedAt: new Date() },
+      });
+      await expectValidationRoomIssue('room_not_found');
+      await prisma.room.update({
+        where: { id: roomAId },
+        data: { deletedAt: null },
+      });
+
+      await request(app.getHttpServer())
+        .patch(`${GLOBAL_PREFIX}/academics/rooms/${freeRoom}`)
+        .set('Authorization', bearer(adminAuth))
+        .send({ isActive: false })
+        .expect(200);
+      const rooms = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/academics/rooms`)
+        .set('Authorization', bearer(adminAuth))
+        .expect(200);
+      expect(rooms.body.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: freeRoom, isActive: false }),
+        ]),
+      );
+      await request(app.getHttpServer())
+        .delete(`${GLOBAL_PREFIX}/academics/rooms/${freeRoom}`)
+        .set('Authorization', bearer(adminAuth))
+        .expect(200);
+
+      await prisma.timetableEntry.update({
+        where: { id: closedEntryId },
+        data: { roomId: historicalRoom },
+      });
+      await request(app.getHttpServer())
+        .delete(`${GLOBAL_PREFIX}/academics/rooms/${historicalRoom}`)
+        .set('Authorization', bearer(adminAuth))
+        .expect(200);
+      await expect(
+        prisma.timetableEntry.findUniqueOrThrow({
+          where: { id: closedEntryId },
+          select: { roomId: true },
+        }),
+      ).resolves.toEqual({ roomId: historicalRoom });
+
+      await prisma.classroom.update({
+        where: { id: academic.classroomBId },
+        data: { roomId: defaultRoom },
+      });
+      await request(app.getHttpServer())
+        .delete(`${GLOBAL_PREFIX}/academics/rooms/${defaultRoom}`)
+        .set('Authorization', bearer(adminAuth))
+        .expect(409)
+        .expect((response) => {
+          expect(response.body.error).toMatchObject({
+            code: 'academics.rooms.scheduling_dependency',
+            details: { classroomDefaultRoomCount: 1 },
+          });
+        });
+    } finally {
+      await prisma.room.updateMany({
+        where: { id: roomAId },
+        data: { isActive: true, capacity: 40, deletedAt: null },
+      });
+      await prisma.classroom.updateMany({
+        where: { id: academic.classroomBId },
+        data: { roomId: null },
+      });
+      await prisma.timetableEntry.updateMany({
+        where: { id: closedEntryId },
+        data: { roomId: null },
+      });
+    }
+  });
+
   it('reports proposed conflicts without persisting them', async () => {
     const beforeCount = await prisma.timetableEntry.count({
       where: { timetableConfigId: configId },
@@ -1224,6 +1414,7 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
         nameAr: `${marker}-classroom-a-ar`,
         nameEn: `${marker}-classroom-a`,
         sortOrder: 1,
+        capacity: 30,
       },
       select: { id: true },
     });
@@ -1234,6 +1425,7 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
         nameAr: `${marker}-classroom-b-ar`,
         nameEn: `${marker}-classroom-b`,
         sortOrder: 2,
+        capacity: 30,
       },
       select: { id: true },
     });
@@ -1295,6 +1487,7 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
         schoolId,
         nameAr: `${marker}-room-${label}-ar`,
         nameEn: `${marker}-room-${label}`,
+        capacity: 40,
         isActive: true,
       },
       select: { id: true },

@@ -7,6 +7,7 @@ import {
   normalizeOptionalRoomValue,
   resolveUpdateRoomNames,
 } from '../domain/room-inputs';
+import { RoomSchedulingDependencyException } from '../domain/rooms.exceptions';
 import { RoomsRepository } from '../infrastructure/rooms.repository';
 import { presentRoom } from '../presenters/rooms.presenter';
 
@@ -14,7 +15,10 @@ import { presentRoom } from '../presenters/rooms.presenter';
 export class UpdateRoomUseCase {
   constructor(private readonly roomsRepository: RoomsRepository) {}
 
-  async execute(roomId: string, command: UpdateRoomDto): Promise<RoomResponseDto> {
+  async execute(
+    roomId: string,
+    command: UpdateRoomDto,
+  ): Promise<RoomResponseDto> {
     requireAcademicsScope();
 
     const existing = await this.roomsRepository.findRoomById(roomId);
@@ -24,21 +28,40 @@ export class UpdateRoomUseCase {
 
     const { nameAr, nameEn } = resolveUpdateRoomNames(existing, command);
 
-    const room = await this.roomsRepository.updateRoom(roomId, {
-      nameAr,
-      nameEn,
-      ...(command.capacity !== undefined ? { capacity: command.capacity } : {}),
-      ...(command.floor !== undefined
-        ? { floor: normalizeOptionalRoomValue(command.floor) }
-        : {}),
-      ...(command.building !== undefined
-        ? { building: normalizeOptionalRoomValue(command.building) }
-        : {}),
-      ...(typeof command.isActive === 'boolean'
-        ? { isActive: command.isActive }
-        : {}),
-    });
+    const result = await this.roomsRepository.updateRoomWithSchedulingIntegrity(
+      roomId,
+      {
+        nameAr,
+        nameEn,
+        ...(command.capacity !== undefined
+          ? { capacity: command.capacity }
+          : {}),
+        ...(command.floor !== undefined
+          ? { floor: normalizeOptionalRoomValue(command.floor) }
+          : {}),
+        ...(command.building !== undefined
+          ? { building: normalizeOptionalRoomValue(command.building) }
+          : {}),
+        ...(typeof command.isActive === 'boolean'
+          ? { isActive: command.isActive }
+          : {}),
+      },
+      {
+        ...(typeof command.isActive === 'boolean'
+          ? { isActive: command.isActive }
+          : {}),
+        ...(command.capacity !== undefined
+          ? { capacity: command.capacity }
+          : {}),
+      },
+    );
+    if (result.status === 'not_found') {
+      throw new NotFoundDomainException('Room not found', { roomId });
+    }
+    if (result.status === 'dependency') {
+      throw new RoomSchedulingDependencyException(result.details);
+    }
 
-    return presentRoom(room);
+    return presentRoom(result.room);
   }
 }
