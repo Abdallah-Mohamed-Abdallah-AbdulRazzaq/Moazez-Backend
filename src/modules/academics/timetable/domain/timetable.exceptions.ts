@@ -111,6 +111,28 @@ export class TimetableRoomNotFoundException extends DomainException {
   }
 }
 
+export class TimetableRoomInactiveException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.timetable.room_inactive',
+      message: 'Room is not available for timetable scheduling',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details,
+    });
+  }
+}
+
+export class TimetableRoomCapacityInsufficientException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.timetable.room_capacity_insufficient',
+      message: 'Room capacity is insufficient for this classroom',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details,
+    });
+  }
+}
+
 export class TimetableEntryNotMutableException extends DomainException {
   constructor(details?: Record<string, unknown>) {
     super({
@@ -203,7 +225,8 @@ export class TimetableNoPeriodsException extends DomainException {
   constructor(details?: Record<string, unknown>) {
     super({
       code: 'academics.timetable.no_periods',
-      message: 'Timetable config must include at least one instructional period',
+      message:
+        'Timetable config must include at least one instructional period',
       httpStatus: HttpStatus.CONFLICT,
       details,
     });
@@ -302,7 +325,8 @@ export class TimetableMissingSubjectAllocationException extends DomainException 
   constructor(details?: Record<string, unknown>) {
     super({
       code: 'academics.timetable.missing_subject_allocation',
-      message: 'Subject allocation weekly-hours row is required before scheduling',
+      message:
+        'Subject allocation weekly-hours row is required before scheduling',
       httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
       details,
     });

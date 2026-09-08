@@ -134,6 +134,7 @@ describe('Timetable use cases', () => {
         id: classroom.id,
         nameAr: classroom.nameAr,
         nameEn: classroom.nameEn,
+        capacity: classroom.capacity,
       };
     }
 
@@ -217,6 +218,11 @@ describe('Timetable use cases', () => {
         .fn()
         .mockImplementation(
           async (id: string) => rooms.find((room) => room.id === id) ?? null,
+        ),
+      findRoomsByIds: jest
+        .fn()
+        .mockImplementation(async (ids: string[]) =>
+          rooms.filter((room) => ids.includes(room.id)),
         ),
       findTeacherAllocationById: jest
         .fn()
@@ -752,6 +758,7 @@ describe('Timetable use cases', () => {
       sectionId: 'section-1',
       nameAr: 'Classroom 1',
       nameEn: 'Classroom 1',
+      capacity: null,
       section: {
         id: 'section-1',
         gradeId: 'grade-1',
@@ -812,6 +819,8 @@ describe('Timetable use cases', () => {
       schoolId: 'school-1',
       nameAr: 'Room 1',
       nameEn: 'Room 1',
+      capacity: null,
+      isActive: true,
       ...overrides,
     };
   }
@@ -853,6 +862,7 @@ describe('Timetable use cases', () => {
         id: 'classroom-1',
         nameAr: 'Classroom 1',
         nameEn: 'Classroom 1',
+        capacity: null,
       },
       subject: {
         id: 'subject-1',
@@ -1564,7 +1574,12 @@ describe('Timetable use cases', () => {
             teacherUserId: 'teacher-2',
             teacherSubjectAllocationId: 'allocation-2',
             roomId: 'room-1',
-            room: { id: 'room-1', nameAr: 'Room 1', nameEn: 'Room 1' },
+            room: {
+              id: 'room-1',
+              nameAr: 'Room 1',
+              nameEn: 'Room 1',
+              capacity: null,
+            },
           }),
         ],
       });
@@ -1583,6 +1598,232 @@ describe('Timetable use cases', () => {
     });
   });
 
+  it('enforces room eligibility on single create and preserves no-room semantics', async () => {
+    const baseSeed = {
+      configs: [seedConfig()],
+      periods: [seedPeriod()],
+      classrooms: [seedClassroom({ capacity: 30 })],
+    };
+    const command = {
+      timetableConfigId: 'config-1',
+      periodId: 'period-1',
+      dayOfWeek: 0,
+      classroomId: 'classroom-1',
+      teacherSubjectAllocationId: 'allocation-1',
+    };
+
+    await withScope(async () => {
+      await expect(
+        new CreateTimetableEntryUseCase(
+          createRepository({
+            ...baseSeed,
+            rooms: [seedRoom({ capacity: 30 })],
+          }),
+        ).execute({ ...command, roomId: 'room-1' }),
+      ).resolves.toMatchObject({ room: { id: 'room-1' } });
+
+      await expect(
+        new CreateTimetableEntryUseCase(
+          createRepository({
+            ...baseSeed,
+            rooms: [seedRoom({ isActive: false, capacity: 40 })],
+          }),
+        ).execute({ ...command, roomId: 'room-1' }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.room_inactive',
+        httpStatus: 422,
+      });
+
+      await expect(
+        new CreateTimetableEntryUseCase(
+          createRepository({
+            ...baseSeed,
+            rooms: [seedRoom({ capacity: 29 })],
+          }),
+        ).execute({ ...command, roomId: 'room-1' }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.room_capacity_insufficient',
+        httpStatus: 422,
+        details: {
+          roomId: 'room-1',
+          roomCapacity: 29,
+          classroomId: 'classroom-1',
+          classroomCapacity: 30,
+        },
+      });
+
+      const noRoomRepository = createRepository({ ...baseSeed, rooms: [] });
+      await expect(
+        new CreateTimetableEntryUseCase(noRoomRepository).execute(command),
+      ).resolves.toMatchObject({ room: null });
+      expect(noRoomRepository.createEntry).toHaveBeenCalledWith(
+        expect.objectContaining({ roomId: null }),
+      );
+    });
+  });
+
+  it.each([
+    [
+      seedRoom({ isActive: false, capacity: 40 }),
+      'academics.timetable.room_inactive',
+    ],
+    [
+      seedRoom({ capacity: 29 }),
+      'academics.timetable.room_capacity_insufficient',
+    ],
+  ])(
+    'enforces equivalent room eligibility on single update',
+    async (room, code) => {
+      const repository = createRepository({
+        configs: [seedConfig()],
+        periods: [seedPeriod()],
+        classrooms: [seedClassroom({ capacity: 30 })],
+        rooms: [room],
+        entries: [seedEntry()],
+      });
+
+      await withScope(async () => {
+        await expect(
+          new UpdateTimetableEntryUseCase(repository).execute('entry-1', {
+            roomId: 'room-1',
+          }),
+        ).rejects.toMatchObject({ code });
+        expect(repository.updateEntry).not.toHaveBeenCalled();
+      });
+    },
+  );
+
+  it('preserves not-found masking for an unavailable room on update', async () => {
+    const repository = createRepository({
+      configs: [seedConfig()],
+      periods: [seedPeriod()],
+      rooms: [],
+      entries: [seedEntry()],
+    });
+
+    await withScope(async () => {
+      await expect(
+        new UpdateTimetableEntryUseCase(repository).execute('entry-1', {
+          roomId: 'room-outside-tenant',
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.room_not_found',
+        httpStatus: 404,
+        details: { roomId: 'room-outside-tenant' },
+      });
+      expect(repository.updateEntry).not.toHaveBeenCalled();
+    });
+  });
+
+  it.each([
+    [
+      seedRoom({ isActive: false, capacity: 40 }),
+      'room_inactive',
+      'academics.timetable.room_inactive',
+    ],
+    [
+      seedRoom({ capacity: 29 }),
+      'room_capacity_insufficient',
+      'academics.timetable.room_capacity_insufficient',
+    ],
+  ])(
+    'keeps room eligibility parity between check and atomic bulk write',
+    async (room, checkCode, writeCode) => {
+      const seed = {
+        configs: [seedConfig()],
+        periods: [seedPeriod()],
+        classrooms: [seedClassroom({ capacity: 30 })],
+        rooms: [room],
+      };
+      const item = {
+        classroomId: 'classroom-1',
+        dayOfWeek: 0,
+        periodId: 'period-1',
+        teacherSubjectAllocationId: 'allocation-1',
+        roomId: 'room-1',
+      };
+      const checkRepository = createRepository(seed);
+      const writeRepository = createRepository(seed);
+
+      await withScope(async () => {
+        const checked = await new CheckTimetableConflictsUseCase(
+          checkRepository,
+        ).execute({ termId: 'term-1', items: [item] });
+        expect(checked).toMatchObject({
+          hasConflicts: true,
+          conflicts: [expect.objectContaining({ code: checkCode })],
+        });
+
+        await expect(
+          new BulkSaveTimetableEntriesUseCase(writeRepository).execute({
+            termId: 'term-1',
+            items: [item],
+          }),
+        ).rejects.toMatchObject({ code: writeCode });
+        expect(writeRepository.bulkUpsertEntries).not.toHaveBeenCalled();
+      });
+    },
+  );
+
+  it('accepts a valid room in both check and bulk write', async () => {
+    const seed = {
+      configs: [seedConfig()],
+      periods: [seedPeriod()],
+      classrooms: [seedClassroom({ capacity: 30 })],
+      rooms: [seedRoom({ capacity: 30 })],
+    };
+    const item = {
+      classroomId: 'classroom-1',
+      dayOfWeek: 0,
+      periodId: 'period-1',
+      teacherSubjectAllocationId: 'allocation-1',
+      roomId: 'room-1',
+    };
+
+    await withScope(async () => {
+      await expect(
+        new CheckTimetableConflictsUseCase(createRepository(seed)).execute({
+          termId: 'term-1',
+          items: [item],
+        }),
+      ).resolves.toMatchObject({ hasConflicts: false, conflicts: [] });
+      await expect(
+        new BulkSaveTimetableEntriesUseCase(createRepository(seed)).execute({
+          termId: 'term-1',
+          items: [item],
+        }),
+      ).resolves.toMatchObject({ summary: { createdCount: 1 } });
+    });
+  });
+
+  it('does not inherit a legacy Classroom.roomId when a write omits roomId', async () => {
+    const classroom = {
+      ...seedClassroom({ capacity: 30 }),
+      roomId: 'room-default',
+    } as ClassroomRecord;
+    const repository = createRepository({
+      configs: [seedConfig()],
+      periods: [seedPeriod()],
+      classrooms: [classroom],
+      rooms: [seedRoom({ id: 'room-default', capacity: 30 })],
+    });
+
+    await withScope(async () => {
+      await expect(
+        new CreateTimetableEntryUseCase(repository).execute({
+          timetableConfigId: 'config-1',
+          periodId: 'period-1',
+          dayOfWeek: 0,
+          classroomId: 'classroom-1',
+          teacherSubjectAllocationId: 'allocation-1',
+        }),
+      ).resolves.toMatchObject({ room: null });
+      expect(repository.createEntry).toHaveBeenCalledWith(
+        expect.objectContaining({ roomId: null }),
+      );
+    });
+  });
+
   it('ignores cancelled timetable entries when blocking new entries', async () => {
     const repository = createRepository({
       configs: [seedConfig()],
@@ -1591,7 +1832,12 @@ describe('Timetable use cases', () => {
         seedEntry({
           status: TimetableEntryStatus.CANCELLED,
           roomId: 'room-1',
-          room: { id: 'room-1', nameAr: 'Room 1', nameEn: 'Room 1' },
+          room: {
+            id: 'room-1',
+            nameAr: 'Room 1',
+            nameEn: 'Room 1',
+            capacity: null,
+          },
         }),
       ],
     });
@@ -2153,7 +2399,12 @@ describe('Timetable use cases', () => {
         seedEntry({
           status: TimetableEntryStatus.ACTIVE,
           roomId: 'room-1',
-          room: { id: 'room-1', nameAr: 'Room 1', nameEn: 'Room 1' },
+          room: {
+            id: 'room-1',
+            nameAr: 'Room 1',
+            nameEn: 'Room 1',
+            capacity: null,
+          },
         }),
       ],
       publications: [seedPublication()],
@@ -2342,7 +2593,12 @@ describe('Timetable use cases', () => {
           teacherUserId: 'teacher-1',
           roomId: 'room-1',
           period,
-          room: { id: 'room-1', nameAr: 'Room 1', nameEn: 'Room 1' },
+          room: {
+            id: 'room-1',
+            nameAr: 'Room 1',
+            nameEn: 'Room 1',
+            capacity: null,
+          },
         }),
       ],
     });
@@ -2592,6 +2848,67 @@ describe('Timetable use cases', () => {
       );
     });
   });
+
+  it.each([
+    ['active compatible room', 'room-1', seedRoom({ capacity: 30 }), null],
+    [
+      'inactive room',
+      'room-1',
+      seedRoom({ capacity: 30, isActive: false }),
+      'room_inactive',
+    ],
+    ['missing room', 'room-missing', null, 'room_not_found'],
+    [
+      'undersized room',
+      'room-1',
+      seedRoom({ capacity: 29 }),
+      'room_capacity_insufficient',
+    ],
+    ['no explicit room', null, null, null],
+  ])(
+    'validates existing timetable room integrity for %s in one batch',
+    async (_case, roomId, room, expectedCode) => {
+      const classroom = seedClassroom({ capacity: 30 });
+      const repository = createRepository({
+        configs: [seedConfig()],
+        periods: [seedPeriod()],
+        classrooms: [classroom],
+        rooms: room ? [room] : [],
+        entries: [
+          seedEntry({
+            roomId,
+            classroom: {
+              id: classroom.id,
+              nameAr: classroom.nameAr,
+              nameEn: classroom.nameEn,
+              capacity: classroom.capacity,
+            },
+            room: room
+              ? {
+                  id: room.id,
+                  nameAr: room.nameAr,
+                  nameEn: room.nameEn,
+                  capacity: room.capacity,
+                }
+              : null,
+          }),
+        ],
+      });
+
+      await withScope(async () => {
+        const response = await new ValidateTimetableUseCase(repository).execute(
+          {
+            termId: 'term-1',
+          },
+        );
+        const roomIssueCodes = response.items[0].issues
+          .map((issue) => issue.code)
+          .filter((code) => code.startsWith('room_'));
+        expect(roomIssueCodes).toEqual(expectedCode ? [expectedCode] : []);
+        expect(repository.findRoomsByIds).toHaveBeenCalledTimes(1);
+      });
+    },
+  );
 
   it('does not report missing curriculum debt for zero-hour-only curriculum', async () => {
     const repository = createRepository({
