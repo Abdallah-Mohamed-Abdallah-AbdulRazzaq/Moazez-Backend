@@ -42,40 +42,64 @@ export class UpdateTimetableEntryUseCase {
       });
     }
 
-    const resolved = await resolveTimetableEntryWrite(
-      this.timetableRepository,
+    const transaction = await this.timetableRepository.withSerializedTermWrite(
       {
-        timetableConfigId: existingConfig.id,
-        periodId: command.periodId ?? existing.periodId,
-        dayOfWeek: command.dayOfWeek ?? existing.dayOfWeek,
-        classroomId: command.classroomId ?? existing.classroomId,
-        teacherSubjectAllocationId:
-          command.teacherSubjectAllocationId ??
-          existing.teacherSubjectAllocationId,
-        subjectId: command.subjectId,
-        roomId: hasOwn(command, 'roomId') ? command.roomId : existing.roomId,
-        notes: hasOwn(command, 'notes') ? command.notes : existing.notes,
+        termId: existingConfig.termId,
+        timetableConfigIds: [existingConfig.id],
       },
-      { excludeEntryId: existing.id },
+      async (repository) => {
+        const current = await repository.findEntryById(entryId);
+        if (!current) {
+          throw new TimetableEntryNotFoundException({ entryId });
+        }
+        if (current.status !== TimetableEntryStatus.DRAFT) {
+          throw new TimetableEntryNotMutableException({
+            entryId,
+            status: current.status,
+          });
+        }
+
+        const resolved = await resolveTimetableEntryWrite(
+          repository,
+          {
+            timetableConfigId: current.timetableConfigId,
+            periodId: command.periodId ?? current.periodId,
+            dayOfWeek: command.dayOfWeek ?? current.dayOfWeek,
+            classroomId: command.classroomId ?? current.classroomId,
+            teacherSubjectAllocationId:
+              command.teacherSubjectAllocationId ??
+              current.teacherSubjectAllocationId,
+            subjectId: command.subjectId,
+            roomId: hasOwn(command, 'roomId') ? command.roomId : current.roomId,
+            notes: hasOwn(command, 'notes') ? command.notes : current.notes,
+          },
+          { excludeEntryId: current.id },
+        );
+
+        const updated = await repository.updateEntry(current.id, {
+          academicYearId: resolved.academicYearId,
+          termId: resolved.termId,
+          timetableConfigId: resolved.config.id,
+          periodId: resolved.periodId,
+          dayOfWeek: resolved.dayOfWeek,
+          gradeId: resolved.gradeId,
+          sectionId: resolved.sectionId,
+          classroomId: resolved.classroomId,
+          subjectId: resolved.subjectId,
+          teacherUserId: resolved.teacherUserId,
+          teacherSubjectAllocationId: resolved.teacherSubjectAllocationId,
+          roomId: resolved.roomId,
+          notes: resolved.notes,
+        });
+
+        return presentTimetableEntry(updated);
+      },
     );
+    if (transaction.status === 'not_found') {
+      throw new TimetableEntryNotFoundException({ entryId });
+    }
 
-    const updated = await this.timetableRepository.updateEntry(existing.id, {
-      academicYearId: resolved.academicYearId,
-      termId: resolved.termId,
-      timetableConfigId: resolved.config.id,
-      periodId: resolved.periodId,
-      dayOfWeek: resolved.dayOfWeek,
-      gradeId: resolved.gradeId,
-      sectionId: resolved.sectionId,
-      classroomId: resolved.classroomId,
-      subjectId: resolved.subjectId,
-      teacherUserId: resolved.teacherUserId,
-      teacherSubjectAllocationId: resolved.teacherSubjectAllocationId,
-      roomId: resolved.roomId,
-      notes: resolved.notes,
-    });
-
-    return presentTimetableEntry(updated);
+    return transaction.value;
   }
 }
 
@@ -83,5 +107,5 @@ function hasOwn<T extends object, K extends PropertyKey>(
   object: T,
   key: K,
 ): object is T & Record<K, unknown> {
-  return Object.prototype.hasOwnProperty.call(object, key);
+  return Boolean(Object.prototype.hasOwnProperty.call(object, key));
 }

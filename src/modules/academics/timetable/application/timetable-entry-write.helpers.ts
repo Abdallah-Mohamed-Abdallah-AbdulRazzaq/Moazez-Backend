@@ -29,7 +29,7 @@ import { assertTimetableRoomScheduling } from '../domain/timetable-room-scheduli
 import {
   TimetableClassroomRecord,
   TimetableConfigRecord,
-  TimetableRepository,
+  TimetableWriteRepository,
 } from '../infrastructure/timetable.repository';
 
 export interface TimetableEntryWriteCommand {
@@ -61,7 +61,7 @@ export interface ResolvedTimetableEntryWrite {
 }
 
 export async function resolveTimetableEntryWrite(
-  repository: TimetableRepository,
+  repository: TimetableWriteRepository,
   command: TimetableEntryWriteCommand,
   options?: { excludeEntryId?: string },
 ): Promise<ResolvedTimetableEntryWrite> {
@@ -187,7 +187,7 @@ function assertClassroomMatchesConfigScope(
 }
 
 async function assertNoBlockingEntryConflict(
-  repository: TimetableRepository,
+  repository: TimetableWriteRepository,
   candidate: {
     schoolId: string;
     termId: string;

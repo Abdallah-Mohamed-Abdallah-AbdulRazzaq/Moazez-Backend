@@ -341,6 +341,12 @@ describe('Academics timetable dashboard tenancy isolation (security)', () => {
       .expect(403);
 
     await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/timetable/generate`)
+      .set('Authorization', bearer(viewOnlyAuth))
+      .send({ timetableConfigId: fixtureA.configId })
+      .expect(403);
+
+    await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/academics/timetable/unpublish`)
       .set('Authorization', bearer(viewOnlyAuth))
       .send({ termId: fixtureA.termId })
@@ -360,6 +366,20 @@ describe('Academics timetable dashboard tenancy isolation (security)', () => {
       .query({ timetableConfigId: fixtureB.configId })
       .set('Authorization', bearer(adminAAuth))
       .expect(404);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/timetable/generate`)
+      .set('Authorization', bearer(adminAAuth))
+      .send({ timetableConfigId: fixtureB.configId })
+      .expect(404)
+      .expect((response) => {
+        const body = response.body as unknown as {
+          error?: { code?: string };
+        };
+        expect(body.error?.code).toBe('academics.timetable.config_not_found');
+        expectSafeTimetablePayload(body);
+        expect(JSON.stringify(body)).not.toContain(schoolBId);
+      });
 
     await request(app.getHttpServer())
       .put(`${GLOBAL_PREFIX}/academics/timetable/entries/bulk`)
@@ -1258,6 +1278,12 @@ describe('Academics timetable dashboard tenancy isolation (security)', () => {
       .get(`${GLOBAL_PREFIX}/academics/timetable/all`)
       .query({ termId: fixtureA.termId })
       .set('Authorization', bearer(actor.auth))
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/timetable/generate`)
+      .set('Authorization', bearer(actor.auth))
+      .send({ timetableConfigId: fixtureA.configId })
       .expect(403);
 
     await request(app.getHttpServer())

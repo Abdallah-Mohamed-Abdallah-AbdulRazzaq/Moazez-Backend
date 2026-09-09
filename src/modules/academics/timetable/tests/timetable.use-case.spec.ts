@@ -39,7 +39,11 @@ import { UpdateTimetablePeriodUseCase } from '../application/update-timetable-pe
 import { UpsertTimetableConfigUseCase } from '../application/upsert-timetable-config.use-case';
 import { ValidateTimetableUseCase } from '../application/validate-timetable.use-case';
 import { computeTimetableConflicts } from '../domain/timetable-conflicts';
-import { TimetableRepository } from '../infrastructure/timetable.repository';
+import {
+  SerializedTimetableWriteResult,
+  TimetableRepository,
+  TimetableWriteRepository,
+} from '../infrastructure/timetable.repository';
 
 type ConfigRecord = Awaited<
   ReturnType<TimetableRepository['findConfigById']>
@@ -179,7 +183,7 @@ describe('Timetable use cases', () => {
       };
     }
 
-    return {
+    const repository = {
       findAcademicYearById: jest
         .fn()
         .mockImplementation(async (id: string) =>
@@ -705,6 +709,21 @@ describe('Timetable use cases', () => {
           return { unpublishedCount, entriesReturnedToDraft };
         }),
     } as unknown as TimetableRepository;
+
+    repository.withSerializedTermWrite = jest.fn(
+      async <T>(
+        input: { termId: string; timetableConfigIds?: string[] },
+        operation: (repository: TimetableWriteRepository) => Promise<T>,
+      ): Promise<SerializedTimetableWriteResult<T>> =>
+        input.termId === 'term-1'
+          ? {
+              status: 'completed',
+              value: await operation(repository),
+            }
+          : { status: 'not_found' },
+    );
+
+    return repository;
   }
 
   function seedConfig(

@@ -41,7 +41,7 @@ import {
   TimetableEntryRecord,
   TimetableGradeRecord,
   TimetablePeriodRecord,
-  TimetableRepository,
+  TimetableWriteRepository,
   TimetableSubjectAllocationRecord,
   TimetableTeacherAllocationRecord,
   TimetableTermRecord,
@@ -65,7 +65,7 @@ interface ResolvedTimetableBulkItemResult {
 }
 
 export async function resolveReadableTimetableContext(
-  repository: TimetableRepository,
+  repository: TimetableWriteRepository,
   input: {
     termId: string;
     gradeId?: string;
@@ -136,7 +136,7 @@ export function assertNoDuplicateTimetableSlots(
 }
 
 export async function resolveTimetableBulkItems(
-  repository: TimetableRepository,
+  repository: TimetableWriteRepository,
   term: TimetableTermRecord,
   items: TimetableBulkEntryItemDto[],
   options?: { collectIssues?: boolean },
@@ -387,7 +387,7 @@ export function matrixByGradeSubject(
 }
 
 async function resolveTimetableBulkItem(
-  repository: TimetableRepository,
+  repository: TimetableWriteRepository,
   term: TimetableTermRecord,
   item: TimetableBulkEntryItemDto,
   index: number,

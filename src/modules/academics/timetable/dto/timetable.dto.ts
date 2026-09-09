@@ -91,6 +91,11 @@ export class PublishTimetableDto {
   timetableConfigId!: string;
 }
 
+export class GenerateTimetableDto {
+  @IsUUID()
+  timetableConfigId!: string;
+}
+
 export class TimetableDashboardQueryDto {
   @IsUUID()
   termId!: string;

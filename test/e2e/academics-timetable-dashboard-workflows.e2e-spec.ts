@@ -18,6 +18,13 @@ import * as argon2 from 'argon2';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
+import {
+  createRequestContext,
+  runWithRequestContext,
+  setActiveMembership,
+  setActor,
+} from '../../src/common/context/request-context';
+import { TimetableRepository } from '../../src/modules/academics/timetable/infrastructure/timetable.repository';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'Sprint22DTimetable123!';
@@ -43,6 +50,16 @@ type AuthTokens = {
   refreshToken: string;
 };
 
+type GeneratorResponseBody = {
+  timetableConfigId: string;
+  createdCount: number;
+  remainingDemandCount: number;
+  complete: boolean;
+  unresolved: unknown[];
+  searchBudgetExhausted: boolean;
+  publishReadiness: { canPublish: boolean };
+};
+
 type AcademicBase = {
   academicYearId: string;
   termId: string;
@@ -53,6 +70,11 @@ type AcademicBase = {
   sectionBId: string;
   classroomAId: string;
   classroomBId: string;
+};
+
+type HeldDatabaseRowLock = {
+  release: () => void;
+  done: Promise<void>;
 };
 
 jest.setTimeout(180000);
@@ -255,6 +277,7 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
         'POST /api/v1/academics/timetable/entries',
         'PUT /api/v1/academics/timetable/entries/bulk',
         'DELETE /api/v1/academics/timetable/entries/:entryId',
+        'POST /api/v1/academics/timetable/generate',
         'GET /api/v1/academics/timetable/preview',
         'GET /api/v1/academics/timetable/conflicts',
         'GET /api/v1/academics/timetable/publication',
@@ -1427,6 +1450,474 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
     }
   });
 
+  it('generates a complete draft atomically, serializes concurrent runs, and remains publish-compatible', async () => {
+    await prisma.teacherSubjectAllocation.findFirstOrThrow({
+      where: {
+        schoolId,
+        teacherUserId,
+        termId: academic.termId,
+        subjectId: scienceSubjectId,
+        classroomId: academic.classroomAId,
+      },
+      select: { id: true },
+    });
+    const generatorConfig = await prisma.timetableConfig.create({
+      data: {
+        schoolId,
+        academicYearId: academic.academicYearId,
+        termId: academic.termId,
+        name: `${marker}-generator-config`,
+        weekStartDay: 0,
+        activeDays: [0, 1, 2, 3, 4],
+        scopeType: TimetableScopeType.CLASSROOM,
+        scopeKey: `classroom:${academic.classroomAId}`,
+        stageId: academic.stageId,
+        gradeId: academic.gradeId,
+        sectionId: academic.sectionAId,
+        classroomId: academic.classroomAId,
+        status: TimetableConfigStatus.DRAFT,
+      },
+      select: { id: true },
+    });
+
+    try {
+      await Promise.all([
+        createTimetablePeriod({
+          configId: generatorConfig.id,
+          index: 1,
+          label: 'Generator 1',
+          startTime: '18:00',
+          endTime: '18:45',
+        }),
+        createTimetablePeriod({
+          configId: generatorConfig.id,
+          index: 2,
+          label: 'Generator 2',
+          startTime: '19:00',
+          endTime: '19:45',
+        }),
+        createTimetablePeriod({
+          configId: generatorConfig.id,
+          index: 3,
+          label: 'Generator 3',
+          startTime: '20:00',
+          endTime: '20:45',
+        }),
+      ]);
+      const publicationsBefore = await prisma.timetablePublication.findMany({
+        where: { schoolId },
+        select: {
+          id: true,
+          timetableConfigId: true,
+          status: true,
+          revision: true,
+        },
+        orderBy: { id: 'asc' },
+      });
+
+      const [firstRun, secondRun] = await Promise.all([
+        request(app.getHttpServer())
+          .post(`${GLOBAL_PREFIX}/academics/timetable/generate`)
+          .set('Authorization', bearer(adminAuth))
+          .send({ timetableConfigId: generatorConfig.id }),
+        request(app.getHttpServer())
+          .post(`${GLOBAL_PREFIX}/academics/timetable/generate`)
+          .set('Authorization', bearer(adminAuth))
+          .send({ timetableConfigId: generatorConfig.id }),
+      ]);
+
+      expect([firstRun.status, secondRun.status]).toEqual([200, 200]);
+      const firstBody = firstRun.body as unknown as GeneratorResponseBody;
+      const secondBody = secondRun.body as unknown as GeneratorResponseBody;
+      expect(
+        [firstBody.createdCount, secondBody.createdCount].sort(
+          (left, right) => left - right,
+        ),
+      ).toEqual([0, 3]);
+      for (const body of [firstBody, secondBody]) {
+        expectSafeTimetablePayload(body);
+        expect(body.timetableConfigId).toBe(generatorConfig.id);
+        expect(body.searchBudgetExhausted).toBe(false);
+      }
+
+      const generatedEntries = await prisma.timetableEntry.findMany({
+        where: { timetableConfigId: generatorConfig.id },
+        select: {
+          id: true,
+          subjectId: true,
+          status: true,
+          roomId: true,
+          timetableConfigId: true,
+        },
+        orderBy: { id: 'asc' },
+      });
+      expect(generatedEntries).toHaveLength(3);
+      expect(
+        generatedEntries.filter((entry) => entry.subjectId === mathSubjectId),
+      ).toHaveLength(2);
+      expect(
+        generatedEntries.filter(
+          (entry) => entry.subjectId === scienceSubjectId,
+        ),
+      ).toHaveLength(1);
+      expect(
+        generatedEntries.every(
+          (entry) =>
+            entry.status === TimetableEntryStatus.DRAFT &&
+            entry.roomId === null &&
+            entry.timetableConfigId === generatorConfig.id,
+        ),
+      ).toBe(true);
+      await expect(
+        prisma.timetableConfig.findUniqueOrThrow({
+          where: { id: generatorConfig.id },
+          select: { status: true },
+        }),
+      ).resolves.toEqual({ status: TimetableConfigStatus.DRAFT });
+      await expect(
+        prisma.timetablePublication.findMany({
+          where: { schoolId },
+          select: {
+            id: true,
+            timetableConfigId: true,
+            status: true,
+            revision: true,
+          },
+          orderBy: { id: 'asc' },
+        }),
+      ).resolves.toEqual(publicationsBefore);
+
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/academics/timetable/generate`)
+        .set('Authorization', bearer(adminAuth))
+        .send({ timetableConfigId: generatorConfig.id })
+        .expect(200)
+        .expect((response) => {
+          const body = response.body as unknown as GeneratorResponseBody;
+          expect(body.createdCount).toBe(0);
+          expect(body.remainingDemandCount).toBe(0);
+          expect(body.complete).toBe(true);
+          expect(body.unresolved).toEqual([]);
+          expect(body.publishReadiness.canPublish).toBe(true);
+        });
+
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/academics/timetable/preview`)
+        .query({ timetableConfigId: generatorConfig.id })
+        .set('Authorization', bearer(adminAuth))
+        .expect(200)
+        .expect((response) => {
+          const body = response.body as unknown as {
+            conflicts: unknown[];
+            publishReadiness: { canPublish: boolean };
+          };
+          expect(body.conflicts).toEqual([]);
+          expect(body.publishReadiness.canPublish).toBe(true);
+        });
+
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/academics/timetable/publish`)
+        .set('Authorization', bearer(adminAuth))
+        .send({ timetableConfigId: generatorConfig.id })
+        .expect(200)
+        .expect((response) => {
+          const body = response.body as unknown as {
+            status: string;
+            canPublish: boolean;
+          };
+          expect(body.status).toBe('published');
+          expect(body.canPublish).toBe(false);
+        });
+    } finally {
+      await prisma.timetablePublication.deleteMany({
+        where: { timetableConfigId: generatorConfig.id },
+      });
+      await prisma.timetableEntry.deleteMany({
+        where: { timetableConfigId: generatorConfig.id },
+      });
+      await prisma.timetablePeriod.deleteMany({
+        where: { timetableConfigId: generatorConfig.id },
+      });
+      await prisma.timetableConfig.delete({
+        where: { id: generatorConfig.id },
+      });
+    }
+  });
+
+  it('serializes generation against single create, update, and bulk writes by school and term', async () => {
+    const scienceAllocationAId = await prisma.teacherSubjectAllocation
+      .findFirstOrThrow({
+        where: {
+          schoolId,
+          teacherUserId,
+          termId: academic.termId,
+          subjectId: scienceSubjectId,
+          classroomId: academic.classroomAId,
+        },
+        select: { id: true },
+      })
+      .then((allocation) => allocation.id);
+    const cases: ReadonlyArray<{
+      kind: 'single-create' | 'single-update' | 'bulk-save';
+      startHours: readonly [number, number, number];
+      expectedWriterStatus: 200 | 201;
+    }> = [
+      {
+        kind: 'single-create',
+        startHours: [14, 15, 16],
+        expectedWriterStatus: 201,
+      },
+      {
+        kind: 'single-update',
+        startHours: [17, 18, 19],
+        expectedWriterStatus: 200,
+      },
+      {
+        kind: 'bulk-save',
+        startHours: [20, 21, 22],
+        expectedWriterStatus: 200,
+      },
+    ];
+
+    for (const race of cases) {
+      const raceConfig = await prisma.timetableConfig.create({
+        data: {
+          schoolId,
+          academicYearId: academic.academicYearId,
+          termId: academic.termId,
+          name: `${marker}-${race.kind}-race`,
+          weekStartDay: 0,
+          activeDays: [0, 1, 2, 3, 4],
+          scopeType: TimetableScopeType.CLASSROOM,
+          scopeKey: `${race.kind}:${academic.classroomAId}`,
+          stageId: academic.stageId,
+          gradeId: academic.gradeId,
+          sectionId: academic.sectionAId,
+          classroomId: academic.classroomAId,
+          status: TimetableConfigStatus.DRAFT,
+        },
+        select: { id: true },
+      });
+      const racePeriodIds = await Promise.all(
+        race.startHours.map((hour, index) =>
+          createTimetablePeriod({
+            configId: raceConfig.id,
+            index: index + 1,
+            label: `${race.kind} ${index + 1}`,
+            startTime: `${hour.toString().padStart(2, '0')}:00`,
+            endTime: `${hour.toString().padStart(2, '0')}:45`,
+          }),
+        ),
+      );
+
+      let heldLock: HeldDatabaseRowLock | null = null;
+      try {
+        let updateEntryId: string | null = null;
+        if (race.kind === 'single-update') {
+          updateEntryId = await createTimetableEntryDirect({
+            termId: academic.termId,
+            configId: raceConfig.id,
+            periodId: racePeriodIds[2],
+            dayOfWeek: 4,
+            classroomId: academic.classroomAId,
+            allocationId: scienceAllocationAId,
+            status: TimetableEntryStatus.DRAFT,
+          });
+        }
+
+        heldLock = await holdDatabaseRowLock(
+          race.kind === 'single-update'
+            ? { kind: 'entry', id: updateEntryId! }
+            : { kind: 'room', id: roomAId },
+        );
+        const writerRequest =
+          race.kind === 'single-create'
+            ? request(app.getHttpServer())
+                .post(`${GLOBAL_PREFIX}/academics/timetable/entries`)
+                .set('Authorization', bearer(adminAuth))
+                .send({
+                  timetableConfigId: raceConfig.id,
+                  periodId: racePeriodIds[0],
+                  dayOfWeek: 0,
+                  classroomId: academic.classroomAId,
+                  teacherSubjectAllocationId: mathAllocationAId,
+                  roomId: roomAId,
+                })
+            : race.kind === 'single-update'
+              ? request(app.getHttpServer())
+                  .patch(
+                    `${GLOBAL_PREFIX}/academics/timetable/entries/${updateEntryId!}`,
+                  )
+                  .set('Authorization', bearer(adminAuth))
+                  .send({ periodId: racePeriodIds[0], dayOfWeek: 0 })
+              : request(app.getHttpServer())
+                  .put(`${GLOBAL_PREFIX}/academics/timetable/entries/bulk`)
+                  .set('Authorization', bearer(adminAuth))
+                  .send({
+                    termId: academic.termId,
+                    items: [
+                      {
+                        classroomId: academic.classroomAId,
+                        dayOfWeek: 0,
+                        periodId: racePeriodIds[0],
+                        teacherSubjectAllocationId: mathAllocationAId,
+                        roomId: roomAId,
+                      },
+                    ],
+                  });
+        const writtenPromise = writerRequest.then((response) => response);
+        await waitForBlockedDatabaseConnections(1);
+
+        const generatedPromise = request(app.getHttpServer())
+          .post(`${GLOBAL_PREFIX}/academics/timetable/generate`)
+          .set('Authorization', bearer(adminAuth))
+          .send({ timetableConfigId: raceConfig.id })
+          .then((response) => response);
+        await waitForBlockedDatabaseConnections(2);
+
+        heldLock.release();
+        await heldLock.done;
+        heldLock = null;
+        const [generated, written] = await Promise.all([
+          generatedPromise,
+          writtenPromise,
+        ]);
+        expect([generated.status, written.status]).toEqual([
+          200,
+          race.expectedWriterStatus,
+        ]);
+        expect(
+          (generated.body as unknown as GeneratorResponseBody).createdCount,
+        ).toBe(2);
+
+        await expect(
+          prisma.timetableEntry.count({
+            where: { schoolId, timetableConfigId: raceConfig.id },
+          }),
+        ).resolves.toBe(3);
+        const validation = await request(app.getHttpServer())
+          .get(`${GLOBAL_PREFIX}/academics/timetable/validate`)
+          .query({
+            termId: academic.termId,
+            classroomId: academic.classroomAId,
+          })
+          .set('Authorization', bearer(adminAuth))
+          .expect(200);
+        const validationBody = validation.body as unknown as {
+          summary: {
+            classroomConflicts: number;
+            teacherConflicts: number;
+            roomConflicts: number;
+          };
+        };
+        expect(validationBody.summary).toMatchObject({
+          classroomConflicts: 0,
+          teacherConflicts: 0,
+          roomConflicts: 0,
+        });
+      } finally {
+        if (heldLock) {
+          heldLock.release();
+          await heldLock.done;
+        }
+        await prisma.timetableEntry.deleteMany({
+          where: { timetableConfigId: raceConfig.id },
+        });
+        await prisma.timetablePeriod.deleteMany({
+          where: { timetableConfigId: raceConfig.id },
+        });
+        await prisma.timetableConfig.delete({
+          where: { id: raceConfig.id },
+        });
+      }
+    }
+  });
+
+  it('rolls back every generated row when one row in the bulk insert is invalid', async () => {
+    const atomicConfig = await prisma.timetableConfig.create({
+      data: {
+        schoolId,
+        academicYearId: academic.academicYearId,
+        termId: academic.termId,
+        name: `${marker}-atomic-config`,
+        weekStartDay: 0,
+        activeDays: [0, 1],
+        scopeType: TimetableScopeType.CLASSROOM,
+        scopeKey: `atomic:${academic.classroomAId}`,
+        stageId: academic.stageId,
+        gradeId: academic.gradeId,
+        sectionId: academic.sectionAId,
+        classroomId: academic.classroomAId,
+        status: TimetableConfigStatus.DRAFT,
+      },
+      select: { id: true },
+    });
+    const atomicPeriodId = await createTimetablePeriod({
+      configId: atomicConfig.id,
+      index: 1,
+      label: 'Atomic Period',
+      startTime: '21:00',
+      endTime: '21:45',
+    });
+
+    try {
+      const repository = app.get(TimetableRepository);
+      await expect(
+        runWithRequestContext(createRequestContext(), async () => {
+          setActor({ id: teacherUserId, userType: UserType.SCHOOL_USER });
+          setActiveMembership({
+            membershipId: randomUUID(),
+            organizationId,
+            schoolId,
+            roleId: randomUUID(),
+            permissions: ['academics.structure.manage'],
+          });
+          return repository.generateEntriesAtomically(
+            atomicConfig.id,
+            (snapshot) => {
+              const base = {
+                schoolId,
+                academicYearId: academic.academicYearId,
+                termId: academic.termId,
+                timetableConfigId: atomicConfig.id,
+                gradeId: academic.gradeId,
+                sectionId: academic.sectionAId,
+                classroomId: academic.classroomAId,
+                subjectId: mathSubjectId,
+                teacherUserId,
+                teacherSubjectAllocationId: mathAllocationAId,
+                roomId: null,
+              };
+              expect(snapshot.candidateEntries).toEqual([]);
+              return {
+                entries: [
+                  { ...base, periodId: atomicPeriodId, dayOfWeek: 0 },
+                  { ...base, periodId: randomUUID(), dayOfWeek: 1 },
+                ],
+                value: null,
+              };
+            },
+            () => undefined,
+          );
+        }),
+      ).rejects.toThrow();
+
+      await expect(
+        prisma.timetableEntry.count({
+          where: { timetableConfigId: atomicConfig.id },
+        }),
+      ).resolves.toBe(0);
+    } finally {
+      await prisma.timetableEntry.deleteMany({
+        where: { timetableConfigId: atomicConfig.id },
+      });
+      await prisma.timetablePeriod.deleteMany({
+        where: { timetableConfigId: atomicConfig.id },
+      });
+      await prisma.timetableConfig.delete({ where: { id: atomicConfig.id } });
+    }
+  });
+
   async function findSystemRole(key: string): Promise<{ id: string }> {
     const role = await prisma.role.findFirst({
       where: { key, schoolId: null, isSystem: true, deletedAt: null },
@@ -1434,6 +1925,69 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
     });
     if (!role) throw new Error(`Missing system role: ${key}`);
     return role;
+  }
+
+  async function holdDatabaseRowLock(
+    target: { kind: 'entry'; id: string } | { kind: 'room'; id: string },
+  ): Promise<HeldDatabaseRowLock> {
+    let release!: () => void;
+    let locked!: () => void;
+    let rejectLocked!: (error: unknown) => void;
+    const releaseRequested = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const lockAcquired = new Promise<void>((resolve, reject) => {
+      locked = resolve;
+      rejectLocked = reject;
+    });
+    const done = prisma
+      .$transaction(
+        async (tx) => {
+          if (target.kind === 'entry') {
+            await tx.$queryRaw`
+              SELECT "id"
+              FROM "timetable_entries"
+              WHERE "id" = ${target.id}::uuid
+              FOR UPDATE
+            `;
+          } else {
+            await tx.$queryRaw`
+              SELECT "id"
+              FROM "rooms"
+              WHERE "id" = ${target.id}::uuid
+              FOR UPDATE
+            `;
+          }
+          locked();
+          await releaseRequested;
+        },
+        { maxWait: 5_000, timeout: 30_000 },
+      )
+      .catch((error: unknown) => {
+        rejectLocked(error);
+        throw error;
+      });
+    await lockAcquired;
+    return { release, done };
+  }
+
+  async function waitForBlockedDatabaseConnections(
+    expectedMinimum: number,
+  ): Promise<void> {
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      const [result] = await prisma.$queryRaw<Array<{ count: number }>>`
+        SELECT COUNT(*)::integer AS "count"
+        FROM "pg_stat_activity"
+        WHERE "datname" = current_database()
+          AND cardinality(pg_blocking_pids("pid")) > 0
+      `;
+      if ((result?.count ?? 0) >= expectedMinimum) return;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    throw new Error(
+      `Timed out waiting for ${expectedMinimum} blocked database connections`,
+    );
   }
 
   async function findOrCreatePermission(params: {
