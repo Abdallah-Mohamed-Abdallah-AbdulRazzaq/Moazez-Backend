@@ -343,6 +343,14 @@ const REVIEWED_CALL_OVERRIDES = Object.freeze([
     evidence: 'Every caller receives the frozen TeacherLifecycleTransactionContext and runs within the explicitly Serializable transaction.',
   }),
   Object.freeze({
+    path: 'src/modules/academics/timetable/infrastructure/timetable.repository.ts',
+    target: /^operation$/,
+    reason: 'The generic timetable write operation is supplied only by the generator and the create, update, and bulk-save timetable entry use cases.',
+    classification: 'LOCK_CONTENTION_SENSITIVE',
+    resolvedCallers: Object.freeze(['GenerateTimetableUseCase.execute', 'CreateTimetableEntryUseCase.execute', 'UpdateTimetableEntryUseCase.execute', 'BulkSaveTimetableEntriesUseCase.execute']),
+    evidence: 'Each caller receives only the school- and term-scoped transaction repository after the authoritative term/config row locks are acquired; the reviewed callbacks contain Prisma reads/writes and in-memory timetable validation without external waits.',
+  }),
+  Object.freeze({
     path: 'src/modules/academics/curriculum/infrastructure/prisma-lesson-content.unit-of-work.ts',
     target: /^this\.repository\.createTransactionContext$/,
     reason: 'The repository context factory is a synchronous transaction-client adapter.',

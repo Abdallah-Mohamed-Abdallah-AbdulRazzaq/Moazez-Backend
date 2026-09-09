@@ -283,6 +283,12 @@ function generationHarness(
     plan: (
       current: TimetableGenerationSnapshot,
     ) => TimetableGenerationTransactionDecision<T>,
+    verify: (state: {
+      value: T;
+      createdEntryIds: string[];
+      before: TimetableGenerationSnapshot;
+      after: TimetableGenerationSnapshot;
+    }) => void | Promise<void>,
   ): Promise<TimetableGenerationTransactionResult<T>> {
     const before = snapshot();
     const decision = plan(before);
@@ -295,13 +301,25 @@ function generationHarness(
       );
     }
     state.entries.push(...staged);
-    return Promise.resolve({
-      status: 'created' as const,
-      value: decision.value,
-      createdEntryIds: staged.map((entry) => entry.id).sort(),
-      before,
-      after: snapshot(),
-    });
+    const createdEntryIds = staged.map((entry) => entry.id).sort();
+    const after = snapshot();
+    return Promise.resolve(
+      verify({ value: decision.value, createdEntryIds, before, after }),
+    )
+      .then(() => ({
+        status: 'created' as const,
+        value: decision.value,
+        createdEntryIds,
+        before,
+        after,
+      }))
+      .catch((error: unknown) => {
+        state.entries.splice(
+          state.entries.length - staged.length,
+          staged.length,
+        );
+        throw error;
+      });
   });
   const repository = {
     loadGenerationSnapshot,

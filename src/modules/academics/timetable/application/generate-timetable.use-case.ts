@@ -68,6 +68,19 @@ export class GenerateTimetableUseCase {
             value: plan,
           };
         },
+        (state) => {
+          assertPersistedGeneration(
+            state.after,
+            state.value,
+            state.createdEntryIds,
+          );
+          assertAuthoritativeGenerationPlan(
+            state.before,
+            state.after,
+            state.value,
+            new Set(state.createdEntryIds),
+          );
+        },
       );
     if (transaction.status === 'not_found') {
       throw new TimetableConfigNotFoundException({
@@ -235,16 +248,19 @@ function assertAuthoritativeGenerationPlan(
   before: TimetableGenerationSnapshot,
   projected: TimetableGenerationSnapshot,
   plan: TimetableGenerationPlan,
+  persistedGeneratedIds?: Set<string>,
 ): void {
   if (plan.searchBudgetExhausted && plan.proposals.length > 0) {
     throw new Error('Search-budget exhaustion cannot persist a partial plan');
   }
-  const generatedIds = new Set(
-    plan.proposals.map(
-      (proposal) =>
-        `generated:${proposal.proposedIndex.toString().padStart(6, '0')}`,
-    ),
-  );
+  const generatedIds =
+    persistedGeneratedIds ??
+    new Set(
+      plan.proposals.map(
+        (proposal) =>
+          `generated:${proposal.proposedIndex.toString().padStart(6, '0')}`,
+      ),
+    );
   const authoritative = buildGenerationPublicationDataset(projected);
   const readiness = buildTimetablePublishReadiness(authoritative.dataset);
   if (
