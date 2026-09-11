@@ -20,6 +20,11 @@ const LIVE_RUNTIME_LINEAGE = '32365b63-3fda-f044-1b7f-e8d686105bac';
 const LIVE_EDGE_LINEAGE = '545dd53b-773c-667a-aa75-fb3d1f65db23';
 const OPAQUE_LINEAGE = 'terraform-lineage-opaque-identity-01';
 const RECORDED_AT = '2026-08-31T18:00:00Z';
+const AUTHORITATIVE_PREVIOUS_SOURCE_SHA =
+  '0ff08950da8f787f6ef9ccfa1c757e448a03a50b';
+const PREVIOUS_RELEASE_EXECUTION_ID = 'day2-staging-academics-20260911023836';
+const CRLF_RELEASE_CONTRACT_SHA256 =
+  '87d85e81512582339483537cfcf84ff37d0861e468838607598ee35e766d6cc6';
 
 function stagingImage(hexCharacter) {
   return `me-central2-docker.pkg.dev/moazez-nonprod-91001421934/moazez-staging-containers/moazez-backend@sha256:${hexCharacter.repeat(64)}`;
@@ -78,6 +83,11 @@ function makePromotedBaselineContext(temporaryRoot) {
     promotedTrafficPercent: 100,
     promotedCandidateTag,
     promotedImageReference: CANDIDATE_IMAGE,
+  };
+  context.liveDiscovery.candidateEdgeResources = {
+    candidateNegPresent: false,
+    candidateBackendPresent: false,
+    candidateSmokeRoutePresent: false,
   };
   return context;
 }
@@ -306,6 +316,161 @@ function passThroughWorkers(manifest) {
     'plan-media',
     { observedImage: manifest.candidate.imageReference },
   );
+}
+
+function predecessorSourceSha() {
+  return control.currentSourceSha() === AUTHORITATIVE_PREVIOUS_SOURCE_SHA
+    ? 'a5085660c2069d76be632aaff8b73d3a9c8c0584'
+    : AUTHORITATIVE_PREVIOUS_SOURCE_SHA;
+}
+
+function replaceManifestSourceSha(manifest, sourceSha) {
+  manifest.sourceSha = sourceSha;
+  for (const gate of manifest.gates) {
+    for (const candidateOperation of gate.operations) {
+      candidateOperation.sourceSha = sourceSha;
+    }
+  }
+}
+
+function makeSuccessfulContinuationContext(temporaryRoot) {
+  const predecessorContext = makePromotedBaselineContext(temporaryRoot);
+  predecessorContext.executionId = PREVIOUS_RELEASE_EXECUTION_ID;
+  predecessorContext.liveDiscovery.runtimeState = {
+    lineage: LIVE_RUNTIME_LINEAGE,
+    serial: 12,
+  };
+  predecessorContext.liveDiscovery.edgeState = {
+    lineage: LIVE_EDGE_LINEAGE,
+    serial: 9,
+  };
+  const predecessorManifest = control.buildManifest(predecessorContext);
+  passThroughWorkers(predecessorManifest);
+  applyAndVerifyTerraform(
+    predecessorManifest,
+    'api-no-traffic-promotion',
+    'api-candidate-runtime',
+    'previous-plan-api-runtime',
+    {
+      observedImage: predecessorManifest.candidate.imageReference,
+      observedRevision: predecessorManifest.candidate.revision,
+      observedCandidateTag: predecessorManifest.candidate.tag,
+      observedStablePercent: 100,
+      observedCandidatePercent: 0,
+    },
+  );
+
+  const previousSourceSha = predecessorSourceSha();
+  replaceManifestSourceSha(predecessorManifest, previousSourceSha);
+  delete predecessorManifest.liveDiscovery.candidateEdgeResources;
+  assert.doesNotThrow(() =>
+    control.validateManifest(structuredClone(predecessorManifest)),
+  );
+  const previousManifestRef = path.join(
+    temporaryRoot,
+    'previous-release-manifest.json',
+  );
+  const serializedPreviousManifest = `${JSON.stringify(predecessorManifest, null, 2)}\n`;
+  fs.writeFileSync(previousManifestRef, serializedPreviousManifest);
+
+  const promoted = predecessorManifest.liveDiscovery.promotedBaseline;
+  const apiRuntime = operation(
+    predecessorManifest,
+    'api-no-traffic-promotion',
+    'api-candidate-runtime',
+  );
+  const apiEdge = operation(
+    predecessorManifest,
+    'api-no-traffic-promotion',
+    'api-candidate-edge',
+  );
+  const identities = control.CANDIDATE_EDGE_IDENTITIES;
+  return {
+    predecessorManifest,
+    previousManifestRef,
+    context: {
+      executionMode: control.SUCCESSFUL_CONTINUATION_MODE,
+      executionId: 'day2-staging-academics-edge-continuation-001',
+      repository: control.REPOSITORY,
+      sourceSha: control.currentSourceSha(),
+      environment: 'staging',
+      resumeGateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      resumeOperationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+      continuation: {
+        previousReleaseExecutionId: predecessorManifest.releaseExecutionId,
+        previousManifestRef,
+        previousManifestSha256: hashText(serializedPreviousManifest),
+        previousSourceSha,
+      },
+      liveDiscovery: {
+        evidenceRef: 'evidence:successful-continuation-live-discovery',
+        discoveredAt: RECORDED_AT,
+        apiTrafficMode: 'candidate_no_traffic',
+        servingBaseline: {
+          revision: promoted.promotedRevision,
+          candidateTag: promoted.promotedCandidateTag,
+          imageReference: promoted.promotedImageReference,
+          trafficPercent: 100,
+        },
+        candidate: {
+          imageReference: predecessorManifest.candidate.imageReference,
+          tag: predecessorManifest.candidate.tag,
+          revision: predecessorManifest.candidate.revision,
+          trafficPercent: 0,
+          ready: true,
+        },
+        runtimeImages: {
+          api: predecessorManifest.candidate.imageReference,
+          coreWorker: predecessorManifest.candidate.imageReference,
+          mediaWorker: predecessorManifest.candidate.imageReference,
+          maintenanceScheduler:
+            predecessorManifest.liveDiscovery.runtimeImages
+              .maintenanceScheduler,
+        },
+        runtimeState: structuredClone(apiRuntime.apply.postApplyState),
+        edgeState: {
+          lineage: apiEdge.statePrecondition.lineage,
+          serial: apiEdge.statePrecondition.serial,
+        },
+        candidateEdgeResources: {
+          completeness: 'complete',
+          neg: {
+            present: true,
+            name: identities.negName,
+            region: identities.region,
+            networkEndpointType: identities.networkEndpointType,
+            cloudRunService: identities.cloudRunService,
+            cloudRunTag: promoted.promotedCandidateTag,
+          },
+          backend: {
+            present: true,
+            name: identities.backendName,
+            negName: identities.negName,
+            protocol: identities.protocol,
+            loadBalancingScheme: identities.loadBalancingScheme,
+            securityPolicyMatchesPrimaryApi: true,
+            customRequestHeaders: [identities.trustedClientIpHeader],
+          },
+          smokeRoute: {
+            present: true,
+            urlMapName: identities.urlMapName,
+            publicPath: control.SMOKE_PUBLIC_PATH,
+            backendName: identities.backendName,
+            backendPath: control.SMOKE_BACKEND_PATH,
+          },
+        },
+      },
+      externalTfDataRoot: path.join(temporaryRoot, 'continuation-tfdata'),
+      externalSavedPlanRoot: path.join(temporaryRoot, 'continuation-plans'),
+    },
+  };
+}
+
+function rewriteSuccessfulContinuationPredecessor(fixture, mutate) {
+  mutate(fixture.predecessorManifest);
+  const serialized = `${JSON.stringify(fixture.predecessorManifest, null, 2)}\n`;
+  fs.writeFileSync(fixture.previousManifestRef, serialized);
+  fixture.context.continuation.previousManifestSha256 = hashText(serialized);
 }
 
 test('remaining gate order is read from the unchanged authoritative contract', () => {
@@ -625,6 +790,600 @@ test('normal v1 rejects contradictory previous promoted baselines', () => {
   });
 });
 
+test('normal v1 promoted-baseline construction fails closed unless Candidate Edge is proven absent', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    assert.doesNotThrow(() =>
+      control.buildManifest(makePromotedBaselineContext(temporaryRoot)),
+    );
+
+    const missing = makePromotedBaselineContext(temporaryRoot);
+    delete missing.liveDiscovery.candidateEdgeResources;
+    assert.throws(() => control.buildManifest(missing), {
+      code: 'CANDIDATE_EDGE_PREFLIGHT_REQUIRED',
+    });
+
+    for (const field of [
+      'candidateNegPresent',
+      'candidateBackendPresent',
+      'candidateSmokeRoutePresent',
+    ]) {
+      const retained = makePromotedBaselineContext(temporaryRoot);
+      retained.liveDiscovery.candidateEdgeResources[field] = true;
+      assert.throws(() => control.buildManifest(retained), {
+        code: 'CANDIDATE_EDGE_PREFLIGHT_UNSAFE',
+      });
+    }
+
+    assert.doesNotThrow(() =>
+      control.buildManifest(makeContext(temporaryRoot)),
+    );
+  });
+});
+
+test('successful Edge continuation imports passed work without replay and builds only the unresolved remainder', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const fixture = makeSuccessfulContinuationContext(temporaryRoot);
+    for (const gate of fixture.predecessorManifest.gates) {
+      for (const candidateOperation of gate.operations) {
+        if (candidateOperation.kind === 'terraform') {
+          candidateOperation.absoluteTerraformRoot = path.join(
+            temporaryRoot,
+            'retained-predecessor-checkout',
+            ...candidateOperation.terraformRoot.split('/'),
+          );
+        }
+      }
+    }
+    rewriteSuccessfulContinuationPredecessor(fixture, () => {});
+    const manifest = control.buildManifest(fixture.context);
+    const edge = operation(
+      manifest,
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    );
+    const maintenance = operation(
+      manifest,
+      'maintenance-scheduler-promotion',
+      'maintenance-scheduler-runtime',
+    );
+
+    assert.equal(manifest.manifestVersion, 3);
+    assert.equal(manifest.executionMode, control.SUCCESSFUL_CONTINUATION_MODE);
+    assert.notEqual(
+      manifest.releaseExecutionId,
+      manifest.continuation.previousReleaseExecutionId,
+    );
+    assert.notEqual(
+      manifest.sourceSha,
+      manifest.continuation.previousSourceSha,
+    );
+    assert.deepEqual(
+      manifest.gates.map((gate) => gate.id),
+      control.SUCCESSFUL_CONTINUATION_GATE_IDS,
+    );
+    assert.deepEqual(
+      manifest.gates.flatMap((gate) =>
+        gate.operations.map((candidateOperation) => candidateOperation.id),
+      ),
+      [
+        control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+        'maintenance-scheduler-runtime',
+        'protected-candidate-smoke',
+        'api-traffic-promotion',
+      ],
+    );
+    assert.equal(
+      manifest.gates.some((gate) =>
+        gate.operations.some((candidateOperation) =>
+          [
+            'core-worker-runtime',
+            'media-worker-runtime',
+            'api-candidate-runtime',
+          ].includes(candidateOperation.id),
+        ),
+      ),
+      false,
+    );
+    assert.deepEqual(
+      manifest.predecessorEvidence.completedStages.map((stage) => stage.id),
+      control.RECOVERY_PREDECESSOR_STAGE_IDS,
+    );
+    assert.deepEqual(
+      manifest.predecessorEvidence.importedPassedOperations.map(
+        (candidateOperation) => candidateOperation.operationId,
+      ),
+      ['core-worker-runtime', 'media-worker-runtime', 'api-candidate-runtime'],
+    );
+    assert.equal(
+      manifest.predecessorEvidence.importedPassedOperations.every(
+        (candidateOperation) =>
+          candidateOperation.status === 'passed' &&
+          candidateOperation.planEvidence.status === 'registered' &&
+          candidateOperation.planEvidence.reviewed === true &&
+          candidateOperation.approval.status === 'approved' &&
+          candidateOperation.apply.status === 'succeeded' &&
+          candidateOperation.liveVerification.status === 'passed',
+      ),
+      true,
+    );
+    assert.equal(
+      manifest.predecessorEvidence.importedPassedOperations.every(
+        (candidateOperation) =>
+          manifest.blockedSavedPlanHashes.includes(
+            candidateOperation.planEvidence.sha256,
+          ),
+      ),
+      true,
+    );
+
+    assert.deepEqual(edge.expectedResourceAddressAllowlist, [
+      ...control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES,
+    ]);
+    assert.deepEqual(edge.expectedResourceActions, {
+      [control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[0]]: [
+        'delete',
+        'create',
+      ],
+      [control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[1]]: ['update'],
+    });
+    assert.equal(
+      edge.expectedResourceAddressAllowlist.includes(
+        control.EDGE_CANDIDATE_RESOURCE_ADDRESSES[2],
+      ),
+      false,
+    );
+    assert.deepEqual(edge.allowedAttributeChanges, {
+      [control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[0]]: [
+        'cloud_run[0].tag',
+      ],
+      [control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[1]]: [
+        'backend[0].group',
+      ],
+    });
+    assert.deepEqual(edge.allowedComputedAfterApplyChanges, {
+      [control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[0]]: [
+        'id',
+        'self_link',
+      ],
+      [control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[1]]: [
+        'fingerprint',
+      ],
+    });
+    assert.deepEqual(edge.statePrecondition, {
+      lineage: fixture.context.liveDiscovery.edgeState.lineage,
+      serial: fixture.context.liveDiscovery.edgeState.serial,
+      boundFromOperationId: null,
+      status: 'bound',
+    });
+    assert.deepEqual(maintenance.statePrecondition, {
+      lineage: fixture.context.liveDiscovery.runtimeState.lineage,
+      serial: fixture.context.liveDiscovery.runtimeState.serial,
+      boundFromOperationId: null,
+      status: 'bound',
+    });
+    assert.equal(
+      maintenance.requiredVariables.api_traffic_mode,
+      'candidate_no_traffic',
+    );
+    assert.equal(
+      maintenance.requiredVariables.api_stable_revision,
+      fixture.context.liveDiscovery.servingBaseline.revision,
+    );
+    assert.equal(
+      maintenance.requiredVariables.api_candidate_tag,
+      fixture.context.liveDiscovery.candidate.tag,
+    );
+    assert.equal(
+      manifest.candidateEdgeCleanupTemplate.authoritativeReleaseGate,
+      false,
+    );
+    assert.equal(
+      manifest.candidateEdgeCleanupTemplate.requiresSeparatePostReleaseApproval,
+      true,
+    );
+    assert.doesNotThrow(() =>
+      control.validateManifest(structuredClone(manifest)),
+    );
+  });
+});
+
+test('successful continuation rejects predecessor identity, manifest bytes, source, and incomplete API Runtime evidence', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const crlfContractFixture =
+      makeSuccessfulContinuationContext(temporaryRoot);
+    rewriteSuccessfulContinuationPredecessor(
+      crlfContractFixture,
+      (manifest) => {
+        manifest.authoritativeContract.sha256 = CRLF_RELEASE_CONTRACT_SHA256;
+      },
+    );
+    assert.doesNotThrow(() =>
+      control.buildManifest(crlfContractFixture.context),
+    );
+
+    const contextMutations = [
+      {
+        name: 'manifest bytes hash mismatch',
+        code: 'CONTINUATION_PREDECESSOR_EVIDENCE_INVALID',
+        apply(fixture) {
+          fixture.context.continuation.previousManifestSha256 = 'f'.repeat(64);
+        },
+      },
+      {
+        name: 'previous execution mismatch',
+        code: 'CONTINUATION_PREDECESSOR_EVIDENCE_INVALID',
+        apply(fixture) {
+          fixture.context.continuation.previousReleaseExecutionId =
+            'day2-staging-unrelated-execution';
+        },
+      },
+      {
+        name: 'previous source mismatch',
+        code: 'CONTINUATION_PREDECESSOR_EVIDENCE_INVALID',
+        apply(fixture) {
+          fixture.context.continuation.previousSourceSha = 'e'.repeat(40);
+        },
+      },
+      {
+        name: 'source binding is reused',
+        code: 'CONTINUATION_SOURCE_REUSE_FORBIDDEN',
+        apply(fixture) {
+          fixture.context.continuation.previousSourceSha =
+            fixture.context.sourceSha;
+        },
+      },
+      {
+        name: 'execution identity is reused',
+        code: 'CONTINUATION_EXECUTION_ID_REUSE',
+        apply(fixture) {
+          fixture.context.executionId =
+            fixture.context.continuation.previousReleaseExecutionId;
+        },
+      },
+    ];
+    for (const mutation of contextMutations) {
+      const fixture = makeSuccessfulContinuationContext(temporaryRoot);
+      mutation.apply(fixture);
+      assert.throws(() => control.buildManifest(fixture.context), {
+        code: mutation.code,
+      });
+    }
+
+    const inconsistentCheckout =
+      makeSuccessfulContinuationContext(temporaryRoot);
+    rewriteSuccessfulContinuationPredecessor(
+      inconsistentCheckout,
+      (manifest) => {
+        const edgeOperation = operation(
+          manifest,
+          'api-no-traffic-promotion',
+          'api-candidate-edge',
+        );
+        edgeOperation.absoluteTerraformRoot = path.join(
+          temporaryRoot,
+          'different-checkout',
+          ...edgeOperation.terraformRoot.split('/'),
+        );
+      },
+    );
+    assert.throws(() => control.buildManifest(inconsistentCheckout.context), {
+      code: 'CONTINUATION_PREDECESSOR_EVIDENCE_INVALID',
+    });
+
+    const unverified = makeSuccessfulContinuationContext(temporaryRoot);
+    rewriteSuccessfulContinuationPredecessor(unverified, (manifest) => {
+      const apiRuntime = operation(
+        manifest,
+        'api-no-traffic-promotion',
+        'api-candidate-runtime',
+      );
+      apiRuntime.status = 'applied-awaiting-live-verification';
+      apiRuntime.liveVerification = {
+        status: 'pending',
+        evidenceRef: null,
+        recordedAt: null,
+        observations: null,
+      };
+      operation(
+        manifest,
+        'maintenance-scheduler-promotion',
+        'maintenance-scheduler-runtime',
+      ).statePrecondition = {
+        lineage: null,
+        serial: null,
+        boundFromOperationId: 'api-candidate-runtime',
+        status: 'awaiting-predecessor',
+      };
+    });
+    assert.throws(() => control.buildManifest(unverified.context), {
+      code: 'CONTINUATION_BOUNDARY_UNSUPPORTED',
+    });
+
+    const contradictoryVerification =
+      makeSuccessfulContinuationContext(temporaryRoot);
+    rewriteSuccessfulContinuationPredecessor(
+      contradictoryVerification,
+      (manifest) => {
+        operation(
+          manifest,
+          'api-no-traffic-promotion',
+          'api-candidate-runtime',
+        ).liveVerification.observations.observedCandidatePercent = 1;
+      },
+    );
+    assert.throws(
+      () => control.buildManifest(contradictoryVerification.context),
+      { code: 'MANIFEST_SPEC_MISMATCH' },
+    );
+  });
+});
+
+test('successful continuation live discovery rejects traffic, readiness, identity, image, and state contradictions', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const mutations = [
+      (context) => {
+        context.liveDiscovery.apiTrafficMode = 'candidate_promoted';
+      },
+      (context) => {
+        context.liveDiscovery.servingBaseline.trafficPercent = 99;
+      },
+      (context) => {
+        context.liveDiscovery.candidate.trafficPercent = 1;
+      },
+      (context) => {
+        context.liveDiscovery.candidate.ready = false;
+      },
+      (context) => {
+        context.liveDiscovery.candidate.imageReference = stagingImage('a');
+      },
+      (context) => {
+        context.liveDiscovery.candidate.tag =
+          context.liveDiscovery.servingBaseline.candidateTag;
+      },
+      (context) => {
+        context.liveDiscovery.candidate.revision =
+          'moazez-staging-api-candidate-000000000000';
+      },
+      (context) => {
+        context.liveDiscovery.runtimeImages.coreWorker = stagingImage('b');
+      },
+      (context) => {
+        context.liveDiscovery.runtimeState.serial += 1;
+      },
+      (context) => {
+        context.liveDiscovery.edgeState.serial += 1;
+      },
+    ];
+    for (const mutate of mutations) {
+      const fixture = makeSuccessfulContinuationContext(temporaryRoot);
+      mutate(fixture.context);
+      assert.throws(
+        () => control.buildManifest(fixture.context),
+        control.DeploymentControlError,
+      );
+    }
+  });
+});
+
+test('successful continuation requires a complete exact retained Candidate Edge security posture', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const mutations = [
+      (edge) => {
+        delete edge.backend;
+      },
+      (edge) => {
+        edge.completeness = 'partial';
+      },
+      (edge, context) => {
+        edge.neg.cloudRunTag = context.liveDiscovery.candidate.tag;
+      },
+      (edge) => {
+        edge.neg.cloudRunService = 'moazez-production-api';
+      },
+      (edge) => {
+        edge.backend.negName = 'unrelated-neg';
+      },
+      (edge) => {
+        edge.backend.securityPolicyMatchesPrimaryApi = false;
+      },
+      (edge) => {
+        edge.backend.customRequestHeaders = [];
+      },
+      (edge) => {
+        edge.smokeRoute.publicPath = '/unapproved';
+      },
+      (edge) => {
+        edge.smokeRoute.backendPath = '/api/v1/unapproved';
+      },
+      (edge) => {
+        edge.smokeRoute.urlMapName = 'parallel-url-map';
+      },
+    ];
+    for (const mutate of mutations) {
+      const fixture = makeSuccessfulContinuationContext(temporaryRoot);
+      mutate(
+        fixture.context.liveDiscovery.candidateEdgeResources,
+        fixture.context,
+      );
+      assert.throws(
+        () => control.buildManifest(fixture.context),
+        control.DeploymentControlError,
+      );
+    }
+  });
+});
+
+test('successful continuation reconciliation guards exact actions, addresses, attributes, and Edge state binding', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const fixture = makeSuccessfulContinuationContext(temporaryRoot);
+    const manifest = control.buildManifest(fixture.context);
+    const edge = operation(
+      manifest,
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    );
+    const serializedContract = JSON.stringify({
+      addresses: edge.expectedResourceAddressAllowlist,
+      attributes: edge.allowedAttributeChanges,
+      computed: edge.allowedComputedAfterApplyChanges,
+    });
+    for (const forbidden of [
+      'dns',
+      'global_address',
+      'certificate',
+      'target_https_proxy',
+      'forwarding_rule',
+      'security_policy',
+      'ingress',
+      'url_map',
+    ]) {
+      assert.equal(serializedContract.includes(forbidden), false);
+    }
+
+    const unexpectedAddress = structuredClone(manifest);
+    operation(
+      unexpectedAddress,
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    ).expectedResourceAddressAllowlist.push(
+      'module.edge_environment.google_compute_global_forwarding_rule.https',
+    );
+    assert.throws(() => control.validateManifest(unexpectedAddress), {
+      code: 'MANIFEST_SPEC_MISMATCH',
+    });
+
+    const unrelatedAttribute = structuredClone(manifest);
+    operation(
+      unrelatedAttribute,
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    ).allowedAttributeChanges[
+      control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[1]
+    ].push('security_policy');
+    assert.throws(() => control.validateManifest(unrelatedAttribute), {
+      code: 'MANIFEST_SPEC_MISMATCH',
+    });
+
+    const urlMapMutation = structuredClone(manifest);
+    operation(
+      urlMapMutation,
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    ).expectedResourceActions[control.EDGE_CANDIDATE_RESOURCE_ADDRESSES[2]] = [
+      'update',
+    ];
+    assert.throws(() => control.validateManifest(urlMapMutation), {
+      code: 'MANIFEST_SPEC_MISMATCH',
+    });
+
+    fs.mkdirSync(path.dirname(edge.savedPlanPath), { recursive: true });
+    fs.writeFileSync(edge.savedPlanPath, 'continuation-edge-plan');
+    for (const binding of [
+      {
+        lineage: 'different-edge-lineage',
+        serial: edge.statePrecondition.serial,
+      },
+      {
+        lineage: edge.statePrecondition.lineage,
+        serial: edge.statePrecondition.serial + 1,
+      },
+    ]) {
+      assert.throws(
+        () =>
+          control.registerPlan(structuredClone(manifest), {
+            gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+            operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+            planPath: edge.savedPlanPath,
+            sourceSha: manifest.sourceSha,
+            environment: manifest.environment,
+            terraformRoot: edge.terraformRoot,
+            lineage: binding.lineage,
+            serial: binding.serial,
+            recordedAt: RECORDED_AT,
+          }),
+        { code: 'PLAN_BINDING_MISMATCH' },
+      );
+    }
+  });
+});
+
+test('successful continuation preserves separate Edge and Runtime successor chains through final traffic promotion', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const fixture = makeSuccessfulContinuationContext(temporaryRoot);
+    const manifest = control.buildManifest(fixture.context);
+    applyAndVerifyTerraform(
+      manifest,
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+      'continuation-edge-reconciliation-plan',
+      {
+        observedCandidateTag: manifest.candidate.tag,
+        observedPublicPath: control.SMOKE_PUBLIC_PATH,
+        observedBackendPath: control.SMOKE_BACKEND_PATH,
+      },
+    );
+    const edge = operation(
+      manifest,
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    );
+    const maintenance = operation(
+      manifest,
+      'maintenance-scheduler-promotion',
+      'maintenance-scheduler-runtime',
+    );
+    assert.equal(
+      edge.apply.postApplyState.lineage,
+      fixture.context.liveDiscovery.edgeState.lineage,
+    );
+    assert.equal(
+      maintenance.statePrecondition.lineage,
+      fixture.context.liveDiscovery.runtimeState.lineage,
+    );
+    assert.equal(
+      maintenance.statePrecondition.serial,
+      fixture.context.liveDiscovery.runtimeState.serial,
+    );
+    assert.notEqual(
+      maintenance.statePrecondition.lineage,
+      edge.apply.postApplyState.lineage,
+    );
+
+    passThroughMaintenance(manifest);
+    const traffic = operation(
+      manifest,
+      'traffic-promotion',
+      'api-traffic-promotion',
+    );
+    assert.deepEqual(traffic.statePrecondition, {
+      lineage: maintenance.apply.postApplyState.lineage,
+      serial: maintenance.apply.postApplyState.serial,
+      boundFromOperationId: 'maintenance-scheduler-runtime',
+      status: 'bound',
+    });
+    passThroughProtectedSmoke(manifest);
+    applyAndVerifyTerraform(
+      manifest,
+      'traffic-promotion',
+      'api-traffic-promotion',
+      'continuation-traffic-promotion-plan',
+      {
+        observedImage: manifest.candidate.imageReference,
+        observedRevision: manifest.candidate.revision,
+        observedCandidateTag: manifest.candidate.tag,
+        observedStablePercent: 0,
+        observedCandidatePercent: 100,
+      },
+    );
+    assert.equal(manifest.releaseStatus, 'complete');
+    assert.equal(
+      manifest.gates.every((gate) => gate.status === 'passed'),
+      true,
+    );
+    assert.doesNotThrow(() => control.validateManifest(manifest));
+  });
+});
+
 test('recovery manifest v2 derives deterministic attempts and contains only the API-first window', () => {
   withTemporaryRoot((temporaryRoot) => {
     for (const recoveryAttempt of [1, 2]) {
@@ -746,7 +1505,7 @@ test('recovery construction rejects implicit mode, operator candidate tags, reus
     const unsupportedManifest = control.buildManifest(
       makeRecoveryContext(temporaryRoot),
     );
-    unsupportedManifest.manifestVersion = 3;
+    unsupportedManifest.manifestVersion = 4;
     assert.throws(() => control.validateManifest(unsupportedManifest), {
       code: 'MANIFEST_UNSUPPORTED',
     });

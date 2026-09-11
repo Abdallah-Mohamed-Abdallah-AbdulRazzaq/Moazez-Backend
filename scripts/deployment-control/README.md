@@ -105,6 +105,11 @@ use this exact `liveDiscovery` variant:
   "edgeState": {
     "lineage": "<opaque-edge-state-lineage>",
     "serial": 0
+  },
+  "candidateEdgeResources": {
+    "candidateNegPresent": false,
+    "candidateBackendPresent": false,
+    "candidateSmokeRoutePresent": false
   }
 }
 ```
@@ -129,6 +134,13 @@ through `999999999999999`. The promoted image must equal
 The previous promoted tag/revision and the new release candidate tag/revision
 must also be distinct. These checks prevent a prior promoted candidate from
 being reused as, or conflated with, the new candidate.
+
+Promoted-baseline construction now requires the exact
+`candidateEdgeResources` preflight shown above. Missing evidence, a complete
+retained Candidate Edge, or any partial combination of NEG, backend, and smoke
+route stops construction before Core, Media, or API can change. The controller
+does not clean up or reconcile these resources automatically. Cleanup remains
+a separately reviewed and approved operation.
 
 The controller maps a valid promoted start to these exact API inputs while
 retaining the authoritative gate order:
@@ -174,6 +186,175 @@ value, or stale evidence.
 
 A successful `candidate_promoted` starting baseline remains a normal manifest
 v1 execution with the full Core-first sequence. It is not Recovery v2.
+
+## Successful Candidate Edge continuation manifest v3
+
+`manifestVersion=3` and
+`executionMode="successful-edge-continuation"` are reserved for a successful
+in-progress normal-v1 release whose Core, Media, and API Runtime operations
+already passed, while `api-candidate-edge` is still pending because a complete
+Candidate Edge from the preceding release targets the preceding promoted tag.
+This is a new execution and source binding. It is neither a mutation of the
+old manifest nor failed-runtime Recovery v2.
+
+The strict external construction context has this shape:
+
+```json
+{
+  "executionMode": "successful-edge-continuation",
+  "executionId": "day2-staging-<new-unique-continuation-id>",
+  "repository": "Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend",
+  "sourceSha": "<exact-new-40-character-HEAD>",
+  "environment": "staging",
+  "resumeGateId": "api-no-traffic-promotion",
+  "resumeOperationId": "api-candidate-edge-reconciliation",
+  "continuation": {
+    "previousReleaseExecutionId": "<exact-predecessor-execution-id>",
+    "previousManifestRef": "<absolute-path-to-the-immutable-external-predecessor-manifest>",
+    "previousManifestSha256": "<exact-64-lowercase-hex-SHA256-of-those-file-bytes>",
+    "previousSourceSha": "<exact-predecessor-40-character-source-SHA>"
+  },
+  "liveDiscovery": {
+    "evidenceRef": "<fresh-live-discovery-evidence-reference>",
+    "discoveredAt": "<ISO-8601-UTC-timestamp>",
+    "apiTrafficMode": "candidate_no_traffic",
+    "servingBaseline": {
+      "revision": "moazez-staging-api-<previous-promoted-revision-suffix>",
+      "candidateTag": "candidate-<previous-12-lowercase-hex>[-rN]",
+      "imageReference": "<previous-promoted-image-by-digest>",
+      "trafficPercent": 100
+    },
+    "candidate": {
+      "imageReference": "<unchanged-current-candidate-image-by-digest>",
+      "tag": "candidate-<current-12-lowercase-hex>",
+      "revision": "moazez-staging-api-candidate-<current-12-lowercase-hex>",
+      "trafficPercent": 0,
+      "ready": true
+    },
+    "runtimeImages": {
+      "api": "<same-current-candidate-image-by-digest>",
+      "coreWorker": "<same-current-candidate-image-by-digest>",
+      "mediaWorker": "<same-current-candidate-image-by-digest>",
+      "maintenanceScheduler": "<unchanged-predecessor-maintenance-image-by-digest>"
+    },
+    "runtimeState": {
+      "lineage": "<exact-current-runtime-lineage>",
+      "serial": 0
+    },
+    "edgeState": {
+      "lineage": "<exact-current-edge-lineage>",
+      "serial": 0
+    },
+    "candidateEdgeResources": {
+      "completeness": "complete",
+      "neg": {
+        "present": true,
+        "name": "moazez-staging-api-candidate-neg",
+        "region": "me-central2",
+        "networkEndpointType": "SERVERLESS",
+        "cloudRunService": "moazez-staging-api",
+        "cloudRunTag": "candidate-<previous-12-lowercase-hex>[-rN]"
+      },
+      "backend": {
+        "present": true,
+        "name": "moazez-staging-api-candidate-backend",
+        "negName": "moazez-staging-api-candidate-neg",
+        "protocol": "HTTP",
+        "loadBalancingScheme": "EXTERNAL_MANAGED",
+        "securityPolicyMatchesPrimaryApi": true,
+        "customRequestHeaders": ["X-Moazez-Client-IP:{client_ip_address}"]
+      },
+      "smokeRoute": {
+        "present": true,
+        "urlMapName": "moazez-staging-edge-url-map",
+        "publicPath": "/.well-known/moazez/candidate-readiness",
+        "backendName": "moazez-staging-api-candidate-backend",
+        "backendPath": "/api/v1/auth/me"
+      }
+    }
+  },
+  "externalTfDataRoot": "<absolute-external-tfdata-root>",
+  "externalSavedPlanRoot": "<absolute-external-saved-plan-root>"
+}
+```
+
+At construction and every later manifest update, the controller reads the
+referenced predecessor manifest, hashes its exact bytes, and requires the hash,
+execution ID, and previous source SHA above. The previous and new execution IDs
+and source SHAs must differ. The predecessor itself must remain a valid normal
+v1 promoted-baseline manifest in this exact lifecycle state:
+
+- `core-worker-runtime`, `media-worker-runtime`, and
+  `api-candidate-runtime` are passed with registered reviewed plans, approval,
+  successful apply evidence, same-lineage successor state, and passed live
+  verification;
+- API Runtime verification names the immutable candidate image, tag, revision,
+  stable traffic `100`, and candidate traffic `0`;
+- `api-candidate-edge` is untouched and pending;
+- Maintenance, protected smoke, and traffic promotion are pending; and
+- the predecessor release is active and has no failure.
+
+The v3 manifest imports immutable evidence snapshots for the three passed
+operations and the first six contract stages. Their plan hashes are placed in
+the new manifest blocklist. They are evidence only: v3 contains no Core, Media,
+or API Runtime operation that could replay them. A predecessor manifest whose
+release-contract hash differs only because the same JSON text was checked out
+with LF versus CRLF is accepted for import; its own manifest SHA256 still must
+match its exact original bytes, and every semantic contract field remains
+strictly validated. Recorded `absoluteTerraformRoot` values may name the
+predecessor checkout rather than the current worktree only when every value
+ends in its exact governed `terraformRoot` and every Terraform operation shares
+one checkout root. Only the validation copy is rebased to the current checkout;
+the imported evidence snapshot retains the predecessor value.
+
+Fresh live discovery is independently cross-bound to the predecessor:
+
+- the current candidate must be Ready, immutable, and exactly `0%`;
+- the previous promoted revision/tag/image must remain exactly `100%`;
+- API, Core, and Media images must equal the current candidate, while
+  Maintenance retains its previous image;
+- current Runtime lineage/serial must equal the successful API Runtime
+  post-apply state;
+- current Edge lineage/serial must equal the still-pending predecessor Edge
+  precondition; and
+- Candidate Edge must be complete, target the previous promoted tag, reuse the
+  normal API Cloud Armor/trusted-client-IP posture, and expose only the exact
+  existing smoke route. Partial or contradictory evidence fails closed.
+
+The first and only v3 Edge operation is
+`api-candidate-edge-reconciliation`. Its plan contract is exact:
+
+| Resource                                                                                | Actions         | Semantic attributes | Provider-computed after apply |
+| --------------------------------------------------------------------------------------- | --------------- | ------------------- | ----------------------------- |
+| `module.edge_environment.google_compute_region_network_endpoint_group.api_candidate[0]` | `delete,create` | `cloud_run[0].tag`  | `id`, `self_link`             |
+| `module.edge_environment.google_compute_backend_service.api_candidate[0]`               | `update`        | `backend[0].group`  | `fingerprint`                 |
+
+The URL map is not in the resource allowlist because its existing path and
+rewrite must remain semantically unchanged. DNS, addresses, certificates,
+HTTPS proxies, forwarding rules, Cloud Armor, trusted client-IP headers,
+Cloud Run ingress, unrelated backend/NEG attributes, and Production are never
+permitted by this contract.
+
+The unresolved order remains the authoritative order:
+
+```text
+Candidate Edge reconciliation
+-> Maintenance Scheduler Promotion
+-> Protected Candidate Readiness / Smoke
+-> Traffic Promotion
+```
+
+Edge reconciliation binds directly to the freshly discovered Edge state and
+must return the same lineage with a higher serial. That Edge successor is not
+used as Runtime state. Maintenance binds directly to the freshly discovered
+Runtime state imported from the passed API Runtime operation. Traffic promotion
+then binds to the verified Maintenance Runtime successor. This keeps Runtime
+and Edge state authorities separate and deterministic.
+
+Do not hand-edit the predecessor or continuation manifest, replay a passed
+operation, manufacture failure evidence, use Recovery v2, or apply the cleanup
+plan to create a new Edge serial before v3 binds its state. The cleanup template
+remains non-authoritative and requires separate post-release approval.
 
 ## Recovery manifest v2 context
 
@@ -293,7 +474,9 @@ Normal v1 contains that one blocker. Recovery v2 additionally requires the
 exact full lowercase SHA256 of the failed plan from DevOps evidence and places
 both hashes in `blockedSavedPlanHashes`. Prefix-only evidence such as
 `19cc9769...` is invalid and is never completed or hard-coded by source. Plan
-registration checks the manifest blocklist.
+registration checks the manifest blocklist. Successful-continuation v3 also
+blocklists the three exact predecessor plan hashes imported for Core, Media,
+and API Runtime so passed work cannot be reused as a new operation.
 
 ## Exact CLI surface
 
@@ -354,11 +537,13 @@ gates, and permits no automatic retry.
 ## Plan review boundary
 
 The adapter produces the exact `requiredVariables`, Terraform root, state
-lineage/serial precondition, resource-address allowlist, allowed attribute
-changes, expected change type, and saved-plan path for each Terraform
-operation. DevOps must create the plan separately with the manifest's external
-`TF_DATA_DIR`, inspect the plan JSON/text, and reject any address or attribute
-outside those allowlists before `register-plan` and `approve-plan`.
+lineage/serial precondition, resource-address allowlist, expected resource
+actions where applicable, semantic attribute allowlist, provider-computed
+after-apply allowlist where applicable, expected change type, and saved-plan
+path for each Terraform operation. DevOps must create the plan separately with
+the manifest's external `TF_DATA_DIR`, inspect the plan JSON/text, and reject
+any action, address, semantic attribute, or computed-unknown attribute outside
+those allowlists before `register-plan` and `approve-plan`.
 
 Sensitive Queue and Realtime Redis inputs remain ephemeral operator inputs.
 The manifest contains their names and sensitivity flags only, never their
