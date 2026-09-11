@@ -12,6 +12,8 @@ const control = require('../runtime-release-control.cjs');
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..', '..');
 const CANDIDATE_IMAGE =
   'me-central2-docker.pkg.dev/moazez-nonprod-91001421934/moazez-staging-containers/moazez-backend@sha256:1a6b5f41a4dfbb4921a11fe60ccb7d46d89397353dad9aebfcb0df71017986c6';
+const NEXT_CANDIDATE_IMAGE =
+  'me-central2-docker.pkg.dev/moazez-nonprod-91001421934/moazez-staging-containers/moazez-backend@sha256:a256576ef34bf301c4677f367a8df1868925ffdcb88492ced1babfc5e74af240';
 const LINEAGE = '123e4567-e89b-42d3-a456-426614174000';
 const EDGE_LINEAGE = '223e4567-e89b-42d3-a456-426614174000';
 const LIVE_RUNTIME_LINEAGE = '32365b63-3fda-f044-1b7f-e8d686105bac';
@@ -54,6 +56,30 @@ function makeContext(temporaryRoot) {
       edgeState: { lineage: EDGE_LINEAGE, serial: 20 },
     },
   };
+}
+
+function makePromotedBaselineContext(temporaryRoot) {
+  const context = makeContext(temporaryRoot);
+  const promotedCandidateTag = control.expectedCandidateTag(CANDIDATE_IMAGE, 1);
+  delete context.liveDiscovery.stableApiRevision;
+  context.candidateImageReference = NEXT_CANDIDATE_IMAGE;
+  context.candidateTag = control.expectedCandidateTag(NEXT_CANDIDATE_IMAGE);
+  context.liveDiscovery.apiTrafficMode = 'candidate_promoted';
+  context.liveDiscovery.runtimeImages = {
+    api: CANDIDATE_IMAGE,
+    coreWorker: CANDIDATE_IMAGE,
+    mediaWorker: CANDIDATE_IMAGE,
+    maintenanceScheduler: CANDIDATE_IMAGE,
+  };
+  context.liveDiscovery.promotedBaseline = {
+    previousStableRevision: 'moazez-staging-api-00005-fct',
+    previousStableTrafficPercent: 0,
+    promotedRevision: `moazez-staging-api-${promotedCandidateTag}`,
+    promotedTrafficPercent: 100,
+    promotedCandidateTag,
+    promotedImageReference: CANDIDATE_IMAGE,
+  };
+  return context;
 }
 
 function hashText(value) {
@@ -305,6 +331,10 @@ test('normal manifest v1 identity, predecessor window, gates, and blocker remain
     assert.equal(manifest.manifestVersion, 1);
     assert.equal(Object.hasOwn(manifest, 'executionMode'), false);
     assert.equal(
+      Object.hasOwn(manifest.liveDiscovery, 'promotedBaseline'),
+      false,
+    );
+    assert.equal(
       manifest.candidate.tag,
       control.expectedCandidateTag(CANDIDATE_IMAGE),
     );
@@ -323,6 +353,275 @@ test('normal manifest v1 identity, predecessor window, gates, and blocker remain
     assert.deepEqual(manifest.blockedSavedPlanHashes, [
       control.BLOCKED_SAVED_PLAN_SHA256,
     ]);
+  });
+});
+
+test('normal v1 preserves a previous promoted baseline through workers and rolls its serving revision forward for the new candidate', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const context = makePromotedBaselineContext(temporaryRoot);
+    const manifest = control.buildManifest(context);
+    const promoted = context.liveDiscovery.promotedBaseline;
+    const core = operation(
+      manifest,
+      'core-worker-promotion',
+      'core-worker-runtime',
+    );
+    const media = operation(
+      manifest,
+      'media-worker-promotion',
+      'media-worker-runtime',
+    );
+    const api = operation(
+      manifest,
+      'api-no-traffic-promotion',
+      'api-candidate-runtime',
+    );
+    const maintenance = operation(
+      manifest,
+      'maintenance-scheduler-promotion',
+      'maintenance-scheduler-runtime',
+    );
+    const traffic = operation(
+      manifest,
+      'traffic-promotion',
+      'api-traffic-promotion',
+    );
+
+    assert.equal(manifest.manifestVersion, 1);
+    assert.equal(Object.hasOwn(manifest, 'executionMode'), false);
+    assert.equal(manifest.liveDiscovery.apiTrafficMode, 'candidate_promoted');
+    assert.equal(
+      Object.hasOwn(manifest.liveDiscovery, 'stableApiRevision'),
+      false,
+    );
+    assert.deepEqual(manifest.liveDiscovery.promotedBaseline, promoted);
+    assert.equal(
+      promoted.promotedCandidateTag,
+      control.expectedCandidateTag(CANDIDATE_IMAGE, 1),
+    );
+    assert.doesNotThrow(() =>
+      control.validateManifest(structuredClone(manifest)),
+    );
+
+    assert.deepEqual(manifest.candidate, {
+      imageReference: NEXT_CANDIDATE_IMAGE,
+      tag: control.expectedCandidateTag(NEXT_CANDIDATE_IMAGE),
+      revision: `moazez-staging-api-${control.expectedCandidateTag(NEXT_CANDIDATE_IMAGE)}`,
+    });
+    assert.notEqual(
+      promoted.promotedImageReference,
+      manifest.candidate.imageReference,
+    );
+    assert.notEqual(promoted.promotedCandidateTag, manifest.candidate.tag);
+    assert.notEqual(promoted.promotedRevision, manifest.candidate.revision);
+
+    assert.deepEqual(core.requiredVariables, {
+      api_image_reference: CANDIDATE_IMAGE,
+      core_worker_image_reference: NEXT_CANDIDATE_IMAGE,
+      media_worker_image_reference: CANDIDATE_IMAGE,
+      maintenance_scheduler_image_reference: CANDIDATE_IMAGE,
+      api_traffic_mode: 'candidate_promoted',
+      api_stable_revision: promoted.previousStableRevision,
+      api_candidate_tag: promoted.promotedCandidateTag,
+    });
+    assert.deepEqual(core.expectedResourceAddressAllowlist, [
+      control.RUNTIME_RESOURCE_ADDRESSES.coreWorker,
+    ]);
+    assert.deepEqual(core.allowedAttributeChanges, {
+      [control.RUNTIME_RESOURCE_ADDRESSES.coreWorker]: [
+        'template[0].containers[0].image',
+      ],
+    });
+
+    assert.deepEqual(media.requiredVariables, {
+      api_image_reference: CANDIDATE_IMAGE,
+      core_worker_image_reference: NEXT_CANDIDATE_IMAGE,
+      media_worker_image_reference: NEXT_CANDIDATE_IMAGE,
+      maintenance_scheduler_image_reference: CANDIDATE_IMAGE,
+      api_traffic_mode: 'candidate_promoted',
+      api_stable_revision: promoted.previousStableRevision,
+      api_candidate_tag: promoted.promotedCandidateTag,
+    });
+    assert.deepEqual(media.expectedResourceAddressAllowlist, [
+      control.RUNTIME_RESOURCE_ADDRESSES.mediaWorker,
+    ]);
+    assert.deepEqual(media.allowedAttributeChanges, {
+      [control.RUNTIME_RESOURCE_ADDRESSES.mediaWorker]: [
+        'template[0].containers[0].image',
+      ],
+    });
+
+    assert.deepEqual(api.requiredVariables, {
+      api_image_reference: NEXT_CANDIDATE_IMAGE,
+      core_worker_image_reference: NEXT_CANDIDATE_IMAGE,
+      media_worker_image_reference: NEXT_CANDIDATE_IMAGE,
+      maintenance_scheduler_image_reference: CANDIDATE_IMAGE,
+      api_traffic_mode: 'candidate_no_traffic',
+      api_stable_revision: promoted.promotedRevision,
+      api_candidate_tag: manifest.candidate.tag,
+    });
+    assert.notEqual(
+      api.requiredVariables.api_stable_revision,
+      promoted.previousStableRevision,
+    );
+    assert.notEqual(
+      api.requiredVariables.api_candidate_tag,
+      promoted.promotedCandidateTag,
+    );
+    assert.deepEqual(api.verificationExpectation, {
+      image: NEXT_CANDIDATE_IMAGE,
+      revision: manifest.candidate.revision,
+      candidateTag: manifest.candidate.tag,
+      stablePercent: 100,
+      candidatePercent: 0,
+    });
+
+    assert.equal(
+      maintenance.requiredVariables.api_traffic_mode,
+      'candidate_no_traffic',
+    );
+    assert.equal(
+      maintenance.requiredVariables.api_stable_revision,
+      promoted.promotedRevision,
+    );
+    assert.equal(
+      maintenance.requiredVariables.api_candidate_tag,
+      manifest.candidate.tag,
+    );
+    assert.equal(
+      traffic.requiredVariables.api_traffic_mode,
+      'candidate_promoted',
+    );
+    assert.equal(
+      traffic.requiredVariables.api_stable_revision,
+      promoted.promotedRevision,
+    );
+    assert.equal(
+      traffic.requiredVariables.api_candidate_tag,
+      manifest.candidate.tag,
+    );
+    assert.deepEqual(traffic.verificationExpectation, {
+      image: NEXT_CANDIDATE_IMAGE,
+      revision: manifest.candidate.revision,
+      candidateTag: manifest.candidate.tag,
+      stablePercent: 0,
+      candidatePercent: 100,
+    });
+
+    const tupleTamper = structuredClone(manifest);
+    operation(
+      tupleTamper,
+      'core-worker-promotion',
+      'core-worker-runtime',
+    ).requiredVariables.api_traffic_mode = 'normal';
+    assert.throws(() => control.validateManifest(tupleTamper), {
+      code: 'MANIFEST_SPEC_MISMATCH',
+    });
+  });
+});
+
+test('normal v1 rejects contradictory previous promoted baselines', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const mutations = [
+      {
+        name: 'previous stable traffic is not zero',
+        apply(context) {
+          context.liveDiscovery.promotedBaseline.previousStableTrafficPercent = 1;
+        },
+      },
+      {
+        name: 'promoted traffic is not one hundred',
+        apply(context) {
+          context.liveDiscovery.promotedBaseline.promotedTrafficPercent = 99;
+        },
+      },
+      {
+        name: 'promoted tag is missing',
+        apply(context) {
+          delete context.liveDiscovery.promotedBaseline.promotedCandidateTag;
+        },
+      },
+      {
+        name: 'promoted revision does not match its tag',
+        apply(context) {
+          context.liveDiscovery.promotedBaseline.promotedRevision =
+            'moazez-staging-api-candidate-000000000000';
+        },
+      },
+      {
+        name: 'promoted image does not match the live API image',
+        apply(context) {
+          context.liveDiscovery.promotedBaseline.promotedImageReference =
+            NEXT_CANDIDATE_IMAGE;
+        },
+      },
+      {
+        name: 'promoted tag is not derived from the promoted image',
+        apply(context) {
+          const unrelatedTag = control.expectedCandidateTag(
+            stagingImage('9'),
+            1,
+          );
+          context.liveDiscovery.promotedBaseline.promotedCandidateTag =
+            unrelatedTag;
+          context.liveDiscovery.promotedBaseline.promotedRevision = `moazez-staging-api-${unrelatedTag}`;
+        },
+      },
+      {
+        name: 'promoted and new candidate images are identical',
+        apply(context) {
+          const repeatedImageTag = control.expectedCandidateTag(
+            NEXT_CANDIDATE_IMAGE,
+            1,
+          );
+          context.liveDiscovery.runtimeImages.api = NEXT_CANDIDATE_IMAGE;
+          context.liveDiscovery.promotedBaseline.promotedImageReference =
+            NEXT_CANDIDATE_IMAGE;
+          context.liveDiscovery.promotedBaseline.promotedCandidateTag =
+            repeatedImageTag;
+          context.liveDiscovery.promotedBaseline.promotedRevision = `moazez-staging-api-${repeatedImageTag}`;
+        },
+      },
+      {
+        name: 'previous stable and promoted revisions are identical',
+        apply(context) {
+          context.liveDiscovery.promotedBaseline.previousStableRevision =
+            context.liveDiscovery.promotedBaseline.promotedRevision;
+        },
+      },
+      {
+        name: 'promoted revision belongs to the wrong service',
+        apply(context) {
+          context.liveDiscovery.promotedBaseline.promotedRevision = `moazez-staging-core-${context.liveDiscovery.promotedBaseline.promotedCandidateTag}`;
+        },
+      },
+      {
+        name: 'previous promoted and new candidate tags are conflated',
+        apply(context) {
+          context.liveDiscovery.promotedBaseline.promotedCandidateTag =
+            context.candidateTag;
+          context.liveDiscovery.promotedBaseline.promotedRevision = `moazez-staging-api-${context.candidateTag}`;
+        },
+      },
+      {
+        name: 'promoted baseline is declared under normal traffic mode',
+        apply(context) {
+          context.liveDiscovery.apiTrafficMode = 'normal';
+          context.liveDiscovery.stableApiRevision =
+            context.liveDiscovery.promotedBaseline.previousStableRevision;
+        },
+      },
+    ];
+
+    for (const mutation of mutations) {
+      const context = makePromotedBaselineContext(temporaryRoot);
+      mutation.apply(context);
+      assert.throws(
+        () => control.buildManifest(context),
+        control.DeploymentControlError,
+        mutation.name,
+      );
+    }
   });
 });
 

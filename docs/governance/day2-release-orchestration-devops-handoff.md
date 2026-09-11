@@ -3,19 +3,26 @@
 ## Authority and boundary
 
 This handoff resumes the existing Day-2 Staging release contract without
-reopening D0 architecture. The application artifact digest remains:
+reopening D0 architecture. The historical D1 application artifact digest was:
 
 ```text
 sha256:1a6b5f41a4dfbb4921a11fe60ccb7d46d89397353dad9aebfcb0df71017986c6
 ```
 
+That digest is historical release evidence, not a reusable default for a later
+candidate. Each new normal v1 context supplies its separately approved
+immutable candidate image reference.
+
 No application rebuild, Prisma/schema change, migration, database mutation,
 Staging mutation, Production mutation, live Terraform plan, or Terraform apply
-was performed by D1. The existing contract and release engine were not
-changed.
+was performed by D1 or by the promoted-baseline source remediation. The
+authoritative release contract, Terraform runtime semantics, and gate order are
+unchanged. The deployment controller change only extends normal-v1 live
+baseline handling to model an already successful `candidate_promoted` state.
 
-Use the exact source SHA from the merged/approved D1 branch, not the pre-D1
-start SHA, when a later release manifest and saved plans are created.
+Use the exact source SHA from the merged and approved deployment-control
+source, not a pre-remediation or remembered SHA, when a later release manifest
+and saved plans are created.
 
 ## Terraform roots
 
@@ -90,18 +97,93 @@ api_candidate_tag
 | `candidate_no_traffic` | Required        | Required      | 100%                  | 0%                       |
 | `candidate_promoted`   | Same value      | Same value    | 0%                    | 100%                     |
 
-The stable revision is a governed live-discovery input. It must be the full
-current revision name from `moazez-staging-api`; do not infer it from source or
-reuse stale evidence.
+These are Terraform operation inputs. Normal manifest v1 construction may
+start only from a governed live baseline of `normal` or
+`candidate_promoted`. `candidate_no_traffic` remains an in-release state and
+is not a permitted normal-v1 starting baseline.
 
-The normal v1 candidate tag formula is:
+### Consecutive release from a promoted baseline
+
+The emitted live-discovery schema is an exact, mode-discriminated contract. The
+existing `normal` manifest shape is unchanged: it requires the top-level
+`stableApiRevision` and contains no `promotedBaseline`. A promoted start omits
+the top-level `stableApiRevision` and instead requires exactly:
+
+```json
+{
+  "apiTrafficMode": "candidate_promoted",
+  "promotedBaseline": {
+    "previousStableRevision": "moazez-staging-api-<previous-stable-revision-suffix>",
+    "previousStableTrafficPercent": 0,
+    "promotedRevision": "moazez-staging-api-<currently-promoted-revision-suffix>",
+    "promotedTrafficPercent": 100,
+    "promotedCandidateTag": "candidate-<12-lowercase-hex>[-rN]",
+    "promotedImageReference": "<current-promoted-staging-image-by-digest>"
+  }
+}
+```
+
+This fragment appears inside the normal-v1 `liveDiscovery` object alongside
+its evidence reference, discovery timestamp, four exact runtime images, and
+independently discovered runtime and edge state lineage/serial values. The
+`promotedImageReference` must exactly equal `runtimeImages.api`.
+
+`previousStableRevision`, `promotedRevision`, and the new candidate revision
+must be distinct full revision names for `moazez-staging-api`. The previous
+stable traffic must be the numeric value `0`, and promoted traffic must be the
+numeric value `100`. The promoted revision must equal
+`moazez-staging-api-${promotedCandidateTag}`. The promoted tag must belong to
+the promoted image's deterministic candidate family: either the image-derived
+base tag or that base followed by a canonical `-rN`, where `N` is from `1`
+through `999999999999999`.
+
+The promoted image must differ from the new approved candidate image. The old
+promoted tag and revision must also differ from the new candidate tag and
+revision, including the unlikely case where distinct image references produce
+the same 12-character tag prefix. Missing fields, wrong percentages,
+wrong-service revisions, a tag/revision mismatch, a tag belonging to another
+image, duplicate identities, or contradictory mode fields fail closed.
+
+The top-level `candidate` object continues to identify only the new release
+candidate. Its tag is derived only from the new `candidateImageReference`; the
+prior promoted identity is immutable live-baseline evidence and is never
+copied into the new candidate fields.
+
+For a legacy `normal` start, `stableApiRevision` is the full current revision
+discovered from `moazez-staging-api`. For a promoted start,
+`previousStableRevision` and `promotedRevision` are both taken from the exact
+live traffic tuple. Do not infer any of these revisions from source or reuse
+stale evidence.
+
+The operation transition from a promoted baseline is exact:
+
+| Operation window                  | `api_image_reference`         | `api_traffic_mode`     | `api_stable_revision`                     | `api_candidate_tag`                     |
+| --------------------------------- | ----------------------------- | ---------------------- | ----------------------------------------- | --------------------------------------- |
+| Core and Media promotion          | Current `runtimeImages.api`   | `candidate_promoted`   | `promotedBaseline.previousStableRevision` | `promotedBaseline.promotedCandidateTag` |
+| New API candidate at zero traffic | New `candidateImageReference` | `candidate_no_traffic` | `promotedBaseline.promotedRevision`       | New image-derived `candidateTag`        |
+| Maintenance promotion             | New `candidateImageReference` | `candidate_no_traffic` | `promotedBaseline.promotedRevision`       | New image-derived `candidateTag`        |
+| Final traffic promotion           | New `candidateImageReference` | `candidate_promoted`   | `promotedBaseline.promotedRevision`       | New image-derived `candidateTag`        |
+
+Core and Media plans must therefore preserve the exact existing API traffic
+tuple and contain no API resource change. At the new API candidate operation,
+the currently serving promoted revision becomes the stable `100%` revision and
+the new candidate starts at `0%`. The older previous-stable `0%` target may
+leave the explicit traffic list at this operation; that is a governed
+`traffic` update, not deletion of the preserved revision. The candidate edge
+operation uses only the new candidate tag.
+
+A successfully promoted starting baseline is normal manifest v1, not Recovery
+v2. It retains the full Core, Media, API candidate, Maintenance, protected
+smoke, and final traffic-promotion order.
+
+The new normal-v1 candidate tag formula is:
 
 ```text
 candidate-${first 12 lowercase hex characters of sha256(full api_image_reference)}
 ```
 
-For the existing artifact at the approved Staging repository reference, the
-derived identities are:
+For the historical D1 artifact at its approved Staging repository reference,
+the derived base identities were:
 
 ```text
 candidate tag:      candidate-e1f5a9c9e01b
@@ -214,9 +296,14 @@ mutation, or Cloud Console mutation as release orchestration.
 
 Recovery does not reuse the failed manifest or execution ID. Create a new
 external context with `executionMode="recovery"`, a new `executionId`, the
-exact merged/approved D1 `sourceSha`, and
+exact merged and approved deployment-control `sourceSha`, and
 `resumeGateId="api-no-traffic-promotion"`. No other resume gate is supported,
 and no top-level/operator `candidateTag` is accepted.
+
+This v2 schema and API-first recovery window are unchanged by promoted-baseline
+support. Recovery remains limited to an explicitly failed zero-traffic
+candidate; it must not be used to normalize or resume a successful
+`candidate_promoted` baseline.
 
 The strict `recovery` object contains only:
 
@@ -336,11 +423,12 @@ Operation: `core-worker-runtime`
 
 - Root: backend runtime.
 - Images: current API, candidate Core Worker, current Media Worker, current Maintenance Scheduler.
-- Traffic: `normal`, stable revision `null`, candidate tag `null`.
+- Traffic for a `normal` start: `normal`, stable revision `null`, candidate tag `null`.
+- Traffic for a promoted start: unchanged `candidate_promoted`, previous stable revision, and previous promoted candidate tag from `promotedBaseline`.
 - Address allowlist: `module.runtime_environment.google_cloud_run_v2_worker_pool.core`.
 - Attribute allowlist: `template[0].containers[0].image`.
 - Initial state precondition: live runtime lineage and serial.
-- Expected plan: one in-place Core Worker image update only.
+- Expected plan: one in-place Core Worker image update only; any API address or traffic change is forbidden.
 - Return: saved-plan path/SHA256/size, source/root/environment/lineage/serial binding, approval, apply evidence and increased same-lineage state serial, then observed candidate image.
 
 ### 2. `media-worker-promotion`
@@ -349,11 +437,12 @@ Operation: `media-worker-runtime`
 
 - Root: backend runtime.
 - Images: current API, already-promoted candidate Core Worker, candidate Media Worker, current Maintenance Scheduler.
-- Traffic: `normal`, stable revision `null`, candidate tag `null`.
+- Traffic for a `normal` start: `normal`, stable revision `null`, candidate tag `null`.
+- Traffic for a promoted start: the same unchanged `candidate_promoted` tuple used by Core.
 - Address allowlist: `module.runtime_environment.google_cloud_run_v2_worker_pool.media`.
 - Attribute allowlist: `template[0].containers[0].image`.
 - State precondition: lineage/serial returned after verified `core-worker-runtime`.
-- Expected plan: one in-place Media Worker image update only.
+- Expected plan: one in-place Media Worker image update only; any API address or traffic change is forbidden.
 - Return: the standard plan/approval/apply/state evidence, then observed candidate image.
 
 ### 3. `api-no-traffic-promotion`
@@ -364,11 +453,11 @@ Operation 1: `api-candidate-runtime`
 
 - Root: backend runtime.
 - Images: candidate API, already-promoted candidate Core/Media Workers, current Maintenance Scheduler.
-- Traffic: `candidate_no_traffic`, verified stable revision, deterministic candidate tag.
+- Traffic: `candidate_no_traffic`, the new release's verified stable revision, and its new deterministic candidate tag. The stable revision is `liveDiscovery.stableApiRevision` after a `normal` start or `liveDiscovery.promotedBaseline.promotedRevision` after a promoted start.
 - Address allowlist: `module.runtime_environment.google_cloud_run_v2_service.api`.
 - Attribute allowlist: `template[0].containers[0].image`, `template[0].revision`, and `traffic`.
 - State precondition: lineage/serial returned after verified `media-worker-runtime`.
-- Expected plan: candidate image/revision plus explicit stable 100%, tagged candidate 0%; no worker or unrelated API change.
+- Expected plan: the new candidate image/revision plus explicit stable 100% and tagged candidate 0%; no worker or unrelated API change. From a promoted baseline, the previously serving promoted revision becomes stable and the older zero-percent traffic target may leave the explicit tuple.
 - Return: standard plan/approval/apply/state evidence, then observed candidate image, revision, tag, stable percent `100`, and candidate percent `0`.
 
 Operation 2: `api-candidate-edge`
@@ -391,7 +480,7 @@ Operation: `maintenance-scheduler-runtime`
 
 - Root: backend runtime.
 - Images: candidate image for API, Core Worker, Media Worker, and Maintenance Scheduler.
-- Traffic: unchanged `candidate_no_traffic` with the same stable revision/tag.
+- Traffic: unchanged `candidate_no_traffic` with the new release's stable revision and candidate tag.
 - Address allowlist: `module.runtime_environment.google_cloud_run_v2_worker_pool.maintenance_scheduler`.
 - Attribute allowlist: `template[0].containers[0].image`.
 - State precondition: lineage/serial returned after verified `api-candidate-runtime`.
@@ -415,7 +504,7 @@ Operation: `api-traffic-promotion`
 
 - Root: backend runtime.
 - Images: unchanged candidate image on all four runtimes.
-- Traffic: `candidate_promoted` with the unchanged stable revision and candidate tag.
+- Traffic: `candidate_promoted` with the unchanged new-release stable revision and candidate tag.
 - Address allowlist: `module.runtime_environment.google_cloud_run_v2_service.api`.
 - Attribute allowlist: `traffic` only.
 - State precondition: lineage/serial returned after verified `maintenance-scheduler-runtime`.

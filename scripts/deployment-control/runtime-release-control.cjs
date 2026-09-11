@@ -329,6 +329,240 @@ function validateImageReference(value, label) {
   return value;
 }
 
+function validateManifestV1LiveDiscovery(
+  value,
+  candidate,
+  label = 'liveDiscovery',
+  strictManifest = false,
+) {
+  const normalKeys = [
+    'evidenceRef',
+    'discoveredAt',
+    'apiTrafficMode',
+    'stableApiRevision',
+    'runtimeImages',
+    'runtimeState',
+    'edgeState',
+  ];
+  const promotedKeys = [
+    'evidenceRef',
+    'discoveredAt',
+    'apiTrafficMode',
+    'promotedBaseline',
+    'runtimeImages',
+    'runtimeState',
+    'edgeState',
+  ];
+  let live = requireObject(value, label);
+  const evidenceRef = requireString(live.evidenceRef, `${label}.evidenceRef`);
+  const discoveredAt = requireIsoTimestamp(
+    live.discoveredAt,
+    `${label}.discoveredAt`,
+  );
+  if (!['normal', 'candidate_promoted'].includes(live.apiTrafficMode)) {
+    fail(
+      'LIVE_TRAFFIC_BASELINE_UNSAFE',
+      `${label}.apiTrafficMode must be normal or candidate_promoted before the remaining sequence.`,
+    );
+  }
+  if (live.apiTrafficMode === 'candidate_promoted') {
+    live = requireExactKeys(live, promotedKeys, label);
+  } else if (strictManifest) {
+    live = requireExactKeys(live, normalKeys, label);
+  } else if (Object.hasOwn(live, 'promotedBaseline')) {
+    fail(
+      'LIVE_TRAFFIC_BASELINE_UNSAFE',
+      `${label}.promotedBaseline is valid only for candidate_promoted traffic.`,
+    );
+  }
+
+  const runtimeImageKeys = [
+    'api',
+    'coreWorker',
+    'mediaWorker',
+    'maintenanceScheduler',
+  ];
+  const discoveredImages =
+    live.apiTrafficMode === 'candidate_promoted' || strictManifest
+      ? requireExactKeys(
+          live.runtimeImages,
+          runtimeImageKeys,
+          `${label}.runtimeImages`,
+        )
+      : requireObject(live.runtimeImages, `${label}.runtimeImages`);
+  const currentImages = {
+    api: validateImageReference(
+      discoveredImages.api,
+      `${label}.runtimeImages.api`,
+    ),
+    coreWorker: validateImageReference(
+      discoveredImages.coreWorker,
+      `${label}.runtimeImages.coreWorker`,
+    ),
+    mediaWorker: validateImageReference(
+      discoveredImages.mediaWorker,
+      `${label}.runtimeImages.mediaWorker`,
+    ),
+    maintenanceScheduler: validateImageReference(
+      discoveredImages.maintenanceScheduler,
+      `${label}.runtimeImages.maintenanceScheduler`,
+    ),
+  };
+  const exactLiveShape =
+    live.apiTrafficMode === 'candidate_promoted' || strictManifest;
+  const runtimeState = requireState(
+    exactLiveShape
+      ? requireExactKeys(
+          live.runtimeState,
+          ['lineage', 'serial'],
+          `${label}.runtimeState`,
+        )
+      : live.runtimeState,
+    `${label}.runtimeState`,
+  );
+  const edgeState = requireState(
+    exactLiveShape
+      ? requireExactKeys(
+          live.edgeState,
+          ['lineage', 'serial'],
+          `${label}.edgeState`,
+        )
+      : live.edgeState,
+    `${label}.edgeState`,
+  );
+
+  if (live.apiTrafficMode === 'normal') {
+    const stableApiRevision = requireString(
+      live.stableApiRevision,
+      `${label}.stableApiRevision`,
+      /^moazez-staging-api-[a-z0-9][a-z0-9-]{0,42}[a-z0-9]$/u,
+    );
+    if (stableApiRevision === candidate.revision) {
+      if (strictManifest) {
+        fail(
+          'CANDIDATE_IDENTITY_MISMATCH',
+          'manifest candidate image, tag, revision, and stable identity are inconsistent.',
+        );
+      }
+      fail(
+        'AMBIGUOUS_API_REVISIONS',
+        'stable and candidate revision identities must be distinct.',
+      );
+    }
+    const normalized = {
+      evidenceRef,
+      discoveredAt,
+      apiTrafficMode: 'normal',
+      stableApiRevision,
+      runtimeImages: currentImages,
+      runtimeState,
+      edgeState,
+    };
+    if (strictManifest) {
+      requireExactValue(live, normalized, label);
+    }
+    return {
+      liveDiscovery: normalized,
+      currentImages,
+      stableApiRevision,
+      runtimeState,
+      edgeState,
+      preApiTraffic: ['normal', null, null],
+    };
+  }
+
+  const promoted = requireExactKeys(
+    live.promotedBaseline,
+    [
+      'previousStableRevision',
+      'previousStableTrafficPercent',
+      'promotedRevision',
+      'promotedTrafficPercent',
+      'promotedCandidateTag',
+      'promotedImageReference',
+    ],
+    `${label}.promotedBaseline`,
+  );
+  const previousStableRevision = requireString(
+    promoted.previousStableRevision,
+    `${label}.promotedBaseline.previousStableRevision`,
+    /^moazez-staging-api-[a-z0-9][a-z0-9-]{0,42}[a-z0-9]$/u,
+  );
+  const promotedRevision = requireString(
+    promoted.promotedRevision,
+    `${label}.promotedBaseline.promotedRevision`,
+    /^moazez-staging-api-[a-z0-9][a-z0-9-]{0,42}[a-z0-9]$/u,
+  );
+  const promotedCandidateTag = requireString(
+    promoted.promotedCandidateTag,
+    `${label}.promotedBaseline.promotedCandidateTag`,
+    /^candidate-[a-f0-9]{12}(?:-r[1-9][0-9]{0,14})?$/u,
+  );
+  const promotedImageReference = validateImageReference(
+    promoted.promotedImageReference,
+    `${label}.promotedBaseline.promotedImageReference`,
+  );
+  const promotedBaseTag = expectedCandidateTag(promotedImageReference);
+  const promotedTagMatchesImage =
+    promotedCandidateTag === promotedBaseTag ||
+    new RegExp(`^${promotedBaseTag}-r[1-9][0-9]{0,14}$`, 'u').test(
+      promotedCandidateTag,
+    );
+  const identities = new Set([
+    previousStableRevision,
+    promotedRevision,
+    candidate.revision,
+  ]);
+  if (
+    promoted.previousStableTrafficPercent !== 0 ||
+    promoted.promotedTrafficPercent !== 100 ||
+    promotedRevision !== `moazez-staging-api-${promotedCandidateTag}` ||
+    promotedImageReference !== currentImages.api ||
+    promotedImageReference === candidate.imageReference ||
+    !promotedTagMatchesImage ||
+    promotedBaseTag === candidate.tag ||
+    promotedCandidateTag === candidate.tag ||
+    identities.size !== 3
+  ) {
+    fail(
+      'LIVE_TRAFFIC_BASELINE_UNSAFE',
+      'candidate_promoted live discovery contains contradictory traffic, revision, tag, image, or release-candidate identities.',
+    );
+  }
+  const promotedBaseline = {
+    previousStableRevision,
+    previousStableTrafficPercent: 0,
+    promotedRevision,
+    promotedTrafficPercent: 100,
+    promotedCandidateTag,
+    promotedImageReference,
+  };
+  const normalized = {
+    evidenceRef,
+    discoveredAt,
+    apiTrafficMode: 'candidate_promoted',
+    promotedBaseline,
+    runtimeImages: currentImages,
+    runtimeState,
+    edgeState,
+  };
+  if (strictManifest) {
+    requireExactValue(live, normalized, label);
+  }
+  return {
+    liveDiscovery: normalized,
+    currentImages,
+    stableApiRevision: promotedRevision,
+    runtimeState,
+    edgeState,
+    preApiTraffic: [
+      'candidate_promoted',
+      previousStableRevision,
+      promotedCandidateTag,
+    ],
+  };
+}
+
 function recoveryContractWindow(contract) {
   const resumeIndex = contract.contract.stages.findIndex(
     (stage) => stage.id === RECOVERY_RESUME_GATE_ID,
@@ -949,7 +1183,7 @@ function buildGateOperations(context, gate, gateIndex) {
   const current = context.currentImages;
   const candidate = context.candidateImageReference;
   const recovery = context.executionMode === 'recovery';
-  const normalTraffic = ['normal', null, null];
+  const preApiTraffic = context.preApiTraffic ?? ['normal', null, null];
   const candidateTraffic = [
     'candidate_no_traffic',
     context.stableApiRevision,
@@ -973,7 +1207,7 @@ function buildGateOperations(context, gate, gateIndex) {
               ...current,
               coreWorker: candidate,
             },
-            ...normalTraffic,
+            ...preApiTraffic,
           ),
           expectedResourceAddressAllowlist: [
             RUNTIME_RESOURCE_ADDRESSES.coreWorker,
@@ -1002,7 +1236,7 @@ function buildGateOperations(context, gate, gateIndex) {
               mediaWorker: candidate,
               maintenanceScheduler: current.maintenanceScheduler,
             },
-            ...normalTraffic,
+            ...preApiTraffic,
           ),
           expectedResourceAddressAllowlist: [
             RUNTIME_RESOURCE_ADDRESSES.mediaWorker,
@@ -1211,54 +1445,23 @@ function buildManifestV1(input) {
       'candidateTag must be deterministically derived from candidateImageReference.',
     );
   }
-  const live = requireObject(input.liveDiscovery, 'liveDiscovery');
-  requireString(live.evidenceRef, 'liveDiscovery.evidenceRef');
-  requireIsoTimestamp(live.discoveredAt, 'liveDiscovery.discoveredAt');
-  if (live.apiTrafficMode !== 'normal') {
-    fail(
-      'LIVE_TRAFFIC_BASELINE_UNSAFE',
-      'liveDiscovery.apiTrafficMode must be normal before the remaining sequence.',
-    );
-  }
-  const discoveredImages = requireObject(
-    live.runtimeImages,
-    'liveDiscovery.runtimeImages',
-  );
-  const currentImages = {
-    api: validateImageReference(
-      discoveredImages.api,
-      'liveDiscovery.runtimeImages.api',
-    ),
-    coreWorker: validateImageReference(
-      discoveredImages.coreWorker,
-      'liveDiscovery.runtimeImages.coreWorker',
-    ),
-    mediaWorker: validateImageReference(
-      discoveredImages.mediaWorker,
-      'liveDiscovery.runtimeImages.mediaWorker',
-    ),
-    maintenanceScheduler: validateImageReference(
-      discoveredImages.maintenanceScheduler,
-      'liveDiscovery.runtimeImages.maintenanceScheduler',
-    ),
-  };
-  const stableApiRevision = requireString(
-    live.stableApiRevision,
-    'liveDiscovery.stableApiRevision',
-    /^moazez-staging-api-[a-z0-9][a-z0-9-]{0,42}[a-z0-9]$/u,
-  );
   const candidateRevision = `moazez-staging-api-${candidateTag}`;
-  if (stableApiRevision === candidateRevision) {
-    fail(
-      'AMBIGUOUS_API_REVISIONS',
-      'stable and candidate revision identities must be distinct.',
-    );
-  }
-  const runtimeState = requireState(
-    live.runtimeState,
-    'liveDiscovery.runtimeState',
+  const live = validateManifestV1LiveDiscovery(
+    input.liveDiscovery,
+    {
+      imageReference: candidateImageReference,
+      tag: candidateTag,
+      revision: candidateRevision,
+    },
+    'liveDiscovery',
   );
-  const edgeState = requireState(live.edgeState, 'liveDiscovery.edgeState');
+  const {
+    currentImages,
+    stableApiRevision,
+    runtimeState,
+    edgeState,
+    preApiTraffic,
+  } = live;
   const tfDataRoot = requireExternalAbsolutePath(
     input.externalTfDataRoot,
     'externalTfDataRoot',
@@ -1282,6 +1485,7 @@ function buildManifestV1(input) {
     currentImages,
     runtimeState,
     edgeState,
+    preApiTraffic,
     tfDataRoot,
     savedPlanRoot,
   };
@@ -1306,15 +1510,7 @@ function buildManifestV1(input) {
       automaticRetryAllowed: contract.contract.automaticRetryAllowed,
     },
     predecessorEvidence,
-    liveDiscovery: {
-      evidenceRef: live.evidenceRef,
-      discoveredAt: live.discoveredAt,
-      apiTrafficMode: live.apiTrafficMode,
-      stableApiRevision,
-      runtimeImages: currentImages,
-      runtimeState,
-      edgeState,
-    },
+    liveDiscovery: live.liveDiscovery,
     candidate: {
       imageReference: candidateImageReference,
       tag: candidateTag,
@@ -2127,88 +2323,6 @@ function validateManifestV1(manifest) {
     'manifest.predecessorEvidence',
   );
 
-  const live = requireExactKeys(
-    manifest.liveDiscovery,
-    [
-      'evidenceRef',
-      'discoveredAt',
-      'apiTrafficMode',
-      'stableApiRevision',
-      'runtimeImages',
-      'runtimeState',
-      'edgeState',
-    ],
-    'manifest.liveDiscovery',
-  );
-  const evidenceRef = requireString(
-    live.evidenceRef,
-    'manifest.liveDiscovery.evidenceRef',
-  );
-  const discoveredAt = requireIsoTimestamp(
-    live.discoveredAt,
-    'manifest.liveDiscovery.discoveredAt',
-  );
-  if (live.apiTrafficMode !== 'normal') {
-    fail(
-      'LIVE_TRAFFIC_BASELINE_UNSAFE',
-      'manifest live traffic baseline must remain normal.',
-    );
-  }
-  const runtimeImages = requireExactKeys(
-    live.runtimeImages,
-    ['api', 'coreWorker', 'mediaWorker', 'maintenanceScheduler'],
-    'manifest.liveDiscovery.runtimeImages',
-  );
-  const currentImages = {
-    api: validateImageReference(
-      runtimeImages.api,
-      'manifest.liveDiscovery.runtimeImages.api',
-    ),
-    coreWorker: validateImageReference(
-      runtimeImages.coreWorker,
-      'manifest.liveDiscovery.runtimeImages.coreWorker',
-    ),
-    mediaWorker: validateImageReference(
-      runtimeImages.mediaWorker,
-      'manifest.liveDiscovery.runtimeImages.mediaWorker',
-    ),
-    maintenanceScheduler: validateImageReference(
-      runtimeImages.maintenanceScheduler,
-      'manifest.liveDiscovery.runtimeImages.maintenanceScheduler',
-    ),
-  };
-  requireExactValue(
-    live.runtimeImages,
-    currentImages,
-    'manifest.liveDiscovery.runtimeImages',
-  );
-  const stableApiRevision = requireString(
-    live.stableApiRevision,
-    'manifest.liveDiscovery.stableApiRevision',
-    /^moazez-staging-api-[a-z0-9][a-z0-9-]{0,42}[a-z0-9]$/u,
-  );
-  const runtimeState = requireState(
-    live.runtimeState,
-    'manifest.liveDiscovery.runtimeState',
-  );
-  const edgeState = requireState(
-    live.edgeState,
-    'manifest.liveDiscovery.edgeState',
-  );
-  requireExactValue(
-    live,
-    {
-      evidenceRef,
-      discoveredAt,
-      apiTrafficMode: 'normal',
-      stableApiRevision,
-      runtimeImages: currentImages,
-      runtimeState,
-      edgeState,
-    },
-    'manifest.liveDiscovery',
-  );
-
   const candidate = requireExactKeys(
     manifest.candidate,
     ['imageReference', 'tag', 'revision'],
@@ -2226,8 +2340,7 @@ function validateManifestV1(manifest) {
   const candidateRevision = `moazez-staging-api-${candidateTag}`;
   if (
     candidateTag !== expectedCandidateTag(candidateImageReference) ||
-    candidate.revision !== candidateRevision ||
-    stableApiRevision === candidateRevision
+    candidate.revision !== candidateRevision
   ) {
     fail(
       'CANDIDATE_IDENTITY_MISMATCH',
@@ -2243,6 +2356,23 @@ function validateManifestV1(manifest) {
     },
     'manifest.candidate',
   );
+  const live = validateManifestV1LiveDiscovery(
+    manifest.liveDiscovery,
+    {
+      imageReference: candidateImageReference,
+      tag: candidateTag,
+      revision: candidateRevision,
+    },
+    'manifest.liveDiscovery',
+    true,
+  );
+  const {
+    currentImages,
+    stableApiRevision,
+    runtimeState,
+    edgeState,
+    preApiTraffic,
+  } = live;
 
   const externalRoots = requireExactKeys(
     manifest.externalArtifactRoots,
@@ -2274,6 +2404,7 @@ function validateManifestV1(manifest) {
     currentImages,
     runtimeState,
     edgeState,
+    preApiTraffic,
     tfDataRoot,
     savedPlanRoot,
   };
