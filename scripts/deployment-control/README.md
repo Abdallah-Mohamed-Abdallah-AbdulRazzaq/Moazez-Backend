@@ -71,13 +71,90 @@ in this file. Normal construction omits `executionMode`, produces
 }
 ```
 
+The example above is the unchanged `normal` starting baseline. Its
+`liveDiscovery.stableApiRevision` is required, and `promotedBaseline` must be
+absent.
+
+A later normal v1 release may instead begin from the successful promoted
+end-state of the preceding release. Keep the surrounding context unchanged and
+use this exact `liveDiscovery` variant:
+
+```json
+{
+  "evidenceRef": "<live-discovery-evidence-reference>",
+  "discoveredAt": "<ISO-8601-UTC-timestamp>",
+  "apiTrafficMode": "candidate_promoted",
+  "promotedBaseline": {
+    "previousStableRevision": "moazez-staging-api-<previous-stable-revision-suffix>",
+    "previousStableTrafficPercent": 0,
+    "promotedRevision": "moazez-staging-api-<currently-promoted-revision-suffix>",
+    "promotedTrafficPercent": 100,
+    "promotedCandidateTag": "candidate-<12-lowercase-hex>[-rN]",
+    "promotedImageReference": "<current-promoted-staging-image-by-digest>"
+  },
+  "runtimeImages": {
+    "api": "<same-current-promoted-staging-image-by-digest>",
+    "coreWorker": "<current-staging-image-by-digest>",
+    "mediaWorker": "<current-staging-image-by-digest>",
+    "maintenanceScheduler": "<current-staging-image-by-digest>"
+  },
+  "runtimeState": {
+    "lineage": "<opaque-runtime-state-lineage>",
+    "serial": 0
+  },
+  "edgeState": {
+    "lineage": "<opaque-edge-state-lineage>",
+    "serial": 0
+  }
+}
+```
+
+The emitted normal-v1 live-discovery shapes are mode-discriminated and exact.
+`apiTrafficMode` may be only `normal` or `candidate_promoted` at construction;
+`candidate_no_traffic` is an in-release state, not a permitted starting
+baseline. Existing `normal` input compatibility is unchanged, while the
+promoted input requires the exact `promotedBaseline` shape above and omits the
+top-level `stableApiRevision`. Extra, missing, or contradictory promoted fields
+are rejected.
+
+For a promoted baseline, `previousStableRevision`, `promotedRevision`, and the
+new candidate revision must be distinct full revision names for
+`moazez-staging-api`, and the two traffic percentages must be the numeric values
+`0` and `100` shown above. `promotedRevision` must equal
+`moazez-staging-api-${promotedCandidateTag}`. The promoted tag must be derived
+from `promotedImageReference`; it may be the image-derived base tag or that
+base followed by a canonical `-rN` recovery suffix, where `N` is from `1`
+through `999999999999999`. The promoted image must equal
+`runtimeImages.api` and must differ from the new `candidateImageReference`.
+The previous promoted tag/revision and the new release candidate tag/revision
+must also be distinct. These checks prevent a prior promoted candidate from
+being reused as, or conflated with, the new candidate.
+
+The controller maps a valid promoted start to these exact API inputs while
+retaining the authoritative gate order:
+
+| Operation window                  | `api_image_reference`         | `api_traffic_mode`     | `api_stable_revision`                     | `api_candidate_tag`                     |
+| --------------------------------- | ----------------------------- | ---------------------- | ----------------------------------------- | --------------------------------------- |
+| Core and Media promotion          | `runtimeImages.api`           | `candidate_promoted`   | `promotedBaseline.previousStableRevision` | `promotedBaseline.promotedCandidateTag` |
+| New API candidate at zero traffic | New `candidateImageReference` | `candidate_no_traffic` | `promotedBaseline.promotedRevision`       | New image-derived `candidateTag`        |
+| Maintenance promotion             | New `candidateImageReference` | `candidate_no_traffic` | `promotedBaseline.promotedRevision`       | New image-derived `candidateTag`        |
+| Final traffic promotion           | New `candidateImageReference` | `candidate_promoted`   | `promotedBaseline.promotedRevision`       | New image-derived `candidateTag`        |
+
+Core and Media therefore preserve the exact existing API traffic tuple and
+must produce no API resource change. At the new API candidate operation, the
+currently serving promoted revision becomes the stable revision at `100%`, and
+the new candidate begins at `0%`. The older previous-stable `0%` traffic target
+may leave the explicit traffic list at that operation; this is a governed
+`traffic` update, not revision deletion. The edge operation uses only the new
+candidate tag.
+
 Terraform state lineage is treated as an opaque exact identity token. The
 deployment controller does not interpret UUID version or variant semantics.
 Lineage is preserved exactly and compared for exact equality, without
 normalization or mutation. State serial remains a non-negative safe integer
 and must increase after a successful apply.
 
-The tag formula is exact:
+The new normal-v1 candidate tag formula is exact:
 
 ```text
 candidate-${sha256(full api image reference)[0:12]}
@@ -89,8 +166,14 @@ The expected revision is:
 moazez-staging-api-${candidateTag}
 ```
 
-The stable revision must be the full revision discovered from the live
-`moazez-staging-api` service, not a source default or guessed value.
+For a `normal` start, `stableApiRevision` must be the full revision discovered
+from the live `moazez-staging-api` service. For a `candidate_promoted` start,
+both `previousStableRevision` and `promotedRevision` must come from the exact
+live traffic tuple. None of these identities may be a source default, guessed
+value, or stale evidence.
+
+A successful `candidate_promoted` starting baseline remains a normal manifest
+v1 execution with the full Core-first sequence. It is not Recovery v2.
 
 ## Recovery manifest v2 context
 
@@ -100,6 +183,10 @@ failed release execution ID; and set
 `resumeGateId="api-no-traffic-promotion"`. Recovery input is strict and must
 not contain an operator-supplied top-level `candidateTag`. The controller
 derives the identity from the immutable image and attempt.
+
+The promoted-baseline extension does not change this schema or its API-first
+window. Recovery remains limited to an explicitly failed zero-traffic
+candidate and must not be used for a successfully promoted baseline.
 
 The exact recovery metadata object is:
 
