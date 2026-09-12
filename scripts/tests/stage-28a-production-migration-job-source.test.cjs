@@ -10,6 +10,7 @@ const { classifyTestFile } = require('../ci/plan-ci.cjs');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
 const BASE_SHA = 'e4cf40c47ec95ec4eb231f0ac60c2f15c869d1e6';
+const EXACT_COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/iu;
 const MODULE_ROOT =
   'infra/gcp/backend-runtime/modules/migration-job-environment';
 const STAGING_ROOT = 'infra/gcp/backend-runtime/environments/nonprod/migration';
@@ -377,9 +378,13 @@ function governedTupleAccepted(candidate) {
 function candidateFilesFromCommittedRange() {
   const base = process.env.CI_BASE_SHA || BASE_SHA;
   const candidate = process.env.CI_CANDIDATE_SHA || 'HEAD';
+  return changedFilesFromGitDiff([base, candidate]);
+}
+
+function changedFilesFromGitDiff(revisions, gitRunner = execFileSync) {
   return [
     ...new Set(
-      execFileSync('git', ['diff', '--name-only', base, candidate, '--'], {
+      gitRunner('git', ['diff', '--name-only', ...revisions, '--'], {
         cwd: REPOSITORY_ROOT,
         encoding: 'utf8',
         windowsHide: true,
@@ -391,39 +396,41 @@ function candidateFilesFromCommittedRange() {
   ].sort();
 }
 
-function candidateFilesFromMaintenanceRange() {
-  const candidate = process.env.CI_CANDIDATE_SHA || 'HEAD';
-  const workingTreeFiles = execFileSync(
-    'git',
-    ['diff', '--name-only', candidate, '--'],
-    {
-      cwd: REPOSITORY_ROOT,
-      encoding: 'utf8',
-      windowsHide: true,
+function recordingGitRunner(outputs) {
+  const calls = [];
+  const remainingOutputs = [...outputs];
+  return {
+    calls,
+    run(command, arguments_) {
+      assert.equal(command, 'git');
+      assert.ok(
+        remainingOutputs.length > 0,
+        `Unexpected git invocation: ${arguments_.join(' ')}`,
+      );
+      calls.push(arguments_);
+      return remainingOutputs.shift();
     },
-  )
-    .split(/\r?\n/u)
-    .filter(Boolean)
-    .map((file) => file.replace(/\\/gu, '/'));
-  if (workingTreeFiles.length > 0) {
-    return [...new Set(workingTreeFiles)].sort();
+  };
+}
+
+function candidateFilesFromMaintenanceRange(options = {}) {
+  const environment = options.environment ?? process.env;
+  const gitRunner = options.gitRunner ?? execFileSync;
+  const ciBase = environment.CI_BASE_SHA;
+  const ciCandidate = environment.CI_CANDIDATE_SHA;
+  if (
+    EXACT_COMMIT_SHA_PATTERN.test(String(ciBase ?? '')) &&
+    EXACT_COMMIT_SHA_PATTERN.test(String(ciCandidate ?? ''))
+  ) {
+    return changedFilesFromGitDiff([ciBase, ciCandidate], gitRunner);
   }
-  return [
-    ...new Set(
-      execFileSync(
-        'git',
-        ['diff', '--name-only', `${candidate}^`, candidate, '--'],
-        {
-          cwd: REPOSITORY_ROOT,
-          encoding: 'utf8',
-          windowsHide: true,
-        },
-      )
-        .split(/\r?\n/u)
-        .filter(Boolean)
-        .map((file) => file.replace(/\\/gu, '/')),
-    ),
-  ].sort();
+
+  const candidate = ciCandidate || 'HEAD';
+  const workingTreeFiles = changedFilesFromGitDiff([candidate], gitRunner);
+  if (workingTreeFiles.length > 0) {
+    return workingTreeFiles;
+  }
+  return changedFilesFromGitDiff([`${candidate}^`, candidate], gitRunner);
 }
 
 function assertStage28CandidateScope(candidateFiles) {
@@ -1042,6 +1049,85 @@ test('Stage 28A and PRD3-G04 retain exact independent CI ownership', () => {
     profile: 'prd3-g04',
     execution: 'pull-request',
   });
+});
+
+test('Stage 28A maintenance range preserves local working-tree and linear-commit fallback', () => {
+  const workingTree = recordingGitRunner([`${TEST_PATH}\n`]);
+  assert.deepEqual(
+    candidateFilesFromMaintenanceRange({
+      environment: {},
+      gitRunner: workingTree.run,
+    }),
+    [TEST_PATH],
+  );
+  assert.deepEqual(workingTree.calls, [['diff', '--name-only', 'HEAD', '--']]);
+
+  const linearCommit = recordingGitRunner(['', `${TEST_PATH}\n`]);
+  assert.deepEqual(
+    candidateFilesFromMaintenanceRange({
+      environment: {},
+      gitRunner: linearCommit.run,
+    }),
+    [TEST_PATH],
+  );
+  assert.deepEqual(linearCommit.calls, [
+    ['diff', '--name-only', 'HEAD', '--'],
+    ['diff', '--name-only', 'HEAD^', 'HEAD', '--'],
+  ]);
+});
+
+test('Stage 28A maintenance range uses the exact PR base and single-parent candidate', () => {
+  const base = 'a'.repeat(40);
+  const candidate = 'b'.repeat(40);
+  const expectedFiles = [
+    `${DAY2_D1_DEPLOYMENT_CONTROL_ROOT}/runtime-release-control.cjs`,
+  ];
+  const git = recordingGitRunner([`${expectedFiles[0]}\n`]);
+
+  assert.deepEqual(
+    candidateFilesFromMaintenanceRange({
+      environment: {
+        CI_BASE_SHA: base,
+        CI_CANDIDATE_SHA: candidate,
+      },
+      gitRunner: git.run,
+    }),
+    expectedFiles,
+  );
+  assert.deepEqual(git.calls, [['diff', '--name-only', base, candidate, '--']]);
+});
+
+test('Stage 28A merge maintenance excludes files imported from the base branch', () => {
+  const base = 'c'.repeat(40);
+  const mergeCandidate = 'd'.repeat(40);
+  const prFiles = [
+    DAY2_D1_HANDOFF_PATH,
+    `${DAY2_D1_DEPLOYMENT_CONTROL_ROOT}/README.md`,
+    `${DAY2_D1_DEPLOYMENT_CONTROL_ROOT}/runtime-release-control.cjs`,
+    `${DAY2_D1_DEPLOYMENT_CONTROL_ROOT}/tests/runtime-release-control.test.cjs`,
+  ].sort();
+  const baseImportedFiles = [
+    'infra/gcp/backend-runtime/modules/runtime-environment/main.tf',
+    STAGE_29_TEST_PATH,
+  ];
+  const git = recordingGitRunner([`${prFiles.join('\n')}\n`]);
+
+  const actual = candidateFilesFromMaintenanceRange({
+    environment: {
+      CI_BASE_SHA: base,
+      CI_CANDIDATE_SHA: mergeCandidate,
+    },
+    gitRunner: git.run,
+  });
+
+  assert.deepEqual(actual, prFiles);
+  assert.deepEqual(
+    actual.filter((file) => baseImportedFiles.includes(file)),
+    [],
+  );
+  assert.deepEqual(git.calls, [
+    ['diff', '--name-only', base, mergeCandidate, '--'],
+  ]);
 });
 
 test('Committed Stage 28A candidate scope contains only authorized paths when active', () => {
