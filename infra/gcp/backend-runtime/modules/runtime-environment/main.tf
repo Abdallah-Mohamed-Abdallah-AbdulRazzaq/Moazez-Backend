@@ -265,7 +265,7 @@ resource "google_cloud_run_v2_service" "api" {
 
   scaling {
     min_instance_count = 1
-    max_instance_count = 4
+    max_instance_count = 10
   }
 
   template {
