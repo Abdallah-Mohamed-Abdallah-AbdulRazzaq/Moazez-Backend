@@ -120,7 +120,7 @@ test('every self-contained Phase 3 profile preloads its exact fresh-run images',
       'prd3-g03': [
         'postgres:16-alpine',
         'redis:7-alpine',
-        'minio/minio:RELEASE.2025-09-07T16-13-09Z',
+        'quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e',
       ],
       'prd3-g04': ['postgres:16-alpine'],
       'prd3-g05': ['postgres:16-alpine'],
