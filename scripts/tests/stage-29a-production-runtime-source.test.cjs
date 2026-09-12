@@ -71,6 +71,9 @@ const PT2_STAGE29_DELEGATED_PATHS = Object.freeze(
     TEST_PATH,
   ].sort(),
 );
+const PRODUCTION_API_CAPACITY_REMEDIATION_PATHS = Object.freeze(
+  [`${MODULE_ROOT}/main.tf`, TEST_PATH].sort(),
+);
 
 const STAGING_IMAGE_PATTERN =
   '^me-central2-docker[.]pkg[.]dev/moazez-nonprod-91001421934/moazez-staging-containers/moazez-backend@sha256:[a-f0-9]{64}$';
@@ -617,6 +620,17 @@ function assertCommittedStage29CandidateScope(
       ),
       [],
     );
+    return false;
+  }
+  if (
+    maintenanceScopeActive &&
+    normalizedMaintenance.length ===
+      PRODUCTION_API_CAPACITY_REMEDIATION_PATHS.length &&
+    normalizedMaintenance.every(
+      (file, index) =>
+        file === PRODUCTION_API_CAPACITY_REMEDIATION_PATHS[index],
+    )
+  ) {
     return false;
   }
   const verifierRetouched =
@@ -1332,7 +1346,7 @@ test('Cloud Run commands, scaling, probes, Direct VPC, and deletion protection r
   const apiScaling = extractBlock(api, /^\s*scaling\s*\{/mu, 'API scaling');
   assert.deepEqual(blockAssignmentExpressions(apiScaling), {
     min_instance_count: '1',
-    max_instance_count: '4',
+    max_instance_count: '10',
   });
   const apiTemplate = extractBlock(api, /^\s*template\s*\{/mu, 'API template');
   assert.equal(
@@ -1641,6 +1655,13 @@ test('Committed Stage 29A candidate scope contains only authorized paths when ac
 
 test('Committed scope preserves Stage 29 activation and bounded verifier, Stage 30C1, or PT-2 delegation', () => {
   assert.equal(assertCommittedStage29CandidateScope([TEST_PATH]), true);
+  assert.equal(
+    assertCommittedStage29CandidateScope(
+      PRODUCTION_API_CAPACITY_REMEDIATION_PATHS,
+      PRODUCTION_API_CAPACITY_REMEDIATION_PATHS,
+    ),
+    false,
+  );
   assert.throws(
     () =>
       assertCommittedStage29CandidateScope([
