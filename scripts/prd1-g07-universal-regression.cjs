@@ -9,7 +9,7 @@ const { spawn } = require('node:child_process');
 
 const BASELINE_SHA = 'd9cb589a49dfc920e2118feb618b2b9edac732b9';
 const EXPECTED_BRANCH = 'chore/production-readiness-g07-universal-regression';
-const MINIO_IMAGE = 'minio/minio:RELEASE.2025-09-07T16-13-09Z';
+const MINIO_IMAGE = 'quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e';
 const POSTGRES_IMAGE = 'postgres:16-alpine';
 const REDIS_IMAGE = 'redis:7-alpine';
 const STATUSES = Object.freeze({ PASS: 'PASS', FAIL: 'FAIL', BLOCKED: 'BLOCKED' });

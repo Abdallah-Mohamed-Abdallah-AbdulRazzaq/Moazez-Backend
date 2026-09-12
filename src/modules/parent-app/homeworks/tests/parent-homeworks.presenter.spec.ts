@@ -9,7 +9,18 @@ import {
   ParentHomeworksPresenter,
 } from '../presenters/parent-homeworks.presenter';
 
+const PRESENTATION_NOW = new Date('2026-09-10T10:00:00.000Z');
+
 describe('ParentHomeworksPresenter', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(PRESENTATION_NOW);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('presents safe child homework list and detail shapes', () => {
     const target = homeworkTargetFixture();
     const list = ParentHomeworksPresenter.presentList({
