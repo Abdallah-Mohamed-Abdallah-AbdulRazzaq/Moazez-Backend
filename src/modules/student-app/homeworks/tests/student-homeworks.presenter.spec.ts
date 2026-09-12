@@ -9,7 +9,18 @@ import {
   StudentHomeworksPresenter,
 } from '../presenters/student-homeworks.presenter';
 
+const PRESENTATION_NOW = new Date('2026-09-10T10:00:00.000Z');
+
 describe('StudentHomeworksPresenter', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(PRESENTATION_NOW);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('presents safe list and detail shapes without tenant or ownership internals', () => {
     const target = homeworkTargetFixture();
     const list = StudentHomeworksPresenter.presentList({

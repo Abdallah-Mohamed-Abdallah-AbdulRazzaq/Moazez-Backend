@@ -11,7 +11,7 @@ const { MEDIA_RUNTIME_JEST_FILES, requireExactSha } = require('./plan-ci.cjs');
 const SCHEMA_VERSION = 1;
 const POSTGRES_IMAGE = 'postgres:16-alpine';
 const REDIS_IMAGE = 'redis:7-alpine';
-const MINIO_IMAGE = 'minio/minio:RELEASE.2025-09-07T16-13-09Z';
+const MINIO_IMAGE = 'quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e';
 const SHARD_CLEANUP_RESERVE_MINUTES = 8;
 const JEST_OPEN_HANDLE_WARNING_PATTERN =
   /Jest has detected the following.*open handle|open handles? potentially keeping Jest from exiting|did not exit.*after the test run/iu;

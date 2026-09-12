@@ -223,7 +223,7 @@ describe('learning media upload foundation contract', () => {
     );
     expect(shardRunner).toContain("const REDIS_IMAGE = 'redis:7-alpine'");
     expect(shardRunner).toContain(
-      "const MINIO_IMAGE = 'minio/minio:RELEASE.2025-09-07T16-13-09Z'",
+      "const MINIO_IMAGE = 'quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e'",
     );
     expect(shardRunner).toContain('scripts/verify-media-runtime.cjs');
     expect(shardRunner).toContain('async function provisionBuckets');
