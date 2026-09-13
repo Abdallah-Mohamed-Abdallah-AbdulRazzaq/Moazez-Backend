@@ -386,6 +386,164 @@ operation, manufacture failure evidence, use Recovery v2, or apply the cleanup
 plan to create a new Edge serial before v3 binds its state. The cleanup template
 remains non-authoritative and requires separate post-release approval.
 
+## Candidate Edge state-successor recovery manifest v4
+
+`manifestVersion=4` and
+`executionMode="successful-edge-state-successor-recovery"` are a narrow
+authority for one condition: an approved v3 Candidate Edge reconciliation was
+externally invoked, its wrapper was interrupted without controller apply
+evidence, the Edge state advanced in the same lineage, and structured state and
+live evidence prove that no governed Candidate Edge semantic changed. This is
+not a generic retry or state-repair mode. It does not alter v3: v3 still requires
+current Edge lineage and serial to equal its predecessor Edge precondition
+exactly. Failed zero-traffic API Recovery v2 is also unchanged and cannot be
+used when the Candidate NEG, Backend, and smoke route are present.
+
+The v4 context uses the v3 `liveDiscovery` shape above and adds this exact
+recovery authority:
+
+```json
+{
+  "executionMode": "successful-edge-state-successor-recovery",
+  "executionId": "day2-staging-<new-unique-v4-id>",
+  "repository": "Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend",
+  "sourceSha": "<exact-current-40-character-HEAD>",
+  "environment": "staging",
+  "resumeGateId": "api-no-traffic-promotion",
+  "resumeOperationId": "api-candidate-edge-reconciliation",
+  "edgeStateSuccessorRecovery": {
+    "priorReleaseExecutionId": "<exact-interrupted-v3-execution-id>",
+    "priorManifestRef": "<absolute-external-prior-v3-manifest>",
+    "priorManifestSha256": "<exact-file-sha256>",
+    "priorSavedPlanRef": "<absolute-external-prior-saved-plan>",
+    "priorSavedPlanSha256": "<exact-file-sha256>",
+    "priorPlanJsonRef": "<absolute-external-prior-plan-json>",
+    "priorPlanJsonSha256": "<exact-file-sha256>",
+    "priorReviewEvidenceRef": "<absolute-external-prior-review-evidence>",
+    "priorReviewEvidenceSha256": "<exact-file-sha256>",
+    "priorApprovalEvidenceRef": "<absolute-external-prior-approval-evidence>",
+    "priorApprovalEvidenceSha256": "<exact-file-sha256>",
+    "priorPreApplyEvidenceRef": "<absolute-external-prior-pre-apply-evidence>",
+    "priorPreApplyEvidenceSha256": "<exact-file-sha256>",
+    "stateReconciliationEvidenceRef": "<absolute-external-reconciliation-evidence>",
+    "stateReconciliationEvidenceSha256": "<exact-file-sha256>"
+  },
+  "liveDiscovery": "<exact-fresh-v3-shaped-live-discovery-with-successor-edge-state>",
+  "externalTfDataRoot": "<absolute-external-tfdata-root>",
+  "externalSavedPlanRoot": "<absolute-external-saved-plan-root>"
+}
+```
+
+The seven references must be distinct absolute paths outside source and must
+name non-empty regular files. Construction and every later validation read the
+exact bytes and recompute every SHA256. The prior Saved Plan path, size, and
+hash must equal the registered v3 plan evidence. Its Plan JSON, deterministic
+review evidence, immutable operation specification, reviewed manifest, and
+approval reference are cross-bound to that exact v3 operation, and the PR #121
+reviewer is rerun against the prior Plan JSON. Operator-supplied hashes alone
+are never authority, and none of these operational artifacts belongs in source.
+The new execution ID must differ from the interrupted v3 execution ID. The v4
+`sourceSha` must equal the current repository HEAD, but it is deliberately not
+required to differ from the prior v3 source SHA.
+
+The immutable predecessor must be a `successful-edge-continuation` v3 release
+with `releaseStatus="in-progress"`, `failedGateId=null`, and an
+`api-no-traffic-promotion/api-candidate-edge-reconciliation` operation at this
+exact controller boundary:
+
+```text
+operation.status=approved
+planEvidence.status=registered
+planEvidence.reviewed=true
+deterministicReviewEvidence.status=passed
+approval.status=approved
+apply.status=not-applied
+apply.attempted=false
+singleConsumptionStatus=unconsumed
+liveVerification.status=pending
+```
+
+Applied, attempted, failed, consumed, unreviewed, unapproved, live-verified, or
+completed predecessors fail closed. The prior v3 manifest is never rewritten
+to manufacture a result.
+
+The reconciliation file is an exact-key JSON object, not a boolean assertion:
+
+```json
+{
+  "schemaVersion": 1,
+  "classification": "STATE_ADVANCED_WITHOUT_GOVERNED_SEMANTIC_EDGE_CHANGE",
+  "priorReleaseExecutionId": "<exact-prior-v3-execution-id>",
+  "priorEdgeState": { "lineage": "<opaque-lineage>", "serial": 9 },
+  "currentEdgeState": { "lineage": "<same-opaque-lineage>", "serial": 10 },
+  "stateCandidateNeg": "<exact-structured-NEG-snapshot>",
+  "liveCandidateNeg": "<same-exact-structured-NEG-snapshot>",
+  "stateCandidateBackend": "<exact-structured-Backend-snapshot>",
+  "liveCandidateBackend": "<same-exact-structured-Backend-snapshot>",
+  "stateCandidateSmokeRoute": "<exact-structured-smoke-route-snapshot>",
+  "liveCandidateSmokeRoute": "<same-exact-structured-smoke-route-snapshot>",
+  "servingRevision": "<unchanged-serving-revision>",
+  "servingTrafficPercent": 100,
+  "candidateRevision": "<exact-approved-candidate-revision>",
+  "candidateTag": "<exact-approved-candidate-tag>",
+  "candidateTrafficPercent": 0,
+  "candidateReady": true,
+  "desiredCandidateTag": "<exact-approved-candidate-tag>",
+  "urlMapSemanticStatus": "unchanged",
+  "productionMutationObserved": false
+}
+```
+
+The controller requires same Edge lineage and a strictly greater serial, then
+compares the structured state, live, and prior-v3 pre-attempt semantic
+snapshots. Equality covers completeness; NEG presence, name, region,
+`SERVERLESS` type, service, and previous serving tag; Backend presence, name,
+NEG relation, `HTTP`, `EXTERNAL_MANAGED`, primary Cloud Armor posture, and the
+exact trusted client-IP header; and smoke-route presence, URL map, public path,
+Backend, and rewrite path. The desired candidate tag must not already be live
+on the NEG. Serving remains `100%`, the Ready candidate remains `0%`, API/Core/
+Media retain the candidate image, Maintenance retains its prior image, and
+Runtime state remains exactly the passed API Runtime authority. A semantic
+difference, partial topology, URL-map change, or explicit Production mutation
+fails closed even when the Edge serial advanced.
+
+V4 contains exactly this executable remainder:
+
+```text
+Candidate Edge reconciliation
+-> Maintenance Scheduler Promotion
+-> Protected Candidate Readiness / Smoke
+-> Traffic Promotion
+```
+
+It contains no migration, Core Worker, Media Worker, or API Runtime operation;
+those passed operations remain imported immutable evidence. The first v4 plan
+uses the current successor Edge state as its fresh precondition and must be a
+new Saved Plan. `blockedSavedPlanHashes` is the deduplicated union of the prior
+release blocklist and the exact interrupted v3 Saved Plan hash. That old plan
+is forensic evidence only and registration rejects its bytes with
+`PLAN_REUSE_FORBIDDEN`.
+
+The v4 Candidate Edge operation uses the exact v3 PR #121 deterministic review
+specification: the same two addresses, actions, semantic attributes, provider
+identities, computed unknowns, normalizations, drift exceptions, replacement
+provenance rules, no-op rules, and URL-map prohibition. `review-plan` reads the
+exact manifest, Saved Plan, and Plan JSON and writes only sanitized external
+evidence. `register-plan` requires the exact pre-registration manifest, Plan
+JSON, and review evidence and reruns the reviewer. Approval and any separately
+authorized apply remain later, distinct steps.
+
+After this source authority is independently reviewed, owner-authorized,
+merged, and exact-main CI passes, DevOps must start again with fresh source,
+Runtime, Edge-state, and state/live reconciliation discovery; a new v4
+execution and manifest; and a new Saved Plan. Hash that plan before and after
+`terraform show -json` of the exact same file, require the hash to remain
+unchanged, then perform `review-plan`, `register-plan`, independent
+`approve-plan`, and only a separately authorized apply. Never use Terraform
+state push, manual state edits, a refresh workaround, `-refresh=false`,
+`-target`, manual Candidate NEG/Backend/URL-map mutation, or automatic traffic
+promotion. The interrupted v3 plan remains blocked permanently.
+
 ## Recovery manifest v2 context
 
 Recovery is an explicit, separately authorized execution. Set
@@ -506,7 +664,9 @@ both hashes in `blockedSavedPlanHashes`. Prefix-only evidence such as
 `19cc9769...` is invalid and is never completed or hard-coded by source. Plan
 registration checks the manifest blocklist. Successful-continuation v3 also
 blocklists the three exact predecessor plan hashes imported for Core, Media,
-and API Runtime so passed work cannot be reused as a new operation.
+and API Runtime so passed work cannot be reused as a new operation. V4 inherits
+the complete v3 blocklist and dynamically adds the exact interrupted v3 Edge
+Saved Plan hash; no incident-specific plan hash is hard-coded.
 
 ## Exact CLI surface
 
@@ -527,17 +687,17 @@ lifecycle consistency:
 node scripts/deployment-control/runtime-release-control.cjs validate-spec --manifest <external-manifest.json>
 ```
 
-For the exact v3 Candidate Edge reconciliation, review the already-produced
-plan JSON without invoking Terraform. This command reads and hashes the exact
-manifest, Saved Plan, and plan JSON and atomically creates only the external
-review-evidence file; it does not update the manifest:
+For the exact v3 or v4 Candidate Edge reconciliation, review the
+already-produced plan JSON without invoking Terraform. This command reads and
+hashes the exact manifest, Saved Plan, and plan JSON and atomically creates only
+the external review-evidence file; it does not update the manifest:
 
 ```powershell
 node scripts/deployment-control/runtime-release-control.cjs review-plan --manifest <exact-external-manifest.json> --gate api-no-traffic-promotion --operation api-candidate-edge-reconciliation --plan <exact-external-saved-plan.tfplan> --plan-json <exact-external-plan.json> --review-evidence <new-external-review-evidence.json>
 ```
 
 After review, bind the exact reviewed Saved Plan bytes, exact plan JSON bytes,
-and state precondition. The v3 operation requires both `--plan-json` and
+and state precondition. The v3 and v4 operations require both `--plan-json` and
 `--review-evidence`; v1/v2 retain their existing registration surface:
 
 ```powershell
@@ -582,7 +742,8 @@ lineage/serial precondition, resource-address allowlist, resource plan
 identities, expected actions, semantic attribute allowlist, provider-computed
 unknown allowlist, provider-normalization policy, refresh-only drift policy,
 expected change type, review requirement, and saved-plan path. These fields are
-immutable v3 operation specification and manifest edits fail closed.
+the immutable shared v3/v4 Candidate Edge operation specification and manifest
+edits fail closed.
 
 The source reviewer hashes both the Saved Plan binary and plan JSON, but it
 does not run Terraform and therefore does not cryptographically prove that the
@@ -610,22 +771,22 @@ replacement, move, import, or deposed evidence. Every approved
 group and NEG region are cross-bound to the exact project/region/name identity
 parsed from the Candidate NEG's known pre-replacement self-link.
 
-For v3, `register-plan` re-hashes the current pre-registration manifest, exact
-Saved Plan, exact plan JSON, and exact review-evidence bytes; reruns the pure
-reviewer against the supplied JSON; reconstructs the entire expected evidence;
-and requires deep exact equality before recording a compact durable review
-binding. Review evidence is a deterministic cached report, not an independent
-trust authority. This revalidation does not alter the separate DevOps
-responsibility to prove guarded JSON export from the exact binary Saved Plan.
-`approve-plan` remains a separate authorization and retains its existing
+For v3 and v4, `register-plan` re-hashes the current pre-registration manifest,
+exact Saved Plan, exact plan JSON, and exact review-evidence bytes; reruns the
+same pure reviewer against the supplied JSON; reconstructs the entire expected
+evidence; and requires deep exact equality before recording a compact durable
+review binding. Review evidence is a deterministic cached report, not an
+independent trust authority. This revalidation does not alter the separate
+DevOps responsibility to prove guarded JSON export from the exact binary Saved
+Plan. `approve-plan` remains a separate authorization and retains its existing
 semantics.
 
-Once this source repair creates a new source SHA, every manifest and Saved Plan
-bound to the older source is evidence-only and cannot be registered, approved,
-or applied. Continue only from merged repaired source with fresh discovery,
-runtime/state checks, a new v3 execution and manifest, a new Saved Plan and
-guarded JSON export, deterministic review, exact-plan registration, independent
-approval, and a separately authorized apply.
+Once a state-successor repair creates a new source SHA, the interrupted v3
+manifest and Saved Plan are evidence-only and cannot be registered, approved,
+or applied. Continue only from merged repaired source with fresh discovery and
+state/live reconciliation, a new v4 execution and manifest, a new Saved Plan
+and guarded JSON export, deterministic review, exact-plan registration,
+independent approval, and a separately authorized apply.
 
 Sensitive Queue and Realtime Redis inputs remain ephemeral operator inputs.
 The manifest contains their names and sensitivity flags only, never their

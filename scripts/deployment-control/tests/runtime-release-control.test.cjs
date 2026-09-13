@@ -272,7 +272,7 @@ function registerAndApprove(manifest, gateId, operationId, uniquePlanText) {
   fs.mkdirSync(path.dirname(target.savedPlanPath), { recursive: true });
   fs.writeFileSync(target.savedPlanPath, uniquePlanText);
   const requiresDeterministicReview =
-    manifest.manifestVersion === 3 &&
+    [3, 4].includes(manifest.manifestVersion) &&
     gateId === control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID &&
     operationId === control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID;
   const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
@@ -562,6 +562,226 @@ function rewriteSuccessfulContinuationPredecessor(fixture, mutate) {
   const serialized = `${JSON.stringify(fixture.predecessorManifest, null, 2)}\n`;
   fs.writeFileSync(fixture.previousManifestRef, serialized);
   fixture.context.continuation.previousManifestSha256 = hashText(serialized);
+}
+
+function writeExternalJson(filePath, value) {
+  const serialized = `${JSON.stringify(value, null, 2)}\n`;
+  fs.writeFileSync(filePath, serialized);
+  return { serialized, sha256: hashText(serialized) };
+}
+
+function makeEdgeStateSuccessorRecoveryContext(temporaryRoot) {
+  const continuationFixture = makeSuccessfulContinuationContext(temporaryRoot);
+  const predecessorManifest = control.buildManifest(
+    continuationFixture.context,
+  );
+  const edgeOperation = operation(
+    predecessorManifest,
+    control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+    control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+  );
+  fs.mkdirSync(path.dirname(edgeOperation.savedPlanPath), { recursive: true });
+  fs.writeFileSync(edgeOperation.savedPlanPath, 'prior-interrupted-edge-plan');
+  const preRegistrationManifestBytes = Buffer.from(
+    `${JSON.stringify(predecessorManifest, null, 2)}\n`,
+  );
+  const reviewBinding = writeSuccessfulContinuationReviewEvidence(
+    predecessorManifest,
+    edgeOperation,
+    preRegistrationManifestBytes,
+  );
+  control.registerPlan(predecessorManifest, {
+    gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+    operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    planPath: edgeOperation.savedPlanPath,
+    sourceSha: predecessorManifest.sourceSha,
+    environment: predecessorManifest.environment,
+    terraformRoot: edgeOperation.terraformRoot,
+    lineage: edgeOperation.statePrecondition.lineage,
+    serial: edgeOperation.statePrecondition.serial,
+    recordedAt: RECORDED_AT,
+    reviewEvidencePath: reviewBinding.reviewEvidencePath,
+    planJsonPath: reviewBinding.planJsonPath,
+    manifestBytes: preRegistrationManifestBytes,
+  });
+  const approvalEvidenceRef = path.join(
+    temporaryRoot,
+    'prior-v3-approval-evidence.json',
+  );
+  writeExternalJson(approvalEvidenceRef, {
+    status: 'approved',
+    releaseExecutionId: predecessorManifest.releaseExecutionId,
+    gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+    operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+  });
+  control.approvePlan(predecessorManifest, {
+    gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+    operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    approver: 'test-release-owner',
+    approvalRef: approvalEvidenceRef,
+    recordedAt: RECORDED_AT,
+  });
+  predecessorManifest.releaseStatus = 'in-progress';
+
+  const priorPreApplyEvidenceRef = path.join(
+    temporaryRoot,
+    'prior-v3-pre-apply-evidence.json',
+  );
+  writeExternalJson(priorPreApplyEvidenceRef, {
+    status: 'external-attempt-interrupted',
+    releaseExecutionId: predecessorManifest.releaseExecutionId,
+    gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+    operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    controllerApplyAttempted: false,
+  });
+
+  const priorManifestRef = path.join(
+    temporaryRoot,
+    'interrupted-v3-manifest.json',
+  );
+  const priorManifestArtifact = writeExternalJson(
+    priorManifestRef,
+    predecessorManifest,
+  );
+  const priorEdgeState = {
+    lineage: edgeOperation.statePrecondition.lineage,
+    serial: edgeOperation.statePrecondition.serial,
+  };
+  const currentEdgeState = {
+    lineage: priorEdgeState.lineage,
+    serial: priorEdgeState.serial + 1,
+  };
+  const semantic = predecessorManifest.liveDiscovery.candidateEdgeResources;
+  const stateReconciliationEvidenceRef = path.join(
+    temporaryRoot,
+    'edge-state-reconciliation-evidence.json',
+  );
+  const reconciliation = {
+    schemaVersion: 1,
+    classification: 'STATE_ADVANCED_WITHOUT_GOVERNED_SEMANTIC_EDGE_CHANGE',
+    priorReleaseExecutionId: predecessorManifest.releaseExecutionId,
+    priorEdgeState,
+    currentEdgeState,
+    stateCandidateNeg: structuredClone(semantic.neg),
+    liveCandidateNeg: structuredClone(semantic.neg),
+    stateCandidateBackend: structuredClone(semantic.backend),
+    liveCandidateBackend: structuredClone(semantic.backend),
+    stateCandidateSmokeRoute: structuredClone(semantic.smokeRoute),
+    liveCandidateSmokeRoute: structuredClone(semantic.smokeRoute),
+    servingRevision: predecessorManifest.liveDiscovery.servingBaseline.revision,
+    servingTrafficPercent: 100,
+    candidateRevision: predecessorManifest.liveDiscovery.candidate.revision,
+    candidateTag: predecessorManifest.liveDiscovery.candidate.tag,
+    candidateTrafficPercent: 0,
+    candidateReady: true,
+    desiredCandidateTag: predecessorManifest.candidate.tag,
+    urlMapSemanticStatus: 'unchanged',
+    productionMutationObserved: false,
+  };
+  const reconciliationArtifact = writeExternalJson(
+    stateReconciliationEvidenceRef,
+    reconciliation,
+  );
+  const approvalEvidenceBytes = fs.readFileSync(approvalEvidenceRef);
+  const preApplyEvidenceBytes = fs.readFileSync(priorPreApplyEvidenceRef);
+  const savedPlanBytes = fs.readFileSync(edgeOperation.savedPlanPath);
+  const planJsonBytes = fs.readFileSync(reviewBinding.planJsonPath);
+  const reviewEvidenceBytes = fs.readFileSync(reviewBinding.reviewEvidencePath);
+  const metadata = {
+    priorReleaseExecutionId: predecessorManifest.releaseExecutionId,
+    priorManifestRef,
+    priorManifestSha256: priorManifestArtifact.sha256,
+    priorSavedPlanRef: edgeOperation.savedPlanPath,
+    priorSavedPlanSha256: hashText(savedPlanBytes),
+    priorPlanJsonRef: reviewBinding.planJsonPath,
+    priorPlanJsonSha256: hashText(planJsonBytes),
+    priorReviewEvidenceRef: reviewBinding.reviewEvidencePath,
+    priorReviewEvidenceSha256: hashText(reviewEvidenceBytes),
+    priorApprovalEvidenceRef: approvalEvidenceRef,
+    priorApprovalEvidenceSha256: hashText(approvalEvidenceBytes),
+    priorPreApplyEvidenceRef,
+    priorPreApplyEvidenceSha256: hashText(preApplyEvidenceBytes),
+    stateReconciliationEvidenceRef,
+    stateReconciliationEvidenceSha256: reconciliationArtifact.sha256,
+  };
+  const liveDiscovery = structuredClone(predecessorManifest.liveDiscovery);
+  liveDiscovery.evidenceRef = 'evidence:edge-state-successor-live-discovery';
+  liveDiscovery.edgeState = currentEdgeState;
+  return {
+    predecessorManifest,
+    priorManifestRef,
+    reconciliation,
+    context: {
+      executionMode: control.EDGE_STATE_SUCCESSOR_RECOVERY_MODE,
+      executionId: 'day2-staging-edge-state-successor-recovery-001',
+      repository: control.REPOSITORY,
+      sourceSha: control.currentSourceSha(),
+      environment: 'staging',
+      resumeGateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      resumeOperationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+      edgeStateSuccessorRecovery: metadata,
+      liveDiscovery,
+      externalTfDataRoot: path.join(temporaryRoot, 'successor-tfdata'),
+      externalSavedPlanRoot: path.join(temporaryRoot, 'successor-plans'),
+    },
+  };
+}
+
+function rewriteEdgeStateSuccessorPredecessor(fixture, mutate) {
+  mutate(fixture.predecessorManifest);
+  const artifact = writeExternalJson(
+    fixture.priorManifestRef,
+    fixture.predecessorManifest,
+  );
+  fixture.context.edgeStateSuccessorRecovery.priorManifestSha256 =
+    artifact.sha256;
+}
+
+function rewriteStateReconciliationEvidence(fixture, mutate) {
+  mutate(fixture.reconciliation);
+  const artifact = writeExternalJson(
+    fixture.context.edgeStateSuccessorRecovery.stateReconciliationEvidenceRef,
+    fixture.reconciliation,
+  );
+  fixture.context.edgeStateSuccessorRecovery.stateReconciliationEvidenceSha256 =
+    artifact.sha256;
+}
+
+function prepareCandidateEdgeRegistration(
+  manifest,
+  uniquePlanText = 'fresh-candidate-edge-plan',
+) {
+  const target = operation(
+    manifest,
+    control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+    control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+  );
+  fs.mkdirSync(path.dirname(target.savedPlanPath), { recursive: true });
+  fs.writeFileSync(target.savedPlanPath, uniquePlanText);
+  const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
+  const reviewBinding = writeSuccessfulContinuationReviewEvidence(
+    manifest,
+    target,
+    manifestBytes,
+  );
+  return {
+    target,
+    reviewBinding,
+    options: {
+      gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+      planPath: target.savedPlanPath,
+      sourceSha: manifest.sourceSha,
+      environment: manifest.environment,
+      terraformRoot: target.terraformRoot,
+      lineage: target.statePrecondition.lineage,
+      serial: target.statePrecondition.serial,
+      recordedAt: RECORDED_AT,
+      reviewEvidencePath: reviewBinding.reviewEvidencePath,
+      planJsonPath: reviewBinding.planJsonPath,
+      manifestBytes,
+    },
+  };
 }
 
 test('remaining gate order is read from the unchanged authoritative contract', () => {
@@ -1503,6 +1723,763 @@ test('successful continuation preserves separate Edge and Runtime successor chai
       true,
     );
     assert.doesNotThrow(() => control.validateManifest(manifest));
+  });
+});
+
+test('edge state-successor recovery v4 deterministically resumes only the governed unresolved remainder', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const fixture = makeEdgeStateSuccessorRecoveryContext(temporaryRoot);
+    const first = control.buildManifest(fixture.context);
+    const second = control.buildManifest(structuredClone(fixture.context));
+    const operationIds = first.gates.flatMap((gate) =>
+      gate.operations.map((candidateOperation) => candidateOperation.id),
+    );
+    const priorEdge = operation(
+      fixture.predecessorManifest,
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    );
+    const currentEdge = operation(
+      first,
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    );
+
+    assert.equal(first.manifestVersion, 4);
+    assert.equal(
+      first.executionMode,
+      control.EDGE_STATE_SUCCESSOR_RECOVERY_MODE,
+    );
+    assert.equal(
+      first.resumeGateId,
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+    );
+    assert.equal(
+      first.resumeOperationId,
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    );
+    assert.deepEqual(first, second);
+    assert.deepEqual(
+      first.gates.map((gate) => gate.id),
+      control.EDGE_STATE_SUCCESSOR_RECOVERY_GATE_IDS,
+    );
+    assert.deepEqual(operationIds, [
+      'api-candidate-edge-reconciliation',
+      'maintenance-scheduler-runtime',
+      'protected-candidate-smoke',
+      'api-traffic-promotion',
+    ]);
+    for (const replayOperationId of [
+      'migration',
+      'core-worker-runtime',
+      'media-worker-runtime',
+      'api-candidate-runtime',
+    ]) {
+      assert.equal(operationIds.includes(replayOperationId), false);
+    }
+    assert.equal(
+      currentEdge.statePrecondition.lineage,
+      priorEdge.statePrecondition.lineage,
+    );
+    assert.equal(priorEdge.statePrecondition.serial, 9);
+    assert.equal(currentEdge.statePrecondition.serial, 10);
+    assert.deepEqual(
+      first.liveDiscovery.candidateEdgeResources,
+      fixture.predecessorManifest.liveDiscovery.candidateEdgeResources,
+    );
+    assert.equal(
+      first.blockedSavedPlanHashes.includes(
+        fixture.context.edgeStateSuccessorRecovery.priorSavedPlanSha256,
+      ),
+      true,
+    );
+    assert.deepEqual(currentEdge.expectedResourceAddressAllowlist, [
+      ...control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES,
+    ]);
+    assert.deepEqual(
+      currentEdge.planReviewRequirements,
+      priorEdge.planReviewRequirements,
+    );
+    assert.deepEqual(
+      currentEdge.expectedResourcePlanIdentities,
+      priorEdge.expectedResourcePlanIdentities,
+    );
+    assert.deepEqual(
+      currentEdge.allowedProviderNormalizations,
+      priorEdge.allowedProviderNormalizations,
+    );
+    assert.deepEqual(
+      currentEdge.allowedRefreshOnlyDrift,
+      priorEdge.allowedRefreshOnlyDrift,
+    );
+    assert.doesNotThrow(() => control.validateManifest(structuredClone(first)));
+  });
+});
+
+test('edge state-successor recovery v4 preserves single-use Edge and Runtime successor chains through completion', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const fixture = makeEdgeStateSuccessorRecoveryContext(temporaryRoot);
+    const manifest = control.buildManifest(fixture.context);
+    applyAndVerifyTerraform(
+      manifest,
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+      'fresh-v4-edge-reconciliation-plan',
+      {
+        observedCandidateTag: manifest.candidate.tag,
+        observedPublicPath: control.SMOKE_PUBLIC_PATH,
+        observedBackendPath: control.SMOKE_BACKEND_PATH,
+      },
+    );
+    passThroughMaintenance(manifest);
+    passThroughProtectedSmoke(manifest);
+    applyAndVerifyTerraform(
+      manifest,
+      'traffic-promotion',
+      'api-traffic-promotion',
+      'fresh-v4-traffic-promotion-plan',
+      {
+        observedImage: manifest.candidate.imageReference,
+        observedRevision: manifest.candidate.revision,
+        observedCandidateTag: manifest.candidate.tag,
+        observedStablePercent: 0,
+        observedCandidatePercent: 100,
+      },
+    );
+    assert.equal(manifest.releaseStatus, 'complete');
+    assert.equal(
+      manifest.gates.every((gate) => gate.status === 'passed'),
+      true,
+    );
+    assert.doesNotThrow(() => control.validateManifest(manifest));
+  });
+});
+
+test('edge state-successor recovery v4 rejects unsafe state, traffic, runtime, and Edge semantic baselines', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const fixture = makeEdgeStateSuccessorRecoveryContext(temporaryRoot);
+    const cases = [
+      {
+        name: 'same Edge serial',
+        code: 'EDGE_STATE_SUCCESSOR_INVALID',
+        apply(context) {
+          context.liveDiscovery.edgeState.serial =
+            fixture.predecessorManifest.liveDiscovery.edgeState.serial;
+        },
+      },
+      {
+        name: 'lower Edge serial',
+        code: 'EDGE_STATE_SUCCESSOR_INVALID',
+        apply(context) {
+          context.liveDiscovery.edgeState.serial =
+            fixture.predecessorManifest.liveDiscovery.edgeState.serial - 1;
+        },
+      },
+      {
+        name: 'different Edge lineage',
+        code: 'EDGE_STATE_SUCCESSOR_INVALID',
+        apply(context) {
+          context.liveDiscovery.edgeState.lineage = 'different-edge-lineage';
+        },
+      },
+      {
+        name: 'Candidate NEG name changed',
+        apply(context) {
+          context.liveDiscovery.candidateEdgeResources.neg.name =
+            'unrelated-candidate-neg';
+        },
+      },
+      {
+        name: 'desired Candidate tag already live',
+        apply(context) {
+          context.liveDiscovery.candidateEdgeResources.neg.cloudRunTag =
+            context.liveDiscovery.candidate.tag;
+        },
+      },
+      {
+        name: 'Candidate Backend changed',
+        apply(context) {
+          context.liveDiscovery.candidateEdgeResources.backend.name =
+            'unrelated-candidate-backend';
+        },
+      },
+      {
+        name: 'Candidate Backend points to another NEG',
+        apply(context) {
+          context.liveDiscovery.candidateEdgeResources.backend.negName =
+            'unrelated-candidate-neg';
+        },
+      },
+      {
+        name: 'Candidate Edge partial',
+        apply(context) {
+          context.liveDiscovery.candidateEdgeResources.completeness = 'partial';
+        },
+      },
+      {
+        name: 'serving traffic changed',
+        apply(context) {
+          context.liveDiscovery.servingBaseline.trafficPercent = 99;
+        },
+      },
+      {
+        name: 'candidate traffic changed',
+        apply(context) {
+          context.liveDiscovery.candidate.trafficPercent = 1;
+        },
+      },
+      {
+        name: 'candidate is not Ready',
+        apply(context) {
+          context.liveDiscovery.candidate.ready = false;
+        },
+      },
+      {
+        name: 'Cloud Armor posture changed',
+        apply(context) {
+          context.liveDiscovery.candidateEdgeResources.backend.securityPolicyMatchesPrimaryApi = false;
+        },
+      },
+      {
+        name: 'trusted client-IP header changed',
+        apply(context) {
+          context.liveDiscovery.candidateEdgeResources.backend.customRequestHeaders =
+            [];
+        },
+      },
+      {
+        name: 'smoke route path changed',
+        apply(context) {
+          context.liveDiscovery.candidateEdgeResources.smokeRoute.publicPath =
+            '/unapproved';
+        },
+      },
+      {
+        name: 'URL Map identity changed',
+        apply(context) {
+          context.liveDiscovery.candidateEdgeResources.smokeRoute.urlMapName =
+            'unrelated-url-map';
+        },
+      },
+      {
+        name: 'runtime image authority changed',
+        apply(context) {
+          context.liveDiscovery.runtimeImages.api = stagingImage('f');
+        },
+      },
+      {
+        name: 'runtime state authority changed',
+        apply(context) {
+          context.liveDiscovery.runtimeState.serial += 1;
+        },
+      },
+    ];
+
+    for (const scenario of cases) {
+      const context = structuredClone(fixture.context);
+      scenario.apply(context);
+      assert.throws(
+        () => control.buildManifest(context),
+        scenario.code
+          ? { code: scenario.code }
+          : control.DeploymentControlError,
+        scenario.name,
+      );
+    }
+  });
+});
+
+test('edge state-successor recovery v4 requires mutually consistent structured reconciliation evidence', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const fixture = makeEdgeStateSuccessorRecoveryContext(temporaryRoot);
+    const original = structuredClone(fixture.reconciliation);
+    const cases = [
+      {
+        name: 'state Candidate NEG differs from live',
+        apply(evidence) {
+          evidence.stateCandidateNeg.cloudRunTag = 'candidate-000000000000';
+        },
+      },
+      {
+        name: 'state Candidate Backend differs from live',
+        apply(evidence) {
+          evidence.stateCandidateBackend.negName = 'unrelated-neg';
+        },
+      },
+      {
+        name: 'state smoke route differs from live',
+        apply(evidence) {
+          evidence.stateCandidateSmokeRoute.backendPath = '/unapproved';
+        },
+      },
+      {
+        name: 'current reconciliation state differs from live',
+        apply(evidence) {
+          evidence.currentEdgeState.serial += 1;
+        },
+      },
+      {
+        name: 'reconciliation belongs to another release',
+        apply(evidence) {
+          evidence.priorReleaseExecutionId = 'day2-staging-unrelated-release';
+        },
+      },
+      {
+        name: 'URL Map semantic mutation is reported',
+        apply(evidence) {
+          evidence.urlMapSemanticStatus = 'changed';
+        },
+      },
+      {
+        name: 'Production mutation is reported',
+        apply(evidence) {
+          evidence.productionMutationObserved = true;
+        },
+      },
+      {
+        name: 'unknown reconciliation field',
+        apply(evidence) {
+          evidence.semanticEqual = true;
+        },
+      },
+    ];
+
+    for (const scenario of cases) {
+      fixture.reconciliation = structuredClone(original);
+      rewriteStateReconciliationEvidence(fixture, scenario.apply);
+      assert.throws(
+        () => control.buildManifest(fixture.context),
+        control.DeploymentControlError,
+        scenario.name,
+      );
+    }
+  });
+});
+
+test('edge state-successor recovery v4 reads and verifies every prior artifact byte binding', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const fixture = makeEdgeStateSuccessorRecoveryContext(temporaryRoot);
+    const hashFields = [
+      'priorManifestSha256',
+      'priorSavedPlanSha256',
+      'priorPlanJsonSha256',
+      'priorReviewEvidenceSha256',
+      'priorApprovalEvidenceSha256',
+      'priorPreApplyEvidenceSha256',
+      'stateReconciliationEvidenceSha256',
+    ];
+    for (const field of hashFields) {
+      const context = structuredClone(fixture.context);
+      context.edgeStateSuccessorRecovery[field] = 'f'.repeat(64);
+      assert.throws(() => control.buildManifest(context), {
+        code: 'EDGE_SUCCESSOR_ARTIFACT_HASH_MISMATCH',
+      });
+    }
+
+    const repositoryArtifact = structuredClone(fixture.context);
+    repositoryArtifact.edgeStateSuccessorRecovery.priorPreApplyEvidenceRef =
+      path.join(REPOSITORY_ROOT, 'package.json');
+    assert.throws(() => control.buildManifest(repositoryArtifact), {
+      code: 'SOURCE_ARTIFACT_PATH_FORBIDDEN',
+    });
+
+    const duplicateReference = structuredClone(fixture.context);
+    duplicateReference.edgeStateSuccessorRecovery.priorPreApplyEvidenceRef =
+      duplicateReference.edgeStateSuccessorRecovery.priorApprovalEvidenceRef;
+    assert.throws(
+      () => control.buildManifest(duplicateReference),
+      control.DeploymentControlError,
+    );
+  });
+});
+
+test('edge state-successor recovery v4 accepts only the exact interrupted approved v3 controller boundary', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const cases = [
+      {
+        name: 'operation status is not approved',
+        apply(manifest, edge) {
+          edge.status = 'plan-registered';
+        },
+      },
+      {
+        name: 'plan is not registered',
+        apply(manifest, edge) {
+          edge.planEvidence.status = 'not-created';
+        },
+      },
+      {
+        name: 'plan reviewed is false',
+        apply(manifest, edge) {
+          edge.planEvidence.reviewed = false;
+        },
+      },
+      {
+        name: 'deterministic review did not pass',
+        apply(manifest, edge) {
+          edge.deterministicReviewEvidence.status = 'not-reviewed';
+        },
+      },
+      {
+        name: 'approval is not approved',
+        apply(manifest, edge) {
+          edge.approval.status = 'pending';
+        },
+      },
+      {
+        name: 'apply attempted is true',
+        apply(manifest, edge) {
+          edge.apply.attempted = true;
+        },
+      },
+      {
+        name: 'apply status is failed',
+        apply(manifest, edge) {
+          edge.apply.status = 'failed';
+        },
+      },
+      {
+        name: 'operation is already applied',
+        apply(manifest, edge) {
+          edge.apply.status = 'succeeded';
+          edge.apply.attempted = true;
+          edge.status = 'applied-awaiting-live-verification';
+        },
+      },
+      {
+        name: 'operation is failed',
+        apply(manifest, edge) {
+          edge.status = 'failed';
+        },
+      },
+      {
+        name: 'operation is consumed',
+        apply(manifest, edge) {
+          edge.singleConsumptionStatus = 'consumed';
+        },
+      },
+      {
+        name: 'live verification is no longer pending',
+        apply(manifest, edge) {
+          edge.liveVerification.status = 'passed';
+        },
+      },
+      {
+        name: 'prior release is complete',
+        apply(manifest) {
+          manifest.releaseStatus = 'complete';
+        },
+      },
+    ];
+
+    for (const [index, scenario] of cases.entries()) {
+      const fixture = makeEdgeStateSuccessorRecoveryContext(
+        path.join(temporaryRoot, `boundary-${index}`),
+      );
+      rewriteEdgeStateSuccessorPredecessor(fixture, (manifest) => {
+        const edge = operation(
+          manifest,
+          control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+          control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+        );
+        scenario.apply(manifest, edge);
+      });
+      assert.throws(
+        () => control.buildManifest(fixture.context),
+        control.DeploymentControlError,
+        scenario.name,
+      );
+    }
+  });
+});
+
+test('edge state-successor recovery v4 dynamically blocks the interrupted Saved Plan from registration', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const fixture = makeEdgeStateSuccessorRecoveryContext(temporaryRoot);
+    const manifest = control.buildManifest(fixture.context);
+    const target = operation(
+      manifest,
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    );
+    fs.mkdirSync(path.dirname(target.savedPlanPath), { recursive: true });
+    fs.copyFileSync(
+      fixture.context.edgeStateSuccessorRecovery.priorSavedPlanRef,
+      target.savedPlanPath,
+    );
+    assert.throws(
+      () =>
+        control.registerPlan(manifest, {
+          gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+          operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+          planPath: target.savedPlanPath,
+          sourceSha: manifest.sourceSha,
+          environment: manifest.environment,
+          terraformRoot: target.terraformRoot,
+          lineage: target.statePrecondition.lineage,
+          serial: target.statePrecondition.serial,
+          recordedAt: RECORDED_AT,
+        }),
+      { code: 'PLAN_REUSE_FORBIDDEN' },
+    );
+  });
+});
+
+test('edge state-successor recovery v4 rejects replay injection and immutable policy edits', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const fixture = makeEdgeStateSuccessorRecoveryContext(temporaryRoot);
+    const manifest = control.buildManifest(fixture.context);
+    for (const replayOperationId of [
+      'migration',
+      'core-worker-runtime',
+      'media-worker-runtime',
+      'api-candidate-runtime',
+    ]) {
+      const edited = structuredClone(manifest);
+      edited.gates[0].operations.push({
+        ...structuredClone(edited.gates[0].operations[0]),
+        id: replayOperationId,
+      });
+      assert.throws(
+        () => control.validateManifest(edited),
+        control.DeploymentControlError,
+      );
+    }
+
+    const mutations = [
+      (edited) => {
+        edited.resumeOperationId = 'api-candidate-runtime';
+      },
+      (edited) => {
+        edited.blockedSavedPlanHashes = edited.blockedSavedPlanHashes.filter(
+          (hash) =>
+            hash !== edited.edgeStateSuccessorRecovery.priorSavedPlanSha256,
+        );
+      },
+      (edited) => {
+        operation(
+          edited,
+          control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+          control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+        ).planReviewRequirements.required = false;
+      },
+      (edited) => {
+        operation(
+          edited,
+          control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+          control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+        ).allowedAttributeChanges[
+          control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[1]
+        ].push('security_policy');
+      },
+      (edited) => {
+        edited.edgeStateSuccessorRecovery.priorReleaseExecutionId =
+          'day2-staging-unrelated-release';
+      },
+      (edited) => {
+        edited.edgeStateSuccessorRecovery.unapproved = true;
+      },
+    ];
+    for (const mutate of mutations) {
+      const edited = structuredClone(manifest);
+      mutate(edited);
+      assert.throws(
+        () => control.validateManifest(edited),
+        control.DeploymentControlError,
+      );
+    }
+  });
+});
+
+test('v4 Candidate Edge review and registration retain the exact v3 deterministic policy and lifecycle', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const v3Fixture = makeSuccessfulContinuationContext(
+      path.join(temporaryRoot, 'v3'),
+    );
+    const v4Fixture = makeEdgeStateSuccessorRecoveryContext(
+      path.join(temporaryRoot, 'v4'),
+    );
+    const v3 = control.buildManifest(v3Fixture.context);
+    const v4 = control.buildManifest(v4Fixture.context);
+    const v3Edge = operation(
+      v3,
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    );
+    const v4Edge = operation(
+      v4,
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    );
+    for (const field of [
+      'expectedResourceAddressAllowlist',
+      'expectedResourceActions',
+      'allowedAttributeChanges',
+      'allowedComputedAfterApplyChanges',
+      'expectedResourcePlanIdentities',
+      'allowedProviderNormalizations',
+      'allowedRefreshOnlyDrift',
+      'planReviewRequirements',
+    ]) {
+      assert.deepEqual(v4Edge[field], v3Edge[field]);
+    }
+
+    const reviewCases = [
+      {
+        name: 'unapproved resource',
+        code: 'PLAN_RESOURCE_CHANGE_SET_MISMATCH',
+        apply(plan) {
+          const extra = structuredClone(plan.resource_changes[1]);
+          extra.address =
+            'module.edge_environment.google_compute_global_forwarding_rule.https';
+          extra.type = 'google_compute_global_forwarding_rule';
+          plan.resource_changes.push(extra);
+        },
+      },
+      {
+        name: 'unapproved unknown',
+        code: 'PLAN_UNKNOWN_UNAPPROVED',
+        apply(plan) {
+          plan.resource_changes[1].change.after_unknown.security_policy = true;
+        },
+      },
+      {
+        name: 'unapproved normalization',
+        code: 'PLAN_NORMALIZATION_UNAPPROVED',
+        apply(plan) {
+          plan.resource_changes[0].change.before.description =
+            'not-an-empty-string';
+        },
+      },
+      {
+        name: 'unapproved drift',
+        code: 'PLAN_DRIFT_UNAPPROVED',
+        apply(plan) {
+          plan.resource_drift[1].address =
+            'module.edge_environment.google_compute_global_address.https';
+          plan.resource_drift[1].type = 'google_compute_global_address';
+        },
+      },
+      {
+        name: 'URL Map non-noop mutation',
+        code: 'PLAN_RESOURCE_CHANGE_SET_MISMATCH',
+        apply(plan) {
+          const urlMap = representativeNoOpUrlMapRecord();
+          urlMap.change.actions = ['update'];
+          plan.resource_changes.push(urlMap);
+        },
+      },
+    ];
+    for (const scenario of reviewCases) {
+      for (const manifest of [v3, v4]) {
+        const plan = representativePlanFixture();
+        scenario.apply(plan);
+        assert.throws(
+          () =>
+            control.reviewTerraformPlanJson(plan, manifest, {
+              gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+              operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+            }),
+          { code: scenario.code },
+          `${scenario.name} manifest v${manifest.manifestVersion}`,
+        );
+      }
+    }
+
+    const target = v4Edge;
+    fs.mkdirSync(path.dirname(target.savedPlanPath), { recursive: true });
+    fs.writeFileSync(target.savedPlanPath, 'fresh-v4-reviewed-plan');
+    const manifestPath = path.join(temporaryRoot, 'v4-manifest.json');
+    const manifestBytes = Buffer.from(`${JSON.stringify(v4, null, 2)}\n`);
+    fs.writeFileSync(manifestPath, manifestBytes);
+    const planJsonPath = path.join(temporaryRoot, 'v4-plan.json');
+    fs.copyFileSync(REPRESENTATIVE_PLAN_FIXTURE_PATH, planJsonPath);
+    const reviewEvidencePath = path.join(
+      temporaryRoot,
+      'v4-review-evidence.json',
+    );
+    const beforeReview = structuredClone(v4);
+    const reviewed = control.runCli([
+      'review-plan',
+      '--manifest',
+      manifestPath,
+      '--gate',
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      '--operation',
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+      '--plan',
+      target.savedPlanPath,
+      '--plan-json',
+      planJsonPath,
+      '--review-evidence',
+      reviewEvidencePath,
+    ]);
+    assert.deepEqual(v4, beforeReview);
+    assert.equal(reviewed.status, 'passed');
+    assert.equal(fs.statSync(reviewEvidencePath).isFile(), true);
+
+    const registrationOptions = {
+      gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+      planPath: target.savedPlanPath,
+      sourceSha: v4.sourceSha,
+      environment: v4.environment,
+      terraformRoot: target.terraformRoot,
+      lineage: target.statePrecondition.lineage,
+      serial: target.statePrecondition.serial,
+      recordedAt: RECORDED_AT,
+      reviewEvidencePath,
+      planJsonPath,
+      manifestBytes,
+    };
+    control.registerPlan(v4, registrationOptions);
+    assert.equal(v4Edge.planEvidence.status, 'registered');
+    assert.equal(v4Edge.planEvidence.reviewed, false);
+    assert.equal(v4Edge.deterministicReviewEvidence.status, 'passed');
+    control.approvePlan(v4, {
+      gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+      approver: 'test-independent-reviewer',
+      approvalRef: 'approval:v4-independent-review',
+      recordedAt: RECORDED_AT,
+    });
+    assert.equal(v4Edge.status, 'approved');
+    assert.equal(v4Edge.planEvidence.reviewed, true);
+    assert.equal(v4Edge.apply.attempted, false);
+  });
+});
+
+test('v4 registration fails closed without exact review inputs or with tampered evidence', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const fixture = makeEdgeStateSuccessorRecoveryContext(temporaryRoot);
+    const manifest = control.buildManifest(fixture.context);
+    const prepared = prepareCandidateEdgeRegistration(manifest);
+
+    const withoutReviewEvidence = { ...prepared.options };
+    delete withoutReviewEvidence.reviewEvidencePath;
+    assert.throws(
+      () =>
+        control.registerPlan(structuredClone(manifest), withoutReviewEvidence),
+      { code: 'PLAN_REVIEW_EVIDENCE_REQUIRED' },
+    );
+
+    const withoutPlanJson = { ...prepared.options };
+    delete withoutPlanJson.planJsonPath;
+    assert.throws(
+      () => control.registerPlan(structuredClone(manifest), withoutPlanJson),
+      { code: 'PLAN_REVIEW_EVIDENCE_REQUIRED' },
+    );
+
+    const tampered = structuredClone(prepared.reviewBinding.evidence);
+    tampered.terraformVersion = `${tampered.terraformVersion}-tampered`;
+    fs.writeFileSync(
+      prepared.reviewBinding.reviewEvidencePath,
+      `${JSON.stringify(tampered, null, 2)}\n`,
+    );
+    assert.throws(
+      () => control.registerPlan(structuredClone(manifest), prepared.options),
+      { code: 'PLAN_REVIEW_EVIDENCE_MISMATCH' },
+    );
   });
 });
 
