@@ -15,10 +15,11 @@ immutable candidate image reference.
 
 No application rebuild, Prisma/schema change, migration, database mutation,
 Staging mutation, Production mutation, live Terraform plan, or Terraform apply
-was performed by D1 or by the promoted-baseline source remediation. The
-authoritative release contract, Terraform runtime semantics, and gate order are
-unchanged. The deployment controller change only extends normal-v1 live
-baseline handling to model an already successful `candidate_promoted` state.
+was performed by D1, the promoted-baseline remediation, or the successful Edge
+continuation remediation. The authoritative release contract, Terraform
+runtime semantics, and gate order are unchanged. Deployment control supports
+both a normal-v1 promoted baseline and a separate source-bound v3 continuation
+for an already passed API Runtime with unresolved retained Candidate Edge.
 
 Use the exact source SHA from the merged and approved deployment-control
 source, not a pre-remediation or remembered SHA, when a later release manifest
@@ -119,6 +120,11 @@ the top-level `stableApiRevision` and instead requires exactly:
     "promotedTrafficPercent": 100,
     "promotedCandidateTag": "candidate-<12-lowercase-hex>[-rN]",
     "promotedImageReference": "<current-promoted-staging-image-by-digest>"
+  },
+  "candidateEdgeResources": {
+    "candidateNegPresent": false,
+    "candidateBackendPresent": false,
+    "candidateSmokeRoutePresent": false
   }
 }
 ```
@@ -143,6 +149,12 @@ revision, including the unlikely case where distinct image references produce
 the same 12-character tag prefix. Missing fields, wrong percentages,
 wrong-service revisions, a tag/revision mismatch, a tag belonging to another
 image, duplicate identities, or contradictory mode fields fail closed.
+
+Promoted-baseline construction also requires fresh evidence that the candidate
+NEG, candidate backend, and candidate smoke route are all absent. Omission or
+any complete or partial presence stops construction before the Core gate. This
+is a preflight blocker only; it never auto-applies Candidate Edge cleanup or
+reconciliation.
 
 The top-level `candidate` object continues to identify only the new release
 candidate. Its tag is derived only from the new `candidateImageReference`; the
@@ -230,6 +242,98 @@ No new DNS record, hostname, public IP, certificate, certificate map, HTTPS
 proxy, forwarding rule, direct Cloud Run URL exposure, or parallel ingress is
 created.
 
+## Successful in-progress Candidate Edge continuation
+
+Use `manifestVersion=3` with
+`executionMode=successful-edge-continuation` only when a normal-v1
+promoted-baseline release is legitimately in progress at this exact boundary:
+
+```text
+Core Worker       passed
+Media Worker      passed
+API Runtime       passed and live-verified at candidate 0%
+Candidate Edge    pending and untouched
+Maintenance       pending
+Protected smoke   pending
+Traffic promotion pending
+```
+
+The continuation is a new execution with a new source SHA. It never edits the
+old manifest and never represents the passed work as mutable operations. Input
+must name the exact external predecessor manifest, its full file SHA256,
+previous execution ID, and previous source SHA. Construction and every later
+update re-read and re-hash those exact bytes, validate the predecessor as a
+normal-v1 manifest, and require the lifecycle boundary above. LF-versus-CRLF
+byte hashes of the separately tracked release contract are accepted only when
+they are computed from semantically identical current contract text; the
+predecessor manifest hash still binds its exact original bytes. A predecessor
+`absoluteTerraformRoot` may point at its earlier checkout only when every
+Terraform operation ends in its exact governed `terraformRoot` and all such
+operations share one checkout root. The controller rebases only a validation
+copy to the current checkout and preserves the imported evidence unchanged.
+
+The controller imports durable snapshots of the passed Core, Media, and API
+Runtime plan, approval, apply, successor-state, and verification evidence. It
+also imports the first six completed contract stages. The three consumed plan
+hashes are added to the v3 blocklist. The new manifest contains no
+`core-worker-runtime`, `media-worker-runtime`, or `api-candidate-runtime`
+operation, so those operations cannot be replayed.
+
+Fresh continuation discovery must prove all of the following:
+
+- the previous promoted revision/tag/image still serves exactly `100%`;
+- the unchanged new candidate image/tag/revision is Ready and exactly `0%`;
+- API, Core, and Media are on that candidate image while Maintenance remains on
+  its exact previous image;
+- current Runtime lineage/serial equals the passed API Runtime post-apply
+  state;
+- current Edge lineage/serial equals the pending predecessor Edge
+  precondition;
+- Candidate Edge is complete: serverless NEG, backend, and exact existing
+  smoke route;
+- the NEG targets service `moazez-staging-api` and the previous promoted tag;
+- the backend still targets `moazez-staging-api-candidate-neg`, retains the
+  primary API Cloud Armor posture and exact trusted client-IP header; and
+- the URL map remains `moazez-staging-edge-url-map`, with only
+  `/.well-known/moazez/candidate-readiness` rewritten to `/api/v1/auth/me`.
+
+Partial Edge presence, wrong tag/service, wrong traffic, `Ready=False`, image
+or revision mismatch, state mismatch, altered security posture, or a different
+route fails closed.
+
+The v3 gate list is the unchanged unresolved contract remainder:
+
+```text
+api-no-traffic-promotion
+  api-candidate-edge-reconciliation
+maintenance-scheduler-promotion
+protected-readiness-and-smoke
+traffic-promotion
+```
+
+`api-candidate-edge-reconciliation` has this exact takeover contract:
+
+| Address                                                                                 | Required actions | Allowed semantic attributes | Allowed provider-computed values |
+| --------------------------------------------------------------------------------------- | ---------------- | --------------------------- | -------------------------------- |
+| `module.edge_environment.google_compute_region_network_endpoint_group.api_candidate[0]` | `delete,create`  | `cloud_run[0].tag`          | `id`, `self_link`                |
+| `module.edge_environment.google_compute_backend_service.api_candidate[0]`               | `update`         | `backend[0].group`          | `fingerprint`                    |
+
+The URL map is deliberately absent from the reconciliation address allowlist;
+its exact existing route must be semantically unchanged. Any DNS, IP,
+certificate, HTTPS proxy, forwarding rule, Cloud Armor, trusted-header,
+ingress, URL-map, unrelated NEG/backend, or Production change is forbidden.
+
+The Edge operation binds to fresh Edge lineage/serial and must return the same
+lineage with a higher serial. Maintenance does not consume that Edge successor;
+it binds directly to the current Runtime state proven equal to the imported API
+Runtime successor. Traffic promotion binds to the verified Maintenance Runtime
+successor. Runtime and Edge authorities therefore remain independent.
+
+Do not apply the separate cleanup plan first, hand-edit either manifest, mark a
+passed operation failed, fabricate Recovery evidence, or replay Core, Media,
+API Runtime, or migrations. Candidate Edge cleanup remains non-authoritative,
+requires separate post-release approval, and is not a v3 gate.
+
 ## Protected candidate smoke
 
 The exact externally requested route is:
@@ -288,6 +392,9 @@ lowercase 64-character failed-plan SHA256 from DevOps evidence. The supplied
 `19cc9769...` value is only a prefix; source does not guess, complete, or
 hard-code it. Recovery plan registration rejects either hash in the manifest's
 two-entry blocklist, as well as duplicate plan bytes within the new manifest.
+Successful-continuation v3 instead adds the exact already-consumed Core, Media,
+and API Runtime plan hashes from the predecessor evidence to the historical
+blocker, preventing their reuse in the continuation.
 
 Do not use `terraform -target`, `terraform -parallelism=1`, direct `gcloud run`
 mutation, or Cloud Console mutation as release orchestration.
