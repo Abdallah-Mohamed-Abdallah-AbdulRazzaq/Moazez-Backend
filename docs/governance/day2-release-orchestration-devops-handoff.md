@@ -384,8 +384,9 @@ STATE_ADVANCED_WITHOUT_GOVERNED_SEMANTIC_EDGE_CHANGE
 ```
 
 The prior authority must be an exact external
-`successful-edge-continuation` v3 manifest that remains `in-progress` with no
-failed gate. Its
+`successful-edge-continuation` v3 manifest that remains `pending` with no
+failed gate. The `api-no-traffic-promotion` gate and every later gate remain
+pending. Its
 `api-no-traffic-promotion/api-candidate-edge-reconciliation` operation must be
 approved with registered and reviewed plan evidence, passed deterministic
 review, approved approval evidence, `apply.status=not-applied`,
@@ -393,6 +394,12 @@ review, approved approval evidence, `apply.status=not-applied`,
 verification. Do not mutate that v3 manifest after an interrupted external
 invocation. An already applied, attempted, failed, consumed, unapproved,
 unreviewed, live-verified, or completed predecessor is not recoverable by v4.
+This is the controller-produced boundary: approval of the first v3 operation
+does not pass its gate, so the release has not yet transitioned from `pending`
+to `in-progress`. V4 parses the retained bytes and validates the v3 lifecycle as
+represented. It may rebase only checkout-root paths in a validation clone; it
+does not normalize release, gate, operation, plan, approval, apply, verification,
+or state-precondition lifecycle fields.
 
 The v4 recovery object binds these seven distinct external regular files by
 absolute path and exact lowercase SHA256:
@@ -414,6 +421,21 @@ immutable operation specification; and approval reference against the prior v3
 operation, then reruns the PR #121 reviewer. Do not copy manifests, Saved Plans,
 Plan JSON, approvals, pre-apply evidence, or reconciliation evidence into the
 repository.
+
+The retained approval and pre-apply files have stable structured historical
+contracts and are semantic authorities rather than opaque archival evidence.
+Approval evidence must bind the exact release/source, Candidate Edge gate and
+operation, reconstructed pre-approval manifest, Saved Plan, Plan JSON,
+deterministic review, approver/time, approved classification, and
+`terraformApplyAuthorized=false`. Pre-apply evidence must bind the exact
+approved manifest, Saved Plan, Plan JSON, review and approval hashes, Candidate
+Edge state precondition, traffic and Edge posture, and must report
+`authorizationBoundary.terraformApplyExecuted=false` and
+`productionMutation=false`. The historical pre-apply schema has no independent
+`gateId` or `operationId`; its exact `edge-final-pre-apply-authority-guard`
+classification and those manifest/plan/state/Edge bindings identify the
+Candidate Edge boundary. No absent field is invented. A rewritten artifact
+fails semantic validation even when its outer metadata SHA is recomputed.
 
 The new v4 execution ID must differ from the interrupted v3 execution ID. Its
 source SHA must equal the current repository HEAD; v4 does not impose an

@@ -446,8 +446,25 @@ The new execution ID must differ from the interrupted v3 execution ID. The v4
 `sourceSha` must equal the current repository HEAD, but it is deliberately not
 required to differ from the prior v3 source SHA.
 
+Approval and pre-apply evidence are structured semantic authorities, not opaque
+archives. The exact historical approval contract is cross-bound to the release,
+source, Candidate Edge gate and operation, reconstructed pre-approval manifest,
+Saved Plan, Plan JSON, deterministic review, approver, approval time, approved
+classification, and its explicit `terraformApplyAuthorized=false` boundary.
+The exact historical pre-apply contract is cross-bound to the approved prior
+manifest bytes, plan/review/approval hashes, Candidate Edge state precondition,
+traffic and Edge posture, and
+`authorizationBoundary.terraformApplyExecuted=false` with
+`productionMutation=false`. That historical pre-apply schema has no separate
+`gateId` or `operationId`; its exact
+`edge-final-pre-apply-authority-guard` classification plus the bound manifest,
+plan lifecycle, state, and Edge identities provide that authority. V4 does not
+invent absent historical fields. Rewriting either structured artifact and
+updating only its outer SHA still fails semantic validation.
+
 The immutable predecessor must be a `successful-edge-continuation` v3 release
-with `releaseStatus="in-progress"`, `failedGateId=null`, and an
+with `releaseStatus="pending"`, `failedGateId=null`, a pending
+`api-no-traffic-promotion` gate, all later gates pending, and an
 `api-no-traffic-promotion/api-candidate-edge-reconciliation` operation at this
 exact controller boundary:
 
@@ -465,7 +482,12 @@ liveVerification.status=pending
 
 Applied, attempted, failed, consumed, unreviewed, unapproved, live-verified, or
 completed predecessors fail closed. The prior v3 manifest is never rewritten
-to manufacture a result.
+to manufacture a result. This is the natural controller lifecycle: the first v3
+gate is approved but not yet passed, so `releaseStatus` has not transitioned to
+`in-progress`. The exact retained manifest bytes must validate as represented;
+only checkout-root paths may be rebased in a validation clone so retained
+external evidence can be checked from another checkout. No lifecycle field is
+normalized before v3 validation.
 
 The reconciliation file is an exact-key JSON object, not a boolean assertion:
 

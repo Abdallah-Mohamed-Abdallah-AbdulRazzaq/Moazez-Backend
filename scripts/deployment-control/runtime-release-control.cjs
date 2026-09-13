@@ -1981,6 +1981,225 @@ function validatePriorV3ReviewArtifacts(
   }
 }
 
+function validatePriorV3ApprovalEvidence(
+  manifest,
+  operation,
+  metadata,
+  approvalEvidenceBytes,
+) {
+  const label = 'prior v3 approval evidence';
+  const evidence = requireExactKeys(
+    parseJsonBytes(
+      approvalEvidenceBytes,
+      label,
+      'EDGE_SUCCESSOR_APPROVAL_EVIDENCE_INVALID',
+    ),
+    [
+      'evidenceType',
+      'decision',
+      'recordedAt',
+      'approver',
+      'releaseExecutionId',
+      'sourceSha',
+      'gateId',
+      'operationId',
+      'manifestSha256BeforeApproval',
+      'savedPlan',
+      'planJson',
+      'deterministicReview',
+      'authorization',
+    ],
+    label,
+  );
+  const savedPlan = requireExactKeys(
+    evidence.savedPlan,
+    ['path', 'sha256'],
+    `${label}.savedPlan`,
+  );
+  const planJson = requireExactKeys(
+    evidence.planJson,
+    ['path', 'sha256'],
+    `${label}.planJson`,
+  );
+  const deterministicReview = requireExactKeys(
+    evidence.deterministicReview,
+    ['evidenceRef', 'evidenceSha256', 'status'],
+    `${label}.deterministicReview`,
+  );
+  const authorization = requireExactKeys(
+    evidence.authorization,
+    ['terraformApplyAuthorized', 'purpose'],
+    `${label}.authorization`,
+  );
+  requireIsoTimestamp(evidence.recordedAt, `${label}.recordedAt`);
+
+  const preApprovalManifest = structuredClone(manifest);
+  const preApprovalOperation = findOperation(
+    preApprovalManifest,
+    SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+    SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+  ).operation;
+  preApprovalOperation.status = 'plan-registered';
+  preApprovalOperation.planEvidence.reviewed = false;
+  preApprovalOperation.approval = {
+    status: 'pending',
+    approver: null,
+    approvalRef: null,
+    approvedAt: null,
+  };
+  const manifestSha256BeforeApproval = sha256(
+    Buffer.from(`${JSON.stringify(preApprovalManifest, null, 2)}\n`),
+  );
+
+  if (
+    evidence.evidenceType !== 'terraform-saved-plan-owner-approval' ||
+    evidence.decision !== 'approved' ||
+    evidence.recordedAt !== operation.approval.approvedAt ||
+    evidence.approver !== operation.approval.approver ||
+    evidence.releaseExecutionId !== manifest.releaseExecutionId ||
+    evidence.sourceSha !== manifest.sourceSha ||
+    evidence.gateId !== SUCCESSFUL_CONTINUATION_RESUME_GATE_ID ||
+    evidence.operationId !== SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID ||
+    evidence.manifestSha256BeforeApproval !== manifestSha256BeforeApproval ||
+    !path.isAbsolute(savedPlan.path) ||
+    path.resolve(savedPlan.path) !== metadata.priorSavedPlanRef ||
+    savedPlan.sha256 !== metadata.priorSavedPlanSha256 ||
+    savedPlan.sha256 !== operation.planEvidence.sha256 ||
+    !path.isAbsolute(planJson.path) ||
+    path.resolve(planJson.path) !== metadata.priorPlanJsonRef ||
+    planJson.sha256 !== metadata.priorPlanJsonSha256 ||
+    planJson.sha256 !== operation.deterministicReviewEvidence.planJsonSha256 ||
+    !path.isAbsolute(deterministicReview.evidenceRef) ||
+    path.resolve(deterministicReview.evidenceRef) !==
+      metadata.priorReviewEvidenceRef ||
+    deterministicReview.evidenceSha256 !== metadata.priorReviewEvidenceSha256 ||
+    deterministicReview.evidenceSha256 !==
+      operation.deterministicReviewEvidence.reviewEvidenceSha256 ||
+    deterministicReview.status !== 'passed' ||
+    authorization.terraformApplyAuthorized !== false ||
+    authorization.purpose !==
+      'approve-exact-reviewed-saved-plan-for-separate-pre-apply-gate'
+  ) {
+    fail(
+      'EDGE_SUCCESSOR_APPROVAL_EVIDENCE_INVALID',
+      'prior approval evidence is not semantically bound to the exact approved v3 Candidate Edge plan lifecycle.',
+    );
+  }
+}
+
+function validatePriorV3PreApplyEvidence(
+  manifest,
+  operation,
+  metadata,
+  preApplyEvidenceBytes,
+) {
+  const label = 'prior v3 pre-apply evidence';
+  const evidence = requireExactKeys(
+    parseJsonBytes(
+      preApplyEvidenceBytes,
+      label,
+      'EDGE_SUCCESSOR_PRE_APPLY_EVIDENCE_INVALID',
+    ),
+    [
+      'evidenceType',
+      'status',
+      'recordedAt',
+      'releaseExecutionId',
+      'sourceSha',
+      'manifestSha256',
+      'savedPlanSha256',
+      'planJsonSha256',
+      'reviewEvidenceSha256',
+      'approvalEvidenceSha256',
+      'statePrecondition',
+      'traffic',
+      'candidateEdge',
+      'authorizationBoundary',
+    ],
+    label,
+  );
+  const statePrecondition = requireState(
+    requireExactKeys(
+      evidence.statePrecondition,
+      ['lineage', 'serial'],
+      `${label}.statePrecondition`,
+    ),
+    `${label}.statePrecondition`,
+  );
+  const traffic = requireExactKeys(
+    evidence.traffic,
+    [
+      'servingRevision',
+      'servingPercent',
+      'candidateRevision',
+      'candidateTag',
+      'candidatePercent',
+    ],
+    `${label}.traffic`,
+  );
+  const candidateEdge = requireExactKeys(
+    evidence.candidateEdge,
+    [
+      'currentNegTag',
+      'desiredNegTag',
+      'backendPointsToNeg',
+      'securityPolicyMatch',
+      'trustedHeaderMatch',
+      'smokeRouteBackendMatch',
+      'smokeRouteRewriteMatch',
+    ],
+    `${label}.candidateEdge`,
+  );
+  const authorizationBoundary = requireExactKeys(
+    evidence.authorizationBoundary,
+    ['terraformApplyExecuted', 'productionMutation'],
+    `${label}.authorizationBoundary`,
+  );
+  requireIsoTimestamp(evidence.recordedAt, `${label}.recordedAt`);
+  const priorLive = manifest.liveDiscovery;
+
+  if (
+    evidence.evidenceType !== 'edge-final-pre-apply-authority-guard' ||
+    evidence.status !== 'passed' ||
+    evidence.releaseExecutionId !== manifest.releaseExecutionId ||
+    evidence.sourceSha !== manifest.sourceSha ||
+    evidence.manifestSha256 !== metadata.priorManifestSha256 ||
+    evidence.savedPlanSha256 !== metadata.priorSavedPlanSha256 ||
+    evidence.savedPlanSha256 !== operation.planEvidence.sha256 ||
+    evidence.planJsonSha256 !== metadata.priorPlanJsonSha256 ||
+    evidence.planJsonSha256 !==
+      operation.deterministicReviewEvidence.planJsonSha256 ||
+    evidence.reviewEvidenceSha256 !== metadata.priorReviewEvidenceSha256 ||
+    evidence.reviewEvidenceSha256 !==
+      operation.deterministicReviewEvidence.reviewEvidenceSha256 ||
+    evidence.approvalEvidenceSha256 !== metadata.priorApprovalEvidenceSha256 ||
+    !isDeepStrictEqual(statePrecondition, {
+      lineage: operation.statePrecondition.lineage,
+      serial: operation.statePrecondition.serial,
+    }) ||
+    traffic.servingRevision !== priorLive.servingBaseline.revision ||
+    traffic.servingPercent !== priorLive.servingBaseline.trafficPercent ||
+    traffic.candidateRevision !== priorLive.candidate.revision ||
+    traffic.candidateTag !== priorLive.candidate.tag ||
+    traffic.candidatePercent !== priorLive.candidate.trafficPercent ||
+    candidateEdge.currentNegTag !==
+      priorLive.candidateEdgeResources.neg.cloudRunTag ||
+    candidateEdge.desiredNegTag !== manifest.candidate.tag ||
+    candidateEdge.backendPointsToNeg !== true ||
+    candidateEdge.securityPolicyMatch !== true ||
+    candidateEdge.trustedHeaderMatch !== true ||
+    candidateEdge.smokeRouteBackendMatch !== true ||
+    candidateEdge.smokeRouteRewriteMatch !== true ||
+    authorizationBoundary.terraformApplyExecuted !== false ||
+    authorizationBoundary.productionMutation !== false
+  ) {
+    fail(
+      'EDGE_SUCCESSOR_PRE_APPLY_EVIDENCE_INVALID',
+      'prior pre-apply evidence is not semantically bound to the exact unapplied v3 Candidate Edge authority boundary.',
+    );
+  }
+}
+
 function validateEdgeStateSuccessorRecoveryPredecessorBoundary(predecessor) {
   const edge = findOperation(
     predecessor,
@@ -1996,7 +2215,7 @@ function validateEdgeStateSuccessorRecoveryPredecessorBoundary(predecessor) {
   if (
     predecessor.manifestVersion !== 3 ||
     predecessor.executionMode !== SUCCESSFUL_CONTINUATION_MODE ||
-    predecessor.releaseStatus !== 'in-progress' ||
+    predecessor.releaseStatus !== 'pending' ||
     predecessor.failedGateId !== null ||
     edgeGate?.status !== 'pending' ||
     laterGates.some((gate) => gate.status !== 'pending') ||
@@ -2012,7 +2231,7 @@ function validateEdgeStateSuccessorRecoveryPredecessorBoundary(predecessor) {
   ) {
     fail(
       'EDGE_SUCCESSOR_PREDECESSOR_BOUNDARY_INVALID',
-      'the prior v3 manifest must be in progress at the exact approved, registered, reviewed, controller-unapplied Candidate Edge boundary.',
+      'the prior v3 manifest must be pending at the exact approved, registered, reviewed, controller-unapplied first Candidate Edge gate boundary.',
     );
   }
   return edge;
@@ -2039,7 +2258,6 @@ function loadEdgeStateSuccessorRecoveryPredecessor(metadata, label) {
     );
   }
   const validationCandidate = structuredClone(predecessorManifest);
-  validationCandidate.releaseStatus = 'pending';
   normalizeSuccessfulContinuationPredecessorCheckoutRoots(
     validationCandidate,
     label,
@@ -2100,6 +2318,18 @@ function loadEdgeStateSuccessorRecoveryPredecessor(metadata, label) {
     edgeOperation,
     metadata,
     artifacts,
+  );
+  validatePriorV3ApprovalEvidence(
+    predecessorManifest,
+    edgeOperation,
+    metadata,
+    artifacts.approvalEvidenceBytes,
+  );
+  validatePriorV3PreApplyEvidence(
+    predecessorManifest,
+    edgeOperation,
+    metadata,
+    artifacts.preApplyEvidenceBytes,
   );
   const apiRuntime =
     predecessorManifest.predecessorEvidence.importedPassedOperations.find(

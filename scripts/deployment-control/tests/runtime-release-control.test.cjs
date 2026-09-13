@@ -604,35 +604,52 @@ function makeEdgeStateSuccessorRecoveryContext(temporaryRoot) {
     planJsonPath: reviewBinding.planJsonPath,
     manifestBytes: preRegistrationManifestBytes,
   });
+  const preApprovalManifestBytes = Buffer.from(
+    `${JSON.stringify(predecessorManifest, null, 2)}\n`,
+  );
   const approvalEvidenceRef = path.join(
     temporaryRoot,
     'prior-v3-approval-evidence.json',
   );
-  writeExternalJson(approvalEvidenceRef, {
-    status: 'approved',
+  const approvalEvidence = {
+    evidenceType: 'terraform-saved-plan-owner-approval',
+    decision: 'approved',
+    recordedAt: RECORDED_AT,
+    approver: 'test-release-owner',
     releaseExecutionId: predecessorManifest.releaseExecutionId,
+    sourceSha: predecessorManifest.sourceSha,
     gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
     operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
-  });
+    manifestSha256BeforeApproval: hashText(preApprovalManifestBytes),
+    savedPlan: {
+      path: edgeOperation.savedPlanPath,
+      sha256: edgeOperation.planEvidence.sha256,
+    },
+    planJson: {
+      path: reviewBinding.planJsonPath,
+      sha256: edgeOperation.deterministicReviewEvidence.planJsonSha256,
+    },
+    deterministicReview: {
+      evidenceRef: reviewBinding.reviewEvidencePath,
+      evidenceSha256:
+        edgeOperation.deterministicReviewEvidence.reviewEvidenceSha256,
+      status: 'passed',
+    },
+    authorization: {
+      terraformApplyAuthorized: false,
+      purpose: 'approve-exact-reviewed-saved-plan-for-separate-pre-apply-gate',
+    },
+  };
+  const approvalArtifact = writeExternalJson(
+    approvalEvidenceRef,
+    approvalEvidence,
+  );
   control.approvePlan(predecessorManifest, {
     gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
     operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
     approver: 'test-release-owner',
     approvalRef: approvalEvidenceRef,
     recordedAt: RECORDED_AT,
-  });
-  predecessorManifest.releaseStatus = 'in-progress';
-
-  const priorPreApplyEvidenceRef = path.join(
-    temporaryRoot,
-    'prior-v3-pre-apply-evidence.json',
-  );
-  writeExternalJson(priorPreApplyEvidenceRef, {
-    status: 'external-attempt-interrupted',
-    releaseExecutionId: predecessorManifest.releaseExecutionId,
-    gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
-    operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
-    controllerApplyAttempted: false,
   });
 
   const priorManifestRef = path.join(
@@ -642,6 +659,56 @@ function makeEdgeStateSuccessorRecoveryContext(temporaryRoot) {
   const priorManifestArtifact = writeExternalJson(
     priorManifestRef,
     predecessorManifest,
+  );
+  const priorPreApplyEvidenceRef = path.join(
+    temporaryRoot,
+    'prior-v3-pre-apply-evidence.json',
+  );
+  const priorPreApplyEvidence = {
+    evidenceType: 'edge-final-pre-apply-authority-guard',
+    status: 'passed',
+    recordedAt: RECORDED_AT,
+    releaseExecutionId: predecessorManifest.releaseExecutionId,
+    sourceSha: predecessorManifest.sourceSha,
+    manifestSha256: priorManifestArtifact.sha256,
+    savedPlanSha256: edgeOperation.planEvidence.sha256,
+    planJsonSha256: edgeOperation.deterministicReviewEvidence.planJsonSha256,
+    reviewEvidenceSha256:
+      edgeOperation.deterministicReviewEvidence.reviewEvidenceSha256,
+    approvalEvidenceSha256: approvalArtifact.sha256,
+    statePrecondition: {
+      lineage: edgeOperation.statePrecondition.lineage,
+      serial: edgeOperation.statePrecondition.serial,
+    },
+    traffic: {
+      servingRevision:
+        predecessorManifest.liveDiscovery.servingBaseline.revision,
+      servingPercent:
+        predecessorManifest.liveDiscovery.servingBaseline.trafficPercent,
+      candidateRevision: predecessorManifest.liveDiscovery.candidate.revision,
+      candidateTag: predecessorManifest.liveDiscovery.candidate.tag,
+      candidatePercent:
+        predecessorManifest.liveDiscovery.candidate.trafficPercent,
+    },
+    candidateEdge: {
+      currentNegTag:
+        predecessorManifest.liveDiscovery.candidateEdgeResources.neg
+          .cloudRunTag,
+      desiredNegTag: predecessorManifest.candidate.tag,
+      backendPointsToNeg: true,
+      securityPolicyMatch: true,
+      trustedHeaderMatch: true,
+      smokeRouteBackendMatch: true,
+      smokeRouteRewriteMatch: true,
+    },
+    authorizationBoundary: {
+      terraformApplyExecuted: false,
+      productionMutation: false,
+    },
+  };
+  const preApplyArtifact = writeExternalJson(
+    priorPreApplyEvidenceRef,
+    priorPreApplyEvidence,
   );
   const priorEdgeState = {
     lineage: edgeOperation.statePrecondition.lineage,
@@ -682,8 +749,6 @@ function makeEdgeStateSuccessorRecoveryContext(temporaryRoot) {
     stateReconciliationEvidenceRef,
     reconciliation,
   );
-  const approvalEvidenceBytes = fs.readFileSync(approvalEvidenceRef);
-  const preApplyEvidenceBytes = fs.readFileSync(priorPreApplyEvidenceRef);
   const savedPlanBytes = fs.readFileSync(edgeOperation.savedPlanPath);
   const planJsonBytes = fs.readFileSync(reviewBinding.planJsonPath);
   const reviewEvidenceBytes = fs.readFileSync(reviewBinding.reviewEvidencePath);
@@ -698,9 +763,9 @@ function makeEdgeStateSuccessorRecoveryContext(temporaryRoot) {
     priorReviewEvidenceRef: reviewBinding.reviewEvidencePath,
     priorReviewEvidenceSha256: hashText(reviewEvidenceBytes),
     priorApprovalEvidenceRef: approvalEvidenceRef,
-    priorApprovalEvidenceSha256: hashText(approvalEvidenceBytes),
+    priorApprovalEvidenceSha256: approvalArtifact.sha256,
     priorPreApplyEvidenceRef,
-    priorPreApplyEvidenceSha256: hashText(preApplyEvidenceBytes),
+    priorPreApplyEvidenceSha256: preApplyArtifact.sha256,
     stateReconciliationEvidenceRef,
     stateReconciliationEvidenceSha256: reconciliationArtifact.sha256,
   };
@@ -710,6 +775,10 @@ function makeEdgeStateSuccessorRecoveryContext(temporaryRoot) {
   return {
     predecessorManifest,
     priorManifestRef,
+    approvalEvidence,
+    approvalEvidenceRef,
+    priorPreApplyEvidence,
+    priorPreApplyEvidenceRef,
     reconciliation,
     context: {
       executionMode: control.EDGE_STATE_SUCCESSOR_RECOVERY_MODE,
@@ -734,6 +803,26 @@ function rewriteEdgeStateSuccessorPredecessor(fixture, mutate) {
     fixture.predecessorManifest,
   );
   fixture.context.edgeStateSuccessorRecovery.priorManifestSha256 =
+    artifact.sha256;
+}
+
+function rewriteEdgeStateSuccessorApprovalEvidence(fixture, mutate) {
+  mutate(fixture.approvalEvidence);
+  const artifact = writeExternalJson(
+    fixture.approvalEvidenceRef,
+    fixture.approvalEvidence,
+  );
+  fixture.context.edgeStateSuccessorRecovery.priorApprovalEvidenceSha256 =
+    artifact.sha256;
+}
+
+function rewriteEdgeStateSuccessorPreApplyEvidence(fixture, mutate) {
+  mutate(fixture.priorPreApplyEvidence);
+  const artifact = writeExternalJson(
+    fixture.priorPreApplyEvidenceRef,
+    fixture.priorPreApplyEvidence,
+  );
+  fixture.context.edgeStateSuccessorRecovery.priorPreApplyEvidenceSha256 =
     artifact.sha256;
 }
 
@@ -1729,15 +1818,21 @@ test('successful continuation preserves separate Edge and Runtime successor chai
 test('edge state-successor recovery v4 deterministically resumes only the governed unresolved remainder', () => {
   withTemporaryRoot((temporaryRoot) => {
     const fixture = makeEdgeStateSuccessorRecoveryContext(temporaryRoot);
-    const first = control.buildManifest(fixture.context);
-    const second = control.buildManifest(structuredClone(fixture.context));
-    const operationIds = first.gates.flatMap((gate) =>
-      gate.operations.map((candidateOperation) => candidateOperation.id),
+    const priorEdgeGate = fixture.predecessorManifest.gates.find(
+      (gate) => gate.id === control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
     );
     const priorEdge = operation(
       fixture.predecessorManifest,
       control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
       control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    );
+    assert.equal(fixture.predecessorManifest.releaseStatus, 'pending');
+    assert.equal(priorEdge.status, 'approved');
+    assert.equal(priorEdgeGate.status, 'pending');
+    const first = control.buildManifest(fixture.context);
+    const second = control.buildManifest(structuredClone(fixture.context));
+    const operationIds = first.gates.flatMap((gate) =>
+      gate.operations.map((candidateOperation) => candidateOperation.id),
     );
     const currentEdge = operation(
       first,
@@ -2093,9 +2188,127 @@ test('edge state-successor recovery v4 reads and verifies every prior artifact b
   });
 });
 
+test('edge state-successor recovery v4 rejects semantically swapped approval evidence even when its byte hash is updated', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const cases = [
+      {
+        name: 'approval belongs to another release',
+        apply(evidence) {
+          evidence.releaseExecutionId = 'day2-staging-unrelated-release';
+        },
+      },
+      {
+        name: 'approval belongs to another gate',
+        apply(evidence) {
+          evidence.gateId = 'traffic-promotion';
+        },
+      },
+      {
+        name: 'approval belongs to another operation',
+        apply(evidence) {
+          evidence.operationId = 'api-traffic-promotion';
+        },
+      },
+      {
+        name: 'approval classification changed',
+        apply(evidence) {
+          evidence.evidenceType = 'unrelated-approval';
+        },
+      },
+      {
+        name: 'approval decision changed',
+        apply(evidence) {
+          evidence.decision = 'rejected';
+        },
+      },
+      {
+        name: 'approval falsely authorizes Terraform apply',
+        apply(evidence) {
+          evidence.authorization.terraformApplyAuthorized = true;
+        },
+      },
+    ];
+
+    for (const [index, scenario] of cases.entries()) {
+      const fixture = makeEdgeStateSuccessorRecoveryContext(
+        path.join(temporaryRoot, `approval-swap-${index}`),
+      );
+      rewriteEdgeStateSuccessorApprovalEvidence(fixture, scenario.apply);
+      assert.throws(() => control.buildManifest(fixture.context), {
+        code: 'EDGE_SUCCESSOR_APPROVAL_EVIDENCE_INVALID',
+      });
+    }
+  });
+});
+
+test('edge state-successor recovery v4 rejects semantically swapped pre-apply evidence even when its byte hash is updated', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const cases = [
+      {
+        name: 'pre-apply evidence belongs to another release',
+        apply(evidence) {
+          evidence.releaseExecutionId = 'day2-staging-unrelated-release';
+        },
+      },
+      {
+        name: 'pre-apply classification changed',
+        apply(evidence) {
+          evidence.evidenceType = 'unrelated-pre-apply-guard';
+        },
+      },
+      {
+        name: 'pre-apply guard did not pass',
+        apply(evidence) {
+          evidence.status = 'failed';
+        },
+      },
+      {
+        name: 'pre-apply manifest binding changed',
+        apply(evidence) {
+          evidence.manifestSha256 = 'f'.repeat(64);
+        },
+      },
+      {
+        name: 'pre-apply state serial changed',
+        apply(evidence) {
+          evidence.statePrecondition.serial += 1;
+        },
+      },
+      {
+        name: 'pre-apply evidence reports Terraform apply execution',
+        apply(evidence) {
+          evidence.authorizationBoundary.terraformApplyExecuted = true;
+        },
+      },
+      {
+        name: 'pre-apply evidence reports Production mutation',
+        apply(evidence) {
+          evidence.authorizationBoundary.productionMutation = true;
+        },
+      },
+    ];
+
+    for (const [index, scenario] of cases.entries()) {
+      const fixture = makeEdgeStateSuccessorRecoveryContext(
+        path.join(temporaryRoot, `pre-apply-swap-${index}`),
+      );
+      rewriteEdgeStateSuccessorPreApplyEvidence(fixture, scenario.apply);
+      assert.throws(() => control.buildManifest(fixture.context), {
+        code: 'EDGE_SUCCESSOR_PRE_APPLY_EVIDENCE_INVALID',
+      });
+    }
+  });
+});
+
 test('edge state-successor recovery v4 accepts only the exact interrupted approved v3 controller boundary', () => {
   withTemporaryRoot((temporaryRoot) => {
     const cases = [
+      {
+        name: 'prior release is invalidly in progress without a passed gate',
+        apply(manifest) {
+          manifest.releaseStatus = 'in-progress';
+        },
+      },
       {
         name: 'operation status is not approved',
         apply(manifest, edge) {
@@ -2168,6 +2381,12 @@ test('edge state-successor recovery v4 accepts only the exact interrupted approv
         name: 'prior release is complete',
         apply(manifest) {
           manifest.releaseStatus = 'complete';
+        },
+      },
+      {
+        name: 'prior release is failed',
+        apply(manifest) {
+          manifest.releaseStatus = 'failed';
         },
       },
     ];
