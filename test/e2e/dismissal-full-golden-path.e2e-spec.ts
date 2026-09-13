@@ -26,6 +26,7 @@ import { RealtimePublisherService } from '../../src/infrastructure/realtime/real
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'DismissalGoldenPath123!';
 const TEST_RUN_ID = randomUUID().slice(0, 8);
+const RAW_GUARDIAN_PHONE = `010${TEST_RUN_ID.slice(0, 6)}`;
 const SCHOOL_LATITUDE = 30.04442;
 const SCHOOL_LONGITUDE = 31.235712;
 const ARGON2_OPTIONS: argon2.Options = {
@@ -507,9 +508,10 @@ describe('DISMISSAL-E2E-1A full golden path smoke suite (e2e)', () => {
         pickupRecipientToken: expect.any(String),
         displayName: expect.any(String),
         canPickup: true,
+        maskedPhone: null,
       }),
     );
-    expect(JSON.stringify(recipients.body)).not.toContain('010');
+    expect(JSON.stringify(recipients.body)).not.toContain(RAW_GUARDIAN_PHONE);
     assertNoForbiddenFields(recipients.body, { allowPickupRecipientToken: true });
     const pickupRecipientToken = recipients.body.recipients[0]
       .pickupRecipientToken as string;
@@ -1027,7 +1029,7 @@ describe('DISMISSAL-E2E-1A full golden path smoke suite (e2e)', () => {
         firstName: params.firstName,
         lastName: params.lastName,
         relation: params.relation,
-        phone: `010${TEST_RUN_ID.slice(0, 6)}`,
+        phone: RAW_GUARDIAN_PHONE,
         isPrimary: params.userId === parentUserId,
         canPickup: params.canPickup,
         canReceiveNotifications: true,
@@ -1246,6 +1248,7 @@ function assertNoForbiddenFields(
     'clientRequestId',
     'deletedAt',
     'metadata',
+    'phone',
     'pickupCodeHash',
     'pickupCodeSalt',
     'socketId',
