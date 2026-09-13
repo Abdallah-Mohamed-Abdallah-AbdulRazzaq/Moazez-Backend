@@ -1,0 +1,246 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.15.8",
+  "applyable": true,
+  "complete": true,
+  "errored": false,
+  "resource_changes": [
+    {
+      "address": "module.edge_environment.google_compute_region_network_endpoint_group.api_candidate[0]",
+      "mode": "managed",
+      "type": "google_compute_region_network_endpoint_group",
+      "name": "api_candidate",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "schema_version": 1,
+      "action_reason": "replace_because_cannot_update",
+      "change": {
+        "actions": ["delete", "create"],
+        "before": {
+          "cloud_run": [
+            {
+              "service": "moazez-staging-api",
+              "tag": "candidate-e1f5a9c9e01b-r1",
+              "url_mask": ""
+            }
+          ],
+          "description": "",
+          "id": "sanitized-old-neg-id",
+          "name": "moazez-staging-api-candidate-neg",
+          "network": "sanitized-old-network",
+          "network_endpoint_type": "SERVERLESS",
+          "psc_data": [],
+          "psc_target_service": "",
+          "region": "https://www.googleapis.com/compute/v1/projects/sanitized-project/regions/me-central2",
+          "self_link": "https://www.googleapis.com/compute/v1/projects/sanitized-project/regions/me-central2/networkEndpointGroups/moazez-staging-api-candidate-neg",
+          "subnetwork": ""
+        },
+        "after": {
+          "cloud_run": [
+            {
+              "service": "moazez-staging-api",
+              "tag": "candidate-5377bd0c7d84",
+              "url_mask": null
+            }
+          ],
+          "description": null,
+          "id": null,
+          "name": "moazez-staging-api-candidate-neg",
+          "network": null,
+          "network_endpoint_type": "SERVERLESS",
+          "psc_data": null,
+          "psc_target_service": null,
+          "region": "me-central2",
+          "self_link": null,
+          "subnetwork": null
+        },
+        "after_unknown": {
+          "cloud_run": [
+            {
+              "service": false,
+              "tag": false,
+              "url_mask": false
+            }
+          ],
+          "description": false,
+          "id": true,
+          "name": false,
+          "network": true,
+          "network_endpoint_type": false,
+          "psc_data": true,
+          "psc_target_service": false,
+          "region": false,
+          "self_link": true,
+          "subnetwork": false
+        },
+        "replace_paths": [["cloud_run", 0, "tag"]]
+      }
+    },
+    {
+      "address": "module.edge_environment.google_compute_backend_service.api_candidate[0]",
+      "mode": "managed",
+      "type": "google_compute_backend_service",
+      "name": "api_candidate",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "schema_version": 1,
+      "change": {
+        "actions": ["update"],
+        "before": {
+          "backend": [
+            {
+              "group": "https://www.googleapis.com/compute/v1/projects/sanitized-project/regions/me-central2/networkEndpointGroups/moazez-staging-api-candidate-neg",
+              "max_connections": 0,
+              "max_connections_per_endpoint": 0,
+              "max_connections_per_instance": 0,
+              "max_rate": 0,
+              "max_rate_per_endpoint": 0,
+              "max_rate_per_instance": 0,
+              "max_utilization": 0.8
+            }
+          ],
+          "custom_request_headers": ["X-Moazez-Client-IP:{client_ip_address}"],
+          "fingerprint": "sanitized-fingerprint",
+          "name": "moazez-staging-api-candidate-backend",
+          "security_policy": "sanitized-primary-api-security-policy"
+        },
+        "after": {
+          "backend": [
+            {
+              "group": null,
+              "max_connections": null,
+              "max_connections_per_endpoint": null,
+              "max_connections_per_instance": null,
+              "max_rate": null,
+              "max_rate_per_endpoint": null,
+              "max_rate_per_instance": null,
+              "max_utilization": null
+            }
+          ],
+          "custom_request_headers": ["X-Moazez-Client-IP:{client_ip_address}"],
+          "fingerprint": "sanitized-fingerprint",
+          "name": "moazez-staging-api-candidate-backend",
+          "security_policy": "sanitized-primary-api-security-policy"
+        },
+        "after_unknown": {
+          "backend": [
+            {
+              "group": true,
+              "max_connections": true,
+              "max_connections_per_endpoint": true,
+              "max_connections_per_instance": true,
+              "max_rate": true,
+              "max_rate_per_endpoint": true,
+              "max_rate_per_instance": true,
+              "max_utilization": true
+            }
+          ],
+          "custom_request_headers": [],
+          "fingerprint": false,
+          "name": false,
+          "security_policy": {}
+        }
+      }
+    }
+  ],
+  "resource_drift": [
+    {
+      "address": "module.edge_environment.google_compute_backend_service.api_candidate[0]",
+      "mode": "managed",
+      "type": "google_compute_backend_service",
+      "name": "api_candidate",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": ["update"],
+        "before": {
+          "custom_response_headers": null,
+          "health_checks": null,
+          "name": "moazez-staging-api-candidate-backend"
+        },
+        "after": {
+          "custom_response_headers": [],
+          "health_checks": [],
+          "name": "moazez-staging-api-candidate-backend"
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "module.edge_environment.google_certificate_manager_certificate_map.edge",
+      "mode": "managed",
+      "type": "google_certificate_manager_certificate_map",
+      "name": "edge",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": ["update"],
+        "before": {
+          "name": "moazez-staging-edge-map",
+          "update_time": "2026-09-13T08:00:00Z"
+        },
+        "after": {
+          "name": "moazez-staging-edge-map",
+          "update_time": "2026-09-13T08:01:00Z"
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "module.edge_environment.google_certificate_manager_certificate_map_entry.host[\"admin\"]",
+      "mode": "managed",
+      "type": "google_certificate_manager_certificate_map_entry",
+      "name": "host",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": ["update"],
+        "before": {
+          "hostname": "staging-admin.example.invalid",
+          "update_time": "2026-09-13T08:00:00Z"
+        },
+        "after": {
+          "hostname": "staging-admin.example.invalid",
+          "update_time": "2026-09-13T08:01:00Z"
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "module.edge_environment.google_certificate_manager_certificate_map_entry.host[\"api\"]",
+      "mode": "managed",
+      "type": "google_certificate_manager_certificate_map_entry",
+      "name": "host",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": ["update"],
+        "before": {
+          "hostname": "staging-api.example.invalid",
+          "update_time": "2026-09-13T08:00:00Z"
+        },
+        "after": {
+          "hostname": "staging-api.example.invalid",
+          "update_time": "2026-09-13T08:01:00Z"
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "module.edge_environment.google_certificate_manager_certificate_map_entry.host[\"schools\"]",
+      "mode": "managed",
+      "type": "google_certificate_manager_certificate_map_entry",
+      "name": "host",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": ["update"],
+        "before": {
+          "hostname": "staging-schools.example.invalid",
+          "update_time": "2026-09-13T08:00:00Z"
+        },
+        "after": {
+          "hostname": "staging-schools.example.invalid",
+          "update_time": "2026-09-13T08:01:00Z"
+        },
+        "after_unknown": {}
+      }
+    }
+  ],
+  "future_compatible_top_level_property": {
+    "ignored": true
+  }
+}

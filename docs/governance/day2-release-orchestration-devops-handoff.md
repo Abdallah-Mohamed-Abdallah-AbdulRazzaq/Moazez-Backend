@@ -313,10 +313,43 @@ traffic-promotion
 
 `api-candidate-edge-reconciliation` has this exact takeover contract:
 
-| Address                                                                                 | Required actions | Allowed semantic attributes | Allowed provider-computed values |
-| --------------------------------------------------------------------------------------- | ---------------- | --------------------------- | -------------------------------- |
-| `module.edge_environment.google_compute_region_network_endpoint_group.api_candidate[0]` | `delete,create`  | `cloud_run[0].tag`          | `id`, `self_link`                |
-| `module.edge_environment.google_compute_backend_service.api_candidate[0]`               | `update`         | `backend[0].group`          | `fingerprint`                    |
+| Address                                                                                 | Required actions | Allowed semantic attributes | Allowed provider-computed values                                                   |
+| --------------------------------------------------------------------------------------- | ---------------- | --------------------------- | ---------------------------------------------------------------------------------- |
+| `module.edge_environment.google_compute_region_network_endpoint_group.api_candidate[0]` | `delete,create`  | `cloud_run[0].tag`          | `id`, `self_link`, `network`, `psc_data`                                           |
+| `module.edge_environment.google_compute_backend_service.api_candidate[0]`               | `update`         | `backend[0].group`          | the seven exact `backend[0].max_*` paths plus the preserved `fingerprint` contract |
+
+The deterministic v3 plan JSON review keeps configured semantic changes,
+semantic dependency unknowns, provider-computed unknowns, provider/default
+normalizations, and refresh-only drift distinct. Boolean leaf
+`after_unknown=true` has precedence over ordinary before/after comparison;
+false, empty arrays, and empty objects grant no permission. Null, absent, known
+empty values, and unknown values are never collapsed.
+
+The exact Candidate Backend provider-computed paths are
+`backend[0].max_connections`,
+`backend[0].max_connections_per_endpoint`,
+`backend[0].max_connections_per_instance`, `backend[0].max_rate`,
+`backend[0].max_rate_per_endpoint`, `backend[0].max_rate_per_instance`, and
+`backend[0].max_utilization`. `fingerprint` remains an immutable compatibility
+allowance, but it is not asserted as unknown in the representative real-plan
+fixture because it was not present in the observed plan shape.
+
+The NEG must replace only because `cloud_run[0].tag` changes from the fresh
+serving-baseline tag to the manifest candidate tag. Only its exact same-region
+regional self-link to `me-central2` normalization and exact empty-string to
+null transitions for `cloud_run[0].url_mask`, `description`,
+`psc_target_service`, and `subnetwork` are allowed. The Backend must contain
+exactly one backend element; `backend[0].group` remains the governed semantic
+dependency change from the known retained NEG identity to unknown after apply.
+No wildcard normalization or unknown path exists.
+
+`resource_drift` is reviewed separately. On the Candidate Backend, only
+`custom_response_headers: null -> []` and `health_checks: null -> []` may
+appear. On exactly the certificate map and the `admin`, `api`, and `schools`
+certificate-map entries, only a valid changed `update_time` timestamp may
+appear, with no unknown and no corresponding non-noop resource change. The
+Backend's simultaneous governed `resource_change` is explicitly allowed and
+does not make its drift semantic.
 
 The URL map is deliberately absent from the reconciliation address allowlist;
 its exact existing route must be semantically unchanged. Any DNS, IP,
@@ -641,15 +674,69 @@ The exact command forms are documented in
 ```text
 create-spec
 validate-spec
+review-plan
 register-plan
 approve-plan
 record-apply
 record-verification
 ```
 
-`create-spec` and `validate-spec` are specification-only. `register-plan` and
-`approve-plan` bind/review an already-created external plan. `record-apply` and
-`record-verification` record evidence only. None is apply-capable.
+`create-spec` and `validate-spec` are specification-only. For the exact v3
+Candidate Edge operation, `review-plan` reads the immutable manifest, Saved
+Plan, and plan JSON and atomically creates only sanitized external review
+evidence. It does not run Terraform or mutate the manifest. `register-plan`
+then requires that exact review evidence and binds the exact previously
+reviewed Saved Plan bytes; `approve-plan` remains a separate independent
+authorization. `record-apply` and `record-verification` record evidence only.
+None is apply-capable.
+
+The reviewer hashes both files but cannot prove that plan JSON was derived
+from the Saved Plan because it never invokes Terraform. DevOps owns one guarded
+export operation:
+
+```text
+hash Saved Plan before export
+-> terraform show -json exact Saved Plan
+-> hash Saved Plan after export
+-> require unchanged
+-> invoke review-plan using those exact files
+```
+
+The exact v3 command is:
+
+```text
+node scripts/deployment-control/runtime-release-control.cjs review-plan --manifest <exact-external-manifest.json> --gate api-no-traffic-promotion --operation api-candidate-edge-reconciliation --plan <exact-external-saved-plan.tfplan> --plan-json <exact-external-plan.json> --review-evidence <new-external-review-evidence.json>
+```
+
+The matching `register-plan` invocation must add
+`--review-evidence <exact-external-review-evidence.json>`. Before registration,
+the controller re-hashes the pre-registration manifest, Saved Plan, and review
+evidence and recomputes the immutable operation digest. Any release, source,
+manifest, operation, digest, path, plan hash, plan size, or passed-status
+mismatch fails closed. Registration retains a compact binding to the review
+evidence hash, reviewed manifest hash, immutable operation digest, plan JSON
+hash, and Saved Plan hash without changing approval semantics.
+
+After this repair changes the source SHA, the prior v3 manifest and prior Saved
+Plan are evidence-only: do not register, approve, or apply them. The required
+continuation is merged repaired source, fresh source/runtime/state discovery,
+verification of no contradictory live state, a new v3 execution and manifest,
+a new Saved Plan, guarded exact-plan JSON export, deterministic review,
+registration of the exact reviewed plan, independent approval, and only then a
+separately authorized apply.
+
+The superseded evidence identities that exposed this source gap are:
+
+```text
+OLD_SOURCE_SHA=11602e319088129694aca3a5d724c34d05bd335a
+OLD_MANIFEST_SHA256=24290164ca0626952b6e0682ba50dba6273af0fccf4df18a576207c7b1b265a6
+OLD_SAVED_PLAN_SHA256=b513bda853ccc0bebff2fe94809038b88c7d376235baa1ef89ffac1cc82c4601
+OLD_MANIFEST=EVIDENCE_ONLY
+OLD_SAVED_PLAN=EVIDENCE_ONLY
+REGISTER_OLD_PLAN=NO
+APPROVE_OLD_PLAN=NO
+APPLY_OLD_PLAN=NO
+```
 
 The two Terraform roots are technically plan/apply-capable only in a later,
 separately authorized DevOps execution. D1 used backend-disabled validation and
