@@ -94,7 +94,6 @@ function successfulContinuationPlanReviewSpecification() {
     providerName: GOOGLE_PROVIDER_NAME,
     actions: ['update'],
     exactChangedCanonicalPaths: ['update_time'],
-    timestampTransitionCanonicalPaths: ['update_time'],
     correspondingNonNoopResourceChange: 'forbidden',
   });
   return {
@@ -4325,21 +4324,24 @@ function canonicalizeTerraformPath(pathSegments) {
   return canonicalPath;
 }
 
-function collectUnknownCanonicalPaths(value, pathSegments = [], output = []) {
+function collectUnknownPathEntries(value, pathSegments = [], output = []) {
   if (value === true) {
-    output.push(canonicalizeTerraformPath(pathSegments));
+    output.push({
+      canonicalPath: canonicalizeTerraformPath(pathSegments),
+      pathSegments: [...pathSegments],
+    });
     return output;
   }
   if (value === false) return output;
   if (Array.isArray(value)) {
     for (const [index, child] of value.entries()) {
-      collectUnknownCanonicalPaths(child, [...pathSegments, index], output);
+      collectUnknownPathEntries(child, [...pathSegments, index], output);
     }
     return output;
   }
   if (isPlainObject(value)) {
     for (const key of Object.keys(value).sort()) {
-      collectUnknownCanonicalPaths(value[key], [...pathSegments, key], output);
+      collectUnknownPathEntries(value[key], [...pathSegments, key], output);
     }
     return output;
   }
@@ -4347,6 +4349,10 @@ function collectUnknownCanonicalPaths(value, pathSegments = [], output = []) {
     'PLAN_JSON_MALFORMED',
     'after_unknown may contain only booleans, arrays, and objects.',
   );
+}
+
+function collectUnknownCanonicalPaths(value) {
+  return collectUnknownPathEntries(value).map((entry) => entry.canonicalPath);
 }
 
 const ABSENT_PLAN_VALUE = Symbol('absent-plan-value');
@@ -4429,6 +4435,18 @@ function planPathState(value, pathSegments) {
   return { state: 'known', value: current };
 }
 
+function requireUnknownAfterValueConsistency(change, label) {
+  for (const unknownPath of collectUnknownPathEntries(change.after_unknown)) {
+    const afterState = planPathState(change.after, unknownPath.pathSegments);
+    if (!['absent', 'null'].includes(afterState.state)) {
+      fail(
+        'PLAN_UNKNOWN_AFTER_VALUE_KNOWN',
+        `${label} declares ${unknownPath.canonicalPath} unknown while its after value is known.`,
+      );
+    }
+  }
+}
+
 function requirePlanResourceRecord(value, label) {
   if (!isPlainObject(value)) {
     fail('PLAN_JSON_MALFORMED', `${label} must be an object.`);
@@ -4469,6 +4487,29 @@ function isNoOpActions(actions) {
   return isDeepStrictEqual(actions, ['no-op']);
 }
 
+function requireConsistentNoOpResourceChange(record) {
+  const replacePaths = record.change.replace_paths;
+  const hasEffectiveReplacePaths = Array.isArray(replacePaths)
+    ? replacePaths.length !== 0
+    : replacePaths !== undefined && replacePaths !== null;
+  const hasUnsafeProvenance =
+    Object.hasOwn(record, 'previous_address') ||
+    Object.hasOwn(record, 'deposed') ||
+    Object.hasOwn(record, 'importing') ||
+    Object.hasOwn(record.change, 'importing');
+  if (
+    !isDeepStrictEqual(record.change.before, record.change.after) ||
+    collectUnknownCanonicalPaths(record.change.after_unknown).length !== 0 ||
+    hasEffectiveReplacePaths ||
+    hasUnsafeProvenance
+  ) {
+    fail(
+      'PLAN_NOOP_CONTRADICTORY',
+      `no-op resource change is internally contradictory for ${record.address}.`,
+    );
+  }
+}
+
 function requireResourcePlanIdentity(record, expectedIdentity, label) {
   if (
     record.mode !== expectedIdentity.mode ||
@@ -4506,53 +4547,76 @@ function requireNoUnsafeResourceProvenance(record, label) {
   }
 }
 
-function isExpectedRegionalSelfLink(value, expectedRegion) {
+function parseCanonicalGoogleComputeUrl(value) {
   if (typeof value !== 'string') return false;
   try {
     const parsed = new URL(value);
-    return (
+    if (
       parsed.protocol === 'https:' &&
       ['www.googleapis.com', 'compute.googleapis.com'].includes(
         parsed.hostname,
       ) &&
+      parsed.username === '' &&
+      parsed.password === '' &&
+      parsed.port === '' &&
       parsed.search === '' &&
-      parsed.hash === '' &&
-      new RegExp(
-        `/compute/v1/projects/[^/]+/regions/${expectedRegion}$`,
-        'u',
-      ).test(parsed.pathname)
-    );
+      parsed.hash === ''
+    ) {
+      return parsed;
+    }
+    return null;
   } catch {
-    return false;
+    return null;
   }
 }
 
-function isExpectedCandidateNegIdentity(value) {
-  if (typeof value !== 'string') return false;
-  try {
-    const parsed = new URL(value);
-    return (
-      parsed.protocol === 'https:' &&
-      ['www.googleapis.com', 'compute.googleapis.com'].includes(
-        parsed.hostname,
-      ) &&
-      parsed.search === '' &&
-      parsed.hash === '' &&
-      new RegExp(
-        `/compute/v1/projects/[^/]+/regions/${CANDIDATE_EDGE_IDENTITIES.region}/networkEndpointGroups/${CANDIDATE_EDGE_IDENTITIES.negName}$`,
-        'u',
-      ).test(parsed.pathname)
+function parseCanonicalGoogleComputeNegIdentity(value) {
+  const parsed = parseCanonicalGoogleComputeUrl(value);
+  if (!parsed) return null;
+  const match =
+    /^\/compute\/v1\/projects\/([^/%]+)\/regions\/([^/%]+)\/networkEndpointGroups\/([^/%]+)$/u.exec(
+      parsed.pathname,
     );
-  } catch {
-    return false;
-  }
+  return match
+    ? { project: match[1], region: match[2], negName: match[3] }
+    : null;
 }
 
-function normalizationMatches(diff, policy) {
+function parseCanonicalGoogleComputeRegionIdentity(value) {
+  const parsed = parseCanonicalGoogleComputeUrl(value);
+  if (!parsed) return null;
+  const match = /^\/compute\/v1\/projects\/([^/%]+)\/regions\/([^/%]+)$/u.exec(
+    parsed.pathname,
+  );
+  return match ? { project: match[1], region: match[2] } : null;
+}
+
+function requireCandidateNegBeforeIdentity(record) {
+  const selfLink = planPathState(record.change.before, ['self_link']);
+  const identity =
+    selfLink.state === 'known'
+      ? parseCanonicalGoogleComputeNegIdentity(selfLink.value)
+      : null;
+  if (
+    !identity ||
+    identity.region !== CANDIDATE_EDGE_IDENTITIES.region ||
+    identity.negName !== CANDIDATE_EDGE_IDENTITIES.negName
+  ) {
+    fail(
+      'PLAN_RESOURCE_IDENTITY_MISMATCH',
+      'Candidate NEG before.self_link must identify the exact governed regional NEG.',
+    );
+  }
+  return identity;
+}
+
+function normalizationMatches(diff, policy, expectedProject = null) {
   if (policy.transition === 'regional-self-link-to-region-name') {
+    const identity = parseCanonicalGoogleComputeRegionIdentity(diff.before);
     return (
       diff.after === policy.expectedRegion &&
-      isExpectedRegionalSelfLink(diff.before, policy.expectedRegion)
+      identity?.region === policy.expectedRegion &&
+      (expectedProject === null || identity.project === expectedProject)
     );
   }
   return (
@@ -4601,7 +4665,12 @@ function requireExpectedNegReplacement(record) {
   }
 }
 
-function reviewCandidateNegResourceChange(record, manifest, operation) {
+function reviewCandidateNegResourceChange(
+  record,
+  manifest,
+  operation,
+  candidateNegIdentity,
+) {
   requireNoUnsafeResourceProvenance(record, 'Candidate NEG resource change');
   requireExpectedNegReplacement(record);
   const beforeCloudRun = record.change.before?.cloud_run;
@@ -4631,6 +4700,10 @@ function reviewCandidateNegResourceChange(record, manifest, operation) {
       );
     }
   }
+  requireUnknownAfterValueConsistency(
+    record.change,
+    'Candidate NEG resource change',
+  );
   const diffs = collectKnownDiffs(
     record.change.before,
     record.change.after,
@@ -4668,7 +4741,7 @@ function reviewCandidateNegResourceChange(record, manifest, operation) {
         `Candidate NEG has an unapproved changed path: ${diff.canonicalPath}.`,
       );
     }
-    if (!normalizationMatches(diff, policy)) {
+    if (!normalizationMatches(diff, policy, candidateNegIdentity.project)) {
       fail(
         'PLAN_NORMALIZATION_UNAPPROVED',
         `Candidate NEG normalization has unapproved values at ${diff.canonicalPath}.`,
@@ -4678,7 +4751,11 @@ function reviewCandidateNegResourceChange(record, manifest, operation) {
   return 1;
 }
 
-function reviewCandidateBackendResourceChange(record, operation) {
+function reviewCandidateBackendResourceChange(
+  record,
+  operation,
+  candidateNegIdentity,
+) {
   requireNoUnsafeResourceProvenance(
     record,
     'Candidate Backend resource change',
@@ -4704,9 +4781,12 @@ function reviewCandidateBackendResourceChange(record, operation) {
     0,
     'group',
   ]);
+  const beforeGroupIdentity =
+    beforeGroup.state === 'known'
+      ? parseCanonicalGoogleComputeNegIdentity(beforeGroup.value)
+      : null;
   if (
-    beforeGroup.state !== 'known' ||
-    !isExpectedCandidateNegIdentity(beforeGroup.value) ||
+    !isDeepStrictEqual(beforeGroupIdentity, candidateNegIdentity) ||
     !['null', 'absent'].includes(afterGroup.state)
   ) {
     fail(
@@ -4728,6 +4808,10 @@ function reviewCandidateBackendResourceChange(record, operation) {
       );
     }
   }
+  requireUnknownAfterValueConsistency(
+    record.change,
+    'Candidate Backend resource change',
+  );
   const diffs = collectKnownDiffs(
     record.change.before,
     record.change.after,
@@ -4934,6 +5018,9 @@ function reviewTerraformPlanJson(planJson, manifest, options = {}) {
       );
     }
     resourceChangeAddresses.add(record.address);
+    if (isNoOpActions(record.change.actions)) {
+      requireConsistentNoOpResourceChange(record);
+    }
   }
   const nonNoopChanges = resourceChanges.filter(
     (record) => !isNoOpActions(record.change.actions),
@@ -4954,6 +5041,13 @@ function reviewTerraformPlanJson(planJson, manifest, options = {}) {
       'non-noop resource changes must contain exactly the Candidate NEG and Candidate Backend.',
     );
   }
+
+  const candidateNegRecord = nonNoopChanges.find(
+    (record) =>
+      record.address === EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[0],
+  );
+  const candidateNegIdentity =
+    requireCandidateNegBeforeIdentity(candidateNegRecord);
 
   let intendedSemanticChangeCount = 0;
   for (const record of nonNoopChanges) {
@@ -4980,11 +5074,13 @@ function reviewTerraformPlanJson(planJson, manifest, options = {}) {
         record,
         manifest,
         operation,
+        candidateNegIdentity,
       );
     } else {
       intendedSemanticChangeCount += reviewCandidateBackendResourceChange(
         record,
         operation,
+        candidateNegIdentity,
       );
     }
   }
@@ -5160,6 +5256,52 @@ function requirePlanReviewEvidence(value) {
   return value;
 }
 
+function buildDeterministicPlanReviewEvidence({
+  manifest,
+  manifestBytes,
+  gateId,
+  operationId,
+  savedPlanPath,
+  savedPlanBytes,
+  planJsonBytes,
+}) {
+  const planJson = parseJsonBytes(
+    planJsonBytes,
+    'Terraform plan JSON',
+    'PLAN_JSON_MALFORMED',
+  );
+  const review = reviewTerraformPlanJson(planJson, manifest, {
+    gateId,
+    operationId,
+  });
+  return requirePlanReviewEvidence({
+    schemaVersion: review.schemaVersion,
+    status: review.status,
+    manifestSha256: sha256(manifestBytes),
+    releaseExecutionId: review.releaseExecutionId,
+    sourceSha: review.sourceSha,
+    gateId: review.gateId,
+    operationId: review.operationId,
+    immutableOperationSpecificationSha256:
+      review.immutableOperationSpecificationSha256,
+    savedPlanPath,
+    savedPlanSha256: sha256(savedPlanBytes),
+    savedPlanSizeBytes: savedPlanBytes.length,
+    planJsonSha256: sha256(planJsonBytes),
+    planJsonSizeBytes: planJsonBytes.length,
+    formatVersion: review.formatVersion,
+    terraformVersion: review.terraformVersion,
+    nonNoopResourceChangeCount: review.nonNoopResourceChangeCount,
+    intendedSemanticChangeCount: review.intendedSemanticChangeCount,
+    refreshOnlyDriftCount: review.refreshOnlyDriftCount,
+    unapprovedSemanticChangeCount: review.unapprovedSemanticChangeCount,
+    unapprovedUnknownCount: review.unapprovedUnknownCount,
+    unapprovedNormalizationCount: review.unapprovedNormalizationCount,
+    unapprovedDriftCount: review.unapprovedDriftCount,
+    urlMapMutation: review.urlMapMutation,
+  });
+}
+
 function writeNewJsonAtomic(filePath, value) {
   const resolved = requireExternalAbsolutePath(filePath, 'reviewEvidencePath');
   if (fs.statSync(resolved, { throwIfNoEntry: false })) {
@@ -5252,42 +5394,15 @@ function reviewPlanFiles(options) {
   if (planJsonBytes.length === 0) {
     fail('PLAN_JSON_MALFORMED', 'plan JSON file must not be empty.');
   }
-  const planJson = parseJsonBytes(
-    planJsonBytes,
-    'Terraform plan JSON',
-    'PLAN_JSON_MALFORMED',
-  );
-  const review = reviewTerraformPlanJson(planJson, manifest, {
+  const evidence = buildDeterministicPlanReviewEvidence({
+    manifest,
+    manifestBytes,
     gateId: options.gateId,
     operationId: options.operationId,
-  });
-  const evidence = {
-    schemaVersion: review.schemaVersion,
-    status: review.status,
-    manifestSha256: sha256(manifestBytes),
-    releaseExecutionId: review.releaseExecutionId,
-    sourceSha: review.sourceSha,
-    gateId: review.gateId,
-    operationId: review.operationId,
-    immutableOperationSpecificationSha256:
-      review.immutableOperationSpecificationSha256,
     savedPlanPath,
-    savedPlanSha256: sha256(savedPlanBytes),
-    savedPlanSizeBytes: savedPlanBytes.length,
-    planJsonSha256: sha256(planJsonBytes),
-    planJsonSizeBytes: planJsonBytes.length,
-    formatVersion: review.formatVersion,
-    terraformVersion: review.terraformVersion,
-    nonNoopResourceChangeCount: review.nonNoopResourceChangeCount,
-    intendedSemanticChangeCount: review.intendedSemanticChangeCount,
-    refreshOnlyDriftCount: review.refreshOnlyDriftCount,
-    unapprovedSemanticChangeCount: review.unapprovedSemanticChangeCount,
-    unapprovedUnknownCount: review.unapprovedUnknownCount,
-    unapprovedNormalizationCount: review.unapprovedNormalizationCount,
-    unapprovedDriftCount: review.unapprovedDriftCount,
-    urlMapMutation: review.urlMapMutation,
-  };
-  requirePlanReviewEvidence(evidence);
+    savedPlanBytes,
+    planJsonBytes,
+  });
   const createdPath = writeNewJsonAtomic(reviewEvidencePath, evidence);
   return { evidence, reviewEvidencePath: createdPath };
 }
@@ -5383,11 +5498,13 @@ function registerPlan(manifest, options) {
     }
     if (
       typeof options.reviewEvidencePath !== 'string' ||
-      options.reviewEvidencePath.length === 0
+      options.reviewEvidencePath.length === 0 ||
+      typeof options.planJsonPath !== 'string' ||
+      options.planJsonPath.length === 0
     ) {
       fail(
         'PLAN_REVIEW_EVIDENCE_REQUIRED',
-        'v3 registration requires --review-evidence.',
+        'v3 registration requires --plan-json and --review-evidence.',
       );
     }
     const reviewedManifest = parseJsonBytes(
@@ -5405,6 +5522,22 @@ function registerPlan(manifest, options) {
       options.reviewEvidencePath,
       'reviewEvidencePath',
     );
+    const planJsonPath = requireExternalAbsolutePath(
+      options.planJsonPath,
+      'planJsonPath',
+    );
+    if (
+      new Set([suppliedPlanPath, planJsonPath, reviewEvidencePath]).size !== 3
+    ) {
+      fail(
+        'INVALID_PATH',
+        'saved plan, plan JSON, and review evidence paths must be distinct.',
+      );
+    }
+    const planJsonBytes = fs.readFileSync(planJsonPath);
+    if (planJsonBytes.length === 0) {
+      fail('PLAN_JSON_MALFORMED', 'plan JSON file must not be empty.');
+    }
     const reviewEvidenceBytes = fs.readFileSync(reviewEvidencePath);
     const reviewEvidence = requirePlanReviewEvidence(
       parseJsonBytes(
@@ -5438,6 +5571,21 @@ function registerPlan(manifest, options) {
       fail(
         'REVIEWED_PLAN_MISMATCH',
         'saved plan bytes differ from the exact plan that passed review.',
+      );
+    }
+    const reconstructedReviewEvidence = buildDeterministicPlanReviewEvidence({
+      manifest,
+      manifestBytes: options.manifestBytes,
+      gateId: gate.id,
+      operationId: operation.id,
+      savedPlanPath: suppliedPlanPath,
+      savedPlanBytes: planBytes,
+      planJsonBytes,
+    });
+    if (!isDeepStrictEqual(reviewEvidence, reconstructedReviewEvidence)) {
+      fail(
+        'PLAN_REVIEW_EVIDENCE_MISMATCH',
+        'plan review evidence does not exactly match a fresh deterministic review of the supplied plan JSON bytes.',
       );
     }
     deterministicReviewEvidence = {
@@ -5833,6 +5981,7 @@ function runCli(argv = process.argv.slice(2)) {
       terraformRoot: requireCliOption(options, 'terraformRoot'),
       lineage: requireCliOption(options, 'lineage'),
       serial: requireCliOption(options, 'serial'),
+      planJsonPath: options.planJson,
       reviewEvidencePath: options.reviewEvidence,
       manifestBytes,
     });

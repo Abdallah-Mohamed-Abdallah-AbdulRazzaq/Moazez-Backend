@@ -200,6 +200,22 @@ function representativePlanFixture() {
   return JSON.parse(fs.readFileSync(REPRESENTATIVE_PLAN_FIXTURE_PATH, 'utf8'));
 }
 
+function representativeNoOpUrlMapRecord() {
+  return {
+    address: control.EDGE_CANDIDATE_RESOURCE_ADDRESSES[2],
+    mode: 'managed',
+    type: 'google_compute_url_map',
+    name: 'edge',
+    provider_name: 'registry.terraform.io/hashicorp/google',
+    change: {
+      actions: ['no-op'],
+      before: { name: 'moazez-staging-edge-url-map' },
+      after: { name: 'moazez-staging-edge-url-map' },
+      after_unknown: {},
+    },
+  };
+}
+
 function writeSuccessfulContinuationReviewEvidence(
   manifest,
   target,
@@ -207,6 +223,8 @@ function writeSuccessfulContinuationReviewEvidence(
 ) {
   const planJsonBytes = fs.readFileSync(REPRESENTATIVE_PLAN_FIXTURE_PATH);
   const savedPlanBytes = fs.readFileSync(target.savedPlanPath);
+  const planJsonPath = `${target.savedPlanPath}.plan.json`;
+  fs.writeFileSync(planJsonPath, planJsonBytes);
   const review = control.reviewTerraformPlanJson(
     JSON.parse(planJsonBytes.toString('utf8')),
     manifest,
@@ -246,7 +264,7 @@ function writeSuccessfulContinuationReviewEvidence(
     reviewEvidencePath,
     `${JSON.stringify(evidence, null, 2)}\n`,
   );
-  return { reviewEvidencePath, evidence };
+  return { reviewEvidencePath, planJsonPath, evidence };
 }
 
 function registerAndApprove(manifest, gateId, operationId, uniquePlanText) {
@@ -274,6 +292,7 @@ function registerAndApprove(manifest, gateId, operationId, uniquePlanText) {
     ...(reviewBinding
       ? {
           reviewEvidencePath: reviewBinding.reviewEvidencePath,
+          planJsonPath: reviewBinding.planJsonPath,
           manifestBytes,
         }
       : {}),
@@ -2830,19 +2849,9 @@ test('v3 deterministic reviewer accepts the sanitized real provider shape with s
     const compatibleMinorWithNoOp = representativePlanFixture();
     compatibleMinorWithNoOp.format_version = '1.99';
     compatibleMinorWithNoOp.terraform_version = '1.16.0';
-    compatibleMinorWithNoOp.resource_changes.push({
-      address: control.EDGE_CANDIDATE_RESOURCE_ADDRESSES[2],
-      mode: 'managed',
-      type: 'google_compute_url_map',
-      name: 'edge',
-      provider_name: 'registry.terraform.io/hashicorp/google',
-      change: {
-        actions: ['no-op'],
-        before: { name: 'moazez-staging-edge-url-map' },
-        after: { name: 'moazez-staging-edge-url-map' },
-        after_unknown: {},
-      },
-    });
+    compatibleMinorWithNoOp.resource_changes.push(
+      representativeNoOpUrlMapRecord(),
+    );
     assert.equal(
       control.reviewTerraformPlanJson(compatibleMinorWithNoOp, manifest, {
         gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
@@ -2859,6 +2868,19 @@ test('v3 deterministic reviewer accepts the sanitized real provider shape with s
         operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
       }),
     );
+
+    const exactCrossResourceIdentity = representativePlanFixture();
+    assert.equal(
+      exactCrossResourceIdentity.resource_changes[0].change.before.self_link,
+      exactCrossResourceIdentity.resource_changes[1].change.before.backend[0]
+        .group,
+    );
+    assert.doesNotThrow(() =>
+      control.reviewTerraformPlanJson(exactCrossResourceIdentity, manifest, {
+        gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+        operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+      }),
+    );
   });
 });
 
@@ -2866,6 +2888,19 @@ test('v3 plan identities, provider exceptions, drift policy, and review requirem
   withTemporaryRoot((temporaryRoot) => {
     const fixture = makeSuccessfulContinuationContext(temporaryRoot);
     const manifest = control.buildManifest(fixture.context);
+    const reviewTarget = operation(
+      manifest,
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    );
+    for (const driftPolicy of Object.values(
+      reviewTarget.allowedRefreshOnlyDrift,
+    )) {
+      assert.equal(
+        Object.hasOwn(driftPolicy, 'timestampTransitionCanonicalPaths'),
+        false,
+      );
+    }
     const mutations = [
       (target) => {
         target.expectedResourcePlanIdentities[
@@ -2932,12 +2967,63 @@ test('v3 deterministic reviewer fails closed for semantic, unknown, normalizatio
       extra.change.actions = ['update'];
       plan.resource_changes.push(extra);
     };
+    const addNoOpUrlMap = (plan) => {
+      const record = representativeNoOpUrlMapRecord();
+      plan.resource_changes.push(record);
+      return record;
+    };
     const cases = [
       {
         name: 'URL map mutation',
         code: 'PLAN_RESOURCE_CHANGE_SET_MISMATCH',
         apply(plan) {
           addNonNoopChange(plan, control.EDGE_CANDIDATE_RESOURCE_ADDRESSES[2]);
+        },
+      },
+      {
+        name: 'URL map no-op with changed values',
+        code: 'PLAN_NOOP_CONTRADICTORY',
+        apply(plan) {
+          addNoOpUrlMap(plan).change.after.name =
+            'moazez-staging-edge-url-map-changed';
+        },
+      },
+      {
+        name: 'URL map no-op with an unknown value',
+        code: 'PLAN_NOOP_CONTRADICTORY',
+        apply(plan) {
+          addNoOpUrlMap(plan).change.after_unknown.name = true;
+        },
+      },
+      {
+        name: 'URL map no-op with replacement paths',
+        code: 'PLAN_NOOP_CONTRADICTORY',
+        apply(plan) {
+          addNoOpUrlMap(plan).change.replace_paths = [['name']];
+        },
+      },
+      {
+        name: 'URL map no-op with previous_address',
+        code: 'PLAN_NOOP_CONTRADICTORY',
+        apply(plan) {
+          addNoOpUrlMap(plan).previous_address =
+            'module.edge_environment.google_compute_url_map.previous';
+        },
+      },
+      {
+        name: 'URL map no-op with importing provenance',
+        code: 'PLAN_NOOP_CONTRADICTORY',
+        apply(plan) {
+          addNoOpUrlMap(plan).change.importing = {
+            id: 'sanitized-import-id',
+          };
+        },
+      },
+      {
+        name: 'URL map no-op with a deposed object',
+        code: 'PLAN_NOOP_CONTRADICTORY',
+        apply(plan) {
+          addNoOpUrlMap(plan).deposed = 'sanitized-deposed-key';
         },
       },
       {
@@ -3009,6 +3095,14 @@ test('v3 deterministic reviewer fails closed for semantic, unknown, normalizatio
         apply(plan) {
           plan.resource_changes[1].change.before.backend[0].group =
             'https://www.googleapis.com/compute/v1/projects/sanitized-project/regions/me-central2/networkEndpointGroups/unrelated-neg';
+        },
+      },
+      {
+        name: 'Backend group identifies the same NEG in another project',
+        code: 'PLAN_SEMANTIC_CHANGE_UNAPPROVED',
+        apply(plan) {
+          plan.resource_changes[1].change.before.backend[0].group =
+            'https://www.googleapis.com/compute/v1/projects/different-sanitized-project/regions/me-central2/networkEndpointGroups/moazez-staging-api-candidate-neg';
         },
       },
       {
@@ -3084,6 +3178,34 @@ test('v3 deterministic reviewer fails closed for semantic, unknown, normalizatio
         },
       },
       {
+        name: 'NEG id claims unknown while after is a known string',
+        code: 'PLAN_UNKNOWN_AFTER_VALUE_KNOWN',
+        apply(plan) {
+          plan.resource_changes[0].change.after.id = 'known-sanitized-id';
+        },
+      },
+      {
+        name: 'NEG psc_data claims unknown while after is an empty list',
+        code: 'PLAN_UNKNOWN_AFTER_VALUE_KNOWN',
+        apply(plan) {
+          plan.resource_changes[0].change.after.psc_data = [];
+        },
+      },
+      {
+        name: 'Backend max_rate claims unknown while after is a number',
+        code: 'PLAN_UNKNOWN_AFTER_VALUE_KNOWN',
+        apply(plan) {
+          plan.resource_changes[1].change.after.backend[0].max_rate = 100;
+        },
+      },
+      {
+        name: 'Backend fingerprint claims unknown while after is known',
+        code: 'PLAN_UNKNOWN_AFTER_VALUE_KNOWN',
+        apply(plan) {
+          plan.resource_changes[1].change.after_unknown.fingerprint = true;
+        },
+      },
+      {
         name: 'approved normalization with wrong before value',
         code: 'PLAN_NORMALIZATION_UNAPPROVED',
         apply(plan) {
@@ -3097,6 +3219,14 @@ test('v3 deterministic reviewer fails closed for semantic, unknown, normalizatio
         apply(plan) {
           plan.resource_changes[0].change.before.region =
             'https://www.googleapis.com/compute/v1/projects/sanitized-project/regions/me-central1';
+        },
+      },
+      {
+        name: 'regional self-link identifies another project',
+        code: 'PLAN_NORMALIZATION_UNAPPROVED',
+        apply(plan) {
+          plan.resource_changes[0].change.before.region =
+            'https://www.googleapis.com/compute/v1/projects/different-sanitized-project/regions/me-central2';
         },
       },
       {
@@ -3282,7 +3412,7 @@ test('v3 deterministic reviewer fails closed for semantic, unknown, normalizatio
   });
 });
 
-test('v3 register-plan binds only the exact manifest, operation specification, review evidence, and Saved Plan bytes', () => {
+test('v3 register-plan revalidates exact plan JSON and binds the manifest, specification, evidence, and Saved Plan', () => {
   withTemporaryRoot((temporaryRoot) => {
     const fixture = makeSuccessfulContinuationContext(temporaryRoot);
     const manifest = control.buildManifest(fixture.context);
@@ -3295,11 +3425,12 @@ test('v3 register-plan binds only the exact manifest, operation specification, r
     const originalPlanBytes = Buffer.from('exact-reviewed-saved-plan');
     fs.writeFileSync(target.savedPlanPath, originalPlanBytes);
     const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
-    const { evidence } = writeSuccessfulContinuationReviewEvidence(
-      manifest,
-      target,
-      manifestBytes,
-    );
+    const { evidence, planJsonPath } =
+      writeSuccessfulContinuationReviewEvidence(
+        manifest,
+        target,
+        manifestBytes,
+      );
     const baseOptions = {
       gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
       operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
@@ -3311,6 +3442,7 @@ test('v3 register-plan binds only the exact manifest, operation specification, r
       serial: target.statePrecondition.serial,
       recordedAt: RECORDED_AT,
       manifestBytes,
+      planJsonPath,
     };
     const writeEvidence = (name, value) => {
       const evidencePath = path.join(temporaryRoot, `${name}.review.json`);
@@ -3344,6 +3476,41 @@ test('v3 register-plan binds only the exact manifest, operation specification, r
         code: 'PLAN_REVIEW_BINDING_MISMATCH',
         apply(value) {
           value.immutableOperationSpecificationSha256 = 'd'.repeat(64);
+        },
+      },
+      {
+        name: 'alternate valid plan JSON SHA',
+        code: 'PLAN_REVIEW_EVIDENCE_MISMATCH',
+        apply(value) {
+          value.planJsonSha256 = '0'.repeat(64);
+        },
+      },
+      {
+        name: 'alternate valid Terraform version',
+        code: 'PLAN_REVIEW_EVIDENCE_MISMATCH',
+        apply(value) {
+          value.terraformVersion = '1.99.0';
+        },
+      },
+      {
+        name: 'alternate valid format version',
+        code: 'PLAN_REVIEW_EVIDENCE_MISMATCH',
+        apply(value) {
+          value.formatVersion = '1.99';
+        },
+      },
+      {
+        name: 'alternate valid refresh-only drift count',
+        code: 'PLAN_REVIEW_EVIDENCE_MISMATCH',
+        apply(value) {
+          value.refreshOnlyDriftCount = 4;
+        },
+      },
+      {
+        name: 'alternate semantic count rejected by the evidence schema',
+        code: 'PLAN_REVIEW_EVIDENCE_INVALID',
+        apply(value) {
+          value.intendedSemanticChangeCount = 1;
         },
       },
       {
@@ -3381,6 +3548,18 @@ test('v3 register-plan binds only the exact manifest, operation specification, r
     );
 
     const exactEvidencePath = writeEvidence('exact', evidence);
+    const { planJsonPath: ignoredPlanJsonPath, ...withoutPlanJson } =
+      baseOptions;
+    assert.equal(typeof ignoredPlanJsonPath, 'string');
+    assert.throws(
+      () =>
+        control.registerPlan(structuredClone(manifest), {
+          ...withoutPlanJson,
+          reviewEvidencePath: exactEvidencePath,
+        }),
+      { code: 'PLAN_REVIEW_EVIDENCE_REQUIRED' },
+    );
+
     fs.writeFileSync(target.savedPlanPath, 'changed-after-review');
     assert.throws(
       () =>
@@ -3391,6 +3570,44 @@ test('v3 register-plan binds only the exact manifest, operation specification, r
       { code: 'REVIEWED_PLAN_MISMATCH' },
     );
     fs.writeFileSync(target.savedPlanPath, originalPlanBytes);
+
+    const changedPlanJsonPath = path.join(
+      temporaryRoot,
+      'changed-semantics.plan.json',
+    );
+    const changedPlanJson = representativePlanFixture();
+    changedPlanJson.terraform_version = '1.15.9';
+    fs.writeFileSync(
+      changedPlanJsonPath,
+      `${JSON.stringify(changedPlanJson, null, 2)}\n`,
+    );
+    assert.throws(
+      () =>
+        control.registerPlan(structuredClone(manifest), {
+          ...baseOptions,
+          planJsonPath: changedPlanJsonPath,
+          reviewEvidencePath: exactEvidencePath,
+        }),
+      { code: 'PLAN_REVIEW_EVIDENCE_MISMATCH' },
+    );
+
+    const sameSemanticsDifferentBytesPath = path.join(
+      temporaryRoot,
+      'same-semantics-different-bytes.plan.json',
+    );
+    fs.writeFileSync(
+      sameSemanticsDifferentBytesPath,
+      JSON.stringify(representativePlanFixture()),
+    );
+    assert.throws(
+      () =>
+        control.registerPlan(structuredClone(manifest), {
+          ...baseOptions,
+          planJsonPath: sameSemanticsDifferentBytesPath,
+          reviewEvidencePath: exactEvidencePath,
+        }),
+      { code: 'PLAN_REVIEW_EVIDENCE_MISMATCH' },
+    );
 
     const registered = structuredClone(manifest);
     control.registerPlan(registered, {
@@ -3509,6 +3726,8 @@ test('review-plan CLI creates only atomic sanitized evidence and register-plan c
       RECORDED_AT,
       '--plan',
       target.savedPlanPath,
+      '--plan-json',
+      planJsonPath,
       '--review-evidence',
       reviewEvidencePath,
       '--source-sha',

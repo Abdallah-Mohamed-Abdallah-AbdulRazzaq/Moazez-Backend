@@ -536,12 +536,12 @@ review-evidence file; it does not update the manifest:
 node scripts/deployment-control/runtime-release-control.cjs review-plan --manifest <exact-external-manifest.json> --gate api-no-traffic-promotion --operation api-candidate-edge-reconciliation --plan <exact-external-saved-plan.tfplan> --plan-json <exact-external-plan.json> --review-evidence <new-external-review-evidence.json>
 ```
 
-After review, bind the exact reviewed Saved Plan bytes and state precondition.
-The v3 operation requires `--review-evidence`; v1/v2 retain their existing
-registration surface:
+After review, bind the exact reviewed Saved Plan bytes, exact plan JSON bytes,
+and state precondition. The v3 operation requires both `--plan-json` and
+`--review-evidence`; v1/v2 retain their existing registration surface:
 
 ```powershell
-node scripts/deployment-control/runtime-release-control.cjs register-plan --manifest <external-manifest.json> --gate <gate-id> --operation <operation-id> --recorded-at <ISO-UTC> --plan <exact-external.tfplan> [--review-evidence <exact-external-review-evidence.json>] --source-sha <exact-source-sha> --environment staging --terraform-root <repository-relative-root> --lineage <pre-plan-lineage> --serial <pre-plan-serial>
+node scripts/deployment-control/runtime-release-control.cjs register-plan --manifest <external-manifest.json> --gate <gate-id> --operation <operation-id> --recorded-at <ISO-UTC> --plan <exact-external.tfplan> [--plan-json <exact-external-plan.json>] [--review-evidence <exact-external-review-evidence.json>] --source-sha <exact-source-sha> --environment staging --terraform-root <repository-relative-root> --lineage <pre-plan-lineage> --serial <pre-plan-serial>
 ```
 
 Record the independent approval:
@@ -604,11 +604,21 @@ Terraform version, reviews exactly two non-noop resource changes, and emits
 only sanitized identities, hashes, versions, counts, status, and the URL-map
 mutation boolean. It never emits arbitrary resource payloads.
 
+Every no-op resource change must be internally unchanged and carry no unknown,
+replacement, move, import, or deposed evidence. Every approved
+`after_unknown=true` path must have a null or absent `after` value. The Backend
+group and NEG region are cross-bound to the exact project/region/name identity
+parsed from the Candidate NEG's known pre-replacement self-link.
+
 For v3, `register-plan` re-hashes the current pre-registration manifest, exact
-Saved Plan, and exact review-evidence bytes, recomputes the immutable operation
-digest, and requires every review binding to match before recording a compact
-durable deterministic-review binding. `approve-plan` remains a separate
-authorization and retains its existing semantics.
+Saved Plan, exact plan JSON, and exact review-evidence bytes; reruns the pure
+reviewer against the supplied JSON; reconstructs the entire expected evidence;
+and requires deep exact equality before recording a compact durable review
+binding. Review evidence is a deterministic cached report, not an independent
+trust authority. This revalidation does not alter the separate DevOps
+responsibility to prove guarded JSON export from the exact binary Saved Plan.
+`approve-plan` remains a separate authorization and retains its existing
+semantics.
 
 Once this source repair creates a new source SHA, every manifest and Saved Plan
 bound to the older source is evidence-only and cannot be registered, approved,

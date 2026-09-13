@@ -685,10 +685,10 @@ record-verification
 Candidate Edge operation, `review-plan` reads the immutable manifest, Saved
 Plan, and plan JSON and atomically creates only sanitized external review
 evidence. It does not run Terraform or mutate the manifest. `register-plan`
-then requires that exact review evidence and binds the exact previously
-reviewed Saved Plan bytes; `approve-plan` remains a separate independent
-authorization. `record-apply` and `record-verification` record evidence only.
-None is apply-capable.
+then requires that exact plan JSON and review evidence, reruns the deterministic
+review, and binds the exact previously reviewed Saved Plan bytes;
+`approve-plan` remains a separate independent authorization. `record-apply`
+and `record-verification` record evidence only. None is apply-capable.
 
 The reviewer hashes both files but cannot prove that plan JSON was derived
 from the Saved Plan because it never invokes Terraform. DevOps owns one guarded
@@ -708,14 +708,22 @@ The exact v3 command is:
 node scripts/deployment-control/runtime-release-control.cjs review-plan --manifest <exact-external-manifest.json> --gate api-no-traffic-promotion --operation api-candidate-edge-reconciliation --plan <exact-external-saved-plan.tfplan> --plan-json <exact-external-plan.json> --review-evidence <new-external-review-evidence.json>
 ```
 
-The matching `register-plan` invocation must add
-`--review-evidence <exact-external-review-evidence.json>`. Before registration,
-the controller re-hashes the pre-registration manifest, Saved Plan, and review
-evidence and recomputes the immutable operation digest. Any release, source,
-manifest, operation, digest, path, plan hash, plan size, or passed-status
-mismatch fails closed. Registration retains a compact binding to the review
-evidence hash, reviewed manifest hash, immutable operation digest, plan JSON
-hash, and Saved Plan hash without changing approval semantics.
+The matching exact v3 registration is:
+
+```text
+node scripts/deployment-control/runtime-release-control.cjs register-plan --manifest <exact-external-manifest.json> --gate api-no-traffic-promotion --operation api-candidate-edge-reconciliation --recorded-at <ISO-UTC> --plan <exact-external-saved-plan.tfplan> --plan-json <exact-external-plan.json> --review-evidence <exact-external-review-evidence.json> --source-sha <exact-source-sha> --environment staging --terraform-root infra/gcp/edge/environments/nonprod --lineage <pre-plan-lineage> --serial <pre-plan-serial>
+```
+
+Before registration, the controller re-hashes the pre-registration manifest,
+Saved Plan, plan JSON, and review evidence; reruns the pure deterministic
+reviewer; reconstructs the complete expected evidence; and requires deep exact
+equality. Thus review evidence is a cached report rather than a trust root. Any
+release, source, manifest, operation, digest, path, Saved Plan bytes, plan JSON
+bytes, version, count, or passed-status mismatch fails closed. Registration
+retains a compact binding to the review evidence hash, reviewed manifest hash,
+immutable operation digest, plan JSON hash, and Saved Plan hash without changing
+approval semantics. The controller still cannot prove that the JSON originated
+from the binary Saved Plan; the guarded DevOps export above remains mandatory.
 
 After this repair changes the source SHA, the prior v3 manifest and prior Saved
 Plan are evidence-only: do not register, approve, or apply them. The required
