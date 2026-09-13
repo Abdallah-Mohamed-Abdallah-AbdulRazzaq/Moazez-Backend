@@ -48,6 +48,26 @@ const EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES = Object.freeze(
   EDGE_CANDIDATE_RESOURCE_ADDRESSES.slice(0, 2),
 );
 
+const GOOGLE_PROVIDER_NAME = 'registry.terraform.io/hashicorp/google';
+const EDGE_REFRESH_ONLY_DRIFT_RESOURCE_ADDRESSES = Object.freeze([
+  EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[1],
+  'module.edge_environment.google_certificate_manager_certificate_map.edge',
+  'module.edge_environment.google_certificate_manager_certificate_map_entry.host["admin"]',
+  'module.edge_environment.google_certificate_manager_certificate_map_entry.host["api"]',
+  'module.edge_environment.google_certificate_manager_certificate_map_entry.host["schools"]',
+]);
+
+const EDGE_CERTIFICATE_DRIFT_TYPES = Object.freeze({
+  [EDGE_REFRESH_ONLY_DRIFT_RESOURCE_ADDRESSES[1]]:
+    'google_certificate_manager_certificate_map',
+  [EDGE_REFRESH_ONLY_DRIFT_RESOURCE_ADDRESSES[2]]:
+    'google_certificate_manager_certificate_map_entry',
+  [EDGE_REFRESH_ONLY_DRIFT_RESOURCE_ADDRESSES[3]]:
+    'google_certificate_manager_certificate_map_entry',
+  [EDGE_REFRESH_ONLY_DRIFT_RESOURCE_ADDRESSES[4]]:
+    'google_certificate_manager_certificate_map_entry',
+});
+
 const CANDIDATE_EDGE_IDENTITIES = Object.freeze({
   negName: 'moazez-staging-api-candidate-neg',
   backendName: 'moazez-staging-api-candidate-backend',
@@ -59,6 +79,85 @@ const CANDIDATE_EDGE_IDENTITIES = Object.freeze({
   loadBalancingScheme: 'EXTERNAL_MANAGED',
   trustedClientIpHeader: 'X-Moazez-Client-IP:{client_ip_address}',
 });
+
+function successfulContinuationPlanReviewSpecification() {
+  const [candidateNegAddress, candidateBackendAddress] =
+    EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES;
+  const exactEmptyStringToNull = (canonicalPath) => ({
+    canonicalPath,
+    before: '',
+    after: null,
+  });
+  const certificateDrift = (address) => ({
+    mode: 'managed',
+    type: EDGE_CERTIFICATE_DRIFT_TYPES[address],
+    providerName: GOOGLE_PROVIDER_NAME,
+    actions: ['update'],
+    exactChangedCanonicalPaths: ['update_time'],
+    correspondingNonNoopResourceChange: 'forbidden',
+  });
+  return {
+    expectedResourcePlanIdentities: {
+      [candidateNegAddress]: {
+        mode: 'managed',
+        type: 'google_compute_region_network_endpoint_group',
+        providerName: GOOGLE_PROVIDER_NAME,
+      },
+      [candidateBackendAddress]: {
+        mode: 'managed',
+        type: 'google_compute_backend_service',
+        providerName: GOOGLE_PROVIDER_NAME,
+      },
+    },
+    allowedProviderNormalizations: {
+      [candidateNegAddress]: [
+        {
+          canonicalPath: 'region',
+          transition: 'regional-self-link-to-region-name',
+          expectedRegion: CANDIDATE_EDGE_IDENTITIES.region,
+        },
+        exactEmptyStringToNull('cloud_run[0].url_mask'),
+        exactEmptyStringToNull('description'),
+        exactEmptyStringToNull('psc_target_service'),
+        exactEmptyStringToNull('subnetwork'),
+      ],
+    },
+    allowedRefreshOnlyDrift: {
+      [candidateBackendAddress]: {
+        mode: 'managed',
+        type: 'google_compute_backend_service',
+        providerName: GOOGLE_PROVIDER_NAME,
+        actions: ['update'],
+        exactProviderNormalizations: [
+          {
+            canonicalPath: 'custom_response_headers',
+            before: null,
+            after: [],
+          },
+          {
+            canonicalPath: 'health_checks',
+            before: null,
+            after: [],
+          },
+        ],
+        correspondingNonNoopResourceChange: 'allowed',
+      },
+      ...Object.fromEntries(
+        EDGE_REFRESH_ONLY_DRIFT_RESOURCE_ADDRESSES.slice(1).map((address) => [
+          address,
+          certificateDrift(address),
+        ]),
+      ),
+    },
+    planReviewRequirements: {
+      schemaVersion: 1,
+      required: true,
+      compatiblePlanJsonFormatMajor: 1,
+      planJsonDerivationAuthority:
+        'devops-guarded-export-from-exact-saved-plan',
+    },
+  };
+}
 
 const RUNTIME_OPERATOR_VARIABLES = Object.freeze([
   Object.freeze({ name: 'queue_redis_host', sensitive: false }),
@@ -1816,6 +1915,24 @@ function buildTerraformOperation(
             definition.allowedComputedAfterApplyChanges,
         }
       : {}),
+    ...(definition.expectedResourcePlanIdentities
+      ? {
+          expectedResourcePlanIdentities:
+            definition.expectedResourcePlanIdentities,
+          allowedProviderNormalizations:
+            definition.allowedProviderNormalizations,
+          allowedRefreshOnlyDrift: definition.allowedRefreshOnlyDrift,
+          planReviewRequirements: definition.planReviewRequirements,
+          deterministicReviewEvidence: {
+            status: 'not-reviewed',
+            reviewEvidenceSha256: null,
+            reviewedManifestSha256: null,
+            immutableOperationSpecificationSha256: null,
+            planJsonSha256: null,
+            savedPlanSha256: null,
+          },
+        }
+      : {}),
     statePrecondition: definition.statePrecondition,
     planEvidence: {
       status: 'not-created',
@@ -1972,6 +2089,8 @@ function buildGateOperations(context, gate, gateIndex) {
 
     case 'api-no-traffic-promotion':
       if (successfulContinuation) {
+        const planReviewSpecification =
+          successfulContinuationPlanReviewSpecification();
         return [
           buildTerraformOperation(context, gateIndex, 0, {
             id: SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
@@ -2004,11 +2123,21 @@ function buildGateOperations(context, gate, gateIndex) {
               [EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[0]]: [
                 'id',
                 'self_link',
+                'network',
+                'psc_data',
               ],
               [EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[1]]: [
+                'backend[0].max_connections',
+                'backend[0].max_connections_per_endpoint',
+                'backend[0].max_connections_per_instance',
+                'backend[0].max_rate',
+                'backend[0].max_rate_per_endpoint',
+                'backend[0].max_rate_per_instance',
+                'backend[0].max_utilization',
                 'fingerprint',
               ],
             },
+            ...planReviewSpecification,
             statePrecondition: statePrecondition(context.edgeState),
             verificationExpectation: {
               candidateTag: context.candidateTag,
@@ -2787,6 +2916,16 @@ function immutableOperationSpecification(operation) {
               operation.allowedComputedAfterApplyChanges,
           }
         : {}),
+      ...(Object.hasOwn(operation, 'expectedResourcePlanIdentities')
+        ? {
+            expectedResourcePlanIdentities:
+              operation.expectedResourcePlanIdentities,
+            allowedProviderNormalizations:
+              operation.allowedProviderNormalizations,
+            allowedRefreshOnlyDrift: operation.allowedRefreshOnlyDrift,
+            planReviewRequirements: operation.planReviewRequirements,
+          }
+        : {}),
       verificationExpectation: operation.verificationExpectation,
     };
   }
@@ -2856,6 +2995,70 @@ function validatePlanEvidence(operation, label) {
     fail(
       'MANIFEST_LIFECYCLE_INVALID',
       `${label}.planEvidence.reviewed must be boolean.`,
+    );
+  }
+}
+
+function validateDeterministicReviewEvidence(operation, label) {
+  const evidence = requireExactKeys(
+    operation.deterministicReviewEvidence,
+    [
+      'status',
+      'reviewEvidenceSha256',
+      'reviewedManifestSha256',
+      'immutableOperationSpecificationSha256',
+      'planJsonSha256',
+      'savedPlanSha256',
+    ],
+    `${label}.deterministicReviewEvidence`,
+  );
+  if (operation.planEvidence.status === 'not-created') {
+    requireExactValue(
+      evidence,
+      {
+        status: 'not-reviewed',
+        reviewEvidenceSha256: null,
+        reviewedManifestSha256: null,
+        immutableOperationSpecificationSha256: null,
+        planJsonSha256: null,
+        savedPlanSha256: null,
+      },
+      `${label}.deterministicReviewEvidence`,
+    );
+    return;
+  }
+  if (evidence.status !== 'passed') {
+    fail(
+      'MANIFEST_LIFECYCLE_INVALID',
+      `${label} must retain a passed deterministic plan review.`,
+    );
+  }
+  for (const field of [
+    'reviewEvidenceSha256',
+    'reviewedManifestSha256',
+    'immutableOperationSpecificationSha256',
+    'planJsonSha256',
+    'savedPlanSha256',
+  ]) {
+    requireString(
+      evidence[field],
+      `${label}.deterministicReviewEvidence.${field}`,
+      /^[a-f0-9]{64}$/u,
+    );
+  }
+  if (evidence.savedPlanSha256 !== operation.planEvidence.sha256) {
+    fail(
+      'MANIFEST_LIFECYCLE_INVALID',
+      `${label} deterministic review is not bound to its registered plan.`,
+    );
+  }
+  if (
+    evidence.immutableOperationSpecificationSha256 !==
+    immutableOperationSpecificationSha256(operation)
+  ) {
+    fail(
+      'MANIFEST_LIFECYCLE_INVALID',
+      `${label} deterministic review has a stale operation specification digest.`,
     );
   }
 }
@@ -2991,6 +3194,26 @@ function validateTerraformLifecycle(operation, label) {
     operation,
     'allowedComputedAfterApplyChanges',
   );
+  const reviewPolicyFields = [
+    'expectedResourcePlanIdentities',
+    'allowedProviderNormalizations',
+    'allowedRefreshOnlyDrift',
+    'planReviewRequirements',
+    'deterministicReviewEvidence',
+  ];
+  const reviewPolicyFieldCount = reviewPolicyFields.filter((field) =>
+    Object.hasOwn(operation, field),
+  ).length;
+  const hasDeterministicReview = reviewPolicyFieldCount > 0;
+  if (
+    hasDeterministicReview &&
+    reviewPolicyFieldCount !== reviewPolicyFields.length
+  ) {
+    fail(
+      'MANIFEST_SCHEMA_MISMATCH',
+      `${label} must declare the complete deterministic plan-review policy.`,
+    );
+  }
   if (hasExpectedResourceActions !== hasAllowedComputedChanges) {
     fail(
       'MANIFEST_SCHEMA_MISMATCH',
@@ -3020,6 +3243,7 @@ function validateTerraformLifecycle(operation, label) {
       ...(hasAllowedComputedChanges
         ? ['allowedComputedAfterApplyChanges']
         : []),
+      ...(hasDeterministicReview ? reviewPolicyFields : []),
       'statePrecondition',
       'planEvidence',
       'approval',
@@ -3032,6 +3256,9 @@ function validateTerraformLifecycle(operation, label) {
     label,
   );
   validatePlanEvidence(operation, label);
+  if (hasDeterministicReview) {
+    validateDeterministicReviewEvidence(operation, label);
+  }
   validateApproval(operation, label);
   validateApplyEvidence(operation, label);
   validateLiveVerification(operation, label);
@@ -4061,6 +4288,1125 @@ function validateManifest(manifest) {
   fail('MANIFEST_UNSUPPORTED', 'manifestVersion must be 1, 2, or 3.');
 }
 
+function canonicalizeTerraformPath(pathSegments) {
+  if (!Array.isArray(pathSegments) || pathSegments.length === 0) {
+    fail(
+      'PLAN_JSON_MALFORMED',
+      'Terraform paths must contain at least one segment.',
+    );
+  }
+  let canonicalPath = '';
+  for (const [index, segment] of pathSegments.entries()) {
+    if (Number.isSafeInteger(segment) && segment >= 0) {
+      if (index === 0) {
+        fail(
+          'PLAN_JSON_MALFORMED',
+          'Terraform paths must begin with an attribute name.',
+        );
+      }
+      canonicalPath += `[${segment}]`;
+      continue;
+    }
+    if (typeof segment !== 'string' || segment.length === 0) {
+      fail(
+        'PLAN_JSON_MALFORMED',
+        'Terraform path segments must be non-empty strings or non-negative integers.',
+      );
+    }
+    if (index === 0) {
+      canonicalPath = segment;
+    } else if (/^[A-Za-z_][A-Za-z0-9_-]*$/u.test(segment)) {
+      canonicalPath += `.${segment}`;
+    } else {
+      canonicalPath += `[${JSON.stringify(segment)}]`;
+    }
+  }
+  return canonicalPath;
+}
+
+function collectUnknownPathEntries(value, pathSegments = [], output = []) {
+  if (value === true) {
+    output.push({
+      canonicalPath: canonicalizeTerraformPath(pathSegments),
+      pathSegments: [...pathSegments],
+    });
+    return output;
+  }
+  if (value === false) return output;
+  if (Array.isArray(value)) {
+    for (const [index, child] of value.entries()) {
+      collectUnknownPathEntries(child, [...pathSegments, index], output);
+    }
+    return output;
+  }
+  if (isPlainObject(value)) {
+    for (const key of Object.keys(value).sort()) {
+      collectUnknownPathEntries(value[key], [...pathSegments, key], output);
+    }
+    return output;
+  }
+  fail(
+    'PLAN_JSON_MALFORMED',
+    'after_unknown may contain only booleans, arrays, and objects.',
+  );
+}
+
+function collectUnknownCanonicalPaths(value) {
+  return collectUnknownPathEntries(value).map((entry) => entry.canonicalPath);
+}
+
+const ABSENT_PLAN_VALUE = Symbol('absent-plan-value');
+
+function collectKnownDiffs(
+  before,
+  after,
+  unknownPaths,
+  pathSegments = [],
+  output = [],
+) {
+  const canonicalPath =
+    pathSegments.length === 0 ? null : canonicalizeTerraformPath(pathSegments);
+  if (canonicalPath !== null && unknownPaths.has(canonicalPath)) {
+    return output;
+  }
+  if (
+    before !== ABSENT_PLAN_VALUE &&
+    after !== ABSENT_PLAN_VALUE &&
+    Array.isArray(before) &&
+    Array.isArray(after)
+  ) {
+    const length = Math.max(before.length, after.length);
+    for (let index = 0; index < length; index += 1) {
+      collectKnownDiffs(
+        index < before.length ? before[index] : ABSENT_PLAN_VALUE,
+        index < after.length ? after[index] : ABSENT_PLAN_VALUE,
+        unknownPaths,
+        [...pathSegments, index],
+        output,
+      );
+    }
+    return output;
+  }
+  if (
+    before !== ABSENT_PLAN_VALUE &&
+    after !== ABSENT_PLAN_VALUE &&
+    isPlainObject(before) &&
+    isPlainObject(after)
+  ) {
+    const keys = [
+      ...new Set([...Object.keys(before), ...Object.keys(after)]),
+    ].sort();
+    for (const key of keys) {
+      collectKnownDiffs(
+        Object.hasOwn(before, key) ? before[key] : ABSENT_PLAN_VALUE,
+        Object.hasOwn(after, key) ? after[key] : ABSENT_PLAN_VALUE,
+        unknownPaths,
+        [...pathSegments, key],
+        output,
+      );
+    }
+    return output;
+  }
+  if (!isDeepStrictEqual(before, after)) {
+    if (canonicalPath === null) {
+      fail(
+        'PLAN_JSON_MALFORMED',
+        'resource before and after values must be structured objects.',
+      );
+    }
+    output.push({ canonicalPath, before, after });
+  }
+  return output;
+}
+
+function planPathState(value, pathSegments) {
+  let current = value;
+  for (const segment of pathSegments) {
+    if (
+      current === null ||
+      typeof current !== 'object' ||
+      !Object.hasOwn(current, segment)
+    ) {
+      return { state: 'absent', value: ABSENT_PLAN_VALUE };
+    }
+    current = current[segment];
+  }
+  if (current === null) return { state: 'null', value: null };
+  return { state: 'known', value: current };
+}
+
+function requireUnknownAfterValueConsistency(change, label) {
+  for (const unknownPath of collectUnknownPathEntries(change.after_unknown)) {
+    const afterState = planPathState(change.after, unknownPath.pathSegments);
+    if (!['absent', 'null'].includes(afterState.state)) {
+      fail(
+        'PLAN_UNKNOWN_AFTER_VALUE_KNOWN',
+        `${label} declares ${unknownPath.canonicalPath} unknown while its after value is known.`,
+      );
+    }
+  }
+}
+
+function requirePlanResourceRecord(value, label) {
+  if (!isPlainObject(value)) {
+    fail('PLAN_JSON_MALFORMED', `${label} must be an object.`);
+  }
+  const record = value;
+  for (const field of ['address', 'mode', 'type', 'provider_name']) {
+    if (typeof record[field] !== 'string' || record[field].length === 0) {
+      fail('PLAN_JSON_MALFORMED', `${label}.${field} must be a string.`);
+    }
+  }
+  if (!isPlainObject(record.change)) {
+    fail('PLAN_JSON_MALFORMED', `${label}.change must be an object.`);
+  }
+  const change = record.change;
+  if (
+    !Array.isArray(change.actions) ||
+    change.actions.length === 0 ||
+    change.actions.some(
+      (action) => typeof action !== 'string' || action.length === 0,
+    ) ||
+    new Set(change.actions).size !== change.actions.length
+  ) {
+    fail(
+      'PLAN_JSON_MALFORMED',
+      `${label}.change.actions must be a non-empty unique string array.`,
+    );
+  }
+  for (const field of ['before', 'after', 'after_unknown']) {
+    if (!Object.hasOwn(change, field)) {
+      fail('PLAN_JSON_MALFORMED', `${label}.change.${field} is required.`);
+    }
+  }
+  collectUnknownCanonicalPaths(change.after_unknown);
+  return record;
+}
+
+function isNoOpActions(actions) {
+  return isDeepStrictEqual(actions, ['no-op']);
+}
+
+function requireConsistentNoOpResourceChange(record) {
+  const replacePaths = record.change.replace_paths;
+  const hasEffectiveReplacePaths = Array.isArray(replacePaths)
+    ? replacePaths.length !== 0
+    : replacePaths !== undefined && replacePaths !== null;
+  const hasUnsafeProvenance =
+    Object.hasOwn(record, 'previous_address') ||
+    Object.hasOwn(record, 'deposed') ||
+    Object.hasOwn(record, 'importing') ||
+    Object.hasOwn(record.change, 'importing');
+  if (
+    !isDeepStrictEqual(record.change.before, record.change.after) ||
+    collectUnknownCanonicalPaths(record.change.after_unknown).length !== 0 ||
+    hasEffectiveReplacePaths ||
+    hasUnsafeProvenance
+  ) {
+    fail(
+      'PLAN_NOOP_CONTRADICTORY',
+      `no-op resource change is internally contradictory for ${record.address}.`,
+    );
+  }
+}
+
+function requireResourcePlanIdentity(record, expectedIdentity, label) {
+  if (
+    record.mode !== expectedIdentity.mode ||
+    record.type !== expectedIdentity.type ||
+    record.provider_name !== expectedIdentity.providerName
+  ) {
+    fail(
+      'PLAN_RESOURCE_IDENTITY_MISMATCH',
+      `${label} does not have the governed Terraform resource identity.`,
+    );
+  }
+}
+
+function requireNoUnsafeResourceProvenance(record, label) {
+  if (Object.hasOwn(record, 'previous_address')) {
+    fail(
+      'PLAN_RESOURCE_PROVENANCE_UNSAFE',
+      `${label} must not contain previous_address.`,
+    );
+  }
+  if (Object.hasOwn(record, 'deposed')) {
+    fail(
+      'PLAN_RESOURCE_PROVENANCE_UNSAFE',
+      `${label} must not contain a deposed object.`,
+    );
+  }
+  if (
+    Object.hasOwn(record, 'importing') ||
+    Object.hasOwn(record.change, 'importing')
+  ) {
+    fail(
+      'PLAN_RESOURCE_PROVENANCE_UNSAFE',
+      `${label} must not contain an importing operation.`,
+    );
+  }
+}
+
+function parseCanonicalGoogleComputeUrl(value) {
+  if (typeof value !== 'string') return false;
+  try {
+    const parsed = new URL(value);
+    if (
+      parsed.protocol === 'https:' &&
+      ['www.googleapis.com', 'compute.googleapis.com'].includes(
+        parsed.hostname,
+      ) &&
+      parsed.username === '' &&
+      parsed.password === '' &&
+      parsed.port === '' &&
+      parsed.search === '' &&
+      parsed.hash === ''
+    ) {
+      return parsed;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function parseCanonicalGoogleComputeNegIdentity(value) {
+  const parsed = parseCanonicalGoogleComputeUrl(value);
+  if (!parsed) return null;
+  const match =
+    /^\/compute\/v1\/projects\/([^/%]+)\/regions\/([^/%]+)\/networkEndpointGroups\/([^/%]+)$/u.exec(
+      parsed.pathname,
+    );
+  return match
+    ? { project: match[1], region: match[2], negName: match[3] }
+    : null;
+}
+
+function parseCanonicalGoogleComputeRegionIdentity(value) {
+  const parsed = parseCanonicalGoogleComputeUrl(value);
+  if (!parsed) return null;
+  const match = /^\/compute\/v1\/projects\/([^/%]+)\/regions\/([^/%]+)$/u.exec(
+    parsed.pathname,
+  );
+  return match ? { project: match[1], region: match[2] } : null;
+}
+
+function requireCandidateNegBeforeIdentity(record) {
+  const selfLink = planPathState(record.change.before, ['self_link']);
+  const identity =
+    selfLink.state === 'known'
+      ? parseCanonicalGoogleComputeNegIdentity(selfLink.value)
+      : null;
+  if (
+    !identity ||
+    identity.region !== CANDIDATE_EDGE_IDENTITIES.region ||
+    identity.negName !== CANDIDATE_EDGE_IDENTITIES.negName
+  ) {
+    fail(
+      'PLAN_RESOURCE_IDENTITY_MISMATCH',
+      'Candidate NEG before.self_link must identify the exact governed regional NEG.',
+    );
+  }
+  return identity;
+}
+
+function normalizationMatches(diff, policy, expectedProject = null) {
+  if (policy.transition === 'regional-self-link-to-region-name') {
+    const identity = parseCanonicalGoogleComputeRegionIdentity(diff.before);
+    return (
+      diff.after === policy.expectedRegion &&
+      identity?.region === policy.expectedRegion &&
+      (expectedProject === null || identity.project === expectedProject)
+    );
+  }
+  return (
+    isDeepStrictEqual(diff.before, policy.before) &&
+    isDeepStrictEqual(diff.after, policy.after)
+  );
+}
+
+function requireExactBackendCardinality(record) {
+  const beforeBackend = record.change.before?.backend;
+  const afterBackend = record.change.after?.backend;
+  if (
+    !Array.isArray(beforeBackend) ||
+    !Array.isArray(afterBackend) ||
+    beforeBackend.length !== 1 ||
+    afterBackend.length !== 1
+  ) {
+    fail(
+      'PLAN_BACKEND_CARDINALITY_INVALID',
+      'Candidate Backend must contain exactly one backend element before and after.',
+    );
+  }
+}
+
+function requireExpectedNegReplacement(record) {
+  const unsafeReasons = new Set([
+    'replace_because_tainted',
+    'replace_by_request',
+  ]);
+  if (unsafeReasons.has(record.action_reason)) {
+    fail(
+      'PLAN_REPLACEMENT_CAUSE_UNAPPROVED',
+      'Candidate NEG replacement has an unsafe action reason.',
+    );
+  }
+  if (
+    !Array.isArray(record.change.replace_paths) ||
+    record.change.replace_paths.length !== 1 ||
+    canonicalizeTerraformPath(record.change.replace_paths[0]) !==
+      'cloud_run[0].tag'
+  ) {
+    fail(
+      'PLAN_REPLACEMENT_CAUSE_UNAPPROVED',
+      'Candidate NEG replacement must be caused only by cloud_run[0].tag.',
+    );
+  }
+}
+
+function reviewCandidateNegResourceChange(
+  record,
+  manifest,
+  operation,
+  candidateNegIdentity,
+) {
+  requireNoUnsafeResourceProvenance(record, 'Candidate NEG resource change');
+  requireExpectedNegReplacement(record);
+  const beforeCloudRun = record.change.before?.cloud_run;
+  const afterCloudRun = record.change.after?.cloud_run;
+  if (
+    !Array.isArray(beforeCloudRun) ||
+    !Array.isArray(afterCloudRun) ||
+    beforeCloudRun.length !== 1 ||
+    afterCloudRun.length !== 1
+  ) {
+    fail(
+      'PLAN_SEMANTIC_CHANGE_UNAPPROVED',
+      'Candidate NEG must contain exactly one cloud_run element.',
+    );
+  }
+  const unknownPaths = new Set(
+    collectUnknownCanonicalPaths(record.change.after_unknown),
+  );
+  const allowedUnknownPaths = new Set(
+    operation.allowedComputedAfterApplyChanges[record.address],
+  );
+  for (const unknownPath of unknownPaths) {
+    if (!allowedUnknownPaths.has(unknownPath)) {
+      fail(
+        'PLAN_UNKNOWN_UNAPPROVED',
+        `Candidate NEG has an unapproved unknown path: ${unknownPath}.`,
+      );
+    }
+  }
+  requireUnknownAfterValueConsistency(
+    record.change,
+    'Candidate NEG resource change',
+  );
+  const diffs = collectKnownDiffs(
+    record.change.before,
+    record.change.after,
+    unknownPaths,
+  );
+  const semanticPath = 'cloud_run[0].tag';
+  const semanticDiffs = diffs.filter(
+    (diff) => diff.canonicalPath === semanticPath,
+  );
+  const expectedBeforeTag = manifest.liveDiscovery.servingBaseline.candidateTag;
+  const expectedAfterTag = manifest.candidate.tag;
+  if (
+    semanticDiffs.length !== 1 ||
+    semanticDiffs[0].before !== expectedBeforeTag ||
+    semanticDiffs[0].after !== expectedAfterTag ||
+    expectedBeforeTag === expectedAfterTag
+  ) {
+    fail(
+      'PLAN_SEMANTIC_CHANGE_UNAPPROVED',
+      'Candidate NEG tag transition does not match the governed serving-to-candidate transition.',
+    );
+  }
+  const normalizationPolicies = new Map(
+    operation.allowedProviderNormalizations[record.address].map((policy) => [
+      policy.canonicalPath,
+      policy,
+    ]),
+  );
+  for (const diff of diffs) {
+    if (diff.canonicalPath === semanticPath) continue;
+    const policy = normalizationPolicies.get(diff.canonicalPath);
+    if (!policy) {
+      fail(
+        'PLAN_SEMANTIC_CHANGE_UNAPPROVED',
+        `Candidate NEG has an unapproved changed path: ${diff.canonicalPath}.`,
+      );
+    }
+    if (!normalizationMatches(diff, policy, candidateNegIdentity.project)) {
+      fail(
+        'PLAN_NORMALIZATION_UNAPPROVED',
+        `Candidate NEG normalization has unapproved values at ${diff.canonicalPath}.`,
+      );
+    }
+  }
+  return 1;
+}
+
+function reviewCandidateBackendResourceChange(
+  record,
+  operation,
+  candidateNegIdentity,
+) {
+  requireNoUnsafeResourceProvenance(
+    record,
+    'Candidate Backend resource change',
+  );
+  requireExactBackendCardinality(record);
+  const unknownPaths = new Set(
+    collectUnknownCanonicalPaths(record.change.after_unknown),
+  );
+  const semanticPath = 'backend[0].group';
+  if (!unknownPaths.has(semanticPath)) {
+    fail(
+      'PLAN_SEMANTIC_CHANGE_UNAPPROVED',
+      'Candidate Backend group must become unknown after apply.',
+    );
+  }
+  const beforeGroup = planPathState(record.change.before, [
+    'backend',
+    0,
+    'group',
+  ]);
+  const afterGroup = planPathState(record.change.after, [
+    'backend',
+    0,
+    'group',
+  ]);
+  const beforeGroupIdentity =
+    beforeGroup.state === 'known'
+      ? parseCanonicalGoogleComputeNegIdentity(beforeGroup.value)
+      : null;
+  if (
+    !isDeepStrictEqual(beforeGroupIdentity, candidateNegIdentity) ||
+    !['null', 'absent'].includes(afterGroup.state)
+  ) {
+    fail(
+      'PLAN_SEMANTIC_CHANGE_UNAPPROVED',
+      'Candidate Backend group does not represent the governed known-NEG to unknown transition.',
+    );
+  }
+  const allowedProviderUnknowns = new Set(
+    operation.allowedComputedAfterApplyChanges[record.address],
+  );
+  for (const unknownPath of unknownPaths) {
+    if (
+      unknownPath !== semanticPath &&
+      !allowedProviderUnknowns.has(unknownPath)
+    ) {
+      fail(
+        'PLAN_UNKNOWN_UNAPPROVED',
+        `Candidate Backend has an unapproved unknown path: ${unknownPath}.`,
+      );
+    }
+  }
+  requireUnknownAfterValueConsistency(
+    record.change,
+    'Candidate Backend resource change',
+  );
+  const diffs = collectKnownDiffs(
+    record.change.before,
+    record.change.after,
+    unknownPaths,
+  );
+  if (diffs.length !== 0) {
+    fail(
+      'PLAN_SEMANTIC_CHANGE_UNAPPROVED',
+      `Candidate Backend has an unapproved changed path: ${diffs[0].canonicalPath}.`,
+    );
+  }
+  return 1;
+}
+
+function isValidTimestamp(value) {
+  return (
+    typeof value === 'string' &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[.]\d+)?(?:Z|[+-]\d{2}:\d{2})$/u.test(
+      value,
+    ) &&
+    !Number.isNaN(Date.parse(value))
+  );
+}
+
+function reviewRefreshOnlyDrift(record, operation, nonNoopAddresses) {
+  const policy = operation.allowedRefreshOnlyDrift[record.address];
+  if (!policy) {
+    fail(
+      'PLAN_DRIFT_UNAPPROVED',
+      `Terraform plan contains an unapproved drift address: ${record.address}.`,
+    );
+  }
+  requireResourcePlanIdentity(record, policy, 'resource drift');
+  requireNoUnsafeResourceProvenance(record, 'resource drift');
+  if (!isDeepStrictEqual(record.change.actions, policy.actions)) {
+    fail(
+      'PLAN_DRIFT_UNAPPROVED',
+      `Terraform drift action is unapproved for ${record.address}.`,
+    );
+  }
+  const unknownPaths = new Set(
+    collectUnknownCanonicalPaths(record.change.after_unknown),
+  );
+  if (unknownPaths.size !== 0) {
+    fail(
+      'PLAN_DRIFT_UNAPPROVED',
+      `Terraform drift contains an unknown value for ${record.address}.`,
+    );
+  }
+  if (
+    policy.correspondingNonNoopResourceChange === 'forbidden' &&
+    nonNoopAddresses.has(record.address)
+  ) {
+    fail(
+      'PLAN_DRIFT_UNAPPROVED',
+      `Refresh-only certificate drift has a corresponding non-noop resource change: ${record.address}.`,
+    );
+  }
+  const diffs = collectKnownDiffs(
+    record.change.before,
+    record.change.after,
+    unknownPaths,
+  );
+  if (policy.exactProviderNormalizations) {
+    if (
+      diffs.length !== policy.exactProviderNormalizations.length ||
+      policy.exactProviderNormalizations.some((normalization) => {
+        const diff = diffs.find(
+          (candidate) =>
+            candidate.canonicalPath === normalization.canonicalPath,
+        );
+        return !diff || !normalizationMatches(diff, normalization);
+      })
+    ) {
+      fail(
+        'PLAN_DRIFT_UNAPPROVED',
+        'Candidate Backend drift must contain only the two exact governed null-to-empty-list normalizations.',
+      );
+    }
+    return;
+  }
+  if (
+    !isDeepStrictEqual(
+      diffs.map((diff) => diff.canonicalPath).sort(),
+      [...policy.exactChangedCanonicalPaths].sort(),
+    )
+  ) {
+    fail(
+      'PLAN_DRIFT_UNAPPROVED',
+      `Certificate-manager drift must change only update_time for ${record.address}.`,
+    );
+  }
+  const updateTime = diffs[0];
+  if (
+    !isValidTimestamp(updateTime.before) ||
+    !isValidTimestamp(updateTime.after) ||
+    updateTime.before === updateTime.after
+  ) {
+    fail(
+      'PLAN_DRIFT_UNAPPROVED',
+      `Certificate-manager update_time drift is invalid for ${record.address}.`,
+    );
+  }
+}
+
+function requireSuccessfulContinuationReviewTarget(
+  manifest,
+  gateId,
+  operationId,
+) {
+  const candidate = requireObject(manifest, 'manifest');
+  if (
+    candidate.manifestVersion !== 3 ||
+    candidate.executionMode !== SUCCESSFUL_CONTINUATION_MODE ||
+    gateId !== SUCCESSFUL_CONTINUATION_RESUME_GATE_ID ||
+    operationId !== SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID
+  ) {
+    fail(
+      'PLAN_REVIEW_NOT_APPLICABLE',
+      'deterministic plan review is available only for the exact v3 Candidate Edge reconciliation.',
+    );
+  }
+  const { gate, operation } = findOperation(candidate, gateId, operationId);
+  if (
+    operation.kind !== 'terraform' ||
+    operation.releaseGateId !== gateId ||
+    operation.sourceSha !== candidate.sourceSha ||
+    operation.environment !== 'staging' ||
+    operation.planReviewRequirements?.required !== true
+  ) {
+    fail(
+      'MANIFEST_SPEC_MISMATCH',
+      'the v3 Candidate Edge review target is not the governed operation.',
+    );
+  }
+  return { gate, operation };
+}
+
+function immutableOperationSpecificationSha256(operation) {
+  return sha256(JSON.stringify(immutableOperationSpecification(operation)));
+}
+
+function reviewTerraformPlanJson(planJson, manifest, options = {}) {
+  const gateId = options.gateId;
+  const operationId = options.operationId;
+  const { operation } = requireSuccessfulContinuationReviewTarget(
+    manifest,
+    gateId,
+    operationId,
+  );
+  if (!isPlainObject(planJson)) {
+    fail('PLAN_JSON_MALFORMED', 'Terraform plan JSON must be an object.');
+  }
+  const plan = planJson;
+  if (typeof plan.format_version !== 'string') {
+    fail('PLAN_JSON_MALFORMED', 'format_version must be a string.');
+  }
+  const formatMatch = /^(\d+)[.](\d+)$/u.exec(plan.format_version);
+  if (!formatMatch) {
+    fail('PLAN_JSON_MALFORMED', 'format_version must be major.minor.');
+  }
+  if (
+    Number(formatMatch[1]) !==
+    operation.planReviewRequirements.compatiblePlanJsonFormatMajor
+  ) {
+    fail(
+      'PLAN_FORMAT_VERSION_UNSUPPORTED',
+      'Terraform plan JSON format_version major must be 1.',
+    );
+  }
+  if (plan.applyable !== true) {
+    fail('PLAN_NOT_APPLYABLE', 'Terraform plan JSON must be applyable.');
+  }
+  if (plan.complete !== true) {
+    fail('PLAN_INCOMPLETE', 'Terraform plan JSON must be complete.');
+  }
+  if (plan.errored !== false) {
+    fail('PLAN_ERRORED', 'Terraform plan JSON must not be errored.');
+  }
+  if (
+    typeof plan.terraform_version !== 'string' ||
+    plan.terraform_version.length === 0
+  ) {
+    fail('PLAN_JSON_MALFORMED', 'terraform_version must be a string.');
+  }
+  if (!Array.isArray(plan.resource_changes)) {
+    fail('PLAN_JSON_MALFORMED', 'resource_changes must be an array.');
+  }
+  if (
+    Object.hasOwn(plan, 'resource_drift') &&
+    !Array.isArray(plan.resource_drift)
+  ) {
+    fail('PLAN_JSON_MALFORMED', 'resource_drift must be an array.');
+  }
+  const resourceChanges = plan.resource_changes.map((record, index) =>
+    requirePlanResourceRecord(record, `resource_changes[${index}]`),
+  );
+  const resourceChangeAddresses = new Set();
+  for (const record of resourceChanges) {
+    if (resourceChangeAddresses.has(record.address)) {
+      fail(
+        'PLAN_DUPLICATE_RESOURCE_CHANGE',
+        `Terraform plan contains duplicate resource change address: ${record.address}.`,
+      );
+    }
+    resourceChangeAddresses.add(record.address);
+    if (isNoOpActions(record.change.actions)) {
+      requireConsistentNoOpResourceChange(record);
+    }
+  }
+  const nonNoopChanges = resourceChanges.filter(
+    (record) => !isNoOpActions(record.change.actions),
+  );
+  const nonNoopAddresses = new Set(
+    nonNoopChanges.map((record) => record.address),
+  );
+  if (
+    nonNoopChanges.length !==
+      operation.expectedResourceAddressAllowlist.length ||
+    !isDeepStrictEqual(
+      [...nonNoopAddresses].sort(),
+      [...operation.expectedResourceAddressAllowlist].sort(),
+    )
+  ) {
+    fail(
+      'PLAN_RESOURCE_CHANGE_SET_MISMATCH',
+      'non-noop resource changes must contain exactly the Candidate NEG and Candidate Backend.',
+    );
+  }
+
+  const candidateNegRecord = nonNoopChanges.find(
+    (record) =>
+      record.address === EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[0],
+  );
+  const candidateNegIdentity =
+    requireCandidateNegBeforeIdentity(candidateNegRecord);
+
+  let intendedSemanticChangeCount = 0;
+  for (const record of nonNoopChanges) {
+    requireResourcePlanIdentity(
+      record,
+      operation.expectedResourcePlanIdentities[record.address],
+      'resource change',
+    );
+    if (
+      !isDeepStrictEqual(
+        record.change.actions,
+        operation.expectedResourceActions[record.address],
+      )
+    ) {
+      fail(
+        'PLAN_ACTION_MISMATCH',
+        `Terraform actions differ from the governed actions for ${record.address}.`,
+      );
+    }
+    if (
+      record.address === EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[0]
+    ) {
+      intendedSemanticChangeCount += reviewCandidateNegResourceChange(
+        record,
+        manifest,
+        operation,
+        candidateNegIdentity,
+      );
+    } else {
+      intendedSemanticChangeCount += reviewCandidateBackendResourceChange(
+        record,
+        operation,
+        candidateNegIdentity,
+      );
+    }
+  }
+
+  const resourceDrift = (plan.resource_drift ?? []).map((record, index) =>
+    requirePlanResourceRecord(record, `resource_drift[${index}]`),
+  );
+  const driftAddresses = new Set();
+  for (const record of resourceDrift) {
+    if (driftAddresses.has(record.address)) {
+      fail(
+        'PLAN_DUPLICATE_DRIFT',
+        `Terraform plan contains duplicate resource drift address: ${record.address}.`,
+      );
+    }
+    driftAddresses.add(record.address);
+    reviewRefreshOnlyDrift(record, operation, nonNoopAddresses);
+  }
+
+  return {
+    schemaVersion: 1,
+    status: 'passed',
+    releaseExecutionId: manifest.releaseExecutionId,
+    sourceSha: manifest.sourceSha,
+    gateId,
+    operationId,
+    immutableOperationSpecificationSha256:
+      immutableOperationSpecificationSha256(operation),
+    formatVersion: plan.format_version,
+    terraformVersion: plan.terraform_version,
+    nonNoopResourceChangeCount: nonNoopChanges.length,
+    intendedSemanticChangeCount,
+    refreshOnlyDriftCount: resourceDrift.length,
+    unapprovedSemanticChangeCount: 0,
+    unapprovedUnknownCount: 0,
+    unapprovedNormalizationCount: 0,
+    unapprovedDriftCount: 0,
+    urlMapMutation: false,
+  };
+}
+
+const PLAN_REVIEW_EVIDENCE_KEYS = Object.freeze([
+  'schemaVersion',
+  'status',
+  'manifestSha256',
+  'releaseExecutionId',
+  'sourceSha',
+  'gateId',
+  'operationId',
+  'immutableOperationSpecificationSha256',
+  'savedPlanPath',
+  'savedPlanSha256',
+  'savedPlanSizeBytes',
+  'planJsonSha256',
+  'planJsonSizeBytes',
+  'formatVersion',
+  'terraformVersion',
+  'nonNoopResourceChangeCount',
+  'intendedSemanticChangeCount',
+  'refreshOnlyDriftCount',
+  'unapprovedSemanticChangeCount',
+  'unapprovedUnknownCount',
+  'unapprovedNormalizationCount',
+  'unapprovedDriftCount',
+  'urlMapMutation',
+]);
+
+function parseJsonBytes(bytes, label, errorCode) {
+  try {
+    return JSON.parse(bytes.toString('utf8'));
+  } catch (error) {
+    fail(errorCode, `${label} could not be read as JSON: ${error.message}`);
+  }
+}
+
+function requirePlanReviewEvidence(value) {
+  if (!isPlainObject(value)) {
+    fail('PLAN_REVIEW_EVIDENCE_INVALID', 'review evidence must be an object.');
+  }
+  if (
+    !isDeepStrictEqual(
+      Object.keys(value).sort(),
+      [...PLAN_REVIEW_EVIDENCE_KEYS].sort(),
+    )
+  ) {
+    fail(
+      'PLAN_REVIEW_EVIDENCE_INVALID',
+      'review evidence contains unexpected or missing fields.',
+    );
+  }
+  if (value.schemaVersion !== 1 || value.status !== 'passed') {
+    fail(
+      'PLAN_REVIEW_EVIDENCE_INVALID',
+      'review evidence must be schemaVersion 1 with passed status.',
+    );
+  }
+  for (const field of [
+    'manifestSha256',
+    'immutableOperationSpecificationSha256',
+    'savedPlanSha256',
+    'planJsonSha256',
+  ]) {
+    if (!/^[a-f0-9]{64}$/u.test(value[field] ?? '')) {
+      fail(
+        'PLAN_REVIEW_EVIDENCE_INVALID',
+        `review evidence ${field} is invalid.`,
+      );
+    }
+  }
+  if (!/^[a-f0-9]{40}$/u.test(value.sourceSha ?? '')) {
+    fail(
+      'PLAN_REVIEW_EVIDENCE_INVALID',
+      'review evidence sourceSha is invalid.',
+    );
+  }
+  for (const field of [
+    'releaseExecutionId',
+    'gateId',
+    'operationId',
+    'savedPlanPath',
+    'formatVersion',
+    'terraformVersion',
+  ]) {
+    if (typeof value[field] !== 'string' || value[field].length === 0) {
+      fail(
+        'PLAN_REVIEW_EVIDENCE_INVALID',
+        `review evidence ${field} must be a string.`,
+      );
+    }
+  }
+  if (!/^1[.]\d+$/u.test(value.formatVersion)) {
+    fail(
+      'PLAN_REVIEW_EVIDENCE_INVALID',
+      'review evidence formatVersion must have major version 1.',
+    );
+  }
+  for (const field of [
+    'savedPlanSizeBytes',
+    'planJsonSizeBytes',
+    'nonNoopResourceChangeCount',
+    'intendedSemanticChangeCount',
+    'refreshOnlyDriftCount',
+    'unapprovedSemanticChangeCount',
+    'unapprovedUnknownCount',
+    'unapprovedNormalizationCount',
+    'unapprovedDriftCount',
+  ]) {
+    if (!Number.isSafeInteger(value[field]) || value[field] < 0) {
+      fail(
+        'PLAN_REVIEW_EVIDENCE_INVALID',
+        `review evidence ${field} must be a non-negative integer.`,
+      );
+    }
+  }
+  if (
+    value.savedPlanSizeBytes === 0 ||
+    value.planJsonSizeBytes === 0 ||
+    value.nonNoopResourceChangeCount !== 2 ||
+    value.intendedSemanticChangeCount !== 2 ||
+    value.refreshOnlyDriftCount >
+      EDGE_REFRESH_ONLY_DRIFT_RESOURCE_ADDRESSES.length ||
+    value.unapprovedSemanticChangeCount !== 0 ||
+    value.unapprovedUnknownCount !== 0 ||
+    value.unapprovedNormalizationCount !== 0 ||
+    value.unapprovedDriftCount !== 0 ||
+    value.urlMapMutation !== false
+  ) {
+    fail(
+      'PLAN_REVIEW_EVIDENCE_INVALID',
+      'review evidence does not contain a passing governed result.',
+    );
+  }
+  return value;
+}
+
+function buildDeterministicPlanReviewEvidence({
+  manifest,
+  manifestBytes,
+  gateId,
+  operationId,
+  savedPlanPath,
+  savedPlanBytes,
+  planJsonBytes,
+}) {
+  const planJson = parseJsonBytes(
+    planJsonBytes,
+    'Terraform plan JSON',
+    'PLAN_JSON_MALFORMED',
+  );
+  const review = reviewTerraformPlanJson(planJson, manifest, {
+    gateId,
+    operationId,
+  });
+  return requirePlanReviewEvidence({
+    schemaVersion: review.schemaVersion,
+    status: review.status,
+    manifestSha256: sha256(manifestBytes),
+    releaseExecutionId: review.releaseExecutionId,
+    sourceSha: review.sourceSha,
+    gateId: review.gateId,
+    operationId: review.operationId,
+    immutableOperationSpecificationSha256:
+      review.immutableOperationSpecificationSha256,
+    savedPlanPath,
+    savedPlanSha256: sha256(savedPlanBytes),
+    savedPlanSizeBytes: savedPlanBytes.length,
+    planJsonSha256: sha256(planJsonBytes),
+    planJsonSizeBytes: planJsonBytes.length,
+    formatVersion: review.formatVersion,
+    terraformVersion: review.terraformVersion,
+    nonNoopResourceChangeCount: review.nonNoopResourceChangeCount,
+    intendedSemanticChangeCount: review.intendedSemanticChangeCount,
+    refreshOnlyDriftCount: review.refreshOnlyDriftCount,
+    unapprovedSemanticChangeCount: review.unapprovedSemanticChangeCount,
+    unapprovedUnknownCount: review.unapprovedUnknownCount,
+    unapprovedNormalizationCount: review.unapprovedNormalizationCount,
+    unapprovedDriftCount: review.unapprovedDriftCount,
+    urlMapMutation: review.urlMapMutation,
+  });
+}
+
+function writeNewJsonAtomic(filePath, value) {
+  const resolved = requireExternalAbsolutePath(filePath, 'reviewEvidencePath');
+  if (fs.statSync(resolved, { throwIfNoEntry: false })) {
+    fail(
+      'REVIEW_EVIDENCE_ALREADY_EXISTS',
+      'review evidence path already exists.',
+    );
+  }
+  fs.mkdirSync(path.dirname(resolved), { recursive: true });
+  const temporary = `${resolved}.tmp-${process.pid}-${crypto.randomUUID()}`;
+  try {
+    fs.writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, {
+      encoding: 'utf8',
+      flag: 'wx',
+    });
+    fs.linkSync(temporary, resolved);
+  } catch (error) {
+    if (error instanceof DeploymentControlError) throw error;
+    fail(
+      'REVIEW_EVIDENCE_WRITE_FAILED',
+      `review evidence could not be created atomically: ${error.message}`,
+    );
+  } finally {
+    fs.rmSync(temporary, { force: true });
+  }
+  return resolved;
+}
+
+function reviewPlanFiles(options) {
+  const manifestPath = requireExternalAbsolutePath(
+    options.manifestPath,
+    'manifestPath',
+  );
+  const savedPlanPath = requireExternalAbsolutePath(
+    options.planPath,
+    'planPath',
+  );
+  const planJsonPath = requireExternalAbsolutePath(
+    options.planJsonPath,
+    'planJsonPath',
+  );
+  const reviewEvidencePath = requireExternalAbsolutePath(
+    options.reviewEvidencePath,
+    'reviewEvidencePath',
+  );
+  if (
+    new Set([manifestPath, savedPlanPath, planJsonPath, reviewEvidencePath])
+      .size !== 4
+  ) {
+    fail(
+      'INVALID_PATH',
+      'manifest, saved plan, plan JSON, and review evidence paths must be distinct.',
+    );
+  }
+  const manifestBytes = fs.readFileSync(manifestPath);
+  const manifest = parseJsonBytes(
+    manifestBytes,
+    'release manifest',
+    'INVALID_JSON',
+  );
+  validateManifest(manifest);
+  assertSourceBinding(manifest);
+  const { gate, operation } = requireSuccessfulContinuationReviewTarget(
+    manifest,
+    options.gateId,
+    options.operationId,
+  );
+  assertReleaseCanAdvance(manifest, gate, operation);
+  if (
+    operation.status !== 'pending' ||
+    operation.planEvidence.status !== 'not-created' ||
+    operation.deterministicReviewEvidence.status !== 'not-reviewed'
+  ) {
+    fail(
+      'PLAN_REVIEW_OUT_OF_ORDER',
+      'the v3 Candidate Edge operation is not awaiting deterministic review.',
+    );
+  }
+  if (path.resolve(operation.savedPlanPath) !== savedPlanPath) {
+    fail(
+      'PLAN_PATH_MISMATCH',
+      'planPath differs from the governed saved-plan path.',
+    );
+  }
+  const savedPlanBytes = fs.readFileSync(savedPlanPath);
+  if (savedPlanBytes.length === 0) {
+    fail('PLAN_FILE_INVALID', 'saved plan file must not be empty.');
+  }
+  const planJsonBytes = fs.readFileSync(planJsonPath);
+  if (planJsonBytes.length === 0) {
+    fail('PLAN_JSON_MALFORMED', 'plan JSON file must not be empty.');
+  }
+  const evidence = buildDeterministicPlanReviewEvidence({
+    manifest,
+    manifestBytes,
+    gateId: options.gateId,
+    operationId: options.operationId,
+    savedPlanPath,
+    savedPlanBytes,
+    planJsonBytes,
+  });
+  const createdPath = writeNewJsonAtomic(reviewEvidencePath, evidence);
+  return { evidence, reviewEvidencePath: createdPath };
+}
+
 function registerPlan(manifest, options) {
   validateManifest(manifest);
   assertSourceBinding(manifest);
@@ -4069,6 +5415,11 @@ function registerPlan(manifest, options) {
     options.gateId,
     options.operationId,
   );
+  const requiresDeterministicReview =
+    manifest.manifestVersion === 3 &&
+    manifest.executionMode === SUCCESSFUL_CONTINUATION_MODE &&
+    gate.id === SUCCESSFUL_CONTINUATION_RESUME_GATE_ID &&
+    operation.id === SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID;
   assertReleaseCanAdvance(manifest, gate, operation);
   if (operation.kind !== 'terraform') {
     fail(
@@ -4137,6 +5488,116 @@ function registerPlan(manifest, options) {
       'saved plan hash is blocked or already registered.',
     );
   }
+  let deterministicReviewEvidence = null;
+  if (requiresDeterministicReview) {
+    if (!Buffer.isBuffer(options.manifestBytes)) {
+      fail(
+        'PLAN_REVIEW_EVIDENCE_REQUIRED',
+        'v3 registration requires the exact pre-registration manifest bytes.',
+      );
+    }
+    if (
+      typeof options.reviewEvidencePath !== 'string' ||
+      options.reviewEvidencePath.length === 0 ||
+      typeof options.planJsonPath !== 'string' ||
+      options.planJsonPath.length === 0
+    ) {
+      fail(
+        'PLAN_REVIEW_EVIDENCE_REQUIRED',
+        'v3 registration requires --plan-json and --review-evidence.',
+      );
+    }
+    const reviewedManifest = parseJsonBytes(
+      options.manifestBytes,
+      'pre-registration manifest',
+      'PLAN_REVIEW_EVIDENCE_INVALID',
+    );
+    if (!isDeepStrictEqual(reviewedManifest, manifest)) {
+      fail(
+        'PLAN_REVIEW_BINDING_MISMATCH',
+        'pre-registration manifest bytes do not match the manifest being registered.',
+      );
+    }
+    const reviewEvidencePath = requireExternalAbsolutePath(
+      options.reviewEvidencePath,
+      'reviewEvidencePath',
+    );
+    const planJsonPath = requireExternalAbsolutePath(
+      options.planJsonPath,
+      'planJsonPath',
+    );
+    if (
+      new Set([suppliedPlanPath, planJsonPath, reviewEvidencePath]).size !== 3
+    ) {
+      fail(
+        'INVALID_PATH',
+        'saved plan, plan JSON, and review evidence paths must be distinct.',
+      );
+    }
+    const planJsonBytes = fs.readFileSync(planJsonPath);
+    if (planJsonBytes.length === 0) {
+      fail('PLAN_JSON_MALFORMED', 'plan JSON file must not be empty.');
+    }
+    const reviewEvidenceBytes = fs.readFileSync(reviewEvidencePath);
+    const reviewEvidence = requirePlanReviewEvidence(
+      parseJsonBytes(
+        reviewEvidenceBytes,
+        'plan review evidence',
+        'PLAN_REVIEW_EVIDENCE_INVALID',
+      ),
+    );
+    const currentManifestSha256 = sha256(options.manifestBytes);
+    const currentImmutableSpecificationSha256 =
+      immutableOperationSpecificationSha256(operation);
+    if (
+      reviewEvidence.manifestSha256 !== currentManifestSha256 ||
+      reviewEvidence.releaseExecutionId !== manifest.releaseExecutionId ||
+      reviewEvidence.sourceSha !== manifest.sourceSha ||
+      reviewEvidence.gateId !== gate.id ||
+      reviewEvidence.operationId !== operation.id ||
+      reviewEvidence.immutableOperationSpecificationSha256 !==
+        currentImmutableSpecificationSha256 ||
+      reviewEvidence.savedPlanPath !== suppliedPlanPath
+    ) {
+      fail(
+        'PLAN_REVIEW_BINDING_MISMATCH',
+        'plan review evidence does not match the current release, source, operation, manifest, or immutable specification.',
+      );
+    }
+    if (
+      reviewEvidence.savedPlanSha256 !== planSha ||
+      reviewEvidence.savedPlanSizeBytes !== planBytes.length
+    ) {
+      fail(
+        'REVIEWED_PLAN_MISMATCH',
+        'saved plan bytes differ from the exact plan that passed review.',
+      );
+    }
+    const reconstructedReviewEvidence = buildDeterministicPlanReviewEvidence({
+      manifest,
+      manifestBytes: options.manifestBytes,
+      gateId: gate.id,
+      operationId: operation.id,
+      savedPlanPath: suppliedPlanPath,
+      savedPlanBytes: planBytes,
+      planJsonBytes,
+    });
+    if (!isDeepStrictEqual(reviewEvidence, reconstructedReviewEvidence)) {
+      fail(
+        'PLAN_REVIEW_EVIDENCE_MISMATCH',
+        'plan review evidence does not exactly match a fresh deterministic review of the supplied plan JSON bytes.',
+      );
+    }
+    deterministicReviewEvidence = {
+      status: 'passed',
+      reviewEvidenceSha256: sha256(reviewEvidenceBytes),
+      reviewedManifestSha256: currentManifestSha256,
+      immutableOperationSpecificationSha256:
+        currentImmutableSpecificationSha256,
+      planJsonSha256: reviewEvidence.planJsonSha256,
+      savedPlanSha256: planSha,
+    };
+  }
   operation.planEvidence = {
     status: 'registered',
     sha256: planSha,
@@ -4144,6 +5605,9 @@ function registerPlan(manifest, options) {
     registeredAt: requireIsoTimestamp(options.recordedAt, 'recordedAt'),
     reviewed: false,
   };
+  if (requiresDeterministicReview) {
+    operation.deterministicReviewEvidence = deterministicReviewEvidence;
+  }
   operation.status = 'plan-registered';
   return manifest;
 }
@@ -4454,8 +5918,13 @@ function loadManifestForUpdate(options) {
     requireCliOption(options, 'manifest'),
     'manifestPath',
   );
-  const manifest = readJson(manifestPath, 'release manifest');
-  return { manifestPath, manifest };
+  const manifestBytes = fs.readFileSync(manifestPath);
+  const manifest = parseJsonBytes(
+    manifestBytes,
+    'release manifest',
+    'INVALID_JSON',
+  );
+  return { manifestPath, manifest, manifestBytes };
 }
 
 function runCli(argv = process.argv.slice(2)) {
@@ -4485,7 +5954,19 @@ function runCli(argv = process.argv.slice(2)) {
     assertSourceBinding(manifest);
     return { command, manifestPath, status: manifest.releaseStatus };
   }
-  const { manifestPath, manifest } = loadManifestForUpdate(options);
+  if (command === 'review-plan') {
+    const { evidence, reviewEvidencePath } = reviewPlanFiles({
+      manifestPath: requireCliOption(options, 'manifest'),
+      gateId: requireCliOption(options, 'gate'),
+      operationId: requireCliOption(options, 'operation'),
+      planPath: requireCliOption(options, 'plan'),
+      planJsonPath: requireCliOption(options, 'planJson'),
+      reviewEvidencePath: requireCliOption(options, 'reviewEvidence'),
+    });
+    return { command, reviewEvidencePath, ...evidence };
+  }
+  const { manifestPath, manifest, manifestBytes } =
+    loadManifestForUpdate(options);
   const shared = {
     gateId: requireCliOption(options, 'gate'),
     operationId: requireCliOption(options, 'operation'),
@@ -4500,6 +5981,9 @@ function runCli(argv = process.argv.slice(2)) {
       terraformRoot: requireCliOption(options, 'terraformRoot'),
       lineage: requireCliOption(options, 'lineage'),
       serial: requireCliOption(options, 'serial'),
+      planJsonPath: options.planJson,
+      reviewEvidencePath: options.reviewEvidence,
+      manifestBytes,
     });
   } else if (command === 'approve-plan') {
     approvePlan(manifest, {
@@ -4555,6 +6039,7 @@ module.exports = Object.freeze({
   DeploymentControlError,
   EDGE_CANDIDATE_RESOURCE_ADDRESSES,
   EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES,
+  EDGE_REFRESH_ONLY_DRIFT_RESOURCE_ADDRESSES,
   MAX_RECOVERY_ATTEMPT,
   RECOVERY_GATE_IDS,
   RECOVERY_PREDECESSOR_STAGE_IDS,
@@ -4569,12 +6054,14 @@ module.exports = Object.freeze({
   SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
   approvePlan,
   buildManifest,
+  canonicalizeTerraformPath,
   currentSourceSha,
   expectedCandidateTag,
   loadReleaseContract,
   recordApply,
   recordVerification,
   registerPlan,
+  reviewTerraformPlanJson,
   runCli,
   validateManifest,
   writeJsonAtomic,

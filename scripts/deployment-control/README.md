@@ -324,10 +324,40 @@ Fresh live discovery is independently cross-bound to the predecessor:
 The first and only v3 Edge operation is
 `api-candidate-edge-reconciliation`. Its plan contract is exact:
 
-| Resource                                                                                | Actions         | Semantic attributes | Provider-computed after apply |
-| --------------------------------------------------------------------------------------- | --------------- | ------------------- | ----------------------------- |
-| `module.edge_environment.google_compute_region_network_endpoint_group.api_candidate[0]` | `delete,create` | `cloud_run[0].tag`  | `id`, `self_link`             |
-| `module.edge_environment.google_compute_backend_service.api_candidate[0]`               | `update`        | `backend[0].group`  | `fingerprint`                 |
+| Resource                                                                                | Actions         | Semantic attributes | Provider-computed after apply                                                                                                                                                                                                                                                             |
+| --------------------------------------------------------------------------------------- | --------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `module.edge_environment.google_compute_region_network_endpoint_group.api_candidate[0]` | `delete,create` | `cloud_run[0].tag`  | `id`, `self_link`, `network`, `psc_data`                                                                                                                                                                                                                                                  |
+| `module.edge_environment.google_compute_backend_service.api_candidate[0]`               | `update`        | `backend[0].group`  | `backend[0].max_connections`, `backend[0].max_connections_per_endpoint`, `backend[0].max_connections_per_instance`, `backend[0].max_rate`, `backend[0].max_rate_per_endpoint`, `backend[0].max_rate_per_instance`, `backend[0].max_utilization`, and the preserved `fingerprint` contract |
+
+The v3 JSON reviewer keeps five plan categories separate: configured semantic
+mutation, the semantic dependency value that becomes unknown, exact
+provider-computed unknowns, exact provider/default representation
+normalizations, and refresh-only drift. `after_unknown=true` takes precedence
+over ordinary before/after comparison. `false`, empty arrays, and empty objects
+grant no unknown permission, and known null, absent, empty, and unknown states
+remain distinct.
+
+The NEG replacement must be caused only by `cloud_run[0].tag`, from the freshly
+discovered serving tag to the manifest candidate tag. The Backend must contain
+exactly one `backend` element, and its known old Candidate NEG group becomes
+unknown through `backend[0].group`; that path remains a semantic dependency
+change, not a provider-computed exception. Taint, operator-requested
+replacement, importing, deposed objects, and `previous_address` fail closed.
+
+Provider normalization is not semantic authority. Only the Candidate NEG may
+normalize its same-region regional self-link to `me-central2`, plus exact empty
+string to null transitions for `cloud_run[0].url_mask`, `description`,
+`psc_target_service`, and `subnetwork`. There is no wildcard or generic
+empty-to-null policy.
+
+Refresh-only drift is reviewed independently from `resource_changes`. Candidate
+Backend drift may contain exactly `custom_response_headers: null -> []` and
+`health_checks: null -> []`, even though that Backend also has its governed
+non-noop resource change. The only external refresh metadata allowed is
+`update_time` timestamp-to-different-timestamp on the exact certificate map and
+the `admin`, `api`, and `schools` certificate-map entries. Those four addresses
+must have no corresponding non-noop resource change. No other drift address or
+path is permitted.
 
 The URL map is not in the resource allowlist because its existing path and
 rewrite must remain semantically unchanged. DNS, addresses, certificates,
@@ -481,7 +511,8 @@ and API Runtime so passed work cannot be reused as a new operation.
 ## Exact CLI surface
 
 Run commands from the repository root. These commands create or update only an
-external JSON manifest; none executes Terraform or sends a request.
+external JSON manifest or create the v3 external review-evidence file; none
+executes Terraform or sends a request.
 
 Create the deterministic operation specification:
 
@@ -496,11 +527,21 @@ lifecycle consistency:
 node scripts/deployment-control/runtime-release-control.cjs validate-spec --manifest <external-manifest.json>
 ```
 
-After a separately created saved plan has been reviewed against the operation's
-address and attribute allowlists, bind its actual bytes and state precondition:
+For the exact v3 Candidate Edge reconciliation, review the already-produced
+plan JSON without invoking Terraform. This command reads and hashes the exact
+manifest, Saved Plan, and plan JSON and atomically creates only the external
+review-evidence file; it does not update the manifest:
 
 ```powershell
-node scripts/deployment-control/runtime-release-control.cjs register-plan --manifest <external-manifest.json> --gate <gate-id> --operation <operation-id> --recorded-at <ISO-UTC> --plan <exact-external.tfplan> --source-sha <exact-source-sha> --environment staging --terraform-root <repository-relative-root> --lineage <pre-plan-lineage> --serial <pre-plan-serial>
+node scripts/deployment-control/runtime-release-control.cjs review-plan --manifest <exact-external-manifest.json> --gate api-no-traffic-promotion --operation api-candidate-edge-reconciliation --plan <exact-external-saved-plan.tfplan> --plan-json <exact-external-plan.json> --review-evidence <new-external-review-evidence.json>
+```
+
+After review, bind the exact reviewed Saved Plan bytes, exact plan JSON bytes,
+and state precondition. The v3 operation requires both `--plan-json` and
+`--review-evidence`; v1/v2 retain their existing registration surface:
+
+```powershell
+node scripts/deployment-control/runtime-release-control.cjs register-plan --manifest <external-manifest.json> --gate <gate-id> --operation <operation-id> --recorded-at <ISO-UTC> --plan <exact-external.tfplan> [--plan-json <exact-external-plan.json>] [--review-evidence <exact-external-review-evidence.json>] --source-sha <exact-source-sha> --environment staging --terraform-root <repository-relative-root> --lineage <pre-plan-lineage> --serial <pre-plan-serial>
 ```
 
 Record the independent approval:
@@ -537,13 +578,54 @@ gates, and permits no automatic retry.
 ## Plan review boundary
 
 The adapter produces the exact `requiredVariables`, Terraform root, state
-lineage/serial precondition, resource-address allowlist, expected resource
-actions where applicable, semantic attribute allowlist, provider-computed
-after-apply allowlist where applicable, expected change type, and saved-plan
-path for each Terraform operation. DevOps must create the plan separately with
-the manifest's external `TF_DATA_DIR`, inspect the plan JSON/text, and reject
-any action, address, semantic attribute, or computed-unknown attribute outside
-those allowlists before `register-plan` and `approve-plan`.
+lineage/serial precondition, resource-address allowlist, resource plan
+identities, expected actions, semantic attribute allowlist, provider-computed
+unknown allowlist, provider-normalization policy, refresh-only drift policy,
+expected change type, review requirement, and saved-plan path. These fields are
+immutable v3 operation specification and manifest edits fail closed.
+
+The source reviewer hashes both the Saved Plan binary and plan JSON, but it
+does not run Terraform and therefore does not cryptographically prove that the
+JSON was derived from that binary. DevOps must generate future plan JSON from
+the exact Saved Plan in one guarded operation:
+
+```text
+hash Saved Plan before export
+-> terraform show -json exact Saved Plan
+-> hash Saved Plan after export
+-> require the hash is unchanged
+-> invoke review-plan with those exact files
+```
+
+Terraform execution and this guarded export remain DevOps responsibilities;
+the source-controlled CLI does not implement or execute them. `review-plan`
+requires compatible plan JSON `format_version` major 1, records the actual
+Terraform version, reviews exactly two non-noop resource changes, and emits
+only sanitized identities, hashes, versions, counts, status, and the URL-map
+mutation boolean. It never emits arbitrary resource payloads.
+
+Every no-op resource change must be internally unchanged and carry no unknown,
+replacement, move, import, or deposed evidence. Every approved
+`after_unknown=true` path must have a null or absent `after` value. The Backend
+group and NEG region are cross-bound to the exact project/region/name identity
+parsed from the Candidate NEG's known pre-replacement self-link.
+
+For v3, `register-plan` re-hashes the current pre-registration manifest, exact
+Saved Plan, exact plan JSON, and exact review-evidence bytes; reruns the pure
+reviewer against the supplied JSON; reconstructs the entire expected evidence;
+and requires deep exact equality before recording a compact durable review
+binding. Review evidence is a deterministic cached report, not an independent
+trust authority. This revalidation does not alter the separate DevOps
+responsibility to prove guarded JSON export from the exact binary Saved Plan.
+`approve-plan` remains a separate authorization and retains its existing
+semantics.
+
+Once this source repair creates a new source SHA, every manifest and Saved Plan
+bound to the older source is evidence-only and cannot be registered, approved,
+or applied. Continue only from merged repaired source with fresh discovery,
+runtime/state checks, a new v3 execution and manifest, a new Saved Plan and
+guarded JSON export, deterministic review, exact-plan registration, independent
+approval, and a separately authorized apply.
 
 Sensitive Queue and Realtime Redis inputs remain ephemeral operator inputs.
 The manifest contains their names and sensitivity flags only, never their

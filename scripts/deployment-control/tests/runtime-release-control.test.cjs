@@ -25,6 +25,11 @@ const AUTHORITATIVE_PREVIOUS_SOURCE_SHA =
 const PREVIOUS_RELEASE_EXECUTION_ID = 'day2-staging-academics-20260911023836';
 const CRLF_RELEASE_CONTRACT_SHA256 =
   '87d85e81512582339483537cfcf84ff37d0861e468838607598ee35e766d6cc6';
+const REPRESENTATIVE_PLAN_FIXTURE_PATH = path.join(
+  __dirname,
+  'fixtures',
+  'successful-edge-continuation-v3-real-plan.json',
+);
 
 function stagingImage(hexCharacter) {
   return `me-central2-docker.pkg.dev/moazez-nonprod-91001421934/moazez-staging-containers/moazez-backend@sha256:${hexCharacter.repeat(64)}`;
@@ -191,10 +196,89 @@ function operation(manifest, gateId, operationId) {
     .operations.find((candidate) => candidate.id === operationId);
 }
 
+function representativePlanFixture() {
+  return JSON.parse(fs.readFileSync(REPRESENTATIVE_PLAN_FIXTURE_PATH, 'utf8'));
+}
+
+function representativeNoOpUrlMapRecord() {
+  return {
+    address: control.EDGE_CANDIDATE_RESOURCE_ADDRESSES[2],
+    mode: 'managed',
+    type: 'google_compute_url_map',
+    name: 'edge',
+    provider_name: 'registry.terraform.io/hashicorp/google',
+    change: {
+      actions: ['no-op'],
+      before: { name: 'moazez-staging-edge-url-map' },
+      after: { name: 'moazez-staging-edge-url-map' },
+      after_unknown: {},
+    },
+  };
+}
+
+function writeSuccessfulContinuationReviewEvidence(
+  manifest,
+  target,
+  manifestBytes,
+) {
+  const planJsonBytes = fs.readFileSync(REPRESENTATIVE_PLAN_FIXTURE_PATH);
+  const savedPlanBytes = fs.readFileSync(target.savedPlanPath);
+  const planJsonPath = `${target.savedPlanPath}.plan.json`;
+  fs.writeFileSync(planJsonPath, planJsonBytes);
+  const review = control.reviewTerraformPlanJson(
+    JSON.parse(planJsonBytes.toString('utf8')),
+    manifest,
+    {
+      gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    },
+  );
+  const evidence = {
+    schemaVersion: review.schemaVersion,
+    status: review.status,
+    manifestSha256: hashText(manifestBytes),
+    releaseExecutionId: review.releaseExecutionId,
+    sourceSha: review.sourceSha,
+    gateId: review.gateId,
+    operationId: review.operationId,
+    immutableOperationSpecificationSha256:
+      review.immutableOperationSpecificationSha256,
+    savedPlanPath: target.savedPlanPath,
+    savedPlanSha256: hashText(savedPlanBytes),
+    savedPlanSizeBytes: savedPlanBytes.length,
+    planJsonSha256: hashText(planJsonBytes),
+    planJsonSizeBytes: planJsonBytes.length,
+    formatVersion: review.formatVersion,
+    terraformVersion: review.terraformVersion,
+    nonNoopResourceChangeCount: review.nonNoopResourceChangeCount,
+    intendedSemanticChangeCount: review.intendedSemanticChangeCount,
+    refreshOnlyDriftCount: review.refreshOnlyDriftCount,
+    unapprovedSemanticChangeCount: review.unapprovedSemanticChangeCount,
+    unapprovedUnknownCount: review.unapprovedUnknownCount,
+    unapprovedNormalizationCount: review.unapprovedNormalizationCount,
+    unapprovedDriftCount: review.unapprovedDriftCount,
+    urlMapMutation: review.urlMapMutation,
+  };
+  const reviewEvidencePath = `${target.savedPlanPath}.review.json`;
+  fs.writeFileSync(
+    reviewEvidencePath,
+    `${JSON.stringify(evidence, null, 2)}\n`,
+  );
+  return { reviewEvidencePath, planJsonPath, evidence };
+}
+
 function registerAndApprove(manifest, gateId, operationId, uniquePlanText) {
   const target = operation(manifest, gateId, operationId);
   fs.mkdirSync(path.dirname(target.savedPlanPath), { recursive: true });
   fs.writeFileSync(target.savedPlanPath, uniquePlanText);
+  const requiresDeterministicReview =
+    manifest.manifestVersion === 3 &&
+    gateId === control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID &&
+    operationId === control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID;
+  const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
+  const reviewBinding = requiresDeterministicReview
+    ? writeSuccessfulContinuationReviewEvidence(manifest, target, manifestBytes)
+    : null;
   control.registerPlan(manifest, {
     gateId,
     operationId,
@@ -205,6 +289,13 @@ function registerAndApprove(manifest, gateId, operationId, uniquePlanText) {
     lineage: target.statePrecondition.lineage,
     serial: target.statePrecondition.serial,
     recordedAt: RECORDED_AT,
+    ...(reviewBinding
+      ? {
+          reviewEvidencePath: reviewBinding.reviewEvidencePath,
+          planJsonPath: reviewBinding.planJsonPath,
+          manifestBytes,
+        }
+      : {}),
   });
   control.approvePlan(manifest, {
     gateId,
@@ -944,10 +1035,41 @@ test('successful Edge continuation imports passed work without replay and builds
       [control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[0]]: [
         'id',
         'self_link',
+        'network',
+        'psc_data',
       ],
       [control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[1]]: [
+        'backend[0].max_connections',
+        'backend[0].max_connections_per_endpoint',
+        'backend[0].max_connections_per_instance',
+        'backend[0].max_rate',
+        'backend[0].max_rate_per_endpoint',
+        'backend[0].max_rate_per_instance',
+        'backend[0].max_utilization',
         'fingerprint',
       ],
+    });
+    assert.deepEqual(edge.expectedResourcePlanIdentities, {
+      [control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[0]]: {
+        mode: 'managed',
+        type: 'google_compute_region_network_endpoint_group',
+        providerName: 'registry.terraform.io/hashicorp/google',
+      },
+      [control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[1]]: {
+        mode: 'managed',
+        type: 'google_compute_backend_service',
+        providerName: 'registry.terraform.io/hashicorp/google',
+      },
+    });
+    assert.equal(edge.planReviewRequirements.required, true);
+    assert.equal(edge.planReviewRequirements.compatiblePlanJsonFormatMajor, 1);
+    assert.deepEqual(edge.deterministicReviewEvidence, {
+      status: 'not-reviewed',
+      reviewEvidenceSha256: null,
+      reviewedManifestSha256: null,
+      immutableOperationSpecificationSha256: null,
+      planJsonSha256: null,
+      savedPlanSha256: null,
     });
     assert.deepEqual(edge.statePrecondition, {
       lineage: fixture.context.liveDiscovery.edgeState.lineage,
@@ -2657,4 +2779,978 @@ test('edge source adds only an optional tagged candidate NEG/backend and one exa
     authController.slice(meDecoratorStart, meMethodEnd),
     /@PublicRoute/u,
   );
+});
+
+test('v3 deterministic reviewer accepts the sanitized real provider shape with structured evidence', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const fixture = makeSuccessfulContinuationContext(temporaryRoot);
+    const manifest = control.buildManifest(fixture.context);
+    const review = control.reviewTerraformPlanJson(
+      representativePlanFixture(),
+      manifest,
+      {
+        gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+        operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+      },
+    );
+
+    assert.deepEqual(
+      {
+        status: review.status,
+        formatVersion: review.formatVersion,
+        terraformVersion: review.terraformVersion,
+        nonNoopResourceChangeCount: review.nonNoopResourceChangeCount,
+        intendedSemanticChangeCount: review.intendedSemanticChangeCount,
+        refreshOnlyDriftCount: review.refreshOnlyDriftCount,
+        unapprovedSemanticChangeCount: review.unapprovedSemanticChangeCount,
+        unapprovedUnknownCount: review.unapprovedUnknownCount,
+        unapprovedNormalizationCount: review.unapprovedNormalizationCount,
+        unapprovedDriftCount: review.unapprovedDriftCount,
+        urlMapMutation: review.urlMapMutation,
+      },
+      {
+        status: 'passed',
+        formatVersion: '1.2',
+        terraformVersion: '1.15.8',
+        nonNoopResourceChangeCount: 2,
+        intendedSemanticChangeCount: 2,
+        refreshOnlyDriftCount: 5,
+        unapprovedSemanticChangeCount: 0,
+        unapprovedUnknownCount: 0,
+        unapprovedNormalizationCount: 0,
+        unapprovedDriftCount: 0,
+        urlMapMutation: false,
+      },
+    );
+    assert.match(
+      review.immutableOperationSpecificationSha256,
+      /^[a-f0-9]{64}$/u,
+    );
+    assert.equal(
+      JSON.stringify(review).includes('sanitized-primary-api-security-policy'),
+      false,
+    );
+    assert.equal(
+      control.canonicalizeTerraformPath(['cloud_run', 0, 'tag']),
+      'cloud_run[0].tag',
+    );
+
+    const backwardCompatibleFingerprint = representativePlanFixture();
+    backwardCompatibleFingerprint.resource_changes[1].change.after.fingerprint =
+      null;
+    backwardCompatibleFingerprint.resource_changes[1].change.after_unknown.fingerprint = true;
+    assert.doesNotThrow(() =>
+      control.reviewTerraformPlanJson(backwardCompatibleFingerprint, manifest, {
+        gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+        operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+      }),
+    );
+
+    const compatibleMinorWithNoOp = representativePlanFixture();
+    compatibleMinorWithNoOp.format_version = '1.99';
+    compatibleMinorWithNoOp.terraform_version = '1.16.0';
+    compatibleMinorWithNoOp.resource_changes.push(
+      representativeNoOpUrlMapRecord(),
+    );
+    assert.equal(
+      control.reviewTerraformPlanJson(compatibleMinorWithNoOp, manifest, {
+        gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+        operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+      }).nonNoopResourceChangeCount,
+      2,
+    );
+
+    const absentUnknownValue = representativePlanFixture();
+    delete absentUnknownValue.resource_changes[1].change.after.backend[0].group;
+    assert.doesNotThrow(() =>
+      control.reviewTerraformPlanJson(absentUnknownValue, manifest, {
+        gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+        operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+      }),
+    );
+
+    const exactCrossResourceIdentity = representativePlanFixture();
+    assert.equal(
+      exactCrossResourceIdentity.resource_changes[0].change.before.self_link,
+      exactCrossResourceIdentity.resource_changes[1].change.before.backend[0]
+        .group,
+    );
+    assert.doesNotThrow(() =>
+      control.reviewTerraformPlanJson(exactCrossResourceIdentity, manifest, {
+        gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+        operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+      }),
+    );
+  });
+});
+
+test('v3 plan identities, provider exceptions, drift policy, and review requirements are immutable', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const fixture = makeSuccessfulContinuationContext(temporaryRoot);
+    const manifest = control.buildManifest(fixture.context);
+    const reviewTarget = operation(
+      manifest,
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    );
+    for (const driftPolicy of Object.values(
+      reviewTarget.allowedRefreshOnlyDrift,
+    )) {
+      assert.equal(
+        Object.hasOwn(driftPolicy, 'timestampTransitionCanonicalPaths'),
+        false,
+      );
+    }
+    const mutations = [
+      (target) => {
+        target.expectedResourcePlanIdentities[
+          control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[0]
+        ].providerName = 'registry.terraform.io/hashicorp/unapproved';
+      },
+      (target) => {
+        target.allowedComputedAfterApplyChanges[
+          control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[1]
+        ].push('backend[0].unapproved');
+      },
+      (target) => {
+        target.allowedProviderNormalizations[
+          control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[0]
+        ].push({ canonicalPath: 'name', before: '', after: null });
+      },
+      (target) => {
+        target.allowedRefreshOnlyDrift[
+          'module.edge_environment.google_compute_global_address.https'
+        ] = {
+          mode: 'managed',
+          type: 'google_compute_global_address',
+          providerName: 'registry.terraform.io/hashicorp/google',
+          actions: ['update'],
+        };
+      },
+      (target) => {
+        target.planReviewRequirements.required = false;
+      },
+    ];
+    for (const mutate of mutations) {
+      const changedManifest = structuredClone(manifest);
+      mutate(
+        operation(
+          changedManifest,
+          control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+          control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+        ),
+      );
+      assert.throws(() => control.validateManifest(changedManifest), {
+        code: 'MANIFEST_SPEC_MISMATCH',
+      });
+    }
+  });
+});
+
+test('v3 deterministic reviewer fails closed for semantic, unknown, normalization, drift, envelope, and provenance violations', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const fixture = makeSuccessfulContinuationContext(temporaryRoot);
+    const manifest = control.buildManifest(fixture.context);
+    const review = (plan) =>
+      control.reviewTerraformPlanJson(plan, manifest, {
+        gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+        operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+      });
+    const addNonNoopChange = (
+      plan,
+      address,
+      type = 'google_compute_url_map',
+    ) => {
+      const extra = structuredClone(plan.resource_changes[1]);
+      extra.address = address;
+      extra.type = type;
+      extra.change.actions = ['update'];
+      plan.resource_changes.push(extra);
+    };
+    const addNoOpUrlMap = (plan) => {
+      const record = representativeNoOpUrlMapRecord();
+      plan.resource_changes.push(record);
+      return record;
+    };
+    const cases = [
+      {
+        name: 'URL map mutation',
+        code: 'PLAN_RESOURCE_CHANGE_SET_MISMATCH',
+        apply(plan) {
+          addNonNoopChange(plan, control.EDGE_CANDIDATE_RESOURCE_ADDRESSES[2]);
+        },
+      },
+      {
+        name: 'URL map no-op with changed values',
+        code: 'PLAN_NOOP_CONTRADICTORY',
+        apply(plan) {
+          addNoOpUrlMap(plan).change.after.name =
+            'moazez-staging-edge-url-map-changed';
+        },
+      },
+      {
+        name: 'URL map no-op with an unknown value',
+        code: 'PLAN_NOOP_CONTRADICTORY',
+        apply(plan) {
+          addNoOpUrlMap(plan).change.after_unknown.name = true;
+        },
+      },
+      {
+        name: 'URL map no-op with replacement paths',
+        code: 'PLAN_NOOP_CONTRADICTORY',
+        apply(plan) {
+          addNoOpUrlMap(plan).change.replace_paths = [['name']];
+        },
+      },
+      {
+        name: 'URL map no-op with previous_address',
+        code: 'PLAN_NOOP_CONTRADICTORY',
+        apply(plan) {
+          addNoOpUrlMap(plan).previous_address =
+            'module.edge_environment.google_compute_url_map.previous';
+        },
+      },
+      {
+        name: 'URL map no-op with importing provenance',
+        code: 'PLAN_NOOP_CONTRADICTORY',
+        apply(plan) {
+          addNoOpUrlMap(plan).change.importing = {
+            id: 'sanitized-import-id',
+          };
+        },
+      },
+      {
+        name: 'URL map no-op with a deposed object',
+        code: 'PLAN_NOOP_CONTRADICTORY',
+        apply(plan) {
+          addNoOpUrlMap(plan).deposed = 'sanitized-deposed-key';
+        },
+      },
+      {
+        name: 'Cloud Armor security_policy mutation',
+        code: 'PLAN_SEMANTIC_CHANGE_UNAPPROVED',
+        apply(plan) {
+          plan.resource_changes[1].change.after.security_policy =
+            'sanitized-different-policy';
+        },
+      },
+      {
+        name: 'trusted-client-IP custom_request_headers mutation',
+        code: 'PLAN_SEMANTIC_CHANGE_UNAPPROVED',
+        apply(plan) {
+          plan.resource_changes[1].change.after.custom_request_headers = [];
+        },
+      },
+      {
+        name: 'certificate semantic mutation',
+        code: 'PLAN_DRIFT_UNAPPROVED',
+        apply(plan) {
+          plan.resource_drift[1].change.after.certificates = [
+            'sanitized-certificate',
+          ];
+        },
+      },
+      {
+        name: 'certificate-map semantic mutation',
+        code: 'PLAN_DRIFT_UNAPPROVED',
+        apply(plan) {
+          plan.resource_drift[1].change.after.name = 'sanitized-different-map';
+        },
+      },
+      {
+        name: 'certificate-map-entry hostname mutation',
+        code: 'PLAN_DRIFT_UNAPPROVED',
+        apply(plan) {
+          plan.resource_drift[2].change.after.hostname =
+            'different.example.invalid';
+        },
+      },
+      {
+        name: 'unapproved Backend attribute',
+        code: 'PLAN_SEMANTIC_CHANGE_UNAPPROVED',
+        apply(plan) {
+          plan.resource_changes[1].change.after.name =
+            'sanitized-different-backend';
+        },
+      },
+      {
+        name: 'unapproved NEG attribute',
+        code: 'PLAN_SEMANTIC_CHANGE_UNAPPROVED',
+        apply(plan) {
+          plan.resource_changes[0].change.after.network_endpoint_type =
+            'INTERNET_IP_PORT';
+        },
+      },
+      {
+        name: 'arbitrary NEG tag transition',
+        code: 'PLAN_SEMANTIC_CHANGE_UNAPPROVED',
+        apply(plan) {
+          plan.resource_changes[0].change.after.cloud_run[0].tag =
+            'candidate-000000000000';
+        },
+      },
+      {
+        name: 'Backend group does not identify the retained Candidate NEG',
+        code: 'PLAN_SEMANTIC_CHANGE_UNAPPROVED',
+        apply(plan) {
+          plan.resource_changes[1].change.before.backend[0].group =
+            'https://www.googleapis.com/compute/v1/projects/sanitized-project/regions/me-central2/networkEndpointGroups/unrelated-neg';
+        },
+      },
+      {
+        name: 'Backend group identifies the same NEG in another project',
+        code: 'PLAN_SEMANTIC_CHANGE_UNAPPROVED',
+        apply(plan) {
+          plan.resource_changes[1].change.before.backend[0].group =
+            'https://www.googleapis.com/compute/v1/projects/different-sanitized-project/regions/me-central2/networkEndpointGroups/moazez-staging-api-candidate-neg';
+        },
+      },
+      {
+        name: 'governed resource has another provider identity',
+        code: 'PLAN_RESOURCE_IDENTITY_MISMATCH',
+        apply(plan) {
+          plan.resource_changes[0].provider_name =
+            'registry.terraform.io/hashicorp/unapproved';
+        },
+      },
+      {
+        name: 'arbitrary drift address',
+        code: 'PLAN_DRIFT_UNAPPROVED',
+        apply(plan) {
+          plan.resource_drift[1].address =
+            'module.edge_environment.google_compute_global_address.https';
+          plan.resource_drift[1].type = 'google_compute_global_address';
+        },
+      },
+      {
+        name: 'certificate drift path other than update_time',
+        code: 'PLAN_DRIFT_UNAPPROVED',
+        apply(plan) {
+          plan.resource_drift[3].change.after.description = 'changed';
+        },
+      },
+      {
+        name: 'external certificate drift with corresponding resource change',
+        code: 'PLAN_RESOURCE_CHANGE_SET_MISMATCH',
+        apply(plan) {
+          addNonNoopChange(
+            plan,
+            plan.resource_drift[1].address,
+            'google_certificate_manager_certificate_map',
+          );
+        },
+      },
+      {
+        name: 'new resource outside mutable allowlist',
+        code: 'PLAN_RESOURCE_CHANGE_SET_MISMATCH',
+        apply(plan) {
+          addNonNoopChange(
+            plan,
+            'module.edge_environment.google_compute_global_forwarding_rule.https',
+            'google_compute_global_forwarding_rule',
+          );
+        },
+      },
+      {
+        name: 'managed read outside mutable allowlist',
+        code: 'PLAN_RESOURCE_CHANGE_SET_MISMATCH',
+        apply(plan) {
+          addNonNoopChange(
+            plan,
+            'module.edge_environment.google_compute_global_address.https',
+            'google_compute_global_address',
+          );
+          plan.resource_changes.at(-1).change.actions = ['read'];
+        },
+      },
+      {
+        name: 'additional Backend after_unknown path',
+        code: 'PLAN_UNKNOWN_UNAPPROVED',
+        apply(plan) {
+          plan.resource_changes[1].change.after_unknown.security_policy = true;
+        },
+      },
+      {
+        name: 'additional NEG after_unknown path',
+        code: 'PLAN_UNKNOWN_UNAPPROVED',
+        apply(plan) {
+          plan.resource_changes[0].change.after_unknown.description = true;
+        },
+      },
+      {
+        name: 'NEG id claims unknown while after is a known string',
+        code: 'PLAN_UNKNOWN_AFTER_VALUE_KNOWN',
+        apply(plan) {
+          plan.resource_changes[0].change.after.id = 'known-sanitized-id';
+        },
+      },
+      {
+        name: 'NEG psc_data claims unknown while after is an empty list',
+        code: 'PLAN_UNKNOWN_AFTER_VALUE_KNOWN',
+        apply(plan) {
+          plan.resource_changes[0].change.after.psc_data = [];
+        },
+      },
+      {
+        name: 'Backend max_rate claims unknown while after is a number',
+        code: 'PLAN_UNKNOWN_AFTER_VALUE_KNOWN',
+        apply(plan) {
+          plan.resource_changes[1].change.after.backend[0].max_rate = 100;
+        },
+      },
+      {
+        name: 'Backend fingerprint claims unknown while after is known',
+        code: 'PLAN_UNKNOWN_AFTER_VALUE_KNOWN',
+        apply(plan) {
+          plan.resource_changes[1].change.after_unknown.fingerprint = true;
+        },
+      },
+      {
+        name: 'approved normalization with wrong before value',
+        code: 'PLAN_NORMALIZATION_UNAPPROVED',
+        apply(plan) {
+          plan.resource_changes[0].change.before.description =
+            'not-an-empty-string';
+        },
+      },
+      {
+        name: 'regional self-link identifies another region',
+        code: 'PLAN_NORMALIZATION_UNAPPROVED',
+        apply(plan) {
+          plan.resource_changes[0].change.before.region =
+            'https://www.googleapis.com/compute/v1/projects/sanitized-project/regions/me-central1';
+        },
+      },
+      {
+        name: 'regional self-link identifies another project',
+        code: 'PLAN_NORMALIZATION_UNAPPROVED',
+        apply(plan) {
+          plan.resource_changes[0].change.before.region =
+            'https://www.googleapis.com/compute/v1/projects/different-sanitized-project/regions/me-central2';
+        },
+      },
+      {
+        name: 'unexpected action combination',
+        code: 'PLAN_ACTION_MISMATCH',
+        apply(plan) {
+          plan.resource_changes[1].change.actions = ['delete', 'create'];
+        },
+      },
+      {
+        name: 'malformed plan JSON',
+        code: 'PLAN_JSON_MALFORMED',
+        value: null,
+      },
+      {
+        name: 'structurally malformed resource change',
+        code: 'PLAN_JSON_MALFORMED',
+        apply(plan) {
+          delete plan.resource_changes[0].provider_name;
+        },
+      },
+      {
+        name: 'unsupported format_version major',
+        code: 'PLAN_FORMAT_VERSION_UNSUPPORTED',
+        apply(plan) {
+          plan.format_version = '2.0';
+        },
+      },
+      {
+        name: 'applyable false',
+        code: 'PLAN_NOT_APPLYABLE',
+        apply(plan) {
+          plan.applyable = false;
+        },
+      },
+      {
+        name: 'complete false',
+        code: 'PLAN_INCOMPLETE',
+        apply(plan) {
+          plan.complete = false;
+        },
+      },
+      {
+        name: 'errored true',
+        code: 'PLAN_ERRORED',
+        apply(plan) {
+          plan.errored = true;
+        },
+      },
+      {
+        name: 'backend cardinality zero',
+        code: 'PLAN_BACKEND_CARDINALITY_INVALID',
+        apply(plan) {
+          plan.resource_changes[1].change.after.backend = [];
+        },
+      },
+      {
+        name: 'backend cardinality expansion',
+        code: 'PLAN_BACKEND_CARDINALITY_INVALID',
+        apply(plan) {
+          plan.resource_changes[1].change.after.backend.push(
+            structuredClone(plan.resource_changes[1].change.after.backend[0]),
+          );
+        },
+      },
+      {
+        name: 'NEG replacement caused by unrelated path',
+        code: 'PLAN_REPLACEMENT_CAUSE_UNAPPROVED',
+        apply(plan) {
+          plan.resource_changes[0].change.replace_paths = [['region']];
+        },
+      },
+      {
+        name: 'NEG replacement has an additional path',
+        code: 'PLAN_REPLACEMENT_CAUSE_UNAPPROVED',
+        apply(plan) {
+          plan.resource_changes[0].change.replace_paths.push(['region']);
+        },
+      },
+      {
+        name: 'NEG replacement caused by taint',
+        code: 'PLAN_REPLACEMENT_CAUSE_UNAPPROVED',
+        apply(plan) {
+          plan.resource_changes[0].action_reason = 'replace_because_tainted';
+        },
+      },
+      {
+        name: 'NEG replacement explicitly requested',
+        code: 'PLAN_REPLACEMENT_CAUSE_UNAPPROVED',
+        apply(plan) {
+          plan.resource_changes[0].action_reason = 'replace_by_request';
+        },
+      },
+      {
+        name: 'previous_address on governed mutable resource',
+        code: 'PLAN_RESOURCE_PROVENANCE_UNSAFE',
+        apply(plan) {
+          plan.resource_changes[0].previous_address =
+            'module.edge_environment.google_compute_region_network_endpoint_group.previous';
+        },
+      },
+      {
+        name: 'deposed governed resource',
+        code: 'PLAN_RESOURCE_PROVENANCE_UNSAFE',
+        apply(plan) {
+          plan.resource_changes[1].deposed = 'sanitized-deposed-key';
+        },
+      },
+      {
+        name: 'importing governed resource',
+        code: 'PLAN_RESOURCE_PROVENANCE_UNSAFE',
+        apply(plan) {
+          plan.resource_changes[1].change.importing = {
+            id: 'sanitized-import-id',
+          };
+        },
+      },
+      {
+        name: 'after_unknown false is not an unknown permission',
+        code: 'PLAN_SEMANTIC_CHANGE_UNAPPROVED',
+        apply(plan) {
+          plan.resource_changes[1].change.after_unknown.backend[0].group = false;
+        },
+      },
+      {
+        name: 'empty array is not an unknown permission',
+        code: 'PLAN_SEMANTIC_CHANGE_UNAPPROVED',
+        apply(plan) {
+          plan.resource_changes[1].change.after_unknown.backend[0].group = [];
+        },
+      },
+      {
+        name: 'empty object is not an unknown permission',
+        code: 'PLAN_SEMANTIC_CHANGE_UNAPPROVED',
+        apply(plan) {
+          plan.resource_changes[1].change.after_unknown.backend[0].group = {};
+        },
+      },
+      {
+        name: 'known null is not confused with unknown',
+        code: 'PLAN_SEMANTIC_CHANGE_UNAPPROVED',
+        apply(plan) {
+          delete plan.resource_changes[1].change.after_unknown.backend[0].group;
+        },
+      },
+      {
+        name: 'duplicate mutable resource change',
+        code: 'PLAN_DUPLICATE_RESOURCE_CHANGE',
+        apply(plan) {
+          plan.resource_changes.push(structuredClone(plan.resource_changes[0]));
+        },
+      },
+      {
+        name: 'duplicate drift record',
+        code: 'PLAN_DUPLICATE_DRIFT',
+        apply(plan) {
+          plan.resource_drift.push(structuredClone(plan.resource_drift[0]));
+        },
+      },
+      {
+        name: 'certificate drift timestamp is invalid',
+        code: 'PLAN_DRIFT_UNAPPROVED',
+        apply(plan) {
+          plan.resource_drift[4].change.after.update_time = 'not-a-timestamp';
+        },
+      },
+      {
+        name: 'certificate drift has after_unknown true',
+        code: 'PLAN_DRIFT_UNAPPROVED',
+        apply(plan) {
+          plan.resource_drift[4].change.after_unknown.update_time = true;
+        },
+      },
+    ];
+
+    for (const scenario of cases) {
+      const plan = Object.hasOwn(scenario, 'value')
+        ? scenario.value
+        : representativePlanFixture();
+      scenario.apply?.(plan);
+      assert.throws(() => review(plan), { code: scenario.code }, scenario.name);
+    }
+  });
+});
+
+test('v3 register-plan revalidates exact plan JSON and binds the manifest, specification, evidence, and Saved Plan', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const fixture = makeSuccessfulContinuationContext(temporaryRoot);
+    const manifest = control.buildManifest(fixture.context);
+    const target = operation(
+      manifest,
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    );
+    fs.mkdirSync(path.dirname(target.savedPlanPath), { recursive: true });
+    const originalPlanBytes = Buffer.from('exact-reviewed-saved-plan');
+    fs.writeFileSync(target.savedPlanPath, originalPlanBytes);
+    const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
+    const { evidence, planJsonPath } =
+      writeSuccessfulContinuationReviewEvidence(
+        manifest,
+        target,
+        manifestBytes,
+      );
+    const baseOptions = {
+      gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+      planPath: target.savedPlanPath,
+      sourceSha: manifest.sourceSha,
+      environment: manifest.environment,
+      terraformRoot: target.terraformRoot,
+      lineage: target.statePrecondition.lineage,
+      serial: target.statePrecondition.serial,
+      recordedAt: RECORDED_AT,
+      manifestBytes,
+      planJsonPath,
+    };
+    const writeEvidence = (name, value) => {
+      const evidencePath = path.join(temporaryRoot, `${name}.review.json`);
+      fs.writeFileSync(evidencePath, `${JSON.stringify(value, null, 2)}\n`);
+      return evidencePath;
+    };
+    const bindingCases = [
+      {
+        name: 'another releaseExecutionId',
+        code: 'PLAN_REVIEW_BINDING_MISMATCH',
+        apply(value) {
+          value.releaseExecutionId = 'day2-staging-another-release';
+        },
+      },
+      {
+        name: 'another source SHA',
+        code: 'PLAN_REVIEW_BINDING_MISMATCH',
+        apply(value) {
+          value.sourceSha = 'f'.repeat(40);
+        },
+      },
+      {
+        name: 'another manifest SHA',
+        code: 'PLAN_REVIEW_BINDING_MISMATCH',
+        apply(value) {
+          value.manifestSha256 = 'e'.repeat(64);
+        },
+      },
+      {
+        name: 'another operation-spec digest',
+        code: 'PLAN_REVIEW_BINDING_MISMATCH',
+        apply(value) {
+          value.immutableOperationSpecificationSha256 = 'd'.repeat(64);
+        },
+      },
+      {
+        name: 'alternate valid plan JSON SHA',
+        code: 'PLAN_REVIEW_EVIDENCE_MISMATCH',
+        apply(value) {
+          value.planJsonSha256 = '0'.repeat(64);
+        },
+      },
+      {
+        name: 'alternate valid Terraform version',
+        code: 'PLAN_REVIEW_EVIDENCE_MISMATCH',
+        apply(value) {
+          value.terraformVersion = '1.99.0';
+        },
+      },
+      {
+        name: 'alternate valid format version',
+        code: 'PLAN_REVIEW_EVIDENCE_MISMATCH',
+        apply(value) {
+          value.formatVersion = '1.99';
+        },
+      },
+      {
+        name: 'alternate valid refresh-only drift count',
+        code: 'PLAN_REVIEW_EVIDENCE_MISMATCH',
+        apply(value) {
+          value.refreshOnlyDriftCount = 4;
+        },
+      },
+      {
+        name: 'alternate semantic count rejected by the evidence schema',
+        code: 'PLAN_REVIEW_EVIDENCE_INVALID',
+        apply(value) {
+          value.intendedSemanticChangeCount = 1;
+        },
+      },
+      {
+        name: 'review evidence tampering',
+        code: 'PLAN_REVIEW_EVIDENCE_INVALID',
+        apply(value) {
+          value.unreviewedPayload = true;
+        },
+      },
+    ];
+    for (const scenario of bindingCases) {
+      const changedEvidence = structuredClone(evidence);
+      scenario.apply(changedEvidence);
+      const reviewEvidencePath = writeEvidence(
+        scenario.name.replaceAll(' ', '-'),
+        changedEvidence,
+      );
+      assert.throws(
+        () =>
+          control.registerPlan(structuredClone(manifest), {
+            ...baseOptions,
+            reviewEvidencePath,
+          }),
+        { code: scenario.code },
+        scenario.name,
+      );
+    }
+
+    assert.throws(
+      () =>
+        control.registerPlan(structuredClone(manifest), {
+          ...baseOptions,
+        }),
+      { code: 'PLAN_REVIEW_EVIDENCE_REQUIRED' },
+    );
+
+    const exactEvidencePath = writeEvidence('exact', evidence);
+    const { planJsonPath: ignoredPlanJsonPath, ...withoutPlanJson } =
+      baseOptions;
+    assert.equal(typeof ignoredPlanJsonPath, 'string');
+    assert.throws(
+      () =>
+        control.registerPlan(structuredClone(manifest), {
+          ...withoutPlanJson,
+          reviewEvidencePath: exactEvidencePath,
+        }),
+      { code: 'PLAN_REVIEW_EVIDENCE_REQUIRED' },
+    );
+
+    fs.writeFileSync(target.savedPlanPath, 'changed-after-review');
+    assert.throws(
+      () =>
+        control.registerPlan(structuredClone(manifest), {
+          ...baseOptions,
+          reviewEvidencePath: exactEvidencePath,
+        }),
+      { code: 'REVIEWED_PLAN_MISMATCH' },
+    );
+    fs.writeFileSync(target.savedPlanPath, originalPlanBytes);
+
+    const changedPlanJsonPath = path.join(
+      temporaryRoot,
+      'changed-semantics.plan.json',
+    );
+    const changedPlanJson = representativePlanFixture();
+    changedPlanJson.terraform_version = '1.15.9';
+    fs.writeFileSync(
+      changedPlanJsonPath,
+      `${JSON.stringify(changedPlanJson, null, 2)}\n`,
+    );
+    assert.throws(
+      () =>
+        control.registerPlan(structuredClone(manifest), {
+          ...baseOptions,
+          planJsonPath: changedPlanJsonPath,
+          reviewEvidencePath: exactEvidencePath,
+        }),
+      { code: 'PLAN_REVIEW_EVIDENCE_MISMATCH' },
+    );
+
+    const sameSemanticsDifferentBytesPath = path.join(
+      temporaryRoot,
+      'same-semantics-different-bytes.plan.json',
+    );
+    fs.writeFileSync(
+      sameSemanticsDifferentBytesPath,
+      JSON.stringify(representativePlanFixture()),
+    );
+    assert.throws(
+      () =>
+        control.registerPlan(structuredClone(manifest), {
+          ...baseOptions,
+          planJsonPath: sameSemanticsDifferentBytesPath,
+          reviewEvidencePath: exactEvidencePath,
+        }),
+      { code: 'PLAN_REVIEW_EVIDENCE_MISMATCH' },
+    );
+
+    const registered = structuredClone(manifest);
+    control.registerPlan(registered, {
+      ...baseOptions,
+      reviewEvidencePath: exactEvidencePath,
+    });
+    const registeredTarget = operation(
+      registered,
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    );
+    assert.equal(registeredTarget.planEvidence.reviewed, false);
+    assert.equal(registeredTarget.deterministicReviewEvidence.status, 'passed');
+    assert.equal(
+      registeredTarget.deterministicReviewEvidence.savedPlanSha256,
+      registeredTarget.planEvidence.sha256,
+    );
+    assert.match(
+      registeredTarget.deterministicReviewEvidence.reviewEvidenceSha256,
+      /^[a-f0-9]{64}$/u,
+    );
+    const staleDigestManifest = structuredClone(registered);
+    operation(
+      staleDigestManifest,
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    ).deterministicReviewEvidence.immutableOperationSpecificationSha256 =
+      'c'.repeat(64);
+    assert.throws(() => control.validateManifest(staleDigestManifest), {
+      code: 'MANIFEST_LIFECYCLE_INVALID',
+    });
+    control.approvePlan(registered, {
+      gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+      approver: 'independent-test-approver',
+      approvalRef: 'approval:independent-v3-review',
+      recordedAt: RECORDED_AT,
+    });
+    assert.equal(registeredTarget.planEvidence.reviewed, true);
+    assert.equal(registeredTarget.approval.status, 'approved');
+  });
+});
+
+test('review-plan CLI creates only atomic sanitized evidence and register-plan consumes that exact review', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const fixture = makeSuccessfulContinuationContext(temporaryRoot);
+    const manifest = control.buildManifest(fixture.context);
+    const target = operation(
+      manifest,
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    );
+    const manifestPath = path.join(temporaryRoot, 'continuation-manifest.json');
+    const planJsonPath = path.join(temporaryRoot, 'exact-plan.json');
+    const reviewEvidencePath = path.join(
+      temporaryRoot,
+      'exact-plan.review.json',
+    );
+    fs.mkdirSync(path.dirname(target.savedPlanPath), { recursive: true });
+    fs.writeFileSync(target.savedPlanPath, 'cli-reviewed-plan');
+    fs.copyFileSync(REPRESENTATIVE_PLAN_FIXTURE_PATH, planJsonPath);
+    fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    const manifestBeforeReview = fs.readFileSync(manifestPath);
+
+    const reviewResult = control.runCli([
+      'review-plan',
+      '--manifest',
+      manifestPath,
+      '--gate',
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      '--operation',
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+      '--plan',
+      target.savedPlanPath,
+      '--plan-json',
+      planJsonPath,
+      '--review-evidence',
+      reviewEvidencePath,
+    ]);
+    assert.equal(reviewResult.status, 'passed');
+    assert.equal(reviewResult.nonNoopResourceChangeCount, 2);
+    assert.equal(reviewResult.intendedSemanticChangeCount, 2);
+    assert.equal(reviewResult.refreshOnlyDriftCount, 5);
+    assert.equal(reviewResult.urlMapMutation, false);
+    assert.deepEqual(fs.readFileSync(manifestPath), manifestBeforeReview);
+    assert.equal(fs.statSync(reviewEvidencePath).isFile(), true);
+    assert.throws(
+      () =>
+        control.runCli([
+          'review-plan',
+          '--manifest',
+          manifestPath,
+          '--gate',
+          control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+          '--operation',
+          control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+          '--plan',
+          target.savedPlanPath,
+          '--plan-json',
+          planJsonPath,
+          '--review-evidence',
+          reviewEvidencePath,
+        ]),
+      { code: 'REVIEW_EVIDENCE_ALREADY_EXISTS' },
+    );
+
+    control.runCli([
+      'register-plan',
+      '--manifest',
+      manifestPath,
+      '--gate',
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      '--operation',
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+      '--recorded-at',
+      RECORDED_AT,
+      '--plan',
+      target.savedPlanPath,
+      '--plan-json',
+      planJsonPath,
+      '--review-evidence',
+      reviewEvidencePath,
+      '--source-sha',
+      manifest.sourceSha,
+      '--environment',
+      manifest.environment,
+      '--terraform-root',
+      target.terraformRoot,
+      '--lineage',
+      target.statePrecondition.lineage,
+      '--serial',
+      String(target.statePrecondition.serial),
+    ]);
+    const registeredManifest = JSON.parse(
+      fs.readFileSync(manifestPath, 'utf8'),
+    );
+    const registeredTarget = operation(
+      registeredManifest,
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    );
+    assert.equal(registeredTarget.status, 'plan-registered');
+    assert.equal(registeredTarget.planEvidence.reviewed, false);
+    assert.equal(registeredTarget.deterministicReviewEvidence.status, 'passed');
+  });
 });
