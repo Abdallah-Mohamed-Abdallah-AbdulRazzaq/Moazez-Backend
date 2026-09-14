@@ -82,6 +82,60 @@ const CANDIDATE_EDGE_IDENTITIES = Object.freeze({
   trustedClientIpHeader: 'X-Moazez-Client-IP:{client_ip_address}',
 });
 
+const LEGACY_STATE10_RECONCILIATION_PROFILE = Object.freeze({
+  compatibilityMode: 'exact-retained-state10-incident',
+  priorReleaseExecutionId: 'day2-staging-edge-continuation-20260913163120',
+  priorManifestSha256:
+    '0e695d4a901f54410eb0b0d638d4175e9ee2e8ce79a828915b726c68131519d8',
+  priorSavedPlanSha256:
+    '013f65d45916d5f4e28a259104d1369348312a6075aaf9d26b2f3f1efb126e32',
+  priorPlanJsonSha256:
+    '5500a3c861c06924e8211b7715c9e035dec434ed9672f27d69d9ab2622b4b607',
+  priorReviewEvidenceSha256:
+    '1011575cdce145d9e0fc692b998e7fbe66f7f813a233025c2c93f89085df6fb2',
+  priorApprovalEvidenceSha256:
+    'd4e7e7e16b7d5cb6bcf2ce46052b0a1c7c22971cad53199ca594aec117775da8',
+  priorPreApplyEvidenceSha256:
+    'f6b383c4990f9bfba4f8d5bded9a686e3f85d3195828c3de9cbd40f921585eb4',
+  stateReconciliationEvidenceSha256:
+    'b2cce07f342b69d72819bf134b28861a07bfc59b42526e1f3c112ecf7a7cb5c9',
+  evidenceType: 'edge-state-serial10-reconciliation',
+  classification: 'STATE_ADVANCED_WITHOUT_GOVERNED_SEMANTIC_EDGE_CHANGE',
+  edgeLineage: '545dd53b-773c-667a-aa75-fb3d1f65db23',
+  priorEdgeSerial: 9,
+  currentEdgeSerial: 10,
+  retainedCandidateNegTag: 'candidate-e1f5a9c9e01b-r1',
+  desiredCandidateTag: 'candidate-5377bd0c7d84',
+  projectId: 'moazez-nonprod-91001421934',
+  region: 'me-central2',
+  candidateNegName: 'moazez-staging-api-candidate-neg',
+  candidateBackendName: 'moazez-staging-api-candidate-backend',
+  candidateNegService: 'moazez-staging-api',
+  candidateBackendGroup:
+    'https://www.googleapis.com/compute/v1/projects/moazez-nonprod-91001421934/regions/me-central2/networkEndpointGroups/moazez-staging-api-candidate-neg',
+  stateCustomResponseHeaderCount: 0,
+  stateHealthCheckCount: 0,
+  liveCustomResponseHeaderCount: 1,
+  liveHealthCheckCount: 1,
+});
+
+const LEGACY_STATE10_PROFILE_BINDING_FIELDS = Object.freeze([
+  'priorReleaseExecutionId',
+  'priorManifestSha256',
+  'priorSavedPlanSha256',
+  'priorPlanJsonSha256',
+  'priorReviewEvidenceSha256',
+  'priorApprovalEvidenceSha256',
+  'priorPreApplyEvidenceSha256',
+  'stateReconciliationEvidenceSha256',
+]);
+
+function hasExactLegacyState10ProfileBinding(metadata) {
+  return LEGACY_STATE10_PROFILE_BINDING_FIELDS.every(
+    (field) => metadata[field] === LEGACY_STATE10_RECONCILIATION_PROFILE[field],
+  );
+}
+
 function successfulContinuationPlanReviewSpecification() {
   const [candidateNegAddress, candidateBackendAddress] =
     EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES;
@@ -2258,10 +2312,49 @@ function loadEdgeStateSuccessorRecoveryPredecessor(metadata, label) {
     );
   }
   const validationCandidate = structuredClone(predecessorManifest);
+  if (hasExactLegacyState10ProfileBinding(metadata)) {
+    const contract = loadReleaseContract();
+    if (
+      !contract.equivalentTextContractSha256s.includes(
+        validationCandidate.authoritativeContract?.sha256,
+      )
+    ) {
+      fail(
+        'EDGE_SUCCESSOR_LEGACY_PROFILE_INVALID',
+        'the exact retained State10 predecessor release contract is not an authorized LF/CRLF byte-equivalent form.',
+      );
+    }
+    for (const gate of validationCandidate.gates ?? []) {
+      for (const operation of gate.operations ?? []) {
+        if (
+          operation.deterministicReviewEvidence?.status === 'passed' &&
+          operation.deterministicReviewEvidence
+            .immutableOperationSpecificationSha256 !==
+            immutableOperationSpecificationSha256(operation)
+        ) {
+          fail(
+            'EDGE_SUCCESSOR_LEGACY_PROFILE_INVALID',
+            'the exact retained State10 predecessor has a stale original reviewed operation specification digest.',
+          );
+        }
+      }
+    }
+    validationCandidate.authoritativeContract.sha256 = contract.contractSha256;
+  }
   normalizeSuccessfulContinuationPredecessorCheckoutRoots(
     validationCandidate,
     label,
   );
+  if (hasExactLegacyState10ProfileBinding(metadata)) {
+    for (const gate of validationCandidate.gates ?? []) {
+      for (const operation of gate.operations ?? []) {
+        if (operation.deterministicReviewEvidence?.status === 'passed') {
+          operation.deterministicReviewEvidence.immutableOperationSpecificationSha256 =
+            immutableOperationSpecificationSha256(operation);
+        }
+      }
+    }
+  }
   validateSuccessfulEdgeContinuationManifestV3(validationCandidate);
   if (
     predecessorManifest.releaseExecutionId !== metadata.priorReleaseExecutionId
@@ -2417,7 +2510,7 @@ function validateEdgeStateSuccessorRecoveryLiveDiscovery(
   return validated;
 }
 
-function validateStateReconciliationEvidence(
+function validateStructuredStateReconciliationEvidenceV1(
   value,
   metadata,
   predecessor,
@@ -2542,6 +2635,187 @@ function validateStateReconciliationEvidence(
     );
   }
   return evidence;
+}
+
+function validateLegacyState10CompatibilityProfile(
+  metadata,
+  predecessor,
+  live,
+  label,
+) {
+  const profile = LEGACY_STATE10_RECONCILIATION_PROFILE;
+  for (const field of LEGACY_STATE10_PROFILE_BINDING_FIELDS) {
+    if (metadata[field] !== profile[field]) {
+      fail(
+        'EDGE_SUCCESSOR_LEGACY_PROFILE_INVALID',
+        `${label} is not bound to the exact retained State10 ${field}.`,
+      );
+    }
+  }
+  const priorEdgeState = {
+    lineage: predecessor.edgeOperation.statePrecondition.lineage,
+    serial: predecessor.edgeOperation.statePrecondition.serial,
+  };
+  const expectedPriorEdgeState = {
+    lineage: profile.edgeLineage,
+    serial: profile.priorEdgeSerial,
+  };
+  const expectedCurrentEdgeState = {
+    lineage: profile.edgeLineage,
+    serial: profile.currentEdgeSerial,
+  };
+  if (
+    predecessor.predecessorManifest.releaseExecutionId !==
+      profile.priorReleaseExecutionId ||
+    predecessor.predecessorManifest.candidate.tag !==
+      profile.desiredCandidateTag ||
+    !isDeepStrictEqual(priorEdgeState, expectedPriorEdgeState) ||
+    !isDeepStrictEqual(live.edgeState, expectedCurrentEdgeState) ||
+    live.edgeState.lineage !== priorEdgeState.lineage ||
+    live.edgeState.serial <= priorEdgeState.serial
+  ) {
+    fail(
+      'EDGE_SUCCESSOR_LEGACY_PROFILE_INVALID',
+      `${label} is not bound to the exact interrupted v3 predecessor and strict State10 successor.`,
+    );
+  }
+}
+
+function validateLegacyState10ReconciliationEvidence(
+  value,
+  metadata,
+  predecessor,
+  live,
+  label = 'stateReconciliationEvidence',
+) {
+  validateLegacyState10CompatibilityProfile(metadata, predecessor, live, label);
+  const profile = LEGACY_STATE10_RECONCILIATION_PROFILE;
+  const evidence = requireExactKeys(
+    value,
+    [
+      'evidenceType',
+      'recordedAt',
+      'classification',
+      'state',
+      'live',
+      'comparisons',
+      'oldSavedPlanRetryAllowed',
+      'terraformCommandExecuted',
+      'mutationExecuted',
+    ],
+    label,
+  );
+  const state = requireExactKeys(
+    evidence.state,
+    [
+      'lineage',
+      'serial',
+      'candidateNegTag',
+      'candidateNegService',
+      'candidateBackendGroup',
+      'customResponseHeaderCount',
+      'healthCheckCount',
+    ],
+    `${label}.state`,
+  );
+  const retainedLive = requireExactKeys(
+    evidence.live,
+    [
+      'candidateNegTag',
+      'candidateNegService',
+      'candidateBackendGroup',
+      'customResponseHeaderCount',
+      'healthCheckCount',
+    ],
+    `${label}.live`,
+  );
+  const comparisons = requireExactKeys(
+    evidence.comparisons,
+    ['negStateMatchesLive', 'backendStateMatchesLive'],
+    `${label}.comparisons`,
+  );
+  const stateIdentity = requireState(
+    { lineage: state.lineage, serial: state.serial },
+    `${label}.state`,
+  );
+  requireIsoTimestamp(evidence.recordedAt, `${label}.recordedAt`);
+  const semantic = live.liveDiscovery.candidateEdgeResources;
+  const exactBackendGroup =
+    `https://www.googleapis.com/compute/v1/projects/${profile.projectId}` +
+    `/regions/${profile.region}/networkEndpointGroups/${profile.candidateNegName}`;
+
+  if (
+    profile.candidateBackendGroup !== exactBackendGroup ||
+    evidence.evidenceType !== profile.evidenceType ||
+    evidence.classification !== profile.classification ||
+    evidence.oldSavedPlanRetryAllowed !== false ||
+    evidence.terraformCommandExecuted !== false ||
+    evidence.mutationExecuted !== false ||
+    stateIdentity.lineage !== profile.edgeLineage ||
+    stateIdentity.serial !== profile.currentEdgeSerial ||
+    stateIdentity.lineage !== live.edgeState.lineage ||
+    stateIdentity.serial !== live.edgeState.serial ||
+    state.candidateNegTag !== profile.retainedCandidateNegTag ||
+    state.candidateNegService !== profile.candidateNegService ||
+    state.candidateBackendGroup !== profile.candidateBackendGroup ||
+    state.customResponseHeaderCount !==
+      profile.stateCustomResponseHeaderCount ||
+    state.healthCheckCount !== profile.stateHealthCheckCount ||
+    retainedLive.candidateNegTag !== profile.retainedCandidateNegTag ||
+    retainedLive.candidateNegService !== profile.candidateNegService ||
+    retainedLive.candidateBackendGroup !== profile.candidateBackendGroup ||
+    retainedLive.customResponseHeaderCount !==
+      profile.liveCustomResponseHeaderCount ||
+    retainedLive.healthCheckCount !== profile.liveHealthCheckCount ||
+    state.candidateNegTag !== retainedLive.candidateNegTag ||
+    state.candidateNegService !== retainedLive.candidateNegService ||
+    state.candidateBackendGroup !== retainedLive.candidateBackendGroup ||
+    comparisons.negStateMatchesLive !== true ||
+    comparisons.backendStateMatchesLive !== true ||
+    semantic.neg.name !== profile.candidateNegName ||
+    semantic.neg.region !== profile.region ||
+    semantic.neg.cloudRunService !== retainedLive.candidateNegService ||
+    semantic.neg.cloudRunTag !== retainedLive.candidateNegTag ||
+    semantic.backend.name !== profile.candidateBackendName ||
+    semantic.backend.negName !== profile.candidateNegName ||
+    predecessor.predecessorManifest.candidate.tag !==
+      profile.desiredCandidateTag ||
+    semantic.neg.cloudRunTag === profile.desiredCandidateTag
+  ) {
+    fail(
+      'EDGE_SUCCESSOR_LEGACY_RECONCILIATION_INVALID',
+      `${label} does not prove the exact retained State10 state/live Candidate Edge semantics against fresh discovery.`,
+    );
+  }
+  return evidence;
+}
+
+function validateStateReconciliationEvidence(
+  value,
+  metadata,
+  predecessor,
+  live,
+  label = 'stateReconciliationEvidence',
+) {
+  if (
+    metadata.stateReconciliationEvidenceSha256 ===
+    LEGACY_STATE10_RECONCILIATION_PROFILE.stateReconciliationEvidenceSha256
+  ) {
+    return validateLegacyState10ReconciliationEvidence(
+      value,
+      metadata,
+      predecessor,
+      live,
+      label,
+    );
+  }
+  return validateStructuredStateReconciliationEvidenceV1(
+    value,
+    metadata,
+    predecessor,
+    live,
+    label,
+  );
 }
 
 function validatePredecessorEvidence(inputStages, predecessorStages) {
@@ -7258,6 +7532,7 @@ module.exports = Object.freeze({
   EDGE_CANDIDATE_RESOURCE_ADDRESSES,
   EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES,
   EDGE_REFRESH_ONLY_DRIFT_RESOURCE_ADDRESSES,
+  LEGACY_STATE10_RECONCILIATION_PROFILE,
   MAX_RECOVERY_ATTEMPT,
   RECOVERY_GATE_IDS,
   RECOVERY_PREDECESSOR_STAGE_IDS,
@@ -7282,5 +7557,6 @@ module.exports = Object.freeze({
   reviewTerraformPlanJson,
   runCli,
   validateManifest,
+  validateStateReconciliationEvidence,
   writeJsonAtomic,
 });

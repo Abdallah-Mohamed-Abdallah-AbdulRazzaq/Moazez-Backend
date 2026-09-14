@@ -836,6 +836,90 @@ function rewriteStateReconciliationEvidence(fixture, mutate) {
     artifact.sha256;
 }
 
+function makeLegacyState10CompatibilityFixture() {
+  return {
+    metadata: {
+      priorReleaseExecutionId: 'day2-staging-edge-continuation-20260913163120',
+      priorManifestSha256:
+        '0e695d4a901f54410eb0b0d638d4175e9ee2e8ce79a828915b726c68131519d8',
+      priorSavedPlanSha256:
+        '013f65d45916d5f4e28a259104d1369348312a6075aaf9d26b2f3f1efb126e32',
+      priorPlanJsonSha256:
+        '5500a3c861c06924e8211b7715c9e035dec434ed9672f27d69d9ab2622b4b607',
+      priorReviewEvidenceSha256:
+        '1011575cdce145d9e0fc692b998e7fbe66f7f813a233025c2c93f89085df6fb2',
+      priorApprovalEvidenceSha256:
+        'd4e7e7e16b7d5cb6bcf2ce46052b0a1c7c22971cad53199ca594aec117775da8',
+      priorPreApplyEvidenceSha256:
+        'f6b383c4990f9bfba4f8d5bded9a686e3f85d3195828c3de9cbd40f921585eb4',
+      stateReconciliationEvidenceSha256:
+        'b2cce07f342b69d72819bf134b28861a07bfc59b42526e1f3c112ecf7a7cb5c9',
+    },
+    evidence: {
+      evidenceType: 'edge-state-serial10-reconciliation',
+      recordedAt: '2026-09-13T17:19:45Z',
+      classification: 'STATE_ADVANCED_WITHOUT_GOVERNED_SEMANTIC_EDGE_CHANGE',
+      state: {
+        lineage: '545dd53b-773c-667a-aa75-fb3d1f65db23',
+        serial: 10,
+        candidateNegTag: 'candidate-e1f5a9c9e01b-r1',
+        candidateNegService: 'moazez-staging-api',
+        candidateBackendGroup:
+          'https://www.googleapis.com/compute/v1/projects/moazez-nonprod-91001421934/regions/me-central2/networkEndpointGroups/moazez-staging-api-candidate-neg',
+        customResponseHeaderCount: 0,
+        healthCheckCount: 0,
+      },
+      live: {
+        candidateNegTag: 'candidate-e1f5a9c9e01b-r1',
+        candidateNegService: 'moazez-staging-api',
+        candidateBackendGroup:
+          'https://www.googleapis.com/compute/v1/projects/moazez-nonprod-91001421934/regions/me-central2/networkEndpointGroups/moazez-staging-api-candidate-neg',
+        customResponseHeaderCount: 1,
+        healthCheckCount: 1,
+      },
+      comparisons: {
+        negStateMatchesLive: true,
+        backendStateMatchesLive: true,
+      },
+      oldSavedPlanRetryAllowed: false,
+      terraformCommandExecuted: false,
+      mutationExecuted: false,
+    },
+    predecessor: {
+      edgeOperation: {
+        statePrecondition: {
+          lineage: '545dd53b-773c-667a-aa75-fb3d1f65db23',
+          serial: 9,
+        },
+      },
+      predecessorManifest: {
+        releaseExecutionId: 'day2-staging-edge-continuation-20260913163120',
+        candidate: { tag: 'candidate-5377bd0c7d84' },
+      },
+    },
+    live: {
+      edgeState: {
+        lineage: '545dd53b-773c-667a-aa75-fb3d1f65db23',
+        serial: 10,
+      },
+      liveDiscovery: {
+        candidateEdgeResources: {
+          neg: {
+            name: 'moazez-staging-api-candidate-neg',
+            region: 'me-central2',
+            cloudRunService: 'moazez-staging-api',
+            cloudRunTag: 'candidate-e1f5a9c9e01b-r1',
+          },
+          backend: {
+            name: 'moazez-staging-api-candidate-backend',
+            negName: 'moazez-staging-api-candidate-neg',
+          },
+        },
+      },
+    },
+  };
+}
+
 function prepareCandidateEdgeRegistration(
   manifest,
   uniquePlanText = 'fresh-candidate-edge-plan',
@@ -2149,6 +2233,271 @@ test('edge state-successor recovery v4 requires mutually consistent structured r
       );
     }
   });
+});
+
+test('edge state-successor recovery v4 accepts the exact retained State10 schema only under its full incident profile', () => {
+  const fixture = makeLegacyState10CompatibilityFixture();
+  assert.deepEqual(
+    {
+      compatibilityMode:
+        control.LEGACY_STATE10_RECONCILIATION_PROFILE.compatibilityMode,
+      priorReleaseExecutionId:
+        control.LEGACY_STATE10_RECONCILIATION_PROFILE.priorReleaseExecutionId,
+      priorManifestSha256:
+        control.LEGACY_STATE10_RECONCILIATION_PROFILE.priorManifestSha256,
+      priorSavedPlanSha256:
+        control.LEGACY_STATE10_RECONCILIATION_PROFILE.priorSavedPlanSha256,
+      priorPlanJsonSha256:
+        control.LEGACY_STATE10_RECONCILIATION_PROFILE.priorPlanJsonSha256,
+      priorReviewEvidenceSha256:
+        control.LEGACY_STATE10_RECONCILIATION_PROFILE.priorReviewEvidenceSha256,
+      priorApprovalEvidenceSha256:
+        control.LEGACY_STATE10_RECONCILIATION_PROFILE
+          .priorApprovalEvidenceSha256,
+      priorPreApplyEvidenceSha256:
+        control.LEGACY_STATE10_RECONCILIATION_PROFILE
+          .priorPreApplyEvidenceSha256,
+      stateReconciliationEvidenceSha256:
+        control.LEGACY_STATE10_RECONCILIATION_PROFILE
+          .stateReconciliationEvidenceSha256,
+    },
+    {
+      compatibilityMode: 'exact-retained-state10-incident',
+      ...fixture.metadata,
+    },
+  );
+  assert.equal(
+    control.validateStateReconciliationEvidence(
+      fixture.evidence,
+      fixture.metadata,
+      fixture.predecessor,
+      fixture.live,
+    ),
+    fixture.evidence,
+  );
+});
+
+test('edge state-successor recovery v4 rejects every legacy State10 schema, profile, state, and live contradiction', () => {
+  const cases = [
+    [
+      'legacy reconciliation SHA differs',
+      (f) => {
+        f.metadata.stateReconciliationEvidenceSha256 = 'e'.repeat(64);
+      },
+    ],
+    [
+      'arbitrary legacy-shaped artifact with another reconciliation SHA',
+      (f) => {
+        f.metadata.stateReconciliationEvidenceSha256 = 'f'.repeat(64);
+      },
+    ],
+    [
+      'prior release differs',
+      (f) => {
+        f.metadata.priorReleaseExecutionId = 'day2-staging-unrelated-release';
+      },
+    ],
+    [
+      'prior manifest SHA differs',
+      (f) => {
+        f.metadata.priorManifestSha256 = 'f'.repeat(64);
+      },
+    ],
+    [
+      'prior Saved Plan SHA differs',
+      (f) => {
+        f.metadata.priorSavedPlanSha256 = 'f'.repeat(64);
+      },
+    ],
+    [
+      'prior Plan JSON SHA differs',
+      (f) => {
+        f.metadata.priorPlanJsonSha256 = 'f'.repeat(64);
+      },
+    ],
+    [
+      'prior review evidence SHA differs',
+      (f) => {
+        f.metadata.priorReviewEvidenceSha256 = 'f'.repeat(64);
+      },
+    ],
+    [
+      'prior approval evidence SHA differs',
+      (f) => {
+        f.metadata.priorApprovalEvidenceSha256 = 'f'.repeat(64);
+      },
+    ],
+    [
+      'prior pre-apply evidence SHA differs',
+      (f) => {
+        f.metadata.priorPreApplyEvidenceSha256 = 'f'.repeat(64);
+      },
+    ],
+    [
+      'missing top-level field',
+      (f) => {
+        delete f.evidence.mutationExecuted;
+      },
+    ],
+    [
+      'extra top-level field',
+      (f) => {
+        f.evidence.schemaVersion = 1;
+      },
+    ],
+    [
+      'missing state field',
+      (f) => {
+        delete f.evidence.state.candidateNegService;
+      },
+    ],
+    [
+      'extra state field',
+      (f) => {
+        f.evidence.state.candidateNegName = 'moazez-staging-api-candidate-neg';
+      },
+    ],
+    [
+      'missing live field',
+      (f) => {
+        delete f.evidence.live.candidateBackendGroup;
+      },
+    ],
+    [
+      'extra live field',
+      (f) => {
+        f.evidence.live.candidateNegName = 'moazez-staging-api-candidate-neg';
+      },
+    ],
+    [
+      'missing comparison field',
+      (f) => {
+        delete f.evidence.comparisons.backendStateMatchesLive;
+      },
+    ],
+    [
+      'extra comparison field',
+      (f) => {
+        f.evidence.comparisons.semanticEqual = true;
+      },
+    ],
+    [
+      'evidence type changed',
+      (f) => {
+        f.evidence.evidenceType = 'generic-legacy-reconciliation';
+      },
+    ],
+    [
+      'classification changed',
+      (f) => {
+        f.evidence.classification = 'UNSAFE';
+      },
+    ],
+    [
+      'old Saved Plan retry allowed',
+      (f) => {
+        f.evidence.oldSavedPlanRetryAllowed = true;
+      },
+    ],
+    [
+      'Terraform command executed',
+      (f) => {
+        f.evidence.terraformCommandExecuted = true;
+      },
+    ],
+    [
+      'mutation executed',
+      (f) => {
+        f.evidence.mutationExecuted = true;
+      },
+    ],
+    [
+      'invalid recorded timestamp',
+      (f) => {
+        f.evidence.recordedAt = 'not-a-timestamp';
+      },
+    ],
+    [
+      'lineage changed',
+      (f) => {
+        f.evidence.state.lineage = 'different-edge-lineage';
+      },
+    ],
+    [
+      'current serial is not exact State10',
+      (f) => {
+        f.evidence.state.serial = 11;
+      },
+    ],
+    [
+      'current serial is not greater than predecessor',
+      (f) => {
+        f.predecessor.edgeOperation.statePrecondition.serial = 10;
+      },
+    ],
+    [
+      'state NEG differs from retained live NEG',
+      (f) => {
+        f.evidence.state.candidateNegTag = 'candidate-unrelated';
+      },
+    ],
+    [
+      'state Backend differs from retained live Backend',
+      (f) => {
+        f.evidence.state.candidateBackendGroup =
+          'https://www.googleapis.com/compute/v1/projects/moazez-nonprod-91001421934/regions/me-central2/networkEndpointGroups/unrelated-neg';
+      },
+    ],
+    [
+      'retained old NEG tag changed',
+      (f) => {
+        f.evidence.state.candidateNegTag = 'candidate-unrelated';
+        f.evidence.live.candidateNegTag = 'candidate-unrelated';
+      },
+    ],
+    [
+      'state provider normalization count changed',
+      (f) => {
+        f.evidence.state.customResponseHeaderCount = 1;
+      },
+    ],
+    [
+      'live provider normalization count changed',
+      (f) => {
+        f.evidence.live.healthCheckCount = 0;
+      },
+    ],
+    [
+      'desired Candidate tag is already live',
+      (f) => {
+        f.live.liveDiscovery.candidateEdgeResources.neg.cloudRunTag =
+          'candidate-5377bd0c7d84';
+      },
+    ],
+    [
+      'legacy evidence differs from fresh live discovery',
+      (f) => {
+        f.live.liveDiscovery.candidateEdgeResources.neg.cloudRunService =
+          'unrelated-service';
+      },
+    ],
+  ];
+
+  for (const [name, mutate] of cases) {
+    const fixture = makeLegacyState10CompatibilityFixture();
+    mutate(fixture);
+    assert.throws(
+      () =>
+        control.validateStateReconciliationEvidence(
+          fixture.evidence,
+          fixture.metadata,
+          fixture.predecessor,
+          fixture.live,
+        ),
+      control.DeploymentControlError,
+      name,
+    );
+  }
 });
 
 test('edge state-successor recovery v4 reads and verifies every prior artifact byte binding', () => {
