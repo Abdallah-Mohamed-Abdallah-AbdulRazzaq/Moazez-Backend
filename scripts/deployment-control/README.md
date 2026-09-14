@@ -516,6 +516,53 @@ The reconciliation file is an exact-key JSON object, not a boolean assertion:
 }
 ```
 
+That schema-version-1 object remains the normal V4 reconciliation format and
+its exact-key validator is unchanged. One earlier retained incident artifact is
+accepted through a separate one-time compatibility adapter; this is not a
+generally supported legacy schema. The adapter is selected only by the original
+State-10 file SHA256
+`b2cce07f342b69d72819bf134b28861a07bfc59b42526e1f3c112ecf7a7cb5c9`
+and then requires the exact prior release
+`day2-staging-edge-continuation-20260913163120` plus all six predecessor hashes:
+
+```text
+prior manifest: 0e695d4a901f54410eb0b0d638d4175e9ee2e8ce79a828915b726c68131519d8
+prior Saved Plan: 013f65d45916d5f4e28a259104d1369348312a6075aaf9d26b2f3f1efb126e32
+prior Plan JSON: 5500a3c861c06924e8211b7715c9e035dec434ed9672f27d69d9ab2622b4b607
+prior review evidence: 1011575cdce145d9e0fc692b998e7fbe66f7f813a233025c2c93f89085df6fb2
+prior approval evidence: d4e7e7e16b7d5cb6bcf2ce46052b0a1c7c22971cad53199ca594aec117775da8
+prior pre-apply evidence: f6b383c4990f9bfba4f8d5bded9a686e3f85d3195828c3de9cbd40f921585eb4
+```
+
+That exact retained V3 manifest records the already-authorized CRLF byte hash
+of the otherwise unchanged release contract and its reviewed operation digest
+contains the original checkout root. For this incident profile only, validation
+first proves the original reviewed digest, accepts only the contract loader's
+explicit LF/CRLF-equivalent hashes, and then adjusts a memory-only validation
+copy to the current checkout. The retained manifest, review evidence, and their
+byte hashes remain unchanged and are revalidated from their original forms.
+
+The original bytes remain immutable and are hashed before parsing; they are not
+canonicalized, reserialized, converted, or replaced. The adapter then enforces
+the discovered exact keys at the top level and within `state`, `live`, and
+`comparisons`. It requires the exact safe flags, State-10 lineage/serial, old
+NEG tag and service, full project/region/NEG Backend-group identity, state/live
+NEG and Backend identity equivalence, and the exact historical provider-shape
+counts (State response-header/health-check counts `0/0`, retained Live counts
+`1/1`). Those counts have no equivalent field in the current V4 semantic
+snapshot and are not misrepresented as fresh discovery.
+
+The historical object does not contain the prior release ID, prior Edge state,
+smoke-route snapshot, traffic, candidate Ready state, desired tag, or a
+production-specific mutation field. Those facts continue to come from the
+exact V3 artifact-chain profile and the unchanged strict fresh V4 live
+validator. The adapter cross-binds the represented NEG/Backend semantics to
+fresh live discovery, requires the exact State-10 same-lineage successor over
+prior serial 9, and proves the retained old tag is not the desired tag. Any
+other hash, release, artifact chain, legacy shape, or semantic value fails
+closed. Fresh discovery remains mandatory; the historical object is never a
+substitute for it.
+
 The controller requires same Edge lineage and a strictly greater serial, then
 compares the structured state, live, and prior-v3 pre-attempt semantic
 snapshots. Equality covers completeness; NEG presence, name, region,
@@ -688,7 +735,8 @@ registration checks the manifest blocklist. Successful-continuation v3 also
 blocklists the three exact predecessor plan hashes imported for Core, Media,
 and API Runtime so passed work cannot be reused as a new operation. V4 inherits
 the complete v3 blocklist and dynamically adds the exact interrupted v3 Edge
-Saved Plan hash; no incident-specific plan hash is hard-coded.
+Saved Plan hash. The blocklist remains dynamically derived rather than selected
+by the legacy State10 compatibility profile.
 
 ## Exact CLI surface
 

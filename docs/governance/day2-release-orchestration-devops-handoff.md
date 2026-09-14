@@ -450,6 +450,52 @@ traffic, `candidateReady=true`, the desired Candidate tag,
 `productionMutationObserved=false`. Unknown fields fail. A boolean
 `semanticEqual=true` is not evidence.
 
+That structured schema remains the normal V4 format and its exact-key validator
+is unchanged. There is one incident-specific adapter for the original retained
+State-10 evidence bytes; it is not a general legacy schema and cannot be chosen
+by an operator. The dispatcher recognizes only reconciliation SHA256
+`b2cce07f342b69d72819bf134b28861a07bfc59b42526e1f3c112ecf7a7cb5c9`
+and then requires prior release
+`day2-staging-edge-continuation-20260913163120` with this complete chain:
+
+```text
+manifest 0e695d4a901f54410eb0b0d638d4175e9ee2e8ce79a828915b726c68131519d8
+Saved Plan 013f65d45916d5f4e28a259104d1369348312a6075aaf9d26b2f3f1efb126e32
+Plan JSON 5500a3c861c06924e8211b7715c9e035dec434ed9672f27d69d9ab2622b4b607
+review 1011575cdce145d9e0fc692b998e7fbe66f7f813a233025c2c93f89085df6fb2
+approval d4e7e7e16b7d5cb6bcf2ce46052b0a1c7c22971cad53199ca594aec117775da8
+pre-apply f6b383c4990f9bfba4f8d5bded9a686e3f85d3195828c3de9cbd40f921585eb4
+```
+
+The exact retained manifest uses the already-authorized CRLF byte hash of the
+unchanged release contract, and its reviewed operation digest includes its
+original checkout root. Only for this complete incident profile, validation
+proves that original digest and the contract loader's explicit LF/CRLF
+equivalence before adapting a memory-only validation copy to the current
+checkout. The retained manifest and review bytes and hashes remain untouched
+and are still checked in their original forms.
+
+The loader hashes the untouched original bytes before parsing. It never
+rewrites, normalizes, reserializes, or replaces the historical file. The legacy
+validator enforces exact keys for the discovered top-level, `state`, `live`,
+and `comparisons` objects; exact safe flags; State-10 lineage and serial; the
+old NEG tag and service; the full exact Backend-group project/region/NEG URL;
+state/live NEG and Backend identity equivalence; and the recorded provider-shape
+counts. The historical State counts for response headers and health checks are
+`0/0`, while its retained Live counts are `1/1`; the current V4 semantic
+snapshot has no corresponding count fields, so these remain exact historical
+observations rather than being falsely attributed to fresh discovery.
+
+The legacy file has no prior-release field, prior Edge snapshot, smoke-route
+snapshot, traffic structure, candidate Ready flag, desired-tag field, or
+production-specific mutation flag. The exact incident profile supplies the
+predecessor identity, while the unchanged strict fresh-live validator supplies
+those current safety facts. Represented NEG/Backend identities are cross-bound
+to fresh discovery, the legacy State identity must be exact same-lineage serial
+10 over predecessor serial 9, and the old tag must differ from the exact desired
+tag. Any other legacy bytes, hash, prior release, artifact chain, schema, or
+semantic value fails closed. Fresh live discovery remains mandatory.
+
 V4 permits only this state-identity difference:
 
 ```text
@@ -495,8 +541,9 @@ There is no migration, Core Worker, Media Worker, or API Runtime operation.
 Those stages remain imported immutable evidence. The interrupted v3 Saved Plan
 is stale forensic evidence, never new authority. V4 builds its plan blocklist
 as a deduplicated union of the prior v3 blocklist and that exact interrupted
-plan hash; re-registering its bytes fails with `PLAN_REUSE_FORBIDDEN`. No
-incident-specific artifact hash is hard-coded.
+plan hash; re-registering its bytes fails with `PLAN_REUSE_FORBIDDEN`. The sole
+hard-coded incident profile above authorizes only historical evidence parsing;
+it does not make the old plan reusable or accept an operator-supplied hash.
 
 The fresh v4 Candidate Edge plan must pass the exact v3 PR #121 reviewer. The
 only non-noop resources remain the Candidate NEG (`delete,create`, with only
