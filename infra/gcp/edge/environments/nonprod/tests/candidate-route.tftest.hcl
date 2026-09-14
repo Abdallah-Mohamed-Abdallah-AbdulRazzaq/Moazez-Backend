@@ -6,6 +6,12 @@ mock_provider "google" {
       self_link = "https://example.invalid/securityPolicies/moazez-staging-edge-armor"
     }
   }
+
+  mock_resource "google_compute_region_network_endpoint_group" {
+    defaults = {
+      id = "https://example.invalid/networkEndpointGroups/mock-neg"
+    }
+  }
 }
 
 variables {
@@ -61,6 +67,16 @@ run "staging_candidate_route_targets_tagged_revision_and_reuses_security_posture
   }
 
   assert {
+    condition     = google_compute_region_network_endpoint_group.api_candidate[0].name == "moazez-staging-api-candidate-be1b01ce47ad-neg"
+    error_message = "The base Candidate NEG physical name must be derived from the exact candidate tag."
+  }
+
+  assert {
+    condition     = google_compute_backend_service.api_candidate[0].name == "moazez-staging-api-candidate-backend" && one(google_compute_backend_service.api_candidate[0].backend).group == google_compute_region_network_endpoint_group.api_candidate[0].id
+    error_message = "The Candidate Backend identity must remain stable and directly reference the rotating Candidate NEG."
+  }
+
+  assert {
     condition     = google_compute_backend_service.api_candidate[0].security_policy == google_compute_backend_service.service["api"].security_policy && google_compute_backend_service.api_candidate[0].custom_request_headers == google_compute_backend_service.service["api"].custom_request_headers
     error_message = "The isolated candidate backend must reuse the normal API Cloud Armor and trusted-client-IP posture."
   }
@@ -68,6 +84,11 @@ run "staging_candidate_route_targets_tagged_revision_and_reuses_security_posture
   assert {
     condition     = google_compute_url_map.edge.path_matcher[0].path_rule[0].paths == toset(["/.well-known/moazez/candidate-readiness"])
     error_message = "Candidate routing must expose exactly one narrow public path."
+  }
+
+  assert {
+    condition     = google_compute_url_map.edge.name == "moazez-staging-edge-url-map"
+    error_message = "The shared URL Map physical identity must remain stable during Candidate NEG rotation."
   }
 
   assert {
@@ -89,8 +110,8 @@ run "recovery_attempt_one_targets_exact_candidate_tag" {
   }
 
   assert {
-    condition     = google_compute_region_network_endpoint_group.api_candidate[0].cloud_run[0].tag == "candidate-be1b01ce47ad-r1" && google_compute_region_network_endpoint_group.service["api"].cloud_run[0].tag == null
-    error_message = "Recovery attempt one must target only the exact tagged candidate revision."
+    condition     = google_compute_region_network_endpoint_group.api_candidate[0].name == "moazez-staging-api-candidate-be1b01ce47ad-r1-neg" && google_compute_region_network_endpoint_group.api_candidate[0].cloud_run[0].tag == "candidate-be1b01ce47ad-r1" && google_compute_region_network_endpoint_group.service["api"].cloud_run[0].tag == null
+    error_message = "Recovery attempt one must rotate to its exact tag-derived Candidate NEG identity."
   }
 
   assert {
@@ -114,6 +135,29 @@ run "recovery_attempt_two_targets_exact_candidate_tag" {
   assert {
     condition     = google_compute_region_network_endpoint_group.api_candidate[0].cloud_run[0].service == "moazez-staging-api" && google_compute_region_network_endpoint_group.api_candidate[0].cloud_run[0].tag == "candidate-be1b01ce47ad-r2"
     error_message = "Recovery attempt two must reach the exact tagged candidate revision."
+  }
+}
+
+run "maximum_recovery_attempt_produces_valid_rfc1035_candidate_neg_name" {
+  command = plan
+
+  module {
+    source = "../../modules/edge-environment"
+  }
+
+  variables {
+    candidate_edge_enabled = true
+    candidate_api_tag      = "candidate-be1b01ce47ad-r999999999999999"
+  }
+
+  assert {
+    condition     = google_compute_region_network_endpoint_group.api_candidate[0].name == "moazez-staging-api-candidate-be1b01ce47ad-r999999999999999-neg"
+    error_message = "The maximum supported recovery tag must produce the exact deterministic Candidate NEG name."
+  }
+
+  assert {
+    condition     = length(google_compute_region_network_endpoint_group.api_candidate[0].name) == 62 && can(regex("^[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?$", google_compute_region_network_endpoint_group.api_candidate[0].name))
+    error_message = "The maximum Candidate NEG name must be 62 characters and RFC1035-shaped."
   }
 }
 

@@ -571,6 +571,90 @@ Do not use Terraform state push, manual state edits, a Terraform refresh
 workaround, `-refresh=false`, `-target`, manual Candidate NEG/Backend/URL-map
 mutation, or automatic traffic promotion.
 
+## Failed v4 Apply State11 successor recovery v5
+
+The exact v4 execution
+`day2-staging-edge-state-successor-recovery-20260914151653` reached its approved
+Candidate Edge Apply boundary. The Apply process started, failed with
+`resourceInUseByAnotherResource`, and advanced the same Edge lineage from
+serial 10 to serial 11. The fixed Candidate NEG remained
+`moazez-staging-api-candidate-neg` at the prior serving tag, the stable
+Candidate Backend still targeted it, the serving/candidate traffic remained
+`100/0`, and Cloud Armor, the trusted header, and smoke route were unchanged.
+The failed replacement tried to delete that still-referenced NEG before
+creating its successor.
+
+The source repair gives each Candidate NEG a deterministic physical identity:
+
+```text
+moazez-staging-api-${candidate_api_tag}-neg
+```
+
+It also declares `create_before_destroy=true`. For the current candidate, the
+successor is
+`moazez-staging-api-candidate-5377bd0c7d84-neg`. Terraform can create it,
+update the unchanged `moazez-staging-api-candidate-backend` group, and only
+then remove the predecessor. The `moazez-staging-edge-url-map` identity and
+semantics remain stable.
+
+Use `manifestVersion=5` with
+`executionMode=failed-edge-apply-state-successor-recovery` only for this exact
+incident. The context must bind current HEAD as both `sourceSha` and
+`sourceRemediationSha`, and must name eight distinct retained external files by
+exact lowercase SHA256: the failed v4 manifest, failed Saved Plan, Plan JSON,
+review evidence, pre-Apply evidence, Apply stdout, Apply stderr, and the exact
+State11 reconciliation file. Original bytes are hashed before parsing and are
+never rewritten. The retained manifest is validated under the unchanged v4
+contract, then the failed/attempted/invalidated lifecycle and blocked later
+gates are derived only in memory.
+
+The State11 evidence must prove the exact failure code and resource pair,
+State10-to-State11 strict same-lineage successor, no live or state semantic
+mutation, no traffic mutation, no state lock, no Production or Staging mutation
+by the reconciliation gate, and no plan/retry authorization. Fresh live
+discovery remains mandatory and must independently reproduce the exact
+State11 runtime, traffic, Candidate NEG, Backend, security, header, and route
+boundary. V5 is not a generic failed-Terraform recovery mechanism.
+
+The v5 remainder is exactly:
+
+```text
+api-no-traffic-promotion
+  api-candidate-edge-reconciliation
+maintenance-scheduler-promotion
+protected-readiness-and-smoke
+traffic-promotion
+```
+
+Migration, Core Worker, Media Worker, and API Runtime are imported passed
+authority; do not recreate or replay them. The Candidate Edge operation binds
+serial 11 and requires a fresh Saved Plan. Its only non-noop resources are:
+
+| Resource                 | Exact v5 plan contract                                                                                                                             |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Candidate NEG            | `create,delete`; old fixed name to exact tag-derived name; old serving tag to desired tag; replacement paths exactly `name` and `cloud_run[0].tag` |
+| Stable Candidate Backend | `update`; exact project/name/self-link preserved; old exact NEG group becomes the governed unknown successor dependency                            |
+
+The URL map must not mutate. The post-Apply verification evidence must name the
+successor NEG, Cloud Run service/tag, stable Backend and successor group, stable
+URL map with unchanged semantics, matching primary API security posture, and
+the exact trusted client-IP header.
+
+Both historical plans are permanently non-reusable: the interrupted v3 plan
+`013f65d45916d5f4e28a259104d1369348312a6075aaf9d26b2f3f1efb126e32`
+and failed State11 v4 plan
+`bdacfaf2a7aafb53e76111fb1a741b3a5da947b90cc2c3107c345324fb9f2230`.
+Do not copy, register, approve, or Apply either plan. After this source repair
+is merged and exact-main CI passes, repeat fresh source, state, runtime, and
+live discovery and create a new v5 manifest and fresh Saved Plan. There is no
+automatic Apply retry; review, registration, approval, pre-Apply checks, and
+any Apply remain separate DevOps authorities.
+
+The historical V3/V4 deterministic reviewer remains `delete,create` with only
+`cloud_run[0].tag` as a replacement path. V5 alone accepts `create,delete` with
+both tag and name replacement. Never reinterpret a historical Plan JSON under
+the v5 contract.
+
 ## Protected candidate smoke
 
 The exact externally requested route is:

@@ -38,6 +38,19 @@ When enabled in the nonprod root, Terraform adds only:
 - `module.edge_environment.google_compute_backend_service.api_candidate[0]`, retaining the normal API backend's Cloud Armor policy and trusted client-IP request header;
 - one exact path rule on `module.edge_environment.google_compute_url_map.edge`.
 
+The Candidate NEG physical identity is tag-derived:
+
+```text
+moazez-staging-api-${candidate_api_tag}-neg
+```
+
+For example, `candidate-be1b01ce47ad-r1` produces
+`moazez-staging-api-candidate-be1b01ce47ad-r1-neg`. The maximum supported tag
+produces a 62-character RFC1035 name. The Candidate Backend remains
+`moazez-staging-api-candidate-backend`, and the URL map remains
+`moazez-staging-edge-url-map`; only the Backend's direct `api_candidate[0].id`
+dependency moves to the successor NEG.
+
 The exact public verification path is:
 
 ```text
@@ -57,6 +70,14 @@ therefore exercises the existing ALB, candidate-tagged NEG, zero-normal-traffic
 revision, and protected API handler.
 
 ## Lifecycle
+
+The Candidate NEG declares `create_before_destroy = true`. A tag change can
+therefore create the distinct tag-derived successor before the stable
+Candidate Backend switches its group and Terraform removes the predecessor
+NEG. This avoids the `resourceInUseByAnotherResource` failure caused by the
+historical fixed-name, destroy-first replacement. Cloud Armor, the trusted
+client-IP header, and the single candidate smoke route do not change during
+the rotation.
 
 The `api-no-traffic-promotion` release gate first creates the tagged API
 revision in the backend-runtime root and then enables this edge capability as
