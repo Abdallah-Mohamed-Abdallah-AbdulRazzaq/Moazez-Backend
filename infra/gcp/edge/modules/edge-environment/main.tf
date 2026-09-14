@@ -93,12 +93,16 @@ resource "google_compute_region_network_endpoint_group" "api_candidate" {
 
   project               = var.project_id
   region                = var.region
-  name                  = "${local.name_prefix}-api-candidate-neg"
+  name                  = var.candidate_api_tag == null ? "${local.name_prefix}-api-invalid-neg" : "${local.name_prefix}-api-${var.candidate_api_tag}-neg"
   network_endpoint_type = "SERVERLESS"
 
   cloud_run {
     service = var.api_service_name
     tag     = var.candidate_api_tag
+  }
+
+  lifecycle {
+    create_before_destroy = true
   }
 }
 

@@ -200,6 +200,71 @@ function representativePlanFixture() {
   return JSON.parse(fs.readFileSync(REPRESENTATIVE_PLAN_FIXTURE_PATH, 'utf8'));
 }
 
+function safeRotationPlanFixture() {
+  const plan = representativePlanFixture();
+  const neg = plan.resource_changes.find(
+    (record) =>
+      record.address ===
+      control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[0],
+  );
+  neg.change.actions = ['create', 'delete'];
+  neg.change.after.name = control.candidateNegNameForTag(
+    neg.change.after.cloud_run[0].tag,
+  );
+  neg.change.before.region = `https://www.googleapis.com/compute/v1/projects/${control.CANDIDATE_EDGE_IDENTITIES.projectId}/regions/${control.CANDIDATE_EDGE_IDENTITIES.region}`;
+  neg.change.before.self_link = `${neg.change.before.region}/networkEndpointGroups/${control.CANDIDATE_EDGE_IDENTITIES.negName}`;
+  neg.change.replace_paths = [['name'], ['cloud_run', 0, 'tag']];
+  const backend = plan.resource_changes.find(
+    (record) =>
+      record.address ===
+      control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[1],
+  );
+  backend.change.before.backend[0].group = neg.change.before.self_link;
+  const backendSelfLink = `https://www.googleapis.com/compute/v1/projects/${control.CANDIDATE_EDGE_IDENTITIES.projectId}/global/backendServices/${control.CANDIDATE_EDGE_IDENTITIES.backendName}`;
+  backend.change.before.self_link = backendSelfLink;
+  backend.change.after.self_link = backendSelfLink;
+  backend.change.after_unknown.self_link = false;
+  return plan;
+}
+
+function makeSyntheticV5ReviewerManifest(temporaryRoot) {
+  const fixture = makeSuccessfulContinuationContext(temporaryRoot);
+  const manifest = control.buildManifest(fixture.context);
+  manifest.manifestVersion = 5;
+  manifest.executionMode =
+    control.FAILED_EDGE_APPLY_STATE_SUCCESSOR_RECOVERY_MODE;
+  const target = operation(
+    manifest,
+    control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+    control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+  );
+  const negAddress =
+    control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[0];
+  target.expectedResourceActions[negAddress] = ['create', 'delete'];
+  target.expectedChangeType =
+    'recover-failed-edge-apply:create-successor-neg-update-stable-backend-delete-predecessor-with-url-map-unchanged';
+  target.allowedAttributeChanges[negAddress] = ['name', 'cloud_run[0].tag'];
+  const successorNegName = control.candidateNegNameForTag(
+    manifest.candidate.tag,
+  );
+  target.verificationExpectation = {
+    candidateTag: manifest.candidate.tag,
+    publicPath: control.SMOKE_PUBLIC_PATH,
+    backendPath: control.SMOKE_BACKEND_PATH,
+    candidateNegName: successorNegName,
+    candidateNegCloudRunService:
+      control.CANDIDATE_EDGE_IDENTITIES.cloudRunService,
+    candidateBackendName: control.CANDIDATE_EDGE_IDENTITIES.backendName,
+    candidateBackendNegName: successorNegName,
+    urlMapName: control.CANDIDATE_EDGE_IDENTITIES.urlMapName,
+    urlMapSemanticStatus: 'unchanged',
+    securityPolicyMatchesPrimaryApi: true,
+    trustedClientIpHeader:
+      control.CANDIDATE_EDGE_IDENTITIES.trustedClientIpHeader,
+  };
+  return manifest;
+}
+
 function representativeNoOpUrlMapRecord() {
   return {
     address: control.EDGE_CANDIDATE_RESOURCE_ADDRESSES[2],
@@ -221,7 +286,10 @@ function writeSuccessfulContinuationReviewEvidence(
   target,
   manifestBytes,
 ) {
-  const planJsonBytes = fs.readFileSync(REPRESENTATIVE_PLAN_FIXTURE_PATH);
+  const planJsonBytes =
+    manifest.manifestVersion === 5
+      ? Buffer.from(`${JSON.stringify(safeRotationPlanFixture(), null, 2)}\n`)
+      : fs.readFileSync(REPRESENTATIVE_PLAN_FIXTURE_PATH);
   const savedPlanBytes = fs.readFileSync(target.savedPlanPath);
   const planJsonPath = `${target.savedPlanPath}.plan.json`;
   fs.writeFileSync(planJsonPath, planJsonBytes);
@@ -272,7 +340,7 @@ function registerAndApprove(manifest, gateId, operationId, uniquePlanText) {
   fs.mkdirSync(path.dirname(target.savedPlanPath), { recursive: true });
   fs.writeFileSync(target.savedPlanPath, uniquePlanText);
   const requiresDeterministicReview =
-    [3, 4].includes(manifest.manifestVersion) &&
+    [3, 4, 5].includes(manifest.manifestVersion) &&
     gateId === control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID &&
     operationId === control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID;
   const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
@@ -917,6 +985,233 @@ function makeLegacyState10CompatibilityFixture() {
         },
       },
     },
+  };
+}
+
+function makeFailedApplyState11ValidatorFixture() {
+  const profile = control.FAILED_EDGE_APPLY_STATE11_PROFILE;
+  const metadata = {
+    failedManifestSha256: profile.failedManifestSha256,
+    failedSavedPlanSha256: profile.failedSavedPlanSha256,
+    failedPlanJsonSha256: profile.failedPlanJsonSha256,
+    failedReviewEvidenceSha256: profile.failedReviewEvidenceSha256,
+    failedPreApplyEvidenceSha256: profile.failedPreApplyEvidenceSha256,
+    applyStdoutSha256: profile.applyStdoutSha256,
+    applyStderrSha256: profile.applyStderrSha256,
+  };
+  const failedManifest = { sourceSha: profile.failedSourceSha };
+  const edgeOperation = {
+    planEvidence: { sha256: profile.failedSavedPlanSha256 },
+    statePrecondition: {
+      lineage: profile.edgeLineage,
+      serial: profile.preApplySerial,
+    },
+  };
+  const live = {
+    edgeState: {
+      lineage: profile.edgeLineage,
+      serial: profile.currentEdgeSerial,
+    },
+    liveDiscovery: {
+      candidateEdgeResources: {
+        neg: {
+          name: control.CANDIDATE_EDGE_IDENTITIES.negName,
+          cloudRunTag: profile.retainedCandidateNegTag,
+        },
+        backend: {
+          name: control.CANDIDATE_EDGE_IDENTITIES.backendName,
+          negName: control.CANDIDATE_EDGE_IDENTITIES.negName,
+          securityPolicyMatchesPrimaryApi: true,
+          customRequestHeaders: [
+            control.CANDIDATE_EDGE_IDENTITIES.trustedClientIpHeader,
+          ],
+        },
+        smokeRoute: {
+          urlMapName: control.CANDIDATE_EDGE_IDENTITIES.urlMapName,
+          publicPath: control.SMOKE_PUBLIC_PATH,
+          backendPath: control.SMOKE_BACKEND_PATH,
+        },
+      },
+    },
+  };
+  const evidence = {
+    schemaVersion: 1,
+    evidenceType: profile.state11EvidenceType,
+    status: 'passed',
+    classification: profile.classification,
+    recordedAt: '2026-09-14T15:23:00Z',
+    sourceSha: profile.failedSourceSha,
+    manifestSha256: profile.failedManifestSha256,
+    artifacts: {
+      savedPlanSha256: profile.failedSavedPlanSha256,
+      planJsonSha256: profile.failedPlanJsonSha256,
+      reviewEvidenceSha256: profile.failedReviewEvidenceSha256,
+      preApplyEvidenceSha256: profile.failedPreApplyEvidenceSha256,
+      applyStdoutSha256: profile.applyStdoutSha256,
+      applyStderrSha256: profile.applyStderrSha256,
+    },
+    apply: {
+      processStarted: true,
+      exitCode: 1,
+      failureCode: profile.failureCode,
+      failureResource: control.CANDIDATE_EDGE_IDENTITIES.negName,
+      blockingResource: control.CANDIDATE_EDGE_IDENTITIES.backendName,
+    },
+    state: {
+      lineage: profile.edgeLineage,
+      preApplySerial: profile.preApplySerial,
+      postApplySerial: profile.currentEdgeSerial,
+      postApplyGeneration: profile.postApplyGeneration,
+      lockPresent: false,
+      negTag: profile.retainedCandidateNegTag,
+      backendGroup: profile.candidateBackendGroup,
+    },
+    live: {
+      negTag: profile.retainedCandidateNegTag,
+      desiredNegTag: profile.desiredCandidateTag,
+      backendGroup: profile.candidateBackendGroup,
+      servingTrafficPercent: 100,
+      candidateTrafficPercent: 0,
+      trustedHeaderPreserved: true,
+      smokeRoutePreserved: true,
+    },
+    sourceOrderingSignal: {
+      edgeSourceSha256: profile.edgeSourceSha256,
+      fixedCandidateNegName: true,
+      backendDirectlyReferencesCandidateNeg: true,
+    },
+    authority: {
+      liveSemanticMutationObserved: false,
+      stateSemanticMutationObserved: false,
+      stateSuccessorObserved: true,
+      failedSavedPlanReusable: false,
+      terraformApplyRetryAuthorized: false,
+      terraformPlanAuthorized: false,
+      stagingMutationByThisGate: false,
+      productionMutationByThisGate: false,
+    },
+    nextRequiredAction:
+      'SOURCE_REMEDIATION_AND_GOVERNED_SUCCESSOR_RECOVERY_SUPPORT',
+  };
+  return { metadata, failedManifest, edgeOperation, live, evidence };
+}
+
+function makeFailedApplyRecoveryMetadataFixture() {
+  const profile = control.FAILED_EDGE_APPLY_STATE11_PROFILE;
+  const authorityRoot = path.join(os.tmpdir(), 'moazez-v5-authority');
+  return {
+    sourceRemediationSha: control.currentSourceSha(),
+    failedReleaseExecutionId: profile.failedReleaseExecutionId,
+    failedSourceSha: profile.failedSourceSha,
+    failedManifestRef: path.join(authorityRoot, 'failed-manifest.json'),
+    failedManifestSha256: profile.failedManifestSha256,
+    failedSavedPlanRef: path.join(authorityRoot, 'failed-plan.tfplan'),
+    failedSavedPlanSha256: profile.failedSavedPlanSha256,
+    failedPlanJsonRef: path.join(authorityRoot, 'failed-plan.json'),
+    failedPlanJsonSha256: profile.failedPlanJsonSha256,
+    failedReviewEvidenceRef: path.join(authorityRoot, 'failed-review.json'),
+    failedReviewEvidenceSha256: profile.failedReviewEvidenceSha256,
+    failedPreApplyEvidenceRef: path.join(authorityRoot, 'failed-preapply.json'),
+    failedPreApplyEvidenceSha256: profile.failedPreApplyEvidenceSha256,
+    applyStdoutRef: path.join(authorityRoot, 'apply.stdout.log'),
+    applyStdoutSha256: profile.applyStdoutSha256,
+    applyStderrRef: path.join(authorityRoot, 'apply.stderr.log'),
+    applyStderrSha256: profile.applyStderrSha256,
+    state11ReconciliationEvidenceRef: path.join(
+      authorityRoot,
+      'edge-20260914151653-state11-reconciliation.json',
+    ),
+    state11ReconciliationEvidenceSha256:
+      profile.state11ReconciliationEvidenceSha256,
+  };
+}
+
+function retainedFailedApplyArtifactPaths() {
+  const localAppData =
+    process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local');
+  const moazezRoot = path.join(localAppData, 'Moazez');
+  const executionId =
+    control.FAILED_EDGE_APPLY_STATE11_PROFILE.failedReleaseExecutionId;
+  const reviewRoot = path.join(
+    moazezRoot,
+    'plans',
+    'day2-d1',
+    'v4-edge-review',
+  );
+  const planRoot = path.join(
+    moazezRoot,
+    'plans',
+    'day2-d1',
+    executionId,
+    'staging',
+    'edge',
+    executionId,
+  );
+  return {
+    failedManifestRef: path.join(
+      moazezRoot,
+      'release-control',
+      'day2-d1',
+      `${executionId}-manifest.json`,
+    ),
+    failedSavedPlanRef: path.join(
+      planRoot,
+      '01-api-no-traffic-promotion-01-api-candidate-edge-reconciliation.tfplan',
+    ),
+    failedPlanJsonRef: path.join(reviewRoot, 'edge-20260914151653.plan.json'),
+    failedReviewEvidenceRef: path.join(
+      reviewRoot,
+      'edge-20260914151653.review-evidence.json',
+    ),
+    failedPreApplyEvidenceRef: path.join(
+      reviewRoot,
+      'edge-20260914151653.pre-apply-evidence.json',
+    ),
+    applyStdoutRef: path.join(
+      moazezRoot,
+      'logs',
+      'v4-edge-apply-20260914151653.stdout.log',
+    ),
+    applyStderrRef: path.join(
+      moazezRoot,
+      'logs',
+      'v4-edge-apply-20260914151653.stderr.log',
+    ),
+    state11ReconciliationEvidenceRef: path.join(
+      reviewRoot,
+      'edge-20260914151653-state11-reconciliation.json',
+    ),
+  };
+}
+
+function retainedFailedApplyArtifactsAvailable() {
+  const paths = retainedFailedApplyArtifactPaths();
+  return Object.values(paths).every((value) => fs.existsSync(value));
+}
+
+function makeRetainedFailedApplyRecoveryContext(temporaryRoot) {
+  const refs = retainedFailedApplyArtifactPaths();
+  const failedManifest = JSON.parse(fs.readFileSync(refs.failedManifestRef));
+  const liveDiscovery = structuredClone(failedManifest.liveDiscovery);
+  liveDiscovery.evidenceRef = refs.state11ReconciliationEvidenceRef;
+  liveDiscovery.discoveredAt = '2026-09-14T15:24:00Z';
+  liveDiscovery.edgeState.serial =
+    control.FAILED_EDGE_APPLY_STATE11_PROFILE.currentEdgeSerial;
+  return {
+    executionMode: control.FAILED_EDGE_APPLY_STATE_SUCCESSOR_RECOVERY_MODE,
+    executionId: 'day2-staging-failed-edge-apply-successor-test',
+    repository: control.REPOSITORY,
+    sourceSha: control.currentSourceSha(),
+    environment: 'staging',
+    resumeGateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+    resumeOperationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    failedEdgeApplyStateSuccessorRecovery: {
+      ...makeFailedApplyRecoveryMetadataFixture(),
+      ...refs,
+    },
+    liveDiscovery,
+    externalTfDataRoot: path.join(temporaryRoot, 'v5-tfdata'),
+    externalSavedPlanRoot: path.join(temporaryRoot, 'v5-plans'),
   };
 }
 
@@ -2500,6 +2795,279 @@ test('edge state-successor recovery v4 rejects every legacy State10 schema, prof
   }
 });
 
+test('failed Edge apply State11 reconciliation accepts only the exact incident boundary', () => {
+  const fixture = makeFailedApplyState11ValidatorFixture();
+  assert.equal(
+    control.validateFailedApplyState11ReconciliationEvidence(
+      fixture.evidence,
+      fixture.metadata,
+      fixture.failedManifest,
+      fixture.edgeOperation,
+      fixture.live,
+    ),
+    fixture.evidence,
+  );
+});
+
+test('v5 failed-apply metadata is bound to the exact incident artifacts and remediation source', () => {
+  const metadata = makeFailedApplyRecoveryMetadataFixture();
+  assert.deepEqual(
+    control.validateFailedEdgeApplyStateSuccessorRecoveryMetadata(
+      metadata,
+      control.currentSourceSha(),
+    ),
+    metadata,
+  );
+
+  const cases = [
+    [
+      'failed execution ID',
+      (value) => (value.failedReleaseExecutionId = 'unrelated-release'),
+    ],
+    ['failed source SHA', (value) => (value.failedSourceSha = 'f'.repeat(40))],
+    [
+      'remediation source SHA',
+      (value) => (value.sourceRemediationSha = 'f'.repeat(40)),
+    ],
+    [
+      'failed manifest SHA',
+      (value) => (value.failedManifestSha256 = 'f'.repeat(64)),
+    ],
+    [
+      'failed Saved Plan SHA',
+      (value) => (value.failedSavedPlanSha256 = 'f'.repeat(64)),
+    ],
+    [
+      'failed Plan JSON SHA',
+      (value) => (value.failedPlanJsonSha256 = 'f'.repeat(64)),
+    ],
+    [
+      'failed review evidence SHA',
+      (value) => (value.failedReviewEvidenceSha256 = 'f'.repeat(64)),
+    ],
+    [
+      'failed pre-apply evidence SHA',
+      (value) => (value.failedPreApplyEvidenceSha256 = 'f'.repeat(64)),
+    ],
+    ['apply stdout SHA', (value) => (value.applyStdoutSha256 = 'f'.repeat(64))],
+    ['apply stderr SHA', (value) => (value.applyStderrSha256 = 'f'.repeat(64))],
+    [
+      'State11 reconciliation SHA',
+      (value) => (value.state11ReconciliationEvidenceSha256 = 'f'.repeat(64)),
+    ],
+    [
+      'duplicate artifact reference',
+      (value) => (value.applyStderrRef = value.applyStdoutRef),
+    ],
+    [
+      'wrong State11 filename',
+      (value) =>
+        (value.state11ReconciliationEvidenceRef = path.join(
+          path.dirname(value.state11ReconciliationEvidenceRef),
+          'unrelated-state11.json',
+        )),
+    ],
+  ];
+  for (const [name, mutate] of cases) {
+    const changed = makeFailedApplyRecoveryMetadataFixture();
+    mutate(changed);
+    assert.throws(
+      () =>
+        control.validateFailedEdgeApplyStateSuccessorRecoveryMetadata(
+          changed,
+          control.currentSourceSha(),
+        ),
+      control.DeploymentControlError,
+      name,
+    );
+  }
+});
+
+test('failed Edge apply State11 reconciliation rejects schema, apply, state, live, source, and authority contradictions', () => {
+  const cases = [
+    ['missing top-level field', (f) => delete f.evidence.nextRequiredAction],
+    ['extra top-level field', (f) => (f.evidence.retry = false)],
+    [
+      'missing artifact field',
+      (f) => delete f.evidence.artifacts.planJsonSha256,
+    ],
+    ['extra apply field', (f) => (f.evidence.apply.retryCount = 0)],
+    ['extra state field', (f) => (f.evidence.state.semanticChange = false)],
+    ['extra live field', (f) => (f.evidence.live.urlMapChanged = false)],
+    [
+      'extra source-ordering field',
+      (f) => (f.evidence.sourceOrderingSignal.destroyBeforeCreate = false),
+    ],
+    ['extra authority field', (f) => (f.evidence.authority.retry = false)],
+    ['wrong evidence type', (f) => (f.evidence.evidenceType = 'unrelated')],
+    ['wrong classification', (f) => (f.evidence.classification = 'UNSAFE')],
+    ['wrong source SHA', (f) => (f.evidence.sourceSha = 'f'.repeat(40))],
+    [
+      'wrong manifest hash',
+      (f) => (f.evidence.manifestSha256 = 'f'.repeat(64)),
+    ],
+    [
+      'wrong artifact hash',
+      (f) => (f.evidence.artifacts.applyStderrSha256 = 'f'.repeat(64)),
+    ],
+    ['apply did not start', (f) => (f.evidence.apply.processStarted = false)],
+    ['apply exit code changed', (f) => (f.evidence.apply.exitCode = 0)],
+    [
+      'failure code changed',
+      (f) => (f.evidence.apply.failureCode = 'unrelatedFailure'),
+    ],
+    [
+      'failure resource changed',
+      (f) => (f.evidence.apply.failureResource = 'unrelated-neg'),
+    ],
+    [
+      'blocking resource changed',
+      (f) => (f.evidence.apply.blockingResource = 'unrelated-backend'),
+    ],
+    ['lineage changed', (f) => (f.evidence.state.lineage = 'other-lineage')],
+    ['pre-apply serial changed', (f) => (f.evidence.state.preApplySerial = 9)],
+    ['State11 serial changed', (f) => (f.evidence.state.postApplySerial = 12)],
+    [
+      'State11 serial is not a successor',
+      (f) =>
+        (f.evidence.state.postApplySerial = f.evidence.state.preApplySerial),
+    ],
+    [
+      'post-apply generation changed',
+      (f) => (f.evidence.state.postApplyGeneration = '1'),
+    ],
+    ['state lock remains', (f) => (f.evidence.state.lockPresent = true)],
+    [
+      'state NEG tag changed',
+      (f) => (f.evidence.state.negTag = 'candidate-other'),
+    ],
+    [
+      'state Backend group changed',
+      (f) => (f.evidence.state.backendGroup = 'https://example.invalid/neg'),
+    ],
+    [
+      'live NEG tag changed',
+      (f) => (f.evidence.live.negTag = 'candidate-other'),
+    ],
+    [
+      'desired live tag changed',
+      (f) => (f.evidence.live.desiredNegTag = 'candidate-other'),
+    ],
+    [
+      'serving traffic changed',
+      (f) => (f.evidence.live.servingTrafficPercent = 99),
+    ],
+    [
+      'candidate traffic changed',
+      (f) => (f.evidence.live.candidateTrafficPercent = 1),
+    ],
+    [
+      'trusted header lost',
+      (f) => (f.evidence.live.trustedHeaderPreserved = false),
+    ],
+    ['smoke route lost', (f) => (f.evidence.live.smokeRoutePreserved = false)],
+    [
+      'source hash changed',
+      (f) =>
+        (f.evidence.sourceOrderingSignal.edgeSourceSha256 = 'f'.repeat(64)),
+    ],
+    [
+      'fixed-name ordering signal missing',
+      (f) => (f.evidence.sourceOrderingSignal.fixedCandidateNegName = false),
+    ],
+    [
+      'direct Backend reference missing',
+      (f) =>
+        (f.evidence.sourceOrderingSignal.backendDirectlyReferencesCandidateNeg = false),
+    ],
+    [
+      'live semantic mutation observed',
+      (f) => (f.evidence.authority.liveSemanticMutationObserved = true),
+    ],
+    [
+      'state semantic mutation observed',
+      (f) => (f.evidence.authority.stateSemanticMutationObserved = true),
+    ],
+    [
+      'state successor absent',
+      (f) => (f.evidence.authority.stateSuccessorObserved = false),
+    ],
+    [
+      'failed Saved Plan made reusable',
+      (f) => (f.evidence.authority.failedSavedPlanReusable = true),
+    ],
+    [
+      'apply retry authorized',
+      (f) => (f.evidence.authority.terraformApplyRetryAuthorized = true),
+    ],
+    [
+      'plan authorized',
+      (f) => (f.evidence.authority.terraformPlanAuthorized = true),
+    ],
+    [
+      'staging mutation attributed to gate',
+      (f) => (f.evidence.authority.stagingMutationByThisGate = true),
+    ],
+    [
+      'production mutation attributed to gate',
+      (f) => (f.evidence.authority.productionMutationByThisGate = true),
+    ],
+    [
+      'next action changed',
+      (f) => (f.evidence.nextRequiredAction = 'RETRY_FAILED_PLAN'),
+    ],
+    [
+      'failed plan operation binding changed',
+      (f) => (f.edgeOperation.planEvidence.sha256 = 'f'.repeat(64)),
+    ],
+    [
+      'fresh State11 state changed',
+      (f) => (f.live.edgeState.serial = f.evidence.state.preApplySerial),
+    ],
+    [
+      'fresh NEG tag changed',
+      (f) =>
+        (f.live.liveDiscovery.candidateEdgeResources.neg.cloudRunTag =
+          'candidate-other'),
+    ],
+    [
+      'fresh Backend identity changed',
+      (f) =>
+        (f.live.liveDiscovery.candidateEdgeResources.backend.negName =
+          'unrelated-neg'),
+    ],
+    [
+      'fresh security posture changed',
+      (f) =>
+        (f.live.liveDiscovery.candidateEdgeResources.backend.customRequestHeaders =
+          []),
+    ],
+    [
+      'fresh URL-map identity changed',
+      (f) =>
+        (f.live.liveDiscovery.candidateEdgeResources.smokeRoute.urlMapName =
+          'unrelated-url-map'),
+    ],
+  ];
+
+  for (const [name, mutate] of cases) {
+    const fixture = makeFailedApplyState11ValidatorFixture();
+    mutate(fixture);
+    assert.throws(
+      () =>
+        control.validateFailedApplyState11ReconciliationEvidence(
+          fixture.evidence,
+          fixture.metadata,
+          fixture.failedManifest,
+          fixture.edgeOperation,
+          fixture.live,
+        ),
+      control.DeploymentControlError,
+      name,
+    );
+  }
+});
+
 test('edge state-successor recovery v4 reads and verifies every prior artifact byte binding', () => {
   withTemporaryRoot((temporaryRoot) => {
     const fixture = makeEdgeStateSuccessorRecoveryContext(temporaryRoot);
@@ -3050,6 +3618,312 @@ test('v4 registration fails closed without exact review inputs or with tampered 
     );
   });
 });
+
+test(
+  'v5 exact retained State11 authority builds only the governed non-replay remainder',
+  { skip: !retainedFailedApplyArtifactsAvailable() },
+  () => {
+    withTemporaryRoot((temporaryRoot) => {
+      const manifest = control.buildManifest(
+        makeRetainedFailedApplyRecoveryContext(temporaryRoot),
+      );
+      const operationIds = manifest.gates.flatMap((gate) =>
+        gate.operations.map((candidate) => candidate.id),
+      );
+      const edge = operation(
+        manifest,
+        control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+        control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+      );
+      const profile = control.FAILED_EDGE_APPLY_STATE11_PROFILE;
+
+      assert.equal(manifest.manifestVersion, 5);
+      assert.equal(
+        manifest.executionMode,
+        control.FAILED_EDGE_APPLY_STATE_SUCCESSOR_RECOVERY_MODE,
+      );
+      assert.deepEqual(
+        manifest.gates.map((gate) => gate.id),
+        [...control.FAILED_EDGE_APPLY_STATE_SUCCESSOR_RECOVERY_GATE_IDS],
+      );
+      assert.deepEqual(operationIds, [
+        'api-candidate-edge-reconciliation',
+        'maintenance-scheduler-runtime',
+        'protected-candidate-smoke',
+        'api-traffic-promotion',
+      ]);
+      for (const replayOperation of [
+        'migration',
+        'core-worker-runtime',
+        'media-worker-runtime',
+        'api-candidate-runtime',
+      ]) {
+        assert.equal(operationIds.includes(replayOperation), false);
+      }
+      assert.deepEqual(edge.statePrecondition, {
+        lineage: profile.edgeLineage,
+        serial: profile.currentEdgeSerial,
+        boundFromOperationId: null,
+        status: 'bound',
+      });
+      assert.deepEqual(
+        edge.expectedResourceActions[
+          control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[0]
+        ],
+        ['create', 'delete'],
+      );
+      assert.deepEqual(
+        edge.allowedAttributeChanges[
+          control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[0]
+        ],
+        ['name', 'cloud_run[0].tag'],
+      );
+      assert.equal(
+        edge.verificationExpectation.candidateNegName,
+        'moazez-staging-api-candidate-5377bd0c7d84-neg',
+      );
+      assert.equal(
+        manifest.blockedSavedPlanHashes.includes(
+          profile.oldInterruptedV3PlanSha256,
+        ),
+        true,
+      );
+      assert.equal(
+        manifest.blockedSavedPlanHashes.includes(profile.failedSavedPlanSha256),
+        true,
+      );
+      assert.deepEqual(manifest.failedPredecessorLifecycle, {
+        manifestVersion: 4,
+        executionMode: control.EDGE_STATE_SUCCESSOR_RECOVERY_MODE,
+        releaseExecutionId: profile.failedReleaseExecutionId,
+        releaseStatus: 'failed',
+        failedGateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+        gateStatus: 'failed',
+        operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+        operationStatus: 'failed',
+        planEvidenceStatus: 'registered',
+        planEvidenceReviewed: true,
+        deterministicReviewStatus: 'passed',
+        approvalStatus: 'approved',
+        applyStatus: 'failed',
+        applyAttempted: true,
+        singleConsumptionStatus: 'invalidated-after-failed-attempt',
+        liveVerificationStatus: 'pending',
+        laterGateStatuses: ['blocked', 'blocked', 'blocked'],
+      });
+      const invalidFailedBoundaries = [
+        [
+          'failed predecessor without approved plan',
+          (value) => (value.approvalStatus = 'pending'),
+        ],
+        [
+          'failed predecessor without deterministic review',
+          (value) => (value.deterministicReviewStatus = 'pending'),
+        ],
+        [
+          'failed predecessor with successful apply',
+          (value) => (value.applyStatus = 'succeeded'),
+        ],
+        [
+          'failed predecessor at another gate',
+          (value) => (value.failedGateId = 'traffic-promotion'),
+        ],
+        [
+          'later failed predecessor gate not blocked',
+          (value) => (value.laterGateStatuses[0] = 'pending'),
+        ],
+      ];
+      for (const [name, mutate] of invalidFailedBoundaries) {
+        const changed = structuredClone(manifest);
+        mutate(changed.failedPredecessorLifecycle);
+        assert.throws(
+          () => control.validateManifest(changed),
+          control.DeploymentControlError,
+          name,
+        );
+      }
+      assert.doesNotThrow(() => control.validateManifest(manifest));
+    });
+  },
+);
+
+test(
+  'v5 exact retained State11 authority completes the controller lifecycle with explicit successor Edge verification',
+  { skip: !retainedFailedApplyArtifactsAvailable() },
+  () => {
+    withTemporaryRoot((temporaryRoot) => {
+      const manifest = control.buildManifest(
+        makeRetainedFailedApplyRecoveryContext(temporaryRoot),
+      );
+      const successorNegName = control.candidateNegNameForTag(
+        manifest.candidate.tag,
+      );
+      applyAndVerifyTerraform(
+        manifest,
+        control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+        control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+        'fresh-v5-safe-rotation-plan',
+        {
+          observedCandidateTag: manifest.candidate.tag,
+          observedPublicPath: control.SMOKE_PUBLIC_PATH,
+          observedBackendPath: control.SMOKE_BACKEND_PATH,
+          observedCandidateNegName: successorNegName,
+          observedCandidateNegCloudRunService:
+            control.CANDIDATE_EDGE_IDENTITIES.cloudRunService,
+          observedCandidateBackendName:
+            control.CANDIDATE_EDGE_IDENTITIES.backendName,
+          observedCandidateBackendNegName: successorNegName,
+          observedUrlMapName: control.CANDIDATE_EDGE_IDENTITIES.urlMapName,
+          observedUrlMapSemanticStatus: 'unchanged',
+          observedSecurityPolicyMatchesPrimaryApi: true,
+          observedTrustedClientIpHeader:
+            control.CANDIDATE_EDGE_IDENTITIES.trustedClientIpHeader,
+        },
+      );
+      passThroughMaintenance(manifest);
+      passThroughProtectedSmoke(manifest);
+      applyAndVerifyTerraform(
+        manifest,
+        'traffic-promotion',
+        'api-traffic-promotion',
+        'fresh-v5-traffic-plan',
+        {
+          observedImage: manifest.candidate.imageReference,
+          observedRevision: manifest.candidate.revision,
+          observedCandidateTag: manifest.candidate.tag,
+          observedStablePercent: 0,
+          observedCandidatePercent: 100,
+        },
+      );
+      assert.equal(manifest.releaseStatus, 'complete');
+      assert.equal(
+        manifest.gates.every((gate) => gate.status === 'passed'),
+        true,
+      );
+      assert.doesNotThrow(() => control.validateManifest(manifest));
+    });
+  },
+);
+
+test(
+  'v5 fails closed on changed State11 live semantics and invalidates a newly failed successor plan once',
+  { skip: !retainedFailedApplyArtifactsAvailable() },
+  () => {
+    withTemporaryRoot((temporaryRoot) => {
+      const cases = [
+        [
+          'wrong Edge lineage',
+          (c) => (c.liveDiscovery.edgeState.lineage = 'other'),
+        ],
+        [
+          'wrong current serial',
+          (c) => (c.liveDiscovery.edgeState.serial = 12),
+        ],
+        [
+          'changed live NEG tag',
+          (c) =>
+            (c.liveDiscovery.candidateEdgeResources.neg.cloudRunTag =
+              c.liveDiscovery.candidate.tag),
+        ],
+        [
+          'changed current NEG name',
+          (c) =>
+            (c.liveDiscovery.candidateEdgeResources.neg.name = 'other-neg'),
+        ],
+        [
+          'changed Backend name',
+          (c) =>
+            (c.liveDiscovery.candidateEdgeResources.backend.name =
+              'other-backend'),
+        ],
+        [
+          'changed Backend NEG identity',
+          (c) =>
+            (c.liveDiscovery.candidateEdgeResources.backend.negName =
+              'other-neg'),
+        ],
+        [
+          'changed serving revision',
+          (c) => (c.liveDiscovery.servingBaseline.revision = 'other-revision'),
+        ],
+        [
+          'changed serving traffic',
+          (c) => (c.liveDiscovery.servingBaseline.trafficPercent = 99),
+        ],
+        [
+          'changed candidate traffic',
+          (c) => (c.liveDiscovery.candidate.trafficPercent = 1),
+        ],
+        [
+          'candidate not ready',
+          (c) => (c.liveDiscovery.candidate.ready = false),
+        ],
+        [
+          'partial security mutation',
+          (c) =>
+            (c.liveDiscovery.candidateEdgeResources.backend.securityPolicyMatchesPrimaryApi = false),
+        ],
+        [
+          'partial route mutation',
+          (c) =>
+            (c.liveDiscovery.candidateEdgeResources.smokeRoute.backendPath =
+              '/other'),
+        ],
+      ];
+      for (const [name, mutate] of cases) {
+        const context = makeRetainedFailedApplyRecoveryContext(temporaryRoot);
+        mutate(context);
+        assert.throws(
+          () => control.buildManifest(context),
+          control.DeploymentControlError,
+          name,
+        );
+      }
+
+      const manifest = control.buildManifest(
+        makeRetainedFailedApplyRecoveryContext(temporaryRoot),
+      );
+      const edge = registerAndApprove(
+        manifest,
+        control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+        control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+        'fresh-v5-failed-once-plan',
+      );
+      control.recordApply(manifest, {
+        gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+        operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+        result: 'failed',
+        evidenceRef: 'apply:fresh-v5-failed-once',
+        recordedAt: RECORDED_AT,
+      });
+      assert.equal(edge.apply.status, 'failed');
+      assert.equal(edge.apply.attempted, true);
+      assert.equal(
+        edge.singleConsumptionStatus,
+        'invalidated-after-failed-attempt',
+      );
+      assert.equal(manifest.releaseStatus, 'failed');
+      assert.equal(
+        manifest.gates.slice(1).every((gate) => gate.status === 'blocked'),
+        true,
+      );
+      assert.throws(
+        () =>
+          control.recordApply(manifest, {
+            gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+            operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+            result: 'succeeded',
+            evidenceRef: 'apply:reused',
+            postLineage: edge.statePrecondition.lineage,
+            postSerial: edge.statePrecondition.serial + 1,
+            recordedAt: RECORDED_AT,
+          }),
+        control.DeploymentControlError,
+      );
+      assert.doesNotThrow(() => control.validateManifest(manifest));
+    });
+  },
+);
 
 test('recovery manifest v2 derives deterministic attempts and contains only the API-first window', () => {
   withTemporaryRoot((temporaryRoot) => {
@@ -4285,6 +5159,18 @@ test('edge source adds only an optional tagged candidate NEG/backend and one exa
   );
   assert.match(
     edge,
+    /resource "google_compute_region_network_endpoint_group" "api_candidate"\s*\{[^}]*name\s*=\s*var[.]candidate_api_tag\s*==\s*null\s*\?\s*"\$\{local[.]name_prefix\}-api-invalid-neg"\s*:\s*"\$\{local[.]name_prefix\}-api-\$\{var[.]candidate_api_tag\}-neg"[^}]*cloud_run\s*\{[^}]*tag\s*=\s*var[.]candidate_api_tag[^}]*\}[^}]*lifecycle\s*\{[^}]*create_before_destroy\s*=\s*true/su,
+  );
+  assert.match(
+    edge,
+    /resource "google_compute_backend_service" "api_candidate"\s*\{[\s\S]*?name\s*=\s*"\$\{local[.]name_prefix\}-api-candidate-backend"[\s\S]*?backend\s*\{[\s\S]*?group\s*=\s*google_compute_region_network_endpoint_group[.]api_candidate\[0\][.]id/u,
+  );
+  assert.match(
+    edge,
+    /resource "google_compute_url_map" "edge"\s*\{[^}]*name\s*=\s*"\$\{local[.]name_prefix\}-edge-url-map"/su,
+  );
+  assert.match(
+    edge,
     /security_policy\s*=\s*google_compute_security_policy[.]edge[.]self_link/u,
   );
   assert.match(
@@ -4324,6 +5210,391 @@ test('edge source adds only an optional tagged candidate NEG/backend and one exa
     authController.slice(meDecoratorStart, meMethodEnd),
     /@PublicRoute/u,
   );
+});
+
+test('v5 deterministic reviewer accepts only the tag-derived create-before-destroy Candidate NEG rotation', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const manifest = makeSyntheticV5ReviewerManifest(temporaryRoot);
+    const plan = safeRotationPlanFixture();
+    const review = control.reviewTerraformPlanJson(plan, manifest, {
+      gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    });
+    const neg = plan.resource_changes[0];
+    const backend = plan.resource_changes[1];
+
+    assert.equal(review.status, 'passed');
+    assert.equal(review.nonNoopResourceChangeCount, 2);
+    assert.equal(review.intendedSemanticChangeCount, 2);
+    assert.equal(review.refreshOnlyDriftCount, 5);
+    assert.equal(review.urlMapMutation, false);
+    assert.deepEqual(neg.change.actions, ['create', 'delete']);
+    assert.deepEqual(neg.change.replace_paths, [
+      ['name'],
+      ['cloud_run', 0, 'tag'],
+    ]);
+    assert.equal(
+      neg.change.after.name,
+      control.candidateNegNameForTag(manifest.candidate.tag),
+    );
+    assert.deepEqual(backend.change.actions, ['update']);
+    assert.equal(
+      backend.change.before.backend[0].group,
+      neg.change.before.self_link,
+    );
+    assert.equal(backend.change.after.backend[0].group, null);
+    assert.equal(backend.change.after_unknown.backend[0].group, true);
+    assert.match(
+      review.immutableOperationSpecificationSha256,
+      /^[a-f0-9]{64}$/u,
+    );
+  });
+});
+
+test('v5 deterministic reviewer rejects destructive ordering, wrong identities, semantic expansion, drift, and unsafe provenance', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const manifest = makeSyntheticV5ReviewerManifest(temporaryRoot);
+    const negAddress =
+      control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[0];
+    const backendAddress =
+      control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[1];
+    const mutateRecord = (plan, address, mutate) =>
+      mutate(
+        plan.resource_changes.find((record) => record.address === address),
+      );
+    const cases = [
+      [
+        'historical destroy-before-create action order',
+        (plan) =>
+          mutateRecord(plan, negAddress, (record) => {
+            record.change.actions = ['delete', 'create'];
+          }),
+      ],
+      [
+        'create-only NEG action',
+        (plan) =>
+          mutateRecord(plan, negAddress, (record) => {
+            record.change.actions = ['create'];
+          }),
+      ],
+      [
+        'delete-only NEG action',
+        (plan) =>
+          mutateRecord(plan, negAddress, (record) => {
+            record.change.actions = ['delete'];
+          }),
+      ],
+      [
+        'missing name replacement path',
+        (plan) =>
+          mutateRecord(plan, negAddress, (record) => {
+            record.change.replace_paths = [['cloud_run', 0, 'tag']];
+          }),
+      ],
+      [
+        'missing tag replacement path',
+        (plan) =>
+          mutateRecord(plan, negAddress, (record) => {
+            record.change.replace_paths = [['name']];
+          }),
+      ],
+      [
+        'extra replacement path',
+        (plan) =>
+          mutateRecord(plan, negAddress, (record) => {
+            record.change.replace_paths.push(['region']);
+          }),
+      ],
+      [
+        'duplicate replacement path',
+        (plan) =>
+          mutateRecord(plan, negAddress, (record) => {
+            record.change.replace_paths[1] = ['name'];
+          }),
+      ],
+      [
+        'tainted replacement',
+        (plan) =>
+          mutateRecord(plan, negAddress, (record) => {
+            record.action_reason = 'replace_because_tainted';
+          }),
+      ],
+      [
+        'requested replacement',
+        (plan) =>
+          mutateRecord(plan, negAddress, (record) => {
+            record.action_reason = 'replace_by_request';
+          }),
+      ],
+      [
+        'wrong predecessor NEG name',
+        (plan) =>
+          mutateRecord(plan, negAddress, (record) => {
+            record.change.before.name = 'unrelated-neg';
+          }),
+      ],
+      [
+        'wrong successor NEG name',
+        (plan) =>
+          mutateRecord(plan, negAddress, (record) => {
+            record.change.after.name =
+              control.CANDIDATE_EDGE_IDENTITIES.negName;
+          }),
+      ],
+      [
+        'wrong predecessor tag',
+        (plan) =>
+          mutateRecord(plan, negAddress, (record) => {
+            record.change.before.cloud_run[0].tag = 'candidate-000000000000';
+          }),
+      ],
+      [
+        'wrong successor tag',
+        (plan) =>
+          mutateRecord(plan, negAddress, (record) => {
+            record.change.after.cloud_run[0].tag = 'candidate-000000000000';
+          }),
+      ],
+      [
+        'wrong NEG project',
+        (plan) =>
+          mutateRecord(plan, negAddress, (record) => {
+            record.change.before.self_link =
+              record.change.before.self_link.replace(
+                control.CANDIDATE_EDGE_IDENTITIES.projectId,
+                'unrelated-project',
+              );
+          }),
+      ],
+      [
+        'wrong NEG region',
+        (plan) =>
+          mutateRecord(plan, negAddress, (record) => {
+            record.change.before.self_link =
+              record.change.before.self_link.replace(
+                control.CANDIDATE_EDGE_IDENTITIES.region,
+                'unrelated-region',
+              );
+          }),
+      ],
+      [
+        'wrong Backend action',
+        (plan) =>
+          mutateRecord(plan, backendAddress, (record) => {
+            record.change.actions = ['delete', 'create'];
+          }),
+      ],
+      [
+        'wrong Backend name',
+        (plan) =>
+          mutateRecord(plan, backendAddress, (record) => {
+            record.change.after.name = 'unrelated-backend';
+          }),
+      ],
+      [
+        'wrong Backend project identity',
+        (plan) =>
+          mutateRecord(plan, backendAddress, (record) => {
+            record.change.before.self_link =
+              record.change.before.self_link.replace(
+                control.CANDIDATE_EDGE_IDENTITIES.projectId,
+                'unrelated-project',
+              );
+          }),
+      ],
+      [
+        'wrong predecessor Backend group project',
+        (plan) =>
+          mutateRecord(plan, backendAddress, (record) => {
+            record.change.before.backend[0].group =
+              record.change.before.backend[0].group.replace(
+                control.CANDIDATE_EDGE_IDENTITIES.projectId,
+                'unrelated-project',
+              );
+          }),
+      ],
+      [
+        'wrong predecessor Backend group region',
+        (plan) =>
+          mutateRecord(plan, backendAddress, (record) => {
+            record.change.before.backend[0].group =
+              record.change.before.backend[0].group.replace(
+                control.CANDIDATE_EDGE_IDENTITIES.region,
+                'unrelated-region',
+              );
+          }),
+      ],
+      [
+        'wrong predecessor Backend group NEG',
+        (plan) =>
+          mutateRecord(plan, backendAddress, (record) => {
+            record.change.before.backend[0].group =
+              record.change.before.backend[0].group.replace(
+                control.CANDIDATE_EDGE_IDENTITIES.negName,
+                'unrelated-neg',
+              );
+          }),
+      ],
+      [
+        'known successor Backend group',
+        (plan) =>
+          mutateRecord(plan, backendAddress, (record) => {
+            record.change.after.backend[0].group = 'known-successor';
+            record.change.after_unknown.backend[0].group = false;
+          }),
+      ],
+      [
+        'Cloud Armor mutation',
+        (plan) =>
+          mutateRecord(plan, backendAddress, (record) => {
+            record.change.after.security_policy = 'unrelated-policy';
+          }),
+      ],
+      [
+        'trusted client IP header mutation',
+        (plan) =>
+          mutateRecord(plan, backendAddress, (record) => {
+            record.change.after.custom_request_headers = [];
+          }),
+      ],
+      [
+        'extra Backend semantic path',
+        (plan) =>
+          mutateRecord(plan, backendAddress, (record) => {
+            record.change.after.protocol = 'HTTPS';
+          }),
+      ],
+      [
+        'Cloud Armor resource mutation',
+        (plan) => {
+          const extra = structuredClone(plan.resource_changes[1]);
+          extra.address =
+            'module.edge_environment.google_compute_security_policy.edge';
+          extra.type = 'google_compute_security_policy';
+          plan.resource_changes.push(extra);
+        },
+      ],
+      [
+        'URL-map mutation',
+        (plan) => {
+          const urlMap = representativeNoOpUrlMapRecord();
+          urlMap.change.actions = ['update'];
+          urlMap.change.after.name = 'unrelated-url-map';
+          plan.resource_changes.push(urlMap);
+        },
+      ],
+      [
+        'third semantic resource',
+        (plan) => {
+          const extra = structuredClone(plan.resource_changes[1]);
+          extra.address =
+            'module.edge_environment.google_compute_global_address.https';
+          extra.type = 'google_compute_global_address';
+          plan.resource_changes.push(extra);
+        },
+      ],
+      [
+        'unapproved unknown path',
+        (plan) =>
+          mutateRecord(plan, negAddress, (record) => {
+            record.change.after_unknown.description = true;
+          }),
+      ],
+      [
+        'unapproved provider normalization',
+        (plan) =>
+          mutateRecord(plan, negAddress, (record) => {
+            record.change.after.region = 'unrelated-region';
+          }),
+      ],
+      [
+        'unapproved refresh drift',
+        (plan) => {
+          plan.resource_drift[1].change.after.name = 'unrelated-map';
+        },
+      ],
+      [
+        'duplicate governed resource',
+        (plan) => {
+          plan.resource_changes.push(structuredClone(plan.resource_changes[0]));
+        },
+      ],
+      [
+        'previous address provenance',
+        (plan) =>
+          mutateRecord(plan, negAddress, (record) => {
+            record.previous_address = 'module.edge_environment.old_neg';
+          }),
+      ],
+      [
+        'deposed object provenance',
+        (plan) =>
+          mutateRecord(plan, backendAddress, (record) => {
+            record.deposed = 'deposed-object';
+          }),
+      ],
+      [
+        'import provenance',
+        (plan) =>
+          mutateRecord(plan, negAddress, (record) => {
+            record.change.importing = { id: 'imported-neg' };
+          }),
+      ],
+    ];
+
+    for (const [name, mutate] of cases) {
+      const plan = safeRotationPlanFixture();
+      mutate(plan);
+      assert.throws(
+        () =>
+          control.reviewTerraformPlanJson(plan, manifest, {
+            gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+            operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+          }),
+        control.DeploymentControlError,
+        name,
+      );
+    }
+
+    const historicalV3Manifest = control.buildManifest(
+      makeSuccessfulContinuationContext(temporaryRoot).context,
+    );
+    assert.doesNotThrow(() =>
+      control.reviewTerraformPlanJson(
+        representativePlanFixture(),
+        historicalV3Manifest,
+        {
+          gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+          operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+        },
+      ),
+    );
+    assert.deepEqual(
+      representativePlanFixture().resource_changes[0].change.actions,
+      ['delete', 'create'],
+    );
+    applyAndVerifyTerraform(
+      historicalV3Manifest,
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+      'historical-v3-observation-scope-plan',
+      {
+        observedCandidateTag: historicalV3Manifest.candidate.tag,
+        observedPublicPath: control.SMOKE_PUBLIC_PATH,
+        observedBackendPath: control.SMOKE_BACKEND_PATH,
+      },
+    );
+    operation(
+      historicalV3Manifest,
+      control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    ).liveVerification.observations.observedCandidateNegName =
+      'v5-field-must-not-broaden-v3';
+    assert.throws(
+      () => control.validateManifest(historicalV3Manifest),
+      control.DeploymentControlError,
+    );
+  });
 });
 
 test('v3 deterministic reviewer accepts the sanitized real provider shape with structured evidence', () => {

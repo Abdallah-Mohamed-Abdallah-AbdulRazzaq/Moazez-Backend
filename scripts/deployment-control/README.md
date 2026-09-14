@@ -613,6 +613,75 @@ state push, manual state edits, a refresh workaround, `-refresh=false`,
 `-target`, manual Candidate NEG/Backend/URL-map mutation, or automatic traffic
 promotion. The interrupted v3 plan remains blocked permanently.
 
+## Failed v4 Apply State11 successor recovery manifest v5
+
+`manifestVersion=5` and
+`executionMode="failed-edge-apply-state-successor-recovery"` are limited to the
+exact failed v4 execution
+`day2-staging-edge-state-successor-recovery-20260914151653`. Its approved
+Candidate Edge Apply started and failed with
+`resourceInUseByAnotherResource`: the historical fixed-name NEG replacement
+was ordered `delete,create` while the stable Candidate Backend still referenced
+the predecessor NEG. State advanced from serial 10 to same-lineage serial 11,
+but exact reconciliation and fresh live discovery prove no governed Edge or
+traffic semantic mutation.
+
+V5 binds eight distinct external regular files by exact path and SHA256: the
+retained v4 manifest, failed Saved Plan, Plan JSON, deterministic review,
+pre-Apply evidence, Apply stdout, Apply stderr, and State11 reconciliation.
+The controller hashes the original bytes before parsing, validates the
+retained v4 manifest under the unchanged historical v4 contract, and derives
+its failed/attempted/invalidated lifecycle in memory. Historical files are
+never rewritten, copied into source, treated as a successful Apply, or made
+reusable. The exact failed v4 Saved Plan
+`bdacfaf2a7aafb53e76111fb1a741b3a5da947b90cc2c3107c345324fb9f2230`
+and the older interrupted v3 plan remain blocklisted.
+
+The State11 validator requires the exact failure identity, State10-to-State11
+same-lineage strict successor, unchanged fixed NEG and stable Backend, serving
+traffic `100`, candidate traffic `0`, preserved Cloud Armor/header/smoke route,
+and explicit false authority for plan, Apply retry, plan reuse, and Staging or
+Production mutation. A new v5 context must bind
+`sourceRemediationSha` and `sourceSha` to current HEAD and supply fresh live
+discovery that independently matches that exact boundary. This mode is not a
+generic failed-Terraform recovery mechanism.
+
+The v5 executable remainder is exactly:
+
+```text
+Candidate Edge reconciliation
+-> Maintenance Scheduler Promotion
+-> Protected Candidate Readiness / Smoke
+-> Traffic Promotion
+```
+
+Migration, Core Worker, Media Worker, and API Runtime remain imported passed
+authority and cannot be replayed. The first operation binds Edge serial 11 and
+requires a fresh Saved Plan with only these non-noop changes:
+
+| Address                  | Required actions | Allowed semantic attributes |
+| ------------------------ | ---------------- | --------------------------- |
+| Candidate NEG            | `create,delete`  | `name`, `cloud_run[0].tag`  |
+| Stable Candidate Backend | `update`         | `backend[0].group`          |
+
+The NEG must move from `moazez-staging-api-candidate-neg` at the retained
+serving tag to
+`moazez-staging-api-candidate-5377bd0c7d84-neg` at
+`candidate-5377bd0c7d84`. Both `name` and `cloud_run[0].tag` must be the exact
+provider-forced replacement paths. The Backend name, project, security policy,
+trusted header, and canonical self-link remain unchanged; its old exact NEG
+group becomes the governed unknown successor dependency. The URL map is not in
+the mutable set.
+
+Successful v5 live verification must explicitly observe the successor NEG
+name/service/tag, stable Candidate Backend and successor NEG relation, stable
+URL-map name with `unchanged` semantics, primary API security posture, and the
+trusted client-IP header. No automatic Apply retry is permitted. After merge,
+DevOps must repeat fresh source/live/state discovery and create and review a
+new Saved Plan before any separately authorized Apply. The V3/V4 reviewer
+contract remains `delete,create` with tag-only replacement; V5 is a separate
+safe-rotation contract and does not reinterpret historical evidence.
+
 ## Recovery manifest v2 context
 
 Recovery is an explicit, separately authorized execution. Set
@@ -797,7 +866,7 @@ Record live verification. Supply precisely the observations declared by the
 operation's `verificationExpectation`:
 
 ```powershell
-node scripts/deployment-control/runtime-release-control.cjs record-verification --manifest <external-manifest.json> --gate <gate-id> --operation <operation-id> --recorded-at <ISO-UTC> --result passed --evidence-ref <verification-evidence> [--observed-image <digest-reference>] [--observed-revision <revision>] [--observed-candidate-tag <tag>] [--observed-public-path <path>] [--observed-backend-path <path>] [--observed-stable-percent <0-100>] [--observed-candidate-percent <0-100>] [--http-status <100-599>]
+node scripts/deployment-control/runtime-release-control.cjs record-verification --manifest <external-manifest.json> --gate <gate-id> --operation <operation-id> --recorded-at <ISO-UTC> --result passed --evidence-ref <verification-evidence> [--observed-image <digest-reference>] [--observed-revision <revision>] [--observed-candidate-tag <tag>] [--observed-public-path <path>] [--observed-backend-path <path>] [--observed-stable-percent <0-100>] [--observed-candidate-percent <0-100>] [--observed-candidate-neg-name <name>] [--observed-candidate-neg-cloud-run-service <service>] [--observed-candidate-backend-name <name>] [--observed-candidate-backend-neg-name <name>] [--observed-url-map-name <name>] [--observed-url-map-semantic-status unchanged] [--observed-security-policy-matches-primary-api <true|false>] [--observed-trusted-client-ip-header <header>] [--http-status <100-599>]
 ```
 
 For a failed verification, use `--result failed` and return sanitized observed
@@ -811,9 +880,10 @@ The adapter produces the exact `requiredVariables`, Terraform root, state
 lineage/serial precondition, resource-address allowlist, resource plan
 identities, expected actions, semantic attribute allowlist, provider-computed
 unknown allowlist, provider-normalization policy, refresh-only drift policy,
-expected change type, review requirement, and saved-plan path. These fields are
-the immutable shared v3/v4 Candidate Edge operation specification and manifest
-edits fail closed.
+expected change type, review requirement, and saved-plan path. V3/V4 retain
+their immutable shared historical Candidate Edge specification. V5 has a
+separate exact safe-rotation specification; arbitrary edits to either contract
+fail closed.
 
 The source reviewer hashes both the Saved Plan binary and plan JSON, but it
 does not run Terraform and therefore does not cryptographically prove that the
@@ -841,7 +911,7 @@ replacement, move, import, or deposed evidence. Every approved
 group and NEG region are cross-bound to the exact project/region/name identity
 parsed from the Candidate NEG's known pre-replacement self-link.
 
-For v3 and v4, `register-plan` re-hashes the current pre-registration manifest,
+For v3, v4, and v5, `register-plan` re-hashes the current pre-registration manifest,
 exact Saved Plan, exact plan JSON, and exact review-evidence bytes; reruns the
 same pure reviewer against the supplied JSON; reconstructs the entire expected
 evidence; and requires deep exact equality before recording a compact durable
@@ -851,12 +921,12 @@ DevOps responsibility to prove guarded JSON export from the exact binary Saved
 Plan. `approve-plan` remains a separate authorization and retains its existing
 semantics.
 
-Once a state-successor repair creates a new source SHA, the interrupted v3
-manifest and Saved Plan are evidence-only and cannot be registered, approved,
-or applied. Continue only from merged repaired source with fresh discovery and
-state/live reconciliation, a new v4 execution and manifest, a new Saved Plan
-and guarded JSON export, deterministic review, exact-plan registration,
-independent approval, and a separately authorized apply.
+Once a source repair creates a new source SHA, interrupted and failed manifests
+and Saved Plans remain evidence-only and cannot be registered, approved, or
+applied. The exact State11 incident continues only through a new v5 execution
+after merged repaired source and fresh discovery, with a fresh Saved Plan and
+guarded JSON export, deterministic review, exact-plan registration, independent
+approval, and a separately authorized Apply.
 
 Sensitive Queue and Realtime Redis inputs remain ephemeral operator inputs.
 The manifest contains their names and sensitivity flags only, never their
