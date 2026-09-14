@@ -17,6 +17,8 @@ const CONTRACT_PATH = path.join(
 const FIRST_REMAINING_GATE_ID = 'core-worker-promotion';
 const RECOVERY_RESUME_GATE_ID = 'api-no-traffic-promotion';
 const SUCCESSFUL_CONTINUATION_MODE = 'successful-edge-continuation';
+const EDGE_STATE_SUCCESSOR_RECOVERY_MODE =
+  'successful-edge-state-successor-recovery';
 const SUCCESSFUL_CONTINUATION_RESUME_GATE_ID = 'api-no-traffic-promotion';
 const SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID =
   'api-candidate-edge-reconciliation';
@@ -199,6 +201,15 @@ const SUCCESSFUL_CONTINUATION_GATE_IDS = Object.freeze([
   'protected-readiness-and-smoke',
   'traffic-promotion',
 ]);
+
+const EDGE_STATE_SUCCESSOR_RECOVERY_GATE_IDS = SUCCESSFUL_CONTINUATION_GATE_IDS;
+
+function isRetainedCandidateEdgeReconciliationMode(executionMode) {
+  return (
+    executionMode === SUCCESSFUL_CONTINUATION_MODE ||
+    executionMode === EDGE_STATE_SUCCESSOR_RECOVERY_MODE
+  );
+}
 
 class DeploymentControlError extends Error {
   constructor(code, message) {
@@ -1497,6 +1508,107 @@ function validateSuccessfulContinuationPredecessor(predecessor) {
   };
 }
 
+function validateCandidateEdgeSemanticSnapshot(
+  value,
+  expectedCloudRunTag,
+  label,
+) {
+  const edge = requireExactKeys(
+    value,
+    ['completeness', 'neg', 'backend', 'smokeRoute'],
+    label,
+  );
+  const neg = requireExactKeys(
+    edge.neg,
+    [
+      'present',
+      'name',
+      'region',
+      'networkEndpointType',
+      'cloudRunService',
+      'cloudRunTag',
+    ],
+    `${label}.neg`,
+  );
+  const backend = requireExactKeys(
+    edge.backend,
+    [
+      'present',
+      'name',
+      'negName',
+      'protocol',
+      'loadBalancingScheme',
+      'securityPolicyMatchesPrimaryApi',
+      'customRequestHeaders',
+    ],
+    `${label}.backend`,
+  );
+  const smokeRoute = requireExactKeys(
+    edge.smokeRoute,
+    ['present', 'urlMapName', 'publicPath', 'backendName', 'backendPath'],
+    `${label}.smokeRoute`,
+  );
+  const snapshot = {
+    completeness: edge.completeness,
+    neg: {
+      present: neg.present,
+      name: neg.name,
+      region: neg.region,
+      networkEndpointType: neg.networkEndpointType,
+      cloudRunService: neg.cloudRunService,
+      cloudRunTag: neg.cloudRunTag,
+    },
+    backend: {
+      present: backend.present,
+      name: backend.name,
+      negName: backend.negName,
+      protocol: backend.protocol,
+      loadBalancingScheme: backend.loadBalancingScheme,
+      securityPolicyMatchesPrimaryApi: backend.securityPolicyMatchesPrimaryApi,
+      customRequestHeaders: backend.customRequestHeaders,
+    },
+    smokeRoute: {
+      present: smokeRoute.present,
+      urlMapName: smokeRoute.urlMapName,
+      publicPath: smokeRoute.publicPath,
+      backendName: smokeRoute.backendName,
+      backendPath: smokeRoute.backendPath,
+    },
+  };
+  requireExactValue(
+    snapshot,
+    {
+      completeness: 'complete',
+      neg: {
+        present: true,
+        name: CANDIDATE_EDGE_IDENTITIES.negName,
+        region: CANDIDATE_EDGE_IDENTITIES.region,
+        networkEndpointType: CANDIDATE_EDGE_IDENTITIES.networkEndpointType,
+        cloudRunService: CANDIDATE_EDGE_IDENTITIES.cloudRunService,
+        cloudRunTag: expectedCloudRunTag,
+      },
+      backend: {
+        present: true,
+        name: CANDIDATE_EDGE_IDENTITIES.backendName,
+        negName: CANDIDATE_EDGE_IDENTITIES.negName,
+        protocol: CANDIDATE_EDGE_IDENTITIES.protocol,
+        loadBalancingScheme: CANDIDATE_EDGE_IDENTITIES.loadBalancingScheme,
+        securityPolicyMatchesPrimaryApi: true,
+        customRequestHeaders: [CANDIDATE_EDGE_IDENTITIES.trustedClientIpHeader],
+      },
+      smokeRoute: {
+        present: true,
+        urlMapName: CANDIDATE_EDGE_IDENTITIES.urlMapName,
+        publicPath: SMOKE_PUBLIC_PATH,
+        backendName: CANDIDATE_EDGE_IDENTITIES.backendName,
+        backendPath: SMOKE_BACKEND_PATH,
+      },
+    },
+    label,
+  );
+  return snapshot;
+}
+
 function validateSuccessfulContinuationLiveDiscovery(
   value,
   predecessor,
@@ -1666,97 +1778,9 @@ function validateSuccessfulContinuationLiveDiscovery(
     `${label}.edgeState`,
   );
 
-  const edge = requireExactKeys(
+  const candidateEdgeResources = validateCandidateEdgeSemanticSnapshot(
     live.candidateEdgeResources,
-    ['completeness', 'neg', 'backend', 'smokeRoute'],
-    `${label}.candidateEdgeResources`,
-  );
-  const neg = requireExactKeys(
-    edge.neg,
-    [
-      'present',
-      'name',
-      'region',
-      'networkEndpointType',
-      'cloudRunService',
-      'cloudRunTag',
-    ],
-    `${label}.candidateEdgeResources.neg`,
-  );
-  const backend = requireExactKeys(
-    edge.backend,
-    [
-      'present',
-      'name',
-      'negName',
-      'protocol',
-      'loadBalancingScheme',
-      'securityPolicyMatchesPrimaryApi',
-      'customRequestHeaders',
-    ],
-    `${label}.candidateEdgeResources.backend`,
-  );
-  const smokeRoute = requireExactKeys(
-    edge.smokeRoute,
-    ['present', 'urlMapName', 'publicPath', 'backendName', 'backendPath'],
-    `${label}.candidateEdgeResources.smokeRoute`,
-  );
-  const candidateEdgeResources = {
-    completeness: edge.completeness,
-    neg: {
-      present: neg.present,
-      name: neg.name,
-      region: neg.region,
-      networkEndpointType: neg.networkEndpointType,
-      cloudRunService: neg.cloudRunService,
-      cloudRunTag: neg.cloudRunTag,
-    },
-    backend: {
-      present: backend.present,
-      name: backend.name,
-      negName: backend.negName,
-      protocol: backend.protocol,
-      loadBalancingScheme: backend.loadBalancingScheme,
-      securityPolicyMatchesPrimaryApi: backend.securityPolicyMatchesPrimaryApi,
-      customRequestHeaders: backend.customRequestHeaders,
-    },
-    smokeRoute: {
-      present: smokeRoute.present,
-      urlMapName: smokeRoute.urlMapName,
-      publicPath: smokeRoute.publicPath,
-      backendName: smokeRoute.backendName,
-      backendPath: smokeRoute.backendPath,
-    },
-  };
-  requireExactValue(
-    candidateEdgeResources,
-    {
-      completeness: 'complete',
-      neg: {
-        present: true,
-        name: CANDIDATE_EDGE_IDENTITIES.negName,
-        region: CANDIDATE_EDGE_IDENTITIES.region,
-        networkEndpointType: CANDIDATE_EDGE_IDENTITIES.networkEndpointType,
-        cloudRunService: CANDIDATE_EDGE_IDENTITIES.cloudRunService,
-        cloudRunTag: servingBaseline.candidateTag,
-      },
-      backend: {
-        present: true,
-        name: CANDIDATE_EDGE_IDENTITIES.backendName,
-        negName: CANDIDATE_EDGE_IDENTITIES.negName,
-        protocol: CANDIDATE_EDGE_IDENTITIES.protocol,
-        loadBalancingScheme: CANDIDATE_EDGE_IDENTITIES.loadBalancingScheme,
-        securityPolicyMatchesPrimaryApi: true,
-        customRequestHeaders: [CANDIDATE_EDGE_IDENTITIES.trustedClientIpHeader],
-      },
-      smokeRoute: {
-        present: true,
-        urlMapName: CANDIDATE_EDGE_IDENTITIES.urlMapName,
-        publicPath: SMOKE_PUBLIC_PATH,
-        backendName: CANDIDATE_EDGE_IDENTITIES.backendName,
-        backendPath: SMOKE_BACKEND_PATH,
-      },
-    },
+    servingBaseline.candidateTag,
     `${label}.candidateEdgeResources`,
   );
 
@@ -1777,6 +1801,747 @@ function validateSuccessfulContinuationLiveDiscovery(
     runtimeState,
     edgeState,
   };
+}
+
+function validateEdgeStateSuccessorRecoveryMetadata(
+  value,
+  label = 'edgeStateSuccessorRecovery',
+) {
+  const recovery = requireExactKeys(
+    value,
+    [
+      'priorReleaseExecutionId',
+      'priorManifestRef',
+      'priorManifestSha256',
+      'priorSavedPlanRef',
+      'priorSavedPlanSha256',
+      'priorPlanJsonRef',
+      'priorPlanJsonSha256',
+      'priorReviewEvidenceRef',
+      'priorReviewEvidenceSha256',
+      'priorApprovalEvidenceRef',
+      'priorApprovalEvidenceSha256',
+      'priorPreApplyEvidenceRef',
+      'priorPreApplyEvidenceSha256',
+      'stateReconciliationEvidenceRef',
+      'stateReconciliationEvidenceSha256',
+    ],
+    label,
+  );
+  const normalized = {
+    priorReleaseExecutionId: requireString(
+      recovery.priorReleaseExecutionId,
+      `${label}.priorReleaseExecutionId`,
+      /^[a-z0-9][a-z0-9._-]{2,80}$/u,
+    ),
+  };
+  for (const prefix of [
+    'priorManifest',
+    'priorSavedPlan',
+    'priorPlanJson',
+    'priorReviewEvidence',
+    'priorApprovalEvidence',
+    'priorPreApplyEvidence',
+    'stateReconciliationEvidence',
+  ]) {
+    normalized[`${prefix}Ref`] = requireExternalAbsolutePath(
+      recovery[`${prefix}Ref`],
+      `${label}.${prefix}Ref`,
+    );
+    normalized[`${prefix}Sha256`] = requireString(
+      recovery[`${prefix}Sha256`],
+      `${label}.${prefix}Sha256`,
+      /^[a-f0-9]{64}$/u,
+    );
+  }
+  if (
+    new Set(
+      Object.keys(normalized)
+        .filter((key) => key.endsWith('Ref'))
+        .map((key) => normalized[key]),
+    ).size !== 7
+  ) {
+    fail(
+      'EDGE_SUCCESSOR_ARTIFACT_INVALID',
+      'every v4 predecessor artifact reference must be a distinct external file.',
+    );
+  }
+  return normalized;
+}
+
+function readExactEdgeStateSuccessorArtifact(reference, expectedSha256, label) {
+  const stat = fs.statSync(reference, { throwIfNoEntry: false });
+  if (!stat?.isFile()) {
+    fail(
+      'EDGE_SUCCESSOR_ARTIFACT_INVALID',
+      `${label} must name an exact external regular file.`,
+    );
+  }
+  const bytes = fs.readFileSync(reference);
+  if (bytes.length === 0 || sha256(bytes) !== expectedSha256) {
+    fail(
+      'EDGE_SUCCESSOR_ARTIFACT_HASH_MISMATCH',
+      `${label} bytes do not match the governed SHA-256 binding.`,
+    );
+  }
+  return bytes;
+}
+
+function validatePriorV3ReviewArtifacts(
+  manifest,
+  operation,
+  metadata,
+  artifacts,
+) {
+  if (path.resolve(operation.savedPlanPath) !== metadata.priorSavedPlanRef) {
+    fail(
+      'EDGE_SUCCESSOR_ARTIFACT_INVALID',
+      'priorSavedPlanRef differs from the exact Saved Plan path governed by the prior v3 operation.',
+    );
+  }
+  const savedPlanSha256 = sha256(artifacts.savedPlanBytes);
+  const planJsonSha256 = sha256(artifacts.planJsonBytes);
+  const reviewEvidenceSha256 = sha256(artifacts.reviewEvidenceBytes);
+  if (
+    operation.planEvidence.sha256 !== savedPlanSha256 ||
+    operation.planEvidence.sizeBytes !== artifacts.savedPlanBytes.length ||
+    operation.deterministicReviewEvidence.savedPlanSha256 !== savedPlanSha256 ||
+    operation.deterministicReviewEvidence.planJsonSha256 !== planJsonSha256 ||
+    operation.deterministicReviewEvidence.reviewEvidenceSha256 !==
+      reviewEvidenceSha256
+  ) {
+    fail(
+      'EDGE_SUCCESSOR_ARTIFACT_INVALID',
+      'prior v3 plan lifecycle evidence does not match the exact supplied Saved Plan, Plan JSON, or review-evidence bytes.',
+    );
+  }
+  const reviewEvidence = requirePlanReviewEvidence(
+    parseJsonBytes(
+      artifacts.reviewEvidenceBytes,
+      'prior v3 review evidence',
+      'EDGE_SUCCESSOR_ARTIFACT_INVALID',
+    ),
+  );
+  const review = reviewTerraformPlanJson(
+    parseJsonBytes(
+      artifacts.planJsonBytes,
+      'prior v3 Plan JSON',
+      'EDGE_SUCCESSOR_ARTIFACT_INVALID',
+    ),
+    manifest,
+    {
+      gateId: SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      operationId: SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    },
+  );
+  const expectedReviewFields = {
+    schemaVersion: review.schemaVersion,
+    status: review.status,
+    releaseExecutionId: review.releaseExecutionId,
+    sourceSha: review.sourceSha,
+    gateId: review.gateId,
+    operationId: review.operationId,
+    immutableOperationSpecificationSha256:
+      review.immutableOperationSpecificationSha256,
+    savedPlanPath: metadata.priorSavedPlanRef,
+    savedPlanSha256,
+    savedPlanSizeBytes: artifacts.savedPlanBytes.length,
+    planJsonSha256,
+    planJsonSizeBytes: artifacts.planJsonBytes.length,
+    formatVersion: review.formatVersion,
+    terraformVersion: review.terraformVersion,
+    nonNoopResourceChangeCount: review.nonNoopResourceChangeCount,
+    intendedSemanticChangeCount: review.intendedSemanticChangeCount,
+    refreshOnlyDriftCount: review.refreshOnlyDriftCount,
+    unapprovedSemanticChangeCount: review.unapprovedSemanticChangeCount,
+    unapprovedUnknownCount: review.unapprovedUnknownCount,
+    unapprovedNormalizationCount: review.unapprovedNormalizationCount,
+    unapprovedDriftCount: review.unapprovedDriftCount,
+    urlMapMutation: review.urlMapMutation,
+  };
+  for (const [field, expected] of Object.entries(expectedReviewFields)) {
+    if (!isDeepStrictEqual(reviewEvidence[field], expected)) {
+      fail(
+        'EDGE_SUCCESSOR_ARTIFACT_INVALID',
+        `prior v3 review evidence has a stale ${field} binding.`,
+      );
+    }
+  }
+  if (
+    reviewEvidence.manifestSha256 !==
+      operation.deterministicReviewEvidence.reviewedManifestSha256 ||
+    reviewEvidence.immutableOperationSpecificationSha256 !==
+      operation.deterministicReviewEvidence
+        .immutableOperationSpecificationSha256
+  ) {
+    fail(
+      'EDGE_SUCCESSOR_ARTIFACT_INVALID',
+      'prior v3 review evidence is not the exact review registered by the predecessor operation.',
+    );
+  }
+}
+
+function validatePriorV3ApprovalEvidence(
+  manifest,
+  operation,
+  metadata,
+  approvalEvidenceBytes,
+) {
+  const label = 'prior v3 approval evidence';
+  const evidence = requireExactKeys(
+    parseJsonBytes(
+      approvalEvidenceBytes,
+      label,
+      'EDGE_SUCCESSOR_APPROVAL_EVIDENCE_INVALID',
+    ),
+    [
+      'evidenceType',
+      'decision',
+      'recordedAt',
+      'approver',
+      'releaseExecutionId',
+      'sourceSha',
+      'gateId',
+      'operationId',
+      'manifestSha256BeforeApproval',
+      'savedPlan',
+      'planJson',
+      'deterministicReview',
+      'authorization',
+    ],
+    label,
+  );
+  const savedPlan = requireExactKeys(
+    evidence.savedPlan,
+    ['path', 'sha256'],
+    `${label}.savedPlan`,
+  );
+  const planJson = requireExactKeys(
+    evidence.planJson,
+    ['path', 'sha256'],
+    `${label}.planJson`,
+  );
+  const deterministicReview = requireExactKeys(
+    evidence.deterministicReview,
+    ['evidenceRef', 'evidenceSha256', 'status'],
+    `${label}.deterministicReview`,
+  );
+  const authorization = requireExactKeys(
+    evidence.authorization,
+    ['terraformApplyAuthorized', 'purpose'],
+    `${label}.authorization`,
+  );
+  requireIsoTimestamp(evidence.recordedAt, `${label}.recordedAt`);
+
+  const preApprovalManifest = structuredClone(manifest);
+  const preApprovalOperation = findOperation(
+    preApprovalManifest,
+    SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+    SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+  ).operation;
+  preApprovalOperation.status = 'plan-registered';
+  preApprovalOperation.planEvidence.reviewed = false;
+  preApprovalOperation.approval = {
+    status: 'pending',
+    approver: null,
+    approvalRef: null,
+    approvedAt: null,
+  };
+  const manifestSha256BeforeApproval = sha256(
+    Buffer.from(`${JSON.stringify(preApprovalManifest, null, 2)}\n`),
+  );
+
+  if (
+    evidence.evidenceType !== 'terraform-saved-plan-owner-approval' ||
+    evidence.decision !== 'approved' ||
+    evidence.recordedAt !== operation.approval.approvedAt ||
+    evidence.approver !== operation.approval.approver ||
+    evidence.releaseExecutionId !== manifest.releaseExecutionId ||
+    evidence.sourceSha !== manifest.sourceSha ||
+    evidence.gateId !== SUCCESSFUL_CONTINUATION_RESUME_GATE_ID ||
+    evidence.operationId !== SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID ||
+    evidence.manifestSha256BeforeApproval !== manifestSha256BeforeApproval ||
+    !path.isAbsolute(savedPlan.path) ||
+    path.resolve(savedPlan.path) !== metadata.priorSavedPlanRef ||
+    savedPlan.sha256 !== metadata.priorSavedPlanSha256 ||
+    savedPlan.sha256 !== operation.planEvidence.sha256 ||
+    !path.isAbsolute(planJson.path) ||
+    path.resolve(planJson.path) !== metadata.priorPlanJsonRef ||
+    planJson.sha256 !== metadata.priorPlanJsonSha256 ||
+    planJson.sha256 !== operation.deterministicReviewEvidence.planJsonSha256 ||
+    !path.isAbsolute(deterministicReview.evidenceRef) ||
+    path.resolve(deterministicReview.evidenceRef) !==
+      metadata.priorReviewEvidenceRef ||
+    deterministicReview.evidenceSha256 !== metadata.priorReviewEvidenceSha256 ||
+    deterministicReview.evidenceSha256 !==
+      operation.deterministicReviewEvidence.reviewEvidenceSha256 ||
+    deterministicReview.status !== 'passed' ||
+    authorization.terraformApplyAuthorized !== false ||
+    authorization.purpose !==
+      'approve-exact-reviewed-saved-plan-for-separate-pre-apply-gate'
+  ) {
+    fail(
+      'EDGE_SUCCESSOR_APPROVAL_EVIDENCE_INVALID',
+      'prior approval evidence is not semantically bound to the exact approved v3 Candidate Edge plan lifecycle.',
+    );
+  }
+}
+
+function validatePriorV3PreApplyEvidence(
+  manifest,
+  operation,
+  metadata,
+  preApplyEvidenceBytes,
+) {
+  const label = 'prior v3 pre-apply evidence';
+  const evidence = requireExactKeys(
+    parseJsonBytes(
+      preApplyEvidenceBytes,
+      label,
+      'EDGE_SUCCESSOR_PRE_APPLY_EVIDENCE_INVALID',
+    ),
+    [
+      'evidenceType',
+      'status',
+      'recordedAt',
+      'releaseExecutionId',
+      'sourceSha',
+      'manifestSha256',
+      'savedPlanSha256',
+      'planJsonSha256',
+      'reviewEvidenceSha256',
+      'approvalEvidenceSha256',
+      'statePrecondition',
+      'traffic',
+      'candidateEdge',
+      'authorizationBoundary',
+    ],
+    label,
+  );
+  const statePrecondition = requireState(
+    requireExactKeys(
+      evidence.statePrecondition,
+      ['lineage', 'serial'],
+      `${label}.statePrecondition`,
+    ),
+    `${label}.statePrecondition`,
+  );
+  const traffic = requireExactKeys(
+    evidence.traffic,
+    [
+      'servingRevision',
+      'servingPercent',
+      'candidateRevision',
+      'candidateTag',
+      'candidatePercent',
+    ],
+    `${label}.traffic`,
+  );
+  const candidateEdge = requireExactKeys(
+    evidence.candidateEdge,
+    [
+      'currentNegTag',
+      'desiredNegTag',
+      'backendPointsToNeg',
+      'securityPolicyMatch',
+      'trustedHeaderMatch',
+      'smokeRouteBackendMatch',
+      'smokeRouteRewriteMatch',
+    ],
+    `${label}.candidateEdge`,
+  );
+  const authorizationBoundary = requireExactKeys(
+    evidence.authorizationBoundary,
+    ['terraformApplyExecuted', 'productionMutation'],
+    `${label}.authorizationBoundary`,
+  );
+  requireIsoTimestamp(evidence.recordedAt, `${label}.recordedAt`);
+  const priorLive = manifest.liveDiscovery;
+
+  if (
+    evidence.evidenceType !== 'edge-final-pre-apply-authority-guard' ||
+    evidence.status !== 'passed' ||
+    evidence.releaseExecutionId !== manifest.releaseExecutionId ||
+    evidence.sourceSha !== manifest.sourceSha ||
+    evidence.manifestSha256 !== metadata.priorManifestSha256 ||
+    evidence.savedPlanSha256 !== metadata.priorSavedPlanSha256 ||
+    evidence.savedPlanSha256 !== operation.planEvidence.sha256 ||
+    evidence.planJsonSha256 !== metadata.priorPlanJsonSha256 ||
+    evidence.planJsonSha256 !==
+      operation.deterministicReviewEvidence.planJsonSha256 ||
+    evidence.reviewEvidenceSha256 !== metadata.priorReviewEvidenceSha256 ||
+    evidence.reviewEvidenceSha256 !==
+      operation.deterministicReviewEvidence.reviewEvidenceSha256 ||
+    evidence.approvalEvidenceSha256 !== metadata.priorApprovalEvidenceSha256 ||
+    !isDeepStrictEqual(statePrecondition, {
+      lineage: operation.statePrecondition.lineage,
+      serial: operation.statePrecondition.serial,
+    }) ||
+    traffic.servingRevision !== priorLive.servingBaseline.revision ||
+    traffic.servingPercent !== priorLive.servingBaseline.trafficPercent ||
+    traffic.candidateRevision !== priorLive.candidate.revision ||
+    traffic.candidateTag !== priorLive.candidate.tag ||
+    traffic.candidatePercent !== priorLive.candidate.trafficPercent ||
+    candidateEdge.currentNegTag !==
+      priorLive.candidateEdgeResources.neg.cloudRunTag ||
+    candidateEdge.desiredNegTag !== manifest.candidate.tag ||
+    candidateEdge.backendPointsToNeg !== true ||
+    candidateEdge.securityPolicyMatch !== true ||
+    candidateEdge.trustedHeaderMatch !== true ||
+    candidateEdge.smokeRouteBackendMatch !== true ||
+    candidateEdge.smokeRouteRewriteMatch !== true ||
+    authorizationBoundary.terraformApplyExecuted !== false ||
+    authorizationBoundary.productionMutation !== false
+  ) {
+    fail(
+      'EDGE_SUCCESSOR_PRE_APPLY_EVIDENCE_INVALID',
+      'prior pre-apply evidence is not semantically bound to the exact unapplied v3 Candidate Edge authority boundary.',
+    );
+  }
+}
+
+function validateEdgeStateSuccessorRecoveryPredecessorBoundary(predecessor) {
+  const edge = findOperation(
+    predecessor,
+    SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+    SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+  ).operation;
+  const edgeGate = predecessor.gates.find(
+    (gate) => gate.id === SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+  );
+  const laterGates = predecessor.gates.slice(
+    predecessor.gates.indexOf(edgeGate) + 1,
+  );
+  if (
+    predecessor.manifestVersion !== 3 ||
+    predecessor.executionMode !== SUCCESSFUL_CONTINUATION_MODE ||
+    predecessor.releaseStatus !== 'pending' ||
+    predecessor.failedGateId !== null ||
+    edgeGate?.status !== 'pending' ||
+    laterGates.some((gate) => gate.status !== 'pending') ||
+    edge.status !== 'approved' ||
+    edge.planEvidence.status !== 'registered' ||
+    edge.planEvidence.reviewed !== true ||
+    edge.deterministicReviewEvidence.status !== 'passed' ||
+    edge.approval.status !== 'approved' ||
+    edge.apply.status !== 'not-applied' ||
+    edge.apply.attempted !== false ||
+    edge.singleConsumptionStatus !== 'unconsumed' ||
+    edge.liveVerification.status !== 'pending'
+  ) {
+    fail(
+      'EDGE_SUCCESSOR_PREDECESSOR_BOUNDARY_INVALID',
+      'the prior v3 manifest must be pending at the exact approved, registered, reviewed, controller-unapplied first Candidate Edge gate boundary.',
+    );
+  }
+  return edge;
+}
+
+function loadEdgeStateSuccessorRecoveryPredecessor(metadata, label) {
+  const manifestBytes = readExactEdgeStateSuccessorArtifact(
+    metadata.priorManifestRef,
+    metadata.priorManifestSha256,
+    `${label}.priorManifestRef`,
+  );
+  const predecessorManifest = parseJsonBytes(
+    manifestBytes,
+    'prior v3 manifest',
+    'EDGE_SUCCESSOR_ARTIFACT_INVALID',
+  );
+  if (
+    predecessorManifest.manifestVersion !== 3 ||
+    predecessorManifest.executionMode !== SUCCESSFUL_CONTINUATION_MODE
+  ) {
+    fail(
+      'EDGE_SUCCESSOR_PREDECESSOR_BOUNDARY_INVALID',
+      'v4 recovery requires an exact successful-edge-continuation v3 predecessor.',
+    );
+  }
+  const validationCandidate = structuredClone(predecessorManifest);
+  normalizeSuccessfulContinuationPredecessorCheckoutRoots(
+    validationCandidate,
+    label,
+  );
+  validateSuccessfulEdgeContinuationManifestV3(validationCandidate);
+  if (
+    predecessorManifest.releaseExecutionId !== metadata.priorReleaseExecutionId
+  ) {
+    fail(
+      'EDGE_SUCCESSOR_PREDECESSOR_BOUNDARY_INVALID',
+      'the prior v3 release execution identity does not match recovery metadata.',
+    );
+  }
+  const edgeOperation =
+    validateEdgeStateSuccessorRecoveryPredecessorBoundary(predecessorManifest);
+  if (
+    edgeOperation.approval.approvalRef !== metadata.priorApprovalEvidenceRef
+  ) {
+    fail(
+      'EDGE_SUCCESSOR_ARTIFACT_INVALID',
+      'priorApprovalEvidenceRef differs from the approval evidence referenced by the prior v3 operation.',
+    );
+  }
+  const artifacts = {
+    savedPlanBytes: readExactEdgeStateSuccessorArtifact(
+      metadata.priorSavedPlanRef,
+      metadata.priorSavedPlanSha256,
+      `${label}.priorSavedPlanRef`,
+    ),
+    planJsonBytes: readExactEdgeStateSuccessorArtifact(
+      metadata.priorPlanJsonRef,
+      metadata.priorPlanJsonSha256,
+      `${label}.priorPlanJsonRef`,
+    ),
+    reviewEvidenceBytes: readExactEdgeStateSuccessorArtifact(
+      metadata.priorReviewEvidenceRef,
+      metadata.priorReviewEvidenceSha256,
+      `${label}.priorReviewEvidenceRef`,
+    ),
+    approvalEvidenceBytes: readExactEdgeStateSuccessorArtifact(
+      metadata.priorApprovalEvidenceRef,
+      metadata.priorApprovalEvidenceSha256,
+      `${label}.priorApprovalEvidenceRef`,
+    ),
+    preApplyEvidenceBytes: readExactEdgeStateSuccessorArtifact(
+      metadata.priorPreApplyEvidenceRef,
+      metadata.priorPreApplyEvidenceSha256,
+      `${label}.priorPreApplyEvidenceRef`,
+    ),
+    reconciliationEvidenceBytes: readExactEdgeStateSuccessorArtifact(
+      metadata.stateReconciliationEvidenceRef,
+      metadata.stateReconciliationEvidenceSha256,
+      `${label}.stateReconciliationEvidenceRef`,
+    ),
+  };
+  validatePriorV3ReviewArtifacts(
+    predecessorManifest,
+    edgeOperation,
+    metadata,
+    artifacts,
+  );
+  validatePriorV3ApprovalEvidence(
+    predecessorManifest,
+    edgeOperation,
+    metadata,
+    artifacts.approvalEvidenceBytes,
+  );
+  validatePriorV3PreApplyEvidence(
+    predecessorManifest,
+    edgeOperation,
+    metadata,
+    artifacts.preApplyEvidenceBytes,
+  );
+  const apiRuntime =
+    predecessorManifest.predecessorEvidence.importedPassedOperations.find(
+      (operation) => operation.operationId === 'api-candidate-runtime',
+    );
+  if (!apiRuntime || apiRuntime.status !== 'passed') {
+    fail(
+      'EDGE_SUCCESSOR_PREDECESSOR_BOUNDARY_INVALID',
+      'the prior v3 manifest must retain immutable passed API Runtime evidence.',
+    );
+  }
+  return {
+    predecessorManifest,
+    edgeOperation,
+    apiRuntime,
+    reconciliationEvidence: parseJsonBytes(
+      artifacts.reconciliationEvidenceBytes,
+      'state reconciliation evidence',
+      'EDGE_SUCCESSOR_RECONCILIATION_INVALID',
+    ),
+  };
+}
+
+function validateEdgeStateSuccessorRecoveryLiveDiscovery(
+  value,
+  predecessor,
+  label = 'liveDiscovery',
+) {
+  const priorManifest = predecessor.predecessorManifest;
+  const priorEdgeState = predecessor.edgeOperation.statePrecondition;
+  const currentEdgeState = requireState(
+    requireExactKeys(
+      requireObject(value, label).edgeState,
+      ['lineage', 'serial'],
+      `${label}.edgeState`,
+    ),
+    `${label}.edgeState`,
+  );
+  if (
+    currentEdgeState.lineage !== priorEdgeState.lineage ||
+    currentEdgeState.serial <= priorEdgeState.serial
+  ) {
+    fail(
+      'EDGE_STATE_SUCCESSOR_INVALID',
+      'v4 recovery requires the same Edge lineage and a strictly greater current serial.',
+    );
+  }
+  const validationInput = structuredClone(value);
+  validationInput.edgeState = {
+    lineage: priorEdgeState.lineage,
+    serial: priorEdgeState.serial,
+  };
+  const priorServing = priorManifest.liveDiscovery.servingBaseline;
+  const adapter = {
+    promotedBaseline: {
+      promotedRevision: priorServing.revision,
+      promotedCandidateTag: priorServing.candidateTag,
+      promotedImageReference: priorServing.imageReference,
+    },
+    apiRuntime: {
+      verificationExpectation: {
+        image: priorManifest.candidate.imageReference,
+        candidateTag: priorManifest.candidate.tag,
+        revision: priorManifest.candidate.revision,
+      },
+      apply: {
+        postApplyState: predecessor.apiRuntime.apply.postApplyState,
+      },
+    },
+    apiEdge: predecessor.edgeOperation,
+    predecessorManifest: priorManifest,
+  };
+  const validated = validateSuccessfulContinuationLiveDiscovery(
+    validationInput,
+    adapter,
+    label,
+  );
+  requireExactValue(
+    validated.liveDiscovery.candidateEdgeResources,
+    priorManifest.liveDiscovery.candidateEdgeResources,
+    `${label}.candidateEdgeResources`,
+  );
+  validated.liveDiscovery.edgeState = currentEdgeState;
+  validated.edgeState = currentEdgeState;
+  return validated;
+}
+
+function validateStateReconciliationEvidence(
+  value,
+  metadata,
+  predecessor,
+  live,
+  label = 'stateReconciliationEvidence',
+) {
+  const evidence = requireExactKeys(
+    value,
+    [
+      'schemaVersion',
+      'classification',
+      'priorReleaseExecutionId',
+      'priorEdgeState',
+      'currentEdgeState',
+      'stateCandidateNeg',
+      'liveCandidateNeg',
+      'stateCandidateBackend',
+      'liveCandidateBackend',
+      'stateCandidateSmokeRoute',
+      'liveCandidateSmokeRoute',
+      'servingRevision',
+      'servingTrafficPercent',
+      'candidateRevision',
+      'candidateTag',
+      'candidateTrafficPercent',
+      'candidateReady',
+      'desiredCandidateTag',
+      'urlMapSemanticStatus',
+      'productionMutationObserved',
+    ],
+    label,
+  );
+  if (
+    evidence.schemaVersion !== 1 ||
+    evidence.classification !==
+      'STATE_ADVANCED_WITHOUT_GOVERNED_SEMANTIC_EDGE_CHANGE' ||
+    evidence.priorReleaseExecutionId !== metadata.priorReleaseExecutionId
+  ) {
+    fail(
+      'EDGE_SUCCESSOR_RECONCILIATION_INVALID',
+      'state reconciliation evidence has the wrong schema, classification, or prior release identity.',
+    );
+  }
+  const priorEdgeState = requireState(
+    requireExactKeys(
+      evidence.priorEdgeState,
+      ['lineage', 'serial'],
+      `${label}.priorEdgeState`,
+    ),
+    `${label}.priorEdgeState`,
+  );
+  const currentEdgeState = requireState(
+    requireExactKeys(
+      evidence.currentEdgeState,
+      ['lineage', 'serial'],
+      `${label}.currentEdgeState`,
+    ),
+    `${label}.currentEdgeState`,
+  );
+  requireExactValue(
+    priorEdgeState,
+    {
+      lineage: predecessor.edgeOperation.statePrecondition.lineage,
+      serial: predecessor.edgeOperation.statePrecondition.serial,
+    },
+    `${label}.priorEdgeState`,
+  );
+  requireExactValue(
+    currentEdgeState,
+    live.edgeState,
+    `${label}.currentEdgeState`,
+  );
+  const semantic = live.liveDiscovery.candidateEdgeResources;
+  const componentKeys = {
+    Neg: Object.keys(semantic.neg),
+    Backend: Object.keys(semantic.backend),
+    SmokeRoute: Object.keys(semantic.smokeRoute),
+  };
+  for (const component of Object.keys(componentKeys)) {
+    for (const source of ['state', 'live']) {
+      const field = `${source}Candidate${component}`;
+      requireExactValue(
+        requireExactKeys(
+          evidence[field],
+          componentKeys[component],
+          `${label}.${field}`,
+        ),
+        semantic[
+          component === 'SmokeRoute' ? 'smokeRoute' : component.toLowerCase()
+        ],
+        `${label}.${field}`,
+      );
+    }
+  }
+  const expectedScalarEvidence = {
+    servingRevision: live.liveDiscovery.servingBaseline.revision,
+    servingTrafficPercent: 100,
+    candidateRevision: live.liveDiscovery.candidate.revision,
+    candidateTag: live.liveDiscovery.candidate.tag,
+    candidateTrafficPercent: 0,
+    candidateReady: true,
+    desiredCandidateTag: predecessor.predecessorManifest.candidate.tag,
+    urlMapSemanticStatus: 'unchanged',
+    productionMutationObserved: false,
+  };
+  for (const [field, expected] of Object.entries(expectedScalarEvidence)) {
+    if (!isDeepStrictEqual(evidence[field], expected)) {
+      fail(
+        'EDGE_SUCCESSOR_RECONCILIATION_INVALID',
+        `state reconciliation evidence has an unsafe ${field} value.`,
+      );
+    }
+  }
+  if (
+    semantic.neg.cloudRunTag === evidence.desiredCandidateTag ||
+    currentEdgeState.lineage !== priorEdgeState.lineage ||
+    currentEdgeState.serial <= priorEdgeState.serial
+  ) {
+    fail(
+      'EDGE_SUCCESSOR_RECONCILIATION_INVALID',
+      'state reconciliation does not prove an unchanged Edge semantic baseline at a strict same-lineage successor serial.',
+    );
+  }
+  return evidence;
 }
 
 function validatePredecessorEvidence(inputStages, predecessorStages) {
@@ -2016,8 +2781,8 @@ function buildGateOperations(context, gate, gateIndex) {
   const current = context.currentImages;
   const candidate = context.candidateImageReference;
   const recovery = context.executionMode === 'recovery';
-  const successfulContinuation =
-    context.executionMode === SUCCESSFUL_CONTINUATION_MODE;
+  const retainedCandidateEdgeReconciliation =
+    isRetainedCandidateEdgeReconciliationMode(context.executionMode);
   const preApiTraffic = context.preApiTraffic ?? ['normal', null, null];
   const candidateTraffic = [
     'candidate_no_traffic',
@@ -2088,7 +2853,7 @@ function buildGateOperations(context, gate, gateIndex) {
       ];
 
     case 'api-no-traffic-promotion':
-      if (successfulContinuation) {
+      if (retainedCandidateEdgeReconciliation) {
         const planReviewSpecification =
           successfulContinuationPlanReviewSpecification();
         return [
@@ -2244,7 +3009,7 @@ function buildGateOperations(context, gate, gateIndex) {
               'template[0].containers[0].image',
             ],
           },
-          statePrecondition: successfulContinuation
+          statePrecondition: retainedCandidateEdgeReconciliation
             ? statePrecondition(context.runtimeState)
             : statePrecondition(null, 'api-candidate-runtime'),
           verificationExpectation: { image: candidate },
@@ -2757,6 +3522,173 @@ function buildSuccessfulEdgeContinuationManifest(input) {
   return manifest;
 }
 
+function buildEdgeStateSuccessorRecoveryManifest(input) {
+  requireExactKeys(
+    input,
+    [
+      'executionMode',
+      'executionId',
+      'repository',
+      'sourceSha',
+      'environment',
+      'resumeGateId',
+      'resumeOperationId',
+      'edgeStateSuccessorRecovery',
+      'liveDiscovery',
+      'externalTfDataRoot',
+      'externalSavedPlanRoot',
+    ],
+    'context',
+  );
+  if (input.executionMode !== EDGE_STATE_SUCCESSOR_RECOVERY_MODE) {
+    fail(
+      'MANIFEST_UNSUPPORTED',
+      `Edge state-successor recovery requires executionMode=${EDGE_STATE_SUCCESSOR_RECOVERY_MODE}.`,
+    );
+  }
+  if (
+    input.resumeGateId !== SUCCESSFUL_CONTINUATION_RESUME_GATE_ID ||
+    input.resumeOperationId !== SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID
+  ) {
+    fail(
+      'EDGE_SUCCESSOR_BOUNDARY_UNSUPPORTED',
+      `v4 recovery must resume at ${SUCCESSFUL_CONTINUATION_RESUME_GATE_ID}/${SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID}.`,
+    );
+  }
+  const contract = loadReleaseContract();
+  const { continuationStages } = successfulContinuationContractWindow(contract);
+  const sourceSha = requireString(
+    input.sourceSha,
+    'sourceSha',
+    /^[a-f0-9]{40}$/u,
+  );
+  if (sourceSha !== currentSourceSha()) {
+    fail(
+      'SOURCE_SHA_MISMATCH',
+      'sourceSha must equal the current repository HEAD.',
+    );
+  }
+  if (input.repository !== REPOSITORY) {
+    fail('REPOSITORY_MISMATCH', `repository must equal ${REPOSITORY}.`);
+  }
+  if (input.environment !== 'staging') {
+    fail(
+      'ENVIRONMENT_UNSUPPORTED',
+      'Edge state-successor recovery is staging-only.',
+    );
+  }
+  const executionId = requireString(
+    input.executionId,
+    'executionId',
+    /^[a-z0-9][a-z0-9._-]{2,80}$/u,
+  );
+  const recovery = validateEdgeStateSuccessorRecoveryMetadata(
+    input.edgeStateSuccessorRecovery,
+  );
+  if (executionId === recovery.priorReleaseExecutionId) {
+    fail(
+      'EDGE_SUCCESSOR_EXECUTION_ID_REUSE',
+      'the v4 execution ID must differ from the interrupted v3 execution ID.',
+    );
+  }
+  const predecessor = loadEdgeStateSuccessorRecoveryPredecessor(
+    recovery,
+    'edgeStateSuccessorRecovery',
+  );
+  const live = validateEdgeStateSuccessorRecoveryLiveDiscovery(
+    input.liveDiscovery,
+    predecessor,
+  );
+  validateStateReconciliationEvidence(
+    predecessor.reconciliationEvidence,
+    recovery,
+    predecessor,
+    live,
+  );
+  const candidate = structuredClone(predecessor.predecessorManifest.candidate);
+  const tfDataRoot = requireExternalAbsolutePath(
+    input.externalTfDataRoot,
+    'externalTfDataRoot',
+  );
+  const savedPlanRoot = requireExternalAbsolutePath(
+    input.externalSavedPlanRoot,
+    'externalSavedPlanRoot',
+  );
+  const context = {
+    executionMode: EDGE_STATE_SUCCESSOR_RECOVERY_MODE,
+    executionId,
+    sourceSha,
+    environment: 'staging',
+    candidateImageReference: candidate.imageReference,
+    candidateTag: candidate.tag,
+    candidateRevision: candidate.revision,
+    stableApiRevision: live.stableApiRevision,
+    currentImages: live.currentImages,
+    runtimeState: live.runtimeState,
+    edgeState: live.edgeState,
+    tfDataRoot,
+    savedPlanRoot,
+  };
+  const gates = continuationStages.map((gate, gateIndex) => ({
+    id: gate.id,
+    sequence: gateIndex + 1,
+    blocking: true,
+    status: 'pending',
+    operations: buildGateOperations(context, gate, gateIndex),
+  }));
+  const blockedSavedPlanHashes = [
+    ...new Set([
+      ...predecessor.predecessorManifest.blockedSavedPlanHashes,
+      recovery.priorSavedPlanSha256,
+    ]),
+  ];
+  const manifest = {
+    manifestVersion: 4,
+    executionMode: EDGE_STATE_SUCCESSOR_RECOVERY_MODE,
+    resumeGateId: SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+    resumeOperationId: SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    releaseExecutionId: executionId,
+    repository: REPOSITORY,
+    sourceSha,
+    environment: 'staging',
+    authoritativeContract: {
+      path: 'config/deployment/release-sequence.contract.json',
+      sha256: contract.contractSha256,
+      contractVersion: contract.contract.contractVersion,
+      failurePolicy: contract.contract.failurePolicy,
+      automaticRetryAllowed: contract.contract.automaticRetryAllowed,
+    },
+    edgeStateSuccessorRecovery: recovery,
+    predecessorEvidence: structuredClone(
+      predecessor.predecessorManifest.predecessorEvidence,
+    ),
+    liveDiscovery: live.liveDiscovery,
+    candidate,
+    externalArtifactRoots: {
+      tfDataRoot,
+      savedPlanRoot,
+    },
+    releaseStatus: 'pending',
+    failedGateId: null,
+    gates,
+    candidateEdgeCleanupTemplate: {
+      authoritativeReleaseGate: false,
+      requiresSeparatePostReleaseApproval: true,
+      terraformRoot: EDGE_ROOT,
+      requiredVariables: {
+        candidate_edge_enabled: false,
+        candidate_api_tag: null,
+      },
+      expectedResourceAddressAllowlist: EDGE_CANDIDATE_RESOURCE_ADDRESSES,
+      expectedChangeType:
+        'destroy-candidate-neg-and-backend-plus-remove-narrow-url-map-route',
+    },
+    blockedSavedPlanHashes,
+  };
+  validateManifest(manifest);
+  return manifest;
+}
+
 function buildManifest(input) {
   const context = requireObject(input, 'context');
   if (!Object.hasOwn(context, 'executionMode')) {
@@ -2768,9 +3700,12 @@ function buildManifest(input) {
   if (context.executionMode === SUCCESSFUL_CONTINUATION_MODE) {
     return buildSuccessfulEdgeContinuationManifest(context);
   }
+  if (context.executionMode === EDGE_STATE_SUCCESSOR_RECOVERY_MODE) {
+    return buildEdgeStateSuccessorRecoveryManifest(context);
+  }
   fail(
     'MANIFEST_UNSUPPORTED',
-    `executionMode is unsupported; omit it for v1, use recovery, or use ${SUCCESSFUL_CONTINUATION_MODE}.`,
+    `executionMode is unsupported; omit it for v1, use recovery, use ${SUCCESSFUL_CONTINUATION_MODE}, or use ${EDGE_STATE_SUCCESSOR_RECOVERY_MODE}.`,
   );
 }
 
@@ -2832,16 +3767,15 @@ function assertSourceBinding(manifest) {
 }
 
 function assertPromotionPrerequisites(manifest) {
-  const api =
-    manifest.executionMode === SUCCESSFUL_CONTINUATION_MODE
-      ? manifest.predecessorEvidence.importedPassedOperations.find(
-          (operation) => operation.operationId === 'api-candidate-runtime',
-        )
-      : findOperation(
-          manifest,
-          'api-no-traffic-promotion',
-          'api-candidate-runtime',
-        ).operation;
+  const api = isRetainedCandidateEdgeReconciliationMode(manifest.executionMode)
+    ? manifest.predecessorEvidence.importedPassedOperations.find(
+        (operation) => operation.operationId === 'api-candidate-runtime',
+      )
+    : findOperation(
+        manifest,
+        'api-no-traffic-promotion',
+        'api-candidate-runtime',
+      ).operation;
   const smoke = findOperation(
     manifest,
     'protected-readiness-and-smoke',
@@ -4274,6 +5208,283 @@ function validateSuccessfulEdgeContinuationManifestV3(manifest) {
   return manifest;
 }
 
+function validateEdgeStateSuccessorRecoveryManifestV4(manifest) {
+  if (
+    manifest.manifestVersion !== 4 ||
+    manifest.executionMode !== EDGE_STATE_SUCCESSOR_RECOVERY_MODE
+  ) {
+    fail(
+      'MANIFEST_UNSUPPORTED',
+      `manifestVersion 4 requires executionMode=${EDGE_STATE_SUCCESSOR_RECOVERY_MODE}.`,
+    );
+  }
+  requireExactKeys(
+    manifest,
+    [
+      'manifestVersion',
+      'executionMode',
+      'resumeGateId',
+      'resumeOperationId',
+      'releaseExecutionId',
+      'repository',
+      'sourceSha',
+      'environment',
+      'authoritativeContract',
+      'edgeStateSuccessorRecovery',
+      'predecessorEvidence',
+      'liveDiscovery',
+      'candidate',
+      'externalArtifactRoots',
+      'releaseStatus',
+      'failedGateId',
+      'gates',
+      'candidateEdgeCleanupTemplate',
+      'blockedSavedPlanHashes',
+    ],
+    'manifest',
+  );
+  if (
+    manifest.resumeGateId !== SUCCESSFUL_CONTINUATION_RESUME_GATE_ID ||
+    manifest.resumeOperationId !== SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID
+  ) {
+    fail(
+      'EDGE_SUCCESSOR_BOUNDARY_UNSUPPORTED',
+      `manifest v4 must resume at ${SUCCESSFUL_CONTINUATION_RESUME_GATE_ID}/${SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID}.`,
+    );
+  }
+  const executionId = requireString(
+    manifest.releaseExecutionId,
+    'manifest.releaseExecutionId',
+    /^[a-z0-9][a-z0-9._-]{2,80}$/u,
+  );
+  if (manifest.repository !== REPOSITORY) {
+    fail('REPOSITORY_MISMATCH', 'manifest repository is not authoritative.');
+  }
+  const sourceSha = requireString(
+    manifest.sourceSha,
+    'manifest.sourceSha',
+    /^[a-f0-9]{40}$/u,
+  );
+  if (manifest.environment !== 'staging') {
+    fail('ENVIRONMENT_UNSUPPORTED', 'manifest environment must be staging.');
+  }
+  const contract = loadReleaseContract();
+  const { continuationStages } = successfulContinuationContractWindow(contract);
+  requireExactValue(
+    requireExactKeys(
+      manifest.authoritativeContract,
+      [
+        'path',
+        'sha256',
+        'contractVersion',
+        'failurePolicy',
+        'automaticRetryAllowed',
+      ],
+      'manifest.authoritativeContract',
+    ),
+    {
+      path: 'config/deployment/release-sequence.contract.json',
+      sha256: contract.contractSha256,
+      contractVersion: contract.contract.contractVersion,
+      failurePolicy: contract.contract.failurePolicy,
+      automaticRetryAllowed: contract.contract.automaticRetryAllowed,
+    },
+    'manifest.authoritativeContract',
+  );
+  const recovery = validateEdgeStateSuccessorRecoveryMetadata(
+    manifest.edgeStateSuccessorRecovery,
+    'manifest.edgeStateSuccessorRecovery',
+  );
+  requireExactValue(
+    manifest.edgeStateSuccessorRecovery,
+    recovery,
+    'manifest.edgeStateSuccessorRecovery',
+  );
+  if (executionId === recovery.priorReleaseExecutionId) {
+    fail(
+      'EDGE_SUCCESSOR_EXECUTION_ID_REUSE',
+      'the v4 execution ID must differ from the interrupted v3 execution ID.',
+    );
+  }
+  const predecessor = loadEdgeStateSuccessorRecoveryPredecessor(
+    recovery,
+    'manifest.edgeStateSuccessorRecovery',
+  );
+  requireExactValue(
+    manifest.predecessorEvidence,
+    predecessor.predecessorManifest.predecessorEvidence,
+    'manifest.predecessorEvidence',
+  );
+  requireExactValue(
+    manifest.candidate,
+    predecessor.predecessorManifest.candidate,
+    'manifest.candidate',
+  );
+  const live = validateEdgeStateSuccessorRecoveryLiveDiscovery(
+    manifest.liveDiscovery,
+    predecessor,
+    'manifest.liveDiscovery',
+  );
+  requireExactValue(
+    manifest.liveDiscovery,
+    live.liveDiscovery,
+    'manifest.liveDiscovery',
+  );
+  validateStateReconciliationEvidence(
+    predecessor.reconciliationEvidence,
+    recovery,
+    predecessor,
+    live,
+  );
+
+  const externalRoots = requireExactKeys(
+    manifest.externalArtifactRoots,
+    ['tfDataRoot', 'savedPlanRoot'],
+    'manifest.externalArtifactRoots',
+  );
+  const tfDataRoot = requireExternalAbsolutePath(
+    externalRoots.tfDataRoot,
+    'manifest.externalArtifactRoots.tfDataRoot',
+  );
+  const savedPlanRoot = requireExternalAbsolutePath(
+    externalRoots.savedPlanRoot,
+    'manifest.externalArtifactRoots.savedPlanRoot',
+  );
+  requireExactValue(
+    externalRoots,
+    { tfDataRoot, savedPlanRoot },
+    'manifest.externalArtifactRoots',
+  );
+  const blockedSavedPlanHashes = [
+    ...new Set([
+      ...predecessor.predecessorManifest.blockedSavedPlanHashes,
+      recovery.priorSavedPlanSha256,
+    ]),
+  ];
+  requireExactValue(
+    manifest.blockedSavedPlanHashes,
+    blockedSavedPlanHashes,
+    'manifest.blockedSavedPlanHashes',
+  );
+
+  const candidate = predecessor.predecessorManifest.candidate;
+  const expectedContext = {
+    executionMode: EDGE_STATE_SUCCESSOR_RECOVERY_MODE,
+    executionId,
+    sourceSha,
+    environment: 'staging',
+    candidateImageReference: candidate.imageReference,
+    candidateTag: candidate.tag,
+    candidateRevision: candidate.revision,
+    stableApiRevision: live.stableApiRevision,
+    currentImages: live.currentImages,
+    runtimeState: live.runtimeState,
+    edgeState: live.edgeState,
+    tfDataRoot,
+    savedPlanRoot,
+  };
+  const expectedGates = continuationStages.map((gate, gateIndex) => ({
+    id: gate.id,
+    sequence: gateIndex + 1,
+    blocking: true,
+    operations: buildGateOperations(expectedContext, gate, gateIndex),
+  }));
+  if (
+    !Array.isArray(manifest.gates) ||
+    manifest.gates.length !== expectedGates.length ||
+    manifest.gates.some((gate, index) => gate.id !== expectedGates[index].id)
+  ) {
+    fail(
+      'GATE_ORDER_MISMATCH',
+      'v4 recovery gate order differs from the approved Candidate Edge remainder.',
+    );
+  }
+
+  const hashes = new Set();
+  for (const [gateIndex, gate] of manifest.gates.entries()) {
+    const expectedGate = expectedGates[gateIndex];
+    requireExactKeys(
+      gate,
+      ['id', 'sequence', 'blocking', 'status', 'operations'],
+      `manifest.gates[${gateIndex}]`,
+    );
+    requireExactValue(
+      {
+        id: gate.id,
+        sequence: gate.sequence,
+        blocking: gate.blocking,
+      },
+      {
+        id: expectedGate.id,
+        sequence: expectedGate.sequence,
+        blocking: expectedGate.blocking,
+      },
+      `manifest.gates[${gateIndex}]`,
+    );
+    if (
+      !Array.isArray(gate.operations) ||
+      gate.operations.length !== expectedGate.operations.length
+    ) {
+      fail(
+        'MANIFEST_SPEC_MISMATCH',
+        `${gate.id} operation count differs from the v4 recovery specification.`,
+      );
+    }
+    for (const [operationIndex, operation] of gate.operations.entries()) {
+      const expectedOperation = expectedGate.operations[operationIndex];
+      requireExactValue(
+        immutableOperationSpecification(operation),
+        immutableOperationSpecification(expectedOperation),
+        `${gate.id}.${expectedOperation.id}`,
+      );
+      if (operation.kind === 'terraform' && operation.planEvidence?.sha256) {
+        if (
+          manifest.blockedSavedPlanHashes.includes(
+            operation.planEvidence.sha256,
+          ) ||
+          hashes.has(operation.planEvidence.sha256)
+        ) {
+          fail(
+            'PLAN_REUSE_FORBIDDEN',
+            'saved plan hash is blocked or duplicated.',
+          );
+        }
+        hashes.add(operation.planEvidence.sha256);
+      }
+      const operationLabel = `${gate.id}.${expectedOperation.id}`;
+      if (operation.kind === 'terraform') {
+        validateTerraformLifecycle(operation, operationLabel);
+        validateStatePrecondition(
+          manifest,
+          operation,
+          expectedOperation,
+          operationLabel,
+        );
+      } else {
+        validateVerificationLifecycle(operation, operationLabel);
+      }
+    }
+  }
+  requireExactValue(
+    manifest.candidateEdgeCleanupTemplate,
+    {
+      authoritativeReleaseGate: false,
+      requiresSeparatePostReleaseApproval: true,
+      terraformRoot: EDGE_ROOT,
+      requiredVariables: {
+        candidate_edge_enabled: false,
+        candidate_api_tag: null,
+      },
+      expectedResourceAddressAllowlist: EDGE_CANDIDATE_RESOURCE_ADDRESSES,
+      expectedChangeType:
+        'destroy-candidate-neg-and-backend-plus-remove-narrow-url-map-route',
+    },
+    'manifest.candidateEdgeCleanupTemplate',
+  );
+  validateReleaseLifecycle(manifest);
+  return manifest;
+}
+
 function validateManifest(manifest) {
   const candidate = requireObject(manifest, 'manifest');
   if (candidate.manifestVersion === 1) {
@@ -4285,7 +5496,10 @@ function validateManifest(manifest) {
   if (candidate.manifestVersion === 3) {
     return validateSuccessfulEdgeContinuationManifestV3(candidate);
   }
-  fail('MANIFEST_UNSUPPORTED', 'manifestVersion must be 1, 2, or 3.');
+  if (candidate.manifestVersion === 4) {
+    return validateEdgeStateSuccessorRecoveryManifestV4(candidate);
+  }
+  fail('MANIFEST_UNSUPPORTED', 'manifestVersion must be 1, 2, 3, or 4.');
 }
 
 function canonicalizeTerraformPath(pathSegments) {
@@ -4917,21 +6131,21 @@ function reviewRefreshOnlyDrift(record, operation, nonNoopAddresses) {
   }
 }
 
-function requireSuccessfulContinuationReviewTarget(
-  manifest,
-  gateId,
-  operationId,
-) {
+function requireCandidateEdgeReviewTarget(manifest, gateId, operationId) {
   const candidate = requireObject(manifest, 'manifest');
+  const supportedManifestMode =
+    (candidate.manifestVersion === 3 &&
+      candidate.executionMode === SUCCESSFUL_CONTINUATION_MODE) ||
+    (candidate.manifestVersion === 4 &&
+      candidate.executionMode === EDGE_STATE_SUCCESSOR_RECOVERY_MODE);
   if (
-    candidate.manifestVersion !== 3 ||
-    candidate.executionMode !== SUCCESSFUL_CONTINUATION_MODE ||
+    !supportedManifestMode ||
     gateId !== SUCCESSFUL_CONTINUATION_RESUME_GATE_ID ||
     operationId !== SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID
   ) {
     fail(
       'PLAN_REVIEW_NOT_APPLICABLE',
-      'deterministic plan review is available only for the exact v3 Candidate Edge reconciliation.',
+      'deterministic plan review is available only for the exact v3 or v4 Candidate Edge reconciliation.',
     );
   }
   const { gate, operation } = findOperation(candidate, gateId, operationId);
@@ -4944,7 +6158,7 @@ function requireSuccessfulContinuationReviewTarget(
   ) {
     fail(
       'MANIFEST_SPEC_MISMATCH',
-      'the v3 Candidate Edge review target is not the governed operation.',
+      'the Candidate Edge review target is not the governed v3/v4 operation.',
     );
   }
   return { gate, operation };
@@ -4957,7 +6171,7 @@ function immutableOperationSpecificationSha256(operation) {
 function reviewTerraformPlanJson(planJson, manifest, options = {}) {
   const gateId = options.gateId;
   const operationId = options.operationId;
-  const { operation } = requireSuccessfulContinuationReviewTarget(
+  const { operation } = requireCandidateEdgeReviewTarget(
     manifest,
     gateId,
     operationId,
@@ -5364,7 +6578,7 @@ function reviewPlanFiles(options) {
   );
   validateManifest(manifest);
   assertSourceBinding(manifest);
-  const { gate, operation } = requireSuccessfulContinuationReviewTarget(
+  const { gate, operation } = requireCandidateEdgeReviewTarget(
     manifest,
     options.gateId,
     options.operationId,
@@ -5377,7 +6591,7 @@ function reviewPlanFiles(options) {
   ) {
     fail(
       'PLAN_REVIEW_OUT_OF_ORDER',
-      'the v3 Candidate Edge operation is not awaiting deterministic review.',
+      'the v3/v4 Candidate Edge operation is not awaiting deterministic review.',
     );
   }
   if (path.resolve(operation.savedPlanPath) !== savedPlanPath) {
@@ -5416,8 +6630,10 @@ function registerPlan(manifest, options) {
     options.operationId,
   );
   const requiresDeterministicReview =
-    manifest.manifestVersion === 3 &&
-    manifest.executionMode === SUCCESSFUL_CONTINUATION_MODE &&
+    ((manifest.manifestVersion === 3 &&
+      manifest.executionMode === SUCCESSFUL_CONTINUATION_MODE) ||
+      (manifest.manifestVersion === 4 &&
+        manifest.executionMode === EDGE_STATE_SUCCESSOR_RECOVERY_MODE)) &&
     gate.id === SUCCESSFUL_CONTINUATION_RESUME_GATE_ID &&
     operation.id === SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID;
   assertReleaseCanAdvance(manifest, gate, operation);
@@ -5493,7 +6709,7 @@ function registerPlan(manifest, options) {
     if (!Buffer.isBuffer(options.manifestBytes)) {
       fail(
         'PLAN_REVIEW_EVIDENCE_REQUIRED',
-        'v3 registration requires the exact pre-registration manifest bytes.',
+        'v3/v4 registration requires the exact pre-registration manifest bytes.',
       );
     }
     if (
@@ -5504,7 +6720,7 @@ function registerPlan(manifest, options) {
     ) {
       fail(
         'PLAN_REVIEW_EVIDENCE_REQUIRED',
-        'v3 registration requires --plan-json and --review-evidence.',
+        'v3/v4 registration requires --plan-json and --review-evidence.',
       );
     }
     const reviewedManifest = parseJsonBytes(
@@ -6037,6 +7253,8 @@ module.exports = Object.freeze({
   BLOCKED_SAVED_PLAN_SHA256,
   CANDIDATE_EDGE_IDENTITIES,
   DeploymentControlError,
+  EDGE_STATE_SUCCESSOR_RECOVERY_GATE_IDS,
+  EDGE_STATE_SUCCESSOR_RECOVERY_MODE,
   EDGE_CANDIDATE_RESOURCE_ADDRESSES,
   EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES,
   EDGE_REFRESH_ONLY_DRIFT_RESOURCE_ADDRESSES,
