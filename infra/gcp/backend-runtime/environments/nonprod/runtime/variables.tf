@@ -1,3 +1,114 @@
+variable "api_service_min_instances" {
+  description = "Staging permanent API service minimum baseline. Governed executions pass this value explicitly."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = floor(var.api_service_min_instances) == var.api_service_min_instances && var.api_service_min_instances >= 1
+    error_message = "api_service_min_instances must be a positive integer."
+  }
+}
+
+variable "api_service_max_instances" {
+  description = "Staging permanent API service maximum baseline. Governed executions pass this value explicitly."
+  type        = number
+  default     = 4
+
+  validation {
+    condition     = floor(var.api_service_max_instances) == var.api_service_max_instances && var.api_service_max_instances >= 1
+    error_message = "api_service_max_instances must be a positive integer."
+  }
+}
+
+variable "api_revision_max_instances" {
+  description = "Optional governed staging API revision maximum. Null keeps the field unmanaged."
+  type        = number
+  default     = null
+  nullable    = true
+
+  validation {
+    condition = (
+      var.api_revision_max_instances == null ||
+      (floor(var.api_revision_max_instances) == var.api_revision_max_instances && var.api_revision_max_instances >= 1)
+    )
+    error_message = "api_revision_max_instances must be null or a positive integer."
+  }
+}
+
+variable "api_max_instance_request_concurrency" {
+  description = "Staging permanent API revision concurrency baseline."
+  type        = number
+  default     = 40
+
+  validation {
+    condition = (
+      floor(var.api_max_instance_request_concurrency) == var.api_max_instance_request_concurrency &&
+      var.api_max_instance_request_concurrency >= 1 &&
+      var.api_max_instance_request_concurrency <= 1000
+    )
+    error_message = "api_max_instance_request_concurrency must be an integer from 1 through 1000."
+  }
+}
+
+variable "api_request_timeout_seconds" {
+  description = "Optional governed staging API request timeout. Null keeps the field unmanaged."
+  type        = number
+  default     = null
+  nullable    = true
+
+  validation {
+    condition = (
+      var.api_request_timeout_seconds == null ||
+      (
+        floor(var.api_request_timeout_seconds) == var.api_request_timeout_seconds &&
+        var.api_request_timeout_seconds >= 1 &&
+        var.api_request_timeout_seconds <= 3600
+      )
+    )
+    error_message = "api_request_timeout_seconds must be null or an integer from 1 through 3600."
+  }
+}
+
+variable "api_session_affinity" {
+  description = "Optional governed staging API session affinity. Null keeps the field unmanaged."
+  type        = bool
+  default     = null
+  nullable    = true
+}
+
+variable "api_database_connection_limit" {
+  description = "Staging permanent per-instance API database connection baseline."
+  type        = number
+  default     = 5
+
+  validation {
+    condition     = floor(var.api_database_connection_limit) == var.api_database_connection_limit && var.api_database_connection_limit >= 1
+    error_message = "api_database_connection_limit must be a positive integer."
+  }
+}
+
+variable "core_worker_manual_instance_count" {
+  description = "Staging permanent Core Worker manual instance baseline."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = floor(var.core_worker_manual_instance_count) == var.core_worker_manual_instance_count && var.core_worker_manual_instance_count >= 1
+    error_message = "core_worker_manual_instance_count must be a positive integer."
+  }
+}
+
+variable "media_worker_manual_instance_count" {
+  description = "Staging permanent Media Worker manual instance baseline."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = floor(var.media_worker_manual_instance_count) == var.media_worker_manual_instance_count && var.media_worker_manual_instance_count >= 1
+    error_message = "media_worker_manual_instance_count must be a positive integer."
+  }
+}
+
 variable "api_image_reference" {
   description = "Immutable digest reference used only by the staging API service."
   type        = string
@@ -88,6 +199,17 @@ variable "api_candidate_tag" {
       can(regex("^candidate-[a-f0-9]{12}(-r[1-9][0-9]{0,14})?$", var.api_candidate_tag))
     )
     error_message = "api_candidate_tag must be null, candidate- followed by exactly 12 lowercase hexadecimal characters, or that base followed by a canonical -rN recovery suffix of at most 15 digits."
+  }
+}
+
+variable "api_candidate_identity_version" {
+  description = "Candidate identity authority. image-v1 preserves imported historical candidates; capacity-v1 governs future capacity-aware candidates."
+  type        = string
+  default     = "image-v1"
+
+  validation {
+    condition     = contains(["image-v1", "capacity-v1"], var.api_candidate_identity_version)
+    error_message = "api_candidate_identity_version must be image-v1 or capacity-v1."
   }
 }
 

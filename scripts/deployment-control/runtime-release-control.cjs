@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { isDeepStrictEqual } = require('node:util');
+const capacityControl = require('./runtime-capacity-control.cjs');
 
 const REPOSITORY = 'Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend';
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
@@ -32,6 +33,34 @@ const SMOKE_BACKEND_PATH = '/api/v1/auth/me';
 const STAGING_API_ORIGIN = 'https://staging-api.moazez.cloud';
 const RUNTIME_ROOT = 'infra/gcp/backend-runtime/environments/nonprod/runtime';
 const EDGE_ROOT = 'infra/gcp/edge/environments/nonprod';
+const RELEASE_MANIFEST_VERSION = 6;
+const CAPACITY_AWARE_RELEASE_MODE = 'capacity-aware-release';
+const POST_EDGE_SOURCE_CONTINUATION_MODE = 'post-edge-source-continuation';
+const POST_EDGE_SOURCE_CONTINUATION_RESUME_GATE_ID =
+  'maintenance-scheduler-promotion';
+const POST_EDGE_SOURCE_CONTINUATION_RESUME_OPERATION_ID =
+  'maintenance-scheduler-runtime';
+const GOVERNED_V5_PREDECESSOR = Object.freeze({
+  executionId: 'd2-v5-edge-20260915011016',
+  manifestSha256:
+    '2f778f8fadfa99002be545ccd1a1ccfdc5333eaffaa27cc600f3c6f401013b49',
+  sourceSha: '3cc5a5275d6a4bd3e8b0ffb057f10db4da399edc',
+  manifestVersion: 5,
+  executionMode: FAILED_EDGE_APPLY_STATE_SUCCESSOR_RECOVERY_MODE,
+});
+const REJECTED_MAINTENANCE_PLAN_SHA256 =
+  '0cdff09279b0965a185b935ef4c961da5185d6cd92f81c7939f6543000febfd3';
+const GOVERNED_APPLICATION_ARTIFACT_DIGEST =
+  'sha256:a256576ef34bf301c4677f367a8df1868925ffdcb88492ced1babfc5e74af240';
+const GOVERNED_APPLICATION_ARTIFACT = `me-central2-docker.pkg.dev/moazez-nonprod-91001421934/moazez-staging-containers/moazez-backend@${GOVERNED_APPLICATION_ARTIFACT_DIGEST}`;
+const GOVERNED_IMPORTED_CANDIDATE = Object.freeze({
+  imageReference: GOVERNED_APPLICATION_ARTIFACT,
+  tag: 'candidate-5377bd0c7d84',
+  revision: 'moazez-staging-api-candidate-5377bd0c7d84',
+});
+const GOVERNED_STABLE_REVISION = 'moazez-staging-api-candidate-e1f5a9c9e01b-r1';
+const GOVERNED_PREDECESSOR_MAINTENANCE_IMAGE =
+  'me-central2-docker.pkg.dev/moazez-nonprod-91001421934/moazez-staging-containers/moazez-backend@sha256:1a6b5f41a4dfbb4921a11fe60ccb7d46d89397353dad9aebfcb0df71017986c6';
 
 const RUNTIME_RESOURCE_ADDRESSES = Object.freeze({
   api: 'module.runtime_environment.google_cloud_run_v2_service.api',
@@ -331,7 +360,8 @@ function isRetainedCandidateEdgeReconciliationMode(executionMode) {
   return (
     executionMode === SUCCESSFUL_CONTINUATION_MODE ||
     executionMode === EDGE_STATE_SUCCESSOR_RECOVERY_MODE ||
-    executionMode === FAILED_EDGE_APPLY_STATE_SUCCESSOR_RECOVERY_MODE
+    executionMode === FAILED_EDGE_APPLY_STATE_SUCCESSOR_RECOVERY_MODE ||
+    executionMode === POST_EDGE_SOURCE_CONTINUATION_MODE
   );
 }
 
@@ -3665,6 +3695,69 @@ function runtimeVariables(images, trafficMode, stableRevision, candidateTag) {
   };
 }
 
+function runtimeVariablesV6(
+  images,
+  trafficMode,
+  stableRevision,
+  candidateTag,
+  capacitySpec,
+  candidateIdentityVersion,
+) {
+  return {
+    ...runtimeVariables(images, trafficMode, stableRevision, candidateTag),
+    api_candidate_identity_version: candidateIdentityVersion,
+    ...capacityControl.terraformVariablesForCapacitySpec(capacitySpec),
+  };
+}
+
+function v6RuntimePlanReviewSpecification(address, type) {
+  return {
+    expectedResourcePlanIdentities: {
+      [address]: {
+        mode: 'managed',
+        type,
+        providerName: GOOGLE_PROVIDER_NAME,
+      },
+    },
+    allowedProviderNormalizations: {},
+    allowedRefreshOnlyDrift: {},
+    planReviewRequirements: {
+      schemaVersion: 1,
+      required: true,
+      compatiblePlanJsonFormatMajor: 1,
+      planJsonDerivationAuthority:
+        'devops-guarded-export-from-exact-saved-plan',
+    },
+  };
+}
+
+function buildV6RuntimeTerraformOperation(context, gateIndex, definition) {
+  const review = v6RuntimePlanReviewSpecification(
+    definition.resourceAddress,
+    definition.resourceType,
+  );
+  return buildTerraformOperation(context, gateIndex, 0, {
+    id: definition.id,
+    gateId: definition.gateId,
+    terraformRoot: RUNTIME_ROOT,
+    requiredVariables: definition.requiredVariables,
+    expectedResourceAddressAllowlist: [definition.resourceAddress],
+    expectedResourceActions: {
+      [definition.resourceAddress]: ['update'],
+    },
+    expectedChangeType: definition.expectedChangeType,
+    allowedAttributeChanges: {
+      [definition.resourceAddress]: definition.allowedAttributeChanges,
+    },
+    allowedComputedAfterApplyChanges: {
+      [definition.resourceAddress]: [],
+    },
+    ...review,
+    statePrecondition: definition.statePrecondition,
+    verificationExpectation: definition.verificationExpectation,
+  });
+}
+
 function statePrecondition(initialState, boundFromOperationId = null) {
   if (initialState) {
     return {
@@ -4945,6 +5038,1014 @@ function buildFailedEdgeApplyStateSuccessorRecoveryManifest(input) {
   return manifest;
 }
 
+function validateCapacityAwareReleaseLiveDiscovery(value, preservationSpec) {
+  const live = requireExactKeys(
+    value,
+    [
+      'evidenceRef',
+      'discoveredAt',
+      'apiTrafficMode',
+      'stable',
+      'runtimeImages',
+      'runtimeState',
+      'edgeState',
+      'apiService',
+      'terraformManagedCapacity',
+      'observedEffectiveCapacity',
+      'workers',
+    ],
+    'liveDiscovery',
+  );
+  requireString(live.evidenceRef, 'liveDiscovery.evidenceRef');
+  requireIsoTimestamp(live.discoveredAt, 'liveDiscovery.discoveredAt');
+  if (live.apiTrafficMode !== 'normal') {
+    fail(
+      'V6_LIVE_DISCOVERY_MISMATCH',
+      'capacity-aware candidate construction requires a fresh normal-traffic serving baseline.',
+    );
+  }
+  const stable = requireExactKeys(
+    live.stable,
+    ['revision', 'imageReference', 'trafficPercent'],
+    'liveDiscovery.stable',
+  );
+  requireString(stable.revision, 'liveDiscovery.stable.revision');
+  validateImageReference(
+    stable.imageReference,
+    'liveDiscovery.stable.imageReference',
+  );
+  if (stable.trafficPercent !== 100) {
+    fail(
+      'V6_LIVE_DISCOVERY_MISMATCH',
+      'the discovered serving revision must own 100 percent normal traffic before candidate creation.',
+    );
+  }
+  const runtimeImages = requireExactKeys(
+    live.runtimeImages,
+    ['api', 'coreWorker', 'mediaWorker', 'maintenanceScheduler'],
+    'liveDiscovery.runtimeImages',
+  );
+  for (const [key, image] of Object.entries(runtimeImages)) {
+    validateImageReference(image, `liveDiscovery.runtimeImages.${key}`);
+  }
+  if (runtimeImages.api !== stable.imageReference) {
+    fail(
+      'V6_LIVE_DISCOVERY_MISMATCH',
+      'the current API image must equal the serving revision image.',
+    );
+  }
+  const runtimeState = requireState(
+    live.runtimeState,
+    'liveDiscovery.runtimeState',
+  );
+  const edgeState = requireState(live.edgeState, 'liveDiscovery.edgeState');
+  const managed = capacityControl.validateCapacitySpec(
+    live.terraformManagedCapacity,
+    'liveDiscovery.terraformManagedCapacity',
+  );
+  const observed = capacityControl.validateCapacitySpec(
+    live.observedEffectiveCapacity,
+    'liveDiscovery.observedEffectiveCapacity',
+  );
+  requireExactValue(
+    managed,
+    preservationSpec,
+    'liveDiscovery.terraformManagedCapacity',
+  );
+  requireExactValue(
+    requireExactKeys(
+      live.apiService,
+      ['minInstances', 'maxInstances'],
+      'liveDiscovery.apiService',
+    ),
+    {
+      minInstances: preservationSpec.api.serviceMinInstances,
+      maxInstances: preservationSpec.api.serviceMaxInstances,
+    },
+    'liveDiscovery.apiService',
+  );
+  requireExactValue(
+    requireExactKeys(
+      live.workers,
+      ['coreManualInstanceCount', 'mediaManualInstanceCount'],
+      'liveDiscovery.workers',
+    ),
+    preservationSpec.workers,
+    'liveDiscovery.workers',
+  );
+  return {
+    liveDiscovery: structuredClone(live),
+    stable: structuredClone(stable),
+    runtimeImages: structuredClone(runtimeImages),
+    runtimeState,
+    edgeState,
+    managed,
+    observed,
+  };
+}
+
+function capacityAwareRuntimeSpec(preservationSpec, candidateRevisionSpec) {
+  const preserved = capacityControl.validateCapacitySpec(preservationSpec);
+  const revision = capacityControl.validateCandidateRevisionCapacitySpec(
+    candidateRevisionSpec,
+  );
+  return {
+    capacitySpecVersion: capacityControl.CAPACITY_SPEC_VERSION,
+    api: {
+      serviceMinInstances: preserved.api.serviceMinInstances,
+      serviceMaxInstances: preserved.api.serviceMaxInstances,
+      revision: {
+        maxInstances: revision.revisionMaxInstances,
+        concurrency: revision.concurrency,
+        requestTimeoutSeconds: revision.requestTimeoutSeconds,
+        sessionAffinity: revision.sessionAffinity,
+        databaseConnectionLimit: revision.databaseConnectionLimit,
+      },
+    },
+    workers: structuredClone(preserved.workers),
+  };
+}
+
+function buildCapacityAwareReleaseGates(context) {
+  const preservedVariables = runtimeVariablesV6(
+    context.currentImages,
+    'normal',
+    null,
+    null,
+    context.capacityPreservationSpec,
+    'image-v1',
+  );
+  const candidateImages = {
+    api: context.candidateImageReference,
+    coreWorker: context.candidateImageReference,
+    mediaWorker: context.candidateImageReference,
+    maintenanceScheduler: context.candidateImageReference,
+  };
+  const candidateCapacity = capacityAwareRuntimeSpec(
+    context.capacityPreservationSpec,
+    context.candidateRevisionCapacitySpec,
+  );
+  const noTrafficVariables = runtimeVariablesV6(
+    {
+      ...candidateImages,
+      maintenanceScheduler: context.currentImages.maintenanceScheduler,
+    },
+    'candidate_no_traffic',
+    context.stableApiRevision,
+    context.candidateTag,
+    candidateCapacity,
+    capacityControl.CANDIDATE_IDENTITY_VERSION,
+  );
+  const maintenanceVariables = runtimeVariablesV6(
+    candidateImages,
+    'candidate_no_traffic',
+    context.stableApiRevision,
+    context.candidateTag,
+    candidateCapacity,
+    capacityControl.CANDIDATE_IDENTITY_VERSION,
+  );
+  const promotedVariables = runtimeVariablesV6(
+    candidateImages,
+    'candidate_promoted',
+    context.stableApiRevision,
+    context.candidateTag,
+    candidateCapacity,
+    capacityControl.CANDIDATE_IDENTITY_VERSION,
+  );
+  const core = buildV6RuntimeTerraformOperation(context, 0, {
+    id: 'core-worker-runtime',
+    gateId: 'core-worker-promotion',
+    resourceAddress: RUNTIME_RESOURCE_ADDRESSES.coreWorker,
+    resourceType: 'google_cloud_run_v2_worker_pool',
+    requiredVariables: {
+      ...preservedVariables,
+      core_worker_image_reference: context.candidateImageReference,
+    },
+    expectedChangeType:
+      'update-in-place:core-worker-image-only-capacity-preserved',
+    allowedAttributeChanges: ['template[0].containers[0].image'],
+    statePrecondition: statePrecondition(context.runtimeState),
+    verificationExpectation: {
+      image: context.candidateImageReference,
+      capacityMutation: false,
+    },
+  });
+  const media = buildV6RuntimeTerraformOperation(context, 1, {
+    id: 'media-worker-runtime',
+    gateId: 'media-worker-promotion',
+    resourceAddress: RUNTIME_RESOURCE_ADDRESSES.mediaWorker,
+    resourceType: 'google_cloud_run_v2_worker_pool',
+    requiredVariables: {
+      ...preservedVariables,
+      core_worker_image_reference: context.candidateImageReference,
+      media_worker_image_reference: context.candidateImageReference,
+    },
+    expectedChangeType:
+      'update-in-place:media-worker-image-only-capacity-preserved',
+    allowedAttributeChanges: ['template[0].containers[0].image'],
+    statePrecondition: statePrecondition(null, 'core-worker-runtime'),
+    verificationExpectation: {
+      image: context.candidateImageReference,
+      capacityMutation: false,
+    },
+  });
+  const api = buildV6RuntimeTerraformOperation(context, 2, {
+    id: 'api-candidate-runtime',
+    gateId: 'api-no-traffic-promotion',
+    resourceAddress: RUNTIME_RESOURCE_ADDRESSES.api,
+    resourceType: 'google_cloud_run_v2_service',
+    requiredVariables: noTrafficVariables,
+    expectedChangeType:
+      'create-capacity-aware-api-candidate-at-zero-traffic-with-service-capacity-preserved',
+    allowedAttributeChanges: [
+      'template[0].containers[0].image',
+      'template[0].revision',
+      'template[0].scaling[0].max_instance_count',
+      'template[0].max_instance_request_concurrency',
+      'template[0].timeout',
+      'template[0].session_affinity',
+      'template[0].containers[0].env',
+      'traffic',
+    ],
+    statePrecondition: statePrecondition(null, 'media-worker-runtime'),
+    verificationExpectation: {
+      image: context.candidateImageReference,
+      revision: context.candidateRevision,
+      candidateTag: context.candidateTag,
+      stablePercent: 100,
+      candidatePercent: 0,
+      serviceCapacity: {
+        minInstances: context.capacityPreservationSpec.api.serviceMinInstances,
+        maxInstances: context.capacityPreservationSpec.api.serviceMaxInstances,
+      },
+      candidateRevisionCapacitySpec: structuredClone(
+        context.candidateRevisionCapacitySpec,
+      ),
+    },
+  });
+  const edge = buildTerraformOperation(context, 2, 1, {
+    id: 'api-candidate-edge',
+    gateId: 'api-no-traffic-promotion',
+    terraformRoot: EDGE_ROOT,
+    requiredVariables: {
+      candidate_edge_enabled: true,
+      candidate_api_tag: context.candidateTag,
+    },
+    expectedResourceAddressAllowlist: EDGE_CANDIDATE_RESOURCE_ADDRESSES,
+    expectedChangeType:
+      'create-capacity-aware-tagged-neg-and-backend-plus-narrow-url-map-route',
+    allowedAttributeChanges: {
+      [EDGE_CANDIDATE_RESOURCE_ADDRESSES[0]]: ['create'],
+      [EDGE_CANDIDATE_RESOURCE_ADDRESSES[1]]: ['create'],
+      [EDGE_CANDIDATE_RESOURCE_ADDRESSES[2]]: ['path_matcher[api].path_rule'],
+    },
+    statePrecondition: statePrecondition(context.edgeState),
+    verificationExpectation: {
+      candidateTag: context.candidateTag,
+      publicPath: SMOKE_PUBLIC_PATH,
+      backendPath: SMOKE_BACKEND_PATH,
+      capacityMutation: false,
+    },
+  });
+  const maintenance = buildV6RuntimeTerraformOperation(context, 3, {
+    id: 'maintenance-scheduler-runtime',
+    gateId: 'maintenance-scheduler-promotion',
+    resourceAddress: RUNTIME_RESOURCE_ADDRESSES.maintenanceScheduler,
+    resourceType: 'google_cloud_run_v2_worker_pool',
+    requiredVariables: maintenanceVariables,
+    expectedChangeType:
+      'update-in-place:maintenance-scheduler-image-only-capacity-preserved',
+    allowedAttributeChanges: ['template[0].containers[0].image'],
+    statePrecondition: statePrecondition(null, 'api-candidate-runtime'),
+    verificationExpectation: {
+      image: context.candidateImageReference,
+      capacityMutation: false,
+    },
+  });
+  const smoke = buildVerificationOperation(context, {
+    id: 'protected-candidate-smoke',
+    gateId: 'protected-readiness-and-smoke',
+  });
+  const traffic = buildV6RuntimeTerraformOperation(context, 5, {
+    id: 'api-traffic-promotion',
+    gateId: 'traffic-promotion',
+    resourceAddress: RUNTIME_RESOURCE_ADDRESSES.api,
+    resourceType: 'google_cloud_run_v2_service',
+    requiredVariables: promotedVariables,
+    expectedChangeType: 'update-in-place:api-traffic-only-capacity-preserved',
+    allowedAttributeChanges: ['traffic'],
+    statePrecondition: statePrecondition(null, 'maintenance-scheduler-runtime'),
+    verificationExpectation: {
+      image: context.candidateImageReference,
+      revision: context.candidateRevision,
+      candidateTag: context.candidateTag,
+      stablePercent: 0,
+      candidatePercent: 100,
+      capacityMutation: false,
+      workerCapacityMutation: false,
+    },
+  });
+  return [
+    ['core-worker-promotion', [core]],
+    ['media-worker-promotion', [media]],
+    ['api-no-traffic-promotion', [api, edge]],
+    ['maintenance-scheduler-promotion', [maintenance]],
+    ['protected-readiness-and-smoke', [smoke]],
+    ['traffic-promotion', [traffic]],
+  ].map(([id, operations], index) => ({
+    id,
+    sequence: index + 1,
+    blocking: true,
+    status: 'pending',
+    operations,
+  }));
+}
+
+function buildCapacityAwareReleaseManifestV6(input) {
+  requireExactKeys(
+    input,
+    [
+      'executionMode',
+      'executionId',
+      'repository',
+      'sourceSha',
+      'environment',
+      'candidateImageReference',
+      'applicationArtifactDigest',
+      'completedPredecessorStages',
+      'liveDiscovery',
+      'capacityPreservationSpec',
+      'candidateRevisionCapacitySpec',
+      'capacityEvidence',
+      'externalTfDataRoot',
+      'externalSavedPlanRoot',
+    ],
+    'context',
+  );
+  if (input.executionMode !== CAPACITY_AWARE_RELEASE_MODE) {
+    fail(
+      'MANIFEST_UNSUPPORTED',
+      `capacity-aware Release V6 requires executionMode=${CAPACITY_AWARE_RELEASE_MODE}.`,
+    );
+  }
+  if (input.repository !== REPOSITORY || input.environment !== 'staging') {
+    fail(
+      'V6_AUTHORITY_MISMATCH',
+      'capacity-aware Release V6 uses the staging-only candidate Edge workflow.',
+    );
+  }
+  const sourceSha = requireString(
+    input.sourceSha,
+    'sourceSha',
+    /^[a-f0-9]{40}$/u,
+  );
+  if (sourceSha !== currentSourceSha()) {
+    fail('SOURCE_SHA_MISMATCH', 'control source must equal repository HEAD.');
+  }
+  const executionId = requireString(
+    input.executionId,
+    'executionId',
+    /^[a-z0-9][a-z0-9._-]{2,80}$/u,
+  );
+  const candidateImageReference = validateImageReference(
+    input.candidateImageReference,
+    'candidateImageReference',
+  );
+  const applicationArtifactDigest = requireString(
+    input.applicationArtifactDigest,
+    'applicationArtifactDigest',
+    /^sha256:[a-f0-9]{64}$/u,
+  );
+  if (!candidateImageReference.endsWith(`@${applicationArtifactDigest}`)) {
+    fail(
+      'V6_APPLICATION_ARTIFACT_MISMATCH',
+      'candidate image must be digest-pinned to applicationArtifactDigest.',
+    );
+  }
+  const capacityPreservationSpec = capacityControl.validateCapacitySpec(
+    input.capacityPreservationSpec,
+    'capacityPreservationSpec',
+  );
+  const candidateRevisionCapacitySpec =
+    capacityControl.validateCandidateRevisionCapacitySpec(
+      input.candidateRevisionCapacitySpec,
+      'candidateRevisionCapacitySpec',
+    );
+  const live = validateCapacityAwareReleaseLiveDiscovery(
+    input.liveDiscovery,
+    capacityPreservationSpec,
+  );
+  const candidateIdentity = capacityControl.capacityAwareCandidateIdentity(
+    applicationArtifactDigest,
+    candidateRevisionCapacitySpec,
+  );
+  const candidateRevision = `moazez-staging-api-${candidateIdentity.candidateTag}`;
+  const overlap = capacityControl.calculateCandidateOverlap({
+    servingServiceMaxInstances: live.liveDiscovery.apiService.maxInstances,
+    servingDatabaseConnectionLimit:
+      live.observed.api.revision.databaseConnectionLimit,
+    candidateRevisionCapacitySpec,
+    workers: capacityPreservationSpec.workers,
+  });
+  const overlapApproval = capacityControl.evaluateCandidateOverlapEvidence(
+    overlap,
+    input.capacityEvidence,
+  );
+  const contract = loadReleaseContract();
+  const firstFourStages = contract.contract.stages.slice(0, 4);
+  const predecessorEvidence = validatePredecessorEvidence(
+    input.completedPredecessorStages,
+    firstFourStages,
+  );
+  const tfDataRoot = requireExternalAbsolutePath(
+    input.externalTfDataRoot,
+    'externalTfDataRoot',
+  );
+  const savedPlanRoot = requireExternalAbsolutePath(
+    input.externalSavedPlanRoot,
+    'externalSavedPlanRoot',
+  );
+  const context = {
+    executionMode: CAPACITY_AWARE_RELEASE_MODE,
+    executionId,
+    sourceSha,
+    environment: 'staging',
+    candidateImageReference,
+    candidateTag: candidateIdentity.candidateTag,
+    candidateRevision,
+    stableApiRevision: live.stable.revision,
+    currentImages: live.runtimeImages,
+    runtimeState: live.runtimeState,
+    edgeState: live.edgeState,
+    capacityPreservationSpec,
+    candidateRevisionCapacitySpec,
+    tfDataRoot,
+    savedPlanRoot,
+  };
+  const manifest = {
+    manifestVersion: RELEASE_MANIFEST_VERSION,
+    releaseManifestVersion: RELEASE_MANIFEST_VERSION,
+    executionMode: CAPACITY_AWARE_RELEASE_MODE,
+    releaseExecutionId: executionId,
+    repository: REPOSITORY,
+    sourceSha,
+    environment: 'staging',
+    authoritativeContract: {
+      path: 'config/deployment/release-sequence.contract.json',
+      sha256: contract.contractSha256,
+      contractVersion: contract.contract.contractVersion,
+      failurePolicy: contract.contract.failurePolicy,
+      automaticRetryAllowed: contract.contract.automaticRetryAllowed,
+    },
+    capacitySpecVersion: capacityControl.CAPACITY_SPEC_VERSION,
+    controlSourceAuthority: { repository: REPOSITORY, sha: sourceSha },
+    applicationArtifactAuthority: {
+      imageReference: candidateImageReference,
+      digest: applicationArtifactDigest,
+      provenanceMode: 'immutable-prebuilt-artifact',
+    },
+    capacityPreservationSpec,
+    candidateRevisionCapacitySpec,
+    terraformManagedCapacity: live.managed,
+    observedEffectiveCapacity: live.observed,
+    runtimeStatePrecondition: live.runtimeState,
+    candidateOverlap: overlap,
+    capacityApproval: overlapApproval,
+    predecessorEvidence,
+    liveDiscovery: live.liveDiscovery,
+    candidate: {
+      imageReference: candidateImageReference,
+      digest: applicationArtifactDigest,
+      identityVersion: candidateIdentity.identityVersion,
+      fingerprint: candidateIdentity.fingerprint,
+      canonicalRevisionCapacity: candidateIdentity.canonicalRevisionCapacity,
+      tag: candidateIdentity.candidateTag,
+      revision: candidateRevision,
+      trafficPercent: 0,
+    },
+    externalArtifactRoots: { tfDataRoot, savedPlanRoot },
+    releaseStatus: 'pending',
+    failedGateId: null,
+    gates: buildCapacityAwareReleaseGates(context),
+    candidateEdgeCleanupTemplate: {
+      authoritativeReleaseGate: false,
+      requiresSeparatePostReleaseApproval: true,
+      terraformRoot: EDGE_ROOT,
+      requiredVariables: {
+        candidate_edge_enabled: false,
+        candidate_api_tag: null,
+      },
+      expectedResourceAddressAllowlist: EDGE_CANDIDATE_RESOURCE_ADDRESSES,
+      expectedChangeType:
+        'destroy-candidate-neg-and-backend-plus-remove-narrow-url-map-route',
+    },
+    blockedSavedPlanHashes: [],
+  };
+  validateManifest(manifest);
+  return manifest;
+}
+
+function loadGovernedV5Predecessor(manifestPathValue) {
+  const manifestPath = requireExternalAbsolutePath(
+    manifestPathValue,
+    'predecessorManifestPath',
+  );
+  let bytes;
+  try {
+    bytes = fs.readFileSync(manifestPath);
+  } catch (error) {
+    fail(
+      'V6_PREDECESSOR_EVIDENCE_INVALID',
+      `the governed predecessor manifest could not be read: ${error.message}`,
+    );
+  }
+  const manifestSha256 = sha256(bytes);
+  if (manifestSha256 !== GOVERNED_V5_PREDECESSOR.manifestSha256) {
+    fail(
+      'V6_PREDECESSOR_EVIDENCE_INVALID',
+      'the original predecessor bytes do not match the governed SHA-256.',
+    );
+  }
+  const predecessor = parseJsonBytes(
+    bytes,
+    'governed v5 predecessor manifest',
+    'V6_PREDECESSOR_EVIDENCE_INVALID',
+  );
+  if (
+    predecessor.manifestVersion !== GOVERNED_V5_PREDECESSOR.manifestVersion ||
+    predecessor.executionMode !== GOVERNED_V5_PREDECESSOR.executionMode ||
+    predecessor.releaseExecutionId !== GOVERNED_V5_PREDECESSOR.executionId ||
+    predecessor.sourceSha !== GOVERNED_V5_PREDECESSOR.sourceSha ||
+    predecessor.repository !== REPOSITORY ||
+    predecessor.environment !== 'staging' ||
+    predecessor.releaseStatus !== 'in-progress' ||
+    predecessor.failedGateId !== null ||
+    !isDeepStrictEqual(predecessor.candidate, GOVERNED_IMPORTED_CANDIDATE)
+  ) {
+    fail(
+      'V6_PREDECESSOR_EVIDENCE_INVALID',
+      'the predecessor identity, incident mode, active lifecycle, or candidate differs from the exact governed v5 authority.',
+    );
+  }
+  const exactBoundary = [
+    [
+      'api-no-traffic-promotion',
+      'passed',
+      'api-candidate-edge-reconciliation',
+      'passed',
+    ],
+    [
+      'maintenance-scheduler-promotion',
+      'pending',
+      'maintenance-scheduler-runtime',
+      'pending',
+    ],
+    [
+      'protected-readiness-and-smoke',
+      'pending',
+      'protected-candidate-smoke',
+      'pending',
+    ],
+    ['traffic-promotion', 'pending', 'api-traffic-promotion', 'pending'],
+  ];
+  if (
+    !Array.isArray(predecessor.gates) ||
+    predecessor.gates.length !== exactBoundary.length ||
+    exactBoundary.some(
+      ([gateId, gateStatus, operationId, operationStatus], index) => {
+        const gate = predecessor.gates[index];
+        return (
+          gate?.id !== gateId ||
+          gate.status !== gateStatus ||
+          gate.operations?.length !== 1 ||
+          gate.operations[0]?.id !== operationId ||
+          gate.operations[0]?.status !== operationStatus
+        );
+      },
+    )
+  ) {
+    fail(
+      'V6_CONTINUATION_BOUNDARY_UNSUPPORTED',
+      'the exact v5 predecessor must have Candidate Edge passed and Maintenance, protected smoke, and traffic pending.',
+    );
+  }
+  const imported = predecessor.predecessorEvidence?.importedPassedOperations;
+  if (
+    !Array.isArray(imported) ||
+    !isDeepStrictEqual(
+      imported.map((operation) => operation.operationId),
+      ['core-worker-runtime', 'media-worker-runtime', 'api-candidate-runtime'],
+    ) ||
+    imported.some((operation) => operation.status !== 'passed')
+  ) {
+    fail(
+      'V6_PREDECESSOR_EVIDENCE_INVALID',
+      'the exact Core, Media, and API Runtime passed evidence is required.',
+    );
+  }
+  const edgeOperation = predecessor.gates[0].operations[0];
+  if (
+    edgeOperation.apply?.status !== 'succeeded' ||
+    edgeOperation.liveVerification?.status !== 'passed' ||
+    edgeOperation.deterministicReviewEvidence?.status !== 'passed'
+  ) {
+    fail(
+      'V6_PREDECESSOR_EVIDENCE_INVALID',
+      'Candidate Edge must retain passed deterministic review, apply, and live verification evidence.',
+    );
+  }
+  if (
+    !Array.isArray(predecessor.blockedSavedPlanHashes) ||
+    predecessor.blockedSavedPlanHashes.some(
+      (hash) => !/^[a-f0-9]{64}$/u.test(hash),
+    )
+  ) {
+    fail(
+      'V6_PREDECESSOR_EVIDENCE_INVALID',
+      'the predecessor blocked Saved Plan authority is invalid.',
+    );
+  }
+  return { predecessor, edgeOperation, manifestPath, manifestSha256 };
+}
+
+function validateV6ContinuationLiveDiscovery(value, authority) {
+  const live = requireExactKeys(
+    value,
+    [
+      'evidenceRef',
+      'discoveredAt',
+      'apiTrafficMode',
+      'stable',
+      'candidate',
+      'runtimeImages',
+      'runtimeState',
+      'edgeState',
+      'apiService',
+      'terraformManagedCapacity',
+      'observedEffectiveCapacity',
+      'workers',
+    ],
+    'liveDiscovery',
+  );
+  requireString(live.evidenceRef, 'liveDiscovery.evidenceRef');
+  requireIsoTimestamp(live.discoveredAt, 'liveDiscovery.discoveredAt');
+  if (live.apiTrafficMode !== 'candidate_no_traffic') {
+    fail(
+      'V6_LIVE_DISCOVERY_MISMATCH',
+      'the imported candidate must remain at zero percent normal traffic.',
+    );
+  }
+  requireExactValue(
+    requireExactKeys(
+      live.stable,
+      ['revision', 'trafficPercent'],
+      'liveDiscovery.stable',
+    ),
+    { revision: GOVERNED_STABLE_REVISION, trafficPercent: 100 },
+    'liveDiscovery.stable',
+  );
+  requireExactValue(
+    requireExactKeys(
+      live.candidate,
+      ['imageReference', 'tag', 'revision', 'trafficPercent', 'ready'],
+      'liveDiscovery.candidate',
+    ),
+    { ...GOVERNED_IMPORTED_CANDIDATE, trafficPercent: 0, ready: true },
+    'liveDiscovery.candidate',
+  );
+  requireExactValue(
+    requireExactKeys(
+      live.runtimeImages,
+      ['api', 'coreWorker', 'mediaWorker', 'maintenanceScheduler'],
+      'liveDiscovery.runtimeImages',
+    ),
+    {
+      api: GOVERNED_APPLICATION_ARTIFACT,
+      coreWorker: GOVERNED_APPLICATION_ARTIFACT,
+      mediaWorker: GOVERNED_APPLICATION_ARTIFACT,
+      maintenanceScheduler: GOVERNED_PREDECESSOR_MAINTENANCE_IMAGE,
+    },
+    'liveDiscovery.runtimeImages',
+  );
+  const runtimeState = requireState(
+    live.runtimeState,
+    'liveDiscovery.runtimeState',
+  );
+  const edgeState = requireState(live.edgeState, 'liveDiscovery.edgeState');
+  const predecessorRuntimeState =
+    authority.predecessor.predecessorEvidence.importedPassedOperations.at(-1)
+      .apply.postApplyState;
+  const predecessorEdgeState = authority.edgeOperation.apply.postApplyState;
+  if (
+    runtimeState.lineage !== predecessorRuntimeState.lineage ||
+    runtimeState.serial < predecessorRuntimeState.serial ||
+    edgeState.lineage !== predecessorEdgeState.lineage ||
+    edgeState.serial < predecessorEdgeState.serial
+  ) {
+    fail(
+      'V6_STATE_AUTHORITY_STALE',
+      'fresh Runtime and Edge state must descend from the exact predecessor state authority.',
+    );
+  }
+  const managed = capacityControl.validateCapacitySpec(
+    live.terraformManagedCapacity,
+    'liveDiscovery.terraformManagedCapacity',
+  );
+  requireExactValue(
+    managed,
+    capacityControl.baselineCapacitySpec('staging'),
+    'liveDiscovery.terraformManagedCapacity',
+  );
+  const observed = capacityControl.validateCapacitySpec(
+    live.observedEffectiveCapacity,
+    'liveDiscovery.observedEffectiveCapacity',
+  );
+  requireExactValue(
+    requireExactKeys(
+      live.apiService,
+      ['minInstances', 'maxInstances'],
+      'liveDiscovery.apiService',
+    ),
+    {
+      minInstances: managed.api.serviceMinInstances,
+      maxInstances: managed.api.serviceMaxInstances,
+    },
+    'liveDiscovery.apiService',
+  );
+  requireExactValue(
+    requireExactKeys(
+      live.workers,
+      ['coreManualInstanceCount', 'mediaManualInstanceCount'],
+      'liveDiscovery.workers',
+    ),
+    managed.workers,
+    'liveDiscovery.workers',
+  );
+  return {
+    liveDiscovery: structuredClone(live),
+    runtimeState,
+    edgeState,
+    managed,
+    observed,
+  };
+}
+
+function buildV6PostEdgeContinuationGates(context) {
+  const noTrafficVariables = runtimeVariablesV6(
+    {
+      ...context.currentImages,
+      maintenanceScheduler: context.candidateImageReference,
+    },
+    'candidate_no_traffic',
+    context.stableApiRevision,
+    context.candidateTag,
+    context.capacityPreservationSpec,
+    'image-v1',
+  );
+  const promotedVariables = runtimeVariablesV6(
+    {
+      api: context.candidateImageReference,
+      coreWorker: context.candidateImageReference,
+      mediaWorker: context.candidateImageReference,
+      maintenanceScheduler: context.candidateImageReference,
+    },
+    'candidate_promoted',
+    context.stableApiRevision,
+    context.candidateTag,
+    context.capacityPreservationSpec,
+    'image-v1',
+  );
+  const maintenance = buildV6RuntimeTerraformOperation(context, 0, {
+    id: POST_EDGE_SOURCE_CONTINUATION_RESUME_OPERATION_ID,
+    gateId: POST_EDGE_SOURCE_CONTINUATION_RESUME_GATE_ID,
+    resourceAddress: RUNTIME_RESOURCE_ADDRESSES.maintenanceScheduler,
+    resourceType: 'google_cloud_run_v2_worker_pool',
+    requiredVariables: noTrafficVariables,
+    expectedChangeType:
+      'update-in-place:maintenance-scheduler-image-only-with-capacity-preserved',
+    allowedAttributeChanges: ['template[0].containers[0].image'],
+    statePrecondition: statePrecondition(context.runtimeState),
+    verificationExpectation: {
+      image: context.candidateImageReference,
+      previousImage: GOVERNED_PREDECESSOR_MAINTENANCE_IMAGE,
+      apiNoOp: true,
+      capacityMutation: false,
+      trafficMutation: false,
+    },
+  });
+  const smoke = buildVerificationOperation(context, {
+    id: 'protected-candidate-smoke',
+    gateId: 'protected-readiness-and-smoke',
+  });
+  const traffic = buildV6RuntimeTerraformOperation(context, 2, {
+    id: 'api-traffic-promotion',
+    gateId: 'traffic-promotion',
+    resourceAddress: RUNTIME_RESOURCE_ADDRESSES.api,
+    resourceType: 'google_cloud_run_v2_service',
+    requiredVariables: promotedVariables,
+    expectedChangeType: 'update-in-place:api-traffic-only-capacity-preserved',
+    allowedAttributeChanges: ['traffic'],
+    statePrecondition: statePrecondition(
+      null,
+      POST_EDGE_SOURCE_CONTINUATION_RESUME_OPERATION_ID,
+    ),
+    verificationExpectation: {
+      image: context.candidateImageReference,
+      revision: context.candidateRevision,
+      candidateTag: context.candidateTag,
+      stablePercent: 0,
+      candidatePercent: 100,
+      capacityMutation: false,
+      workerCapacityMutation: false,
+    },
+  });
+  return [
+    {
+      id: POST_EDGE_SOURCE_CONTINUATION_RESUME_GATE_ID,
+      sequence: 1,
+      blocking: true,
+      status: 'pending',
+      operations: [maintenance],
+    },
+    {
+      id: 'protected-readiness-and-smoke',
+      sequence: 2,
+      blocking: true,
+      status: 'pending',
+      operations: [smoke],
+    },
+    {
+      id: 'traffic-promotion',
+      sequence: 3,
+      blocking: true,
+      status: 'pending',
+      operations: [traffic],
+    },
+  ];
+}
+
+function buildPostEdgeSourceContinuationManifestV6(input) {
+  requireExactKeys(
+    input,
+    [
+      'executionMode',
+      'executionId',
+      'repository',
+      'sourceSha',
+      'environment',
+      'resumeGateId',
+      'resumeOperationId',
+      'predecessorManifestPath',
+      'liveDiscovery',
+      'externalTfDataRoot',
+      'externalSavedPlanRoot',
+    ],
+    'context',
+  );
+  if (input.executionMode !== POST_EDGE_SOURCE_CONTINUATION_MODE) {
+    fail(
+      'MANIFEST_UNSUPPORTED',
+      `v6 continuation requires executionMode=${POST_EDGE_SOURCE_CONTINUATION_MODE}.`,
+    );
+  }
+  if (
+    input.resumeGateId !== POST_EDGE_SOURCE_CONTINUATION_RESUME_GATE_ID ||
+    input.resumeOperationId !==
+      POST_EDGE_SOURCE_CONTINUATION_RESUME_OPERATION_ID
+  ) {
+    fail(
+      'V6_CONTINUATION_BOUNDARY_UNSUPPORTED',
+      `v6 continuation must resume at ${POST_EDGE_SOURCE_CONTINUATION_RESUME_GATE_ID}/${POST_EDGE_SOURCE_CONTINUATION_RESUME_OPERATION_ID}.`,
+    );
+  }
+  if (input.repository !== REPOSITORY || input.environment !== 'staging') {
+    fail(
+      'V6_AUTHORITY_MISMATCH',
+      'the governed post-Edge continuation is bound to the authoritative repository and staging.',
+    );
+  }
+  const sourceSha = requireString(
+    input.sourceSha,
+    'sourceSha',
+    /^[a-f0-9]{40}$/u,
+  );
+  if (sourceSha !== currentSourceSha()) {
+    fail(
+      'SOURCE_SHA_MISMATCH',
+      'control source authority must equal the current repository HEAD.',
+    );
+  }
+  const executionId = requireString(
+    input.executionId,
+    'executionId',
+    /^[a-z0-9][a-z0-9._-]{2,80}$/u,
+  );
+  if (executionId === GOVERNED_V5_PREDECESSOR.executionId) {
+    fail(
+      'V6_EXECUTION_ID_REUSE',
+      'the v6 execution must not reuse the predecessor execution ID.',
+    );
+  }
+  const authority = loadGovernedV5Predecessor(input.predecessorManifestPath);
+  const live = validateV6ContinuationLiveDiscovery(
+    input.liveDiscovery,
+    authority,
+  );
+  const tfDataRoot = requireExternalAbsolutePath(
+    input.externalTfDataRoot,
+    'externalTfDataRoot',
+  );
+  const savedPlanRoot = requireExternalAbsolutePath(
+    input.externalSavedPlanRoot,
+    'externalSavedPlanRoot',
+  );
+  const contract = loadReleaseContract();
+  const context = {
+    executionMode: POST_EDGE_SOURCE_CONTINUATION_MODE,
+    executionId,
+    sourceSha,
+    environment: 'staging',
+    candidateImageReference: GOVERNED_APPLICATION_ARTIFACT,
+    candidateTag: GOVERNED_IMPORTED_CANDIDATE.tag,
+    candidateRevision: GOVERNED_IMPORTED_CANDIDATE.revision,
+    stableApiRevision: GOVERNED_STABLE_REVISION,
+    currentImages: live.liveDiscovery.runtimeImages,
+    runtimeState: live.runtimeState,
+    edgeState: live.edgeState,
+    capacityPreservationSpec: live.managed,
+    tfDataRoot,
+    savedPlanRoot,
+  };
+  const importedPassedOperations = [
+    ...structuredClone(
+      authority.predecessor.predecessorEvidence.importedPassedOperations,
+    ),
+    importedPassedOperationEvidence(
+      'api-no-traffic-promotion',
+      authority.edgeOperation,
+    ),
+  ];
+  const manifest = {
+    manifestVersion: RELEASE_MANIFEST_VERSION,
+    releaseManifestVersion: RELEASE_MANIFEST_VERSION,
+    executionMode: POST_EDGE_SOURCE_CONTINUATION_MODE,
+    resumeGateId: POST_EDGE_SOURCE_CONTINUATION_RESUME_GATE_ID,
+    resumeOperationId: POST_EDGE_SOURCE_CONTINUATION_RESUME_OPERATION_ID,
+    releaseExecutionId: executionId,
+    repository: REPOSITORY,
+    sourceSha,
+    environment: 'staging',
+    authoritativeContract: {
+      path: 'config/deployment/release-sequence.contract.json',
+      sha256: contract.contractSha256,
+      contractVersion: contract.contract.contractVersion,
+      failurePolicy: contract.contract.failurePolicy,
+      automaticRetryAllowed: contract.contract.automaticRetryAllowed,
+    },
+    capacitySpecVersion: capacityControl.CAPACITY_SPEC_VERSION,
+    controlSourceAuthority: { repository: REPOSITORY, sha: sourceSha },
+    applicationArtifactAuthority: {
+      imageReference: GOVERNED_APPLICATION_ARTIFACT,
+      digest: GOVERNED_APPLICATION_ARTIFACT_DIGEST,
+      provenanceMode: 'inherited-from-governed-v5-predecessor-without-rebuild',
+    },
+    predecessorAuthority: {
+      executionId: GOVERNED_V5_PREDECESSOR.executionId,
+      manifestPath: authority.manifestPath,
+      manifestSha256: authority.manifestSha256,
+      sourceSha: GOVERNED_V5_PREDECESSOR.sourceSha,
+      manifestVersion: GOVERNED_V5_PREDECESSOR.manifestVersion,
+      executionMode: GOVERNED_V5_PREDECESSOR.executionMode,
+    },
+    candidateIdentityAuthority: 'imported-from-predecessor',
+    capacityPreservationSpec: live.managed,
+    candidateRevisionCapacitySpec: null,
+    terraformManagedCapacity: live.managed,
+    observedEffectiveCapacity: live.observed,
+    runtimeStatePrecondition: live.runtimeState,
+    predecessorEvidence: {
+      completedStages: structuredClone(
+        authority.predecessor.predecessorEvidence.completedStages,
+      ),
+      importedPassedOperations,
+    },
+    liveDiscovery: live.liveDiscovery,
+    candidate: structuredClone(GOVERNED_IMPORTED_CANDIDATE),
+    externalArtifactRoots: { tfDataRoot, savedPlanRoot },
+    releaseStatus: 'pending',
+    failedGateId: null,
+    gates: buildV6PostEdgeContinuationGates(context),
+    blockedSavedPlanHashes: [
+      ...new Set([
+        ...authority.predecessor.blockedSavedPlanHashes,
+        REJECTED_MAINTENANCE_PLAN_SHA256,
+      ]),
+    ],
+  };
+  validateManifest(manifest);
+  return manifest;
+}
+
 function buildManifest(input) {
   const context = requireObject(input, 'context');
   if (!Object.hasOwn(context, 'executionMode')) {
@@ -4963,6 +6064,12 @@ function buildManifest(input) {
     context.executionMode === FAILED_EDGE_APPLY_STATE_SUCCESSOR_RECOVERY_MODE
   ) {
     return buildFailedEdgeApplyStateSuccessorRecoveryManifest(context);
+  }
+  if (context.executionMode === POST_EDGE_SOURCE_CONTINUATION_MODE) {
+    return buildPostEdgeSourceContinuationManifestV6(context);
+  }
+  if (context.executionMode === CAPACITY_AWARE_RELEASE_MODE) {
+    return buildCapacityAwareReleaseManifestV6(context);
   }
   fail(
     'MANIFEST_UNSUPPORTED',
@@ -5019,10 +6126,17 @@ function assertReleaseCanAdvance(manifest, gate, operation) {
 }
 
 function assertSourceBinding(manifest) {
-  if (manifest.sourceSha !== currentSourceSha()) {
+  const controlSourceSha =
+    manifest.manifestVersion === RELEASE_MANIFEST_VERSION
+      ? manifest.controlSourceAuthority?.sha
+      : manifest.sourceSha;
+  if (
+    manifest.sourceSha !== controlSourceSha ||
+    controlSourceSha !== currentSourceSha()
+  ) {
     fail(
       'SOURCE_SHA_MISMATCH',
-      'manifest source SHA no longer equals the current repository HEAD.',
+      'manifest control source SHA no longer equals the current repository HEAD.',
     );
   }
 }
@@ -7052,6 +8166,714 @@ function validateFailedEdgeApplyStateSuccessorRecoveryManifestV5(manifest) {
   return manifest;
 }
 
+function validatePostEdgeSourceContinuationManifestV6(manifest) {
+  requireExactKeys(
+    manifest,
+    [
+      'manifestVersion',
+      'releaseManifestVersion',
+      'executionMode',
+      'resumeGateId',
+      'resumeOperationId',
+      'releaseExecutionId',
+      'repository',
+      'sourceSha',
+      'environment',
+      'authoritativeContract',
+      'capacitySpecVersion',
+      'controlSourceAuthority',
+      'applicationArtifactAuthority',
+      'predecessorAuthority',
+      'candidateIdentityAuthority',
+      'capacityPreservationSpec',
+      'candidateRevisionCapacitySpec',
+      'terraformManagedCapacity',
+      'observedEffectiveCapacity',
+      'runtimeStatePrecondition',
+      'predecessorEvidence',
+      'liveDiscovery',
+      'candidate',
+      'externalArtifactRoots',
+      'releaseStatus',
+      'failedGateId',
+      'gates',
+      'blockedSavedPlanHashes',
+    ],
+    'manifest',
+  );
+  if (
+    manifest.manifestVersion !== RELEASE_MANIFEST_VERSION ||
+    manifest.releaseManifestVersion !== RELEASE_MANIFEST_VERSION ||
+    manifest.executionMode !== POST_EDGE_SOURCE_CONTINUATION_MODE
+  ) {
+    fail(
+      'MANIFEST_UNSUPPORTED',
+      `release manifest v6 requires exact executionMode=${POST_EDGE_SOURCE_CONTINUATION_MODE} for this validator.`,
+    );
+  }
+  if (
+    manifest.capacitySpecVersion !== capacityControl.CAPACITY_SPEC_VERSION ||
+    Object.hasOwn(manifest, 'capacityExecutionSchemaVersion')
+  ) {
+    fail(
+      'MANIFEST_SCHEMA_MISMATCH',
+      'Release V6 and Capacity execution schema authorities must remain separate.',
+    );
+  }
+  if (
+    manifest.resumeGateId !== POST_EDGE_SOURCE_CONTINUATION_RESUME_GATE_ID ||
+    manifest.resumeOperationId !==
+      POST_EDGE_SOURCE_CONTINUATION_RESUME_OPERATION_ID
+  ) {
+    fail(
+      'V6_CONTINUATION_BOUNDARY_UNSUPPORTED',
+      'Release V6 must resume exactly at Maintenance Scheduler promotion.',
+    );
+  }
+  const executionId = requireString(
+    manifest.releaseExecutionId,
+    'manifest.releaseExecutionId',
+    /^[a-z0-9][a-z0-9._-]{2,80}$/u,
+  );
+  const sourceSha = requireString(
+    manifest.sourceSha,
+    'manifest.sourceSha',
+    /^[a-f0-9]{40}$/u,
+  );
+  if (
+    manifest.repository !== REPOSITORY ||
+    manifest.environment !== 'staging' ||
+    sourceSha !== currentSourceSha() ||
+    executionId === GOVERNED_V5_PREDECESSOR.executionId
+  ) {
+    fail(
+      'V6_AUTHORITY_MISMATCH',
+      'Release V6 repository, environment, execution, or control source authority is invalid.',
+    );
+  }
+  requireExactValue(
+    requireExactKeys(
+      manifest.controlSourceAuthority,
+      ['repository', 'sha'],
+      'manifest.controlSourceAuthority',
+    ),
+    { repository: REPOSITORY, sha: sourceSha },
+    'manifest.controlSourceAuthority',
+  );
+  requireExactValue(
+    requireExactKeys(
+      manifest.applicationArtifactAuthority,
+      ['imageReference', 'digest', 'provenanceMode'],
+      'manifest.applicationArtifactAuthority',
+    ),
+    {
+      imageReference: GOVERNED_APPLICATION_ARTIFACT,
+      digest: GOVERNED_APPLICATION_ARTIFACT_DIGEST,
+      provenanceMode: 'inherited-from-governed-v5-predecessor-without-rebuild',
+    },
+    'manifest.applicationArtifactAuthority',
+  );
+  const predecessorAuthority = requireExactKeys(
+    manifest.predecessorAuthority,
+    [
+      'executionId',
+      'manifestPath',
+      'manifestSha256',
+      'sourceSha',
+      'manifestVersion',
+      'executionMode',
+    ],
+    'manifest.predecessorAuthority',
+  );
+  const loaded = loadGovernedV5Predecessor(predecessorAuthority.manifestPath);
+  requireExactValue(
+    predecessorAuthority,
+    {
+      executionId: GOVERNED_V5_PREDECESSOR.executionId,
+      manifestPath: loaded.manifestPath,
+      manifestSha256: GOVERNED_V5_PREDECESSOR.manifestSha256,
+      sourceSha: GOVERNED_V5_PREDECESSOR.sourceSha,
+      manifestVersion: GOVERNED_V5_PREDECESSOR.manifestVersion,
+      executionMode: GOVERNED_V5_PREDECESSOR.executionMode,
+    },
+    'manifest.predecessorAuthority',
+  );
+  const contract = loadReleaseContract();
+  requireExactValue(
+    requireExactKeys(
+      manifest.authoritativeContract,
+      [
+        'path',
+        'sha256',
+        'contractVersion',
+        'failurePolicy',
+        'automaticRetryAllowed',
+      ],
+      'manifest.authoritativeContract',
+    ),
+    {
+      path: 'config/deployment/release-sequence.contract.json',
+      sha256: contract.contractSha256,
+      contractVersion: contract.contract.contractVersion,
+      failurePolicy: contract.contract.failurePolicy,
+      automaticRetryAllowed: contract.contract.automaticRetryAllowed,
+    },
+    'manifest.authoritativeContract',
+  );
+  if (
+    manifest.candidateIdentityAuthority !== 'imported-from-predecessor' ||
+    manifest.candidateRevisionCapacitySpec !== null
+  ) {
+    fail(
+      'V6_CANDIDATE_IDENTITY_MISMATCH',
+      'the historical candidate must be imported unchanged and must not be reinterpreted under capacity-v1.',
+    );
+  }
+  requireExactValue(
+    manifest.candidate,
+    GOVERNED_IMPORTED_CANDIDATE,
+    'manifest.candidate',
+  );
+  const live = validateV6ContinuationLiveDiscovery(
+    manifest.liveDiscovery,
+    loaded,
+  );
+  requireExactValue(
+    manifest.capacityPreservationSpec,
+    live.managed,
+    'manifest.capacityPreservationSpec',
+  );
+  requireExactValue(
+    manifest.terraformManagedCapacity,
+    live.managed,
+    'manifest.terraformManagedCapacity',
+  );
+  requireExactValue(
+    manifest.observedEffectiveCapacity,
+    live.observed,
+    'manifest.observedEffectiveCapacity',
+  );
+  requireExactValue(
+    manifest.runtimeStatePrecondition,
+    live.runtimeState,
+    'manifest.runtimeStatePrecondition',
+  );
+  const expectedImported = [
+    ...loaded.predecessor.predecessorEvidence.importedPassedOperations,
+    importedPassedOperationEvidence(
+      'api-no-traffic-promotion',
+      loaded.edgeOperation,
+    ),
+  ];
+  requireExactValue(
+    manifest.predecessorEvidence,
+    {
+      completedStages: loaded.predecessor.predecessorEvidence.completedStages,
+      importedPassedOperations: expectedImported,
+    },
+    'manifest.predecessorEvidence',
+  );
+  const externalRoots = requireExactKeys(
+    manifest.externalArtifactRoots,
+    ['tfDataRoot', 'savedPlanRoot'],
+    'manifest.externalArtifactRoots',
+  );
+  const tfDataRoot = requireExternalAbsolutePath(
+    externalRoots.tfDataRoot,
+    'manifest.externalArtifactRoots.tfDataRoot',
+  );
+  const savedPlanRoot = requireExternalAbsolutePath(
+    externalRoots.savedPlanRoot,
+    'manifest.externalArtifactRoots.savedPlanRoot',
+  );
+  requireExactValue(
+    externalRoots,
+    { tfDataRoot, savedPlanRoot },
+    'manifest.externalArtifactRoots',
+  );
+  requireExactValue(
+    manifest.blockedSavedPlanHashes,
+    [
+      ...new Set([
+        ...loaded.predecessor.blockedSavedPlanHashes,
+        REJECTED_MAINTENANCE_PLAN_SHA256,
+      ]),
+    ],
+    'manifest.blockedSavedPlanHashes',
+  );
+  if (
+    !manifest.blockedSavedPlanHashes.includes(REJECTED_MAINTENANCE_PLAN_SHA256)
+  ) {
+    fail(
+      'PLAN_REUSE_FORBIDDEN',
+      'the rejected Maintenance scope-mismatch plan must remain blocklisted.',
+    );
+  }
+  const expectedGates = buildV6PostEdgeContinuationGates({
+    executionMode: POST_EDGE_SOURCE_CONTINUATION_MODE,
+    executionId,
+    sourceSha,
+    environment: 'staging',
+    candidateImageReference: GOVERNED_APPLICATION_ARTIFACT,
+    candidateTag: GOVERNED_IMPORTED_CANDIDATE.tag,
+    candidateRevision: GOVERNED_IMPORTED_CANDIDATE.revision,
+    stableApiRevision: GOVERNED_STABLE_REVISION,
+    currentImages: live.liveDiscovery.runtimeImages,
+    runtimeState: live.runtimeState,
+    edgeState: live.edgeState,
+    capacityPreservationSpec: live.managed,
+    tfDataRoot,
+    savedPlanRoot,
+  });
+  if (
+    !Array.isArray(manifest.gates) ||
+    manifest.gates.length !== expectedGates.length ||
+    !isDeepStrictEqual(
+      manifest.gates.map((gate) => gate.id),
+      expectedGates.map((gate) => gate.id),
+    )
+  ) {
+    fail(
+      'GATE_ORDER_MISMATCH',
+      'Release V6 executable gates must be exactly Maintenance, protected smoke, and traffic.',
+    );
+  }
+  const hashes = new Set();
+  for (const [gateIndex, gate] of manifest.gates.entries()) {
+    const expectedGate = expectedGates[gateIndex];
+    requireExactKeys(
+      gate,
+      ['id', 'sequence', 'blocking', 'status', 'operations'],
+      `manifest.gates[${gateIndex}]`,
+    );
+    requireExactValue(
+      {
+        id: gate.id,
+        sequence: gate.sequence,
+        blocking: gate.blocking,
+      },
+      {
+        id: expectedGate.id,
+        sequence: expectedGate.sequence,
+        blocking: expectedGate.blocking,
+      },
+      `manifest.gates[${gateIndex}]`,
+    );
+    if (gate.operations.length !== 1) {
+      fail(
+        'MANIFEST_SPEC_MISMATCH',
+        `${gate.id} must contain exactly one v6 executable operation.`,
+      );
+    }
+    const operation = gate.operations[0];
+    const expectedOperation = expectedGate.operations[0];
+    requireExactValue(
+      immutableOperationSpecification(operation),
+      immutableOperationSpecification(expectedOperation),
+      `${gate.id}.${expectedOperation.id}`,
+    );
+    if (operation.kind === 'terraform') {
+      validateTerraformLifecycle(operation, `${gate.id}.${operation.id}`);
+      validateStatePrecondition(
+        manifest,
+        operation,
+        expectedOperation,
+        `${gate.id}.${operation.id}`,
+      );
+      if (operation.planEvidence.sha256) {
+        if (
+          manifest.blockedSavedPlanHashes.includes(
+            operation.planEvidence.sha256,
+          ) ||
+          hashes.has(operation.planEvidence.sha256)
+        ) {
+          fail(
+            'PLAN_REUSE_FORBIDDEN',
+            'a v6 Saved Plan hash is blocked or duplicated.',
+          );
+        }
+        hashes.add(operation.planEvidence.sha256);
+      }
+    } else {
+      validateVerificationLifecycle(operation, `${gate.id}.${operation.id}`);
+    }
+  }
+  validateReleaseLifecycle(manifest);
+  return manifest;
+}
+
+function validateCapacityApproval(value, overlap) {
+  const approval = requireExactKeys(
+    value,
+    ['database', 'queueRedis', 'realtimeRedis'],
+    'manifest.capacityApproval',
+  );
+  for (const [key, calculatedGovernedEnvelope] of [
+    ['database', overlap.database.totalRuntimeOverlap],
+    ['queueRedis', overlap.queueRedis.totalRuntimeOverlap],
+    ['realtimeRedis', overlap.realtimeRedis.totalRuntimeOverlap],
+  ]) {
+    const record = requireExactKeys(
+      approval[key],
+      [
+        'calculatedGovernedEnvelope',
+        'safetyReserveAuthority',
+        'effectiveApprovalBudget',
+        'evidenceAuthorityUsed',
+        'reserveStatus',
+        'approvalResult',
+      ],
+      `manifest.capacityApproval.${key}`,
+    );
+    if (
+      record.calculatedGovernedEnvelope !== calculatedGovernedEnvelope ||
+      !Number.isSafeInteger(record.effectiveApprovalBudget) ||
+      record.effectiveApprovalBudget < calculatedGovernedEnvelope ||
+      typeof record.safetyReserveAuthority !== 'string' ||
+      record.safetyReserveAuthority.length === 0 ||
+      typeof record.evidenceAuthorityUsed !== 'string' ||
+      record.evidenceAuthorityUsed.length === 0 ||
+      record.reserveStatus !== 'governed' ||
+      record.approvalResult !== 'approved'
+    ) {
+      fail(
+        'CAPACITY_EVIDENCE_INSUFFICIENT',
+        `manifest.capacityApproval.${key} does not approve the exact overlap envelope.`,
+      );
+    }
+  }
+  return approval;
+}
+
+function validateCapacityAwareReleaseManifestV6(manifest) {
+  requireExactKeys(
+    manifest,
+    [
+      'manifestVersion',
+      'releaseManifestVersion',
+      'executionMode',
+      'releaseExecutionId',
+      'repository',
+      'sourceSha',
+      'environment',
+      'authoritativeContract',
+      'capacitySpecVersion',
+      'controlSourceAuthority',
+      'applicationArtifactAuthority',
+      'capacityPreservationSpec',
+      'candidateRevisionCapacitySpec',
+      'terraformManagedCapacity',
+      'observedEffectiveCapacity',
+      'runtimeStatePrecondition',
+      'candidateOverlap',
+      'capacityApproval',
+      'predecessorEvidence',
+      'liveDiscovery',
+      'candidate',
+      'externalArtifactRoots',
+      'releaseStatus',
+      'failedGateId',
+      'gates',
+      'candidateEdgeCleanupTemplate',
+      'blockedSavedPlanHashes',
+    ],
+    'manifest',
+  );
+  if (
+    manifest.manifestVersion !== RELEASE_MANIFEST_VERSION ||
+    manifest.releaseManifestVersion !== RELEASE_MANIFEST_VERSION ||
+    manifest.executionMode !== CAPACITY_AWARE_RELEASE_MODE ||
+    manifest.capacitySpecVersion !== capacityControl.CAPACITY_SPEC_VERSION ||
+    Object.hasOwn(manifest, 'capacityExecutionSchemaVersion')
+  ) {
+    fail(
+      'MANIFEST_UNSUPPORTED',
+      `capacity-aware Release V6 requires exact ${CAPACITY_AWARE_RELEASE_MODE} schema authority.`,
+    );
+  }
+  const executionId = requireString(
+    manifest.releaseExecutionId,
+    'manifest.releaseExecutionId',
+    /^[a-z0-9][a-z0-9._-]{2,80}$/u,
+  );
+  const sourceSha = requireString(
+    manifest.sourceSha,
+    'manifest.sourceSha',
+    /^[a-f0-9]{40}$/u,
+  );
+  if (
+    sourceSha !== currentSourceSha() ||
+    manifest.repository !== REPOSITORY ||
+    manifest.environment !== 'staging'
+  ) {
+    fail(
+      'V6_AUTHORITY_MISMATCH',
+      'capacity-aware Release V6 repository, staging, or control source authority changed.',
+    );
+  }
+  requireExactValue(
+    requireExactKeys(
+      manifest.controlSourceAuthority,
+      ['repository', 'sha'],
+      'manifest.controlSourceAuthority',
+    ),
+    { repository: REPOSITORY, sha: sourceSha },
+    'manifest.controlSourceAuthority',
+  );
+  const artifact = requireExactKeys(
+    manifest.applicationArtifactAuthority,
+    ['imageReference', 'digest', 'provenanceMode'],
+    'manifest.applicationArtifactAuthority',
+  );
+  validateImageReference(
+    artifact.imageReference,
+    'manifest.applicationArtifactAuthority.imageReference',
+  );
+  requireString(
+    artifact.digest,
+    'manifest.applicationArtifactAuthority.digest',
+    /^sha256:[a-f0-9]{64}$/u,
+  );
+  if (
+    !artifact.imageReference.endsWith(`@${artifact.digest}`) ||
+    artifact.provenanceMode !== 'immutable-prebuilt-artifact'
+  ) {
+    fail(
+      'V6_APPLICATION_ARTIFACT_MISMATCH',
+      'capacity-aware Release V6 requires a digest-pinned immutable prebuilt artifact.',
+    );
+  }
+  const preservation = capacityControl.validateCapacitySpec(
+    manifest.capacityPreservationSpec,
+    'manifest.capacityPreservationSpec',
+  );
+  const revision = capacityControl.validateCandidateRevisionCapacitySpec(
+    manifest.candidateRevisionCapacitySpec,
+    'manifest.candidateRevisionCapacitySpec',
+  );
+  const live = validateCapacityAwareReleaseLiveDiscovery(
+    manifest.liveDiscovery,
+    preservation,
+  );
+  requireExactValue(
+    manifest.terraformManagedCapacity,
+    live.managed,
+    'manifest.terraformManagedCapacity',
+  );
+  requireExactValue(
+    manifest.observedEffectiveCapacity,
+    live.observed,
+    'manifest.observedEffectiveCapacity',
+  );
+  requireExactValue(
+    manifest.runtimeStatePrecondition,
+    live.runtimeState,
+    'manifest.runtimeStatePrecondition',
+  );
+  const identity = capacityControl.capacityAwareCandidateIdentity(
+    artifact.digest,
+    revision,
+  );
+  const expectedCandidate = {
+    imageReference: artifact.imageReference,
+    digest: artifact.digest,
+    identityVersion: capacityControl.CANDIDATE_IDENTITY_VERSION,
+    fingerprint: identity.fingerprint,
+    canonicalRevisionCapacity: identity.canonicalRevisionCapacity,
+    tag: identity.candidateTag,
+    revision: `moazez-staging-api-${identity.candidateTag}`,
+    trafficPercent: 0,
+  };
+  requireExactValue(
+    manifest.candidate,
+    expectedCandidate,
+    'manifest.candidate',
+  );
+  const overlap = capacityControl.calculateCandidateOverlap({
+    servingServiceMaxInstances: live.liveDiscovery.apiService.maxInstances,
+    servingDatabaseConnectionLimit:
+      live.observed.api.revision.databaseConnectionLimit,
+    candidateRevisionCapacitySpec: revision,
+    workers: preservation.workers,
+  });
+  requireExactValue(
+    manifest.candidateOverlap,
+    overlap,
+    'manifest.candidateOverlap',
+  );
+  validateCapacityApproval(manifest.capacityApproval, overlap);
+  const contract = loadReleaseContract();
+  requireExactValue(
+    requireExactKeys(
+      manifest.authoritativeContract,
+      [
+        'path',
+        'sha256',
+        'contractVersion',
+        'failurePolicy',
+        'automaticRetryAllowed',
+      ],
+      'manifest.authoritativeContract',
+    ),
+    {
+      path: 'config/deployment/release-sequence.contract.json',
+      sha256: contract.contractSha256,
+      contractVersion: contract.contract.contractVersion,
+      failurePolicy: contract.contract.failurePolicy,
+      automaticRetryAllowed: contract.contract.automaticRetryAllowed,
+    },
+    'manifest.authoritativeContract',
+  );
+  const predecessorEvidence = validatePredecessorEvidence(
+    manifest.predecessorEvidence,
+    contract.contract.stages.slice(0, 4),
+  );
+  requireExactValue(
+    manifest.predecessorEvidence,
+    predecessorEvidence,
+    'manifest.predecessorEvidence',
+  );
+  const roots = requireExactKeys(
+    manifest.externalArtifactRoots,
+    ['tfDataRoot', 'savedPlanRoot'],
+    'manifest.externalArtifactRoots',
+  );
+  const tfDataRoot = requireExternalAbsolutePath(
+    roots.tfDataRoot,
+    'manifest.externalArtifactRoots.tfDataRoot',
+  );
+  const savedPlanRoot = requireExternalAbsolutePath(
+    roots.savedPlanRoot,
+    'manifest.externalArtifactRoots.savedPlanRoot',
+  );
+  requireExactValue(
+    roots,
+    { tfDataRoot, savedPlanRoot },
+    'manifest.externalArtifactRoots',
+  );
+  if (
+    !Array.isArray(manifest.blockedSavedPlanHashes) ||
+    manifest.blockedSavedPlanHashes.some(
+      (hash) => !/^[a-f0-9]{64}$/u.test(hash),
+    ) ||
+    new Set(manifest.blockedSavedPlanHashes).size !==
+      manifest.blockedSavedPlanHashes.length
+  ) {
+    fail('PLAN_REUSE_FORBIDDEN', 'blocked Saved Plan hashes are invalid.');
+  }
+  const context = {
+    executionMode: CAPACITY_AWARE_RELEASE_MODE,
+    executionId,
+    sourceSha,
+    environment: 'staging',
+    candidateImageReference: artifact.imageReference,
+    candidateTag: expectedCandidate.tag,
+    candidateRevision: expectedCandidate.revision,
+    stableApiRevision: live.stable.revision,
+    currentImages: live.runtimeImages,
+    runtimeState: live.runtimeState,
+    edgeState: live.edgeState,
+    capacityPreservationSpec: preservation,
+    candidateRevisionCapacitySpec: revision,
+    tfDataRoot,
+    savedPlanRoot,
+  };
+  const expectedGates = buildCapacityAwareReleaseGates(context);
+  if (
+    !Array.isArray(manifest.gates) ||
+    manifest.gates.length !== expectedGates.length ||
+    !isDeepStrictEqual(
+      manifest.gates.map((gate) => gate.id),
+      expectedGates.map((gate) => gate.id),
+    )
+  ) {
+    fail(
+      'GATE_ORDER_MISMATCH',
+      'capacity-aware Release V6 gate order differs from the governed release remainder.',
+    );
+  }
+  const planHashes = new Set();
+  for (const [gateIndex, gate] of manifest.gates.entries()) {
+    const expectedGate = expectedGates[gateIndex];
+    requireExactKeys(
+      gate,
+      ['id', 'sequence', 'blocking', 'status', 'operations'],
+      `manifest.gates[${gateIndex}]`,
+    );
+    requireExactValue(
+      {
+        id: gate.id,
+        sequence: gate.sequence,
+        blocking: gate.blocking,
+      },
+      {
+        id: expectedGate.id,
+        sequence: expectedGate.sequence,
+        blocking: expectedGate.blocking,
+      },
+      `manifest.gates[${gateIndex}]`,
+    );
+    if (gate.operations.length !== expectedGate.operations.length) {
+      fail(
+        'MANIFEST_SPEC_MISMATCH',
+        `${gate.id} operation count differs from Release V6.`,
+      );
+    }
+    for (const [operationIndex, operation] of gate.operations.entries()) {
+      const expectedOperation = expectedGate.operations[operationIndex];
+      requireExactValue(
+        immutableOperationSpecification(operation),
+        immutableOperationSpecification(expectedOperation),
+        `${gate.id}.${expectedOperation.id}`,
+      );
+      const label = `${gate.id}.${operation.id}`;
+      if (operation.kind === 'terraform') {
+        validateTerraformLifecycle(operation, label);
+        validateStatePrecondition(
+          manifest,
+          operation,
+          expectedOperation,
+          label,
+        );
+        if (operation.planEvidence.sha256) {
+          if (
+            manifest.blockedSavedPlanHashes.includes(
+              operation.planEvidence.sha256,
+            ) ||
+            planHashes.has(operation.planEvidence.sha256)
+          ) {
+            fail(
+              'PLAN_REUSE_FORBIDDEN',
+              'a capacity-aware Release Saved Plan is blocked or duplicated.',
+            );
+          }
+          planHashes.add(operation.planEvidence.sha256);
+        }
+      } else {
+        validateVerificationLifecycle(operation, label);
+      }
+    }
+  }
+  requireExactValue(
+    manifest.candidateEdgeCleanupTemplate,
+    {
+      authoritativeReleaseGate: false,
+      requiresSeparatePostReleaseApproval: true,
+      terraformRoot: EDGE_ROOT,
+      requiredVariables: {
+        candidate_edge_enabled: false,
+        candidate_api_tag: null,
+      },
+      expectedResourceAddressAllowlist: EDGE_CANDIDATE_RESOURCE_ADDRESSES,
+      expectedChangeType:
+        'destroy-candidate-neg-and-backend-plus-remove-narrow-url-map-route',
+    },
+    'manifest.candidateEdgeCleanupTemplate',
+  );
+  validateReleaseLifecycle(manifest);
+  return manifest;
+}
+
 function validateManifest(manifest) {
   const candidate = requireObject(manifest, 'manifest');
   if (candidate.manifestVersion === 1) {
@@ -7069,7 +8891,22 @@ function validateManifest(manifest) {
   if (candidate.manifestVersion === 5) {
     return validateFailedEdgeApplyStateSuccessorRecoveryManifestV5(candidate);
   }
-  fail('MANIFEST_UNSUPPORTED', 'manifestVersion must be 1, 2, 3, 4, or 5.');
+  if (
+    candidate.manifestVersion === RELEASE_MANIFEST_VERSION &&
+    candidate.executionMode === POST_EDGE_SOURCE_CONTINUATION_MODE
+  ) {
+    return validatePostEdgeSourceContinuationManifestV6(candidate);
+  }
+  if (
+    candidate.manifestVersion === RELEASE_MANIFEST_VERSION &&
+    candidate.executionMode === CAPACITY_AWARE_RELEASE_MODE
+  ) {
+    return validateCapacityAwareReleaseManifestV6(candidate);
+  }
+  fail(
+    'MANIFEST_UNSUPPORTED',
+    'manifestVersion must be 1, 2, 3, 4, 5, or execution-mode-specific 6.',
+  );
 }
 
 function canonicalizeTerraformPath(pathSegments) {
@@ -7774,6 +9611,202 @@ function reviewRefreshOnlyDrift(record, operation, nonNoopAddresses) {
   }
 }
 
+function requireV6DeterministicReviewTarget(manifest, gateId, operationId) {
+  const candidate = requireObject(manifest, 'manifest');
+  if (
+    candidate.manifestVersion !== RELEASE_MANIFEST_VERSION ||
+    ![POST_EDGE_SOURCE_CONTINUATION_MODE, CAPACITY_AWARE_RELEASE_MODE].includes(
+      candidate.executionMode,
+    )
+  ) {
+    fail(
+      'PLAN_REVIEW_NOT_APPLICABLE',
+      'the V6 runtime reviewer requires an exact Release V6 execution mode.',
+    );
+  }
+  const { gate, operation } = findOperation(candidate, gateId, operationId);
+  if (
+    operation.kind !== 'terraform' ||
+    operation.releaseGateId !== gateId ||
+    operation.sourceSha !== candidate.controlSourceAuthority?.sha ||
+    operation.planReviewRequirements?.required !== true
+  ) {
+    fail(
+      'MANIFEST_SPEC_MISMATCH',
+      'the V6 plan review target is not a governed deterministic Terraform operation.',
+    );
+  }
+  return { gate, operation };
+}
+
+function isV6AllowedSemanticPath(actualPath, allowedPaths) {
+  return allowedPaths.some(
+    (allowedPath) =>
+      actualPath === allowedPath ||
+      (allowedPath === 'traffic' && actualPath.startsWith('traffic[')) ||
+      (allowedPath === 'template[0].containers[0].env' &&
+        actualPath.startsWith('template[0].containers[0].env[')),
+  );
+}
+
+function reviewV6RuntimePlanJson(planJson, manifest, options = {}) {
+  const { operation } = requireV6DeterministicReviewTarget(
+    manifest,
+    options.gateId,
+    options.operationId,
+  );
+  const plan = requireObject(planJson, 'Terraform plan JSON');
+  const formatMatch = /^(\d+)[.](\d+)$/u.exec(plan.format_version ?? '');
+  if (
+    !formatMatch ||
+    Number(formatMatch[1]) !== 1 ||
+    plan.applyable !== true ||
+    plan.complete !== true ||
+    plan.errored !== false ||
+    typeof plan.terraform_version !== 'string' ||
+    plan.terraform_version.length === 0 ||
+    !Array.isArray(plan.resource_changes)
+  ) {
+    fail(
+      'PLAN_JSON_MALFORMED',
+      'V6 plan JSON must be complete, applyable, non-errored format major 1.',
+    );
+  }
+  if (
+    Object.hasOwn(plan, 'resource_drift') &&
+    !Array.isArray(plan.resource_drift)
+  ) {
+    fail('PLAN_JSON_MALFORMED', 'resource_drift must be an array.');
+  }
+  if ((plan.resource_drift ?? []).length !== 0) {
+    fail(
+      'PLAN_DRIFT_UNAPPROVED',
+      'V6 runtime operations do not approve refresh-only drift.',
+    );
+  }
+  const records = plan.resource_changes.map((record, index) =>
+    requirePlanResourceRecord(record, `resource_changes[${index}]`),
+  );
+  const addresses = new Set();
+  for (const record of records) {
+    if (addresses.has(record.address)) {
+      fail(
+        'PLAN_DUPLICATE_RESOURCE_CHANGE',
+        `Terraform plan contains duplicate resource change address: ${record.address}.`,
+      );
+    }
+    addresses.add(record.address);
+    if (isNoOpActions(record.change.actions)) {
+      requireConsistentNoOpResourceChange(record);
+    }
+  }
+  const nonNoop = records.filter(
+    (record) => !isNoOpActions(record.change.actions),
+  );
+  const expectedAddresses = operation.expectedResourceAddressAllowlist;
+  if (
+    nonNoop.length !== expectedAddresses.length ||
+    !isDeepStrictEqual(
+      nonNoop.map((record) => record.address).sort(),
+      [...expectedAddresses].sort(),
+    )
+  ) {
+    fail(
+      'PLAN_RESOURCE_CHANGE_SET_MISMATCH',
+      'V6 non-noop resources differ from the exact operation allowlist.',
+    );
+  }
+  let intendedSemanticChangeCount = 0;
+  for (const record of nonNoop) {
+    requireNoUnsafeResourceProvenance(record, 'V6 resource change');
+    requireResourcePlanIdentity(
+      record,
+      operation.expectedResourcePlanIdentities[record.address],
+      'V6 resource change',
+    );
+    if (
+      !isDeepStrictEqual(
+        record.change.actions,
+        operation.expectedResourceActions[record.address],
+      )
+    ) {
+      fail(
+        'PLAN_ACTION_MISMATCH',
+        `V6 actions differ from the governed update for ${record.address}.`,
+      );
+    }
+    const unknownPaths = new Set(
+      collectUnknownCanonicalPaths(record.change.after_unknown),
+    );
+    const allowedUnknownPaths = new Set(
+      operation.allowedComputedAfterApplyChanges[record.address],
+    );
+    for (const unknownPath of unknownPaths) {
+      if (!allowedUnknownPaths.has(unknownPath)) {
+        fail(
+          'PLAN_UNKNOWN_UNAPPROVED',
+          `V6 plan contains an unapproved unknown path: ${unknownPath}.`,
+        );
+      }
+    }
+    requireUnknownAfterValueConsistency(record.change, 'V6 resource change');
+    const diffs = collectKnownDiffs(
+      record.change.before,
+      record.change.after,
+      unknownPaths,
+    );
+    const allowedPaths = operation.allowedAttributeChanges[record.address];
+    if (
+      diffs.length === 0 ||
+      diffs.some(
+        (diff) => !isV6AllowedSemanticPath(diff.canonicalPath, allowedPaths),
+      )
+    ) {
+      fail(
+        'PLAN_SEMANTIC_CHANGE_UNAPPROVED',
+        `V6 plan contains an unapproved semantic path on ${record.address}.`,
+      );
+    }
+    if (
+      manifest.executionMode === POST_EDGE_SOURCE_CONTINUATION_MODE &&
+      operation.id === POST_EDGE_SOURCE_CONTINUATION_RESUME_OPERATION_ID
+    ) {
+      if (
+        diffs.length !== 1 ||
+        diffs[0].canonicalPath !== 'template[0].containers[0].image' ||
+        diffs[0].before !== GOVERNED_PREDECESSOR_MAINTENANCE_IMAGE ||
+        diffs[0].after !== GOVERNED_APPLICATION_ARTIFACT
+      ) {
+        fail(
+          'PLAN_SEMANTIC_CHANGE_UNAPPROVED',
+          'V6 Maintenance must contain only the exact predecessor-to-candidate image transition.',
+        );
+      }
+    }
+    intendedSemanticChangeCount += diffs.length;
+  }
+  return {
+    schemaVersion: 1,
+    status: 'passed',
+    releaseExecutionId: manifest.releaseExecutionId,
+    sourceSha: manifest.controlSourceAuthority.sha,
+    gateId: options.gateId,
+    operationId: options.operationId,
+    immutableOperationSpecificationSha256:
+      immutableOperationSpecificationSha256(operation),
+    formatVersion: plan.format_version,
+    terraformVersion: plan.terraform_version,
+    nonNoopResourceChangeCount: nonNoop.length,
+    intendedSemanticChangeCount,
+    refreshOnlyDriftCount: 0,
+    unapprovedSemanticChangeCount: 0,
+    unapprovedUnknownCount: 0,
+    unapprovedNormalizationCount: 0,
+    unapprovedDriftCount: 0,
+    urlMapMutation: false,
+  };
+}
+
 function requireCandidateEdgeReviewTarget(manifest, gateId, operationId) {
   const candidate = requireObject(manifest, 'manifest');
   const supportedManifestMode =
@@ -7815,6 +9848,9 @@ function immutableOperationSpecificationSha256(operation) {
 }
 
 function reviewTerraformPlanJson(planJson, manifest, options = {}) {
+  if (manifest?.manifestVersion === RELEASE_MANIFEST_VERSION) {
+    return reviewV6RuntimePlanJson(planJson, manifest, options);
+  }
   const gateId = options.gateId;
   const operationId = options.operationId;
   const { operation } = requireCandidateEdgeReviewTarget(
@@ -8017,7 +10053,7 @@ function parseJsonBytes(bytes, label, errorCode) {
   }
 }
 
-function requirePlanReviewEvidence(value) {
+function requirePlanReviewEvidence(value, allowV6OperationCounts = false) {
   if (!isPlainObject(value)) {
     fail('PLAN_REVIEW_EVIDENCE_INVALID', 'review evidence must be an object.');
   }
@@ -8099,8 +10135,10 @@ function requirePlanReviewEvidence(value) {
   if (
     value.savedPlanSizeBytes === 0 ||
     value.planJsonSizeBytes === 0 ||
-    value.nonNoopResourceChangeCount !== 2 ||
-    value.intendedSemanticChangeCount !== 2 ||
+    (!allowV6OperationCounts && value.nonNoopResourceChangeCount !== 2) ||
+    (!allowV6OperationCounts && value.intendedSemanticChangeCount !== 2) ||
+    (allowV6OperationCounts && value.nonNoopResourceChangeCount < 1) ||
+    (allowV6OperationCounts && value.intendedSemanticChangeCount < 1) ||
     value.refreshOnlyDriftCount >
       EDGE_REFRESH_ONLY_DRIFT_RESOURCE_ADDRESSES.length ||
     value.unapprovedSemanticChangeCount !== 0 ||
@@ -8135,32 +10173,35 @@ function buildDeterministicPlanReviewEvidence({
     gateId,
     operationId,
   });
-  return requirePlanReviewEvidence({
-    schemaVersion: review.schemaVersion,
-    status: review.status,
-    manifestSha256: sha256(manifestBytes),
-    releaseExecutionId: review.releaseExecutionId,
-    sourceSha: review.sourceSha,
-    gateId: review.gateId,
-    operationId: review.operationId,
-    immutableOperationSpecificationSha256:
-      review.immutableOperationSpecificationSha256,
-    savedPlanPath,
-    savedPlanSha256: sha256(savedPlanBytes),
-    savedPlanSizeBytes: savedPlanBytes.length,
-    planJsonSha256: sha256(planJsonBytes),
-    planJsonSizeBytes: planJsonBytes.length,
-    formatVersion: review.formatVersion,
-    terraformVersion: review.terraformVersion,
-    nonNoopResourceChangeCount: review.nonNoopResourceChangeCount,
-    intendedSemanticChangeCount: review.intendedSemanticChangeCount,
-    refreshOnlyDriftCount: review.refreshOnlyDriftCount,
-    unapprovedSemanticChangeCount: review.unapprovedSemanticChangeCount,
-    unapprovedUnknownCount: review.unapprovedUnknownCount,
-    unapprovedNormalizationCount: review.unapprovedNormalizationCount,
-    unapprovedDriftCount: review.unapprovedDriftCount,
-    urlMapMutation: review.urlMapMutation,
-  });
+  return requirePlanReviewEvidence(
+    {
+      schemaVersion: review.schemaVersion,
+      status: review.status,
+      manifestSha256: sha256(manifestBytes),
+      releaseExecutionId: review.releaseExecutionId,
+      sourceSha: review.sourceSha,
+      gateId: review.gateId,
+      operationId: review.operationId,
+      immutableOperationSpecificationSha256:
+        review.immutableOperationSpecificationSha256,
+      savedPlanPath,
+      savedPlanSha256: sha256(savedPlanBytes),
+      savedPlanSizeBytes: savedPlanBytes.length,
+      planJsonSha256: sha256(planJsonBytes),
+      planJsonSizeBytes: planJsonBytes.length,
+      formatVersion: review.formatVersion,
+      terraformVersion: review.terraformVersion,
+      nonNoopResourceChangeCount: review.nonNoopResourceChangeCount,
+      intendedSemanticChangeCount: review.intendedSemanticChangeCount,
+      refreshOnlyDriftCount: review.refreshOnlyDriftCount,
+      unapprovedSemanticChangeCount: review.unapprovedSemanticChangeCount,
+      unapprovedUnknownCount: review.unapprovedUnknownCount,
+      unapprovedNormalizationCount: review.unapprovedNormalizationCount,
+      unapprovedDriftCount: review.unapprovedDriftCount,
+      urlMapMutation: review.urlMapMutation,
+    },
+    manifest.manifestVersion === RELEASE_MANIFEST_VERSION,
+  );
 }
 
 function writeNewJsonAtomic(filePath, value) {
@@ -8225,11 +10266,18 @@ function reviewPlanFiles(options) {
   );
   validateManifest(manifest);
   assertSourceBinding(manifest);
-  const { gate, operation } = requireCandidateEdgeReviewTarget(
-    manifest,
-    options.gateId,
-    options.operationId,
-  );
+  const { gate, operation } =
+    manifest.manifestVersion === RELEASE_MANIFEST_VERSION
+      ? requireV6DeterministicReviewTarget(
+          manifest,
+          options.gateId,
+          options.operationId,
+        )
+      : requireCandidateEdgeReviewTarget(
+          manifest,
+          options.gateId,
+          options.operationId,
+        );
   assertReleaseCanAdvance(manifest, gate, operation);
   if (
     operation.status !== 'pending' ||
@@ -8238,7 +10286,7 @@ function reviewPlanFiles(options) {
   ) {
     fail(
       'PLAN_REVIEW_OUT_OF_ORDER',
-      'the v3/v4/v5 Candidate Edge operation is not awaiting deterministic review.',
+      'the governed Terraform operation is not awaiting deterministic review.',
     );
   }
   if (path.resolve(operation.savedPlanPath) !== savedPlanPath) {
@@ -8277,15 +10325,7 @@ function registerPlan(manifest, options) {
     options.operationId,
   );
   const requiresDeterministicReview =
-    ((manifest.manifestVersion === 3 &&
-      manifest.executionMode === SUCCESSFUL_CONTINUATION_MODE) ||
-      (manifest.manifestVersion === 4 &&
-        manifest.executionMode === EDGE_STATE_SUCCESSOR_RECOVERY_MODE) ||
-      (manifest.manifestVersion === 5 &&
-        manifest.executionMode ===
-          FAILED_EDGE_APPLY_STATE_SUCCESSOR_RECOVERY_MODE)) &&
-    gate.id === SUCCESSFUL_CONTINUATION_RESUME_GATE_ID &&
-    operation.id === SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID;
+    operation.planReviewRequirements?.required === true;
   assertReleaseCanAdvance(manifest, gate, operation);
   if (operation.kind !== 'terraform') {
     fail(
@@ -8359,7 +10399,7 @@ function registerPlan(manifest, options) {
     if (!Buffer.isBuffer(options.manifestBytes)) {
       fail(
         'PLAN_REVIEW_EVIDENCE_REQUIRED',
-        'v3/v4/v5 registration requires the exact pre-registration manifest bytes.',
+        'deterministic registration requires the exact pre-registration manifest bytes.',
       );
     }
     if (
@@ -8370,7 +10410,7 @@ function registerPlan(manifest, options) {
     ) {
       fail(
         'PLAN_REVIEW_EVIDENCE_REQUIRED',
-        'v3/v4/v5 registration requires --plan-json and --review-evidence.',
+        'deterministic registration requires --plan-json and --review-evidence.',
       );
     }
     const reviewedManifest = parseJsonBytes(
@@ -8411,6 +10451,7 @@ function registerPlan(manifest, options) {
         'plan review evidence',
         'PLAN_REVIEW_EVIDENCE_INVALID',
       ),
+      manifest.manifestVersion === RELEASE_MANIFEST_VERSION,
     );
     const currentManifestSha256 = sha256(options.manifestBytes);
     const currentImmutableSpecificationSha256 =
@@ -8965,6 +11006,7 @@ if (require.main === module) {
 
 module.exports = Object.freeze({
   BLOCKED_SAVED_PLAN_SHA256,
+  CAPACITY_AWARE_RELEASE_MODE,
   CANDIDATE_EDGE_IDENTITIES,
   DeploymentControlError,
   EDGE_STATE_SUCCESSOR_RECOVERY_GATE_IDS,
@@ -8977,6 +11019,15 @@ module.exports = Object.freeze({
   EDGE_REFRESH_ONLY_DRIFT_RESOURCE_ADDRESSES,
   LEGACY_STATE10_RECONCILIATION_PROFILE,
   MAX_RECOVERY_ATTEMPT,
+  GOVERNED_APPLICATION_ARTIFACT,
+  GOVERNED_APPLICATION_ARTIFACT_DIGEST,
+  GOVERNED_IMPORTED_CANDIDATE,
+  GOVERNED_V5_PREDECESSOR,
+  POST_EDGE_SOURCE_CONTINUATION_MODE,
+  POST_EDGE_SOURCE_CONTINUATION_RESUME_GATE_ID,
+  POST_EDGE_SOURCE_CONTINUATION_RESUME_OPERATION_ID,
+  REJECTED_MAINTENANCE_PLAN_SHA256,
+  RELEASE_MANIFEST_VERSION,
   RECOVERY_GATE_IDS,
   RECOVERY_PREDECESSOR_STAGE_IDS,
   RECOVERY_RESUME_GATE_ID,
@@ -8989,7 +11040,9 @@ module.exports = Object.freeze({
   SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
   SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
   approvePlan,
+  buildCapacityAwareReleaseManifestV6,
   buildManifest,
+  buildPostEdgeSourceContinuationManifestV6,
   canonicalizeTerraformPath,
   candidateNegNameForTag,
   currentSourceSha,
@@ -8999,6 +11052,7 @@ module.exports = Object.freeze({
   recordVerification,
   registerPlan,
   reviewTerraformPlanJson,
+  reviewV6RuntimePlanJson,
   runCli,
   validateManifest,
   validateFailedEdgeApplyStateSuccessorRecoveryMetadata,

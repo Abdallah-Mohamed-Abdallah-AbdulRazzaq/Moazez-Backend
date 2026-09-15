@@ -47,6 +47,11 @@ const MEDIA_RUNTIME_JEST_FILES = new Set([
 ]);
 
 const ACTIVE_TAP_OWNERS = Object.freeze({
+  'scripts/deployment-control/tests/runtime-capacity-control.test.cjs':
+    Object.freeze({
+      owner: 'runtime-capacity-governance',
+      profile: 'runtime-governance',
+    }),
   'scripts/deployment-control/tests/runtime-release-control.test.cjs':
     Object.freeze({
       owner: 'day2-release-orchestration-governance',
@@ -114,16 +119,16 @@ const ACTIVE_TAP_OWNERS = Object.freeze({
     owner: 'ci-orchestrator',
     profile: 'orchestrator',
   }),
-  'scripts/tests/stage-24a-production-cloud-sql-source.test.cjs':
-    Object.freeze({
+  'scripts/tests/stage-24a-production-cloud-sql-source.test.cjs': Object.freeze(
+    {
       owner: 'sql-source-governance',
       profile: 'runtime-governance',
-    }),
-  'scripts/tests/stage-25b-production-redis-source.test.cjs':
-    Object.freeze({
-      owner: 'redis-source-governance',
-      profile: 'runtime-governance',
-    }),
+    },
+  ),
+  'scripts/tests/stage-25b-production-redis-source.test.cjs': Object.freeze({
+    owner: 'redis-source-governance',
+    profile: 'runtime-governance',
+  }),
   'scripts/tests/stage-26c-production-foundation-source.test.cjs':
     Object.freeze({
       owner: 'production-foundation-source-governance',
