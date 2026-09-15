@@ -145,13 +145,37 @@ locals {
   media_worker_image_matches_environment = can(regex(local.selected.image_pattern, var.media_worker_image_reference))
   maintenance_image_matches_environment  = can(regex(local.selected.image_pattern, var.maintenance_scheduler_image_reference))
   api_candidate_mode                     = var.api_traffic_mode != "normal"
-  api_expected_candidate_tag             = "candidate-${substr(sha256(var.api_image_reference), 0, 12)}"
-  api_candidate_tag_matches_image        = try(var.api_candidate_tag == local.api_expected_candidate_tag || can(regex("^${local.api_expected_candidate_tag}-r[1-9][0-9]{0,14}$", var.api_candidate_tag)), false)
-  api_candidate_revision                 = local.api_candidate_mode && var.api_candidate_tag != null ? "${local.selected.api_service_name}-${var.api_candidate_tag}" : null
-  api_candidate_inputs_valid             = try(var.api_stable_revision != null && local.api_candidate_tag_matches_image && startswith(var.api_stable_revision, "${local.selected.api_service_name}-") && var.api_stable_revision != local.api_candidate_revision, false)
-  api_traffic_contract_valid             = var.api_traffic_mode == "normal" ? var.api_stable_revision == null && var.api_candidate_tag == null : local.api_candidate_inputs_valid
-  queue_redis_url                        = format("rediss://%s:%d", var.queue_redis_host, var.queue_redis_port)
-  realtime_redis_url                     = format("rediss://%s:%d", var.realtime_redis_host, var.realtime_redis_port)
+  api_artifact_digest                    = element(split("@", var.api_image_reference), 1)
+  api_candidate_revision_capacity_complete = (
+    var.api_revision_max_instances != null &&
+    var.api_request_timeout_seconds != null &&
+    var.api_session_affinity != null
+  )
+  api_candidate_revision_capacity_json = local.api_candidate_revision_capacity_complete ? format(
+    "{\"revisionMaxInstances\":%d,\"concurrency\":%d,\"requestTimeoutSeconds\":%d,\"sessionAffinity\":%s,\"databaseConnectionLimit\":%d}",
+    var.api_revision_max_instances,
+    var.api_max_instance_request_concurrency,
+    var.api_request_timeout_seconds,
+    var.api_session_affinity ? "true" : "false",
+    var.api_database_connection_limit,
+  ) : null
+  api_expected_candidate_fingerprint = var.api_candidate_identity_version == "capacity-v1" && local.api_candidate_revision_capacity_complete ? sha256(
+    "capacity-v1\n${local.api_artifact_digest}\n${local.api_candidate_revision_capacity_json}"
+  ) : sha256(var.api_image_reference)
+  api_expected_candidate_tag      = "candidate-${substr(local.api_expected_candidate_fingerprint, 0, 12)}"
+  api_candidate_tag_matches_image = try(var.api_candidate_tag == local.api_expected_candidate_tag || can(regex("^${local.api_expected_candidate_tag}-r[1-9][0-9]{0,14}$", var.api_candidate_tag)), false)
+  api_candidate_revision          = local.api_candidate_mode && var.api_candidate_tag != null ? "${local.selected.api_service_name}-${var.api_candidate_tag}" : null
+  api_candidate_inputs_valid = try(
+    var.api_stable_revision != null &&
+    local.api_candidate_tag_matches_image &&
+    startswith(var.api_stable_revision, "${local.selected.api_service_name}-") &&
+    var.api_stable_revision != local.api_candidate_revision &&
+    (var.api_candidate_identity_version != "capacity-v1" || local.api_candidate_revision_capacity_complete),
+    false,
+  )
+  api_traffic_contract_valid = var.api_traffic_mode == "normal" ? var.api_stable_revision == null && var.api_candidate_tag == null : local.api_candidate_inputs_valid
+  queue_redis_url            = format("rediss://%s:%d", var.queue_redis_host, var.queue_redis_port)
+  realtime_redis_url         = format("rediss://%s:%d", var.realtime_redis_host, var.realtime_redis_port)
 
   api_traffic_targets = local.api_candidate_mode ? [
     {
@@ -199,7 +223,7 @@ locals {
     SWAGGER_ENABLED                                = "false"
     SEED_DEMO_DATA                                 = "false"
     DATABASE_RUNTIME_ROLE                          = "api"
-    DATABASE_CONNECTION_LIMIT                      = "5"
+    DATABASE_CONNECTION_LIMIT                      = tostring(var.api_database_connection_limit)
     DATABASE_POOL_TIMEOUT_SECONDS                  = "5"
     DATABASE_CONNECT_TIMEOUT_SECONDS               = "5"
     JWT_ACCESS_TTL                                 = "15m"
@@ -264,14 +288,24 @@ resource "google_cloud_run_v2_service" "api" {
   deletion_protection  = true
 
   scaling {
-    min_instance_count = 1
-    max_instance_count = 10
+    min_instance_count = var.api_service_min_instances
+    max_instance_count = var.api_service_max_instances
   }
 
   template {
     revision                         = local.api_candidate_revision
     service_account                  = local.selected.api_service_account
-    max_instance_request_concurrency = 40
+    max_instance_request_concurrency = var.api_max_instance_request_concurrency
+    timeout                          = var.api_request_timeout_seconds == null ? null : "${var.api_request_timeout_seconds}s"
+    session_affinity                 = var.api_session_affinity
+
+    dynamic "scaling" {
+      for_each = var.api_revision_max_instances == null ? [] : [var.api_revision_max_instances]
+
+      content {
+        max_instance_count = scaling.value
+      }
+    }
 
     containers {
       image = var.api_image_reference
@@ -372,7 +406,12 @@ resource "google_cloud_run_v2_service" "api" {
 
     precondition {
       condition     = local.api_traffic_contract_valid
-      error_message = "API traffic inputs are contradictory: normal requires null stable revision/tag; candidate modes require the verified service revision and the image-derived candidate tag with distinct stable/candidate identities."
+      error_message = "API traffic inputs are contradictory: normal requires null stable revision/tag; candidate modes require the verified service revision, the selected deterministic candidate identity, and distinct stable/candidate revisions."
+    }
+
+    precondition {
+      condition     = var.api_service_min_instances <= var.api_service_max_instances
+      error_message = "api_service_min_instances must not exceed api_service_max_instances."
     }
   }
 }
@@ -385,7 +424,7 @@ resource "google_cloud_run_v2_worker_pool" "core" {
 
   scaling {
     scaling_mode          = "MANUAL"
-    manual_instance_count = 1
+    manual_instance_count = var.core_worker_manual_instance_count
   }
 
   template {
@@ -472,7 +511,7 @@ resource "google_cloud_run_v2_worker_pool" "media" {
 
   scaling {
     scaling_mode          = "MANUAL"
-    manual_instance_count = 1
+    manual_instance_count = var.media_worker_manual_instance_count
   }
 
   template {

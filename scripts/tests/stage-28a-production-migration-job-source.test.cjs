@@ -27,6 +27,8 @@ const PLAN_CI_TEST_PATH = 'scripts/tests/plan-ci.test.cjs';
 const DAY2_D1_DEPLOYMENT_CONTROL_ROOT = 'scripts/deployment-control';
 const DAY2_D1_HANDOFF_PATH =
   'docs/governance/day2-release-orchestration-devops-handoff.md';
+const RUNTIME_CAPACITY_GOVERNANCE_PATH =
+  'docs/governance/runtime-capacity-governance.md';
 
 const ROOT_FILES = Object.freeze([
   '.terraform.lock.hcl',
@@ -463,6 +465,7 @@ function isDay2D1ReleaseOrchestrationPath(file) {
     file.startsWith('infra/gcp/edge/') ||
     file.startsWith(`${DAY2_D1_DEPLOYMENT_CONTROL_ROOT}/`) ||
     file === DAY2_D1_HANDOFF_PATH ||
+    file === RUNTIME_CAPACITY_GOVERNANCE_PATH ||
     file === PLAN_CI_PATH ||
     file === PLAN_CI_TEST_PATH ||
     file === TEST_PATH ||
@@ -1178,6 +1181,7 @@ test('Committed scope preserves Stage 28 activation and delegates bounded verifi
     'infra/gcp/edge/modules/edge-environment/main.tf',
     `${DAY2_D1_DEPLOYMENT_CONTROL_ROOT}/runtime-release-control.cjs`,
     DAY2_D1_HANDOFF_PATH,
+    RUNTIME_CAPACITY_GOVERNANCE_PATH,
   ];
   assert.equal(
     assertCommittedStage28CandidateScope(day2D1Scope, day2D1Scope),

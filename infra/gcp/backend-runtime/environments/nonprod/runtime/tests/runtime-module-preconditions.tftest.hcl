@@ -2,6 +2,12 @@ mock_provider "google" {}
 
 variables {
   environment                                    = "staging"
+  api_service_min_instances                      = 1
+  api_service_max_instances                      = 4
+  api_max_instance_request_concurrency           = 40
+  api_database_connection_limit                  = 5
+  core_worker_manual_instance_count              = 1
+  media_worker_manual_instance_count             = 1
   fcm_delivery_mode                              = "dry_run"
   api_image_reference                            = "me-central2-docker.pkg.dev/moazez-nonprod-91001421934/moazez-staging-containers/moazez-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   core_worker_image_reference                    = "me-central2-docker.pkg.dev/moazez-nonprod-91001421934/moazez-staging-containers/moazez-backend@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -28,6 +34,21 @@ run "normal_default_keeps_provider_revision_and_isolates_runtime_images" {
   assert {
     condition     = google_cloud_run_v2_service.api.template[0].containers[0].image == var.api_image_reference && google_cloud_run_v2_service.api.template[0].revision == null
     error_message = "Normal API mode must use only its image input and provider-generated revision naming."
+  }
+
+  assert {
+    condition     = google_cloud_run_v2_service.api.scaling[0].min_instance_count == 1 && google_cloud_run_v2_service.api.scaling[0].max_instance_count == 4 && google_cloud_run_v2_service.api.template[0].max_instance_request_concurrency == 40
+    error_message = "Staging service capacity and concurrency must come from the explicit environment authority."
+  }
+
+  assert {
+    condition     = length(google_cloud_run_v2_service.api.template[0].scaling) == 0 && google_cloud_run_v2_service.api.template[0].session_affinity == null
+    error_message = "Null revision max and session affinity must remain absent and unmanaged; timeout absence is source-verified because the provider reports it unknown during plan."
+  }
+
+  assert {
+    condition     = google_cloud_run_v2_worker_pool.core.scaling[0].manual_instance_count == 1 && google_cloud_run_v2_worker_pool.media.scaling[0].manual_instance_count == 1 && google_cloud_run_v2_worker_pool.maintenance_scheduler.scaling[0].manual_instance_count == 1
+    error_message = "Core and Media counts must use governed inputs while Maintenance remains literal one."
   }
 
   assert {
@@ -73,6 +94,34 @@ run "normal_default_keeps_provider_revision_and_isolates_runtime_images" {
   assert {
     condition     = google_cloud_run_v2_worker_pool.maintenance_scheduler.template[0].containers[0].startup_probe[0].http_get[0].path == "/internal/probes/maintenance-scheduler/startup" && google_cloud_run_v2_worker_pool.maintenance_scheduler.template[0].containers[0].startup_probe[0].http_get[0].port == 9090 && google_cloud_run_v2_worker_pool.maintenance_scheduler.template[0].containers[0].liveness_probe[0].http_get[0].path == "/internal/probes/maintenance-scheduler/liveness" && google_cloud_run_v2_worker_pool.maintenance_scheduler.template[0].containers[0].liveness_probe[0].http_get[0].port == 9090
     error_message = "The Maintenance Scheduler probes must remain unchanged."
+  }
+}
+
+run "capacity_v1_candidate_binds_complete_revision_capacity" {
+  command = plan
+
+  module {
+    source = "../../../modules/runtime-environment"
+  }
+
+  variables {
+    api_traffic_mode               = "candidate_no_traffic"
+    api_stable_revision            = "moazez-staging-api-stable01"
+    api_candidate_tag              = "candidate-568cf1aab084"
+    api_candidate_identity_version = "capacity-v1"
+    api_revision_max_instances     = 4
+    api_request_timeout_seconds    = 300
+    api_session_affinity           = false
+  }
+
+  assert {
+    condition     = google_cloud_run_v2_service.api.template[0].revision == "moazez-staging-api-candidate-568cf1aab084" && google_cloud_run_v2_service.api.traffic[1].percent == 0
+    error_message = "capacity-v1 must derive the exact candidate identity and keep it at zero traffic."
+  }
+
+  assert {
+    condition     = google_cloud_run_v2_service.api.template[0].scaling[0].max_instance_count == 4 && google_cloud_run_v2_service.api.template[0].max_instance_request_concurrency == 40 && google_cloud_run_v2_service.api.template[0].timeout == "300s" && google_cloud_run_v2_service.api.template[0].session_affinity == false
+    error_message = "capacity-v1 must materialize the complete explicit candidate revision capacity."
   }
 }
 

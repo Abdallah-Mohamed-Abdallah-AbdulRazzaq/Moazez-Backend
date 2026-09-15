@@ -937,3 +937,76 @@ Run the source-level adapter tests with:
 ```powershell
 node --test scripts/deployment-control/tests/runtime-release-control.test.cjs
 ```
+
+## Runtime capacity governance
+
+Runtime capacity is governed by the sibling
+`runtime-capacity-control.cjs` adapter and the separate
+`capacityExecutionSchemaVersion=1` authority. A capacity execution is not a
+release gate and cannot consume or mutate a release manifest. It supports only
+the closed `staging` and `production` environment map, binds a fresh source SHA
+and Terraform state lineage/serial, calculates database, Queue Redis, and
+Realtime Redis envelopes, and uses exact Saved Plan registration, independent
+approval, a recorded fresh pre-Apply authority, single consumption,
+replay-blocking, and live verification. Its lifecycle is `constructed ->
+plan-registered -> approved -> pre-apply-authorized -> apply -> verify ->
+closed`; Apply recording directly from `approved` is rejected. The recorded
+pre-Apply stage requires caller-supplied current source, current Terraform
+lineage/serial, Saved Plan bytes, evidence reference, and time. Apply re-hashes
+the bytes against both the registered and pre-Apply hashes.
+
+Create and validate the standalone specification without running Terraform:
+
+```powershell
+node scripts/deployment-control/runtime-capacity-control.cjs create-spec --input <external-capacity-input.json> --output <external-capacity-execution.json>
+node scripts/deployment-control/runtime-capacity-control.cjs validate-spec --execution <external-capacity-execution.json>
+```
+
+The standalone `runtime-capacity-adjustment` operation may change only API
+service min/max and Core/Media worker manual counts. Its deterministic reviewer
+rejects API template or revision capacity, database-pool, image, identity,
+traffic, Edge, IAM, network, Redis, secret, storage, and business-setting
+changes. Revision max, concurrency, timeout, session affinity, and
+`DATABASE_CONNECTION_LIMIT` are candidate-revision inputs and may be changed
+only while constructing a new API candidate at zero normal traffic.
+
+Capacity inputs are explicit. `null` means provider-defaulted or unmanaged and
+must remain absent; it is never replaced with an observed default. The
+calculation model has no invented reserve: a requested increase that exceeds
+the bound database or Redis authority fails closed unless explicit new governed
+evidence is supplied. New budget evidence is one external
+`capacityBudgetEvidenceSchemaVersion=1` bundle referenced by absolute path and
+raw-byte SHA-256. Hash validation precedes JSON parsing; the exact environment,
+approved status, evidence identity, DB/Queue Redis/Realtime Redis domains,
+budgets, and reserve authorities are bound into the execution and reverified
+at pre-Apply.
+
+Capacity schema v1 also persists a closed intent. A Production API service
+min/max decrease is rejected as `standalone-adjustment`; it requires
+`post-promotion-normalization` plus a separate external, raw-byte-hash-bound
+`promotionStabilityEvidenceSchemaVersion=1` artifact proving completed traffic
+promotion, removal of former emergency-revision traffic, the promoted current
+serving revision, and passed stability. Revision fields remain immutable.
+Worker-only Production decreases and ordinary Staging adjustments do not gain
+that traffic prerequisite. See
+[`docs/governance/runtime-capacity-governance.md`](../../docs/governance/runtime-capacity-governance.md)
+for the field vocabulary, baseline values, envelope formulas, candidate
+overlap model, emergency behavior, and operational evidence contract.
+
+Release manifests V1 through V5 remain historical immutable contracts. New
+V6 `capacity-aware-release` executions preserve service and worker capacity on
+every non-capacity operation and bind a complete candidate revision capacity
+spec to a `capacity-v1` candidate identity. V6
+`post-edge-source-continuation` imports the exact passed V5 Core, Media, API,
+and Candidate Edge evidence and exposes only Maintenance, smoke, and traffic as
+executable continuation work. Its fresh Runtime and Edge lineage/serial values
+must exactly equal the corresponding predecessor post-Apply states; even a
+same-lineage serial successor is rejected. The rejected historical Maintenance
+plan remains blocked evidence and must never be registered, approved, or
+applied.
+
+Run the capacity adapter tests with:
+
+```powershell
+node --test scripts/deployment-control/tests/runtime-capacity-control.test.cjs
+```

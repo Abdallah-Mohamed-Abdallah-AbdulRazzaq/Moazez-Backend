@@ -8,6 +8,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const control = require('../runtime-release-control.cjs');
+const capacity = require('../runtime-capacity-control.cjs');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..', '..');
 const CANDIDATE_IMAGE =
@@ -6570,3 +6571,594 @@ test('review-plan CLI creates only atomic sanitized evidence and register-plan c
     assert.equal(registeredTarget.deterministicReviewEvidence.status, 'passed');
   });
 });
+
+function v6CapacityEvidence(temporaryRoot) {
+  const item = (name) => ({
+    effectiveApprovalBudget: 1000,
+    safetyReserveAuthority: `governed-${name}-reserve`,
+  });
+  const document = {
+    capacityBudgetEvidenceSchemaVersion: 1,
+    environment: 'staging',
+    status: 'approved',
+    evidenceId: 'v6-capacity-budget-test',
+    database: item('database'),
+    queueRedis: item('queue-redis'),
+    realtimeRedis: item('realtime-redis'),
+  };
+  const evidencePath = path.join(temporaryRoot, 'capacity-budget.json');
+  const bytes = Buffer.from(`${JSON.stringify(document, null, 2)}\n`);
+  fs.writeFileSync(evidencePath, bytes);
+  return {
+    path: evidencePath,
+    sha256: crypto.createHash('sha256').update(bytes).digest('hex'),
+  };
+}
+
+function makeV6CapacityAwareContext(temporaryRoot) {
+  const preservation = capacity.baselineCapacitySpec('staging');
+  const observed = structuredClone(preservation);
+  observed.api.revision.maxInstances = 100;
+  observed.api.revision.requestTimeoutSeconds = 300;
+  observed.api.revision.sessionAffinity = false;
+  return {
+    executionMode: control.CAPACITY_AWARE_RELEASE_MODE,
+    executionId: 'v6-capacity-aware-test',
+    repository: control.REPOSITORY,
+    sourceSha: control.currentSourceSha(),
+    environment: 'staging',
+    candidateImageReference: NEXT_CANDIDATE_IMAGE,
+    applicationArtifactDigest: NEXT_CANDIDATE_IMAGE.split('@')[1],
+    completedPredecessorStages: control
+      .loadReleaseContract()
+      .contract.stages.slice(0, 4)
+      .map((stage) => ({
+        id: stage.id,
+        status: 'passed',
+        evidenceRef: `evidence:${stage.id}`,
+      })),
+    liveDiscovery: {
+      evidenceRef: 'evidence:fresh-v6-live-discovery',
+      discoveredAt: RECORDED_AT,
+      apiTrafficMode: 'normal',
+      stable: {
+        revision: 'moazez-staging-api-stable01',
+        imageReference: CANDIDATE_IMAGE,
+        trafficPercent: 100,
+      },
+      runtimeImages: {
+        api: CANDIDATE_IMAGE,
+        coreWorker: CANDIDATE_IMAGE,
+        mediaWorker: CANDIDATE_IMAGE,
+        maintenanceScheduler: CANDIDATE_IMAGE,
+      },
+      runtimeState: { lineage: LINEAGE, serial: 30 },
+      edgeState: { lineage: EDGE_LINEAGE, serial: 40 },
+      apiService: { minInstances: 1, maxInstances: 4 },
+      terraformManagedCapacity: preservation,
+      observedEffectiveCapacity: observed,
+      workers: structuredClone(preservation.workers),
+    },
+    capacityPreservationSpec: preservation,
+    candidateRevisionCapacitySpec: {
+      revisionMaxInstances: 4,
+      concurrency: 40,
+      requestTimeoutSeconds: 300,
+      sessionAffinity: false,
+      databaseConnectionLimit: 5,
+    },
+    capacityEvidence: v6CapacityEvidence(temporaryRoot),
+    externalTfDataRoot: path.join(temporaryRoot, 'tfdata'),
+    externalSavedPlanRoot: path.join(temporaryRoot, 'plans'),
+  };
+}
+
+test('capacity-aware Release V6 creates a complete zero-traffic candidate with independent overlap authority', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const manifest = control.buildManifest(
+      makeV6CapacityAwareContext(temporaryRoot),
+    );
+    assert.equal(manifest.manifestVersion, 6);
+    assert.equal(manifest.releaseManifestVersion, 6);
+    assert.equal(manifest.executionMode, 'capacity-aware-release');
+    assert.equal(manifest.candidate.identityVersion, 'capacity-v1');
+    assert.equal(manifest.candidate.trafficPercent, 0);
+    assert.equal(
+      manifest.candidateOverlap.serviceMaximumIsInstantaneousHardBound,
+      false,
+    );
+    assert.equal(manifest.candidateOverlap.database.totalRuntimeOverlap, 49);
+    assert.deepEqual(
+      manifest.gates.map((gate) => gate.id),
+      [
+        'core-worker-promotion',
+        'media-worker-promotion',
+        'api-no-traffic-promotion',
+        'maintenance-scheduler-promotion',
+        'protected-readiness-and-smoke',
+        'traffic-promotion',
+      ],
+    );
+    assert.equal(
+      manifest.gates.some((gate) =>
+        gate.operations.some(
+          (candidate) => candidate.id === 'runtime-capacity-adjustment',
+        ),
+      ),
+      false,
+    );
+  });
+});
+
+test('capacity-aware Release V6 preserves service and worker capacity in every runtime operation', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const manifest = control.buildManifest(
+      makeV6CapacityAwareContext(temporaryRoot),
+    );
+    for (const { operation: candidate } of manifest.gates.flatMap((gate) =>
+      gate.operations.map((item) => ({ gate, operation: item })),
+    )) {
+      if (
+        candidate.kind !== 'terraform' ||
+        candidate.terraformRoot.includes('/edge/')
+      ) {
+        continue;
+      }
+      assert.equal(candidate.requiredVariables.api_service_min_instances, 1);
+      assert.equal(candidate.requiredVariables.api_service_max_instances, 4);
+      assert.equal(
+        candidate.requiredVariables.core_worker_manual_instance_count,
+        1,
+      );
+      assert.equal(
+        candidate.requiredVariables.media_worker_manual_instance_count,
+        1,
+      );
+    }
+    const api = operation(
+      manifest,
+      'api-no-traffic-promotion',
+      'api-candidate-runtime',
+    );
+    assert.equal(api.requiredVariables.api_revision_max_instances, 4);
+    assert.equal(
+      api.requiredVariables.api_max_instance_request_concurrency,
+      40,
+    );
+    assert.equal(api.requiredVariables.api_database_connection_limit, 5);
+    assert.equal(
+      api.requiredVariables.api_candidate_identity_version,
+      'capacity-v1',
+    );
+  });
+});
+
+function v6MaintenancePlan(extraChanges = []) {
+  return {
+    format_version: '1.2',
+    terraform_version: '1.14.3',
+    applyable: true,
+    complete: true,
+    errored: false,
+    resource_changes: [
+      {
+        address: control.RUNTIME_RESOURCE_ADDRESSES.maintenanceScheduler,
+        mode: 'managed',
+        type: 'google_cloud_run_v2_worker_pool',
+        provider_name: 'registry.terraform.io/hashicorp/google',
+        change: {
+          actions: ['update'],
+          before: {
+            template: [
+              {
+                containers: [{ image: CANDIDATE_IMAGE }],
+              },
+            ],
+          },
+          after: {
+            template: [
+              {
+                containers: [{ image: NEXT_CANDIDATE_IMAGE }],
+              },
+            ],
+          },
+          after_unknown: {},
+        },
+      },
+      ...extraChanges,
+    ],
+    resource_drift: [],
+  };
+}
+
+test('Release V6 Maintenance reviewer permits exactly one image transition and rejects capacity drift', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const manifest = control.buildManifest(
+      makeV6CapacityAwareContext(temporaryRoot),
+    );
+    manifest.executionMode = control.POST_EDGE_SOURCE_CONTINUATION_MODE;
+    const review = control.reviewV6RuntimePlanJson(
+      v6MaintenancePlan(),
+      manifest,
+      {
+        gateId: 'maintenance-scheduler-promotion',
+        operationId: 'maintenance-scheduler-runtime',
+      },
+    );
+    assert.equal(review.nonNoopResourceChangeCount, 1);
+    assert.equal(review.intendedSemanticChangeCount, 1);
+
+    const scaling = v6MaintenancePlan();
+    scaling.resource_changes[0].change.before.scaling = [
+      { manual_instance_count: 1 },
+    ];
+    scaling.resource_changes[0].change.after.scaling = [
+      { manual_instance_count: 2 },
+    ];
+    assert.throws(
+      () =>
+        control.reviewV6RuntimePlanJson(scaling, manifest, {
+          gateId: 'maintenance-scheduler-promotion',
+          operationId: 'maintenance-scheduler-runtime',
+        }),
+      { code: 'PLAN_SEMANTIC_CHANGE_UNAPPROVED' },
+    );
+
+    const apiCapacity = {
+      address: control.RUNTIME_RESOURCE_ADDRESSES.api,
+      mode: 'managed',
+      type: 'google_cloud_run_v2_service',
+      provider_name: 'registry.terraform.io/hashicorp/google',
+      change: {
+        actions: ['update'],
+        before: { scaling: [{ max_instance_count: 4 }] },
+        after: { scaling: [{ max_instance_count: 5 }] },
+        after_unknown: {},
+      },
+    };
+    assert.throws(
+      () =>
+        control.reviewV6RuntimePlanJson(
+          v6MaintenancePlan([apiCapacity]),
+          manifest,
+          {
+            gateId: 'maintenance-scheduler-promotion',
+            operationId: 'maintenance-scheduler-runtime',
+          },
+        ),
+      { code: 'PLAN_RESOURCE_CHANGE_SET_MISMATCH' },
+    );
+  });
+});
+
+function v6RuntimePlan(address, type, before, after, extraChanges = []) {
+  return {
+    format_version: '1.2',
+    terraform_version: '1.14.3',
+    applyable: true,
+    complete: true,
+    errored: false,
+    resource_changes: [
+      {
+        address,
+        mode: 'managed',
+        type,
+        provider_name: 'registry.terraform.io/hashicorp/google',
+        change: {
+          actions: ['update'],
+          before,
+          after,
+          after_unknown: {},
+        },
+      },
+      ...extraChanges,
+    ],
+    resource_drift: [],
+  };
+}
+
+test('Release V6 Core, Media, API, and Traffic reviewers reject capacity drift', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const manifest = control.buildManifest(
+      makeV6CapacityAwareContext(temporaryRoot),
+    );
+    for (const [gateId, operationId, address] of [
+      [
+        'core-worker-promotion',
+        'core-worker-runtime',
+        control.RUNTIME_RESOURCE_ADDRESSES.coreWorker,
+      ],
+      [
+        'media-worker-promotion',
+        'media-worker-runtime',
+        control.RUNTIME_RESOURCE_ADDRESSES.mediaWorker,
+      ],
+    ]) {
+      const plan = v6RuntimePlan(
+        address,
+        'google_cloud_run_v2_worker_pool',
+        {
+          scaling: [{ manual_instance_count: 1 }],
+          template: [{ containers: [{ image: CANDIDATE_IMAGE }] }],
+        },
+        {
+          scaling: [{ manual_instance_count: 2 }],
+          template: [{ containers: [{ image: NEXT_CANDIDATE_IMAGE }] }],
+        },
+      );
+      assert.throws(
+        () =>
+          control.reviewV6RuntimePlanJson(plan, manifest, {
+            gateId,
+            operationId,
+          }),
+        { code: 'PLAN_SEMANTIC_CHANGE_UNAPPROVED' },
+      );
+    }
+
+    const apiPlan = v6RuntimePlan(
+      control.RUNTIME_RESOURCE_ADDRESSES.api,
+      'google_cloud_run_v2_service',
+      {
+        scaling: [{ min_instance_count: 1, max_instance_count: 4 }],
+        template: [{ containers: [{ image: CANDIDATE_IMAGE }] }],
+      },
+      {
+        scaling: [{ min_instance_count: 1, max_instance_count: 5 }],
+        template: [{ containers: [{ image: NEXT_CANDIDATE_IMAGE }] }],
+      },
+    );
+    assert.throws(
+      () =>
+        control.reviewV6RuntimePlanJson(apiPlan, manifest, {
+          gateId: 'api-no-traffic-promotion',
+          operationId: 'api-candidate-runtime',
+        }),
+      { code: 'PLAN_SEMANTIC_CHANGE_UNAPPROVED' },
+    );
+
+    const trafficPlan = v6RuntimePlan(
+      control.RUNTIME_RESOURCE_ADDRESSES.api,
+      'google_cloud_run_v2_service',
+      {
+        scaling: [{ min_instance_count: 1, max_instance_count: 4 }],
+        traffic: [{ percent: 0 }],
+      },
+      {
+        scaling: [{ min_instance_count: 1, max_instance_count: 5 }],
+        traffic: [{ percent: 100 }],
+      },
+    );
+    assert.throws(
+      () =>
+        control.reviewV6RuntimePlanJson(trafficPlan, manifest, {
+          gateId: 'traffic-promotion',
+          operationId: 'api-traffic-promotion',
+        }),
+      { code: 'PLAN_SEMANTIC_CHANGE_UNAPPROVED' },
+    );
+
+    const workerDrift = {
+      address: control.RUNTIME_RESOURCE_ADDRESSES.coreWorker,
+      mode: 'managed',
+      type: 'google_cloud_run_v2_worker_pool',
+      provider_name: 'registry.terraform.io/hashicorp/google',
+      change: {
+        actions: ['update'],
+        before: { scaling: [{ manual_instance_count: 1 }] },
+        after: { scaling: [{ manual_instance_count: 2 }] },
+        after_unknown: {},
+      },
+    };
+    const trafficWithWorkerDrift = v6RuntimePlan(
+      control.RUNTIME_RESOURCE_ADDRESSES.api,
+      'google_cloud_run_v2_service',
+      { traffic: [{ percent: 0 }] },
+      { traffic: [{ percent: 100 }] },
+      [workerDrift],
+    );
+    assert.throws(
+      () =>
+        control.reviewV6RuntimePlanJson(trafficWithWorkerDrift, manifest, {
+          gateId: 'traffic-promotion',
+          operationId: 'api-traffic-promotion',
+        }),
+      { code: 'PLAN_RESOURCE_CHANGE_SET_MISMATCH' },
+    );
+  });
+});
+
+test('Release V6 Maintenance rejects every API service and revision capacity path', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const manifest = control.buildManifest(
+      makeV6CapacityAwareContext(temporaryRoot),
+    );
+    manifest.executionMode = control.POST_EDGE_SOURCE_CONTINUATION_MODE;
+    const mutations = [
+      [
+        { scaling: [{ max_instance_count: 4 }] },
+        { scaling: [{ max_instance_count: 5 }] },
+      ],
+      [
+        { template: [{ scaling: [{ max_instance_count: 4 }] }] },
+        { template: [{ scaling: [{ max_instance_count: 5 }] }] },
+      ],
+      [
+        { template: [{ max_instance_request_concurrency: 40 }] },
+        { template: [{ max_instance_request_concurrency: 80 }] },
+      ],
+      [
+        { template: [{ timeout: '300s' }] },
+        { template: [{ timeout: '600s' }] },
+      ],
+      [
+        { template: [{ session_affinity: false }] },
+        { template: [{ session_affinity: true }] },
+      ],
+      [
+        {
+          template: [
+            {
+              containers: [
+                { env: [{ name: 'DATABASE_CONNECTION_LIMIT', value: '5' }] },
+              ],
+            },
+          ],
+        },
+        {
+          template: [
+            {
+              containers: [
+                { env: [{ name: 'DATABASE_CONNECTION_LIMIT', value: '6' }] },
+              ],
+            },
+          ],
+        },
+      ],
+    ];
+    for (const [before, after] of mutations) {
+      const apiDrift = {
+        address: control.RUNTIME_RESOURCE_ADDRESSES.api,
+        mode: 'managed',
+        type: 'google_cloud_run_v2_service',
+        provider_name: 'registry.terraform.io/hashicorp/google',
+        change: {
+          actions: ['update'],
+          before,
+          after,
+          after_unknown: {},
+        },
+      };
+      assert.throws(
+        () =>
+          control.reviewV6RuntimePlanJson(
+            v6MaintenancePlan([apiDrift]),
+            manifest,
+            {
+              gateId: 'maintenance-scheduler-promotion',
+              operationId: 'maintenance-scheduler-runtime',
+            },
+          ),
+        { code: 'PLAN_RESOURCE_CHANGE_SET_MISMATCH' },
+      );
+    }
+  });
+});
+
+const GOVERNED_V5_MANIFEST_PATH =
+  'C:\\Users\\Abdal\\AppData\\Local\\Moazez\\release-control\\day2-d1\\d2-v5-edge-20260915011016-manifest.json';
+
+test(
+  'post-Edge source continuation imports exact historical authority and keeps provider defaults unmanaged',
+  { skip: !fs.existsSync(GOVERNED_V5_MANIFEST_PATH) },
+  () => {
+    withTemporaryRoot((temporaryRoot) => {
+      const managed = capacity.baselineCapacitySpec('staging');
+      const observed = structuredClone(managed);
+      observed.api.revision.maxInstances = 100;
+      observed.api.revision.requestTimeoutSeconds = 300;
+      observed.api.revision.sessionAffinity = false;
+      const context = {
+        executionMode: control.POST_EDGE_SOURCE_CONTINUATION_MODE,
+        executionId: 'v6-post-edge-source-continuation-test',
+        repository: control.REPOSITORY,
+        sourceSha: control.currentSourceSha(),
+        environment: 'staging',
+        resumeGateId: 'maintenance-scheduler-promotion',
+        resumeOperationId: 'maintenance-scheduler-runtime',
+        predecessorManifestPath: GOVERNED_V5_MANIFEST_PATH,
+        liveDiscovery: {
+          evidenceRef: 'evidence:fresh-v6-continuation-discovery',
+          discoveredAt: RECORDED_AT,
+          apiTrafficMode: 'candidate_no_traffic',
+          stable: {
+            revision: 'moazez-staging-api-candidate-e1f5a9c9e01b-r1',
+            trafficPercent: 100,
+          },
+          candidate: {
+            ...control.GOVERNED_IMPORTED_CANDIDATE,
+            trafficPercent: 0,
+            ready: true,
+          },
+          runtimeImages: {
+            api: NEXT_CANDIDATE_IMAGE,
+            coreWorker: NEXT_CANDIDATE_IMAGE,
+            mediaWorker: NEXT_CANDIDATE_IMAGE,
+            maintenanceScheduler: CANDIDATE_IMAGE,
+          },
+          runtimeState: {
+            lineage: LIVE_RUNTIME_LINEAGE,
+            serial: 15,
+          },
+          edgeState: { lineage: LIVE_EDGE_LINEAGE, serial: 13 },
+          apiService: { minInstances: 1, maxInstances: 4 },
+          terraformManagedCapacity: managed,
+          observedEffectiveCapacity: observed,
+          workers: structuredClone(managed.workers),
+        },
+        externalTfDataRoot: path.join(temporaryRoot, 'tfdata'),
+        externalSavedPlanRoot: path.join(temporaryRoot, 'plans'),
+      };
+      const manifest = control.buildManifest(context);
+      for (const [field, mutation] of [
+        ['runtimeState', { lineage: LIVE_RUNTIME_LINEAGE, serial: 16 }],
+        ['runtimeState', { lineage: 'different-runtime-lineage', serial: 15 }],
+        ['edgeState', { lineage: LIVE_EDGE_LINEAGE, serial: 14 }],
+        ['edgeState', { lineage: 'different-edge-lineage', serial: 13 }],
+      ]) {
+        const contradictory = structuredClone(context);
+        contradictory.liveDiscovery[field] = mutation;
+        assert.throws(() => control.buildManifest(contradictory), {
+          code: 'V6_STATE_AUTHORITY_STALE',
+        });
+      }
+      assert.deepEqual(
+        manifest.gates.map((gate) => gate.id),
+        [
+          'maintenance-scheduler-promotion',
+          'protected-readiness-and-smoke',
+          'traffic-promotion',
+        ],
+      );
+      assert.deepEqual(
+        manifest.predecessorEvidence.importedPassedOperations.map(
+          (item) => item.operationId,
+        ),
+        [
+          'core-worker-runtime',
+          'media-worker-runtime',
+          'api-candidate-runtime',
+          'api-candidate-edge-reconciliation',
+        ],
+      );
+      assert.equal(
+        manifest.blockedSavedPlanHashes.includes(
+          control.REJECTED_MAINTENANCE_PLAN_SHA256,
+        ),
+        true,
+      );
+      assert.equal(
+        manifest.applicationArtifactAuthority.provenanceMode,
+        'inherited-from-governed-v5-predecessor-without-rebuild',
+      );
+      const maintenance = operation(
+        manifest,
+        'maintenance-scheduler-promotion',
+        'maintenance-scheduler-runtime',
+      );
+      assert.equal(
+        maintenance.requiredVariables.api_revision_max_instances,
+        null,
+      );
+      assert.equal(
+        maintenance.requiredVariables.api_request_timeout_seconds,
+        null,
+      );
+      assert.equal(maintenance.requiredVariables.api_session_affinity, null);
+      assert.equal(
+        maintenance.requiredVariables.api_candidate_identity_version,
+        'image-v1',
+      );
+    });
+  },
+);

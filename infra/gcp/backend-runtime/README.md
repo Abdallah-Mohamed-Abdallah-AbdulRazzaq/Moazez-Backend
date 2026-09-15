@@ -74,7 +74,7 @@ The API additionally accepts this closed traffic contract:
 | `candidate_no_traffic` | Required verified live revision | Required deterministic tag | 100%                       | 0%                    |
 | `candidate_promoted`   | Same verified revision          | Same deterministic tag     | 0%                         | 100%                  |
 
-The normal candidate tag equals
+Historical V1-V5 normal candidate tags equal
 `candidate-${substr(sha256(api_image_reference), 0, 12)}`. Staging recovery may
 use only that same image-derived base followed by `-rN`, where `N` is canonical
 and ranges from `1` through `999999999999999`. The candidate revision is the
@@ -85,6 +85,13 @@ recovery suffix is noncanonical, the stable revision belongs to another
 service, or stable and candidate identities collide. Promotion retains the
 exact candidate image and revision so its expected Terraform diff is
 traffic-only.
+
+Future capacity-aware candidates select `api_candidate_identity_version =
+"capacity-v1"` and require complete revision maximum, concurrency, timeout,
+session-affinity, and API DB-pool inputs. Their tag binds the immutable
+artifact digest plus canonical complete revision-capacity JSON. The historical
+image-derived default remains `image-v1`; existing candidates are not renamed
+or recomputed.
 
 The Production runtime root remains base-only. This Staging recovery feature
 does not widen Production's `api_candidate_tag` input contract, even though the
@@ -116,9 +123,19 @@ versions.
 ## Runtime placement and role topology
 
 Both environments use Direct VPC with `PRIVATE_RANGES_ONLY` egress. The API
-uses port 3000, management probes on port 9090, min instances 1, max instances
-4, and concurrency 40. Each worker pool uses `MANUAL` scaling with exactly one
-instance and keeps its role-specific command and probe topology.
+uses port 3000 and management probes on port 9090. Capacity policy belongs to
+the environment roots: Staging defaults to service `1/4`, while Production's
+normal baseline is `1/10`; both default to concurrency `40`, API DB limit `5`,
+and Core/Media manual counts `1/1`. Maintenance remains exactly one and is not
+parameterized. The shared module consumes these values and owns no
+Production-specific capacity policy.
+
+Revision maximum, request timeout, and session affinity are nullable. Null
+means unmanaged: the module does not emit a revision scaling block and does
+not convert an observed provider default into desired Terraform authority.
+Governed Release V6 and standalone capacity operations pass explicit values
+from their environment authority; they do not silently depend on operator
+defaults.
 
 The API startup probe keeps
 `/internal/probes/api/startup` on management port `9090` and explicitly uses
@@ -172,3 +189,8 @@ binds every external saved plan to the source SHA and live state
 lineage/serial, reviews it, and records apply and live-verification evidence.
 This source preparation does not create a saved plan, apply Terraform, deploy
 Staging or Production, execute a migration, or authorize traffic.
+
+The separate Capacity execution lifecycle, DB/Redis envelope formulas,
+capacity-aware candidate identity, Production targets, and exact Release V6
+post-Edge continuation are defined in
+`docs/governance/runtime-capacity-governance.md`.

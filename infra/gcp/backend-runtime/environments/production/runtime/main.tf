@@ -10,6 +10,16 @@ module "runtime_environment" {
   api_traffic_mode                               = var.api_traffic_mode
   api_stable_revision                            = var.api_stable_revision
   api_candidate_tag                              = var.api_candidate_tag
+  api_candidate_identity_version                 = var.api_candidate_identity_version
+  api_service_min_instances                      = var.api_service_min_instances
+  api_service_max_instances                      = var.api_service_max_instances
+  api_revision_max_instances                     = var.api_revision_max_instances
+  api_max_instance_request_concurrency           = var.api_max_instance_request_concurrency
+  api_request_timeout_seconds                    = var.api_request_timeout_seconds
+  api_session_affinity                           = var.api_session_affinity
+  api_database_connection_limit                  = var.api_database_connection_limit
+  core_worker_manual_instance_count              = var.core_worker_manual_instance_count
+  media_worker_manual_instance_count             = var.media_worker_manual_instance_count
   queue_redis_host                               = var.queue_redis_host
   queue_redis_port                               = var.queue_redis_port
   queue_redis_ca_pem                             = var.queue_redis_ca_pem

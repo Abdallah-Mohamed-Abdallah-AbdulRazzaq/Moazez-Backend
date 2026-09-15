@@ -31,6 +31,8 @@ const README_PATH = 'infra/gcp/backend-runtime/README.md';
 const DAY2_D1_DEPLOYMENT_CONTROL_ROOT = 'scripts/deployment-control';
 const DAY2_D1_HANDOFF_PATH =
   'docs/governance/day2-release-orchestration-devops-handoff.md';
+const RUNTIME_CAPACITY_GOVERNANCE_PATH =
+  'docs/governance/runtime-capacity-governance.md';
 
 const ROOT_FILES = Object.freeze([
   '.terraform.lock.hcl',
@@ -75,6 +77,30 @@ const PT2_STAGE29_DELEGATED_PATHS = Object.freeze(
 const PRODUCTION_API_CAPACITY_REMEDIATION_PATHS = Object.freeze(
   [`${MODULE_ROOT}/main.tf`, TEST_PATH].sort(),
 );
+const RUNTIME_CAPACITY_GOVERNANCE_PATHS = Object.freeze(
+  [
+    `${STAGING_ROOT}/main.tf`,
+    `${STAGING_ROOT}/tests/runtime-module-preconditions.tftest.hcl`,
+    `${STAGING_ROOT}/variables.tf`,
+    `${PRODUCTION_ROOT}/main.tf`,
+    `${PRODUCTION_ROOT}/variables.tf`,
+    `${MODULE_ROOT}/main.tf`,
+    `${MODULE_ROOT}/variables.tf`,
+    README_PATH,
+    PLAN_CI_PATH,
+    PLAN_CI_TEST_PATH,
+    `${DAY2_D1_DEPLOYMENT_CONTROL_ROOT}/README.md`,
+    `${DAY2_D1_DEPLOYMENT_CONTROL_ROOT}/runtime-capacity-control.cjs`,
+    `${DAY2_D1_DEPLOYMENT_CONTROL_ROOT}/runtime-release-control.cjs`,
+    `${DAY2_D1_DEPLOYMENT_CONTROL_ROOT}/tests/runtime-capacity-control.test.cjs`,
+    `${DAY2_D1_DEPLOYMENT_CONTROL_ROOT}/tests/runtime-release-control.test.cjs`,
+    DAY2_D1_HANDOFF_PATH,
+    RUNTIME_CAPACITY_GOVERNANCE_PATH,
+    STAGE_28_TEST_PATH,
+    STAGE_30C1_TEST_PATH,
+    TEST_PATH,
+  ].sort(),
+);
 
 const STAGING_IMAGE_PATTERN =
   '^me-central2-docker[.]pkg[.]dev/moazez-nonprod-91001421934/moazez-staging-containers/moazez-backend@sha256:[a-f0-9]{64}$';
@@ -107,9 +133,23 @@ const API_TRAFFIC_VARIABLES = Object.freeze([
   'api_candidate_tag',
 ]);
 
+const CAPACITY_VARIABLES = Object.freeze([
+  'api_service_min_instances',
+  'api_service_max_instances',
+  'api_revision_max_instances',
+  'api_max_instance_request_concurrency',
+  'api_request_timeout_seconds',
+  'api_session_affinity',
+  'api_database_connection_limit',
+  'core_worker_manual_instance_count',
+  'media_worker_manual_instance_count',
+]);
+
 const ROOT_VARIABLES = Object.freeze([
+  ...CAPACITY_VARIABLES,
   ...RUNTIME_IMAGE_VARIABLES,
   ...API_TRAFFIC_VARIABLES,
+  'api_candidate_identity_version',
   'fcm_delivery_mode',
   'queue_redis_host',
   'queue_redis_port',
@@ -124,10 +164,12 @@ const ROOT_VARIABLES = Object.freeze([
 
 const MODULE_VARIABLES = Object.freeze([
   'environment',
+  ...CAPACITY_VARIABLES,
   'fcm_delivery_mode',
   ...RUNTIME_IMAGE_VARIABLES,
   ...API_TRAFFIC_VARIABLES,
-  ...ROOT_VARIABLES.slice(8),
+  'api_candidate_identity_version',
+  ...ROOT_VARIABLES.slice(18),
 ]);
 
 const PRODUCTION_CONTRACT = Object.freeze({
@@ -583,6 +625,7 @@ function isDay2D1ReleaseOrchestrationPath(file) {
     file.startsWith('infra/gcp/edge/') ||
     file.startsWith(`${DAY2_D1_DEPLOYMENT_CONTROL_ROOT}/`) ||
     file === DAY2_D1_HANDOFF_PATH ||
+    file === RUNTIME_CAPACITY_GOVERNANCE_PATH ||
     file === PLAN_CI_PATH ||
     file === PLAN_CI_TEST_PATH ||
     file === STAGE_28_TEST_PATH ||
@@ -612,6 +655,21 @@ function assertCommittedStage29CandidateScope(
   ].sort();
   const maintenanceScopeActive =
     candidateFiles === undefined || maintenanceFiles !== undefined;
+  const runtimeCapacityMaintenanceActive =
+    maintenanceScopeActive &&
+    normalizedMaintenance.includes(TEST_PATH) &&
+    normalizedMaintenance.includes(`${STAGING_ROOT}/variables.tf`) &&
+    normalizedMaintenance.includes(`${PRODUCTION_ROOT}/variables.tf`) &&
+    normalizedMaintenance.includes(`${MODULE_ROOT}/variables.tf`);
+  if (runtimeCapacityMaintenanceActive) {
+    assert.deepEqual(
+      normalizedMaintenance.filter(
+        (file) => !RUNTIME_CAPACITY_GOVERNANCE_PATHS.includes(file),
+      ),
+      [],
+    );
+    return false;
+  }
   const day2D1MaintenanceActive =
     maintenanceScopeActive &&
     normalizedMaintenance.includes(TEST_PATH) &&
@@ -769,6 +827,18 @@ test('Production root contains one shared-module caller and no direct resource o
     api_traffic_mode: 'var.api_traffic_mode',
     api_stable_revision: 'var.api_stable_revision',
     api_candidate_tag: 'var.api_candidate_tag',
+    api_candidate_identity_version: 'var.api_candidate_identity_version',
+    api_service_min_instances: 'var.api_service_min_instances',
+    api_service_max_instances: 'var.api_service_max_instances',
+    api_revision_max_instances: 'var.api_revision_max_instances',
+    api_max_instance_request_concurrency:
+      'var.api_max_instance_request_concurrency',
+    api_request_timeout_seconds: 'var.api_request_timeout_seconds',
+    api_session_affinity: 'var.api_session_affinity',
+    api_database_connection_limit: 'var.api_database_connection_limit',
+    core_worker_manual_instance_count: 'var.core_worker_manual_instance_count',
+    media_worker_manual_instance_count:
+      'var.media_worker_manual_instance_count',
     queue_redis_host: 'var.queue_redis_host',
     queue_redis_port: 'var.queue_redis_port',
     queue_redis_ca_pem: 'var.queue_redis_ca_pem',
@@ -784,11 +854,14 @@ test('Production root contains one shared-module caller and no direct resource o
   assert.doesNotMatch(main, /https:\/\//u);
 });
 
-test('Production root exposes exactly seventeen governed release and runtime variables', () => {
+test('Production root exposes exact environment-owned release and capacity variables', () => {
   const variables = normalizedHclSource(`${PRODUCTION_ROOT}/variables.tf`);
   assert.deepEqual(variableNames(variables), ROOT_VARIABLES);
   for (const name of ROOT_VARIABLES.filter(
-    (candidate) => !API_TRAFFIC_VARIABLES.includes(candidate),
+    (candidate) =>
+      !API_TRAFFIC_VARIABLES.includes(candidate) &&
+      !CAPACITY_VARIABLES.includes(candidate) &&
+      candidate !== 'api_candidate_identity_version',
   )) {
     assertRequiredVariable(
       variables,
@@ -807,6 +880,25 @@ test('Production root exposes exactly seventeen governed release and runtime var
     const block = variableBlock(variables, name);
     assert.equal(assignmentExpression(block, 'default'), 'null');
     assert.equal(assignmentExpression(block, 'nullable'), 'true');
+  }
+  const capacityDefaults = {
+    api_service_min_instances: '1',
+    api_service_max_instances: '10',
+    api_revision_max_instances: 'null',
+    api_max_instance_request_concurrency: '40',
+    api_request_timeout_seconds: 'null',
+    api_session_affinity: 'null',
+    api_database_connection_limit: '5',
+    core_worker_manual_instance_count: '1',
+    media_worker_manual_instance_count: '1',
+    api_candidate_identity_version: '"image-v1"',
+  };
+  for (const [name, expected] of Object.entries(capacityDefaults)) {
+    assert.equal(
+      assignmentExpression(variableBlock(variables, name), 'default'),
+      expected,
+      name,
+    );
   }
   for (const name of ['queue_redis_ca_pem', 'realtime_redis_ca_pem']) {
     assert.equal(
@@ -945,7 +1037,14 @@ test('Shared module exposes only the closed selector and approved dynamic inputs
   const variables = normalizedHclSource(`${MODULE_ROOT}/variables.tf`);
   assert.deepEqual(variableNames(variables), MODULE_VARIABLES);
   for (const name of MODULE_VARIABLES.filter(
-    (candidate) => !API_TRAFFIC_VARIABLES.includes(candidate),
+    (candidate) =>
+      !API_TRAFFIC_VARIABLES.includes(candidate) &&
+      ![
+        'api_revision_max_instances',
+        'api_request_timeout_seconds',
+        'api_session_affinity',
+        'api_candidate_identity_version',
+      ].includes(candidate),
   )) {
     assert.doesNotMatch(variableBlock(variables, name), /^\s*default\s*=/mu);
   }
@@ -1254,7 +1353,7 @@ test('Common and role-specific application environment contracts remain exact', 
     SWAGGER_ENABLED: '"false"',
     SEED_DEMO_DATA: '"false"',
     DATABASE_RUNTIME_ROLE: '"api"',
-    DATABASE_CONNECTION_LIMIT: '"5"',
+    DATABASE_CONNECTION_LIMIT: 'tostring(var.api_database_connection_limit)',
     DATABASE_POOL_TIMEOUT_SECONDS: '"5"',
     DATABASE_CONNECT_TIMEOUT_SECONDS: '"5"',
     JWT_ACCESS_TTL: '"15m"',
@@ -1352,13 +1451,34 @@ test('Cloud Run commands, scaling, probes, Direct VPC, and deletion protection r
   assert.equal(assignmentExpression(api, 'deletion_protection'), 'true');
   const apiScaling = extractBlock(api, /^\s*scaling\s*\{/mu, 'API scaling');
   assert.deepEqual(blockAssignmentExpressions(apiScaling), {
-    min_instance_count: '1',
-    max_instance_count: '10',
+    min_instance_count: 'var.api_service_min_instances',
+    max_instance_count: 'var.api_service_max_instances',
   });
   const apiTemplate = extractBlock(api, /^\s*template\s*\{/mu, 'API template');
   assert.equal(
     assignmentExpression(apiTemplate, 'max_instance_request_concurrency'),
-    '40',
+    'var.api_max_instance_request_concurrency',
+  );
+  assert.equal(
+    assignmentExpression(apiTemplate, 'timeout'),
+    'var.api_request_timeout_seconds == null ? null : "${var.api_request_timeout_seconds}s"',
+  );
+  assert.equal(
+    assignmentExpression(apiTemplate, 'session_affinity'),
+    'var.api_session_affinity',
+  );
+  const revisionScaling = extractBlock(
+    apiTemplate,
+    /^\s*dynamic\s+"scaling"\s*\{/mu,
+    'API revision scaling',
+  );
+  assert.match(
+    revisionScaling.replace(/\s+/gu, ''),
+    /for_each=var[.]api_revision_max_instances==null[?]\[\]:\[var[.]api_revision_max_instances\]/u,
+  );
+  assert.equal(
+    assignmentExpression(revisionScaling, 'max_instance_count'),
+    'scaling.value',
   );
   const apiContainer = resourceContainer(api, 'api');
   assert.equal(
@@ -1425,7 +1545,12 @@ test('Cloud Run commands, scaling, probes, Direct VPC, and deletion protection r
     );
     assert.deepEqual(blockAssignmentExpressions(scaling), {
       scaling_mode: '"MANUAL"',
-      manual_instance_count: '1',
+      manual_instance_count:
+        name === 'core'
+          ? 'var.core_worker_manual_instance_count'
+          : name === 'media'
+            ? 'var.media_worker_manual_instance_count'
+            : '1',
     });
     const container = resourceContainer(resource, name);
     assert.equal(assignmentExpression(container, 'command'), command);
@@ -1554,6 +1679,18 @@ test('Staging caller preserves existing settings while exposing governed release
     api_traffic_mode: 'var.api_traffic_mode',
     api_stable_revision: 'var.api_stable_revision',
     api_candidate_tag: 'var.api_candidate_tag',
+    api_candidate_identity_version: 'var.api_candidate_identity_version',
+    api_service_min_instances: 'var.api_service_min_instances',
+    api_service_max_instances: 'var.api_service_max_instances',
+    api_revision_max_instances: 'var.api_revision_max_instances',
+    api_max_instance_request_concurrency:
+      'var.api_max_instance_request_concurrency',
+    api_request_timeout_seconds: 'var.api_request_timeout_seconds',
+    api_session_affinity: 'var.api_session_affinity',
+    api_database_connection_limit: 'var.api_database_connection_limit',
+    core_worker_manual_instance_count: 'var.core_worker_manual_instance_count',
+    media_worker_manual_instance_count:
+      'var.media_worker_manual_instance_count',
     queue_redis_host: 'var.queue_redis_host',
     queue_redis_port: 'var.queue_redis_port',
     queue_redis_ca_pem: 'var.queue_redis_ca_pem',
@@ -1578,6 +1715,25 @@ test('Staging caller preserves existing settings while exposing governed release
     assert.deepEqual(
       validationPatterns(variableBlock(stagingVariables, name)),
       [STAGING_IMAGE_PATTERN],
+    );
+  }
+  const capacityDefaults = {
+    api_service_min_instances: '1',
+    api_service_max_instances: '4',
+    api_revision_max_instances: 'null',
+    api_max_instance_request_concurrency: '40',
+    api_request_timeout_seconds: 'null',
+    api_session_affinity: 'null',
+    api_database_connection_limit: '5',
+    core_worker_manual_instance_count: '1',
+    media_worker_manual_instance_count: '1',
+    api_candidate_identity_version: '"image-v1"',
+  };
+  for (const [name, expected] of Object.entries(capacityDefaults)) {
+    assert.equal(
+      assignmentExpression(variableBlock(stagingVariables, name), 'default'),
+      expected,
+      name,
     );
   }
 });
