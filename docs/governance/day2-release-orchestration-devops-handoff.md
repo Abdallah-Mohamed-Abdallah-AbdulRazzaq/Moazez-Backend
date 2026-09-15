@@ -1047,3 +1047,55 @@ fields described above. Stop after the first failure, do not retry
 automatically, and never edit immutable manifest operation fields; validation
 reconstructs and rejects any changed root, variables, allowlist, expected
 change type, path, source binding, or candidate identity.
+
+## Runtime capacity and V6 continuation addendum
+
+Capacity is now a separate governance authority, not a seventh release gate.
+Use `capacityExecutionSchemaVersion=1` and the
+`runtime-capacity-adjustment` operation for service-level changes only:
+
+```text
+API service min/max
+Core Worker manual count
+Media Worker manual count
+```
+
+Do not use a standalone capacity execution to change API revision max,
+concurrency, timeout, session affinity, `DATABASE_CONNECTION_LIMIT`, an image,
+candidate identity, traffic, or any Edge or platform resource. Those
+revision-owned fields may change only through governed creation of a new API
+candidate at 0% normal traffic. Preserve a managed `null` as absence; do not
+materialize a provider-observed default.
+
+Both Staging and Production capacity executions must bind the exact environment
+map, current source SHA, and freshly discovered Runtime state lineage/serial.
+The deterministic reviewer, exact Saved Plan hash, independent approval,
+pre-apply recheck, single apply attempt, replay blocklist, live verification,
+and close transition are mandatory. Database, Queue Redis, and Realtime Redis
+envelopes must be calculated before a plan is accepted. No safety reserve may
+be invented, and increases beyond existing evidence require new explicit
+governed database or Redis authority.
+
+For the interrupted Staging release, use only V6 execution mode
+`post-edge-source-continuation`. It must hash and import the exact immutable V5
+predecessor and preserve its already-passed Core, Media, API, and Candidate Edge
+evidence. It must use the predecessor's exact immutable application digest and
+candidate identity without rebuilding the application artifact. Fresh discovery
+must prove the passed Edge successor state and managed Runtime values; observed
+provider defaults remain diagnostic only.
+
+The only executable continuation operations are:
+
+```text
+Maintenance Scheduler promotion
+smoke checks
+traffic promotion
+```
+
+The rejected Maintenance Saved Plan is evidence-only and belongs on the V6
+blocked-plan list. Never register, approve, or apply it. The replacement
+Maintenance plan must be new, exact, and deterministically reviewed to show only
+the one allowed Maintenance image transition while preserving the API service
+capacity, worker counts, candidate capacity, candidate identity, and Edge
+state. Full field definitions and formulas are in
+[`runtime-capacity-governance.md`](runtime-capacity-governance.md).

@@ -28,6 +28,8 @@ const PLAN_CI_PATH = 'scripts/ci/plan-ci.cjs';
 const PLAN_CI_TEST_PATH = 'scripts/tests/plan-ci.test.cjs';
 const DAY2_D1_HANDOFF_PATH =
   'docs/governance/day2-release-orchestration-devops-handoff.md';
+const RUNTIME_CAPACITY_GOVERNANCE_PATH =
+  'docs/governance/runtime-capacity-governance.md';
 
 const TERRAFORM_ROOT_FILES = Object.freeze([
   '.terraform.lock.hcl',
@@ -355,6 +357,7 @@ function isDay2D1ReleaseOrchestrationPath(file) {
     file.startsWith('infra/gcp/edge/') ||
     file.startsWith('scripts/deployment-control/') ||
     file === DAY2_D1_HANDOFF_PATH ||
+    file === RUNTIME_CAPACITY_GOVERNANCE_PATH ||
     file === HISTORICAL_STAGE28_REMEDIATION_PATH ||
     file === HISTORICAL_STAGE29_REMEDIATION_PATH ||
     file === PLAN_CI_PATH ||
