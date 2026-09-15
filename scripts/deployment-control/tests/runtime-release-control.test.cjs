@@ -6572,16 +6572,26 @@ test('review-plan CLI creates only atomic sanitized evidence and register-plan c
   });
 });
 
-function v6CapacityEvidence() {
+function v6CapacityEvidence(temporaryRoot) {
   const item = (name) => ({
-    authorityRef: `evidence:v6-${name}`,
-    safetyReserveAuthority: `governed-${name}-reserve`,
     effectiveApprovalBudget: 1000,
+    safetyReserveAuthority: `governed-${name}-reserve`,
   });
-  return {
+  const document = {
+    capacityBudgetEvidenceSchemaVersion: 1,
+    environment: 'staging',
+    status: 'approved',
+    evidenceId: 'v6-capacity-budget-test',
     database: item('database'),
     queueRedis: item('queue-redis'),
     realtimeRedis: item('realtime-redis'),
+  };
+  const evidencePath = path.join(temporaryRoot, 'capacity-budget.json');
+  const bytes = Buffer.from(`${JSON.stringify(document, null, 2)}\n`);
+  fs.writeFileSync(evidencePath, bytes);
+  return {
+    path: evidencePath,
+    sha256: crypto.createHash('sha256').update(bytes).digest('hex'),
   };
 }
 
@@ -6637,7 +6647,7 @@ function makeV6CapacityAwareContext(temporaryRoot) {
       sessionAffinity: false,
       databaseConnectionLimit: 5,
     },
-    capacityEvidence: v6CapacityEvidence(),
+    capacityEvidence: v6CapacityEvidence(temporaryRoot),
     externalTfDataRoot: path.join(temporaryRoot, 'tfdata'),
     externalSavedPlanRoot: path.join(temporaryRoot, 'plans'),
   };
@@ -7048,7 +7058,7 @@ test(
       observed.api.revision.maxInstances = 100;
       observed.api.revision.requestTimeoutSeconds = 300;
       observed.api.revision.sessionAffinity = false;
-      const manifest = control.buildManifest({
+      const context = {
         executionMode: control.POST_EDGE_SOURCE_CONTINUATION_MODE,
         executionId: 'v6-post-edge-source-continuation-test',
         repository: control.REPOSITORY,
@@ -7088,7 +7098,20 @@ test(
         },
         externalTfDataRoot: path.join(temporaryRoot, 'tfdata'),
         externalSavedPlanRoot: path.join(temporaryRoot, 'plans'),
-      });
+      };
+      const manifest = control.buildManifest(context);
+      for (const [field, mutation] of [
+        ['runtimeState', { lineage: LIVE_RUNTIME_LINEAGE, serial: 16 }],
+        ['runtimeState', { lineage: 'different-runtime-lineage', serial: 15 }],
+        ['edgeState', { lineage: LIVE_EDGE_LINEAGE, serial: 14 }],
+        ['edgeState', { lineage: 'different-edge-lineage', serial: 13 }],
+      ]) {
+        const contradictory = structuredClone(context);
+        contradictory.liveDiscovery[field] = mutation;
+        assert.throws(() => control.buildManifest(contradictory), {
+          code: 'V6_STATE_AUTHORITY_STALE',
+        });
+      }
       assert.deepEqual(
         manifest.gates.map((gate) => gate.id),
         [

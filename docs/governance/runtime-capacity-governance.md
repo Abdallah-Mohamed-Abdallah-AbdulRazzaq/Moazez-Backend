@@ -76,6 +76,11 @@ capacity changes use a separate `capacityExecutionSchemaVersion=1`; they are
 not Release V6 gates. The exact operation identity is
 `runtime-capacity-adjustment`.
 
+Schema version 1 is completed in this unmerged change with two closed execution
+intents: `standalone-adjustment` and `post-promotion-normalization`. No governed
+external Capacity v1 execution existed before this completion, so a version
+bump or compatibility migration is neither required nor implied.
+
 The standalone controller accepts exactly `staging` and `production` and binds
 each to an allowlisted Terraform root, project, region, API service, Core
 Worker, and Media Worker identity. Fresh Terraform lineage and serial are
@@ -96,18 +101,28 @@ secrets, storage, business settings, Prisma, and migrations are forbidden.
 The plan reviewer accepts only the matching service scaling paths and the two
 worker manual-count paths. It rejects every API template change.
 
-The lifecycle is construct, strict specification validation, environment and
-fresh-state binding, DB/Redis envelope calculation, deterministic plan review,
-exact Saved Plan registration, approval, pre-apply guard, single consumption,
-live verification, and close. The exact Saved Plan hash, source, environment,
-Terraform root identity, lineage, and serial are bound. Blocked, duplicate,
-stale, changed, or consumed plans fail closed.
+The lifecycle is `constructed -> plan-registered -> approved ->
+pre-apply-authorized -> applied-awaiting-live-verification -> closed`. The
+pre-Apply transition requires fresh caller-supplied source SHA, Terraform
+lineage and serial, exact Saved Plan bytes, evidence reference, and timestamp.
+It records immutable passed authority for that execution. Apply recording is
+forbidden directly from `approved`; it re-hashes the supplied Saved Plan bytes
+and requires the registered and pre-Apply hashes to agree before the one Apply
+attempt is consumed. The exact source, environment, Terraform root identity,
+lineage, serial, and plan are bound. Blocked, duplicate, stale, changed, or
+consumed plans fail closed.
 
-Post-promotion normalization is service-level only and requires completed
-promotion and stability evidence. It may govern service min/max and Core/Media
-counts. It cannot change the serving revision. A different revision maximum,
-concurrency, timeout, session-affinity, or DB pool requires a new candidate at
-zero traffic—even when reusing the same application artifact.
+A Production decrease to either API service min or max is forbidden under
+`standalone-adjustment`. It must use `post-promotion-normalization` and bind a
+separate immutable `promotionStabilityEvidenceSchemaVersion=1` artifact stored
+outside the repository. Its raw bytes are hashed before JSON parsing. The
+artifact must bind Production, approved status, completed traffic promotion,
+safe removal of traffic from the former emergency revision, the promoted
+revision as the current serving revision, and passed stability validation.
+A caller boolean is never authority. Core/Media counts change only when
+separately requested in the desired specification; worker-only Production
+decreases remain ordinary standalone adjustments. Revision capacity remains
+immutable in every Capacity execution.
 
 ## DB and Redis envelopes
 
@@ -148,6 +163,18 @@ safety-reserve authority, effective approval budget, reserve status, and
 approval result separate. No numeric reserve is invented. A new increase or
 candidate overlap without sufficient DB, Queue Redis, and Realtime Redis
 evidence fails closed.
+
+New budget authority is one external
+`capacityBudgetEvidenceSchemaVersion=1` JSON bundle. The caller supplies only
+its absolute external path and expected lowercase SHA-256. The controller reads
+and hashes the raw bytes before parsing, then requires the exact schema,
+environment, `approved` status, evidence identity, all three resource domains,
+effective budgets, and safety-reserve authorities. The execution binds the
+path, raw-byte hash, schema version, environment, status, evidence identity,
+and exact evaluated budgets. The fresh recorded pre-Apply stage reads and
+hashes the same file again and rejects deletion, tampering, environment/status
+changes, insufficient budgets, or any changed binding. Preservation and
+ordinary safe decreases need no capacity-budget artifact.
 
 ## Candidate revision capacity and identity
 
@@ -239,6 +266,13 @@ replayed. Their passed states appear only as immutable imported evidence.
 Fresh discovery must bind all runtime images, candidate/stable identity and
 traffic, independent Runtime and Edge state, service capacity, managed and
 observed revision capacity, and worker counts.
+
+For this exact V6 `post-edge-source-continuation`, fresh Runtime lineage and
+serial must exactly equal the predecessor API Runtime post-Apply state, and
+fresh Edge lineage and serial must exactly equal the predecessor Edge
+post-Apply state. A same-lineage serial successor is a contradiction, not an
+acceptable descendant; it requires a separately governed reconciliation
+contract. This restriction does not change V1-V5 semantics.
 
 The rejected Maintenance Saved Plan
 `0cdff09279b0965a185b935ef4c961da5185d6cd92f81c7939f6543000febfd3`

@@ -1,6 +1,8 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
+const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
@@ -17,23 +19,72 @@ function clone(value) {
   return structuredClone(value);
 }
 
-function capacityEvidence(database, queueRedis, realtimeRedis) {
+function withEvidenceRoot(callback) {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), 'moazez-capacity-evidence-'),
+  );
+  try {
+    return callback(root);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+function writeEvidence(root, name, document) {
+  const evidencePath = path.join(root, name);
+  const bytes = Buffer.from(`${JSON.stringify(document, null, 2)}\n`);
+  fs.writeFileSync(evidencePath, bytes);
+  return {
+    path: evidencePath,
+    sha256: crypto.createHash('sha256').update(bytes).digest('hex'),
+  };
+}
+
+function capacityEvidenceDocument(
+  database,
+  queueRedis,
+  realtimeRedis,
+  { environment = 'staging', status = 'approved' } = {},
+) {
   const record = (name, budget) => ({
-    authorityRef: `evidence://${name}`,
-    safetyReserveAuthority: `governed-${name}-reserve`,
     effectiveApprovalBudget: budget,
+    safetyReserveAuthority: `governed-${name}-reserve`,
   });
   return {
+    capacityBudgetEvidenceSchemaVersion: 1,
+    environment,
+    status,
+    evidenceId: `capacity-budget-${environment}-test`,
     database: record('database', database),
     queueRedis: record('queue-redis', queueRedis),
     realtimeRedis: record('realtime-redis', realtimeRedis),
   };
 }
 
+function promotionEvidenceDocument(overrides = {}) {
+  return {
+    promotionStabilityEvidenceSchemaVersion: 1,
+    evidenceId: 'production-promotion-stability-test',
+    environment: 'production',
+    status: 'approved',
+    trafficPromotionStatus: 'completed',
+    formerEmergencyRevision: 'moazez-production-api-emergency',
+    formerEmergencyRevisionTrafficStatus: 'removed',
+    promotedRevision: 'moazez-production-api-candidate',
+    currentServingRevision: 'moazez-production-api-candidate',
+    stabilityValidationStatus: 'passed',
+    ...overrides,
+  };
+}
+
 function executionInput(environment = 'staging') {
   const current = capacity.baselineCapacitySpec(environment);
   const desired = clone(current);
-  desired.api.serviceMaxInstances -= 1;
+  if (environment === 'production') {
+    current.workers.coreManualInstanceCount = 2;
+  } else {
+    desired.api.serviceMaxInstances -= 1;
+  }
   return {
     executionId: `capacity-${environment}-test`,
     repository: release.REPOSITORY,
@@ -43,7 +94,9 @@ function executionInput(environment = 'staging') {
     terraformState: { lineage: `${environment}-lineage`, serial: 19 },
     currentCapacitySpec: current,
     desiredCapacitySpec: desired,
+    executionIntent: 'standalone-adjustment',
     capacityEvidence: null,
+    promotionStabilityEvidence: null,
     savedPlanPath: path.join(
       os.tmpdir(),
       'moazez-capacity-tests',
@@ -81,6 +134,35 @@ function maxOnlyPlan(before = 4, after = 3) {
         'google_cloud_run_v2_service',
         { scaling: [{ min_instance_count: 1, max_instance_count: before }] },
         { scaling: [{ min_instance_count: 1, max_instance_count: after }] },
+      ),
+    ],
+    resource_drift: [],
+  };
+}
+
+function serviceMinMaxPlan(beforeMin, beforeMax, afterMin, afterMax) {
+  return {
+    format_version: '1.2',
+    applyable: true,
+    complete: true,
+    errored: false,
+    resource_changes: [
+      record(
+        capacity.RUNTIME_RESOURCE_ADDRESSES.api,
+        'google_cloud_run_v2_service',
+        {
+          scaling: [
+            {
+              min_instance_count: beforeMin,
+              max_instance_count: beforeMax,
+            },
+          ],
+        },
+        {
+          scaling: [
+            { min_instance_count: afterMin, max_instance_count: afterMax },
+          ],
+        },
       ),
     ],
     resource_drift: [],
@@ -193,15 +275,24 @@ test('production baseline 10 is not newly approvable against historical realtime
       currentCapacitySpec: current,
       desiredCapacitySpec: desired,
       capacityEvidence: null,
+      environment: 'production',
     }),
   );
-  assertCapacityError('CAPACITY_EVIDENCE_INSUFFICIENT', () =>
-    capacity.evaluateStandaloneCapacityChange({
-      currentCapacitySpec: current,
-      desiredCapacitySpec: desired,
-      capacityEvidence: capacityEvidence(59, 35, 30),
-    }),
-  );
+  withEvidenceRoot((root) => {
+    const evidence = writeEvidence(
+      root,
+      'capacity-budget.json',
+      capacityEvidenceDocument(59, 35, 30, { environment: 'production' }),
+    );
+    assertCapacityError('CAPACITY_EVIDENCE_INSUFFICIENT', () =>
+      capacity.evaluateStandaloneCapacityChange({
+        currentCapacitySpec: current,
+        desiredCapacitySpec: desired,
+        capacityEvidence: evidence,
+        environment: 'production',
+      }),
+    );
+  });
 });
 
 test('tagged zero-traffic candidate is accounted independently in all envelopes', () => {
@@ -255,17 +346,29 @@ test('candidate overlap requires complete revision capacity and governed evidenc
   );
   const overlap = capacity.calculateCandidateOverlap(input);
   assertCapacityError('CAPACITY_DATABASE_EVIDENCE_REQUIRED', () =>
-    capacity.evaluateCandidateOverlapEvidence(overlap, null),
+    capacity.evaluateCandidateOverlapEvidence(overlap, null, 'staging'),
   );
-  const result = capacity.evaluateCandidateOverlapEvidence(
-    overlap,
-    capacityEvidence(39, 27, 19),
-  );
-  assert.equal(result.database.approvalResult, 'approved');
-  assert.equal(
-    result.database.safetyReserveAuthority,
-    'governed-database-reserve',
-  );
+  withEvidenceRoot((root) => {
+    const evidence = writeEvidence(
+      root,
+      'candidate-capacity-budget.json',
+      capacityEvidenceDocument(39, 27, 19),
+    );
+    const result = capacity.evaluateCandidateOverlapEvidence(
+      overlap,
+      evidence,
+      'staging',
+    );
+    assert.equal(result.database.approvalResult, 'approved');
+    assert.equal(
+      result.database.safetyReserveAuthority,
+      'governed-database-reserve',
+    );
+    assert.equal(
+      result.capacityBudgetEvidenceAuthority.sha256,
+      evidence.sha256,
+    );
+  });
 });
 
 test('capacity-aware identity binds artifact plus canonical complete revision capacity', () => {
@@ -345,17 +448,27 @@ test('post-promotion normalization is service-only and requires stability', () =
     governedServiceMinInstances: 1,
     governedServiceMaxInstances: 10,
   };
-  assertCapacityError('NORMALIZATION_PREREQUISITE_MISSING', () =>
+  assertCapacityError('PROMOTION_STABILITY_EVIDENCE_REQUIRED', () =>
     capacity.candidateServiceCapacity(input),
   );
-  assert.deepEqual(
-    capacity.candidateServiceCapacity({ ...input, promotionStable: true }),
-    {
-      minInstances: 1,
-      maxInstances: 10,
-      authority: 'governed-post-promotion-service-normalization',
-    },
-  );
+  withEvidenceRoot((root) => {
+    const promotionStabilityEvidence = writeEvidence(
+      root,
+      'promotion-stability.json',
+      promotionEvidenceDocument(),
+    );
+    assert.deepEqual(
+      capacity.candidateServiceCapacity({
+        ...input,
+        promotionStabilityEvidence,
+      }),
+      {
+        minInstances: 1,
+        maxInstances: 10,
+        authority: 'governed-post-promotion-service-normalization',
+      },
+    );
+  });
 });
 
 test('nullable provider-defaulted revision values stay unmanaged in Terraform inputs', () => {
@@ -502,13 +615,54 @@ test('capacity lifecycle binds plan hash, source, state, approval, one apply, an
     approvalRef: 'evidence://approval',
     approvedAt: '2026-09-15T02:01:00.000Z',
   });
-  assert.equal(
-    capacity.capacityPreApplyGuard(execution, {
-      sourceSha: SOURCE_SHA,
-      terraformState: { lineage: 'staging-lineage', serial: 19 },
+  assertCapacityError('CAPACITY_PRE_APPLY_GUARD_FAILED', () =>
+    capacity.recordCapacityApply(execution, {
       savedPlanBytes: PLAN_BYTES,
-    }).status,
-    'passed',
+      result: 'succeeded',
+      evidenceRef: 'evidence://direct-apply',
+      recordedAt: '2026-09-15T02:01:30.000Z',
+      postApplyState: { lineage: 'staging-lineage', serial: 20 },
+    }),
+  );
+  execution = capacity.recordCapacityPreApplyGuard(execution, {
+    sourceSha: SOURCE_SHA,
+    terraformState: { lineage: 'staging-lineage', serial: 19 },
+    savedPlanBytes: PLAN_BYTES,
+    evidenceRef: 'evidence://fresh-pre-apply',
+    recordedAt: '2026-09-15T02:01:45.000Z',
+  });
+  assert.equal(execution.status, 'pre-apply-authorized');
+  assert.equal(execution.preApplyAuthority.status, 'passed');
+  const wrongExecutionAuthority = clone(execution);
+  wrongExecutionAuthority.preApplyAuthority.executionId = 'another-execution';
+  assertCapacityError('CAPACITY_PRE_APPLY_AUTHORITY_MISMATCH', () =>
+    capacity.recordCapacityApply(wrongExecutionAuthority, {
+      savedPlanBytes: PLAN_BYTES,
+      result: 'succeeded',
+      evidenceRef: 'evidence://wrong-execution-authority',
+      recordedAt: '2026-09-15T02:01:49.000Z',
+      postApplyState: { lineage: 'staging-lineage', serial: 20 },
+    }),
+  );
+  const failedPreApplyAuthority = clone(execution);
+  failedPreApplyAuthority.preApplyAuthority.status = 'failed';
+  assertCapacityError('CAPACITY_LIFECYCLE_INVALID', () =>
+    capacity.recordCapacityApply(failedPreApplyAuthority, {
+      savedPlanBytes: PLAN_BYTES,
+      result: 'succeeded',
+      evidenceRef: 'evidence://failed-pre-apply-authority',
+      recordedAt: '2026-09-15T02:01:49.000Z',
+      postApplyState: { lineage: 'staging-lineage', serial: 20 },
+    }),
+  );
+  assertCapacityError('CAPACITY_SAVED_PLAN_CHANGED', () =>
+    capacity.recordCapacityApply(execution, {
+      savedPlanBytes: Buffer.from('changed-after-pre-apply'),
+      result: 'succeeded',
+      evidenceRef: 'evidence://wrong-apply-bytes',
+      recordedAt: '2026-09-15T02:01:50.000Z',
+      postApplyState: { lineage: 'staging-lineage', serial: 20 },
+    }),
   );
   execution = capacity.recordCapacityApply(execution, {
     savedPlanBytes: PLAN_BYTES,
@@ -553,31 +707,36 @@ test('capacity pre-apply guard rejects stale lineage, serial, source, and plan b
     { lineage: 'staging-lineage', serial: 20 },
   ]) {
     assertCapacityError('CAPACITY_STATE_PRECONDITION_STALE', () =>
-      capacity.capacityPreApplyGuard(execution, {
+      capacity.recordCapacityPreApplyGuard(execution, {
         sourceSha: SOURCE_SHA,
         terraformState,
         savedPlanBytes: PLAN_BYTES,
+        evidenceRef: 'evidence://fresh-pre-apply',
+        recordedAt: '2026-09-15T02:01:30.000Z',
       }),
     );
   }
   assertCapacityError('CAPACITY_SOURCE_SHA_MISMATCH', () =>
-    capacity.capacityPreApplyGuard(execution, {
+    capacity.recordCapacityPreApplyGuard(execution, {
       sourceSha: '0'.repeat(40),
       terraformState: execution.terraformStatePrecondition,
       savedPlanBytes: PLAN_BYTES,
+      evidenceRef: 'evidence://fresh-pre-apply',
+      recordedAt: '2026-09-15T02:01:30.000Z',
     }),
   );
   assertCapacityError('CAPACITY_SAVED_PLAN_CHANGED', () =>
-    capacity.capacityPreApplyGuard(execution, {
+    capacity.recordCapacityPreApplyGuard(execution, {
       sourceSha: SOURCE_SHA,
       terraformState: execution.terraformStatePrecondition,
       savedPlanBytes: Buffer.from('changed'),
+      evidenceRef: 'evidence://fresh-pre-apply',
+      recordedAt: '2026-09-15T02:01:30.000Z',
     }),
   );
 });
 
 test('capacity plan registration rejects blocked and already-registered replay', () => {
-  const crypto = require('node:crypto');
   const hash = crypto.createHash('sha256').update(PLAN_BYTES).digest('hex');
   const blocked = capacity.buildCapacityExecution(executionInput());
   blocked.blockedSavedPlanHashes.push(hash);
@@ -603,6 +762,309 @@ test('capacity plan registration rejects blocked and already-registered replay',
   );
 });
 
+test('capacity budget evidence is external, hash-bound, exact, complete, and reverified pre-Apply', () => {
+  withEvidenceRoot((root) => {
+    const decreaseWithFreeformClaim = executionInput();
+    decreaseWithFreeformClaim.capacityEvidence = {
+      authorityRef: 'caller-made',
+      effectiveApprovalBudget: 1000,
+    };
+    assertCapacityError('CAPACITY_EVIDENCE_UNEXPECTED', () =>
+      capacity.buildCapacityExecution(decreaseWithFreeformClaim),
+    );
+
+    const input = executionInput();
+    input.currentCapacitySpec.api.serviceMaxInstances = 2;
+    input.desiredCapacitySpec.api.serviceMaxInstances = 3;
+
+    input.capacityEvidence = {
+      database: {
+        authorityRef: 'caller-made',
+        safetyReserveAuthority: 'caller-made',
+        effectiveApprovalBudget: 1000,
+      },
+      queueRedis: {},
+      realtimeRedis: {},
+    };
+    assertCapacityError('CAPACITY_SCHEMA_INVALID', () =>
+      capacity.buildCapacityExecution(input),
+    );
+
+    input.capacityEvidence = {
+      path: path.join(root, 'missing.json'),
+      sha256: 'a'.repeat(64),
+    };
+    assertCapacityError('CAPACITY_EVIDENCE_FILE_MISSING', () =>
+      capacity.buildCapacityExecution(input),
+    );
+
+    const hashMismatch = writeEvidence(
+      root,
+      'hash-mismatch.json',
+      capacityEvidenceDocument(1000, 1000, 1000),
+    );
+    hashMismatch.sha256 = 'b'.repeat(64);
+    input.capacityEvidence = hashMismatch;
+    assertCapacityError('CAPACITY_EVIDENCE_HASH_MISMATCH', () =>
+      capacity.buildCapacityExecution(input),
+    );
+
+    const tampered = writeEvidence(
+      root,
+      'tampered.json',
+      capacityEvidenceDocument(1000, 1000, 1000),
+    );
+    fs.appendFileSync(tampered.path, ' ');
+    input.capacityEvidence = tampered;
+    assertCapacityError('CAPACITY_EVIDENCE_HASH_MISMATCH', () =>
+      capacity.buildCapacityExecution(input),
+    );
+
+    input.capacityEvidence = writeEvidence(
+      root,
+      'wrong-environment.json',
+      capacityEvidenceDocument(1000, 1000, 1000, {
+        environment: 'production',
+      }),
+    );
+    assertCapacityError('CAPACITY_EVIDENCE_ENVIRONMENT_MISMATCH', () =>
+      capacity.buildCapacityExecution(input),
+    );
+
+    input.capacityEvidence = writeEvidence(
+      root,
+      'unapproved.json',
+      capacityEvidenceDocument(1000, 1000, 1000, { status: 'pending' }),
+    );
+    assertCapacityError('CAPACITY_EVIDENCE_NOT_APPROVED', () =>
+      capacity.buildCapacityExecution(input),
+    );
+
+    for (const domain of ['database', 'queueRedis', 'realtimeRedis']) {
+      const incomplete = capacityEvidenceDocument(1000, 1000, 1000);
+      delete incomplete[domain];
+      input.capacityEvidence = writeEvidence(
+        root,
+        `missing-${domain}.json`,
+        incomplete,
+      );
+      assertCapacityError('CAPACITY_SCHEMA_INVALID', () =>
+        capacity.buildCapacityExecution(input),
+      );
+    }
+
+    input.capacityEvidence = writeEvidence(
+      root,
+      'insufficient.json',
+      capacityEvidenceDocument(1, 1000, 1000),
+    );
+    assertCapacityError('CAPACITY_EVIDENCE_INSUFFICIENT', () =>
+      capacity.buildCapacityExecution(input),
+    );
+
+    const exactEvidence = writeEvidence(
+      root,
+      'exact.json',
+      capacityEvidenceDocument(1000, 1000, 1000),
+    );
+    input.capacityEvidence = exactEvidence;
+    let execution = capacity.buildCapacityExecution(input);
+    assert.equal(
+      execution.capacityEvaluation.capacityBudgetEvidenceAuthority.sha256,
+      exactEvidence.sha256,
+    );
+    assert.equal(
+      execution.capacityEvaluation.capacityBudgetEvidenceAuthority.environment,
+      'staging',
+    );
+    execution = capacity.registerCapacityPlan(execution, {
+      savedPlanBytes: PLAN_BYTES,
+      planJsonBytes: Buffer.from(JSON.stringify(maxOnlyPlan(2, 3))),
+      recordedAt: NOW,
+    });
+    execution = capacity.approveCapacityPlan(execution, {
+      approver: 'owner',
+      approvalRef: 'evidence://approval',
+      approvedAt: '2026-09-15T02:01:00.000Z',
+    });
+    fs.appendFileSync(exactEvidence.path, 'tampered-after-approval');
+    assertCapacityError('CAPACITY_EVIDENCE_HASH_MISMATCH', () =>
+      capacity.recordCapacityPreApplyGuard(execution, {
+        sourceSha: SOURCE_SHA,
+        terraformState: input.terraformState,
+        savedPlanBytes: PLAN_BYTES,
+        evidenceRef: 'evidence://pre-apply',
+        recordedAt: '2026-09-15T02:02:00.000Z',
+      }),
+    );
+  });
+});
+
+test('production API service decreases require hash-bound post-promotion stability authority', () => {
+  withEvidenceRoot((root) => {
+    const input = executionInput('production');
+    input.currentCapacitySpec = capacity.baselineCapacitySpec('production');
+    input.currentCapacitySpec.api.serviceMinInstances = 5;
+    input.currentCapacitySpec.api.serviceMaxInstances = 40;
+    input.desiredCapacitySpec = capacity.baselineCapacitySpec('production');
+
+    assertCapacityError(
+      'PRODUCTION_SERVICE_DECREASE_REQUIRES_NORMALIZATION',
+      () => capacity.buildCapacityExecution(input),
+    );
+
+    input.executionIntent = 'post-promotion-normalization';
+    assertCapacityError('PROMOTION_STABILITY_EVIDENCE_REQUIRED', () =>
+      capacity.buildCapacityExecution(input),
+    );
+
+    input.promotionStabilityEvidence = {
+      path: path.join(root, 'missing-promotion.json'),
+      sha256: 'a'.repeat(64),
+    };
+    assertCapacityError('PROMOTION_STABILITY_EVIDENCE_FILE_MISSING', () =>
+      capacity.buildCapacityExecution(input),
+    );
+
+    const tampered = writeEvidence(
+      root,
+      'tampered-promotion.json',
+      promotionEvidenceDocument(),
+    );
+    fs.appendFileSync(tampered.path, ' ');
+    input.promotionStabilityEvidence = tampered;
+    assertCapacityError('PROMOTION_STABILITY_EVIDENCE_HASH_MISMATCH', () =>
+      capacity.buildCapacityExecution(input),
+    );
+
+    input.promotionStabilityEvidence = writeEvidence(
+      root,
+      'wrong-promotion-environment.json',
+      promotionEvidenceDocument({ environment: 'staging' }),
+    );
+    assertCapacityError(
+      'PROMOTION_STABILITY_EVIDENCE_ENVIRONMENT_MISMATCH',
+      () => capacity.buildCapacityExecution(input),
+    );
+
+    input.promotionStabilityEvidence = writeEvidence(
+      root,
+      'unapproved-promotion.json',
+      promotionEvidenceDocument({ status: 'pending' }),
+    );
+    assertCapacityError('PROMOTION_STABILITY_EVIDENCE_NOT_APPROVED', () =>
+      capacity.buildCapacityExecution(input),
+    );
+
+    input.promotionStabilityEvidence = writeEvidence(
+      root,
+      'incomplete-promotion.json',
+      promotionEvidenceDocument({ trafficPromotionStatus: 'pending' }),
+    );
+    assertCapacityError('PROMOTION_STABILITY_EVIDENCE_INCOMPLETE', () =>
+      capacity.buildCapacityExecution(input),
+    );
+
+    input.promotionStabilityEvidence = writeEvidence(
+      root,
+      'emergency-traffic-retained.json',
+      promotionEvidenceDocument({
+        formerEmergencyRevisionTrafficStatus: 'retained',
+      }),
+    );
+    assertCapacityError('PROMOTION_STABILITY_EVIDENCE_INCOMPLETE', () =>
+      capacity.buildCapacityExecution(input),
+    );
+
+    for (const status of ['pending', 'failed']) {
+      input.promotionStabilityEvidence = writeEvidence(
+        root,
+        `${status}-stability.json`,
+        promotionEvidenceDocument({ stabilityValidationStatus: status }),
+      );
+      assertCapacityError('PROMOTION_STABILITY_EVIDENCE_NOT_STABLE', () =>
+        capacity.buildCapacityExecution(input),
+      );
+    }
+
+    input.promotionStabilityEvidence = writeEvidence(
+      root,
+      'wrong-serving-revision.json',
+      promotionEvidenceDocument({
+        currentServingRevision: 'moazez-production-api-other',
+      }),
+    );
+    assertCapacityError('PROMOTION_STABILITY_EVIDENCE_INCOMPLETE', () =>
+      capacity.buildCapacityExecution(input),
+    );
+
+    const exactEvidence = writeEvidence(
+      root,
+      'exact-promotion.json',
+      promotionEvidenceDocument(),
+    );
+    input.promotionStabilityEvidence = exactEvidence;
+    let execution = capacity.buildCapacityExecution(input);
+    assert.equal(execution.executionIntent, 'post-promotion-normalization');
+    assert.equal(
+      execution.promotionStabilityEvidenceAuthority.sha256,
+      exactEvidence.sha256,
+    );
+    assert.deepEqual(execution.mutableCapacityChange.after.api, {
+      serviceMinInstances: 1,
+      serviceMaxInstances: 10,
+    });
+    const normalizationReview = capacity.reviewCapacityPlanJson(
+      serviceMinMaxPlan(5, 40, 1, 10),
+      execution,
+    );
+    assert.equal(normalizationReview.status, 'passed');
+
+    execution = capacity.registerCapacityPlan(execution, {
+      savedPlanBytes: PLAN_BYTES,
+      planJsonBytes: Buffer.from(
+        JSON.stringify(serviceMinMaxPlan(5, 40, 1, 10)),
+      ),
+      recordedAt: NOW,
+    });
+    execution = capacity.approveCapacityPlan(execution, {
+      approver: 'owner',
+      approvalRef: 'evidence://normalization-approval',
+      approvedAt: '2026-09-15T02:01:00.000Z',
+    });
+    fs.appendFileSync(exactEvidence.path, 'tampered-after-approval');
+    assertCapacityError('PROMOTION_STABILITY_EVIDENCE_HASH_MISMATCH', () =>
+      capacity.recordCapacityPreApplyGuard(execution, {
+        sourceSha: SOURCE_SHA,
+        terraformState: input.terraformState,
+        savedPlanBytes: PLAN_BYTES,
+        evidenceRef: 'evidence://normalization-pre-apply',
+        recordedAt: '2026-09-15T02:02:00.000Z',
+      }),
+    );
+
+    const revisionMutation = clone(input);
+    revisionMutation.promotionStabilityEvidence = writeEvidence(
+      root,
+      'revision-mutation-evidence.json',
+      promotionEvidenceDocument(),
+    );
+    revisionMutation.desiredCapacitySpec.api.revision.concurrency = 80;
+    assertCapacityError('STANDALONE_REVISION_MUTATION_FORBIDDEN', () =>
+      capacity.buildCapacityExecution(revisionMutation),
+    );
+
+    assert.equal(
+      capacity.buildCapacityExecution(executionInput()).status,
+      'constructed',
+    );
+    assert.equal(
+      capacity.buildCapacityExecution(executionInput('production')).status,
+      'constructed',
+    );
+  });
+});
+
 test('capacity execution rejects no-op adjustments and stale lifecycle evidence', () => {
   const noChange = executionInput();
   noChange.desiredCapacitySpec = clone(noChange.currentCapacitySpec);
@@ -626,12 +1088,18 @@ test('capacity execution rejects tampered envelopes, budgets, and Saved Plan pat
   const increaseInput = executionInput();
   increaseInput.currentCapacitySpec.api.serviceMaxInstances = 2;
   increaseInput.desiredCapacitySpec.api.serviceMaxInstances = 3;
-  increaseInput.capacityEvidence = capacityEvidence(24, 21, 10);
-  const tamperedBudget = capacity.buildCapacityExecution(increaseInput);
-  tamperedBudget.capacityEvaluation.realtimeRedis.effectiveApprovalBudget = 9;
-  assertCapacityError('CAPACITY_EVALUATION_MISMATCH', () =>
-    capacity.validateCapacityExecution(tamperedBudget),
-  );
+  withEvidenceRoot((root) => {
+    increaseInput.capacityEvidence = writeEvidence(
+      root,
+      'capacity-budget.json',
+      capacityEvidenceDocument(24, 21, 10),
+    );
+    const tamperedBudget = capacity.buildCapacityExecution(increaseInput);
+    tamperedBudget.capacityEvaluation.realtimeRedis.effectiveApprovalBudget = 9;
+    assertCapacityError('CAPACITY_EVALUATION_MISMATCH', () =>
+      capacity.validateCapacityExecution(tamperedBudget),
+    );
+  });
 
   const tamperedPath = capacity.buildCapacityExecution(executionInput());
   tamperedPath.savedPlanPath = path.join(

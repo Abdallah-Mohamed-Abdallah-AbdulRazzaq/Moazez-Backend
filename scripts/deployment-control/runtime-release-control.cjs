@@ -5450,6 +5450,7 @@ function buildCapacityAwareReleaseManifestV6(input) {
   const overlapApproval = capacityControl.evaluateCandidateOverlapEvidence(
     overlap,
     input.capacityEvidence,
+    input.environment,
   );
   const contract = loadReleaseContract();
   const firstFourStages = contract.contract.stages.slice(0, 4);
@@ -5738,13 +5739,13 @@ function validateV6ContinuationLiveDiscovery(value, authority) {
   const predecessorEdgeState = authority.edgeOperation.apply.postApplyState;
   if (
     runtimeState.lineage !== predecessorRuntimeState.lineage ||
-    runtimeState.serial < predecessorRuntimeState.serial ||
+    runtimeState.serial !== predecessorRuntimeState.serial ||
     edgeState.lineage !== predecessorEdgeState.lineage ||
-    edgeState.serial < predecessorEdgeState.serial
+    edgeState.serial !== predecessorEdgeState.serial
   ) {
     fail(
       'V6_STATE_AUTHORITY_STALE',
-      'fresh Runtime and Edge state must descend from the exact predecessor state authority.',
+      'fresh Runtime and Edge state must exactly equal predecessor state authority.',
     );
   }
   const managed = capacityControl.validateCapacitySpec(
@@ -8505,8 +8506,50 @@ function validatePostEdgeSourceContinuationManifestV6(manifest) {
 function validateCapacityApproval(value, overlap) {
   const approval = requireExactKeys(
     value,
-    ['database', 'queueRedis', 'realtimeRedis'],
+    [
+      'capacityBudgetEvidenceAuthority',
+      'database',
+      'queueRedis',
+      'realtimeRedis',
+    ],
     'manifest.capacityApproval',
+  );
+  const authority = requireExactKeys(
+    approval.capacityBudgetEvidenceAuthority,
+    [
+      'path',
+      'sha256',
+      'schemaVersion',
+      'environment',
+      'status',
+      'evidenceId',
+      'evaluatedBudgets',
+    ],
+    'manifest.capacityApproval.capacityBudgetEvidenceAuthority',
+  );
+  const evidencePath = requireExternalAbsolutePath(
+    authority.path,
+    'manifest.capacityApproval.capacityBudgetEvidenceAuthority.path',
+  );
+  if (
+    evidencePath !== authority.path ||
+    !/^[a-f0-9]{64}$/u.test(authority.sha256) ||
+    authority.schemaVersion !==
+      capacityControl.CAPACITY_BUDGET_EVIDENCE_SCHEMA_VERSION ||
+    authority.environment !== 'staging' ||
+    authority.status !== 'approved' ||
+    typeof authority.evidenceId !== 'string' ||
+    authority.evidenceId.length === 0
+  ) {
+    fail(
+      'CAPACITY_EVIDENCE_INSUFFICIENT',
+      'manifest capacity budget authority is invalid.',
+    );
+  }
+  const budgets = requireExactKeys(
+    authority.evaluatedBudgets,
+    ['database', 'queueRedis', 'realtimeRedis'],
+    'manifest.capacityApproval.capacityBudgetEvidenceAuthority.evaluatedBudgets',
   );
   for (const [key, calculatedGovernedEnvelope] of [
     ['database', overlap.database.totalRuntimeOverlap],
@@ -8525,14 +8568,22 @@ function validateCapacityApproval(value, overlap) {
       ],
       `manifest.capacityApproval.${key}`,
     );
+    const budget = requireExactKeys(
+      budgets[key],
+      ['effectiveApprovalBudget', 'safetyReserveAuthority'],
+      `manifest.capacityApproval.capacityBudgetEvidenceAuthority.evaluatedBudgets.${key}`,
+    );
     if (
       record.calculatedGovernedEnvelope !== calculatedGovernedEnvelope ||
       !Number.isSafeInteger(record.effectiveApprovalBudget) ||
       record.effectiveApprovalBudget < calculatedGovernedEnvelope ||
+      record.effectiveApprovalBudget !== budget.effectiveApprovalBudget ||
       typeof record.safetyReserveAuthority !== 'string' ||
       record.safetyReserveAuthority.length === 0 ||
+      record.safetyReserveAuthority !== budget.safetyReserveAuthority ||
       typeof record.evidenceAuthorityUsed !== 'string' ||
       record.evidenceAuthorityUsed.length === 0 ||
+      record.evidenceAuthorityUsed !== authority.evidenceId ||
       record.reserveStatus !== 'governed' ||
       record.approvalResult !== 'approved'
     ) {

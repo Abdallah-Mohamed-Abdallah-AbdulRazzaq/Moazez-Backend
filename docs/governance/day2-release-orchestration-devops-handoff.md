@@ -1070,11 +1070,22 @@ materialize a provider-observed default.
 Both Staging and Production capacity executions must bind the exact environment
 map, current source SHA, and freshly discovered Runtime state lineage/serial.
 The deterministic reviewer, exact Saved Plan hash, independent approval,
-pre-apply recheck, single apply attempt, replay blocklist, live verification,
-and close transition are mandatory. Database, Queue Redis, and Realtime Redis
-envelopes must be calculated before a plan is accepted. No safety reserve may
-be invented, and increases beyond existing evidence require new explicit
-governed database or Redis authority.
+recorded fresh pre-Apply authority, single apply attempt, replay blocklist, live
+verification, and close transition are mandatory. Apply recording cannot skip
+the `pre-apply-authorized` state and must re-hash the supplied Saved Plan bytes.
+Database, Queue Redis, and Realtime Redis envelopes must be calculated before a
+plan is accepted. New budget authority is an external
+`capacityBudgetEvidenceSchemaVersion=1` artifact whose raw bytes, environment,
+approval status, three domains, budgets, and reserve authorities are bound and
+reverified at pre-Apply; free-form caller claims are not authority.
+
+A Production API service min/max decrease is forbidden as a generic
+`standalone-adjustment`. `post-promotion-normalization` requires a separate
+external `promotionStabilityEvidenceSchemaVersion=1` artifact, hashed before
+parsing, that proves completed Production traffic promotion, removal of the
+former emergency revision's traffic, the promoted current serving revision,
+and passed stability. A worker-only Production decrease does not require this
+traffic evidence. Capacity executions never normalize revision-owned fields.
 
 For the interrupted Staging release, use only V6 execution mode
 `post-edge-source-continuation`. It must hash and import the exact immutable V5
@@ -1083,6 +1094,12 @@ evidence. It must use the predecessor's exact immutable application digest and
 candidate identity without rebuilding the application artifact. Fresh discovery
 must prove the passed Edge successor state and managed Runtime values; observed
 provider defaults remain diagnostic only.
+
+For this V6 continuation, fresh Runtime state must exactly equal the
+predecessor API Runtime post-Apply lineage and serial, and fresh Edge state must
+exactly equal the predecessor Edge post-Apply lineage and serial. A serial `+1`
+with the same lineage is rejected and requires a separate reconciliation
+contract; V1-V5 state semantics are unchanged.
 
 The only executable continuation operations are:
 

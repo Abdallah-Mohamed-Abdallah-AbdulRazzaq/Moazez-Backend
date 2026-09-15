@@ -12,6 +12,12 @@ const CAPACITY_SPEC_VERSION = 1;
 const CAPACITY_EXECUTION_SCHEMA_VERSION = 1;
 const CAPACITY_OPERATION_ID = 'runtime-capacity-adjustment';
 const CANDIDATE_IDENTITY_VERSION = 'capacity-v1';
+const CAPACITY_BUDGET_EVIDENCE_SCHEMA_VERSION = 1;
+const PROMOTION_STABILITY_EVIDENCE_SCHEMA_VERSION = 1;
+const CAPACITY_EXECUTION_INTENTS = Object.freeze([
+  'standalone-adjustment',
+  'post-promotion-normalization',
+]);
 const GOOGLE_PROVIDER_NAME = 'registry.terraform.io/hashicorp/google';
 
 const RUNTIME_RESOURCE_ADDRESSES = Object.freeze({
@@ -466,32 +472,215 @@ function calculateCandidateOverlap({
   };
 }
 
-function validateBudgetEvidence(value, label, calculatedEnvelope) {
+function isPathInsideRepository(value) {
+  const relative = path.relative(REPOSITORY_ROOT, value);
+  return (
+    relative === '' ||
+    (!relative.startsWith('..') && !path.isAbsolute(relative))
+  );
+}
+
+function readHashBoundEvidence(value, label, errorPrefix) {
+  const authority = requireExactKeys(value, ['path', 'sha256'], label);
+  const evidencePath = requireString(authority.path, `${label}.path`);
+  const resolvedPath = path.resolve(evidencePath);
+  if (resolvedPath !== evidencePath || isPathInsideRepository(resolvedPath)) {
+    fail(
+      `${errorPrefix}_PATH_INVALID`,
+      `${label}.path must be absolute and outside the source repository.`,
+    );
+  }
+  const expectedSha256 = requireString(
+    authority.sha256,
+    `${label}.sha256`,
+    /^[a-f0-9]{64}$/u,
+  );
+  let rawBytes;
+  try {
+    rawBytes = fs.readFileSync(resolvedPath);
+  } catch (error) {
+    fail(
+      `${errorPrefix}_FILE_MISSING`,
+      `${label} could not be read: ${error.message}`,
+    );
+  }
+  const actualSha256 = sha256(rawBytes);
+  if (actualSha256 !== expectedSha256) {
+    fail(
+      `${errorPrefix}_HASH_MISMATCH`,
+      `${label} raw bytes do not match the governed SHA256.`,
+    );
+  }
+  let document;
+  try {
+    document = JSON.parse(rawBytes.toString('utf8'));
+  } catch (error) {
+    fail(
+      `${errorPrefix}_SCHEMA_INVALID`,
+      `${label} could not be parsed after hash validation: ${error.message}`,
+    );
+  }
+  return {
+    authority: { path: resolvedPath, sha256: actualSha256 },
+    document,
+  };
+}
+
+function validateBudgetDomain(value, label, calculatedEnvelope) {
   const evidence = requireExactKeys(
     value,
-    ['authorityRef', 'safetyReserveAuthority', 'effectiveApprovalBudget'],
+    ['effectiveApprovalBudget', 'safetyReserveAuthority'],
     label,
   );
-  requireString(evidence.authorityRef, `${label}.authorityRef`);
-  requireString(
-    evidence.safetyReserveAuthority,
-    `${label}.safetyReserveAuthority`,
-  );
-  requireInteger(
+  const effectiveApprovalBudget = requireInteger(
     evidence.effectiveApprovalBudget,
     `${label}.effectiveApprovalBudget`,
   );
-  if (evidence.effectiveApprovalBudget < calculatedEnvelope) {
+  const safetyReserveAuthority = requireString(
+    evidence.safetyReserveAuthority,
+    `${label}.safetyReserveAuthority`,
+  );
+  if (effectiveApprovalBudget < calculatedEnvelope) {
     fail(
       'CAPACITY_EVIDENCE_INSUFFICIENT',
       `${label} budget is below the calculated governed envelope.`,
     );
   }
+  return { effectiveApprovalBudget, safetyReserveAuthority };
+}
+
+function loadCapacityBudgetEvidence(value, environment, envelopes) {
+  environmentAuthority(environment);
+  const loaded = readHashBoundEvidence(
+    value,
+    'capacityEvidence',
+    'CAPACITY_EVIDENCE',
+  );
+  const evidence = requireExactKeys(
+    loaded.document,
+    [
+      'capacityBudgetEvidenceSchemaVersion',
+      'environment',
+      'status',
+      'evidenceId',
+      'database',
+      'queueRedis',
+      'realtimeRedis',
+    ],
+    'capacityEvidence.document',
+  );
+  if (
+    evidence.capacityBudgetEvidenceSchemaVersion !==
+    CAPACITY_BUDGET_EVIDENCE_SCHEMA_VERSION
+  ) {
+    fail(
+      'CAPACITY_EVIDENCE_SCHEMA_INVALID',
+      `capacity evidence schema must be ${CAPACITY_BUDGET_EVIDENCE_SCHEMA_VERSION}.`,
+    );
+  }
+  if (evidence.environment !== environment) {
+    fail(
+      'CAPACITY_EVIDENCE_ENVIRONMENT_MISMATCH',
+      'capacity evidence environment does not match the execution.',
+    );
+  }
+  if (evidence.status !== 'approved') {
+    fail(
+      'CAPACITY_EVIDENCE_NOT_APPROVED',
+      'capacity evidence status must be approved.',
+    );
+  }
+  const evidenceId = requireString(
+    evidence.evidenceId,
+    'capacityEvidence.document.evidenceId',
+  );
+  const evaluatedBudgets = {};
+  for (const resource of ['database', 'queueRedis', 'realtimeRedis']) {
+    evaluatedBudgets[resource] = validateBudgetDomain(
+      evidence[resource],
+      `capacityEvidence.document.${resource}`,
+      envelopes[resource],
+    );
+  }
+  return {
+    binding: {
+      path: loaded.authority.path,
+      sha256: loaded.authority.sha256,
+      schemaVersion: CAPACITY_BUDGET_EVIDENCE_SCHEMA_VERSION,
+      environment,
+      status: 'approved',
+      evidenceId,
+      evaluatedBudgets,
+    },
+    evaluatedBudgets,
+  };
+}
+
+function validateCapacityBudgetEvidenceBinding(value, environment, label) {
+  const binding = requireExactKeys(
+    value,
+    [
+      'path',
+      'sha256',
+      'schemaVersion',
+      'environment',
+      'status',
+      'evidenceId',
+      'evaluatedBudgets',
+    ],
+    label,
+  );
+  const evidencePath = path.resolve(
+    requireString(binding.path, `${label}.path`),
+  );
+  if (evidencePath !== binding.path || isPathInsideRepository(evidencePath)) {
+    fail(
+      'CAPACITY_EVIDENCE_PATH_INVALID',
+      `${label}.path must be absolute and external.`,
+    );
+  }
+  requireString(binding.sha256, `${label}.sha256`, /^[a-f0-9]{64}$/u);
+  if (
+    binding.schemaVersion !== CAPACITY_BUDGET_EVIDENCE_SCHEMA_VERSION ||
+    binding.environment !== environment ||
+    binding.status !== 'approved'
+  ) {
+    fail(
+      'CAPACITY_EVALUATION_MISMATCH',
+      `${label} has invalid schema, environment, or approval status.`,
+    );
+  }
+  requireString(binding.evidenceId, `${label}.evidenceId`);
+  const budgets = requireExactKeys(
+    binding.evaluatedBudgets,
+    ['database', 'queueRedis', 'realtimeRedis'],
+    `${label}.evaluatedBudgets`,
+  );
+  for (const resource of ['database', 'queueRedis', 'realtimeRedis']) {
+    const budget = requireExactKeys(
+      budgets[resource],
+      ['effectiveApprovalBudget', 'safetyReserveAuthority'],
+      `${label}.evaluatedBudgets.${resource}`,
+    );
+    requireInteger(
+      budget.effectiveApprovalBudget,
+      `${label}.evaluatedBudgets.${resource}.effectiveApprovalBudget`,
+    );
+    requireString(
+      budget.safetyReserveAuthority,
+      `${label}.evaluatedBudgets.${resource}.safetyReserveAuthority`,
+    );
+  }
+  return binding;
+}
+
+function governedBudgetEvaluation(binding, resource, calculatedEnvelope) {
+  const budget = binding.evaluatedBudgets[resource];
   return {
     calculatedGovernedEnvelope: calculatedEnvelope,
-    safetyReserveAuthority: evidence.safetyReserveAuthority,
-    effectiveApprovalBudget: evidence.effectiveApprovalBudget,
-    evidenceAuthorityUsed: evidence.authorityRef,
+    safetyReserveAuthority: budget.safetyReserveAuthority,
+    effectiveApprovalBudget: budget.effectiveApprovalBudget,
+    evidenceAuthorityUsed: binding.evidenceId,
     reserveStatus: 'governed',
     approvalResult: 'approved',
   };
@@ -501,7 +690,9 @@ function evaluateStandaloneCapacityChange({
   currentCapacitySpec,
   desiredCapacitySpec,
   capacityEvidence,
+  environment,
 }) {
+  environmentAuthority(environment);
   const { current, desired } = assertStandaloneRevisionCapacityPreserved(
     currentCapacitySpec,
     desiredCapacitySpec,
@@ -512,10 +703,17 @@ function evaluateStandaloneCapacityChange({
     (key) => desiredEnvelope[key] > currentEnvelope[key],
   );
   if (!increased) {
+    if (capacityEvidence !== null) {
+      fail(
+        'CAPACITY_EVIDENCE_UNEXPECTED',
+        'preservation or decrease must not claim unused capacity budget authority.',
+      );
+    }
     return {
       profileChange: 'preservation-or-decrease',
       currentEnvelope,
       desiredEnvelope,
+      capacityBudgetEvidenceAuthority: null,
       database: {
         calculatedGovernedEnvelope: desiredEnvelope.database,
         safetyReserveAuthority: null,
@@ -548,40 +746,47 @@ function evaluateStandaloneCapacityChange({
       'a new capacity increase requires governed database and Redis budget evidence.',
     );
   }
-  const evidence = requireExactKeys(
+  const loaded = loadCapacityBudgetEvidence(
     capacityEvidence,
-    ['database', 'queueRedis', 'realtimeRedis'],
-    'capacityEvidence',
+    environment,
+    desiredEnvelope,
   );
   return {
     profileChange: 'increase',
     currentEnvelope,
     desiredEnvelope,
-    database: validateBudgetEvidence(
-      evidence.database,
-      'capacityEvidence.database',
+    capacityBudgetEvidenceAuthority: loaded.binding,
+    database: governedBudgetEvaluation(
+      loaded.binding,
+      'database',
       desiredEnvelope.database,
     ),
-    queueRedis: validateBudgetEvidence(
-      evidence.queueRedis,
-      'capacityEvidence.queueRedis',
+    queueRedis: governedBudgetEvaluation(
+      loaded.binding,
+      'queueRedis',
       desiredEnvelope.queueRedis,
     ),
-    realtimeRedis: validateBudgetEvidence(
-      evidence.realtimeRedis,
-      'capacityEvidence.realtimeRedis',
+    realtimeRedis: governedBudgetEvaluation(
+      loaded.binding,
+      'realtimeRedis',
       desiredEnvelope.realtimeRedis,
     ),
   };
 }
 
-function validateRecordedCapacityEvaluation(value, current, desired) {
+function validateRecordedCapacityEvaluation(
+  value,
+  current,
+  desired,
+  environment,
+) {
   const evaluation = requireExactKeys(
     value,
     [
       'profileChange',
       'currentEnvelope',
       'desiredEnvelope',
+      'capacityBudgetEvidenceAuthority',
       'database',
       'queueRedis',
       'realtimeRedis',
@@ -609,6 +814,19 @@ function validateRecordedCapacityEvaluation(value, current, desired) {
     fail(
       'CAPACITY_EVALUATION_MISMATCH',
       'recorded capacity profile classification is invalid.',
+    );
+  }
+  const budgetAuthority = increased
+    ? validateCapacityBudgetEvidenceBinding(
+        evaluation.capacityBudgetEvidenceAuthority,
+        environment,
+        'capacityExecution.capacityEvaluation.capacityBudgetEvidenceAuthority',
+      )
+    : null;
+  if (!increased && evaluation.capacityBudgetEvidenceAuthority !== null) {
+    fail(
+      'CAPACITY_EVALUATION_MISMATCH',
+      'preservation/decrease must not claim capacity budget authority.',
     );
   }
   for (const [resource, calculatedEnvelope] of Object.entries(
@@ -662,6 +880,11 @@ function validateRecordedCapacityEvaluation(value, current, desired) {
       `capacityExecution.capacityEvaluation.${resource}.effectiveApprovalBudget`,
     );
     if (
+      resourceEvaluation.effectiveApprovalBudget !==
+        budgetAuthority.evaluatedBudgets[resource].effectiveApprovalBudget ||
+      resourceEvaluation.safetyReserveAuthority !==
+        budgetAuthority.evaluatedBudgets[resource].safetyReserveAuthority ||
+      resourceEvaluation.evidenceAuthorityUsed !== budgetAuthority.evidenceId ||
       resourceEvaluation.effectiveApprovalBudget < calculatedEnvelope ||
       resourceEvaluation.reserveStatus !== 'governed' ||
       resourceEvaluation.approvalResult !== 'approved'
@@ -675,34 +898,45 @@ function validateRecordedCapacityEvaluation(value, current, desired) {
   return evaluation;
 }
 
-function evaluateCandidateOverlapEvidence(overlapValue, capacityEvidence) {
+function evaluateCandidateOverlapEvidence(
+  overlapValue,
+  capacityEvidence,
+  environment,
+) {
   const overlap = requireObject(overlapValue, 'candidateOverlap');
+  environmentAuthority(environment);
   if (!capacityEvidence) {
     fail(
       'CAPACITY_DATABASE_EVIDENCE_REQUIRED',
       'candidate overlap requires governed database and Redis budget evidence.',
     );
   }
-  const evidence = requireExactKeys(
+  const envelopes = {
+    database: overlap.database.totalRuntimeOverlap,
+    queueRedis: overlap.queueRedis.totalRuntimeOverlap,
+    realtimeRedis: overlap.realtimeRedis.totalRuntimeOverlap,
+  };
+  const loaded = loadCapacityBudgetEvidence(
     capacityEvidence,
-    ['database', 'queueRedis', 'realtimeRedis'],
-    'capacityEvidence',
+    environment,
+    envelopes,
   );
   return {
-    database: validateBudgetEvidence(
-      evidence.database,
-      'capacityEvidence.database',
-      overlap.database.totalRuntimeOverlap,
+    capacityBudgetEvidenceAuthority: loaded.binding,
+    database: governedBudgetEvaluation(
+      loaded.binding,
+      'database',
+      envelopes.database,
     ),
-    queueRedis: validateBudgetEvidence(
-      evidence.queueRedis,
-      'capacityEvidence.queueRedis',
-      overlap.queueRedis.totalRuntimeOverlap,
+    queueRedis: governedBudgetEvaluation(
+      loaded.binding,
+      'queueRedis',
+      envelopes.queueRedis,
     ),
-    realtimeRedis: validateBudgetEvidence(
-      evidence.realtimeRedis,
-      'capacityEvidence.realtimeRedis',
-      overlap.realtimeRedis.totalRuntimeOverlap,
+    realtimeRedis: governedBudgetEvaluation(
+      loaded.binding,
+      'realtimeRedis',
+      envelopes.realtimeRedis,
     ),
   };
 }
@@ -733,13 +967,223 @@ function capacityAwareCandidateIdentity(artifactDigest, revisionValue) {
   };
 }
 
+function loadPromotionStabilityEvidence(value, environment) {
+  const loaded = readHashBoundEvidence(
+    value,
+    'promotionStabilityEvidence',
+    'PROMOTION_STABILITY_EVIDENCE',
+  );
+  const evidence = requireExactKeys(
+    loaded.document,
+    [
+      'promotionStabilityEvidenceSchemaVersion',
+      'evidenceId',
+      'environment',
+      'status',
+      'trafficPromotionStatus',
+      'formerEmergencyRevision',
+      'formerEmergencyRevisionTrafficStatus',
+      'promotedRevision',
+      'currentServingRevision',
+      'stabilityValidationStatus',
+    ],
+    'promotionStabilityEvidence.document',
+  );
+  if (
+    evidence.promotionStabilityEvidenceSchemaVersion !==
+    PROMOTION_STABILITY_EVIDENCE_SCHEMA_VERSION
+  ) {
+    fail(
+      'PROMOTION_STABILITY_EVIDENCE_SCHEMA_INVALID',
+      `promotion/stability evidence schema must be ${PROMOTION_STABILITY_EVIDENCE_SCHEMA_VERSION}.`,
+    );
+  }
+  if (evidence.environment !== environment || environment !== 'production') {
+    fail(
+      'PROMOTION_STABILITY_EVIDENCE_ENVIRONMENT_MISMATCH',
+      'promotion/stability evidence must bind the production execution.',
+    );
+  }
+  if (evidence.status !== 'approved') {
+    fail(
+      'PROMOTION_STABILITY_EVIDENCE_NOT_APPROVED',
+      'promotion/stability evidence status must be approved.',
+    );
+  }
+  if (evidence.trafficPromotionStatus !== 'completed') {
+    fail(
+      'PROMOTION_STABILITY_EVIDENCE_INCOMPLETE',
+      'traffic promotion must be completed before normalization.',
+    );
+  }
+  if (evidence.formerEmergencyRevisionTrafficStatus !== 'removed') {
+    fail(
+      'PROMOTION_STABILITY_EVIDENCE_INCOMPLETE',
+      'former emergency revision traffic must be safely removed.',
+    );
+  }
+  if (evidence.stabilityValidationStatus !== 'passed') {
+    fail(
+      'PROMOTION_STABILITY_EVIDENCE_NOT_STABLE',
+      'stability validation must have passed before normalization.',
+    );
+  }
+  for (const field of [
+    'evidenceId',
+    'formerEmergencyRevision',
+    'promotedRevision',
+    'currentServingRevision',
+  ]) {
+    requireString(
+      evidence[field],
+      `promotionStabilityEvidence.document.${field}`,
+    );
+  }
+  if (
+    evidence.promotedRevision !== evidence.currentServingRevision ||
+    evidence.formerEmergencyRevision === evidence.currentServingRevision
+  ) {
+    fail(
+      'PROMOTION_STABILITY_EVIDENCE_INCOMPLETE',
+      'the promoted revision must be the current serving revision and differ from the former emergency revision.',
+    );
+  }
+  return {
+    path: loaded.authority.path,
+    sha256: loaded.authority.sha256,
+    schemaVersion: PROMOTION_STABILITY_EVIDENCE_SCHEMA_VERSION,
+    environment: 'production',
+    status: 'approved',
+    evidenceId: evidence.evidenceId,
+    trafficPromotionStatus: 'completed',
+    formerEmergencyRevision: evidence.formerEmergencyRevision,
+    formerEmergencyRevisionTrafficStatus: 'removed',
+    promotedRevision: evidence.promotedRevision,
+    currentServingRevision: evidence.currentServingRevision,
+    stabilityValidationStatus: 'passed',
+  };
+}
+
+function validatePromotionStabilityEvidenceBinding(value, label) {
+  const binding = requireExactKeys(
+    value,
+    [
+      'path',
+      'sha256',
+      'schemaVersion',
+      'environment',
+      'status',
+      'evidenceId',
+      'trafficPromotionStatus',
+      'formerEmergencyRevision',
+      'formerEmergencyRevisionTrafficStatus',
+      'promotedRevision',
+      'currentServingRevision',
+      'stabilityValidationStatus',
+    ],
+    label,
+  );
+  const evidencePath = path.resolve(
+    requireString(binding.path, `${label}.path`),
+  );
+  if (evidencePath !== binding.path || isPathInsideRepository(evidencePath)) {
+    fail(
+      'PROMOTION_STABILITY_EVIDENCE_PATH_INVALID',
+      `${label}.path must be absolute and external.`,
+    );
+  }
+  requireString(binding.sha256, `${label}.sha256`, /^[a-f0-9]{64}$/u);
+  for (const field of [
+    'evidenceId',
+    'formerEmergencyRevision',
+    'promotedRevision',
+    'currentServingRevision',
+  ]) {
+    requireString(binding[field], `${label}.${field}`);
+  }
+  if (
+    binding.schemaVersion !== PROMOTION_STABILITY_EVIDENCE_SCHEMA_VERSION ||
+    binding.environment !== 'production' ||
+    binding.status !== 'approved' ||
+    binding.trafficPromotionStatus !== 'completed' ||
+    binding.formerEmergencyRevisionTrafficStatus !== 'removed' ||
+    binding.promotedRevision !== binding.currentServingRevision ||
+    binding.formerEmergencyRevision === binding.currentServingRevision ||
+    binding.stabilityValidationStatus !== 'passed'
+  ) {
+    fail(
+      'PROMOTION_STABILITY_EVIDENCE_INVALID',
+      `${label} does not prove completed production promotion and stability.`,
+    );
+  }
+  return binding;
+}
+
+function serviceCapacityDecreased(current, desired) {
+  return (
+    desired.api.serviceMinInstances < current.api.serviceMinInstances ||
+    desired.api.serviceMaxInstances < current.api.serviceMaxInstances
+  );
+}
+
+function validateCapacityExecutionIntent(
+  intent,
+  environment,
+  current,
+  desired,
+  promotionStabilityEvidence,
+) {
+  if (!CAPACITY_EXECUTION_INTENTS.includes(intent)) {
+    fail(
+      'CAPACITY_INTENT_UNSUPPORTED',
+      `executionIntent must be one of: ${CAPACITY_EXECUTION_INTENTS.join(', ')}.`,
+    );
+  }
+  const serviceDecrease = serviceCapacityDecreased(current, desired);
+  if (
+    environment === 'production' &&
+    serviceDecrease &&
+    intent === 'standalone-adjustment'
+  ) {
+    fail(
+      'PRODUCTION_SERVICE_DECREASE_REQUIRES_NORMALIZATION',
+      'production API service decreases require post-promotion-normalization.',
+    );
+  }
+  if (intent === 'post-promotion-normalization') {
+    if (environment !== 'production' || !serviceDecrease) {
+      fail(
+        'NORMALIZATION_INTENT_INVALID',
+        'post-promotion-normalization is only valid for a production API service decrease.',
+      );
+    }
+    if (!promotionStabilityEvidence) {
+      fail(
+        'PROMOTION_STABILITY_EVIDENCE_REQUIRED',
+        'production service normalization requires governed promotion/stability evidence.',
+      );
+    }
+    return loadPromotionStabilityEvidence(
+      promotionStabilityEvidence,
+      environment,
+    );
+  }
+  if (promotionStabilityEvidence !== null) {
+    fail(
+      'PROMOTION_STABILITY_EVIDENCE_UNEXPECTED',
+      'promotion/stability evidence is accepted only for post-promotion-normalization.',
+    );
+  }
+  return null;
+}
+
 function candidateServiceCapacity({
   mode,
   liveServiceMinInstances,
   liveServiceMaxInstances,
   governedServiceMinInstances,
   governedServiceMaxInstances,
-  promotionStable = false,
+  promotionStabilityEvidence = null,
 }) {
   for (const [name, value] of Object.entries({
     liveServiceMinInstances,
@@ -763,12 +1207,13 @@ function candidateServiceCapacity({
     };
   }
   if (mode === 'post_promotion_normalization') {
-    if (promotionStable !== true) {
+    if (!promotionStabilityEvidence) {
       fail(
-        'NORMALIZATION_PREREQUISITE_MISSING',
-        'service normalization requires completed promotion and stability evidence.',
+        'PROMOTION_STABILITY_EVIDENCE_REQUIRED',
+        'service normalization requires governed promotion/stability evidence.',
       );
     }
+    loadPromotionStabilityEvidence(promotionStabilityEvidence, 'production');
     return {
       minInstances: governedServiceMinInstances,
       maxInstances: governedServiceMaxInstances,
@@ -807,6 +1252,21 @@ function initialPlanLifecycle() {
   };
 }
 
+function initialPreApplyAuthority() {
+  return {
+    status: 'pending',
+    executionId: null,
+    operationId: null,
+    sourceSha: null,
+    terraformState: null,
+    savedPlanSha256: null,
+    capacityBudgetEvidenceAuthority: null,
+    promotionStabilityEvidenceAuthority: null,
+    evidenceRef: null,
+    recordedAt: null,
+  };
+}
+
 function buildCapacityExecution(input) {
   const context = requireExactKeys(
     input,
@@ -819,7 +1279,9 @@ function buildCapacityExecution(input) {
       'terraformState',
       'currentCapacitySpec',
       'desiredCapacitySpec',
+      'executionIntent',
       'capacityEvidence',
+      'promotionStabilityEvidence',
       'savedPlanPath',
     ],
     'context',
@@ -857,10 +1319,18 @@ function buildCapacityExecution(input) {
     context.desiredCapacitySpec,
     'context.desiredCapacitySpec',
   );
+  const promotionStabilityEvidenceAuthority = validateCapacityExecutionIntent(
+    context.executionIntent,
+    context.environment,
+    current,
+    desired,
+    context.promotionStabilityEvidence,
+  );
   const evaluation = evaluateStandaloneCapacityChange({
     currentCapacitySpec: current,
     desiredCapacitySpec: desired,
     capacityEvidence: context.capacityEvidence,
+    environment: context.environment,
   });
   if (
     isDeepStrictEqual(
@@ -895,6 +1365,8 @@ function buildCapacityExecution(input) {
     terraformStatePrecondition: state,
     currentCapacitySpec: current,
     desiredCapacitySpec: desired,
+    executionIntent: context.executionIntent,
+    promotionStabilityEvidenceAuthority,
     mutableCapacityChange: {
       before: standaloneMutableCapacity(current),
       after: standaloneMutableCapacity(desired),
@@ -910,6 +1382,7 @@ function buildCapacityExecution(input) {
       approvalRef: null,
       approvedAt: null,
     },
+    preApplyAuthority: initialPreApplyAuthority(),
     apply: {
       status: 'not-applied',
       attempted: false,
@@ -948,6 +1421,8 @@ function validateCapacityExecution(value) {
       'terraformStatePrecondition',
       'currentCapacitySpec',
       'desiredCapacitySpec',
+      'executionIntent',
+      'promotionStabilityEvidenceAuthority',
       'mutableCapacityChange',
       'forbiddenRevisionMutation',
       'capacityEvaluation',
@@ -955,6 +1430,7 @@ function validateCapacityExecution(value) {
       'savedPlanPath',
       'planEvidence',
       'approval',
+      'preApplyAuthority',
       'apply',
       'liveVerification',
       'singleConsumptionStatus',
@@ -1012,6 +1488,40 @@ function validateCapacityExecution(value) {
     execution.currentCapacitySpec,
     execution.desiredCapacitySpec,
   );
+  const serviceDecrease = serviceCapacityDecreased(current, desired);
+  if (!CAPACITY_EXECUTION_INTENTS.includes(execution.executionIntent)) {
+    fail(
+      'CAPACITY_INTENT_UNSUPPORTED',
+      'capacity execution intent is unsupported.',
+    );
+  }
+  if (
+    execution.environment === 'production' &&
+    serviceDecrease &&
+    execution.executionIntent === 'standalone-adjustment'
+  ) {
+    fail(
+      'PRODUCTION_SERVICE_DECREASE_REQUIRES_NORMALIZATION',
+      'production API service decreases require post-promotion-normalization.',
+    );
+  }
+  if (execution.executionIntent === 'post-promotion-normalization') {
+    if (execution.environment !== 'production' || !serviceDecrease) {
+      fail(
+        'NORMALIZATION_INTENT_INVALID',
+        'post-promotion-normalization is only valid for a production API service decrease.',
+      );
+    }
+    validatePromotionStabilityEvidenceBinding(
+      execution.promotionStabilityEvidenceAuthority,
+      'capacityExecution.promotionStabilityEvidenceAuthority',
+    );
+  } else if (execution.promotionStabilityEvidenceAuthority !== null) {
+    fail(
+      'PROMOTION_STABILITY_EVIDENCE_UNEXPECTED',
+      'standalone adjustments must not claim promotion/stability authority.',
+    );
+  }
   if (
     isDeepStrictEqual(
       standaloneMutableCapacity(current),
@@ -1027,6 +1537,7 @@ function validateCapacityExecution(value) {
     execution.capacityEvaluation,
     current,
     desired,
+    execution.environment,
   );
   if (
     execution.forbiddenRevisionMutation !== false ||
@@ -1072,6 +1583,22 @@ function validateCapacityExecution(value) {
     execution.approval,
     ['status', 'approver', 'approvalRef', 'approvedAt'],
     'capacityExecution.approval',
+  );
+  const preApply = requireExactKeys(
+    execution.preApplyAuthority,
+    [
+      'status',
+      'executionId',
+      'operationId',
+      'sourceSha',
+      'terraformState',
+      'savedPlanSha256',
+      'capacityBudgetEvidenceAuthority',
+      'promotionStabilityEvidenceAuthority',
+      'evidenceRef',
+      'recordedAt',
+    ],
+    'capacityExecution.preApplyAuthority',
   );
   const apply = requireExactKeys(
     execution.apply,
@@ -1176,6 +1703,64 @@ function validateCapacityExecution(value) {
   } else {
     fail('CAPACITY_LIFECYCLE_INVALID', 'approval status is invalid.');
   }
+  if (preApply.status === 'pending') {
+    if (!isDeepStrictEqual(preApply, initialPreApplyAuthority())) {
+      fail(
+        'CAPACITY_LIFECYCLE_INVALID',
+        'pending pre-Apply authority is contradictory.',
+      );
+    }
+  } else if (preApply.status === 'passed') {
+    requireString(
+      preApply.sourceSha,
+      'capacityExecution.preApplyAuthority.sourceSha',
+      /^[a-f0-9]{40}$/u,
+    );
+    requireString(
+      preApply.savedPlanSha256,
+      'capacityExecution.preApplyAuthority.savedPlanSha256',
+      /^[a-f0-9]{64}$/u,
+    );
+    requireString(
+      preApply.evidenceRef,
+      'capacityExecution.preApplyAuthority.evidenceRef',
+    );
+    requireIsoTimestamp(
+      preApply.recordedAt,
+      'capacityExecution.preApplyAuthority.recordedAt',
+    );
+    if (
+      preApply.executionId !== execution.executionId ||
+      preApply.operationId !== CAPACITY_OPERATION_ID ||
+      preApply.sourceSha !== execution.sourceSha ||
+      !isDeepStrictEqual(
+        requireState(
+          preApply.terraformState,
+          'capacityExecution.preApplyAuthority.terraformState',
+        ),
+        execution.terraformStatePrecondition,
+      ) ||
+      preApply.savedPlanSha256 !== plan.savedPlanSha256 ||
+      !isDeepStrictEqual(
+        preApply.capacityBudgetEvidenceAuthority,
+        execution.capacityEvaluation.capacityBudgetEvidenceAuthority,
+      ) ||
+      !isDeepStrictEqual(
+        preApply.promotionStabilityEvidenceAuthority,
+        execution.promotionStabilityEvidenceAuthority,
+      )
+    ) {
+      fail(
+        'CAPACITY_PRE_APPLY_AUTHORITY_MISMATCH',
+        'recorded pre-Apply authority does not belong to this exact execution.',
+      );
+    }
+  } else {
+    fail(
+      'CAPACITY_LIFECYCLE_INVALID',
+      'pre-Apply authority status is invalid.',
+    );
+  }
   if (apply.status === 'not-applied') {
     if (
       !isDeepStrictEqual(apply, {
@@ -1264,18 +1849,20 @@ function validateCapacityExecution(value) {
     execution.status,
     plan.status,
     approval.status,
+    preApply.status,
     apply.status,
     verification.status,
     execution.singleConsumptionStatus,
   ].join('|');
   const allowed = new Set([
-    'constructed|not-created|pending|not-applied|pending|unconsumed',
-    'plan-registered|registered|pending|not-applied|pending|unconsumed',
-    'approved|registered|approved|not-applied|pending|unconsumed',
-    'applied-awaiting-live-verification|registered|approved|succeeded|pending|consumed-success',
-    'closed|registered|approved|succeeded|passed|consumed-success',
-    'failed|registered|approved|failed|pending|invalidated-after-failed-attempt',
-    'failed|registered|approved|succeeded|failed|consumed-success',
+    'constructed|not-created|pending|pending|not-applied|pending|unconsumed',
+    'plan-registered|registered|pending|pending|not-applied|pending|unconsumed',
+    'approved|registered|approved|pending|not-applied|pending|unconsumed',
+    'pre-apply-authorized|registered|approved|passed|not-applied|pending|unconsumed',
+    'applied-awaiting-live-verification|registered|approved|passed|succeeded|pending|consumed-success',
+    'closed|registered|approved|passed|succeeded|passed|consumed-success',
+    'failed|registered|approved|passed|failed|pending|invalidated-after-failed-attempt',
+    'failed|registered|approved|passed|succeeded|failed|consumed-success',
   ]);
   if (!allowed.has(lifecycleSignature)) {
     fail(
@@ -1671,15 +2258,64 @@ function capacityPreApplyGuard(
       'saved plan bytes no longer match registered authority.',
     );
   }
+  const budgetAuthority =
+    execution.capacityEvaluation.capacityBudgetEvidenceAuthority;
+  if (budgetAuthority !== null) {
+    const reverified = loadCapacityBudgetEvidence(
+      { path: budgetAuthority.path, sha256: budgetAuthority.sha256 },
+      execution.environment,
+      execution.capacityEvaluation.desiredEnvelope,
+    ).binding;
+    if (!isDeepStrictEqual(reverified, budgetAuthority)) {
+      fail(
+        'CAPACITY_EVIDENCE_AUTHORITY_CHANGED',
+        'capacity budget evidence no longer matches the approved execution.',
+      );
+    }
+  }
+  const promotionAuthority = execution.promotionStabilityEvidenceAuthority;
+  if (promotionAuthority !== null) {
+    const reverified = loadPromotionStabilityEvidence(
+      { path: promotionAuthority.path, sha256: promotionAuthority.sha256 },
+      execution.environment,
+    );
+    if (!isDeepStrictEqual(reverified, promotionAuthority)) {
+      fail(
+        'PROMOTION_STABILITY_EVIDENCE_AUTHORITY_CHANGED',
+        'promotion/stability evidence no longer matches the approved execution.',
+      );
+    }
+  }
   return {
     status: 'passed',
     executionId: execution.executionId,
     operationId: CAPACITY_OPERATION_ID,
     sourceSha,
-    state,
+    terraformState: state,
     savedPlanSha256: execution.planEvidence.savedPlanSha256,
-    singleConsumptionStatus: 'unconsumed',
+    capacityBudgetEvidenceAuthority: structuredClone(budgetAuthority),
+    promotionStabilityEvidenceAuthority: structuredClone(promotionAuthority),
   };
+}
+
+function recordCapacityPreApplyGuard(
+  executionValue,
+  { sourceSha, terraformState, savedPlanBytes, evidenceRef, recordedAt },
+) {
+  const execution = structuredClone(validateCapacityExecution(executionValue));
+  const authority = capacityPreApplyGuard(execution, {
+    sourceSha,
+    terraformState,
+    savedPlanBytes,
+  });
+  execution.preApplyAuthority = {
+    ...authority,
+    evidenceRef: requireString(evidenceRef, 'evidenceRef'),
+    recordedAt: requireIsoTimestamp(recordedAt, 'recordedAt'),
+  };
+  execution.status = 'pre-apply-authorized';
+  validateCapacityExecution(execution);
+  return execution;
 }
 
 function recordCapacityApply(
@@ -1687,18 +2323,36 @@ function recordCapacityApply(
   { savedPlanBytes, result, evidenceRef, recordedAt, postApplyState = null },
 ) {
   const execution = structuredClone(validateCapacityExecution(executionValue));
-  capacityPreApplyGuard(execution, {
-    sourceSha: execution.sourceSha,
-    terraformState: execution.terraformStatePrecondition,
-    savedPlanBytes,
-  });
+  if (
+    execution.status !== 'pre-apply-authorized' ||
+    execution.preApplyAuthority.status !== 'passed' ||
+    execution.singleConsumptionStatus !== 'unconsumed'
+  ) {
+    fail(
+      'CAPACITY_PRE_APPLY_GUARD_FAILED',
+      'recorded passed fresh pre-Apply authority is required before Apply.',
+    );
+  }
+  if (!Buffer.isBuffer(savedPlanBytes) || savedPlanBytes.length === 0) {
+    fail('CAPACITY_SAVED_PLAN_CHANGED', 'saved plan bytes must be non-empty.');
+  }
+  const applyPlanHash = sha256(savedPlanBytes);
+  if (
+    applyPlanHash !== execution.planEvidence.savedPlanSha256 ||
+    applyPlanHash !== execution.preApplyAuthority.savedPlanSha256
+  ) {
+    fail(
+      'CAPACITY_SAVED_PLAN_CHANGED',
+      'Apply bytes must match both registered and pre-Apply Saved Plan authority.',
+    );
+  }
   if (!['succeeded', 'failed'].includes(result)) {
     fail(
       'CAPACITY_APPLY_RESULT_INVALID',
       'result must be succeeded or failed.',
     );
   }
-  const planHash = execution.planEvidence.savedPlanSha256;
+  const planHash = applyPlanHash;
   execution.consumedSavedPlanHashes.push(planHash);
   execution.apply = {
     status: result,
@@ -1837,10 +2491,13 @@ if (require.main === module) {
 module.exports = Object.freeze({
   BASELINE_CAPACITY_SPECS,
   CAPACITY_ENVIRONMENTS,
+  CAPACITY_BUDGET_EVIDENCE_SCHEMA_VERSION,
+  CAPACITY_EXECUTION_INTENTS,
   CAPACITY_EXECUTION_SCHEMA_VERSION,
   CAPACITY_OPERATION_ID,
   CAPACITY_SPEC_VERSION,
   CANDIDATE_IDENTITY_VERSION,
+  PROMOTION_STABILITY_EVIDENCE_SCHEMA_VERSION,
   CapacityControlError,
   RUNTIME_RESOURCE_ADDRESSES,
   approveCapacityPlan,
@@ -1856,7 +2513,10 @@ module.exports = Object.freeze({
   environmentAuthority,
   evaluateCandidateOverlapEvidence,
   evaluateStandaloneCapacityChange,
+  loadCapacityBudgetEvidence,
+  loadPromotionStabilityEvidence,
   recordCapacityApply,
+  recordCapacityPreApplyGuard,
   recordCapacityVerification,
   registerCapacityPlan,
   reviewCapacityPlanJson,
