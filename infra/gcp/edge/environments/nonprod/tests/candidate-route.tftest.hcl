@@ -161,6 +161,222 @@ run "maximum_recovery_attempt_produces_valid_rfc1035_candidate_neg_name" {
   }
 }
 
+run "production_candidate_route_defaults_disabled_and_normal_api_neg_is_unchanged" {
+  command = plan
+
+  module {
+    source = "../../modules/edge-environment"
+  }
+
+  variables {
+    project_id                    = "moazez-production"
+    environment                   = "production"
+    api_hostname                  = "api.moazez.cloud"
+    platform_admin_hostname       = "admin.moazez.cloud"
+    school_dashboard_hostname     = "schools.moazez.cloud"
+    api_service_name              = "moazez-production-api"
+    platform_admin_service_name   = "moazez-production-platform-admin"
+    school_dashboard_service_name = "moazez-production-school-dashboard"
+  }
+
+  assert {
+    condition     = length(google_compute_region_network_endpoint_group.api_candidate) == 0 && length(google_compute_backend_service.api_candidate) == 0
+    error_message = "Production Candidate-only resources must default to absent."
+  }
+
+  assert {
+    condition     = length(google_compute_url_map.edge.path_matcher[0].path_rule) == 0
+    error_message = "The Production API URL map must have no candidate route by default."
+  }
+
+  assert {
+    condition     = google_compute_region_network_endpoint_group.service["api"].cloud_run[0].service == "moazez-production-api" && google_compute_region_network_endpoint_group.service["api"].cloud_run[0].tag == null
+    error_message = "The normal Production API NEG must remain service-level and untagged."
+  }
+
+  assert {
+    condition     = google_compute_backend_service.service["api"].name == "moazez-production-api-backend" && one(google_compute_backend_service.service["api"].backend).group == google_compute_region_network_endpoint_group.service["api"].id
+    error_message = "The normal Production API backend must remain unchanged."
+  }
+}
+
+run "production_candidate_route_explicit_enable_targets_exact_candidate" {
+  command = plan
+
+  module {
+    source = "../../modules/edge-environment"
+  }
+
+  variables {
+    project_id                    = "moazez-production"
+    environment                   = "production"
+    api_hostname                  = "api.moazez.cloud"
+    platform_admin_hostname       = "admin.moazez.cloud"
+    school_dashboard_hostname     = "schools.moazez.cloud"
+    api_service_name              = "moazez-production-api"
+    platform_admin_service_name   = "moazez-production-platform-admin"
+    school_dashboard_service_name = "moazez-production-school-dashboard"
+    candidate_edge_enabled        = true
+    candidate_api_tag             = "candidate-cf720dacbc04"
+  }
+
+  assert {
+    condition     = google_compute_region_network_endpoint_group.api_candidate[0].cloud_run[0].service == "moazez-production-api" && google_compute_region_network_endpoint_group.api_candidate[0].cloud_run[0].tag == "candidate-cf720dacbc04"
+    error_message = "The Production Candidate NEG must target the exact API service and candidate tag."
+  }
+
+  assert {
+    condition     = google_compute_region_network_endpoint_group.api_candidate[0].name == "moazez-production-api-candidate-cf720dacbc04-neg"
+    error_message = "The Production Candidate NEG must retain its exact deterministic physical identity."
+  }
+
+  assert {
+    condition     = google_compute_backend_service.api_candidate[0].name == "moazez-production-api-candidate-backend" && one(google_compute_backend_service.api_candidate[0].backend).group == google_compute_region_network_endpoint_group.api_candidate[0].id
+    error_message = "The Production Candidate Backend must directly reference the tagged Candidate NEG."
+  }
+
+  assert {
+    condition     = google_compute_backend_service.api_candidate[0].protocol == "HTTP" && google_compute_backend_service.api_candidate[0].load_balancing_scheme == "EXTERNAL_MANAGED"
+    error_message = "The Production Candidate Backend must retain the existing external managed HTTP architecture."
+  }
+
+  assert {
+    condition     = google_compute_backend_service.api_candidate[0].security_policy == google_compute_backend_service.service["api"].security_policy && google_compute_backend_service.api_candidate[0].custom_request_headers == google_compute_backend_service.service["api"].custom_request_headers
+    error_message = "The Production Candidate Backend must reuse the normal API Cloud Armor and trusted-client-IP posture."
+  }
+
+  assert {
+    condition     = google_compute_url_map.edge.name == "moazez-production-edge-url-map" && google_compute_url_map.edge.path_matcher[0].path_rule[0].paths == toset(["/.well-known/moazez/candidate-readiness"])
+    error_message = "The Production URL map must expose only the exact candidate readiness path."
+  }
+
+  assert {
+    condition     = google_compute_url_map.edge.path_matcher[0].path_rule[0].route_action[0].url_rewrite[0].path_prefix_rewrite == "/api/v1/auth/me"
+    error_message = "The Production candidate smoke path must rewrite to the existing protected application route."
+  }
+}
+
+run "production_thirteen_digit_recovery_suffix_reaches_exact_name_boundary" {
+  command = plan
+
+  module {
+    source = "../../modules/edge-environment"
+  }
+
+  variables {
+    project_id                    = "moazez-production"
+    environment                   = "production"
+    api_hostname                  = "api.moazez.cloud"
+    platform_admin_hostname       = "admin.moazez.cloud"
+    school_dashboard_hostname     = "schools.moazez.cloud"
+    api_service_name              = "moazez-production-api"
+    platform_admin_service_name   = "moazez-production-platform-admin"
+    school_dashboard_service_name = "moazez-production-school-dashboard"
+    candidate_edge_enabled        = true
+    candidate_api_tag             = "candidate-cf720dacbc04-r9999999999999"
+  }
+
+  assert {
+    condition     = google_compute_region_network_endpoint_group.api_candidate[0].name == "moazez-production-api-candidate-cf720dacbc04-r9999999999999-neg"
+    error_message = "The 13-digit Production recovery suffix must produce the exact deterministic Candidate NEG name."
+  }
+
+  assert {
+    condition     = length(google_compute_region_network_endpoint_group.api_candidate[0].name) == 63 && can(regex("^[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?$", google_compute_region_network_endpoint_group.api_candidate[0].name))
+    error_message = "The 13-digit Production recovery Candidate NEG name must be exactly 63 characters and RFC1035-shaped."
+  }
+}
+
+run "production_fourteen_digit_recovery_suffix_fails_physical_name_guard" {
+  command = plan
+
+  module {
+    source = "../../modules/edge-environment"
+  }
+
+  variables {
+    project_id                    = "moazez-production"
+    environment                   = "production"
+    api_hostname                  = "api.moazez.cloud"
+    platform_admin_hostname       = "admin.moazez.cloud"
+    school_dashboard_hostname     = "schools.moazez.cloud"
+    api_service_name              = "moazez-production-api"
+    platform_admin_service_name   = "moazez-production-platform-admin"
+    school_dashboard_service_name = "moazez-production-school-dashboard"
+    candidate_edge_enabled        = true
+    candidate_api_tag             = "candidate-cf720dacbc04-r10000000000000"
+  }
+
+  expect_failures = [google_compute_region_network_endpoint_group.api_candidate]
+}
+
+run "production_candidate_route_rejects_missing_tag" {
+  command = plan
+
+  module {
+    source = "../../modules/edge-environment"
+  }
+
+  variables {
+    project_id                    = "moazez-production"
+    environment                   = "production"
+    api_hostname                  = "api.moazez.cloud"
+    platform_admin_hostname       = "admin.moazez.cloud"
+    school_dashboard_hostname     = "schools.moazez.cloud"
+    api_service_name              = "moazez-production-api"
+    platform_admin_service_name   = "moazez-production-platform-admin"
+    school_dashboard_service_name = "moazez-production-school-dashboard"
+    candidate_edge_enabled        = true
+  }
+
+  expect_failures = [google_compute_region_network_endpoint_group.api_candidate]
+}
+
+run "production_disabled_candidate_route_rejects_stale_tag" {
+  command = plan
+
+  module {
+    source = "../../modules/edge-environment"
+  }
+
+  variables {
+    project_id                    = "moazez-production"
+    environment                   = "production"
+    api_hostname                  = "api.moazez.cloud"
+    platform_admin_hostname       = "admin.moazez.cloud"
+    school_dashboard_hostname     = "schools.moazez.cloud"
+    api_service_name              = "moazez-production-api"
+    platform_admin_service_name   = "moazez-production-platform-admin"
+    school_dashboard_service_name = "moazez-production-school-dashboard"
+    candidate_api_tag             = "candidate-cf720dacbc04"
+  }
+
+  expect_failures = [google_compute_url_map.edge]
+}
+
+run "production_candidate_route_rejects_malformed_tag" {
+  command = plan
+
+  module {
+    source = "../../modules/edge-environment"
+  }
+
+  variables {
+    project_id                    = "moazez-production"
+    environment                   = "production"
+    api_hostname                  = "api.moazez.cloud"
+    platform_admin_hostname       = "admin.moazez.cloud"
+    school_dashboard_hostname     = "schools.moazez.cloud"
+    api_service_name              = "moazez-production-api"
+    platform_admin_service_name   = "moazez-production-platform-admin"
+    school_dashboard_service_name = "moazez-production-school-dashboard"
+    candidate_edge_enabled        = true
+    candidate_api_tag             = "candidate-CF720DACBC04"
+  }
+
+  expect_failures = [var.candidate_api_tag]
+}
+
 run "candidate_route_rejects_zero_recovery_attempt" {
   command = plan
 
@@ -228,7 +444,7 @@ run "candidate_route_rejects_missing_tag" {
     candidate_edge_enabled = true
   }
 
-  expect_failures = [google_compute_url_map.edge]
+  expect_failures = [google_compute_region_network_endpoint_group.api_candidate]
 }
 
 run "disabled_candidate_route_rejects_stale_tag" {

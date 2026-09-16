@@ -50,12 +50,12 @@ output "https_forwarding_rule_name" {
 }
 
 output "candidate_serverless_neg_name" {
-  description = "Optional staging candidate-tagged API NEG name."
+  description = "Optional governed candidate-tagged API NEG name."
   value       = var.candidate_edge_enabled ? google_compute_region_network_endpoint_group.api_candidate[0].name : null
 }
 
 output "candidate_backend_service_name" {
-  description = "Optional staging candidate API backend service name."
+  description = "Optional governed candidate API backend service name."
   value       = var.candidate_edge_enabled ? google_compute_backend_service.api_candidate[0].name : null
 }
 

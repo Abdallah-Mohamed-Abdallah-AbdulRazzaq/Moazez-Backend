@@ -41,6 +41,9 @@ const TERRAFORM_ROOT_FILES = Object.freeze([
 const RUNTIME_ROOT_FILES = Object.freeze(
   [...TERRAFORM_ROOT_FILES, 'variables.tf'].sort(),
 );
+const EDGE_PRODUCTION_ROOT_FILES = Object.freeze(
+  [...TERRAFORM_ROOT_FILES, 'variables.tf'].sort(),
+);
 const MODULE_FILES = Object.freeze(['main.tf', 'outputs.tf', 'variables.tf']);
 const TERRAFORM_IGNORE_POLICY = [
   '**/.terraform/',
@@ -84,6 +87,7 @@ const AUTHORIZED_STAGE30C1_PATHS = Object.freeze(
     `${EDGE_ROOT}/main.tf`,
     `${EDGE_ROOT}/outputs.tf`,
     `${EDGE_ROOT}/providers.tf`,
+    `${EDGE_ROOT}/variables.tf`,
     `${EDGE_ROOT}/versions.tf`,
     HISTORICAL_STAGE29_REMEDIATION_PATH,
     PLAN_CI_PATH,
@@ -367,12 +371,12 @@ function isDay2D1ReleaseOrchestrationPath(file) {
 }
 
 test('Stage 30C1 domains have exactly the governed source structure and ignore policy', () => {
-  assert.equal(AUTHORIZED_STAGE30C1_PATHS.length, 29);
+  assert.equal(AUTHORIZED_STAGE30C1_PATHS.length, 30);
   assert.deepEqual(filesInDirectory(ARTIFACT_ROOT), TERRAFORM_ROOT_FILES);
   assert.deepEqual(filesInDirectory(ARTIFACT_MODULE), MODULE_FILES);
   assert.deepEqual(filesInDirectory(RUNTIME_ROOT), RUNTIME_ROOT_FILES);
   assert.deepEqual(filesInDirectory(RUNTIME_MODULE), MODULE_FILES);
-  assert.deepEqual(filesInDirectory(EDGE_ROOT), TERRAFORM_ROOT_FILES);
+  assert.deepEqual(filesInDirectory(EDGE_ROOT), EDGE_PRODUCTION_ROOT_FILES);
   assert.equal(
     normalizedSource(`${ARTIFACT_DOMAIN}/.gitignore`),
     TERRAFORM_IGNORE_POLICY,
@@ -921,7 +925,7 @@ test('Production Edge root is the exact governed shared-module caller', () => {
   );
 });
 
-test('Production Edge remains default-disabled while staging gains only the tagged candidate path', () => {
+test('Production Edge defaults disabled and supports only governed explicit Candidate inputs', () => {
   assert.deepEqual(filesInDirectory(EDGE_MODULE), MODULE_FILES);
   assert.deepEqual(
     filesInDirectory(EDGE_NONPROD_ROOT),
@@ -938,12 +942,43 @@ test('Production Edge remains default-disabled while staging gains only the tagg
   const productionMain = normalizedHclSource(`${EDGE_ROOT}/main.tf`);
   assert.equal(
     assignmentExpression(productionMain, 'candidate_edge_enabled'),
-    'false',
+    'var.candidate_edge_enabled',
   );
   assert.equal(
     assignmentExpression(productionMain, 'candidate_api_tag'),
-    'null',
+    'var.candidate_api_tag',
   );
+
+  const productionVariables = normalizedHclSource(`${EDGE_ROOT}/variables.tf`);
+  assert.deepEqual(variableNames(productionVariables).sort(), [
+    'candidate_api_tag',
+    'candidate_edge_enabled',
+  ]);
+  const productionCandidateEnabled = variableBlock(
+    productionVariables,
+    'candidate_edge_enabled',
+  );
+  assert.equal(
+    assignmentExpression(productionCandidateEnabled, 'type'),
+    'bool',
+  );
+  assert.equal(
+    assignmentExpression(productionCandidateEnabled, 'default'),
+    'false',
+  );
+  const productionCandidateTag = variableBlock(
+    productionVariables,
+    'candidate_api_tag',
+  );
+  assert.equal(assignmentExpression(productionCandidateTag, 'type'), 'string');
+  assert.equal(assignmentExpression(productionCandidateTag, 'default'), 'null');
+  assert.equal(
+    assignmentExpression(productionCandidateTag, 'nullable'),
+    'true',
+  );
+  assert.deepEqual(validationPatterns(productionCandidateTag), [
+    '^candidate-[a-f0-9]{12}(-r[1-9][0-9]{0,14})?$',
+  ]);
 
   const nonprodMain = normalizedHclSource(`${EDGE_NONPROD_ROOT}/main.tf`);
   assert.equal(
@@ -956,10 +991,45 @@ test('Production Edge remains default-disabled while staging gains only the tagg
   );
 
   const moduleMain = normalizedHclSource(`${EDGE_MODULE}/main.tf`);
+  const moduleVariables = normalizedHclSource(`${EDGE_MODULE}/variables.tf`);
+  const moduleOutputs = normalizedHclSource(`${EDGE_MODULE}/outputs.tf`);
   assert.match(
     moduleMain,
     /resource\s+"google_project_service"\s+"certificate_manager"/u,
   );
+  assert.match(
+    moduleMain,
+    /governed_candidate_environments\s*=\s*\["staging", "production"\]/u,
+  );
+  assert.match(
+    moduleMain,
+    /contains\(local[.]governed_candidate_environments, var[.]environment\)/u,
+  );
+  assert.match(
+    moduleMain,
+    /candidate_edge_contract_valid\s*=\s*var[.]candidate_edge_enabled\s*\?\s*\([\s\S]*?var[.]candidate_api_tag\s*!=\s*null[\s\S]*?regex\("\^candidate-\[a-f0-9\]\{12\}\(-r\[1-9\]\[0-9\]\{0,14\}\)\?\$"[\s\S]*?\)\s*:\s*var[.]candidate_api_tag\s*==\s*null/u,
+  );
+  assert.equal(
+    (
+      moduleMain.match(
+        /^\s*candidate_neg_name\s*=\s*"\$\{local[.]name_prefix\}-api-/gmu,
+      ) ?? []
+    ).length,
+    1,
+  );
+  assert.match(
+    moduleMain,
+    /candidate_neg_name_valid\s*=\s*\([\s\S]*?length\(local[.]candidate_neg_name\)\s*>=\s*1[\s\S]*?length\(local[.]candidate_neg_name\)\s*<=\s*63[\s\S]*?\^\[a-z\]\(\?:\[-a-z0-9\]\{0,61\}\[a-z0-9\]\)\?\$/u,
+  );
+  const moduleCandidateTag = variableBlock(
+    moduleVariables,
+    'candidate_api_tag',
+  );
+  assert.deepEqual(validationPatterns(moduleCandidateTag), [
+    '^candidate-[a-f0-9]{12}(-r[1-9][0-9]{0,14})?$',
+  ]);
+  assert.doesNotMatch(moduleVariables, /staging-only|staging candidate/iu);
+  assert.doesNotMatch(moduleOutputs, /staging-only|staging candidate/iu);
   const normalNeg = resourceBlock(
     moduleMain,
     'google_compute_region_network_endpoint_group',
@@ -979,6 +1049,22 @@ test('Production Edge remains default-disabled while staging gains only the tagg
     assignmentExpression(candidateNeg, 'tag'),
     'var.candidate_api_tag',
   );
+  assert.equal(
+    assignmentExpression(candidateNeg, 'name'),
+    'local.candidate_neg_name',
+  );
+  const candidateNegLifecycle = extractBlock(
+    candidateNeg,
+    /^\s*lifecycle\s*\{/mu,
+    'Candidate NEG lifecycle',
+  );
+  assert.equal(
+    assignmentExpression(candidateNegLifecycle, 'create_before_destroy'),
+    'true',
+  );
+  assert.match(candidateNegLifecycle, /precondition\s*\{/u);
+  assert.match(candidateNegLifecycle, /var[.]candidate_api_tag\s*!=\s*null/u);
+  assert.match(candidateNegLifecycle, /local[.]candidate_neg_name_valid/u);
   const candidateBackend = resourceBlock(
     moduleMain,
     'google_compute_backend_service',
@@ -988,6 +1074,23 @@ test('Production Edge remains default-disabled while staging gains only the tagg
     assignmentExpression(candidateBackend, 'security_policy'),
     'google_compute_security_policy.edge.self_link',
   );
+  assert.equal(
+    assignmentExpression(candidateBackend, 'name'),
+    '"${local.name_prefix}-api-candidate-backend"',
+  );
+  assert.equal(
+    assignmentExpression(candidateBackend, 'group'),
+    'google_compute_region_network_endpoint_group.api_candidate[0].id',
+  );
+  assert.equal(assignmentExpression(candidateBackend, 'protocol'), '"HTTP"');
+  assert.equal(
+    assignmentExpression(candidateBackend, 'load_balancing_scheme'),
+    '"EXTERNAL_MANAGED"',
+  );
+  assert.match(
+    candidateBackend,
+    /custom_request_headers\s*=\s*\[[\s\S]*?"X-Moazez-Client-IP:\{client_ip_address\}"/u,
+  );
   assert.match(
     moduleMain,
     /candidate_smoke_public_path\s*=\s*"\/\.well-known\/moazez\/candidate-readiness"/u,
@@ -995,6 +1098,15 @@ test('Production Edge remains default-disabled while staging gains only the tagg
   assert.match(
     moduleMain,
     /candidate_smoke_backend_path\s*=\s*"\/api\/v1\/auth\/me"/u,
+  );
+  const urlMap = resourceBlock(moduleMain, 'google_compute_url_map', 'edge');
+  assert.match(
+    urlMap,
+    /for_each\s*=\s*var[.]candidate_edge_enabled\s*\?\s*\[local[.]candidate_smoke_public_path\]\s*:\s*\[\]/u,
+  );
+  assert.match(
+    urlMap,
+    /paths\s*=\s*\[path_rule[.]value\][\s\S]*?service\s*=\s*google_compute_backend_service[.]api_candidate\[0\][.]id[\s\S]*?path_prefix_rewrite\s*=\s*local[.]candidate_smoke_backend_path/u,
   );
   assert.equal(
     (moduleMain.match(/^resource\s+"google_compute_global_address"/gmu) ?? [])
@@ -1017,6 +1129,24 @@ test('Production Edge remains default-disabled while staging gains only the tagg
     1,
   );
   assert.doesNotMatch(moduleMain, /resource\s+"google_dns_/u);
+  assert.deepEqual(
+    resourceAddresses(moduleMain),
+    [
+      'google_certificate_manager_certificate.edge',
+      'google_certificate_manager_certificate_map.edge',
+      'google_certificate_manager_certificate_map_entry.host',
+      'google_compute_backend_service.api_candidate',
+      'google_compute_backend_service.service',
+      'google_compute_global_address.edge',
+      'google_compute_global_forwarding_rule.https',
+      'google_compute_region_network_endpoint_group.api_candidate',
+      'google_compute_region_network_endpoint_group.service',
+      'google_compute_security_policy.edge',
+      'google_compute_target_https_proxy.edge',
+      'google_compute_url_map.edge',
+      'google_project_service.certificate_manager',
+    ].sort(),
+  );
 });
 
 test('READMEs preserve source-only, build-time, and Dark pre-DNS boundaries', () => {
@@ -1101,6 +1231,10 @@ test('Candidate scope activation accepts each domain and rejects mixed or later-
     true,
   );
   assert.equal(assertStage30C1CandidateScope([`${EDGE_ROOT}/main.tf`]), true);
+  assert.equal(
+    assertStage30C1CandidateScope([`${EDGE_ROOT}/variables.tf`]),
+    true,
+  );
   assert.equal(assertStage30C1CandidateScope(AUTHORIZED_STAGE30C1_PATHS), true);
   for (const candidate of [
     [`${RUNTIME_ROOT}/main.tf`, 'src/example-unrelated-change.ts'],

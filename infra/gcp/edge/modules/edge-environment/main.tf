@@ -1,9 +1,16 @@
 locals {
-  name_prefix                  = "moazez-${var.environment}"
-  candidate_smoke_public_path  = "/.well-known/moazez/candidate-readiness"
-  candidate_smoke_backend_path = "/api/v1/auth/me"
+  name_prefix                     = "moazez-${var.environment}"
+  candidate_smoke_public_path     = "/.well-known/moazez/candidate-readiness"
+  candidate_smoke_backend_path    = "/api/v1/auth/me"
+  governed_candidate_environments = ["staging", "production"]
+  candidate_neg_name              = "${local.name_prefix}-api-${var.candidate_api_tag == null ? "invalid-candidate-tag" : var.candidate_api_tag}-neg"
+  candidate_neg_name_valid = (
+    length(local.candidate_neg_name) >= 1 &&
+    length(local.candidate_neg_name) <= 63 &&
+    can(regex("^[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?$", local.candidate_neg_name))
+  )
   candidate_edge_contract_valid = var.candidate_edge_enabled ? (
-    var.environment == "staging" &&
+    contains(local.governed_candidate_environments, var.environment) &&
     var.candidate_api_tag != null &&
     can(regex("^candidate-[a-f0-9]{12}(-r[1-9][0-9]{0,14})?$", var.candidate_api_tag))
   ) : var.candidate_api_tag == null
@@ -93,7 +100,7 @@ resource "google_compute_region_network_endpoint_group" "api_candidate" {
 
   project               = var.project_id
   region                = var.region
-  name                  = var.candidate_api_tag == null ? "${local.name_prefix}-api-invalid-neg" : "${local.name_prefix}-api-${var.candidate_api_tag}-neg"
+  name                  = local.candidate_neg_name
   network_endpoint_type = "SERVERLESS"
 
   cloud_run {
@@ -103,6 +110,14 @@ resource "google_compute_region_network_endpoint_group" "api_candidate" {
 
   lifecycle {
     create_before_destroy = true
+
+    precondition {
+      condition = (
+        var.candidate_api_tag != null &&
+        local.candidate_neg_name_valid
+      )
+      error_message = "The enabled Candidate NEG requires a non-null canonical tag and a deterministic RFC1035-compatible physical name between 1 and 63 characters."
+    }
   }
 }
 
@@ -178,7 +193,7 @@ resource "google_compute_url_map" "edge" {
   lifecycle {
     precondition {
       condition     = local.candidate_edge_contract_valid
-      error_message = "Candidate edge routing is staging-only, requires candidate_api_tag when enabled, and requires a null tag when disabled."
+      error_message = "Candidate edge routing is limited to governed environments, requires candidate_api_tag when enabled, and requires a null tag when disabled."
     }
   }
 }

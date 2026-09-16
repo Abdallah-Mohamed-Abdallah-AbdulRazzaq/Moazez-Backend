@@ -220,18 +220,21 @@ service's `traffic` attribute.
 
 ## Candidate edge contract
 
-The nonprod edge root accepts:
+The Terraform Candidate Edge capability is available only to the governed
+Staging and Production edge roots. Both roots accept:
 
 ```text
 candidate_edge_enabled = false | true
 candidate_api_tag      = null | candidate-<12 lowercase hex>[-rN]
 ```
 
-Disabled requires `false` plus `null`. Enabled requires `true`, Staging, and the
-same tag used by the API runtime candidate. Production is hard-wired to
-`false`/`null` and has no candidate override.
+Disabled requires `false` plus `null`. Enabled requires `true`, a governed
+`staging` or `production` environment, and the same tag used by that
+environment's API runtime candidate. Both roots default to `false`/`null`, so
+merging the capability alone creates no Candidate resources.
 
-Enabling the Staging capability adds only:
+Enabling the capability through separately governed environment inputs adds
+only:
 
 ```text
 module.edge_environment.google_compute_region_network_endpoint_group.api_candidate[0]
@@ -239,10 +242,20 @@ module.edge_environment.google_compute_backend_service.api_candidate[0]
 module.edge_environment.google_compute_url_map.edge
 ```
 
-The NEG targets the existing `moazez-staging-api` service plus the candidate
+The NEG targets the environment's existing API service plus the candidate
 Cloud Run tag. The backend reuses the existing API Cloud Armor policy and
 trusted client-IP header. The URL map adds one exact path. The normal untagged
-API NEG remains unchanged.
+API NEG remains unchanged. The deterministic Candidate NEG name is guarded at
+the resource level for the 63-character RFC1035 limit. The canonical tag
+grammar still allows a recovery suffix of up to 15 digits; Staging supports
+that maximum, while Production's longer prefix limits its physical NEG name to
+13 recovery digits.
+
+`scripts/deployment-control/runtime-release-control.cjs` remains the
+Staging-specific execution/controller path described by the historical
+Staging procedures below. Production Candidate Edge activation is not added to
+that controller by this source remediation. Production R3-F requires its
+separate DevOps Production procedure, explicit inputs, and a new Saved Plan.
 
 No new DNS record, hostname, public IP, certificate, certificate map, HTTPS
 proxy, forwarding rule, direct Cloud Run URL exposure, or parallel ingress is
