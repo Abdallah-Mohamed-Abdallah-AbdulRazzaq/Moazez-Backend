@@ -38,6 +38,11 @@ they do not prove cloud provisioning or deployment. On 2026-08-16, Abdallah
 approved only the staging sub-disposition of PRD0-Q023 at
 `2026-08-16T19:00:00+03:00` (Africa/Cairo). This staging-only approval does
 not select or imply a production API hostname or production edge disposition.
+On 2026-09-16 Abdallah approved `PRD0-Q004-REOPEN-20260916` as data owner and
+approver in Africa/Cairo. No approval clock time was recorded. The current
+branch is `IN_PLACE_LIVE_PRODUCTION`; Q044–Q046 reopened to `PENDING` because
+object data requiring preservation was discovered. Their 2026-08-09 approved
+answers remain historical evidence and are not new current dispositions.
 
 ## Authority statement
 
@@ -75,6 +80,14 @@ disposition does not select its recommended default, cannot unblock its
 production-dependent phase, and authorizes no implementation or cloud
 provisioning through silence.
 
+On 2026-09-16 the Q004 reopen trigger fired. Abdallah approved the existing
+Production PostgreSQL instance and exact two existing Production buckets as
+authoritative, with in-place governed evolution and preservation. This is not
+an external source migration, object copy/reseed, Redis copy, or planned
+destructive cutover. The current status of Q044, Q045, and Q046 is `PENDING`;
+no new option, migration mode, read-only period, checksum policy, cutback
+authority, or approval timestamp is inferred.
+
 ## Post-merge closeout note
 
 PR #46 merged the ten approved answers, and those answers remain binding. The
@@ -87,9 +100,23 @@ The two 2026-08-14 crypto-policy approvals reduce the current pending set to
 15 without rewriting any historical closeout count.
 The 2026-08-16 Q023 staging-only approval does not change these whole-question
 totals: Q023 remains pending overall while production remains unresolved.
+The 2026-09-16 Q004 reopening returns Q044–Q046 to pending, so the current
+whole-question totals are 30 approved and 18 pending.
 Silence selects no recommendation.
 Authoritative Phase 0B post-merge evidence remains in
 `07-phase-0b-post-merge-closeout.md`.
+
+## Historical Q004 and Q044–Q046 answers retained
+
+These exact answers remain evidence of the earlier approvals and are not
+current authority after the 2026-09-16 reopen trigger:
+
+```text
+PRD0-Q004: option=A; production_data_branch=CLEAN_START; persisted_postgresql_migration=N/A_WITH_EVIDENCE; object_migration=N/A_WITH_EVIDENCE_FOR_CURRENT_PRODUCTION_SOURCE; redis_migration=PROHIBITED_AS_COPY_SOURCE; redis_recovery=drain/reconcile/re-enqueue from persisted truth and rebuild ephemeral realtime state; authoritative_postgresql_source_count=0; authoritative_object_source_count=0; evidence_classification=OWNER_DATA_AUTHORITY_ATTESTATION; reopen_on_data_discovery=YES; approver=Abdallah; data_authority=Abdallah; approved_at=2026-08-07T04:46:00+03:00
+PRD0-Q044: option=A; source_buckets=NONE; source_object_count=0; provider_url_count=0; data_owner=Abdallah; approver=Abdallah
+PRD0-Q045: mode=N/A_WITH_EVIDENCE; read_only=N/A; delta=N/A; cutback_authority=N/A; approver=Abdallah
+PRD0-Q046: mode=N/A_WITH_EVIDENCE; sample=N/A; mismatch=N/A; approver=Abdallah
+```
 
 ## All-question disposition register
 
@@ -104,7 +131,7 @@ status or treating staging approval as production approval.
 | PRD0-Q001 | APPROVED | `PRD0-Q001: option=B; roles=API,Core Worker,Media Worker,Migration Job,Maintenance Scheduler; approver=Abdallah` |
 | PRD0-Q002 | APPROVED | `PRD0-Q002: option=A; api=HTTP and WebSocket entrypoints, controllers, authentication, authorization, realtime connections, queue producers, and synchronous Learning Media completion until the separately approved Phase 6 transition; core=communication notification generation, communication push delivery, school email delivery, import validation, dismissal-expiry consumption, and branding-cleanup consumption; media=Learning Media cleanup consumption and future asynchronous verification only after Phase 6 approval; migration=governed prisma migrate deploy only with no runtime DDL; maintenance=singular registration or invocation of dismissal expiry, Learning Media discovery, branding reconciliation, and future schedules; approver=Abdallah` |
 | PRD0-Q003 | APPROVED | `PRD0-Q003: option=B; tenants=10; users=25000; peak_rps=200; websockets=5000; queue_jobs_per_min={communication-notifications:60,communication-notification-push:1000,school-email-delivery:300,files-imports:10,dismissal-request-expiry:5,learning-media-cleanup:50,settings-branding-logo-cleanup:10}; media_concurrency=4; upload_p95_mib=25; upload_max_mib=200; growth_12m=3x; approver=Abdallah` |
-| PRD0-Q004 | APPROVED | `PRD0-Q004: option=A; production_data_branch=CLEAN_START; persisted_postgresql_migration=N/A_WITH_EVIDENCE; object_migration=N/A_WITH_EVIDENCE_FOR_CURRENT_PRODUCTION_SOURCE; redis_migration=PROHIBITED_AS_COPY_SOURCE; redis_recovery=drain/reconcile/re-enqueue from persisted truth and rebuild ephemeral realtime state; authoritative_postgresql_source_count=0; authoritative_object_source_count=0; evidence_classification=OWNER_DATA_AUTHORITY_ATTESTATION; reopen_on_data_discovery=YES; approver=Abdallah; data_authority=Abdallah; approved_at=2026-08-07T04:46:00+03:00` |
+| PRD0-Q004 | APPROVED | `PRD0-Q004-REOPEN-20260916: branch=IN_PLACE_LIVE_PRODUCTION; authoritative_postgresql_source_count=1; authoritative_postgresql_source=moazez-production-postgres-me-central2; authoritative_object_source_count=2; authoritative_object_sources=moazez-production-91001421934-private,moazez-production-91001421934-published; preserve_existing_postgresql_data=YES; preserve_existing_object_data=YES; external_source_migration=NO; object_copy_or_reseed=NO; redis_copy=NO; migration_mode=GOVERNED_IN_PLACE_SCHEMA_AND_DATA_EVOLUTION; planned_destructive_cutover=NO; data_owner=Abdallah; approver=Abdallah; approved_date=2026-09-16; timezone=Africa/Cairo` |
 | PRD0-Q005 | APPROVED | `PRD0-Q005: option=A; projects=production:moazez-production,staging:moazez-nonprod-91001421934,cloud_test:moazez-nonprod-91001421934,development:LOCAL_ONLY,ci:LOCAL_MINIO,dr:NONE; billing_owner=Abdallah; org_policy_owner=Abdallah` |
 | PRD0-Q006 | APPROVED | `PRD0-Q006: option=A; primary_region=me-central2; dr_region=NONE; residency_constraint=Initial production data and primary managed services remain in Saudi Arabia; cross-region DR requires separate residency approval; approver=Abdallah` |
 | PRD0-Q007 | APPROVED | `PRD0-Q007: rto=30m; rpo=15m; pitr=14d; backup_retention=30d; restore_drill=quarterly; cross_region=NO; approver=Abdallah; approval_date=2026-08-12; timezone=Africa/Cairo` |
@@ -144,9 +171,9 @@ status or treating staging approval as production approval.
 | PRD0-Q041 | APPROVED | `PRD0-Q041: option=D; allowlist=HTTPS external URLs only, with all direct GCS/Google Cloud Storage/MinIO/S3-compatible provider URLs forbidden for new writes; compatibility_window=NONE; legacy_owner=Abdallah; approver=Abdallah` |
 | PRD0-Q042 | APPROVED | `PRD0-Q042: managed=ALLOW managed File-backed branding for new writes and reads; external_https=READ_ONLY compatibility only where an already-persisted safe HTTPS value exists, with no new legacy URL writes; provider_url=BLOCK_NEW and treat any discovered legacy provider URL as a cutover blocker requiring explicit inventory/review; unsafe=REJECT; null=ALLOW; approver=Abdallah` |
 | PRD0-Q043 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 5B load acceptance,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
-| PRD0-Q044 | APPROVED | `PRD0-Q044: option=A; source_buckets=NONE; source_object_count=0; provider_url_count=0; data_owner=Abdallah; approver=Abdallah` |
-| PRD0-Q045 | APPROVED | `PRD0-Q045: mode=N/A_WITH_EVIDENCE; read_only=N/A; delta=N/A; cutback_authority=N/A; approver=Abdallah` |
-| PRD0-Q046 | APPROVED | `PRD0-Q046: mode=N/A_WITH_EVIDENCE; sample=N/A; mismatch=N/A; approver=Abdallah` |
+| PRD0-Q044 | PENDING | `PENDING(owner=Abdallah,deadline=before separate DevOps/governance dependency determination,constraint=REOPENED_PENDING_OWNER_DISPOSITION; HISTORICAL_APPROVAL_DATE=2026-08-09; HISTORICAL_APPROVED_ANSWER={PRD0-Q044: option=A; source_buckets=NONE; source_object_count=0; provider_url_count=0; data_owner=Abdallah; approver=Abdallah}; REOPEN_REASON=OBJECT_DATA_REQUIRING_PRESERVATION_DISCOVERED; CURRENT_OWNER_DISPOSITION=NOT_YET_SELECTED; silence selects no new option or operational policy)` |
+| PRD0-Q045 | PENDING | `PENDING(owner=Abdallah,deadline=before separate DevOps/governance dependency determination,constraint=REOPENED_PENDING_OWNER_DISPOSITION; HISTORICAL_APPROVAL_DATE=2026-08-09; HISTORICAL_APPROVED_ANSWER={PRD0-Q045: mode=N/A_WITH_EVIDENCE; read_only=N/A; delta=N/A; cutback_authority=N/A; approver=Abdallah}; REOPEN_REASON=OBJECT_DATA_REQUIRING_PRESERVATION_DISCOVERED; CURRENT_OWNER_DISPOSITION=NOT_YET_SELECTED; silence selects no new read-only, delta, or cutback policy)` |
+| PRD0-Q046 | PENDING | `PENDING(owner=Abdallah,deadline=before separate DevOps/governance dependency determination,constraint=REOPENED_PENDING_OWNER_DISPOSITION; HISTORICAL_APPROVAL_DATE=2026-08-09; HISTORICAL_APPROVED_ANSWER={PRD0-Q046: mode=N/A_WITH_EVIDENCE; sample=N/A; mismatch=N/A; approver=Abdallah}; REOPEN_REASON=OBJECT_DATA_REQUIRING_PRESERVATION_DISCOVERED; CURRENT_OWNER_DISPOSITION=NOT_YET_SELECTED; silence selects no checksum or mismatch policy)` |
 | PRD0-Q047 | APPROVED | `PRD0-Q047: buckets=prod_private:moazez-production-91001421934-private,prod_published:moazez-production-91001421934-published,staging_private:moazez-nonprod-91001421934-private,staging_published:moazez-nonprod-91001421934-published; region=me-central2; public_policy=ALL_BUCKETS_PRIVATE+UBLA_ENABLED+PAP_ENFORCED+NO_ANONYMOUS_ACCESS; cors=Q022_EXACT_HTTPS_ORIGINS_ONLY; signer=moazez-gcs-signer-per-project; iac_owner=Abdallah; approver=Abdallah; learning_media=PRIVATE_BUCKET_PREFIXES(staging,final)` |
 | PRD0-Q048 | APPROVED | `PRD0-Q048: versioning=ENABLED_FOR_ALL_BUCKETS; lifecycle=NO_AUTOMATIC_TRANSITION_OR_DELETION_RULES_DURING_PHASE_5A; deletion_protection=SOFT_DELETE_7_DAYS+TERRAFORM_PREVENT_DESTROY+BUCKET_LOCK_DISABLED; recovery_window=7_DAYS_SOFT_DELETE; cost_owner=Abdallah; approver=Abdallah` |
 
@@ -155,8 +182,8 @@ status or treating staging approval as production approval.
 | Disposition | Count |
 | --- | ---: |
 | Total | 48 |
-| APPROVED | 33 |
-| PENDING | 15 |
+| APPROVED | 30 |
+| PENDING | 18 |
 | Omitted | 0 |
 | Duplicated | 0 |
 
@@ -165,7 +192,7 @@ PRD0-Q004, PRD0-Q005, PRD0-Q006, PRD0-Q007, PRD0-Q008, PRD0-Q010, PRD0-Q011, PRD
 PRD0-Q013, PRD0-Q014, PRD0-Q015, PRD0-Q017, PRD0-Q018, PRD0-Q019, PRD0-Q022,
 PRD0-Q020, PRD0-Q021, PRD0-Q024, PRD0-Q026, PRD0-Q028, PRD0-Q029,
 PRD0-Q030, PRD0-Q032, PRD0-Q041,
-PRD0-Q042, PRD0-Q044, PRD0-Q045, PRD0-Q046, PRD0-Q047, and PRD0-Q048. The Phase 0B snapshot was
+PRD0-Q042, PRD0-Q047, and PRD0-Q048. The Phase 0B snapshot was
 exactly 10 approved and 38 pending; later amendments through 2026-08-07 added
 Q003, Q004, Q006, Q012, Q013, Q014, Q015, Q017, and Q026, and the 2026-08-09
 amendment added Q005, Q008, Q018, Q019, and Q044–Q048. The 2026-08-11
@@ -173,7 +200,9 @@ amendment added Q041 and Q042. The 2026-08-12 amendment added Q007. The
 2026-08-14 amendment added Q020 and Q021. All other PRD0-Q001 through
 PRD0-Q048 entries are explicitly pending as shown. The 2026-08-16 amendment
 adds one staging-scoped approval inside pending Q023; it does not add Q023 to
-the fully approved ID set or change the 33/15 whole-question totals.
+the fully approved ID set. The 2026-09-16 amendment reopens Q044–Q046 and
+changes the current whole-question totals to 30/18 without rewriting earlier
+historical totals.
 
 ## Scope and non-authorization
 

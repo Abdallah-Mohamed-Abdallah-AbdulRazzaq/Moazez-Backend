@@ -18,6 +18,7 @@ const {
   inspectRepositoryState,
   resolveVerificationMode,
   runGovernedFreshMigration,
+  validateCurrentProductionDataAuthority,
   validateRepositoryState,
 } = require('../ci/prd3-g05-clean-start.cjs');
 
@@ -161,7 +162,7 @@ test('G05 verification mode parsing preserves historical modes and adds current 
   assert.throws(() => resolveVerificationMode(['--regression', '--force']));
 });
 
-test('G05 current CI mode runs clean-start behavior without historical snapshots', () => {
+test('G05 current CI mode runs disposable migration behavior without historical Git snapshots', () => {
   const harnessSource = read('scripts/ci/prd3-g05-clean-start.cjs');
   assert.equal(
     validateRepositoryState(
@@ -411,55 +412,167 @@ historicalTest(
   },
 );
 
-test('Q004 clean-start contract locks the exact approved decision', () => {
+test('Q004 contract v2 locks the exact current in-place Production authority', () => {
   const contract = readJson(
     'config/deployment/production-data-branch.contract.json',
   );
-  assert.equal(contract.contractVersion, 1);
-  assert.equal(contract.decision, 'PRD0-Q004');
-  assert.equal(contract.decisionId, 'PRD0-D029');
-  assert.equal(contract.branch, 'CLEAN_START');
-  assert.equal(contract.postgresqlMigration, 'N/A_WITH_EVIDENCE');
+  const validated = validateCurrentProductionDataAuthority(contract);
+  assert.equal(validated.currentProductionDataAuthority.contractVersion, 2);
   assert.equal(
-    contract.objectMigration,
-    'N/A_WITH_EVIDENCE_FOR_CURRENT_PRODUCTION_SOURCE',
-  );
-  assert.equal(contract.approver, 'Abdallah');
-  assert.equal(contract.dataAuthority, 'Abdallah');
-  assert.equal(contract.approvedAt, '2026-08-07T04:46:00+03:00');
-});
-
-test('zero-source counts are owner/data-authority attestation, not a cloud scan', () => {
-  const contract = readJson(
-    'config/deployment/production-data-branch.contract.json',
-  );
-  assert.equal(contract.authoritativePostgresqlSourceCount, 0);
-  assert.equal(contract.authoritativeObjectSourceCount, 0);
-  assert.equal(
-    contract.sourceCountEvidence.classification,
-    'OWNER_DATA_AUTHORITY_ATTESTATION',
+    validated.currentProductionDataAuthority.reopenedDecision,
+    'PRD0-Q004-REOPEN-20260916',
   );
   assert.equal(
-    contract.sourceCountEvidence.externalCloudAccountsScanned,
+    validated.currentProductionDataAuthority.branch,
+    'IN_PLACE_LIVE_PRODUCTION',
+  );
+  assert.equal(
+    validated.currentProductionDataAuthority.authoritativePostgresqlSource,
+    'moazez-production-postgres-me-central2',
+  );
+  assert.deepEqual(
+    validated.currentProductionDataAuthority.authoritativeObjectSources,
+    [
+      'moazez-production-91001421934-private',
+      'moazez-production-91001421934-published',
+    ],
+  );
+  assert.equal(
+    validated.objectDataDiscoverySnapshot.evidenceSemantics,
+    'DATED_DISCOVERY_EVIDENCE',
+  );
+  assert.equal(
+    validated.objectDataDiscoverySnapshot.treatedAsPermanentLiveInvariant,
     false,
   );
-  assert.match(
-    contract.sourceCountEvidence.statement,
-    /no real authoritative Production PostgreSQL database/u,
-  );
+  for (const obsoleteField of [
+    'approvedAt',
+    'migrationCutback',
+    'objectMigration',
+    'reopenOnDataDiscovery',
+    'reopenRule',
+    'sourceCountEvidence',
+    'sourceRetention',
+  ]) {
+    assert.equal(Object.hasOwn(contract, obsoleteField), false, obsoleteField);
+  }
 });
 
-test('Redis copy is prohibited and later data discovery must reopen Q004/D029', () => {
-  const contract = readJson(
+test('current authority validator rejects unsafe or incomplete v2 semantics', () => {
+  const baseline = readJson(
     'config/deployment/production-data-branch.contract.json',
   );
-  assert.equal(contract.redisCopyAllowed, false);
-  assert.equal(contract.redisRecoveryPolicy, 'persisted-truth-reconciliation');
-  assert.equal(contract.reopenOnDataDiscovery, true);
-  assert.match(
-    contract.reopenRule,
-    /automatically reopens PRD0-Q004 \/ PRD0-D029/u,
+  const cases = [
+    ['contractVersion', (value) => (value.contractVersion = 1)],
+    ['missing reopenedDecision', (value) => delete value.reopenedDecision],
+    ['wrong reopenedDecision', (value) => (value.reopenedDecision = 'WRONG')],
+    ['clean-start branch', (value) => (value.branch = 'CLEAN_START')],
+    [
+      'PostgreSQL source count',
+      (value) => (value.authoritativePostgresqlSourceCount = 0),
+    ],
+    [
+      'missing PostgreSQL source',
+      (value) => delete value.authoritativePostgresqlSource,
+    ],
+    [
+      'wrong PostgreSQL source',
+      (value) => (value.authoritativePostgresqlSource = 'wrong-source'),
+    ],
+    [
+      'object source count',
+      (value) => (value.authoritativeObjectSourceCount = 1),
+    ],
+    [
+      'wrong approved bucket',
+      (value) => (value.authoritativeObjectSources[1] = 'wrong-bucket'),
+    ],
+    [
+      'missing approved bucket',
+      (value) => value.authoritativeObjectSources.pop(),
+    ],
+    [
+      'duplicate approved bucket',
+      (value) =>
+        (value.authoritativeObjectSources[1] =
+          value.authoritativeObjectSources[0]),
+    ],
+    [
+      'PostgreSQL preservation',
+      (value) => (value.preserveExistingPostgresqlData = false),
+    ],
+    [
+      'object preservation',
+      (value) => (value.preserveExistingObjectData = false),
+    ],
+    [
+      'external source migration',
+      (value) => (value.externalSourceMigration = true),
+    ],
+    ['object copy or reseed', (value) => (value.objectCopyOrReseed = true)],
+    ['Redis copy', (value) => (value.redisCopyAllowed = true)],
+    [
+      'planned destructive cutover',
+      (value) => (value.plannedDestructiveCutover = true),
+    ],
+    ['approver', (value) => (value.approver = 'wrong')],
+    ['data authority', (value) => (value.dataAuthority = 'wrong')],
+    ['approved date', (value) => (value.approvedDate = '2026-09-15')],
+    ['timezone', (value) => (value.timezone = 'UTC')],
+  ];
+  for (const [label, mutate] of cases) {
+    const candidate = JSON.parse(JSON.stringify(baseline));
+    mutate(candidate);
+    assert.throws(
+      () => validateCurrentProductionDataAuthority(candidate),
+      /current Production data authority/u,
+      label,
+    );
+  }
+});
+
+test('snapshot tampering is rejected as historical evidence integrity, not live occupancy', () => {
+  const baseline = readJson(
+    'config/deployment/production-data-branch.contract.json',
   );
+  for (const [label, mutate] of [
+    [
+      'wrong observed date',
+      (value) =>
+        (value.objectDataDiscoverySnapshot.observedDate = '2026-09-15'),
+    ],
+    [
+      'wrong evidence classification',
+      (value) =>
+        (value.objectDataDiscoverySnapshot.evidenceClassification =
+          'CURRENT_LIVE_BUCKET_OCCUPANCY_REQUIREMENT'),
+    ],
+    [
+      'tampered private discovery value',
+      (value) =>
+        (value.objectDataDiscoverySnapshot.privateBucketDataPresent = false),
+    ],
+    [
+      'tampered published discovery value',
+      (value) =>
+        (value.objectDataDiscoverySnapshot.publishedBucketDataPresent = true),
+    ],
+  ]) {
+    const candidate = JSON.parse(JSON.stringify(baseline));
+    mutate(candidate);
+    assert.throws(
+      () => validateCurrentProductionDataAuthority(candidate),
+      (error) => {
+        assert.match(error.message, /DATED_DISCOVERY_EVIDENCE/u, label);
+        assert.match(
+          error.message,
+          /historical evidence integrity, not live bucket occupancy/u,
+          label,
+        );
+        return true;
+      },
+    );
+  }
 });
 
 test('exactly the two deterministic reference seed sources are approved', () => {
@@ -556,36 +669,32 @@ test('approved seed modules export only the approved entrypoints and no business
 });
 
 historicalTest(
-  'ADR-0006 remains D029 owner while unrelated decisions stay pending',
+  'ADR-0006 preserves historical clean start while current authority is in place',
   () => {
     const adr = read(
       'adr/ADR-0006-production-data-source-object-storage-and-signed-capability-boundary.md',
     );
-    assert.match(adr, /PRD0-D029=LOCKED_FROM_APPROVED_CONTEXT/u);
-    assert.match(adr, /PRD0-Q004=APPROVED/u);
-    assert.match(adr, /branch=CLEAN_START/u);
-    assert.match(adr, /sole authoritative owner[\s\S]*PRD0-D029/u);
-    for (const decision of [
-      'D009',
-      'D019',
-      'D049',
-      'D050',
-      'D051',
-      'D052',
-      'D053',
-    ]) {
-      assert.match(adr, new RegExp(`PRD0-${decision}.*Pending`, 'u'));
+    assert.match(adr, /PRD0-Q004 production-data-authority reopening/u);
+    assert.match(adr, /`IN_PLACE_LIVE_PRODUCTION`/u);
+    assert.match(adr, /moazez-production-postgres-me-central2/u);
+    assert.match(adr, /Historical clean-start object branch/u);
+    assert.match(adr, /PRD0-Q044=APPROVED_OPTION_A/u);
+    assert.match(adr, /PRD0-D029[\s\S]*sole authoritative owner/u);
+    for (const decision of ['D049', 'D050', 'D051']) {
+      assert.match(
+        adr,
+        new RegExp(
+          `PRD0-${decision}.*OWNER_DECISION_REQUIRED.*REOPENED_PENDING_OWNER_DISPOSITION`,
+          'u',
+        ),
+      );
     }
-    assert.match(adr, /PRD0-D010.*Proposed recommendation, not accepted/u);
     const normalizedAdr = adr.replace(/\s+/gu, ' ');
     for (const nonAuthorization of [
-      'GCS provider selection',
-      'bucket topology',
-      'object lifecycle',
-      'signing IAM',
-      'source deletion',
-      'physical cleanup',
-      'future real-data destruction',
+      'external source migration',
+      'object copy or reseed',
+      'Redis copy',
+      'planned destructive cutover',
     ]) {
       assert.ok(normalizedAdr.includes(nonAuthorization));
     }
@@ -593,7 +702,7 @@ historicalTest(
 );
 
 historicalTest(
-  'live decision, acceptance, and disposition registers agree on G05',
+  'current registers preserve completed historical G05 and reopened authority',
   () => {
     const decision = read(
       'docs/production-readiness/phase-0/02-production-decision-register.md',
@@ -605,19 +714,17 @@ historicalTest(
       'docs/production-readiness/phase-0/05-owner-decision-disposition-register.md',
     );
     assert.match(decision, /PRD0-D029.*LOCKED_FROM_APPROVED_CONTEXT/u);
-    assert.match(
-      matrix,
-      /PRD3-G05.*IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE/u,
-    );
-    assert.match(matrix, /PRD3-G06.*NOT_STARTED/u);
+    assert.match(matrix, /PRD3-G05.*COMPLETE/u);
+    assert.match(matrix, /Q004_CURRENT_AUTHORITY=PRD0-Q004-REOPEN-20260916/u);
     assert.match(dispositions, /PRD0-Q004 \| APPROVED/u);
     assert.match(
       dispositions,
-      /evidence_classification=OWNER_DATA_AUTHORITY_ATTESTATION/u,
+      /ORIGINAL_BRANCH=CLEAN_START|production_data_branch=CLEAN_START/u,
     );
+    assert.match(dispositions, /PRD0-Q044 \| PENDING/u);
     assert.match(
       dispositions,
-      /snapshot was exactly 10 approved and 38 pending/u,
+      /snapshot was\s+exactly 10 approved and 38 pending/u,
     );
   },
 );
@@ -678,9 +785,14 @@ historicalTest(
       'No production or staging database was accessed',
       'No production object storage was accessed',
       'No cloud resources were accessed',
-      'Q004/D029 reopens before cutover',
+      'CURRENT_REOPEN_DECISION=PRD0-Q004-REOPEN-20260916',
+      'CURRENT_BRANCH=IN_PLACE_LIVE_PRODUCTION',
+      'Authoritative PostgreSQL source count | `0`',
+      'Authoritative object source count | `0`',
       'Phase 8 bootstrap concern',
       'PRD3-G05=IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE',
+      'PRD3-G05=COMPLETE',
+      'PHASE_3=COMPLETE',
     ]) {
       assert.ok(evidence.includes(required));
     }

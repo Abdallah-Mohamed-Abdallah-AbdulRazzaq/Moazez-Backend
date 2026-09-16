@@ -3,7 +3,9 @@
 ## Status
 
 Accepted for PRD0-D009, PRD0-D010, PRD0-D019, PRD0-D022, PRD0-D029, and
-PRD0-D049 through PRD0-D053.
+PRD0-D052 through PRD0-D053. PRD0-D049 through PRD0-D051 are
+`OWNER_DECISION_REQUIRED` with the dated current classification
+`REOPENED_PENDING_OWNER_DISPOSITION`.
 
 ## Approval authority
 
@@ -14,6 +16,8 @@ PRD0-D049 through PRD0-D053.
 - PRD0-Q004 approved: `2026-08-07T04:46:00+03:00`
 - PRD0-Q008, PRD0-Q019, and PRD0-Q044–PRD0-Q048 approved: `2026-08-09T15:20:43+03:00`
 - PRD0-D010 architecture boundary accepted by the Owner: 2026-08-10
+- PRD0-Q004 reopened and approved by Abdallah as data owner and approver:
+  2026-09-16, Africa/Cairo; no approval clock time was recorded
 
 ## Context
 
@@ -24,10 +28,44 @@ every existing file consumer, `File.id`, authorization boundary,
 signed-capability contract, Range behavior, and the synchronous Learning Media
 HTTP 200 completion contract while adopting managed storage for production.
 
-The Owner has attested that the initial production launch is a clean start:
-there is no authoritative PostgreSQL source, object source, or provider-URL
-population that must be migrated. That attestation is factual and must reopen
-if later discovery contradicts it.
+On 2026-08-07 the Owner attested that the initial production launch was a
+clean start with no authoritative PostgreSQL or object source requiring
+preservation. That historical attestation remained truthful for its decision
+date and carried a mandatory reopen-on-discovery rule. Read-only discovery on
+2026-09-16 satisfied that trigger. The clean-start disposition is therefore
+historical evidence, not current Production data authority.
+
+## 2026-09-16 PRD0-Q004 production-data-authority reopening
+
+`PRD0-Q004-REOPEN-20260916=APPROVED` selects
+`IN_PLACE_LIVE_PRODUCTION`. The one authoritative persisted PostgreSQL source
+is `moazez-production-postgres-me-central2`; it is evolved in place through
+governed schema and data evolution. This is not an external source migration,
+database replacement, source-to-target copy, or clean Production bootstrap.
+
+The two authoritative Production object resources are the existing buckets:
+
+- `moazez-production-91001421934-private`;
+- `moazez-production-91001421934-published`.
+
+Existing PostgreSQL and object data must be preserved. External database
+migration, object copy or reseed, Redis copy, and a planned destructive
+cutover are prohibited. Q004 does not implicitly reapprove Q044–Q046.
+PRD0-D049, PRD0-D050, and PRD0-D051 are now
+`REOPENED_PENDING_OWNER_DISPOSITION`; the Decision Register represents each
+with its existing `OWNER_DECISION_REQUIRED` status.
+
+DevOps read-only discovery observed data in the private bucket and no data in
+the published bucket on 2026-09-16 in Africa/Cairo. That occupancy is
+`DATED_DISCOVERY_EVIDENCE`, not a permanent live-state invariant. A future
+legitimate published-bucket object does not require a governance amendment.
+The permanent contract is the exact two-bucket authority, preservation of
+existing object data, and the prohibition on object copy or reseed.
+
+The reviewed saved Terraform plan with SHA-256
+`5938c32268732cb85465c376e5c58d1fad1dff4b1cf17e558092d3042ab9f3d3`
+is `REVIEWED_BUT_SUPERSEDED`. `APPLY_ALLOWED=NO` and `REPLAY_ALLOWED=NO`; it
+must not be registered, approved, reused, replayed, applied, or cloned.
 
 ## Decision
 
@@ -96,7 +134,7 @@ ownership, and visibility authorization. One hour is the absolute maximum
 TTL; existing shorter TTLs remain unless a separately approved contract
 changes them.
 
-### Clean-start object branch
+### Historical clean-start object branch (superseded as current authority)
 
 ```text
 PRD0-Q044=APPROVED_OPTION_A
@@ -108,11 +146,10 @@ PRD0-Q045=N/A_WITH_EVIDENCE
 PRD0-Q046=N/A_WITH_EVIDENCE
 ```
 
-Phase 5A must still publish signed zero-source evidence. It must not claim that
-absence was inferred from local code or one cloud account. Discovery of any
-object source or provider URL requiring preservation reopens PRD0-D029 and
-PRD0-D049 through PRD0-D051 before cutover. This decision authorizes no source
-deletion.
+This was the exact 2026-08-09 approval under the then-current clean-start
+branch. The 2026-09-16 discovery triggered its reopen rule. The text remains
+historical evidence and authorizes no source deletion, object copy, reseed, or
+new Q044–Q046 owner disposition.
 
 ### Versioning, lifecycle, and recovery
 
@@ -154,25 +191,27 @@ future launch and production gates are unchanged.
 | PRD0-D010 | direct Owner architecture acceptance | Accepted |
 | PRD0-D019 | PRD0-Q019 | Accepted |
 | PRD0-D022 | PRD0-Q022 | Accepted |
-| PRD0-D029 | PRD0-Q004 | Accepted; `CLEAN_START` |
-| PRD0-D049 | PRD0-Q044 | Accepted; zero-object branch |
-| PRD0-D050 | PRD0-Q045 | Accepted; `N/A_WITH_EVIDENCE` |
-| PRD0-D051 | PRD0-Q046 | Accepted; `N/A_WITH_EVIDENCE` |
+| PRD0-D029 | PRD0-Q004 | Accepted; `IN_PLACE_LIVE_PRODUCTION` through `PRD0-Q004-REOPEN-20260916` |
+| PRD0-D049 | PRD0-Q044 | `OWNER_DECISION_REQUIRED`; `REOPENED_PENDING_OWNER_DISPOSITION` |
+| PRD0-D050 | PRD0-Q045 | `OWNER_DECISION_REQUIRED`; `REOPENED_PENDING_OWNER_DISPOSITION` |
+| PRD0-D051 | PRD0-Q046 | `OWNER_DECISION_REQUIRED`; `REOPENED_PENDING_OWNER_DISPOSITION` |
 | PRD0-D052 | PRD0-Q047 | Accepted |
 | PRD0-D053 | PRD0-Q048 | Accepted with no automatic deletion |
 
 This ADR is the sole authoritative owner of these decisions.
 
-## Current operator-supplied preflight context
+## Historical operator-supplied preflight context
 
-The following is Owner-supplied operator context, not Codex-generated cloud
-proof and not Phase 5A acceptance evidence:
+The following was Owner-supplied operator context recorded before the
+2026-09-16 reopening. It is not current occupancy authority, Codex-generated
+cloud proof, or Phase 5A acceptance evidence:
 
 - production project `moazez-production`, project number `91001421934`;
 - observed project state `ACTIVE` and billing enabled;
 - observed `storage.googleapis.com` and `iamcredentials.googleapis.com`
   enabled;
-- observed production GCS bucket count `0`;
+- historically observed production GCS bucket count `0` at that earlier
+  preflight;
 - approved non-production project `moazez-nonprod-91001421934` could not be
   accessed by the active account, or may not exist; exact cause unresolved.
 
@@ -181,9 +220,9 @@ NONPROD_PROJECT_ACCESS=UNRESOLVED
 REAL_GCS_NONPROD_PROOF=BLOCKED_UNTIL_RESOLVED
 ```
 
-This unresolved preflight does not block Batch 0 inventory or later local
-implementation of the provider-neutral port. No GCP resource is claimed to
-have been created or changed by this ADR.
+That historical preflight is superseded by the dated 2026-09-16 discovery for
+current data authority. No GCP resource is claimed to have been created or
+changed by this ADR.
 
 ## Implementation status
 
@@ -223,10 +262,10 @@ the exact project, region, UBLA, PAP, versioning, Soft Delete, and
 
 ## Rollback and reopen conditions
 
-Rollback may select a previously compatible MinIO configuration in an
-isolated non-production or approved cutback environment only while preserving
-the clean-start/source evidence and contract parity. Production writes cannot
-silently split across GCS and MinIO.
+Rollback may select a previously compatible MinIO configuration only in an
+isolated non-production or separately approved cutback environment. Current
+Production authority remains the existing PostgreSQL instance and exact two
+GCS buckets; Production writes cannot silently split across providers.
 
 Reopen this ADR when a source object/provider URL is discovered, bucket names
 or regions change, public exposure is proposed, signer mechanism or maximum

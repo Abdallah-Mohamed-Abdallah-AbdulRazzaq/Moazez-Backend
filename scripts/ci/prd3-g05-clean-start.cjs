@@ -55,6 +55,40 @@ const FOCUSED_TEST_PATH = path.join(
   'tests',
   'prd3-g05-clean-start.test.cjs',
 );
+const PRODUCTION_DATA_AUTHORITY_CONTRACT_PATH = path.join(
+  REPOSITORY_ROOT,
+  'config',
+  'deployment',
+  'production-data-branch.contract.json',
+);
+const AUTHORITATIVE_OBJECT_SOURCES = Object.freeze([
+  'moazez-production-91001421934-private',
+  'moazez-production-91001421934-published',
+]);
+const CURRENT_AUTHORITY_CONTRACT_KEYS = Object.freeze([
+  'approvedDate',
+  'approver',
+  'authoritativeObjectSourceCount',
+  'authoritativeObjectSources',
+  'authoritativePostgresqlSource',
+  'authoritativePostgresqlSourceCount',
+  'branch',
+  'contractVersion',
+  'dataAuthority',
+  'decision',
+  'decisionId',
+  'externalSourceMigration',
+  'objectCopyOrReseed',
+  'objectDataDiscoverySnapshot',
+  'plannedDestructiveCutover',
+  'postgresqlMigration',
+  'preserveExistingObjectData',
+  'preserveExistingPostgresqlData',
+  'redisCopyAllowed',
+  'redisRecoveryPolicy',
+  'reopenedDecision',
+  'timezone',
+]);
 const EXPECTED_CHANGED_PATHS = Object.freeze([
   'adr/ADR-0006-production-data-source-object-storage-and-signed-capability-boundary.md',
   'config/deployment/production-data-branch.contract.json',
@@ -172,6 +206,109 @@ function resolveVerificationMode(args = []) {
   throw new Error(
     'unknown verification mode; expected no argument, --regression, or --current-ci',
   );
+}
+
+function validateCurrentProductionDataAuthority(contract) {
+  const fail = (field, expected) => {
+    throw new Error(
+      `current Production data authority requires ${field}=${JSON.stringify(expected)}`,
+    );
+  };
+  const requireExact = (field, expected) => {
+    if (!isDeepStrictEqual(contract?.[field], expected)) {
+      fail(field, expected);
+    }
+  };
+
+  if (!contract || typeof contract !== 'object' || Array.isArray(contract)) {
+    throw new Error(
+      'current Production data authority contract must be an object',
+    );
+  }
+  const actualKeys = Object.keys(contract).sort();
+  if (
+    !isDeepStrictEqual(actualKeys, [...CURRENT_AUTHORITY_CONTRACT_KEYS].sort())
+  ) {
+    throw new Error(
+      'current Production data authority contract has missing, unexpected, or obsolete fields',
+    );
+  }
+
+  for (const [field, expected] of [
+    ['contractVersion', 2],
+    ['decision', 'PRD0-Q004'],
+    ['decisionId', 'PRD0-D029'],
+    ['reopenedDecision', 'PRD0-Q004-REOPEN-20260916'],
+    ['branch', 'IN_PLACE_LIVE_PRODUCTION'],
+    ['authoritativePostgresqlSourceCount', 1],
+    ['authoritativePostgresqlSource', 'moazez-production-postgres-me-central2'],
+    ['preserveExistingPostgresqlData', true],
+    ['postgresqlMigration', 'GOVERNED_IN_PLACE_SCHEMA_AND_DATA_EVOLUTION'],
+    ['externalSourceMigration', false],
+    ['authoritativeObjectSourceCount', 2],
+    ['authoritativeObjectSources', [...AUTHORITATIVE_OBJECT_SOURCES]],
+    ['preserveExistingObjectData', true],
+    ['objectCopyOrReseed', false],
+    ['redisCopyAllowed', false],
+    ['redisRecoveryPolicy', 'persisted-truth-reconciliation'],
+    ['plannedDestructiveCutover', false],
+    ['approver', 'Abdallah'],
+    ['dataAuthority', 'Abdallah'],
+    ['approvedDate', '2026-09-16'],
+    ['timezone', 'Africa/Cairo'],
+  ]) {
+    requireExact(field, expected);
+  }
+
+  const snapshot = contract.objectDataDiscoverySnapshot;
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+    throw new Error(
+      'DATED_DISCOVERY_EVIDENCE objectDataDiscoverySnapshot must be an object',
+    );
+  }
+  const snapshotKeys = Object.keys(snapshot).sort();
+  const expectedSnapshotKeys = [
+    'evidenceClassification',
+    'observedDate',
+    'privateBucketDataPresent',
+    'publishedBucketDataPresent',
+    'timezone',
+  ].sort();
+  if (!isDeepStrictEqual(snapshotKeys, expectedSnapshotKeys)) {
+    throw new Error(
+      'DATED_DISCOVERY_EVIDENCE snapshot has missing or unexpected fields',
+    );
+  }
+  for (const [field, expected] of [
+    ['observedDate', '2026-09-16'],
+    ['timezone', 'Africa/Cairo'],
+    ['evidenceClassification', 'DEVOPS_READ_ONLY_DISCOVERY'],
+    ['privateBucketDataPresent', true],
+    ['publishedBucketDataPresent', false],
+  ]) {
+    if (!isDeepStrictEqual(snapshot[field], expected)) {
+      throw new Error(
+        `DATED_DISCOVERY_EVIDENCE requires objectDataDiscoverySnapshot.${field}=${JSON.stringify(expected)}; this validates historical evidence integrity, not live bucket occupancy`,
+      );
+    }
+  }
+
+  const currentProductionDataAuthority = Object.freeze(
+    Object.fromEntries(
+      Object.entries(contract).filter(
+        ([field]) => field !== 'objectDataDiscoverySnapshot',
+      ),
+    ),
+  );
+  const objectDataDiscoverySnapshot = Object.freeze({
+    ...snapshot,
+    evidenceSemantics: 'DATED_DISCOVERY_EVIDENCE',
+    treatedAsPermanentLiveInvariant: false,
+  });
+  return Object.freeze({
+    currentProductionDataAuthority,
+    objectDataDiscoverySnapshot,
+  });
 }
 
 function isProtectedRegressionPath(changedPath) {
@@ -849,6 +986,7 @@ async function runLiveEvidence() {
 
   return {
     status: 'PASS',
+    evidenceClassification: 'DISPOSABLE_CLEAN_TARGET_MIGRATION_REGRESSION',
     baseSha: BASE_SHA,
     nodeVersion: process.version,
     docker: {
@@ -864,7 +1002,7 @@ async function runLiveEvidence() {
     migration: { ...migration, appliedMigrations },
     referenceSeedExecution,
     rows,
-    sourceEvidence: {
+    historicalCleanStartSourceEvidence: {
       classification: 'OWNER_DATA_AUTHORITY_ATTESTATION',
       authoritativePostgresqlSourceCount: 0,
       authoritativeObjectSourceCount: 0,
@@ -889,8 +1027,18 @@ async function main() {
     assertRepositoryPreflight(mode);
     assertProtectedScope(mode);
     const focusedTests = runFocusedTests(mode);
-    summary = await runLiveEvidence();
-    summary.focusedTests = focusedTests;
+    const currentAuthority = validateCurrentProductionDataAuthority(
+      JSON.parse(
+        fs.readFileSync(PRODUCTION_DATA_AUTHORITY_CONTRACT_PATH, 'utf8'),
+      ),
+    );
+    const disposableCleanTargetEvidence = await runLiveEvidence();
+    summary = {
+      status: 'PASS',
+      ...currentAuthority,
+      disposableCleanTargetEvidence,
+      focusedTests,
+    };
     assertRepositoryPreflight(mode);
     assertProtectedScope(mode);
   } catch (error) {
@@ -903,7 +1051,7 @@ async function main() {
     }
   }
   if (primaryFailure) throw primaryFailure;
-  summary.cleanup = cleanup;
+  summary.disposableCleanTargetEvidence.cleanup = cleanup;
   process.stdout.write(`PRD3_G05_EVIDENCE_JSON=${JSON.stringify(summary)}\n`);
 }
 
@@ -932,5 +1080,6 @@ module.exports = {
   readChangedPaths,
   resolveVerificationMode,
   runGovernedFreshMigration,
+  validateCurrentProductionDataAuthority,
   validateRepositoryState,
 };

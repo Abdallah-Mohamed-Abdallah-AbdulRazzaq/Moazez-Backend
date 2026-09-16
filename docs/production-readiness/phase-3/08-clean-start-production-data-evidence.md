@@ -1,6 +1,24 @@
 # PRD3-G05 Clean-Start Production Data Evidence
 
-## Candidate identity and approved branch
+## Current-context notice
+
+```text
+HISTORICAL_EVIDENCE=YES
+ORIGINAL_DECISION_DATE=2026-08-07
+ORIGINAL_BRANCH=CLEAN_START
+CURRENT_AUTHORITY_SUPERSEDES_THIS_DISPOSITION=YES
+CURRENT_REOPEN_DECISION=PRD0-Q004-REOPEN-20260916
+CURRENT_BRANCH=IN_PLACE_LIVE_PRODUCTION
+```
+
+This file retains the exact PRD3-G05 historical clean-target proof. It does
+not describe current Production occupancy or authorize a clean bootstrap. The
+current machine-readable authority is contract v2 in
+`config/deployment/production-data-branch.contract.json`; it preserves the
+existing Production PostgreSQL data and the existing two Production buckets.
+Historical `PRD3-G05=COMPLETE` and `PHASE_3=COMPLETE` remain true.
+
+## Historical candidate identity and approved branch
 
 - Gate: `PRD3-G05`
 - Base SHA: `10be00c51eba72bbdfe9591eb0e00399402100ef`
@@ -15,9 +33,9 @@
 - Approved timestamp: `2026-08-07T04:46:00+03:00`
 - Candidate state: `PRD3-G05=IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE`
 
-## Owner/data-authority source attestation
+## Historical owner/data-authority source attestation
 
-The accepted statement is:
+The statement accepted on 2026-08-07 was:
 
 > There is currently no real authoritative Production PostgreSQL database,
 > Production object source, or Production business/user history that must be
@@ -36,21 +54,23 @@ The accepted statement is:
 | Redis recovery | drain/reconcile/re-enqueue from persisted truth; ephemeral realtime state is rebuilt |
 | Reopen on later data discovery | `true` |
 
-The owner/data-authority attestation proves that no current authoritative
-source requires preservation. The local G05 evidence proves the clean target
-path. It does not claim that Phase 3 scanned every external cloud account.
+At the time, the owner/data-authority attestation stated that no authoritative
+source required preservation. The local G05 evidence proved the disposable
+clean-target path. It did not claim that Phase 3 scanned every external cloud
+account.
 
 Any later discovery of real pre-production or production data that must be
 preserved automatically reopens PRD0-Q004 / PRD0-D029 before cutover. The
 clean-start decision is not permission to delete a later-discovered source.
 
-## Machine-readable contracts
+## Historical machine-readable contract identity
 
-- Production branch contract:
-  `config/deployment/production-data-branch.contract.json`
+- The active Production branch contract path remains
+  `config/deployment/production-data-branch.contract.json`, but its current
+  authority is v2 and must not be interpreted from this historical evidence.
 - Production seed inventory:
   `config/deployment/production-seed-inventory.json`
-- Contract version / inventory version: `1 / 1`
+- Historical contract / inventory version at G05 completion: `1 / 1`
 - Approved Production seed sources: `2`
 - Prohibited existing seed sources: `3`
 - Prohibited generic Production execution paths: `4`
@@ -165,17 +185,20 @@ seed, approval of platform-admin/demo data, or approval of the generic index.
 - Final owned cleanup: containers `0`, networks `0`, volumes `0`, processes
   `0`, temporary directories `0`.
 
-## Known limitations
+## Historical limitations and current interpretation
 
 - No external production source was scanned because the owner/data authority
-  explicitly states that no authoritative production source currently exists.
+  then stated that no authoritative production source existed.
 - No production or staging database was accessed.
 - No production object storage was accessed.
 - No cloud resources were accessed.
-- If real data is discovered later, Q004/D029 reopens before cutover.
+- The later-discovery rule fired on 2026-09-16; Q004/D029 reopened and current
+  authority is now `IN_PLACE_LIVE_PRODUCTION`.
 - Secure initial Platform Admin provisioning is not performed by the current
   development seed and remains a Phase 8 bootstrap concern.
 
-G05 does not implement PostgreSQL source copy, object copy, Redis copy,
+G05 did not implement PostgreSQL source copy, object copy, Redis copy,
 freeze/delta, cutback, production deployment infrastructure, source deletion,
-or physical cleanup. Phase 3 remains open because PRD3-G06 is pending.
+or physical cleanup. At the time of this evidence PRD3-G06 was pending; the
+later historical Phase 3 certification records `PRD3-G05=COMPLETE` and
+`PHASE_3=COMPLETE`.
