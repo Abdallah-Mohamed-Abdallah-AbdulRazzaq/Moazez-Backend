@@ -49,13 +49,13 @@ variable "school_dashboard_service_name" {
 }
 
 variable "candidate_edge_enabled" {
-  description = "Whether the staging-only exact candidate smoke route and tagged NEG are enabled."
+  description = "Whether the optional governed candidate smoke route and tagged NEG are enabled."
   type        = bool
   default     = false
 }
 
 variable "candidate_api_tag" {
-  description = "Deterministic Cloud Run base or recovery candidate tag used by the optional staging candidate NEG."
+  description = "Deterministic Cloud Run base or recovery candidate tag used by the optional governed candidate NEG."
   type        = string
   default     = null
   nullable    = true

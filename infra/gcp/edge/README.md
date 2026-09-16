@@ -12,49 +12,60 @@ and forwarding rule. The normal API serverless NEG remains service-level and
 untagged. The candidate capability creates no hostname, DNS record, IP,
 certificate, proxy, forwarding rule, or parallel ingress architecture.
 
-## Optional staging candidate route
+## Optional governed candidate route
 
 The two candidate inputs are:
 
 | Input                    | Disabled contract | Enabled contract                                                 |
 | ------------------------ | ----------------- | ---------------------------------------------------------------- |
-| `candidate_edge_enabled` | `false`           | `true`, Staging only                                             |
+| `candidate_edge_enabled` | `false`           | `true`, for governed Staging or Production only                  |
 | `candidate_api_tag`      | `null`            | `candidate-<12 lowercase hex>` or that base plus canonical `-rN` |
 
-Production passes `false` and `null` explicitly and exposes no override. The
-module also rejects an enabled candidate route unless `environment` is
-`staging`, rejects an enabled route without a valid tag, and rejects a stale
-tag while the capability is disabled.
+Both Staging and Production default to `candidate_edge_enabled=false` and
+`candidate_api_tag=null`. Merging this source therefore creates no Candidate
+resources. Production activation requires explicit, separately governed
+DevOps inputs and a new Saved Plan; this source change is not that operation.
+The module rejects an enabled candidate route outside the governed `staging`
+and `production` environments, rejects an enabled route without a valid tag,
+and rejects a stale tag while the capability is disabled.
 
 The recovery suffix range is `1` through `999999999999999`, with no leading
 zero. Edge validates canonical shape only because it does not own the image
 reference. Deployment control and the runtime module bind the exact tag to the
-approved immutable image. The Production edge caller remains disabled with a
-null tag.
+approved immutable image where that controller is used.
 
-When enabled in the nonprod root, Terraform adds only:
+When explicitly enabled in either governed root, Terraform adds only:
 
-- `module.edge_environment.google_compute_region_network_endpoint_group.api_candidate[0]`, targeting the existing `moazez-staging-api` Cloud Run service plus the exact candidate tag;
+- `module.edge_environment.google_compute_region_network_endpoint_group.api_candidate[0]`, targeting that environment's existing API Cloud Run service plus the exact candidate tag;
 - `module.edge_environment.google_compute_backend_service.api_candidate[0]`, retaining the normal API backend's Cloud Armor policy and trusted client-IP request header;
 - one exact path rule on `module.edge_environment.google_compute_url_map.edge`.
 
-The Candidate NEG physical identity is tag-derived:
+The Candidate NEG physical identity is tag-derived and is never truncated,
+hashed, or replaced:
 
 ```text
-moazez-staging-api-${candidate_api_tag}-neg
+moazez-${environment}-api-${candidate_api_tag}-neg
 ```
 
-For example, `candidate-be1b01ce47ad-r1` produces
-`moazez-staging-api-candidate-be1b01ce47ad-r1-neg`. The maximum supported tag
-produces a 62-character RFC1035 name. The Candidate Backend remains
-`moazez-staging-api-candidate-backend`, and the URL map remains
-`moazez-staging-edge-url-map`; only the Backend's direct `api_candidate[0].id`
-dependency moves to the successor NEG.
+The canonical tag grammar permits recovery suffixes of up to 15 digits. The
+physical-name boundary is environment-specific because Production has a
+longer deterministic prefix. Staging supports the 15-digit maximum, producing
+a 62-character NEG name. Production supports up to 13 recovery digits,
+producing a 63-character name; a canonical 14-digit Production recovery tag is
+rejected by the Candidate NEG's resource-level RFC1035/63-character guard.
+This physical restriction does not redefine the canonical tag grammar.
+
+For the current Production test fixture, `candidate-cf720dacbc04` produces
+`moazez-production-api-candidate-cf720dacbc04-neg`. The Candidate Backend is
+`moazez-production-api-candidate-backend`, and the URL map is
+`moazez-production-edge-url-map`. For Staging, the corresponding identities
+retain the `moazez-staging` prefix. Only the Backend's direct
+`api_candidate[0].id` dependency moves to a successor NEG.
 
 The exact public verification path is:
 
 ```text
-GET https://staging-api.moazez.cloud/.well-known/moazez/candidate-readiness
+GET https://<governed-api-hostname>/.well-known/moazez/candidate-readiness
 ```
 
 The URL map rewrites that exact path to the existing protected application

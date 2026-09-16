@@ -5143,6 +5143,13 @@ test('edge source adds only an optional tagged candidate NEG/backend and one exa
     ),
     'utf8',
   );
+  const productionVariables = fs.readFileSync(
+    path.join(
+      REPOSITORY_ROOT,
+      'infra/gcp/edge/environments/production/variables.tf',
+    ),
+    'utf8',
+  );
   const authController = fs.readFileSync(
     path.join(
       REPOSITORY_ROOT,
@@ -5160,7 +5167,11 @@ test('edge source adds only an optional tagged candidate NEG/backend and one exa
   );
   assert.match(
     edge,
-    /resource "google_compute_region_network_endpoint_group" "api_candidate"\s*\{[^}]*name\s*=\s*var[.]candidate_api_tag\s*==\s*null\s*\?\s*"\$\{local[.]name_prefix\}-api-invalid-neg"\s*:\s*"\$\{local[.]name_prefix\}-api-\$\{var[.]candidate_api_tag\}-neg"[^}]*cloud_run\s*\{[^}]*tag\s*=\s*var[.]candidate_api_tag[^}]*\}[^}]*lifecycle\s*\{[^}]*create_before_destroy\s*=\s*true/su,
+    /candidate_neg_name\s*=\s*"\$\{local[.]name_prefix\}-api-\$\{var[.]candidate_api_tag\s*==\s*null\s*\?\s*"invalid-candidate-tag"\s*:\s*var[.]candidate_api_tag\}-neg"/u,
+  );
+  assert.match(
+    edge,
+    /resource "google_compute_region_network_endpoint_group" "api_candidate"\s*\{[\s\S]*?name\s*=\s*local[.]candidate_neg_name[\s\S]*?cloud_run\s*\{[^}]*service\s*=\s*var[.]api_service_name[^}]*tag\s*=\s*var[.]candidate_api_tag[^}]*\}[\s\S]*?lifecycle\s*\{[\s\S]*?create_before_destroy\s*=\s*true[\s\S]*?precondition\s*\{[\s\S]*?var[.]candidate_api_tag\s*!=\s*null\s*&&\s*local[.]candidate_neg_name_valid[\s\S]*?\}/u,
   );
   assert.match(
     edge,
@@ -5199,8 +5210,25 @@ test('edge source adds only an optional tagged candidate NEG/backend and one exa
     1,
   );
   assert.doesNotMatch(edge, /resource "google_dns_/u);
-  assert.match(production, /candidate_edge_enabled\s*=\s*false/u);
-  assert.match(production, /candidate_api_tag\s*=\s*null/u);
+  assert.match(
+    production,
+    /candidate_edge_enabled\s*=\s*var[.]candidate_edge_enabled/u,
+  );
+  assert.match(production, /candidate_api_tag\s*=\s*var[.]candidate_api_tag/u);
+  assert.match(
+    productionVariables,
+    /variable "candidate_edge_enabled"\s*\{[^}]*default\s*=\s*false[^}]*\}/u,
+  );
+  assert.match(
+    productionVariables,
+    /variable "candidate_api_tag"\s*\{[^}]*default\s*=\s*null[^}]*nullable\s*=\s*true/u,
+  );
+  assert.equal(
+    productionVariables.includes(
+      'can(regex("^candidate-[a-f0-9]{12}(-r[1-9][0-9]{0,14})?$", var.candidate_api_tag))',
+    ),
+    true,
+  );
   assert.match(authController, /@Get\('me'\)/u);
   const meDecoratorStart = authController.indexOf("@Get('me')");
   const meMethodEnd = authController.indexOf(

@@ -13,6 +13,6 @@ module "edge_environment" {
   platform_admin_service_name   = "moazez-production-platform-admin"
   school_dashboard_service_name = "moazez-production-school-dashboard"
 
-  candidate_edge_enabled = false
-  candidate_api_tag      = null
+  candidate_edge_enabled = var.candidate_edge_enabled
+  candidate_api_tag      = var.candidate_api_tag
 }
