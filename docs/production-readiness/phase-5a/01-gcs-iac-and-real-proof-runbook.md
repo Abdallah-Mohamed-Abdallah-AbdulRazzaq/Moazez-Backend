@@ -3,6 +3,8 @@
 ## Status and boundary
 
 ```text
+HISTORICAL_BATCH2_EVIDENCE_SNAPSHOT=YES
+HISTORICAL_BATCH2_ACCEPTED_DATE=2026-08-11
 BATCH_1=CLOSED
 BATCH_2=CLOSED
 PRD5A-G02=COMPLETE
@@ -35,6 +37,14 @@ are retained as the historical operator procedure and may be rerun only under
 separate Owner change control. This Batch 3 source work does not execute any
 command in this document, contact Google Cloud, or change cloud state.
 
+The six zero counts above are integrity-protected historical Batch 2 evidence,
+not current live bucket-occupancy requirements. DevOps read-only discovery on
+2026-09-16 later observed data in the Production private bucket and no data in
+the Production published bucket. Current authority is
+`PRD0-Q004-REOPEN-20260916=APPROVED` with
+`IN_PLACE_LIVE_PRODUCTION`; neither the old counts nor the dated 2026-09-16
+snapshot requires either bucket to retain a particular future occupancy.
+
 The four application buckets are not Terraform-state buckets. Both Terraform
 roots temporarily use local state. State and plan files are ignored and must
 be protected as operator-local artifacts until a separately approved remote
@@ -42,7 +52,7 @@ state design exists.
 
 Never write a proof object to either production bucket. Object Versioning and
 seven-day Soft Delete mean that replacing or deleting synthetic production
-objects would still contaminate clean-start evidence.
+objects would contaminate historical evidence and current Production data.
 
 ## A. Read-only project preflight
 
@@ -342,10 +352,10 @@ child environment. The Batch 1 client is not changed to force that endpoint.
 IAM proof is read-only in production. The object harness rejects
 `--environment production` before loading `GcsAdapter` or creating a client.
 
-## J. Production zero-object proof
+## J. Production zero-object proof (historical Batch 2)
 
-The production read-only script checks each bucket separately using three
-supported listing views:
+The Batch 2 production read-only script checked each bucket separately using
+three supported listing views:
 
 ```text
 normal listing             -> LIVE_OBJECTS
@@ -353,19 +363,20 @@ normal listing             -> LIVE_OBJECTS
 --soft-deleted --exhaustive -> SOFT_DELETED_OBJECTS
 ```
 
-It requires all six per-bucket counts to be zero and fails closed otherwise.
-The exhaustive soft-delete scan avoids accepting an intermediate empty page as
-proof of zero. Normal live listing alone is never accepted as clean-start
-proof.
+For that historical execution, it required all six per-bucket counts to be
+zero and failed closed otherwise. The exhaustive soft-delete scan avoided
+accepting an intermediate empty page as proof of zero. These rules preserve
+the old evidence record; they are not a current live occupancy invariant.
 
-Historical Q044 remains the source/legacy branch statement:
+Historical Q044 recorded this source/legacy branch statement:
 
 ```text
 SOURCE_BUCKETS=NONE
 TARGET_GCS_BUCKETS=4
 ```
 
-These facts are distinct and non-contradictory.
+That historical approval was reopened on 2026-09-16 and is no longer current
+authority.
 
 ## Evidence and redaction
 

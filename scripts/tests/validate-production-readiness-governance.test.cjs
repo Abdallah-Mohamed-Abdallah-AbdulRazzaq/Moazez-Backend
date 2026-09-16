@@ -7,6 +7,7 @@ const test = require('node:test');
 const {
   parseAcceptanceMatrix,
   validateCurrentPhase3Governance,
+  validateProductionDataAuthorityReopenGovernance,
   validateProductionReadinessGovernance,
   validateQ007Governance,
   validateQ020Q021Governance,
@@ -60,10 +61,11 @@ test('current production-readiness governance reconciles Phase 2 completion', ()
   assert.ok(result.storageCutoverCheckCount > 0);
   assert.ok(result.q007GovernanceCheckCount > 0);
   assert.ok(result.q020Q021GovernanceCheckCount > 0);
-  assert.equal(result.lockedDecisionCount, 36);
-  assert.equal(result.ownerDecisionRequiredCount, 17);
-  assert.equal(result.approvedOwnerQuestionCount, 33);
-  assert.equal(result.pendingOwnerQuestionCount, 15);
+  assert.ok(result.productionDataAuthorityGovernanceCheckCount > 0);
+  assert.equal(result.lockedDecisionCount, 33);
+  assert.equal(result.ownerDecisionRequiredCount, 20);
+  assert.equal(result.approvedOwnerQuestionCount, 30);
+  assert.equal(result.pendingOwnerQuestionCount, 18);
   assert.deepEqual(
     result.authoritativeCompleted.filter((gate) => gate.startsWith('PRD2-')),
     ['PRD2-G01', 'PRD2-G02', 'PRD2-G03', 'PRD2-G04'],
@@ -177,12 +179,83 @@ test('Q007 governance rejects production launch authorization', () => {
 test('Q007 governance rejects disposition totals that do not match rows', () => {
   const documents = q007GovernanceDocuments();
   documents.disposition = documents.disposition.replace(
-    '| APPROVED | 33 |',
-    '| APPROVED | 32 |',
+    '| APPROVED | 30 |',
+    '| APPROVED | 29 |',
   );
   assert.throws(
     () => validateQ007Governance(documents),
     /Published owner disposition totals must match/u,
+  );
+});
+
+test('D049-D051 cannot remain current locked zero-object decisions', () => {
+  for (const decisionId of ['PRD0-D049', 'PRD0-D050', 'PRD0-D051']) {
+    const documents = productionDataAuthorityGovernanceDocuments();
+    documents.decisionRegister = documents.decisionRegister.replace(
+      new RegExp(
+        `(\\| ${decisionId} \\|[^\\r\\n]*?\\| )OWNER_DECISION_REQUIRED( \\|)`,
+        'u',
+      ),
+      '$1LOCKED_FROM_APPROVED_CONTEXT$2',
+    );
+    assert.throws(
+      () => validateProductionDataAuthorityReopenGovernance(documents),
+      new RegExp(`${decisionId} must be OWNER_DECISION_REQUIRED`, 'u'),
+    );
+  }
+});
+
+test('Q044-Q046 cannot remain current approved zero-object dispositions', () => {
+  for (const questionId of ['PRD0-Q044', 'PRD0-Q045', 'PRD0-Q046']) {
+    const documents = productionDataAuthorityGovernanceDocuments();
+    documents.disposition = documents.disposition.replace(
+      `| ${questionId} | PENDING |`,
+      `| ${questionId} | APPROVED |`,
+    );
+    assert.throws(
+      () => validateProductionDataAuthorityReopenGovernance(documents),
+      new RegExp(`${questionId} must be PENDING`, 'u'),
+    );
+  }
+});
+
+test('Q044-Q046 historical approval text remains preserved inside pending dispositions', () => {
+  const historicalAnswers = {
+    'PRD0-Q044':
+      'PRD0-Q044: option=A; source_buckets=NONE; source_object_count=0; provider_url_count=0; data_owner=Abdallah; approver=Abdallah',
+    'PRD0-Q045':
+      'PRD0-Q045: mode=N/A_WITH_EVIDENCE; read_only=N/A; delta=N/A; cutback_authority=N/A; approver=Abdallah',
+    'PRD0-Q046':
+      'PRD0-Q046: mode=N/A_WITH_EVIDENCE; sample=N/A; mismatch=N/A; approver=Abdallah',
+  };
+  for (const [questionId, historicalAnswer] of Object.entries(
+    historicalAnswers,
+  )) {
+    const documents = productionDataAuthorityGovernanceDocuments();
+    const row = documents.disposition
+      .split(/\r?\n/u)
+      .find((line) => line.startsWith(`| ${questionId} |`));
+    assert.ok(row, questionId);
+    documents.disposition = documents.disposition.replace(
+      row,
+      row.replace(historicalAnswer, `${historicalAnswer}-DRIFTED`),
+    );
+    assert.throws(
+      () => validateProductionDataAuthorityReopenGovernance(documents),
+      /HISTORICAL_APPROVED_ANSWER/u,
+    );
+  }
+});
+
+test('dated object discovery evidence is not validated as current live occupancy', () => {
+  const documents = productionDataAuthorityGovernanceDocuments();
+  documents.runbook = documents.runbook.replace(
+    'not current live bucket-occupancy requirements',
+    'current live bucket-occupancy requirements',
+  );
+  assert.throws(
+    () => validateProductionDataAuthorityReopenGovernance(documents),
+    /Historical Batch 2 runbook is missing: not current live bucket-occupancy requirements/u,
   );
 });
 
@@ -676,6 +749,28 @@ function q020Q021GovernanceDocuments() {
     adr0015: read(
       'adr',
       'ADR-0015-gcp-environment-workload-identity-secrets-and-crypto.md',
+    ),
+  };
+}
+
+function productionDataAuthorityGovernanceDocuments() {
+  const documents = storageGovernanceDocuments();
+  const read = (...segments) =>
+    fs.readFileSync(path.join(REPOSITORY_ROOT, ...segments), 'utf8');
+  return {
+    ...documents,
+    contract: JSON.parse(
+      read('config', 'deployment', 'production-data-branch.contract.json'),
+    ),
+    adr0006: read(
+      'adr',
+      'ADR-0006-production-data-source-object-storage-and-signed-capability-boundary.md',
+    ),
+    historicalG05: read(
+      'docs',
+      'production-readiness',
+      'phase-3',
+      '08-clean-start-production-data-evidence.md',
     ),
   };
 }

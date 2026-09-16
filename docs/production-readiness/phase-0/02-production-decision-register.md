@@ -47,7 +47,7 @@ No recommendation is represented as owner approval. Evidence IDs resolve to
 | PRD0-D026 | Migration job and deploy ordering | LOCKED_FROM_APPROVED_CONTEXT | D003, D005, D011, D018 | Q026 option A; same-image governed Migration Job before compatible runtime promotion |
 | PRD0-D027 | Backward-compatible rollback constraints | LOCKED_FROM_APPROVED_CONTEXT | D003, D026 | immutable migrations and compatible rollback are locked; expand/contract is the recommended technique, not a separately locked mandate |
 | PRD0-D028 | Backups, PITR, RTO, RPO | LOCKED_FROM_APPROVED_CONTEXT | D011 | PRD0-Q007 approved: RTO 30m, RPO 15m, PITR 14d, backup retention 30d, quarterly restore drill, and no cross-region DR; implementation and evidence remain required |
-| PRD0-D029 | Production data migration/clean start | LOCKED_FROM_APPROVED_CONTEXT | D009, D011, D028 | Q004 option A: `CLEAN_START`; PostgreSQL/object migration are N/A for the current owner-attested zero-source state; Redis copy is prohibited and recovery reconciles persisted truth/rebuilds ephemeral realtime state; later data discovery reopens D029 |
+| PRD0-D029 | Production data authority | LOCKED_FROM_APPROVED_CONTEXT | D009, D011, D028 | `PRD0-Q004-REOPEN-20260916`: `IN_PLACE_LIVE_PRODUCTION`; preserve the existing authoritative PostgreSQL instance and exact two Production buckets; no external source migration, object copy/reseed, Redis copy, or planned destructive cutover |
 | PRD0-D030 | Initial max instances/concurrency | LOCKED_FROM_APPROVED_CONTEXT | D012–D016 | approved conservative pilot caps; saturation and failover evidence still required |
 | PRD0-D031 | Workload/file-size assumptions | LOCKED_FROM_APPROVED_CONTEXT | D008, D016, D030 | approved owner-delegated pilot envelope; not final load-tested capacity |
 | PRD0-D032 | Staging equivalence/release promotion | OWNER_DECISION_REQUIRED | D017–D031 | same artifact/config shape, immutable digest promotion |
@@ -67,21 +67,51 @@ No recommendation is represented as owner approval. Evidence IDs resolve to
 | PRD0-D046 | Grade MEDIA URL policy | LOCKED_FROM_APPROVED_CONTEXT | D002, D029, D038 | Q041 option D: ordinary external HTTPS only for new writes; provider/HTTP/malformed blocked; no compatibility window |
 | PRD0-D047 | Legacy branding URL treatment | LOCKED_FROM_APPROVED_CONTEXT | D029, D038 | Q042: managed File writes/reads; safe external HTTPS read-only legacy compatibility; provider/unsafe fail closed; null allowed |
 | PRD0-D048 | Multipart edge limits and upload concurrency | OWNER_DECISION_REQUIRED | D030–D031, D038 | route/edge caps, instance memory/concurrency, rate limits, large-file direct PUT |
-| PRD0-D049 | Object-preservation branch | LOCKED_FROM_APPROVED_CONTEXT | D029 | Q044 option A: clean-start object branch; zero source buckets, objects, and provider URLs |
-| PRD0-D050 | Source MinIO read-only rollback window | LOCKED_FROM_APPROVED_CONTEXT | D049 | Q045: `N/A_WITH_EVIDENCE` for the zero-source branch |
-| PRD0-D051 | Missing-checksum verification | LOCKED_FROM_APPROVED_CONTEXT | D049 | Q046: `N/A_WITH_EVIDENCE` for the zero-object branch |
+| PRD0-D049 | Object-preservation branch | OWNER_DECISION_REQUIRED | D029 | `REOPENED_PENDING_OWNER_DISPOSITION` on 2026-09-16 after object data requiring preservation was discovered; historical Q044 approval is retained but is not current authority |
+| PRD0-D050 | Source MinIO read-only rollback window | OWNER_DECISION_REQUIRED | D049 | `REOPENED_PENDING_OWNER_DISPOSITION` on 2026-09-16; historical Q045 approval is retained and no new read-only, delta, or cutback policy is selected |
+| PRD0-D051 | Missing-checksum verification | OWNER_DECISION_REQUIRED | D049 | `REOPENED_PENDING_OWNER_DISPOSITION` on 2026-09-16; historical Q046 approval is retained and no new checksum policy is selected |
 | PRD0-D052 | Storage bucket/privacy topology | LOCKED_FROM_APPROVED_CONTEXT | D009, D017–D019 | Q047: four private per-project buckets in `me-central2`; UBLA, PAP, exact Q022 CORS, private Learning Media prefixes |
 | PRD0-D053 | GCS versioning/lifecycle/deletion protection | LOCKED_FROM_APPROVED_CONTEXT | D042, D044, D052 | Q048: versioning, seven-day Soft Delete, Terraform `prevent_destroy`, no Bucket Lock or Phase 5A automatic transition/deletion |
 
-Current status totals across all 53 decisions after the 2026-08-16 Q023
-staging-only amendment: 36
-`LOCKED_FROM_APPROVED_CONTEXT`, 17 `OWNER_DECISION_REQUIRED`, 0
+Current status totals across all 53 decisions after the 2026-09-16 Q004
+production-data-authority reopening: 33
+`LOCKED_FROM_APPROVED_CONTEXT`, 20 `OWNER_DECISION_REQUIRED`, 0
 `PROPOSED_RECOMMENDATION`, 0
 `DEFERRED_WITH_CONSTRAINT`, and 0 `REJECTED`. The Phase 0B closeout snapshot on
 2026-07-27 correctly recorded 14 locked, 38 owner-required, and 1 proposed at
 that time. The staging-only approval does not close the production decision,
-so these current totals remain unchanged; this is an additive governance
-amendment, not a rewrite of that historical evidence.
+and was later followed by this additive reopening amendment. Historical totals
+remain evidence of their dated closeouts rather than current authority.
+
+### 2026-09-16 current Production data authority
+
+```text
+PRD0-Q004-REOPEN-20260916=APPROVED
+DATA_BRANCH=IN_PLACE_LIVE_PRODUCTION
+AUTHORITATIVE_POSTGRESQL_SOURCE_COUNT=1
+AUTHORITATIVE_POSTGRESQL_SOURCE=moazez-production-postgres-me-central2
+AUTHORITATIVE_OBJECT_SOURCE_COUNT=2
+AUTHORITATIVE_OBJECT_SOURCES=moazez-production-91001421934-private,moazez-production-91001421934-published
+PRESERVE_EXISTING_POSTGRESQL_DATA=YES
+PRESERVE_EXISTING_OBJECT_DATA=YES
+EXTERNAL_SOURCE_MIGRATION=NO
+OBJECT_COPY_OR_RESEED=NO
+REDIS_COPY=NO
+PLANNED_DESTRUCTIVE_CUTOVER=NO
+DATA_OWNER=Abdallah
+APPROVER=Abdallah
+APPROVED_DATE=2026-09-16
+TIMEZONE=Africa/Cairo
+```
+
+The 2026-09-16 object-occupancy observation is dated DevOps read-only
+discovery evidence, not a permanent live-state invariant. The private bucket
+contained data and the published bucket was empty when observed; future valid
+occupancy changes do not change the exact two-bucket authority. The reviewed
+Terraform saved plan with SHA-256
+`5938c32268732cb85465c376e5c58d1fad1dff4b1cf17e558092d3042ab9f3d3`
+is `REVIEWED_BUT_SUPERSEDED`, with `APPLY_ALLOWED=NO` and
+`REPLAY_ALLOWED=NO`.
 
 At the 2026-07-27 Phase 0B closeout, the implementation evidence in this
 register described the then-current coupled runtime and pre-Phase-1 baseline.
@@ -267,10 +297,11 @@ validation counts. Phase 4 and Phase 5A are not complete.
 - **Impacts:** no public API, DTO, Prisma schema, migration, `File.id`, or
   Learning Media completion change is approved. Static MinIO keys are not a
   production GCS credential strategy.
-- **Operations / rollback:** the approved clean-start branch uses
-  `N/A_WITH_EVIDENCE`; any later source discovery reopens D029/D049–D051. Real
-  GCS IAM, signed URL, CORS, Range, generation, and provider-error evidence
-  remain mandatory before release.
+- **Operations / rollback:** the current in-place branch preserves the exact
+  two Production buckets and prohibits object copy or reseed. The historical
+  clean-start branch used `N/A_WITH_EVIDENCE`; its later-discovery trigger has
+  reopened D029/D049–D051. Real GCS IAM, signed URL, CORS, Range, generation,
+  and provider-error evidence remain mandatory before release.
 - **Phase / approval / reopen:** Phase 5A. Reopen for residency, regulatory,
   cost, portability, or provider evidence that invalidates this mapping.
 
@@ -717,37 +748,37 @@ Q023_STAGE_17E_TRUSTED_CLIENT_IP_CONTRACT_END
   infrastructure configuration and recovery proof remain required. Reopen after
   drills/business impact review or before any cross-region DR proposal.
 
-### PRD0-D029 — Decide clean start versus production data migration
+### PRD0-D029 — Current Production data authority
 
-- **Status / evidence:** `LOCKED_FROM_APPROVED_CONTEXT`; Abdallah approved
-  PRD0-Q004 option A as approver and data authority at
-  `2026-08-07T04:46:00+03:00`. The selected production-data branch is
-  `CLEAN_START`.
-- **Owner/data-authority attestation:** there is currently no real
-  authoritative Production PostgreSQL database, Production object source, or
-  Production business/user history that must be migrated or preserved before
-  the first real Moazez production launch. The authoritative PostgreSQL source
-  count is `0` and authoritative object source count is `0`. This is an
-  `OWNER_DATA_AUTHORITY_ATTESTATION`, not a claim that Phase 3 scanned every
-  external cloud account.
-- **Approved disposition:** persisted PostgreSQL migration is
-  `N/A_WITH_EVIDENCE`; object migration is
-  `N/A_WITH_EVIDENCE_FOR_CURRENT_PRODUCTION_SOURCE`. Redis migration is
-  `PROHIBITED_AS_COPY_SOURCE`; recovery drains/reconciles/re-enqueues from
-  persisted truth and rebuilds ephemeral realtime state.
-- **Clean-target and bootstrap evidence:** G05 proves a newly created empty
-  PostgreSQL target, the existing governed G04 migration replay, and exactly
-  the approved deterministic Permission and system-Role reference seeds. It
-  proves that no Production User, Organization, School, or business history is
-  fabricated.
-- **Non-authorization:** Q004 does not approve GCS provider selection, bucket
-  topology, object lifecycle, signing IAM, source deletion, physical cleanup,
-  or future real-data destruction. It does not authorize deleting a
-  later-discovered source.
-- **Phase / approval / reopen:** any later discovery of real pre-production or
-  production data that must be preserved automatically reopens PRD0-Q004 /
-  PRD0-D029 before cutover. Phase 5A provider/object controls, Phase 4 crypto,
-  and Phase 8 release/bootstrap controls remain independently governed.
+- **Current status / authority:** `LOCKED_FROM_APPROVED_CONTEXT`;
+  `PRD0-Q004-REOPEN-20260916=APPROVED` by Abdallah as data owner and approver
+  on 2026-09-16 in Africa/Cairo. No approval clock time was recorded.
+- **Current branch:** `IN_PLACE_LIVE_PRODUCTION`. The single authoritative
+  PostgreSQL source is `moazez-production-postgres-me-central2`. The exact two
+  authoritative object sources are
+  `moazez-production-91001421934-private` and
+  `moazez-production-91001421934-published`.
+- **Preservation and evolution:** preserve existing PostgreSQL and object data;
+  evolve PostgreSQL through
+  `GOVERNED_IN_PLACE_SCHEMA_AND_DATA_EVOLUTION`. This is not an external
+  source migration, database replacement, source-to-target copy, clean
+  Production bootstrap, object copy, or reseed.
+- **Redis and cutover:** Redis copy remains prohibited and recovery remains
+  persisted-truth reconciliation. No planned destructive cutover is approved.
+- **Dated discovery evidence:** on 2026-09-16 DevOps read-only discovery
+  observed data in the private bucket and no data in the published bucket.
+  This preserves the discovery record; it is not a permanent live occupancy
+  requirement.
+- **Historical evidence:** the exact 2026-08-07 Q004 option A `CLEAN_START`
+  approval, zero source counts, reopen rule, and disposable G05 proof remain
+  historically true. The trigger fired; those values are not current
+  Production authority. Historical `PRD3-G05=COMPLETE` and
+  `PHASE_3=COMPLETE` remain unchanged.
+- **Downstream reopen:** Q004 does not implicitly reapprove Q044–Q046.
+  D049–D051 are `REOPENED_PENDING_OWNER_DISPOSITION`, represented through the
+  existing `OWNER_DECISION_REQUIRED` taxonomy. Their dependency effect on the
+  current database migration, object cutover, both, or neither remains a
+  separate DevOps/governance gate.
 
 ### PRD0-D030 — Set initial instances and concurrency
 
@@ -926,34 +957,39 @@ Q023_STAGE_17E_TRUSTED_CLIENT_IP_CONTRACT_END
   schema migration, or signed/provider URL exposure. Reopen only through an
   explicit owner amendment to Q042.
 
-### PRD0-D049 — Lock the zero-object clean-start branch
+### PRD0-D049 — Reopened object-preservation branch
 
-- **Status / authority:** `LOCKED_FROM_APPROVED_CONTEXT`; PRD0-Q044 option A
-  approved by Abdallah as data owner and approver at
-  `2026-08-09T15:20:43+03:00`; owning ADR ADR-0006.
-- **Decision:** source buckets `NONE`, source object count `0`, and provider URL
-  count `0`. Phase 5A must publish signed `N/A_WITH_EVIDENCE` rather than claim
-  that absence was inferred.
-- **Reopen:** any later-discovered object source or provider URL requiring
-  preservation reopens D029 and D049–D051 before cutover.
+- **Current status:** `OWNER_DECISION_REQUIRED`;
+  `REOPENED_PENDING_OWNER_DISPOSITION` on 2026-09-16 because object data
+  requiring preservation was discovered.
+- **Historical authority preserved:** PRD0-Q044 option A was approved by
+  Abdallah as data owner and approver at `2026-08-09T15:20:43+03:00`, with
+  source buckets `NONE`, source object count `0`, and provider URL count `0`.
+  That answer remains dated historical evidence and is not current authority.
+- **No new disposition:** no new option or migration mode has been selected.
+  The current Owner disposition is `NOT_YET_SELECTED`.
 
-### PRD0-D050 — Mark the source read-only window N/A with evidence
+### PRD0-D050 — Reopened source read-only rollback disposition
 
-- **Status / authority:** `LOCKED_FROM_APPROVED_CONTEXT`; PRD0-Q045 approved
-  at `2026-08-09T15:20:43+03:00`; owning ADR ADR-0006.
-- **Decision:** read-only duration, delta policy, and cutback authority are
-  `N/A` only for the signed zero-source branch. This is not permission to
-  delete a later-discovered source.
-- **Reopen:** discovery of a source changes this decision to a migration branch
-  requiring freeze/delta, retained source, and cutback authority.
+- **Current status:** `OWNER_DECISION_REQUIRED`;
+  `REOPENED_PENDING_OWNER_DISPOSITION` on 2026-09-16.
+- **Historical authority preserved:** PRD0-Q045 was approved at
+  `2026-08-09T15:20:43+03:00` as `N/A_WITH_EVIDENCE` for the signed zero-source
+  branch. That exact answer remains historical evidence.
+- **No new disposition:** no new read-only duration, delta policy, or cutback
+  authority has been selected. The current Owner disposition is
+  `NOT_YET_SELECTED`.
 
-### PRD0-D051 — Mark missing-checksum migration handling N/A with evidence
+### PRD0-D051 — Reopened missing-checksum verification disposition
 
-- **Status / authority:** `LOCKED_FROM_APPROVED_CONTEXT`; PRD0-Q046 approved
-  at `2026-08-09T15:20:43+03:00`; owning ADR ADR-0006.
-- **Decision:** checksum sampling and mismatch handling are `N/A` only because
-  the approved source-object count is zero. Newly discovered legacy objects
-  require an approved full/sampled/other policy before migration.
+- **Current status:** `OWNER_DECISION_REQUIRED`;
+  `REOPENED_PENDING_OWNER_DISPOSITION` on 2026-09-16.
+- **Historical authority preserved:** PRD0-Q046 was approved at
+  `2026-08-09T15:20:43+03:00` as `N/A_WITH_EVIDENCE` for the zero-object
+  branch. That exact answer remains historical evidence.
+- **No new disposition:** no full, sampled, or other checksum policy or
+  mismatch handling has been selected. The current Owner disposition is
+  `NOT_YET_SELECTED`.
 
 ### PRD0-D052 — Lock the private bucket topology
 
