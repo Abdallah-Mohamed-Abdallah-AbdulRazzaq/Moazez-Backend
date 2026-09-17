@@ -746,44 +746,415 @@ function isExpressionRootedInThis(node) {
   return false;
 }
 
+const TEACHER_LIFECYCLE_FLOW = Object.freeze({
+  TRANSACTION_CONTEXT: 'TRANSACTION_CONTEXT',
+  FORBIDDEN_COLLABORATOR: 'FORBIDDEN_COLLABORATOR',
+  PURE_VALUE: 'PURE_VALUE',
+  UNKNOWN_NON_TRANSACTION_CALL: 'UNKNOWN_NON_TRANSACTION_CALL',
+});
+const TEACHER_LIFECYCLE_PURE_STANDARD_METHODS = new Set([
+  ...PURE_METHODS,
+  'exec',
+  'getUTCDate',
+  'getUTCFullYear',
+  'getUTCHours',
+  'getUTCMinutes',
+  'getUTCMonth',
+  'getUTCSeconds',
+  'push',
+  'toUpperCase',
+]);
+
+function teacherLifecycleFlowClassification(value) {
+  return value && typeof value === 'object'
+    ? value.classification
+    : value;
+}
+
+function teacherLifecycleSymbol(checker, node) {
+  return node ? checker.getSymbolAtLocation(node) ?? null : null;
+}
+
+function bindTeacherLifecycleName(checker, name, classification, bindings) {
+  if (ts.isIdentifier(name)) {
+    const symbol = teacherLifecycleSymbol(checker, name);
+    if (symbol) bindings.set(symbol, classification);
+    return;
+  }
+  if (ts.isObjectBindingPattern(name) || ts.isArrayBindingPattern(name)) {
+    for (const element of name.elements) {
+      if (ts.isBindingElement(element)) {
+        bindTeacherLifecycleName(checker, element.name, classification, bindings);
+      }
+    }
+  }
+}
+
+function mergeTeacherLifecycleFlow(classifications) {
+  const values = classifications
+    .map(teacherLifecycleFlowClassification)
+    .filter(Boolean);
+  if (values.includes(TEACHER_LIFECYCLE_FLOW.FORBIDDEN_COLLABORATOR)) {
+    return TEACHER_LIFECYCLE_FLOW.FORBIDDEN_COLLABORATOR;
+  }
+  if (values.includes(TEACHER_LIFECYCLE_FLOW.UNKNOWN_NON_TRANSACTION_CALL)) {
+    return TEACHER_LIFECYCLE_FLOW.UNKNOWN_NON_TRANSACTION_CALL;
+  }
+  const unique = new Set(values);
+  if (unique.size === 1) return values[0];
+  if (unique.size === 0) return TEACHER_LIFECYCLE_FLOW.PURE_VALUE;
+  return TEACHER_LIFECYCLE_FLOW.UNKNOWN_NON_TRANSACTION_CALL;
+}
+
+function isTeacherLifecyclePureStandardCall(checker, call) {
+  if (!ts.isPropertyAccessExpression(call.expression)) return false;
+  if (!TEACHER_LIFECYCLE_PURE_STANDARD_METHODS.has(call.expression.name.text)) {
+    return false;
+  }
+  let symbol = checker.getSymbolAtLocation(call.expression.name);
+  if (symbol?.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
+  const declarations = symbol?.getDeclarations() ?? [];
+  return declarations.length > 0 &&
+    declarations.every(isTypeScriptStandardLibraryDeclaration);
+}
+
+function unwrapTeacherLifecycleExpression(node) {
+  let current = node;
+  while (
+    current &&
+    (ts.isParenthesizedExpression(current) ||
+      ts.isAsExpression(current) ||
+      ts.isTypeAssertionExpression(current) ||
+      ts.isNonNullExpression(current) ||
+      (ts.isSatisfiesExpression && ts.isSatisfiesExpression(current)))
+  ) current = current.expression;
+  return current;
+}
+
+function classifyTeacherLifecycleExpression(
+  checker,
+  node,
+  bindings,
+  resolvingSymbols = new Set(),
+) {
+  const expression = unwrapTeacherLifecycleExpression(node);
+  if (!expression) return TEACHER_LIFECYCLE_FLOW.PURE_VALUE;
+  if (expression.kind === ts.SyntaxKind.ThisKeyword) {
+    return TEACHER_LIFECYCLE_FLOW.FORBIDDEN_COLLABORATOR;
+  }
+  if (ts.isIdentifier(expression)) {
+    if (PURE_CALL_ROOTS.has(expression.text) || expression.text === 'undefined') {
+      return TEACHER_LIFECYCLE_FLOW.PURE_VALUE;
+    }
+    let symbol = teacherLifecycleSymbol(checker, expression);
+    if (symbol && bindings.has(symbol)) return bindings.get(symbol);
+    if (symbol?.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
+    if (!symbol || resolvingSymbols.has(symbol)) {
+      return TEACHER_LIFECYCLE_FLOW.UNKNOWN_NON_TRANSACTION_CALL;
+    }
+    resolvingSymbols.add(symbol);
+    try {
+      for (const declaration of symbol.getDeclarations() ?? []) {
+        if (ts.isVariableDeclaration(declaration) && declaration.initializer) {
+          return classifyTeacherLifecycleExpression(
+            checker,
+            declaration.initializer,
+            bindings,
+            resolvingSymbols,
+          );
+        }
+        if (
+          ts.isFunctionDeclaration(declaration) ||
+          ts.isFunctionExpression(declaration) ||
+          ts.isArrowFunction(declaration) ||
+          ts.isClassDeclaration(declaration) ||
+          ts.isEnumDeclaration(declaration) ||
+          ts.isImportSpecifier(declaration) ||
+          ts.isNamespaceImport(declaration) ||
+          ts.isImportClause(declaration)
+        ) return TEACHER_LIFECYCLE_FLOW.PURE_VALUE;
+      }
+    } finally {
+      resolvingSymbols.delete(symbol);
+    }
+    return TEACHER_LIFECYCLE_FLOW.UNKNOWN_NON_TRANSACTION_CALL;
+  }
+  if (
+    ts.isPropertyAccessExpression(expression) ||
+    ts.isElementAccessExpression(expression)
+  ) {
+    const receiverFlow = classifyTeacherLifecycleExpression(
+      checker,
+      expression.expression,
+      bindings,
+      resolvingSymbols,
+    );
+    if (
+      receiverFlow &&
+      typeof receiverFlow === 'object' &&
+      ts.isPropertyAccessExpression(expression) &&
+      receiverFlow.properties?.has(expression.name.text)
+    ) return receiverFlow.properties.get(expression.name.text);
+    return teacherLifecycleFlowClassification(receiverFlow);
+  }
+  if (ts.isAwaitExpression(expression)) {
+    return classifyTeacherLifecycleExpression(
+      checker,
+      expression.expression,
+      bindings,
+      resolvingSymbols,
+    );
+  }
+  if (ts.isCallExpression(expression)) {
+    const receiver = ts.isPropertyAccessExpression(expression.expression)
+      ? expression.expression.expression
+      : expression.expression;
+    const receiverFlow = teacherLifecycleFlowClassification(
+      classifyTeacherLifecycleExpression(
+        checker,
+        receiver,
+        bindings,
+        resolvingSymbols,
+      ),
+    );
+    if (receiverFlow === TEACHER_LIFECYCLE_FLOW.FORBIDDEN_COLLABORATOR) {
+      return receiverFlow;
+    }
+    if (
+      receiverFlow === TEACHER_LIFECYCLE_FLOW.TRANSACTION_CONTEXT ||
+      receiverFlow === TEACHER_LIFECYCLE_FLOW.PURE_VALUE
+    ) return TEACHER_LIFECYCLE_FLOW.PURE_VALUE;
+    return TEACHER_LIFECYCLE_FLOW.UNKNOWN_NON_TRANSACTION_CALL;
+  }
+  if (ts.isConditionalExpression(expression)) {
+    return mergeTeacherLifecycleFlow([
+      classifyTeacherLifecycleExpression(checker, expression.whenTrue, bindings, resolvingSymbols),
+      classifyTeacherLifecycleExpression(checker, expression.whenFalse, bindings, resolvingSymbols),
+    ]);
+  }
+  if (ts.isBinaryExpression(expression)) {
+    if (expression.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      return classifyTeacherLifecycleExpression(
+        checker,
+        expression.right,
+        bindings,
+        resolvingSymbols,
+      );
+    }
+    return mergeTeacherLifecycleFlow([
+      classifyTeacherLifecycleExpression(checker, expression.left, bindings, resolvingSymbols),
+      classifyTeacherLifecycleExpression(checker, expression.right, bindings, resolvingSymbols),
+    ]);
+  }
+  if (ts.isObjectLiteralExpression(expression)) {
+    const properties = new Map();
+    for (const property of expression.properties) {
+      if (ts.isPropertyAssignment(property)) {
+        const name = propertyName(property.name);
+        if (name) {
+          properties.set(name, classifyTeacherLifecycleExpression(
+            checker,
+            property.initializer,
+            bindings,
+            resolvingSymbols,
+          ));
+        }
+      } else if (ts.isShorthandPropertyAssignment(property)) {
+        const valueSymbol = checker.getShorthandAssignmentValueSymbol(property);
+        properties.set(
+          property.name.text,
+          valueSymbol && bindings.has(valueSymbol)
+            ? bindings.get(valueSymbol)
+            : classifyTeacherLifecycleExpression(
+                checker,
+                property.name,
+                bindings,
+                resolvingSymbols,
+              ),
+        );
+      }
+    }
+    return {
+      classification: mergeTeacherLifecycleFlow([...properties.values()]),
+      properties,
+    };
+  }
+  if (ts.isArrayLiteralExpression(expression)) {
+    return mergeTeacherLifecycleFlow(
+      expression.elements.map((element) =>
+        classifyTeacherLifecycleExpression(
+          checker,
+          element,
+          bindings,
+          resolvingSymbols,
+        )),
+    );
+  }
+  if (ts.isNewExpression(expression)) {
+    const constructorTarget = callTarget(expression, expression.getSourceFile());
+    return PURE_CALL_ROOTS.has(constructorTarget)
+      ? TEACHER_LIFECYCLE_FLOW.PURE_VALUE
+      : TEACHER_LIFECYCLE_FLOW.UNKNOWN_NON_TRANSACTION_CALL;
+  }
+  if (
+    ts.isStringLiteralLike(expression) ||
+    ts.isNumericLiteral(expression) ||
+    ts.isRegularExpressionLiteral(expression) ||
+    ts.isTemplateExpression(expression) ||
+    ts.isNoSubstitutionTemplateLiteral(expression) ||
+    ts.isArrowFunction(expression) ||
+    ts.isFunctionExpression(expression) ||
+    expression.kind === ts.SyntaxKind.TrueKeyword ||
+    expression.kind === ts.SyntaxKind.FalseKeyword ||
+    expression.kind === ts.SyntaxKind.NullKeyword
+  ) return TEACHER_LIFECYCLE_FLOW.PURE_VALUE;
+  return TEACHER_LIFECYCLE_FLOW.PURE_VALUE;
+}
+
+function teacherLifecycleBindingIdentity(checker, implementation, bindings) {
+  return implementation.parameters.map((parameter, index) => {
+    if (!ts.isIdentifier(parameter.name)) return `${index}=binding-pattern`;
+    const symbol = teacherLifecycleSymbol(checker, parameter.name);
+    return `${parameter.name.text}=${
+      teacherLifecycleFlowClassification(symbol && bindings.get(symbol)) ??
+      TEACHER_LIFECYCLE_FLOW.UNKNOWN_NON_TRANSACTION_CALL
+    }`;
+  }).join(',');
+}
+
 function analyzeTeacherLifecycleCallback({ callback, source, checker, sourceRoot }) {
-  const transactionRoots = new Set(
-    callback.parameters
-      .filter((parameter) => ts.isIdentifier(parameter.name))
-      .map((parameter) => parameter.name.text),
-  );
   const escapes = [];
   const transactionCalls = [];
   const resolvedHelpers = [];
   const visited = new Set();
 
-  const visitImplementation = (implementation, origin) => {
-    const key = astIdentity(implementation);
+  const recordEscape = (call, target, origin, reason) => {
+    escapes.push({
+      target,
+      awaited: isEffectivelyWaited(call, call.getSourceFile()),
+      origin,
+      reason,
+    });
+  };
+
+  const visitImplementation = (implementation, origin, inheritedBindings) => {
+    const bindings = new Map(inheritedBindings);
+    const key = `${astIdentity(implementation)}|${teacherLifecycleBindingIdentity(
+      checker,
+      implementation,
+      bindings,
+    )}`;
     if (visited.has(key)) return;
     visited.add(key);
     const implementationSource = implementation.getSourceFile();
+
+    const visitNestedCallback = (nested, nestedOrigin) => {
+      const nestedBindings = new Map(bindings);
+      for (const parameter of nested.parameters) {
+        bindTeacherLifecycleName(
+          checker,
+          parameter.name,
+          TEACHER_LIFECYCLE_FLOW.PURE_VALUE,
+          nestedBindings,
+        );
+      }
+      visitImplementation(nested, nestedOrigin, nestedBindings);
+    };
+
+    const visitCall = (node) => {
+      const target = callTarget(node, implementationSource);
+      const receiver = ts.isPropertyAccessExpression(node.expression)
+        ? node.expression.expression
+        : node.expression;
+      const receiverFlow = teacherLifecycleFlowClassification(
+        classifyTeacherLifecycleExpression(
+          checker,
+          receiver,
+          bindings,
+        ),
+      );
+      if (receiverFlow === TEACHER_LIFECYCLE_FLOW.FORBIDDEN_COLLABORATOR) {
+        recordEscape(
+          node,
+          target,
+          origin,
+          TEACHER_LIFECYCLE_FLOW.FORBIDDEN_COLLABORATOR,
+        );
+        return;
+      }
+      if (receiverFlow === TEACHER_LIFECYCLE_FLOW.TRANSACTION_CONTEXT) {
+        transactionCalls.push(target);
+        return;
+      }
+      const property = ts.isPropertyAccessExpression(node.expression)
+        ? node.expression.name.text
+        : ts.isIdentifier(node.expression)
+          ? node.expression.text
+          : target;
+      const root = target.split('.')[0];
+      if (
+        PURE_CALL_ROOTS.has(root) ||
+        isKnownSynchronousIntrinsicCall(checker, node) ||
+        isTeacherLifecyclePureStandardCall(checker, node)
+      ) return;
+      const declaration =
+        resolveLocalCallDeclaration(implementationSource, node) ??
+        resolveCallDeclaration(checker, node, sourceRoot);
+      const helper = declaration && functionImplementation(declaration);
+      if (helper?.body) {
+        resolvedHelpers.push(
+          `${normalized(path.relative(ROOT, declaration.getSourceFile().fileName))}#${declarationName(declaration) ?? target}`,
+        );
+        const helperBindings = new Map(bindings);
+        for (let index = 0; index < helper.parameters.length; index += 1) {
+          const argument = node.arguments[index];
+          bindTeacherLifecycleName(
+            checker,
+            helper.parameters[index].name,
+            argument
+              ? classifyTeacherLifecycleExpression(checker, argument, bindings)
+              : TEACHER_LIFECYCLE_FLOW.UNKNOWN_NON_TRANSACTION_CALL,
+            helperBindings,
+          );
+        }
+        visitImplementation(helper, target, helperBindings);
+        return;
+      }
+      recordEscape(
+        node,
+        target,
+        origin,
+        TEACHER_LIFECYCLE_FLOW.UNKNOWN_NON_TRANSACTION_CALL,
+      );
+    };
+
     const visit = (node) => {
+      if (ts.isFunctionLike(node) && node !== implementation) return;
+      if (ts.isVariableDeclaration(node) && node.initializer) {
+        bindTeacherLifecycleName(
+          checker,
+          node.name,
+          classifyTeacherLifecycleExpression(checker, node.initializer, bindings),
+          bindings,
+        );
+      } else if (
+        ts.isBinaryExpression(node) &&
+        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isIdentifier(node.left)
+      ) {
+        bindTeacherLifecycleName(
+          checker,
+          node.left,
+          classifyTeacherLifecycleExpression(checker, node.right, bindings),
+          bindings,
+        );
+      }
       if (ts.isCallExpression(node)) {
+        visitCall(node);
         const target = callTarget(node, implementationSource);
-        const root = target.split('.')[0];
-        if (isExpressionRootedInThis(node.expression)) {
-          escapes.push({
-            target,
-            awaited: isEffectivelyWaited(node, implementation),
-            origin,
-          });
-        } else if (transactionRoots.has(root)) {
-          transactionCalls.push(target);
-        } else if (!PURE_CALL_ROOTS.has(root)) {
-          const declaration =
-            resolveLocalCallDeclaration(implementationSource, node) ??
-            resolveCallDeclaration(checker, node, sourceRoot);
-          const helper = declaration && functionImplementation(declaration);
-          if (helper?.body) {
-            resolvedHelpers.push(
-              `${normalized(path.relative(ROOT, declaration.getSourceFile().fileName))}#${declarationName(declaration) ?? target}`,
-            );
-            visitImplementation(helper, target);
+        for (const argument of node.arguments) {
+          if (ts.isFunctionLike(argument)) {
+            visitNestedCallback(argument, `${target}:closure`);
           }
         }
       }
@@ -792,11 +1163,22 @@ function analyzeTeacherLifecycleCallback({ callback, source, checker, sourceRoot
     visit(implementation);
   };
 
-  visitImplementation(callback, 'teacher-lifecycle-callback');
+  const callbackBindings = new Map();
+  for (const parameter of callback.parameters) {
+    bindTeacherLifecycleName(
+      checker,
+      parameter.name,
+      TEACHER_LIFECYCLE_FLOW.TRANSACTION_CONTEXT,
+      callbackBindings,
+    );
+  }
+  visitImplementation(callback, 'teacher-lifecycle-callback', callbackBindings);
   return {
     escapes: escapes.filter((item, index, all) =>
       all.findIndex((candidate) =>
-        candidate.target === item.target && candidate.origin === item.origin,
+        candidate.target === item.target &&
+        candidate.origin === item.origin &&
+        candidate.reason === item.reason,
       ) === index,
     ),
     transactionCalls: [...new Set(transactionCalls)].sort(),

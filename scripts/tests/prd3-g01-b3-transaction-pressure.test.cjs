@@ -151,7 +151,7 @@ test('Teacher lifecycle callbacks use only transaction context inside the active
   }
 });
 
-test('the old employment-status reader escape is rejected inside a lifecycle transaction', () => {
+test('DIRECT_OLD_DEFECT_FIXTURE=REJECTED', () => {
   withTeacherLifecycleFixture(
     `
       export abstract class TeacherLifecycleUnitOfWork {
@@ -190,7 +190,239 @@ test('the old employment-status reader escape is rejected inside a lifecycle tra
   );
 });
 
-test('a repository read before the lifecycle transaction remains allowed', () => {
+test('TEACHER_LIFECYCLE_ALIAS_ESCAPE_FIXTURE=REJECTED; PRE_TRANSACTION_ALIAS_ESCAPE_FIXTURE=REJECTED', () => {
+  withTeacherLifecycleFixture(
+    `
+      export abstract class TeacherLifecycleUnitOfWork {
+        abstract execute<T>(callback: (transaction: any) => Promise<T>): Promise<T>;
+      }
+    `,
+    `
+      import { TeacherLifecycleUnitOfWork } from './teacher-lifecycle-unit-of-work';
+      class UnsafeAliasedEmploymentStatus {
+        constructor(
+          private readonly unitOfWork: TeacherLifecycleUnitOfWork,
+          private readonly allocationReader: any,
+        ) {}
+        execute() {
+          const reader = this.allocationReader;
+          return this.unitOfWork.execute(async (transaction) => {
+            await transaction.profile.findLiveById({});
+            await reader.classifyTeacherAllocationLifecycleState('school', 'teacher', new Date());
+          });
+        }
+      }
+    `,
+    (rows) => {
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].classification, 'UNSAFE_TRANSACTION_ESCAPE');
+      assert.deepEqual(
+        rows[0].escapes.map((item) => item.target),
+        ['reader.classifyTeacherAllocationLifecycleState'],
+      );
+      assert.throws(
+        () => validateTeacherLifecycleUnitOfWorkCallbacks(rows),
+        /Teacher lifecycle transaction escape detected/u,
+      );
+    },
+  );
+});
+
+test('TEACHER_LIFECYCLE_HELPER_PARAMETER_ESCAPE_FIXTURE=REJECTED; HELPER_PARAMETER_ESCAPE_FIXTURE=REJECTED', () => {
+  withTeacherLifecycleFixture(
+    `
+      export abstract class TeacherLifecycleUnitOfWork {
+        abstract execute<T>(callback: (transaction: any) => Promise<T>): Promise<T>;
+      }
+    `,
+    `
+      import { TeacherLifecycleUnitOfWork } from './teacher-lifecycle-unit-of-work';
+      interface Reader {
+        classifyTeacherAllocationLifecycleState(): Promise<void>;
+      }
+      async function classify(reader: Reader) {
+        return reader.classifyTeacherAllocationLifecycleState();
+      }
+      class UnsafeHelperParameterEmploymentStatus {
+        constructor(
+          private readonly unitOfWork: TeacherLifecycleUnitOfWork,
+          private readonly allocationReader: Reader,
+        ) {}
+        execute() {
+          return this.unitOfWork.execute(async (transaction) => {
+            await transaction.profile.findLiveById({});
+            await classify(this.allocationReader);
+          });
+        }
+      }
+    `,
+    (rows) => {
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].classification, 'UNSAFE_TRANSACTION_ESCAPE');
+      assert.deepEqual(
+        rows[0].escapes.map((item) => item.target),
+        ['reader.classifyTeacherAllocationLifecycleState'],
+      );
+      assert.throws(
+        () => validateTeacherLifecycleUnitOfWorkCallbacks(rows),
+        /Teacher lifecycle transaction escape detected/u,
+      );
+    },
+  );
+});
+
+test('NESTED_HELPER_CLOSURE_CAPTURE_ESCAPE_FIXTURE=REJECTED', () => {
+  withTeacherLifecycleFixture(
+    `
+      export abstract class TeacherLifecycleUnitOfWork {
+        abstract execute<T>(callback: (transaction: any) => Promise<T>): Promise<T>;
+      }
+    `,
+    `
+      import { TeacherLifecycleUnitOfWork } from './teacher-lifecycle-unit-of-work';
+      interface Reader {
+        classifyTeacherAllocationLifecycleState(): Promise<void>;
+      }
+      async function nested(reader: Reader) {
+        return reader.classifyTeacherAllocationLifecycleState();
+      }
+      async function outer(reader: Reader) {
+        const closure = () => nested(reader);
+        return closure();
+      }
+      class UnsafeNestedClosureEmploymentStatus {
+        constructor(
+          private readonly unitOfWork: TeacherLifecycleUnitOfWork,
+          private readonly allocationReader: Reader,
+        ) {}
+        execute() {
+          return this.unitOfWork.execute(async (transaction) => {
+            await transaction.profile.findLiveById({});
+            await outer(this.allocationReader);
+          });
+        }
+      }
+    `,
+    (rows) => {
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].classification, 'UNSAFE_TRANSACTION_ESCAPE');
+      assert.deepEqual(
+        rows[0].escapes.map((item) => item.target),
+        ['reader.classifyTeacherAllocationLifecycleState'],
+      );
+      assert.throws(
+        () => validateTeacherLifecycleUnitOfWorkCallbacks(rows),
+        /Teacher lifecycle transaction escape detected/u,
+      );
+    },
+  );
+});
+
+test('TRANSACTION_PARAMETER_RENAMING_FIXTURE=ALLOWED', () => {
+  withTeacherLifecycleFixture(
+    `
+      export abstract class TeacherLifecycleUnitOfWork {
+        abstract execute<T>(callback: (transaction: any) => Promise<T>): Promise<T>;
+      }
+    `,
+    `
+      import { TeacherLifecycleUnitOfWork } from './teacher-lifecycle-unit-of-work';
+      async function loadProfile(tx: any) {
+        return tx.profile.findLiveById({});
+      }
+      class SafeRenamedTransactionParameter {
+        constructor(private readonly unitOfWork: TeacherLifecycleUnitOfWork) {}
+        execute() {
+          return this.unitOfWork.execute(async (transaction) => {
+            return loadProfile(transaction);
+          });
+        }
+      }
+    `,
+    (rows) => {
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].classification, 'PASS_TRANSACTION_CONTEXT_ONLY');
+      assert.deepEqual(rows[0].escapes, []);
+      assert.deepEqual(rows[0].transactionCalls, ['tx.profile.findLiveById']);
+      assert.doesNotThrow(() =>
+        validateTeacherLifecycleUnitOfWorkCallbacks(rows),
+      );
+    },
+  );
+});
+
+test('UNRESOLVED_NON_TRANSACTION_IO_CALL=REJECTED', () => {
+  withTeacherLifecycleFixture(
+    `
+      export abstract class TeacherLifecycleUnitOfWork {
+        abstract execute<T>(callback: (transaction: any) => Promise<T>): Promise<T>;
+      }
+    `,
+    `
+      import { TeacherLifecycleUnitOfWork } from './teacher-lifecycle-unit-of-work';
+      declare function unresolvedIo(): Promise<void>;
+      class UnsafeUnresolvedIo {
+        constructor(private readonly unitOfWork: TeacherLifecycleUnitOfWork) {}
+        execute() {
+          return this.unitOfWork.execute(async (transaction) => {
+            await transaction.profile.findLiveById({});
+            await unresolvedIo();
+          });
+        }
+      }
+    `,
+    (rows) => {
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].classification, 'UNSAFE_TRANSACTION_ESCAPE');
+      assert.deepEqual(
+        rows[0].escapes.map((item) => [item.target, item.reason]),
+        [['unresolvedIo', 'UNKNOWN_NON_TRANSACTION_CALL']],
+      );
+      assert.throws(
+        () => validateTeacherLifecycleUnitOfWorkCallbacks(rows),
+        /Teacher lifecycle transaction escape detected/u,
+      );
+    },
+  );
+});
+
+test('TRANSACTION_DIRECT_CALL=ALLOWED; PURE_LOCAL_HELPER=ALLOWED', () => {
+  withTeacherLifecycleFixture(
+    `
+      export abstract class TeacherLifecycleUnitOfWork {
+        abstract execute<T>(callback: (transaction: any) => Promise<T>): Promise<T>;
+      }
+    `,
+    `
+      import { TeacherLifecycleUnitOfWork } from './teacher-lifecycle-unit-of-work';
+      function normalize(value: string) {
+        return value.trim().toLowerCase();
+      }
+      class SafePureHelper {
+        constructor(private readonly unitOfWork: TeacherLifecycleUnitOfWork) {}
+        execute() {
+          return this.unitOfWork.execute(async (transaction) => {
+            const normalized = normalize(' Teacher ');
+            return transaction.audit.writeSuccessful({ normalized });
+          });
+        }
+      }
+    `,
+    (rows) => {
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].classification, 'PASS_TRANSACTION_CONTEXT_ONLY');
+      assert.deepEqual(rows[0].escapes, []);
+      assert.deepEqual(rows[0].transactionCalls, [
+        'transaction.audit.writeSuccessful',
+      ]);
+      assert.doesNotThrow(() =>
+        validateTeacherLifecycleUnitOfWorkCallbacks(rows),
+      );
+    },
+  );
+});
+
+test('PRE_TRANSACTION_EXTERNAL_READ_FIXTURE=ALLOWED', () => {
   withTeacherLifecycleFixture(
     `
       export abstract class TeacherLifecycleUnitOfWork {
