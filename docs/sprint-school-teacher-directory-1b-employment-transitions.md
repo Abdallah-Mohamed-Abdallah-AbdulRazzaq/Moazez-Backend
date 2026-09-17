@@ -77,7 +77,10 @@ Generic Settings Teacher activation rejection attempts the standalone sanitized 
 
 ## 7. Allocation and reassignment result
 
-The Teachers coordinator depends only on the Academics-owned `TEACHER_ALLOCATION_LIFECYCLE_READER`; it has no allocation delegate and performs no allocation mutation.
+The Teachers coordinator executes allocation classification through
+`TeacherLifecycleTransactionContext.allocation.classify` inside the existing
+lifecycle transaction. Academics continues to own the canonical allocation
+classification semantics, and the coordinator performs no allocation mutation.
 
 `INACTIVE` and `TERMINATED` are never blocked by allocations. `current_active` or `future` makes `reassignmentRequired=true`. `historical` is retained and non-blocking. `current_inactive`, `inconsistent`, and `invalid` are surfaced as integrity-risk aggregate counts but do not block the employment transition.
 

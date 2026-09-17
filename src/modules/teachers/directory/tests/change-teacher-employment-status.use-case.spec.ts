@@ -9,7 +9,6 @@ import {
   createRequestContext,
   runWithRequestContext,
 } from '../../../../common/context/request-context';
-import type { TeacherAllocationLifecycleReader } from '../../../academics/teacher-allocation/application/teacher-allocation-lifecycle-read.service';
 import { summarizeTeacherAllocationLifecycleStates } from '../../../academics/teacher-allocation/domain/teacher-allocation-lifecycle-state';
 import { TeacherLifecycleUserInvariantError } from '../../../settings/users/infrastructure/teacher-lifecycle-user.operations';
 import type {
@@ -128,7 +127,22 @@ type SetupOptions = {
   >;
   failAt?: 'profile' | 'user' | 'membership' | 'session' | 'audit';
   auditFailureAt?: number;
+  allocationError?: unknown;
 };
+
+type SetEmploymentStatusInput = Parameters<
+  TeacherLifecycleTransactionContext['profile']['setEmploymentStatus']
+>[0];
+type SetUserStatusInput = Parameters<
+  TeacherLifecycleTransactionContext['user']['setStatus']
+>[0];
+type SetMembershipStateInput = {
+  status: MembershipStatus;
+  endedAt?: Date | null;
+};
+type SuccessfulAuditEntry = Parameters<
+  TeacherLifecycleTransactionContext['audit']['writeSuccessful']
+>[0];
 
 function setup(options: SetupOptions = {}) {
   const previous = options.previous ?? TeacherEmploymentStatus.ACTIVE;
@@ -152,35 +166,70 @@ function setup(options: SetupOptions = {}) {
             : MembershipStatus.ACTIVE,
         )
       : options.currentMembership;
-  const setEmploymentStatus = jest.fn(async ({ employmentStatus }) => {
-    if (options.failAt === 'profile') throw new Error('profile write failed');
-    return { ...currentProfile!, employmentStatus };
-  });
-  const setStatus = jest.fn(async ({ status }) => {
+  const setEmploymentStatus = jest.fn(
+    ({ employmentStatus }: SetEmploymentStatusInput) => {
+      if (options.failAt === 'profile') throw new Error('profile write failed');
+      return Promise.resolve({
+        ...(currentProfile as TeacherLifecycleProfileState),
+        employmentStatus,
+      });
+    },
+  );
+  const setStatus = jest.fn(({ status }: SetUserStatusInput) => {
     if (options.failAt === 'user') throw new Error('user write failed');
-    return { ...currentUser!, status };
+    return Promise.resolve({
+      ...(currentUser as TeacherLifecycleUserState),
+      status,
+    });
   });
-  const updateMembership = jest.fn(async ({ status, endedAt }) => {
-    if (options.failAt === 'membership') {
-      throw new Error('membership write failed');
-    }
-    return { ...currentMembership!, status, endedAt: endedAt ?? null };
-  });
-  const setActive = jest.fn((input) =>
-    updateMembership({ ...input, status: MembershipStatus.ACTIVE }),
+  const updateMembership = jest.fn(
+    ({ status, endedAt }: SetMembershipStateInput) => {
+      if (options.failAt === 'membership') {
+        throw new Error('membership write failed');
+      }
+      return Promise.resolve({
+        ...(currentMembership as TeacherLifecycleMembershipState),
+        status,
+        endedAt: endedAt ?? null,
+      });
+    },
   );
-  const setSuspended = jest.fn((input) =>
-    updateMembership({ ...input, status: MembershipStatus.SUSPENDED }),
+  const setActive = jest.fn(
+    (
+      input: Parameters<
+        TeacherLifecycleTransactionContext['membership']['setActive']
+      >[0],
+    ) =>
+      updateMembership({
+        ...input,
+        status: MembershipStatus.ACTIVE,
+      }),
   );
-  const setInactive = jest.fn((input) =>
-    updateMembership({ ...input, status: MembershipStatus.INACTIVE }),
+  const setSuspended = jest.fn(
+    (
+      input: Parameters<
+        TeacherLifecycleTransactionContext['membership']['setSuspended']
+      >[0],
+    ) =>
+      updateMembership({
+        ...input,
+        status: MembershipStatus.SUSPENDED,
+      }),
   );
-  const revokeUserSessions = jest.fn(async () => {
+  const setInactive = jest.fn(
+    (
+      input: Parameters<
+        TeacherLifecycleTransactionContext['membership']['setInactive']
+      >[0],
+    ) => updateMembership({ ...input, status: MembershipStatus.INACTIVE }),
+  );
+  const revokeUserSessions = jest.fn(() => {
     if (options.failAt === 'session') throw new Error('session write failed');
-    return 3;
+    return Promise.resolve(3);
   });
   let auditWriteNumber = 0;
-  const writeSuccessful = jest.fn(async (_entry: { action: string }) => {
+  const writeSuccessful = jest.fn((entry: SuccessfulAuditEntry) => {
+    void entry;
     auditWriteNumber += 1;
     if (
       options.failAt === 'audit' ||
@@ -188,7 +237,15 @@ function setup(options: SetupOptions = {}) {
     ) {
       throw new Error('audit write failed');
     }
+    return Promise.resolve();
   });
+  const allocationSummary = summarizeTeacherAllocationLifecycleStates(
+    options.allocationStates ?? [],
+  );
+  const classifyAllocation = jest.fn().mockResolvedValue(allocationSummary);
+  if (options.allocationError !== undefined) {
+    classifyAllocation.mockRejectedValue(options.allocationError);
+  }
   const transaction = {
     user: {
       findState: jest.fn().mockResolvedValue(currentUser),
@@ -206,19 +263,17 @@ function setup(options: SetupOptions = {}) {
     },
     sessions: { revokeUserSessions },
     audit: { writeSuccessful },
+    allocation: { classify: classifyAllocation },
   } as unknown as TeacherLifecycleTransactionContext;
-  const execute = jest.fn((callback) => callback(transaction));
-  const allocationSummary = summarizeTeacherAllocationLifecycleStates(
-    options.allocationStates ?? [],
+  const execute = jest.fn(
+    <T>(
+      callback: (context: TeacherLifecycleTransactionContext) => Promise<T>,
+    ) => callback(transaction),
   );
-  const classifyTeacherAllocationLifecycleState = jest
-    .fn()
-    .mockResolvedValue(allocationSummary);
+  const logOperationalError = jest.fn();
   const useCase = new ChangeTeacherEmploymentStatusUseCase(
     { execute } as unknown as TeacherLifecycleUnitOfWork,
-    {
-      classifyTeacherAllocationLifecycleState,
-    } as unknown as TeacherAllocationLifecycleReader,
+    { error: logOperationalError },
   );
   return {
     useCase,
@@ -231,7 +286,8 @@ function setup(options: SetupOptions = {}) {
     setInactive,
     revokeUserSessions,
     writeSuccessful,
-    classifyTeacherAllocationLifecycleState,
+    classifyAllocation,
+    logOperationalError,
   };
 }
 
@@ -313,6 +369,11 @@ describe('ChangeTeacherEmploymentStatusUseCase', () => {
         IDS.user,
         new Date(EFFECTIVE_AT),
       );
+      expect(state.classifyAllocation).toHaveBeenCalledWith({
+        schoolId: IDS.school,
+        teacherUserId: IDS.user,
+        asOf: new Date(EFFECTIVE_AT),
+      });
     },
   );
 
@@ -425,7 +486,7 @@ describe('ChangeTeacherEmploymentStatusUseCase', () => {
         currentActiveCount: allocationState === 'current_active' ? 1 : 0,
         futureCount: allocationState === 'future' ? 1 : 0,
       });
-      expect(Object.keys(state.transaction)).not.toContain('allocation');
+      expect(state.classifyAllocation).toHaveBeenCalledTimes(1);
     },
   );
 
@@ -585,6 +646,7 @@ describe('ChangeTeacherEmploymentStatusUseCase', () => {
       details: { retryable: true, reasonCode: 'revocation_failed' },
     });
     expect(state.writeSuccessful).not.toHaveBeenCalled();
+    expect(state.logOperationalError).not.toHaveBeenCalled();
   });
 
   it('uses conditional source-state predicates and maps moved state to a stable conflict', async () => {
@@ -606,22 +668,101 @@ describe('ChangeTeacherEmploymentStatusUseCase', () => {
     expect(state.setStatus).toHaveBeenCalledWith(
       expect.objectContaining({ expectedStatus: UserStatus.ACTIVE }),
     );
+    expect(state.logOperationalError).not.toHaveBeenCalled();
   });
 
-  it('queries only the Academics read port and returns no credential or Session material', async () => {
+  it('classifies allocations through the lifecycle transaction and returns no credential or Session material', async () => {
     const state = setup({ allocationStates: ['future'] });
     const result = await invoke(
       state.useCase,
       TeacherEmploymentStatus.INACTIVE,
     );
-    expect(state.classifyTeacherAllocationLifecycleState).toHaveBeenCalledWith(
-      IDS.school,
-      IDS.user,
-      new Date(EFFECTIVE_AT),
-    );
+    expect(state.classifyAllocation).toHaveBeenCalledWith({
+      schoolId: IDS.school,
+      teacherUserId: IDS.user,
+      asOf: new Date(EFFECTIVE_AT),
+    });
     const serialized = JSON.stringify(result);
     expect(serialized).not.toMatch(
       /passwordHash|refreshToken|sessionId|roleId|membershipId|schoolId|organizationId|allocationId/iu,
     );
+  });
+
+  it('rethrows an allocation infrastructure failure before later writes or success audits', async () => {
+    const failure = new Error('synthetic allocation infrastructure failure');
+    const state = setup({ allocationError: failure });
+
+    await expect(
+      invoke(state.useCase, TeacherEmploymentStatus.INACTIVE),
+    ).rejects.toBe(failure);
+
+    expect(state.classifyAllocation).toHaveBeenCalledWith({
+      schoolId: IDS.school,
+      teacherUserId: IDS.user,
+      asOf: new Date(EFFECTIVE_AT),
+    });
+    expect(state.setEmploymentStatus).not.toHaveBeenCalled();
+    expect(state.setStatus).not.toHaveBeenCalled();
+    expect(state.setSuspended).not.toHaveBeenCalled();
+    expect(state.revokeUserSessions).not.toHaveBeenCalled();
+    expect(state.writeSuccessful).not.toHaveBeenCalled();
+  });
+
+  it.each(['P2024', 'P2028'])(
+    'logs safe %s metadata and rethrows the original unexpected error',
+    async (code) => {
+      const sentinels = {
+        message: `message-secret-${code}`,
+        meta: `meta-secret-${code}`,
+        stack: `stack-secret-${code}`,
+      };
+      const failure = {
+        code,
+        name: 'PrismaClientKnownRequestError',
+        message: sentinels.message,
+        meta: { confidential: sentinels.meta },
+        stack: sentinels.stack,
+      };
+      const state = setup({ allocationError: failure });
+
+      await expect(
+        invoke(state.useCase, TeacherEmploymentStatus.INACTIVE),
+      ).rejects.toBe(failure);
+
+      expect(state.logOperationalError).toHaveBeenCalledWith({
+        event: 'teachers.employment_status.change.unexpected_failure',
+        operation: 'employment_status_change',
+        traceId: 'employment-transition-test',
+        errorName: 'PrismaClientKnownRequestError',
+        prismaCode: code,
+      });
+      const serializedEvent = JSON.stringify(
+        state.logOperationalError.mock.calls,
+      );
+      expect(serializedEvent).not.toContain(sentinels.message);
+      expect(serializedEvent).not.toContain(sentinels.meta);
+      expect(serializedEvent).not.toContain(sentinels.stack);
+      expect(state.setEmploymentStatus).not.toHaveBeenCalled();
+      expect(state.writeSuccessful).not.toHaveBeenCalled();
+    },
+  );
+
+  it('preserves P2034 conflict mapping without unexpected-failure logging', async () => {
+    const state = setup({
+      allocationError: {
+        code: 'P2034',
+        name: 'PrismaClientKnownRequestError',
+      },
+    });
+
+    await expect(
+      invoke(state.useCase, TeacherEmploymentStatus.INACTIVE),
+    ).rejects.toMatchObject({
+      code: 'teachers.lifecycle.invalid_transition',
+      details: { reasonCode: 'lifecycle_state_moved' },
+    });
+    expect(state.logOperationalError).not.toHaveBeenCalled();
+    expect(state.setEmploymentStatus).not.toHaveBeenCalled();
+    expect(state.writeSuccessful).not.toHaveBeenCalled();
   });
 });

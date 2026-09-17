@@ -2,6 +2,7 @@ import { Logger, Module } from '@nestjs/common';
 import {
   TeacherRejectedTransitionAuditService,
   TEACHER_LIFECYCLE_OPERATIONAL_LOGGER,
+  type TeacherLifecycleOperationalEvent,
 } from './application/teacher-rejected-transition-audit.service';
 import { TeacherLifecycleUnitOfWork } from './application/teacher-lifecycle-unit-of-work';
 import { TeacherAccountDisableCoordinator } from './application/teacher-account-disable.coordinator';
@@ -26,7 +27,7 @@ import { PrismaOrganizationTeacherTransferTransactionOperations } from '../../or
       useFactory: () => {
         const logger = new Logger(TeacherRejectedTransitionAuditService.name);
         return {
-          error: (event: { event: string; traceId: string }) =>
+          error: (event: TeacherLifecycleOperationalEvent) =>
             logger.error(event),
         };
       },
@@ -37,6 +38,7 @@ import { PrismaOrganizationTeacherTransferTransactionOperations } from '../../or
   ],
   exports: [
     TeacherLifecycleUnitOfWork,
+    TEACHER_LIFECYCLE_OPERATIONAL_LOGGER,
     TeacherRejectedTransitionAuditService,
     TeacherAccountDisableCoordinator,
     TeacherRoleDemotionCoordinator,

@@ -18,8 +18,16 @@ export function rethrowTeacherLifecycleTransactionError(
   previousValue: TeacherLifecycleTransitionValue,
   nextValue: TeacherLifecycleTransitionValue,
 ): never {
+  throw mapTeacherLifecycleTransactionError(error, previousValue, nextValue);
+}
+
+export function mapTeacherLifecycleTransactionError(
+  error: unknown,
+  previousValue: TeacherLifecycleTransitionValue,
+  nextValue: TeacherLifecycleTransitionValue,
+): unknown {
   if (error instanceof TeacherLifecycleSessionRevocationError) {
-    throw new TeacherLifecycleRevocationFailedException();
+    return new TeacherLifecycleRevocationFailedException();
   }
   if (
     error instanceof TeacherLifecycleMembershipInvariantError ||
@@ -27,13 +35,13 @@ export function rethrowTeacherLifecycleTransactionError(
     error instanceof TeacherProfileLifecycleInvariantError ||
     isTeacherLifecycleSerializationConflict(error)
   ) {
-    throw new TeacherLifecycleInvalidTransitionException(
+    return new TeacherLifecycleInvalidTransitionException(
       previousValue as TeacherEmploymentStatus | UserStatus,
       nextValue as TeacherEmploymentStatus | UserStatus,
       'lifecycle_state_moved',
     );
   }
-  throw error;
+  return error;
 }
 
 export function isTeacherLifecycleSerializationConflict(
