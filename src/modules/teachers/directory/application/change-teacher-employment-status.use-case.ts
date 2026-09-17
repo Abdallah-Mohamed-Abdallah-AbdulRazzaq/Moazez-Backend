@@ -5,17 +5,20 @@ import {
   UserStatus,
   UserType,
 } from '@prisma/client';
-import {
-  TEACHER_ALLOCATION_LIFECYCLE_READER,
-  type TeacherAllocationLifecycleReader,
-} from '../../../academics/teacher-allocation/application/teacher-allocation-lifecycle-read.service';
+import { getCurrentRequestId } from '../../../../common/context/request-context';
+import { DomainException } from '../../../../common/exceptions/domain-exception';
 import type { TeacherAllocationLifecycleSummary } from '../../../academics/teacher-allocation/domain/teacher-allocation-lifecycle-state';
 import {
   TeacherLifecycleUnitOfWork,
   type TeacherLifecycleMembershipState,
   type TeacherLifecycleTransactionContext,
 } from '../../lifecycle/application/teacher-lifecycle-unit-of-work';
-import { rethrowTeacherLifecycleTransactionError } from '../../lifecycle/application/teacher-lifecycle-transaction-error';
+import { mapTeacherLifecycleTransactionError } from '../../lifecycle/application/teacher-lifecycle-transaction-error';
+import {
+  buildEmploymentStatusUnexpectedFailureEvent,
+  TEACHER_LIFECYCLE_OPERATIONAL_LOGGER,
+  type TeacherLifecycleOperationalLogger,
+} from '../../lifecycle/application/teacher-rejected-transition-audit.service';
 import {
   isAllowedTeacherEmploymentTransition,
   resolveTeacherEmploymentEffectiveAt,
@@ -47,8 +50,8 @@ import { requireTeacherDirectoryScope } from '../teacher-directory.context';
 export class ChangeTeacherEmploymentStatusUseCase {
   constructor(
     private readonly unitOfWork: TeacherLifecycleUnitOfWork,
-    @Inject(TEACHER_ALLOCATION_LIFECYCLE_READER)
-    private readonly allocationReader: TeacherAllocationLifecycleReader,
+    @Inject(TEACHER_LIFECYCLE_OPERATIONAL_LOGGER)
+    private readonly operationalLogger: TeacherLifecycleOperationalLogger,
   ) {}
 
   async execute(
@@ -109,12 +112,11 @@ export class ChangeTeacherEmploymentStatusUseCase {
           credentialStatus: user.credential.status,
         });
 
-        const allocationSummary =
-          await this.allocationReader.classifyTeacherAllocationLifecycleState(
-            scope.schoolId,
-            user.id,
-            effectiveAt,
-          );
+        const allocationSummary = await transaction.allocation.classify({
+          schoolId: scope.schoolId,
+          teacherUserId: user.id,
+          asOf: effectiveAt,
+        });
         const updatedProfile = await transaction.profile.setEmploymentStatus({
           schoolId: scope.schoolId,
           profileId: profile.id,
@@ -228,19 +230,20 @@ export class ChangeTeacherEmploymentStatusUseCase {
         };
       });
     } catch (error) {
-      if (
-        error instanceof TeacherProfileNotFoundException ||
-        error instanceof TeacherProfileIncompleteException ||
-        error instanceof TeacherLifecycleIdentityStateException ||
-        error instanceof TeacherLifecycleInvalidTransitionException
-      ) {
-        throw error;
-      }
-      rethrowTeacherLifecycleTransactionError(
+      const mappedError = mapTeacherLifecycleTransactionError(
         error,
         previousStatus,
         command.employmentStatus,
       );
+      if (!(mappedError instanceof DomainException)) {
+        this.operationalLogger.error(
+          buildEmploymentStatusUnexpectedFailureEvent(
+            error,
+            getCurrentRequestId(),
+          ),
+        );
+      }
+      throw mappedError;
     }
   }
 }

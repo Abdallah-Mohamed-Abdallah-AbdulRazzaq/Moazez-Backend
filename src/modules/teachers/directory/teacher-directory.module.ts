@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { TeacherAllocationModule } from '../../academics/teacher-allocation/teacher-allocation.module';
 import { LoginIdentityModule } from '../../settings/login-identity/login-identity.module';
 import { UsersModule } from '../../settings/users/users.module';
 import { TeacherLifecycleModule } from '../lifecycle/teacher-lifecycle.module';
@@ -14,12 +13,7 @@ import { TeachersController } from './controller/teachers.controller';
 import { TeacherDirectoryRepository } from './infrastructure/teacher-directory.repository';
 
 @Module({
-  imports: [
-    LoginIdentityModule,
-    UsersModule,
-    TeacherLifecycleModule,
-    TeacherAllocationModule,
-  ],
+  imports: [LoginIdentityModule, UsersModule, TeacherLifecycleModule],
   controllers: [TeachersController],
   providers: [
     TeacherDirectoryRepository,

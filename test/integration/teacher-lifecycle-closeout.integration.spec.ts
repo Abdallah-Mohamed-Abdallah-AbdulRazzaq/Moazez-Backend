@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import {
@@ -26,7 +29,9 @@ const ARGON2_OPTIONS: argon2.Options = {
 type Token = { accessToken: string };
 type Actor = { id: string; email: string; password: string; token?: Token };
 
-jest.setTimeout(240_000);
+const execFileAsync = promisify(execFile);
+
+jest.setTimeout(360_000);
 
 describe('Teacher Directory 1B lifecycle closeout (disposable database)', () => {
   const marker = `closeout-${randomUUID().slice(0, 8)}`;
@@ -377,6 +382,47 @@ describe('Teacher Directory 1B lifecycle closeout (disposable database)', () => 
       employmentStatus: TeacherEmploymentStatus.ACTIVE,
     });
     await expect(activeSessionCount(userId)).resolves.toBe(0);
+  });
+
+  it('runs employment transitions through an application pool limited to one connection', async () => {
+    const harness = join(
+      __dirname,
+      'support',
+      'teacher-employment-status-single-connection.harness.ts',
+    );
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      [
+        '--require',
+        require.resolve('ts-node/register'),
+        '--require',
+        require.resolve('tsconfig-paths/register'),
+        harness,
+      ],
+      {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          DATABASE_RUNTIME_ROLE: 'api',
+          DATABASE_CONNECTION_LIMIT: '1',
+          DATABASE_POOL_TIMEOUT_SECONDS: '5',
+          DATABASE_CONNECT_TIMEOUT_SECONDS: '5',
+          NODE_OPTIONS: '--max-old-space-size=4096',
+        },
+        maxBuffer: 1024 * 1024,
+        timeout: 240_000,
+        windowsHide: true,
+      },
+    );
+
+    expect(stdout).toContain('APP_DATABASE_CONNECTION_LIMIT=1');
+    expect(stdout).toContain('APP_DATABASE_POOL_TIMEOUT_SECONDS=5');
+    expect(stdout).toContain('SINGLE_CONNECTION_APP_BOOTSTRAP=PASS');
+    expect(stdout).toContain('SINGLE_CONNECTION_ACTIVE_TO_INACTIVE=PASS');
+    expect(stdout).toContain('SINGLE_CONNECTION_INACTIVE_TO_ACTIVE=PASS');
+    expect(stdout).toContain('SINGLE_CONNECTION_SESSION_REVOCATION=PASS');
+    expect(stdout).toContain('SINGLE_CONNECTION_ALLOCATION_SUMMARY=PASS');
+    expect(stdout).toContain('SINGLE_CONNECTION_HTTP_REGRESSION=PASS');
   });
 
   it('persists TERMINATED state without deleting identity or credentials', async () => {

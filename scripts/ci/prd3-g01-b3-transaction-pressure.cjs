@@ -339,7 +339,7 @@ const REVIEWED_CALL_OVERRIDES = Object.freeze([
     target: /^callback$/,
     reason: 'The generic unit-of-work callback is supplied by reviewed teacher lifecycle application coordinators and use cases.',
     classification: 'SERIALIZABLE_CONFLICT_SENSITIVE',
-    resolvedCallers: Object.freeze(['ChangeTeacherEmploymentStatusUseCase.execute', 'TeacherAccountDisableCoordinator.execute', 'TeacherRoleDemotionCoordinator.execute']),
+    resolvedCallers: Object.freeze(['ArchiveTeacherUseCase.execute', 'ChangeTeacherEmploymentStatusUseCase.execute', 'CreateTeacherUseCase.execute', 'RehireTeacherUseCase.execute', 'TeacherAccountDisableCoordinator.execute', 'TeacherRoleDemotionCoordinator.execute', 'TransferTeacherBetweenSchoolsCoordinator.execute', 'UpdateTeacherUseCase.execute']),
     evidence: 'Every caller receives the frozen TeacherLifecycleTransactionContext and runs within the explicitly Serializable transaction.',
   }),
   Object.freeze({
@@ -711,6 +711,189 @@ function analyzeCallback({ callback, ownerNode, source, checker, sourceRoot }) {
   return { ...analysis, externalOutsideCalls: [...new Set(outside.externalCalls)].sort() };
 }
 
+function isTeacherLifecycleUnitOfWorkExecuteCall(checker, call) {
+  if (
+    !ts.isCallExpression(call) ||
+    !ts.isPropertyAccessExpression(call.expression) ||
+    call.expression.name.text !== 'execute'
+  ) return false;
+  let symbol = checker.getSymbolAtLocation(call.expression.name);
+  if (symbol?.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
+  return (symbol?.getDeclarations() ?? []).some((declaration) => {
+    let current = declaration.parent;
+    while (current) {
+      if (
+        (ts.isClassDeclaration(current) || ts.isInterfaceDeclaration(current)) &&
+        current.name?.text === 'TeacherLifecycleUnitOfWork'
+      ) return true;
+      current = current.parent;
+    }
+    return false;
+  });
+}
+
+function isExpressionRootedInThis(node) {
+  if (!node) return false;
+  if (node.kind === ts.SyntaxKind.ThisKeyword) return true;
+  if (
+    ts.isPropertyAccessExpression(node) ||
+    ts.isElementAccessExpression(node) ||
+    ts.isCallExpression(node) ||
+    ts.isParenthesizedExpression(node) ||
+    ts.isAsExpression(node) ||
+    ts.isNonNullExpression(node)
+  ) return isExpressionRootedInThis(node.expression);
+  return false;
+}
+
+function analyzeTeacherLifecycleCallback({ callback, source, checker, sourceRoot }) {
+  const transactionRoots = new Set(
+    callback.parameters
+      .filter((parameter) => ts.isIdentifier(parameter.name))
+      .map((parameter) => parameter.name.text),
+  );
+  const escapes = [];
+  const transactionCalls = [];
+  const resolvedHelpers = [];
+  const visited = new Set();
+
+  const visitImplementation = (implementation, origin) => {
+    const key = astIdentity(implementation);
+    if (visited.has(key)) return;
+    visited.add(key);
+    const implementationSource = implementation.getSourceFile();
+    const visit = (node) => {
+      if (ts.isCallExpression(node)) {
+        const target = callTarget(node, implementationSource);
+        const root = target.split('.')[0];
+        if (isExpressionRootedInThis(node.expression)) {
+          escapes.push({
+            target,
+            awaited: isEffectivelyWaited(node, implementation),
+            origin,
+          });
+        } else if (transactionRoots.has(root)) {
+          transactionCalls.push(target);
+        } else if (!PURE_CALL_ROOTS.has(root)) {
+          const declaration =
+            resolveLocalCallDeclaration(implementationSource, node) ??
+            resolveCallDeclaration(checker, node, sourceRoot);
+          const helper = declaration && functionImplementation(declaration);
+          if (helper?.body) {
+            resolvedHelpers.push(
+              `${normalized(path.relative(ROOT, declaration.getSourceFile().fileName))}#${declarationName(declaration) ?? target}`,
+            );
+            visitImplementation(helper, target);
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(implementation);
+  };
+
+  visitImplementation(callback, 'teacher-lifecycle-callback');
+  return {
+    escapes: escapes.filter((item, index, all) =>
+      all.findIndex((candidate) =>
+        candidate.target === item.target && candidate.origin === item.origin,
+      ) === index,
+    ),
+    transactionCalls: [...new Set(transactionCalls)].sort(),
+    resolvedHelpers: [...new Set(resolvedHelpers)].sort(),
+  };
+}
+
+function auditTeacherLifecycleUnitOfWorkCallbacks(
+  sourceRoot = path.join(ROOT, 'src'),
+  suppliedProgram,
+) {
+  const program = suppliedProgram ?? createInventoryProgram(sourceRoot);
+  const checker = program.getTypeChecker();
+  const rows = [];
+  for (const source of program.getSourceFiles()) {
+    const absolute = path.resolve(source.fileName);
+    if (!isPathWithinDirectory(absolute, sourceRoot) || absolute.endsWith('.spec.ts')) continue;
+    const visit = (node) => {
+      if (isTeacherLifecycleUnitOfWorkExecuteCall(checker, node)) {
+        const callback = resolveCallbackArgument(checker, node.arguments[0], sourceRoot);
+        if (!callback?.body) {
+          rows.push({
+            path: normalized(path.relative(ROOT, absolute)),
+            owner: enclosingOwner(node),
+            classification: 'UNSAFE_TRANSACTION_ESCAPE',
+            escapes: [{ target: 'unresolved-callback', awaited: true, origin: 'unit-of-work' }],
+            preTransactionThisCalls: [],
+            transactionCalls: [],
+            resolvedHelpers: [],
+          });
+        } else {
+          const analysis = analyzeTeacherLifecycleCallback({
+            callback,
+            source,
+            checker,
+            sourceRoot,
+          });
+          const ownerNode = enclosingOwnerNode(node);
+          const preTransactionThisCalls = [];
+          const visitBeforeTransaction = (candidate) => {
+            if (candidate === node) return;
+            if (
+              candidate.pos >= callback.pos &&
+              candidate.end <= callback.end
+            ) return;
+            if (
+              ts.isCallExpression(candidate) &&
+              candidate.getStart(source) < node.getStart(source) &&
+              isExpressionRootedInThis(candidate.expression)
+            ) preTransactionThisCalls.push(callTarget(candidate, source));
+            ts.forEachChild(candidate, visitBeforeTransaction);
+          };
+          visitBeforeTransaction(ownerNode);
+          const allocationInTransaction = analysis.transactionCalls.some(
+            (target) => /\.allocation\.classify$/u.test(target),
+          );
+          const owner = enclosingOwner(node);
+          rows.push({
+            path: normalized(path.relative(ROOT, absolute)),
+            owner,
+            classification:
+              analysis.escapes.length > 0
+                ? 'UNSAFE_TRANSACTION_ESCAPE'
+                : allocationInTransaction &&
+                    owner === 'ChangeTeacherEmploymentStatusUseCase.execute'
+                  ? 'PASS_AFTER_REMEDIATION_TRANSACTION_ALLOCATION'
+                  : preTransactionThisCalls.length > 0
+                    ? 'PASS_EXTERNAL_WORK_PRE_TRANSACTION_ONLY'
+                    : 'PASS_TRANSACTION_CONTEXT_ONLY',
+            escapes: analysis.escapes,
+            preTransactionThisCalls: [...new Set(preTransactionThisCalls)].sort(),
+            transactionCalls: analysis.transactionCalls,
+            resolvedHelpers: analysis.resolvedHelpers,
+          });
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+  }
+  return rows.sort((left, right) =>
+    `${left.path}#${left.owner}`.localeCompare(`${right.path}#${right.owner}`),
+  );
+}
+
+function validateTeacherLifecycleUnitOfWorkCallbacks(rows) {
+  const escapes = rows.flatMap((row) =>
+    row.escapes.map((escape) => ({ ...escape, path: row.path, owner: row.owner })),
+  );
+  assert.equal(
+    escapes.length,
+    0,
+    `Teacher lifecycle transaction escape detected: ${escapes.map((item) => `${item.path}#${item.owner}:${item.target}`).join(', ')}`,
+  );
+  return rows;
+}
+
 function createInventoryProgram(sourceRoot) {
   const files = walk(sourceRoot);
   const configPath = ts.findConfigFile(ROOT, ts.sys.fileExists, 'tsconfig.json');
@@ -887,11 +1070,18 @@ function inventoryTransactions(sourceRoot = path.join(ROOT, 'src')) {
     value: Object.freeze(scanDirectExternalWaitsOutsideTransactions(program, sourceRoot)),
     enumerable: false,
   });
+  Object.defineProperty(result, 'teacherLifecycleCallbacks', {
+    value: Object.freeze(auditTeacherLifecycleUnitOfWorkCallbacks(sourceRoot, program)),
+    enumerable: false,
+  });
   return result;
 }
 
 function validateInventory(rows) {
   assert.ok(rows.length > 0, 'transaction inventory is empty');
+  if (rows.teacherLifecycleCallbacks) {
+    validateTeacherLifecycleUnitOfWorkCallbacks(rows.teacherLifecycleCallbacks);
+  }
   validateTransactionIdentities(rows);
   for (const row of rows) {
     for (const key of ['transactionId', 'stableIdentity', 'path', 'runtimeRole', 'runtimeRoles', 'runtimeRoleEvidence', 'feature', 'entryOwner', 'ownerTransactionOrdinal', 'callbackDigest', 'kind', 'isolation', 'tables', 'explicitLock', 'externalAwait', 'externalWaitInsideTransaction', 'externalWaitOutsideTransaction', 'unresolvedCalls', 'idempotency', 'rollbackBehavior', 'tests', 'pressurePriority', 'classification']) assert.notEqual(row[key], undefined, `${row.transactionId}.${key} missing`);
@@ -915,6 +1105,10 @@ function validateResolvedTransaction(row) {
 
 function inventorySummary(rows) {
   const classifications = Object.fromEntries([...ALLOWED_CLASSES].map((name) => [name, rows.filter((row) => row.classification === name).length]));
+  const teacherLifecycleCallbacks = rows.teacherLifecycleCallbacks ?? [];
+  const teacherLifecycleEscapes = teacherLifecycleCallbacks.flatMap(
+    (row) => row.escapes,
+  );
   return Object.freeze({
     total: rows.length,
     interactive: rows.filter((row) => row.kind === 'interactive').length,
@@ -928,6 +1122,10 @@ function inventorySummary(rows) {
     externalWaitInsideTransaction: rows.filter((row) => row.externalWaitInsideTransaction).length,
     externalWaitOutsideTransaction: rows.externalWaitOutsideEvidence?.length ?? rows.filter((row) => row.externalWaitOutsideTransaction).length,
     externalWaitOutsideEvidence: rows.externalWaitOutsideEvidence ?? [],
+    teacherLifecycleUowCallerCount: teacherLifecycleCallbacks.length,
+    teacherLifecycleTransactionEscapeCount: teacherLifecycleEscapes.length,
+    teacherLifecycleExternalWaitInsideTransaction: teacherLifecycleEscapes.filter((item) => item.awaited).length,
+    teacherLifecycleCallbacks,
     manualOverrides: rows.reduce((sum, row) => sum + row.manualOverrides.length, 0),
     classificationDifferences: rows.filter((row) => row.legacyClassification !== row.classification).map((row) => ({ transactionId: row.transactionId, from: row.legacyClassification, to: row.classification, reason: row.explicitLock ? 'callback-local lock' : 'unrelated file lock removed' })),
     classifications,
@@ -1194,7 +1392,7 @@ function validateStrictSummary(summary) {
   assert.equal(driverFinalization.authoritativeFinalizerInvocations, 1);
 
   const inventory = requiredObject(summary.inventory, 'inventory');
-  for (const key of ['total', 'interactive', 'batch', 'unknown', 'unresolvedCallChains', 'externalWaitInsideTransaction', 'unresolvedRuntimeRoles', 'unwiredTransactions', 'duplicateIds', 'manualOverrides', 'externalWaitOutsideTransaction']) requiredNumber(inventory[key], `inventory.${key}`);
+  for (const key of ['total', 'interactive', 'batch', 'unknown', 'unresolvedCallChains', 'externalWaitInsideTransaction', 'unresolvedRuntimeRoles', 'unwiredTransactions', 'duplicateIds', 'manualOverrides', 'externalWaitOutsideTransaction', 'teacherLifecycleUowCallerCount', 'teacherLifecycleTransactionEscapeCount', 'teacherLifecycleExternalWaitInsideTransaction']) requiredNumber(inventory[key], `inventory.${key}`);
   assert.equal(inventory.total, inventory.interactive + inventory.batch);
   for (const key of ['unknown', 'unresolvedCallChains', 'externalWaitInsideTransaction', 'unresolvedRuntimeRoles', 'unwiredTransactions', 'duplicateIds']) assert.equal(inventory[key], 0, `inventory.${key} must be zero`);
   const classes = requiredObject(inventory.classifications, 'inventory.classifications');
@@ -1202,6 +1400,8 @@ function validateStrictSummary(summary) {
   for (const name of ALLOWED_CLASSES) requiredNumber(classes[name], `inventory.classifications.${name}`);
   assert.equal(Object.values(classes).reduce((sum, count) => sum + count, 0), inventory.total);
   assert.equal(classes.EXTERNAL_WAIT_SENSITIVE, inventory.externalWaitInsideTransaction, 'external-wait classification count does not match inventory evidence');
+  assert.equal(inventory.teacherLifecycleTransactionEscapeCount, 0, 'Teacher lifecycle transaction escapes must be zero');
+  assert.equal(inventory.teacherLifecycleExternalWaitInsideTransaction, 0, 'Teacher lifecycle external waits inside transactions must be zero');
   requiredString(inventory.digest, 'inventory.digest', /^[a-f0-9]{64}$/);
   assert.equal(summary.inventoryDigest, inventory.digest);
 
@@ -2313,6 +2513,9 @@ function buildFormalSummary({ runId, provenance, inventory, playbackConsumers, r
       duplicateIds: inventory.duplicateIds,
       manualOverrides: inventory.manualOverrides,
       externalWaitOutsideTransaction: inventory.externalWaitOutsideTransaction,
+      teacherLifecycleUowCallerCount: inventory.teacherLifecycleUowCallerCount,
+      teacherLifecycleTransactionEscapeCount: inventory.teacherLifecycleTransactionEscapeCount,
+      teacherLifecycleExternalWaitInsideTransaction: inventory.teacherLifecycleExternalWaitInsideTransaction,
       classifications: inventory.classifications,
       digest: inventoryDigest,
     },
@@ -2704,7 +2907,7 @@ async function main() {
     assert.equal(cleanup.ok, true, `authoritative finalization failed: ${JSON.stringify(cleanup.failureDetails)}`);
     assert.equal(context.state.authoritativeFinalizerInvocations, 1);
     const publications = cleanup.publications;
-    const final = { schemaVersion:SUMMARY_SCHEMA_VERSION,schema:SUMMARY_SCHEMA,gate:GATE,overall:'PASS',baseCommit:BASE_SHA,baseTree:BASE_TREE,changedPaths:preflightResult.changedPaths,initialDefectReproductions:INITIAL_DEFECT_REPRODUCTIONS,r3InitialDefectReproductions:R3_INITIAL_DEFECT_REPRODUCTIONS,r4InitialDefectReproductions:R4_INITIAL_DEFECT_REPRODUCTIONS,inventory:{total:inventory.total,interactive:inventory.interactive,batch:inventory.batch,classifications:inventory.classifications,manualOverrides:inventory.manualOverrides,unknown:inventory.unknown,unresolvedCallChains:inventory.unresolvedCallChains,unresolvedRuntimeRoles:inventory.unresolvedRuntimeRoles,unwiredTransactions:inventory.unwiredTransactions,duplicateIds:inventory.duplicateIds,externalWaitInsideTransaction:inventory.externalWaitInsideTransaction,externalWaitOutsideTransaction:inventory.externalWaitOutsideTransaction,classificationDifferences:inventory.classificationDifferences.length,digest:publications[0].summary.inventoryDigest},playbackConsumers:{total:playbackConsumers.total,counts:playbackConsumers.counts,digest:playbackConsumers.digest},candidateProductionPatchSha256:productionPatch.sha256,packageLockSha256,images:{baseline:baselineImage,candidate:candidateImage},runtime:{baseline:baselineRuntime,candidate:candidateRuntime},rehearsals,faultCoverage:publications[0].summary.faultCoverage,formalRuns:publications.map(run=>({runId:run.summary.runId,summaryPath:run.summaryPath,summarySha256:run.summarySha256})),crossRun:'PASS',authoritativeFinalizerInvocations:context.state.authoritativeFinalizerInvocations,finalAudit:publications[0].summary.finalAudit };
+    const final = { schemaVersion:SUMMARY_SCHEMA_VERSION,schema:SUMMARY_SCHEMA,gate:GATE,overall:'PASS',baseCommit:BASE_SHA,baseTree:BASE_TREE,changedPaths:preflightResult.changedPaths,initialDefectReproductions:INITIAL_DEFECT_REPRODUCTIONS,r3InitialDefectReproductions:R3_INITIAL_DEFECT_REPRODUCTIONS,r4InitialDefectReproductions:R4_INITIAL_DEFECT_REPRODUCTIONS,inventory:{total:inventory.total,interactive:inventory.interactive,batch:inventory.batch,classifications:inventory.classifications,manualOverrides:inventory.manualOverrides,unknown:inventory.unknown,unresolvedCallChains:inventory.unresolvedCallChains,unresolvedRuntimeRoles:inventory.unresolvedRuntimeRoles,unwiredTransactions:inventory.unwiredTransactions,duplicateIds:inventory.duplicateIds,externalWaitInsideTransaction:inventory.externalWaitInsideTransaction,externalWaitOutsideTransaction:inventory.externalWaitOutsideTransaction,teacherLifecycleUowCallerCount:inventory.teacherLifecycleUowCallerCount,teacherLifecycleTransactionEscapeCount:inventory.teacherLifecycleTransactionEscapeCount,teacherLifecycleExternalWaitInsideTransaction:inventory.teacherLifecycleExternalWaitInsideTransaction,classificationDifferences:inventory.classificationDifferences.length,digest:publications[0].summary.inventoryDigest},playbackConsumers:{total:playbackConsumers.total,counts:playbackConsumers.counts,digest:playbackConsumers.digest},candidateProductionPatchSha256:productionPatch.sha256,packageLockSha256,images:{baseline:baselineImage,candidate:candidateImage},runtime:{baseline:baselineRuntime,candidate:candidateRuntime},rehearsals,faultCoverage:publications[0].summary.faultCoverage,formalRuns:publications.map(run=>({runId:run.summary.runId,summaryPath:run.summaryPath,summarySha256:run.summarySha256})),crossRun:'PASS',authoritativeFinalizerInvocations:context.state.authoritativeFinalizerInvocations,finalAudit:publications[0].summary.finalAudit };
     assert.equal(context.state.interrupted, false);
     console.log(JSON.stringify(final, null, 2));
   } catch(error) {
@@ -2731,8 +2934,6 @@ const { PrismaTeacherLifecycleUnitOfWork } = require('/app/dist/modules/teachers
 const { PrismaTeacherLifecycleTransactionOperations } = require('/app/dist/modules/teachers/lifecycle/infrastructure/prisma-teacher-lifecycle-transaction.operations');
 const { TeacherLifecycleAuditWriter } = require('/app/dist/modules/teachers/lifecycle/infrastructure/teacher-lifecycle-audit.writer');
 const { PrismaOrganizationTeacherTransferTransactionOperations } = require('/app/dist/modules/organization-admin/teacher-transfers/infrastructure/organization-teacher-transfer-transaction.operations');
-const { TeacherAllocationRepository } = require('/app/dist/modules/academics/teacher-allocation/infrastructure/teacher-allocation.repository');
-const { TeacherAllocationLifecycleReadService } = require('/app/dist/modules/academics/teacher-allocation/application/teacher-allocation-lifecycle-read.service');
 const { LessonContentPlaybackCoordinator } = require('/app/dist/modules/academics/curriculum/app-facing/lesson-content-playback/lesson-content-playback.coordinator');
 const { OperationalProbeService } = require('/app/dist/modules/health/operational-probe.service');
 const { runWithRequestContext } = require('/app/dist/common/context/request-context');
@@ -2895,7 +3096,7 @@ function learningEntry(p,overrides={}){
   return {repository,unitOfWork,verifier,storage,useCase:new CompleteLearningMediaUploadUseCase(unitOfWork,verifier,storage)};
 }
 function lessonEntry(p){const repository=new LessonContentRepository(p);const unitOfWork=new PrismaLessonContentUnitOfWork(p,repository);return {repository,unitOfWork,useCase:new UpdateLessonContentUseCase(repository,unitOfWork)};}
-function teacherEntry(p){const auditWriter=new TeacherLifecycleAuditWriter(p);const operations=new PrismaTeacherLifecycleTransactionOperations(auditWriter);const transfers=new PrismaOrganizationTeacherTransferTransactionOperations();const unitOfWork=new PrismaTeacherLifecycleUnitOfWork(p,operations,transfers);const allocations=new TeacherAllocationLifecycleReadService(new TeacherAllocationRepository(p));return {unitOfWork,useCase:new ChangeTeacherEmploymentStatusUseCase(unitOfWork,allocations)};}
+function teacherEntry(p){const auditWriter=new TeacherLifecycleAuditWriter(p);const operations=new PrismaTeacherLifecycleTransactionOperations(auditWriter);const transfers=new PrismaOrganizationTeacherTransferTransactionOperations();const unitOfWork=new PrismaTeacherLifecycleUnitOfWork(p,operations,transfers);const operationalLogger={error:()=>undefined};return {unitOfWork,useCase:new ChangeTeacherEmploymentStatusUseCase(unitOfWork,operationalLogger)};}
 const lessonPath = {curriculumId:I.curriculum,unitId:I.unit,lessonId:I.lesson,contentItemId:I.draftContent};
 const teacherCommand = {employmentStatus:'INACTIVE',effectiveAt:new Date().toISOString()};
 
@@ -3053,6 +3254,7 @@ module.exports = {
   SUMMARY_SCHEMA,
   SUMMARY_SCHEMA_VERSION,
   atomicPublishStrictSummary,
+  auditTeacherLifecycleUnitOfWorkCallbacks,
   buildNamedContainerCreateArgs,
   buildOwnershipLabels,
   buildPostgresFixtureArgs,
@@ -3087,6 +3289,7 @@ module.exports = {
   validatePlaybackConsumerAudit,
   validateSanitizedSummary,
   validateStrictSummary,
+  validateTeacherLifecycleUnitOfWorkCallbacks,
   verifyLoopbackTcp,
   waitForContainerExit,
   waitForContainerMarker,

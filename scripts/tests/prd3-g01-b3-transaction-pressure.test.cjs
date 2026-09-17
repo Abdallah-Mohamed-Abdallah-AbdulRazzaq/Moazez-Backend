@@ -31,6 +31,7 @@ const {
   SUMMARY_SCHEMA,
   SUMMARY_SCHEMA_VERSION,
   atomicPublishStrictSummary,
+  auditTeacherLifecycleUnitOfWorkCallbacks,
   classifyPrismaTransactionError,
   calculateExecutionReceipt,
   buildNamedContainerCreateArgs,
@@ -64,6 +65,7 @@ const {
   validatePlaybackConsumerAudit,
   validateSanitizedSummary,
   validateStrictSummary,
+  validateTeacherLifecycleUnitOfWorkCallbacks,
   verifyLoopbackTcp,
   waitForContainerExit,
   waitForContainerMarker,
@@ -110,6 +112,118 @@ test('corrected inventory covers every transaction without unknown or unresolved
   assert.equal(Object.values(summary.classifications).reduce((sum, value) => sum + value, 0), summary.total);
   assert.ok(summary.manualOverrides > 0);
   assert.ok(summary.externalWaitOutsideTransaction > 0);
+  assert.equal(summary.teacherLifecycleUowCallerCount, 8);
+  assert.equal(summary.teacherLifecycleTransactionEscapeCount, 0);
+  assert.equal(summary.teacherLifecycleExternalWaitInsideTransaction, 0);
+});
+
+test('Teacher lifecycle callbacks use only transaction context inside the active unit of work', () => {
+  const rows = validateTeacherLifecycleUnitOfWorkCallbacks(
+    auditTeacherLifecycleUnitOfWorkCallbacks(),
+  );
+  assert.equal(rows.length, 8);
+  assert.deepEqual(
+    rows.map((row) => row.owner).sort(),
+    [
+      'ArchiveTeacherUseCase.execute',
+      'ChangeTeacherEmploymentStatusUseCase.execute',
+      'CreateTeacherUseCase.execute',
+      'RehireTeacherUseCase.execute',
+      'TeacherAccountDisableCoordinator.execute',
+      'TeacherRoleDemotionCoordinator.execute',
+      'TransferTeacherBetweenSchoolsCoordinator.execute',
+      'UpdateTeacherUseCase.execute',
+    ],
+  );
+  assert.equal(
+    rows.find(
+      (row) => row.owner === 'ChangeTeacherEmploymentStatusUseCase.execute',
+    )?.classification,
+    'PASS_AFTER_REMEDIATION_TRANSACTION_ALLOCATION',
+  );
+  for (const owner of [
+    'CreateTeacherUseCase.execute',
+    'UpdateTeacherUseCase.execute',
+  ]) {
+    const row = rows.find((candidate) => candidate.owner === owner);
+    assert.equal(row?.classification, 'PASS_EXTERNAL_WORK_PRE_TRANSACTION_ONLY');
+    assert.ok(row.preTransactionThisCalls.length > 0);
+  }
+});
+
+test('the old employment-status reader escape is rejected inside a lifecycle transaction', () => {
+  withTeacherLifecycleFixture(
+    `
+      export abstract class TeacherLifecycleUnitOfWork {
+        abstract execute<T>(callback: (transaction: any) => Promise<T>): Promise<T>;
+      }
+    `,
+    `
+      import { TeacherLifecycleUnitOfWork } from './teacher-lifecycle-unit-of-work';
+      class UnsafeEmploymentStatus {
+        constructor(
+          private readonly unitOfWork: TeacherLifecycleUnitOfWork,
+          private readonly allocationReader: any,
+        ) {}
+        execute() {
+          return this.unitOfWork.execute(async (transaction) => {
+            await Promise.all([
+              transaction.profile.findLiveById({}),
+              this.allocationReader.classifyTeacherAllocationLifecycleState('school', 'teacher', new Date()),
+            ]);
+          });
+        }
+      }
+    `,
+    (rows) => {
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].classification, 'UNSAFE_TRANSACTION_ESCAPE');
+      assert.deepEqual(
+        rows[0].escapes.map((item) => item.target),
+        ['this.allocationReader.classifyTeacherAllocationLifecycleState'],
+      );
+      assert.throws(
+        () => validateTeacherLifecycleUnitOfWorkCallbacks(rows),
+        /Teacher lifecycle transaction escape detected/u,
+      );
+    },
+  );
+});
+
+test('a repository read before the lifecycle transaction remains allowed', () => {
+  withTeacherLifecycleFixture(
+    `
+      export abstract class TeacherLifecycleUnitOfWork {
+        abstract execute<T>(callback: (transaction: any) => Promise<T>): Promise<T>;
+      }
+    `,
+    `
+      import { TeacherLifecycleUnitOfWork } from './teacher-lifecycle-unit-of-work';
+      class SafeLifecycleOperation {
+        constructor(
+          private readonly unitOfWork: TeacherLifecycleUnitOfWork,
+          private readonly repository: any,
+        ) {}
+        async execute() {
+          await this.repository.readBeforeTransaction();
+          return this.unitOfWork.execute(async (transaction) => {
+            await transaction.profile.findLiveById({});
+          });
+        }
+      }
+    `,
+    (rows) => {
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].classification, 'PASS_EXTERNAL_WORK_PRE_TRANSACTION_ONLY');
+      assert.deepEqual(rows[0].escapes, []);
+      assert.deepEqual(rows[0].preTransactionThisCalls, [
+        'this.repository.readBeforeTransaction',
+      ]);
+      assert.doesNotThrow(() =>
+        validateTeacherLifecycleUnitOfWorkCallbacks(rows),
+      );
+    },
+  );
 });
 
 test('stable transaction identities derive from path, owner, and owner ordinal', () => {
@@ -1131,6 +1245,21 @@ function withFixture(source, assertion) {
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 }
 
+function withTeacherLifecycleFixture(unitOfWorkSource, callerSource, assertion) {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'b3-teacher-lifecycle-'));
+  try {
+    fs.writeFileSync(
+      path.join(directory, 'teacher-lifecycle-unit-of-work.ts'),
+      unitOfWorkSource,
+      'utf8',
+    );
+    fs.writeFileSync(path.join(directory, 'caller.ts'), callerSource, 'utf8');
+    assertion(auditTeacherLifecycleUnitOfWorkCallbacks(directory));
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+}
+
 function publicationContext() {
   const state = new EvidenceState();
   return {
@@ -1179,7 +1308,7 @@ function validSummary(runId = 'b3-valid-run') {
     r3InitialDefectReproductions: R3_INITIAL_DEFECT_REPRODUCTIONS,
     r4InitialDefectReproductions: R4_INITIAL_DEFECT_REPRODUCTIONS,
     driverFinalization: { ok: true, phaseOneResults: [], phaseTwoResults: [], trackedPrismaClients: 0, activeOperations: 0, pendingDriverTimers: 0, pendingDriverAbortListeners: 0, firstSignal: null, requestedExitCode: 0, authoritativeFinalizerInvocations: 1 },
-    inventory: { total: 4, interactive: 3, batch: 1, unknown: 0, unresolvedCallChains: 0, unresolvedRuntimeRoles: 0, unwiredTransactions: 0, duplicateIds: 0, manualOverrides: 1, externalWaitInsideTransaction: 0, externalWaitOutsideTransaction: 1, classifications: { SHORT_DB_ONLY: 2, LOCK_CONTENTION_SENSITIVE: 1, SERIALIZABLE_CONFLICT_SENSITIVE: 1, EXTERNAL_WAIT_SENSITIVE: 0 }, digest: hash },
+    inventory: { total: 4, interactive: 3, batch: 1, unknown: 0, unresolvedCallChains: 0, unresolvedRuntimeRoles: 0, unwiredTransactions: 0, duplicateIds: 0, manualOverrides: 1, externalWaitInsideTransaction: 0, externalWaitOutsideTransaction: 1, teacherLifecycleUowCallerCount: 8, teacherLifecycleTransactionEscapeCount: 0, teacherLifecycleExternalWaitInsideTransaction: 0, classifications: { SHORT_DB_ONLY: 2, LOCK_CONTENTION_SENSITIVE: 1, SERIALIZABLE_CONFLICT_SENSITIVE: 1, EXTERNAL_WAIT_SENSITIVE: 0 }, digest: hash },
     businessPaths,
     lockEvidence,
     entryClasses: { learningMedia: 'CompleteLearningMediaUploadUseCase', lessonContent: 'UpdateLessonContentUseCase', teacherLifecycle: 'ChangeTeacherEmploymentStatusUseCase' },
