@@ -7,6 +7,7 @@ import {
   StudentStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import { buildReinforcementTaskAllocationScope } from '../../../reinforcement/tasks/domain/reinforcement-task-allocation-scope';
 import type { TeacherAppAllocationRecord } from '../../shared/teacher-app.types';
 
 const DEFAULT_TASK_LIMIT = 20;
@@ -412,10 +413,12 @@ export class TeacherTasksReadAdapter {
     allocation: TeacherAppAllocationRecord;
     studentId?: string;
   }): Prisma.ReinforcementTaskWhereInput {
+    const scope = buildReinforcementTaskAllocationScope(params.allocation);
+
     return {
-      academicYearId: params.allocation.term?.academicYearId,
-      termId: params.allocation.termId,
-      OR: [{ subjectId: params.allocation.subjectId }, { subjectId: null }],
+      academicYearId: scope.academicYearId,
+      termId: scope.termId,
+      OR: [{ subjectId: scope.subjectId }, { subjectId: null }],
       assignments: {
         some: this.buildOwnedAssignmentWhere({
           allocations: [params.allocation],

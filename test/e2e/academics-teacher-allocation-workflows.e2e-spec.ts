@@ -6,6 +6,8 @@ import {
   OrganizationStatus,
   PrismaClient,
   SchoolStatus,
+  TeacherEmploymentStatus,
+  TeacherGender,
   UserStatus,
   UserType,
 } from '@prisma/client';
@@ -60,6 +62,7 @@ describe('Academics teacher allocation workflows (e2e)', () => {
   let schoolId = '';
   let adminEmail = '';
   let teacherUserId = '';
+  let targetTeacherUserId = '';
   let academic: AcademicBase;
   let mathSubjectId = '';
   let scienceSubjectId = '';
@@ -100,7 +103,11 @@ describe('Academics teacher allocation workflows (e2e)', () => {
     academic = await createAcademicBase(schoolId);
     mathSubjectId = await createSubject('math', 'Mathematics', '#2563eb');
     scienceSubjectId = await createSubject('science', 'Science', '#16a34a');
-    missingMatrixSubjectId = await createSubject('history', 'History', '#9333ea');
+    missingMatrixSubjectId = await createSubject(
+      'history',
+      'History',
+      '#9333ea',
+    );
     await createSubjectAllocation({
       termId: academic.termId,
       subjectId: mathSubjectId,
@@ -136,6 +143,26 @@ describe('Academics teacher allocation workflows (e2e)', () => {
       lastName: 'Ali',
       userType: UserType.TEACHER,
       roleId: teacherRole.id,
+    });
+    targetTeacherUserId = await createUserWithMembership({
+      email: `${marker}-target-teacher@example.test`,
+      firstName: 'Nour',
+      lastName: 'Hassan',
+      userType: UserType.TEACHER,
+      roleId: teacherRole.id,
+    });
+    await prisma.teacherProfile.create({
+      data: {
+        schoolId,
+        userId: targetTeacherUserId,
+        teacherCode: `T-${suffix.toUpperCase()}-2`,
+        firstNameAr: 'نور',
+        lastNameAr: 'حسن',
+        firstNameEn: 'Nour',
+        lastNameEn: 'Hassan',
+        gender: TeacherGender.FEMALE,
+        employmentStatus: TeacherEmploymentStatus.ACTIVE,
+      },
     });
     closedTermAllocationId = await createTeacherAllocationDirect({
       termId: academic.closedTermId,
@@ -184,6 +211,7 @@ describe('Academics teacher allocation workflows (e2e)', () => {
         'POST /api/v1/academics/allocations/clear-subject',
         'GET /api/v1/academics/allocations/validation',
         'GET /api/v1/academics/allocations/teacher-loads',
+        'POST /api/v1/academics/allocations/:allocationId/reassignment-preview',
         'GET /api/v1/teacher/schedule',
         'GET /api/v1/teacher/schedule/week',
       ]),
@@ -216,9 +244,9 @@ describe('Academics teacher allocation workflows (e2e)', () => {
       .set('Authorization', bearer(adminAuth))
       .expect(200)
       .expect((response) => {
-        expect(response.body.items.map((item: { id: string }) => item.id)).toContain(
-          created.body.id,
-        );
+        expect(
+          response.body.items.map((item: { id: string }) => item.id),
+        ).toContain(created.body.id);
       });
 
     await request(app.getHttpServer())
@@ -228,6 +256,73 @@ describe('Academics teacher allocation workflows (e2e)', () => {
       .expect((response) => {
         expect(response.body).toEqual({ ok: true });
       });
+  });
+
+  it('previews a ready reassignment without mutating allocation ownership', async () => {
+    const allocationId = await createTeacherAllocationDirect({
+      termId: academic.termId,
+      subjectId: mathSubjectId,
+      classroomId: academic.classroomAId,
+    });
+    const before = await prisma.teacherSubjectAllocation.findUniqueOrThrow({
+      where: { id: allocationId },
+      select: { teacherUserId: true, updatedAt: true },
+    });
+
+    try {
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/academics/allocations/${allocationId}/reassignment-preview`,
+        )
+        .set('Authorization', bearer(adminAuth))
+        .send({ newTeacherUserId: targetTeacherUserId })
+        .expect(200)
+        .expect((response) => {
+          const body = response.body as unknown as {
+            impactFingerprint: string;
+            impact: unknown;
+          };
+          expect(body).toMatchObject({
+            allocation: {
+              id: allocationId,
+              subjectId: mathSubjectId,
+              classroomId: academic.classroomAId,
+              termId: academic.termId,
+            },
+            currentTeacher: {
+              userId: teacherUserId,
+              fullName: 'Mariam Ali',
+            },
+            targetTeacher: {
+              userId: targetTeacherUserId,
+              fullName: 'Nour Hassan',
+            },
+            decision: 'ready',
+            canReassign: true,
+            blockers: [],
+            automaticActions: [],
+            historicalRecords: [],
+          });
+          expect(body.impactFingerprint).toMatch(/^[a-f0-9]{64}$/u);
+          expect(body.impact).toMatchObject({
+            assessments: { policy: 'contextual_access_no_rewrite' },
+            curriculum: { policy: 'no_mutation' },
+            attendance: { policy: 'historical_preserve' },
+            messages: { policy: 'no_history_rewrite' },
+          });
+          expectSafeAllocationPayload(body);
+        });
+
+      const after = await prisma.teacherSubjectAllocation.findUniqueOrThrow({
+        where: { id: allocationId },
+        select: { teacherUserId: true, updatedAt: true },
+      });
+      expect(after).toEqual(before);
+    } finally {
+      await prisma.teacherSubjectAllocation.delete({
+        where: { id: allocationId },
+      });
+    }
   });
 
   it('bulk saves allocations using the subject allocation matrix', async () => {
@@ -326,8 +421,12 @@ describe('Academics teacher allocation workflows (e2e)', () => {
       existingCount: 0,
     });
     expect(
-      response.body.items.map((item: { classroom: { id: string } }) => item.classroom.id),
-    ).toEqual(expect.arrayContaining([academic.classroomAId, academic.classroomBId]));
+      response.body.items.map(
+        (item: { classroom: { id: string } }) => item.classroom.id,
+      ),
+    ).toEqual(
+      expect.arrayContaining([academic.classroomAId, academic.classroomBId]),
+    );
   });
 
   it('clear-subject removes only intended allocations and validation reports incomplete then complete states', async () => {
@@ -409,7 +508,9 @@ describe('Academics teacher allocation workflows (e2e)', () => {
       lastName: 'Ali',
     });
     expectSafeAllocationPayload(response.body);
-    expect(JSON.stringify(response.body)).not.toContain(`${marker}-teacher@example.test`);
+    expect(JSON.stringify(response.body)).not.toContain(
+      `${marker}-teacher@example.test`,
+    );
   });
 
   it('returns bounded dependency conflicts and commits none of a blocked curriculum request', async () => {
@@ -555,7 +656,21 @@ describe('Academics teacher allocation workflows (e2e)', () => {
     }
   });
 
-  it('denies closed-term create, delete, bulk, apply, and clear mutations', async () => {
+  it('denies closed-term preview, create, delete, bulk, apply, and clear operations', async () => {
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/academics/allocations/${closedTermAllocationId}/reassignment-preview`,
+      )
+      .set('Authorization', bearer(adminAuth))
+      .send({ newTeacherUserId: targetTeacherUserId })
+      .expect(409)
+      .expect((response) => {
+        const body = response.body as unknown as {
+          error?: { code?: string };
+        };
+        expect(body.error?.code).toBe('academics.allocation.closed_term');
+      });
+
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/academics/allocations`)
       .set('Authorization', bearer(adminAuth))
@@ -567,15 +682,21 @@ describe('Academics teacher allocation workflows (e2e)', () => {
       })
       .expect(409)
       .expect((response) => {
-        expect(response.body?.error?.code).toBe('academics.allocation.closed_term');
+        expect(response.body?.error?.code).toBe(
+          'academics.allocation.closed_term',
+        );
       });
 
     await request(app.getHttpServer())
-      .delete(`${GLOBAL_PREFIX}/academics/allocations/${closedTermAllocationId}`)
+      .delete(
+        `${GLOBAL_PREFIX}/academics/allocations/${closedTermAllocationId}`,
+      )
       .set('Authorization', bearer(adminAuth))
       .expect(409)
       .expect((response) => {
-        expect(response.body?.error?.code).toBe('academics.allocation.closed_term');
+        expect(response.body?.error?.code).toBe(
+          'academics.allocation.closed_term',
+        );
       });
 
     await request(app.getHttpServer())
@@ -1004,6 +1125,9 @@ describe('Academics teacher allocation workflows (e2e)', () => {
           { organizationId: { in: createdOrganizationIds } },
         ],
       },
+    });
+    await prisma.teacherProfile.deleteMany({
+      where: { userId: { in: createdUserIds } },
     });
     await prisma.teacherSubjectAllocation.deleteMany({
       where: { schoolId: { in: createdSchoolIds } },

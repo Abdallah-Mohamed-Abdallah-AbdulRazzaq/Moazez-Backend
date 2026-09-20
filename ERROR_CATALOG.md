@@ -235,6 +235,8 @@ does not change that global behavior.
 | `academics.allocation.missing_subject_allocation`   | 422  | Subject allocation weekly-hours row is required before teacher allocation      |
 | `academics.allocation.delete_conflict`              | 409  | Teacher allocation cannot be deleted because dependent academic records exist  |
 | `academics.allocation.clear_conflict`               | 409  | Teacher allocations cannot be cleared because dependent academic records exist |
+| `academics.allocation.reassignment_target_not_found` | 404 | Reassignment target teacher not found                                           |
+| `academics.allocation.reassignment_target_ineligible` | 409 | Reassignment target teacher is not eligible                                     |
 | `academics.timetable.config_not_found`              | 404  | Timetable config was not found or is outside scope                             |
 | `academics.timetable.period_not_found`              | 404  | Timetable period was not found or is outside scope                             |
 | `academics.timetable.entry_not_found`               | 404  | Timetable entry was not found or is outside scope                              |

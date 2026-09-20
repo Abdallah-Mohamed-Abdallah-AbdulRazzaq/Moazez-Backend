@@ -50,7 +50,8 @@ export class TeacherAllocationDuplicatePairException extends DomainException {
   constructor(details?: Record<string, unknown>) {
     super({
       code: 'academics.allocation.duplicate_pair',
-      message: 'Teacher allocation bulk request contains a duplicate allocation pair',
+      message:
+        'Teacher allocation bulk request contains a duplicate allocation pair',
       httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
       details,
     });
@@ -72,7 +73,8 @@ export class TeacherAllocationMissingSubjectAllocationException extends DomainEx
   constructor(details?: Record<string, unknown>) {
     super({
       code: 'academics.allocation.missing_subject_allocation',
-      message: 'Subject allocation weekly-hours row is required before teacher allocation',
+      message:
+        'Subject allocation weekly-hours row is required before teacher allocation',
       httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
       details,
     });
@@ -83,7 +85,8 @@ export class TeacherAllocationDeleteConflictException extends DomainException {
   constructor(details?: Record<string, unknown>) {
     super({
       code: 'academics.allocation.delete_conflict',
-      message: 'Teacher allocation cannot be deleted because dependent academic records exist',
+      message:
+        'Teacher allocation cannot be deleted because dependent academic records exist',
       httpStatus: HttpStatus.CONFLICT,
       details,
     });
@@ -94,9 +97,31 @@ export class TeacherAllocationClearConflictException extends DomainException {
   constructor(details?: Record<string, unknown>) {
     super({
       code: 'academics.allocation.clear_conflict',
-      message: 'Teacher allocations cannot be cleared because dependent academic records exist',
+      message:
+        'Teacher allocations cannot be cleared because dependent academic records exist',
       httpStatus: HttpStatus.CONFLICT,
       details,
+    });
+  }
+}
+
+export class TeacherAllocationReassignmentTargetNotFoundException extends DomainException {
+  constructor() {
+    super({
+      code: 'academics.allocation.reassignment_target_not_found',
+      message: 'Reassignment target teacher not found',
+      httpStatus: HttpStatus.NOT_FOUND,
+    });
+  }
+}
+
+export class TeacherAllocationReassignmentTargetIneligibleException extends DomainException {
+  constructor(reasonCode: string) {
+    super({
+      code: 'academics.allocation.reassignment_target_ineligible',
+      message: 'Reassignment target teacher is not eligible',
+      httpStatus: HttpStatus.CONFLICT,
+      details: { reasonCode },
     });
   }
 }

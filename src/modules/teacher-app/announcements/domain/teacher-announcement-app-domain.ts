@@ -3,26 +3,22 @@ import {
   CommunicationAnnouncementStatus,
 } from '@prisma/client';
 import { ValidationDomainException } from '../../../../common/exceptions/domain-exception';
+import { isTeacherAnnouncementAudience } from '../../../communication/domain/teacher-app-announcement-metadata';
 import type { TeacherAppAllocationRecord } from '../../shared/teacher-app.types';
 
-export const TEACHER_ANNOUNCEMENT_AUDIENCES = [
-  'students',
-  'parents',
-  'students_and_parents',
-] as const;
+export {
+  buildTeacherAnnouncementMetadata,
+  parseTeacherAnnouncementMetadata,
+  TEACHER_APP_ANNOUNCEMENT_METADATA_SOURCE,
+  TEACHER_ANNOUNCEMENT_AUDIENCES,
+  type TeacherAnnouncementAppMetadata,
+  type TeacherAnnouncementAudience,
+} from '../../../communication/domain/teacher-app-announcement-metadata';
+import type { TeacherAnnouncementAudience } from '../../../communication/domain/teacher-app-announcement-metadata';
 
-export const TEACHER_ANNOUNCEMENT_PRIORITIES = [
-  'normal',
-  'important',
-] as const;
+export const TEACHER_ANNOUNCEMENT_PRIORITIES = ['normal', 'important'] as const;
 
 export const TEACHER_ANNOUNCEMENT_TARGET_TYPES = ['classroom'] as const;
-
-export const TEACHER_APP_ANNOUNCEMENT_METADATA_SOURCE =
-  'teacher_app' as const;
-
-export type TeacherAnnouncementAudience =
-  (typeof TEACHER_ANNOUNCEMENT_AUDIENCES)[number];
 
 export type TeacherAnnouncementPriority =
   (typeof TEACHER_ANNOUNCEMENT_PRIORITIES)[number];
@@ -40,26 +36,18 @@ export interface TeacherAnnouncementResolvedTarget {
   label: string;
 }
 
-export interface TeacherAnnouncementAppMetadata extends Record<string, unknown> {
-  teacherApp: {
-    source: typeof TEACHER_APP_ANNOUNCEMENT_METADATA_SOURCE;
-    targetType: 'classroom';
-    classId: string;
-    classroomId: string;
-    label: string;
-    audience: TeacherAnnouncementAudience;
-  };
-}
-
 export function resolveTeacherAnnouncementTarget(params: {
   target: TeacherAnnouncementTargetInput | undefined;
   allocations: TeacherAppAllocationRecord[];
 }): TeacherAnnouncementResolvedTarget {
   const target = params.target;
   if (!target) {
-    throw new ValidationDomainException('Teacher announcement target is required', {
-      field: 'target',
-    });
+    throw new ValidationDomainException(
+      'Teacher announcement target is required',
+      {
+        field: 'target',
+      },
+    );
   }
 
   if (target.type !== 'classroom') {
@@ -96,52 +84,6 @@ export function resolveTeacherAnnouncementTarget(params: {
     classId: allocation.id,
     classroomId: allocation.classroomId,
     label: buildTeacherAnnouncementTargetLabel(allocation),
-  };
-}
-
-export function buildTeacherAnnouncementMetadata(params: {
-  target: TeacherAnnouncementResolvedTarget;
-  audience: TeacherAnnouncementAudience;
-}): TeacherAnnouncementAppMetadata {
-  return {
-    teacherApp: {
-      source: TEACHER_APP_ANNOUNCEMENT_METADATA_SOURCE,
-      targetType: params.target.type,
-      classId: params.target.classId,
-      classroomId: params.target.classroomId,
-      label: params.target.label,
-      audience: params.audience,
-    },
-  };
-}
-
-export function parseTeacherAnnouncementMetadata(
-  value: unknown,
-): TeacherAnnouncementAppMetadata | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-
-  const teacherApp = (value as Record<string, unknown>).teacherApp;
-  if (!teacherApp || typeof teacherApp !== 'object' || Array.isArray(teacherApp)) {
-    return null;
-  }
-
-  const metadata = teacherApp as Record<string, unknown>;
-  if (metadata.source !== TEACHER_APP_ANNOUNCEMENT_METADATA_SOURCE) return null;
-  if (metadata.targetType !== 'classroom') return null;
-  if (typeof metadata.classId !== 'string') return null;
-  if (typeof metadata.classroomId !== 'string') return null;
-  if (typeof metadata.label !== 'string') return null;
-  if (!isTeacherAnnouncementAudience(metadata.audience)) return null;
-
-  return {
-    teacherApp: {
-      source: TEACHER_APP_ANNOUNCEMENT_METADATA_SOURCE,
-      targetType: 'classroom',
-      classId: metadata.classId,
-      classroomId: metadata.classroomId,
-      label: metadata.label,
-      audience: metadata.audience,
-    },
   };
 }
 
@@ -201,15 +143,6 @@ export function canArchiveTeacherAnnouncement(
   );
 }
 
-function isTeacherAnnouncementAudience(
-  value: unknown,
-): value is TeacherAnnouncementAudience {
-  return (
-    typeof value === 'string' &&
-    (TEACHER_ANNOUNCEMENT_AUDIENCES as readonly string[]).includes(value)
-  );
-}
-
 function buildTeacherAnnouncementTargetLabel(
   allocation: TeacherAppAllocationRecord,
 ): string {
@@ -229,6 +162,9 @@ function buildTeacherAnnouncementTargetLabel(
   );
 }
 
-function preferredName(value: { nameEn?: string | null; nameAr?: string | null }) {
+function preferredName(value: {
+  nameEn?: string | null;
+  nameAr?: string | null;
+}) {
   return value.nameEn ?? value.nameAr ?? null;
 }
