@@ -19,6 +19,7 @@ import { CreateTeacherAllocationUseCase } from '../application/create-teacher-al
 import { DeleteTeacherAllocationUseCase } from '../application/delete-teacher-allocation.use-case';
 import { GetTeacherLoadsUseCase } from '../application/get-teacher-loads.use-case';
 import { ListTeacherAllocationsUseCase } from '../application/list-teacher-allocations.use-case';
+import { PreviewTeacherAllocationReassignmentUseCase } from '../application/preview-teacher-allocation-reassignment.use-case';
 import { ValidateTeacherAllocationsUseCase } from '../application/validate-teacher-allocations.use-case';
 import {
   ApplyTeacherAllocationToGradeDto,
@@ -26,6 +27,7 @@ import {
   ClearTeacherAllocationsBySubjectDto,
   CreateTeacherAllocationDto,
   ListTeacherAllocationsQueryDto,
+  PreviewTeacherAllocationReassignmentDto,
   TeacherLoadsQueryDto,
   ValidateTeacherAllocationsQueryDto,
 } from '../dto/teacher-allocation.dto';
@@ -34,6 +36,7 @@ import {
   ClearTeacherAllocationsResponseDto,
   DeleteTeacherAllocationResponseDto,
   TeacherAllocationResponseDto,
+  TeacherAllocationReassignmentPreviewResponseDto,
   TeacherAllocationValidationResponseDto,
   TeacherAllocationsListResponseDto,
   TeacherAllocationsBulkResponseDto,
@@ -54,6 +57,7 @@ export class TeacherAllocationController {
     private readonly clearTeacherAllocationsBySubjectUseCase: ClearTeacherAllocationsBySubjectUseCase,
     private readonly validateTeacherAllocationsUseCase: ValidateTeacherAllocationsUseCase,
     private readonly getTeacherLoadsUseCase: GetTeacherLoadsUseCase,
+    private readonly previewTeacherAllocationReassignmentUseCase: PreviewTeacherAllocationReassignmentUseCase,
   ) {}
 
   @Get()
@@ -110,6 +114,18 @@ export class TeacherAllocationController {
     @Query() query: TeacherLoadsQueryDto,
   ): Promise<TeacherLoadsResponseDto> {
     return this.getTeacherLoadsUseCase.execute(query);
+  }
+
+  @Post(':allocationId/reassignment-preview')
+  @RequiredPermissions('academics.structure.manage')
+  previewReassignment(
+    @Param('allocationId', new ParseUUIDPipe()) allocationId: string,
+    @Body() dto: PreviewTeacherAllocationReassignmentDto,
+  ): Promise<TeacherAllocationReassignmentPreviewResponseDto> {
+    return this.previewTeacherAllocationReassignmentUseCase.execute(
+      allocationId,
+      dto,
+    );
   }
 
   @Delete(':id')

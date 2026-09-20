@@ -32,6 +32,11 @@ export class CreateTeacherAllocationDto {
   termId!: string;
 }
 
+export class PreviewTeacherAllocationReassignmentDto {
+  @IsUUID()
+  newTeacherUserId!: string;
+}
+
 export class BulkSaveTeacherAllocationItemDto {
   @IsUUID()
   teacherUserId!: string;

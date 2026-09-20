@@ -364,16 +364,42 @@ describe('Academics teacher allocation workflow tenancy isolation (security)', (
       .delete(`${GLOBAL_PREFIX}/academics/allocations/${allocationAId}`)
       .set('Authorization', bearer(viewOnlyAuth))
       .expect(403);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/academics/allocations/${allocationAId}/reassignment-preview`,
+      )
+      .set('Authorization', bearer(viewOnlyAuth))
+      .send({ newTeacherUserId: teacherBUserId })
+      .expect(403);
   });
 
   it('rejects cross-school term, teacher, subject, classroom, and grade ids', async () => {
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/academics/allocations/${allocationAId}/reassignment-preview`,
+      )
+      .set('Authorization', bearer(adminAAuth))
+      .send({ newTeacherUserId: teacherBUserId })
+      .expect(404)
+      .expect((response) => {
+        const body = response.body as unknown as {
+          error?: { code?: string };
+        };
+        expect(body.error?.code).toBe(
+          'academics.allocation.reassignment_target_not_found',
+        );
+      });
+
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/academics/allocations/validation`)
       .query({ termId: academicB.termId })
       .set('Authorization', bearer(adminAAuth))
       .expect(422)
       .expect((response) => {
-        expect(response.body?.error?.code).toBe('academics.allocation.invalid_scope');
+        expect(response.body?.error?.code).toBe(
+          'academics.allocation.invalid_scope',
+        );
       });
 
     await request(app.getHttpServer())
@@ -506,7 +532,9 @@ describe('Academics teacher allocation workflow tenancy isolation (security)', (
       })
       .expect(409)
       .expect((response) => {
-        expect(response.body?.error?.code).toBe('academics.allocation.closed_term');
+        expect(response.body?.error?.code).toBe(
+          'academics.allocation.closed_term',
+        );
       });
 
     await request(app.getHttpServer())

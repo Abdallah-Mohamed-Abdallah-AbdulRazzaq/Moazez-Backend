@@ -68,6 +68,30 @@ export class DeleteTeacherAllocationResponseDto {
   ok!: boolean;
 }
 
+export class TeacherAllocationReassignmentPreviewResponseDto {
+  allocation!: {
+    id: string;
+    subjectId: string;
+    classroomId: string;
+    termId: string;
+  };
+  currentTeacher!: {
+    userId: string;
+    fullName: string;
+  };
+  targetTeacher!: {
+    userId: string;
+    fullName: string;
+  };
+  decision!: 'ready' | 'blocked';
+  canReassign!: boolean;
+  impactFingerprint!: string;
+  impact!: import('../domain/teacher-allocation-reassignment.types').TeacherAllocationReassignmentImpact;
+  blockers!: import('../domain/teacher-allocation-reassignment.types').TeacherAllocationReassignmentBlocker[];
+  automaticActions!: import('../domain/teacher-allocation-reassignment.types').TeacherAllocationReassignmentAction[];
+  historicalRecords!: import('../domain/teacher-allocation-reassignment.types').TeacherAllocationReassignmentHistoricalRecord[];
+}
+
 export type TeacherAllocationValidationStatus =
   | 'complete'
   | 'incomplete'
