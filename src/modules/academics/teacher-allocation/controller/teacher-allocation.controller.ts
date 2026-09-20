@@ -22,6 +22,7 @@ import { DeleteTeacherAllocationUseCase } from '../application/delete-teacher-al
 import { GetTeacherLoadsUseCase } from '../application/get-teacher-loads.use-case';
 import { ListTeacherAllocationsUseCase } from '../application/list-teacher-allocations.use-case';
 import { PreviewTeacherAllocationReassignmentUseCase } from '../application/preview-teacher-allocation-reassignment.use-case';
+import { ReassignTeacherAllocationUseCase } from '../application/reassign-teacher-allocation.use-case';
 import { ValidateTeacherAllocationsUseCase } from '../application/validate-teacher-allocations.use-case';
 import {
   ApplyTeacherAllocationToGradeDto,
@@ -30,6 +31,7 @@ import {
   CreateTeacherAllocationDto,
   ListTeacherAllocationsQueryDto,
   PreviewTeacherAllocationReassignmentDto,
+  ReassignTeacherAllocationDto,
   TeacherLoadsQueryDto,
   ValidateTeacherAllocationsQueryDto,
 } from '../dto/teacher-allocation.dto';
@@ -39,6 +41,7 @@ import {
   DeleteTeacherAllocationResponseDto,
   TeacherAllocationResponseDto,
   TeacherAllocationReassignmentPreviewResponseDto,
+  TeacherAllocationReassignmentResponseDto,
   TeacherAllocationValidationResponseDto,
   TeacherAllocationsListResponseDto,
   TeacherAllocationsBulkResponseDto,
@@ -60,6 +63,7 @@ export class TeacherAllocationController {
     private readonly validateTeacherAllocationsUseCase: ValidateTeacherAllocationsUseCase,
     private readonly getTeacherLoadsUseCase: GetTeacherLoadsUseCase,
     private readonly previewTeacherAllocationReassignmentUseCase: PreviewTeacherAllocationReassignmentUseCase,
+    private readonly reassignTeacherAllocationUseCase: ReassignTeacherAllocationUseCase,
   ) {}
 
   @Get()
@@ -129,6 +133,16 @@ export class TeacherAllocationController {
       allocationId,
       dto,
     );
+  }
+
+  @Post(':allocationId/reassign')
+  @HttpCode(HttpStatus.OK)
+  @RequiredPermissions('academics.structure.manage')
+  reassign(
+    @Param('allocationId', new ParseUUIDPipe()) allocationId: string,
+    @Body() dto: ReassignTeacherAllocationDto,
+  ): Promise<TeacherAllocationReassignmentResponseDto> {
+    return this.reassignTeacherAllocationUseCase.execute(allocationId, dto);
   }
 
   @Delete(':id')

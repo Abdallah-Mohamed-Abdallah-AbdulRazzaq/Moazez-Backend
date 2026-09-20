@@ -3,6 +3,7 @@ import { DomainException } from '../../../../common/exceptions/domain-exception'
 
 type PrismaErrorLike = {
   code?: string;
+  meta?: unknown;
 };
 
 export function isUniqueConstraintError(error: unknown): boolean {
@@ -124,4 +125,63 @@ export class TeacherAllocationReassignmentTargetIneligibleException extends Doma
       details: { reasonCode },
     });
   }
+}
+
+export class TeacherAllocationReassignmentBlockedException extends DomainException {
+  constructor(
+    blockers: ReadonlyArray<{
+      domain: string;
+      code: string;
+      count: number;
+      statuses?: Record<string, number>;
+    }>,
+  ) {
+    super({
+      code: 'academics.allocation.reassignment_blocked',
+      message: 'Teacher allocation reassignment is blocked',
+      httpStatus: HttpStatus.CONFLICT,
+      details: { blockers },
+    });
+  }
+}
+
+export class TeacherAllocationReassignmentStalePreviewException extends DomainException {
+  constructor() {
+    super({
+      code: 'academics.allocation.reassignment_stale_preview',
+      message: 'Teacher allocation reassignment preview is stale',
+      httpStatus: HttpStatus.CONFLICT,
+    });
+  }
+}
+
+export class TeacherAllocationReassignmentConcurrentChangeException extends DomainException {
+  constructor() {
+    super({
+      code: 'academics.allocation.reassignment_concurrent_change',
+      message: 'Teacher allocation changed concurrently',
+      httpStatus: HttpStatus.CONFLICT,
+    });
+  }
+}
+
+export function isTeacherAllocationReassignmentConcurrencyError(
+  error: unknown,
+): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as PrismaErrorLike;
+  return (
+    candidate.code === 'P2034' ||
+    candidate.code === 'P2002' ||
+    (candidate.code === 'P2010' && isSerializationFailure(candidate.meta))
+  );
+}
+
+function isSerializationFailure(meta: unknown): boolean {
+  return (
+    typeof meta === 'object' &&
+    meta !== null &&
+    'code' in meta &&
+    (meta as { code?: unknown }).code === '40001'
+  );
 }

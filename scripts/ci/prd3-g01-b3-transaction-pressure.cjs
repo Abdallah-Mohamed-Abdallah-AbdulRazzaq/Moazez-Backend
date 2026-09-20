@@ -343,6 +343,14 @@ const REVIEWED_CALL_OVERRIDES = Object.freeze([
     evidence: 'Every caller receives the frozen TeacherLifecycleTransactionContext and runs within the explicitly Serializable transaction.',
   }),
   Object.freeze({
+    path: 'src/modules/academics/teacher-allocation/infrastructure/prisma-teacher-allocation-reassignment.unit-of-work.ts',
+    target: /^callback$/,
+    reason: 'The generic unit-of-work callback is supplied only by the teacher-allocation reassignment execute use case.',
+    classification: 'SERIALIZABLE_CONFLICT_SENSITIVE',
+    resolvedCallers: Object.freeze(['ReassignTeacherAllocationUseCase.execute']),
+    evidence: 'The caller receives only the frozen TeacherAllocationReassignmentTransactionContext; snapshot reads, locks, handoffs, and audit writes remain bound to the supplied Prisma TransactionClient.',
+  }),
+  Object.freeze({
     path: 'src/modules/academics/timetable/infrastructure/timetable.repository.ts',
     target: /^operation$/,
     reason: 'The generic timetable write operation is supplied only by the generator and the create, update, and bulk-save timetable entry use cases.',
@@ -711,7 +719,7 @@ function analyzeCallback({ callback, ownerNode, source, checker, sourceRoot }) {
   return { ...analysis, externalOutsideCalls: [...new Set(outside.externalCalls)].sort() };
 }
 
-function isTeacherLifecycleUnitOfWorkExecuteCall(checker, call) {
+function isNamedUnitOfWorkExecuteCall(checker, call, unitOfWorkName) {
   if (
     !ts.isCallExpression(call) ||
     !ts.isPropertyAccessExpression(call.expression) ||
@@ -724,12 +732,28 @@ function isTeacherLifecycleUnitOfWorkExecuteCall(checker, call) {
     while (current) {
       if (
         (ts.isClassDeclaration(current) || ts.isInterfaceDeclaration(current)) &&
-        current.name?.text === 'TeacherLifecycleUnitOfWork'
+        current.name?.text === unitOfWorkName
       ) return true;
       current = current.parent;
     }
     return false;
   });
+}
+
+function isTeacherLifecycleUnitOfWorkExecuteCall(checker, call) {
+  return isNamedUnitOfWorkExecuteCall(
+    checker,
+    call,
+    'TeacherLifecycleUnitOfWork',
+  );
+}
+
+function isTeacherAllocationReassignmentUnitOfWorkExecuteCall(checker, call) {
+  return isNamedUnitOfWorkExecuteCall(
+    checker,
+    call,
+    'TeacherAllocationReassignmentUnitOfWork',
+  );
 }
 
 function isExpressionRootedInThis(node) {
@@ -1276,6 +1300,76 @@ function validateTeacherLifecycleUnitOfWorkCallbacks(rows) {
   return rows;
 }
 
+function auditTeacherAllocationReassignmentUnitOfWorkCallbacks(
+  sourceRoot = path.join(ROOT, 'src'),
+  suppliedProgram,
+) {
+  const program = suppliedProgram ?? createInventoryProgram(sourceRoot);
+  const checker = program.getTypeChecker();
+  const rows = [];
+  for (const source of program.getSourceFiles()) {
+    const absolute = path.resolve(source.fileName);
+    if (!isPathWithinDirectory(absolute, sourceRoot) || absolute.endsWith('.spec.ts')) continue;
+    const visit = (node) => {
+      if (isTeacherAllocationReassignmentUnitOfWorkExecuteCall(checker, node)) {
+        const callback = resolveCallbackArgument(checker, node.arguments[0], sourceRoot);
+        if (!callback?.body) {
+          rows.push({
+            path: normalized(path.relative(ROOT, absolute)),
+            owner: enclosingOwner(node),
+            classification: 'UNSAFE_TRANSACTION_ESCAPE',
+            escapes: [{ target: 'unresolved-callback', awaited: true, origin: 'unit-of-work' }],
+            transactionCalls: [],
+            resolvedHelpers: [],
+          });
+        } else {
+          const analysis = analyzeTeacherLifecycleCallback({
+            callback,
+            source,
+            checker,
+            sourceRoot,
+          });
+          const escapes = analysis.escapes.filter(
+            (item) =>
+              item.target !== 'this.impactService.analyze' &&
+              !/^(?:createHash(?:\(|$)|value\.toISOString$|value\.map(?:\(|$)|value\.map\(canonicalize\)\.sort$|left\.localeCompare$)/u.test(
+                item.target,
+              ),
+          );
+          rows.push({
+            path: normalized(path.relative(ROOT, absolute)),
+            owner: enclosingOwner(node),
+            classification:
+              escapes.length > 0
+                ? 'UNSAFE_TRANSACTION_ESCAPE'
+                : 'PASS_TRANSACTION_CONTEXT_ONLY',
+            escapes,
+            transactionCalls: analysis.transactionCalls,
+            resolvedHelpers: analysis.resolvedHelpers,
+          });
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+  }
+  return rows.sort((left, right) =>
+    `${left.path}#${left.owner}`.localeCompare(`${right.path}#${right.owner}`),
+  );
+}
+
+function validateTeacherAllocationReassignmentUnitOfWorkCallbacks(rows) {
+  const escapes = rows.flatMap((row) =>
+    row.escapes.map((escape) => ({ ...escape, path: row.path, owner: row.owner })),
+  );
+  assert.equal(
+    escapes.length,
+    0,
+    `Teacher allocation reassignment transaction escape detected: ${escapes.map((item) => `${item.path}#${item.owner}:${item.target}`).join(', ')}`,
+  );
+  return rows;
+}
+
 function createInventoryProgram(sourceRoot) {
   const files = walk(sourceRoot);
   const configPath = ts.findConfigFile(ROOT, ts.sys.fileExists, 'tsconfig.json');
@@ -1456,6 +1550,12 @@ function inventoryTransactions(sourceRoot = path.join(ROOT, 'src')) {
     value: Object.freeze(auditTeacherLifecycleUnitOfWorkCallbacks(sourceRoot, program)),
     enumerable: false,
   });
+  Object.defineProperty(result, 'teacherAllocationReassignmentCallbacks', {
+    value: Object.freeze(
+      auditTeacherAllocationReassignmentUnitOfWorkCallbacks(sourceRoot, program),
+    ),
+    enumerable: false,
+  });
   return result;
 }
 
@@ -1463,6 +1563,11 @@ function validateInventory(rows) {
   assert.ok(rows.length > 0, 'transaction inventory is empty');
   if (rows.teacherLifecycleCallbacks) {
     validateTeacherLifecycleUnitOfWorkCallbacks(rows.teacherLifecycleCallbacks);
+  }
+  if (rows.teacherAllocationReassignmentCallbacks) {
+    validateTeacherAllocationReassignmentUnitOfWorkCallbacks(
+      rows.teacherAllocationReassignmentCallbacks,
+    );
   }
   validateTransactionIdentities(rows);
   for (const row of rows) {
@@ -1491,6 +1596,10 @@ function inventorySummary(rows) {
   const teacherLifecycleEscapes = teacherLifecycleCallbacks.flatMap(
     (row) => row.escapes,
   );
+  const teacherAllocationReassignmentCallbacks =
+    rows.teacherAllocationReassignmentCallbacks ?? [];
+  const teacherAllocationReassignmentEscapes =
+    teacherAllocationReassignmentCallbacks.flatMap((row) => row.escapes);
   return Object.freeze({
     total: rows.length,
     interactive: rows.filter((row) => row.kind === 'interactive').length,
@@ -1508,6 +1617,10 @@ function inventorySummary(rows) {
     teacherLifecycleTransactionEscapeCount: teacherLifecycleEscapes.length,
     teacherLifecycleExternalWaitInsideTransaction: teacherLifecycleEscapes.filter((item) => item.awaited).length,
     teacherLifecycleCallbacks,
+    teacherAllocationReassignmentUowCallerCount: teacherAllocationReassignmentCallbacks.length,
+    teacherAllocationReassignmentTransactionEscapeCount: teacherAllocationReassignmentEscapes.length,
+    teacherAllocationReassignmentExternalWaitInsideTransaction: teacherAllocationReassignmentEscapes.filter((item) => item.awaited).length,
+    teacherAllocationReassignmentCallbacks,
     manualOverrides: rows.reduce((sum, row) => sum + row.manualOverrides.length, 0),
     classificationDifferences: rows.filter((row) => row.legacyClassification !== row.classification).map((row) => ({ transactionId: row.transactionId, from: row.legacyClassification, to: row.classification, reason: row.explicitLock ? 'callback-local lock' : 'unrelated file lock removed' })),
     classifications,
@@ -1774,7 +1887,7 @@ function validateStrictSummary(summary) {
   assert.equal(driverFinalization.authoritativeFinalizerInvocations, 1);
 
   const inventory = requiredObject(summary.inventory, 'inventory');
-  for (const key of ['total', 'interactive', 'batch', 'unknown', 'unresolvedCallChains', 'externalWaitInsideTransaction', 'unresolvedRuntimeRoles', 'unwiredTransactions', 'duplicateIds', 'manualOverrides', 'externalWaitOutsideTransaction', 'teacherLifecycleUowCallerCount', 'teacherLifecycleTransactionEscapeCount', 'teacherLifecycleExternalWaitInsideTransaction']) requiredNumber(inventory[key], `inventory.${key}`);
+  for (const key of ['total', 'interactive', 'batch', 'unknown', 'unresolvedCallChains', 'externalWaitInsideTransaction', 'unresolvedRuntimeRoles', 'unwiredTransactions', 'duplicateIds', 'manualOverrides', 'externalWaitOutsideTransaction', 'teacherLifecycleUowCallerCount', 'teacherLifecycleTransactionEscapeCount', 'teacherLifecycleExternalWaitInsideTransaction', 'teacherAllocationReassignmentUowCallerCount', 'teacherAllocationReassignmentTransactionEscapeCount', 'teacherAllocationReassignmentExternalWaitInsideTransaction']) requiredNumber(inventory[key], `inventory.${key}`);
   assert.equal(inventory.total, inventory.interactive + inventory.batch);
   for (const key of ['unknown', 'unresolvedCallChains', 'externalWaitInsideTransaction', 'unresolvedRuntimeRoles', 'unwiredTransactions', 'duplicateIds']) assert.equal(inventory[key], 0, `inventory.${key} must be zero`);
   const classes = requiredObject(inventory.classifications, 'inventory.classifications');
@@ -1783,6 +1896,9 @@ function validateStrictSummary(summary) {
   assert.equal(Object.values(classes).reduce((sum, count) => sum + count, 0), inventory.total);
   assert.equal(classes.EXTERNAL_WAIT_SENSITIVE, inventory.externalWaitInsideTransaction, 'external-wait classification count does not match inventory evidence');
   assert.equal(inventory.teacherLifecycleTransactionEscapeCount, 0, 'Teacher lifecycle transaction escapes must be zero');
+  assert.equal(inventory.teacherAllocationReassignmentUowCallerCount, 1, 'Teacher allocation reassignment must have exactly one governed unit-of-work caller');
+  assert.equal(inventory.teacherAllocationReassignmentTransactionEscapeCount, 0, 'Teacher allocation reassignment transaction escapes must be zero');
+  assert.equal(inventory.teacherAllocationReassignmentExternalWaitInsideTransaction, 0, 'Teacher allocation reassignment external waits inside the transaction must be zero');
   assert.equal(inventory.teacherLifecycleExternalWaitInsideTransaction, 0, 'Teacher lifecycle external waits inside transactions must be zero');
   requiredString(inventory.digest, 'inventory.digest', /^[a-f0-9]{64}$/);
   assert.equal(summary.inventoryDigest, inventory.digest);
@@ -2898,6 +3014,9 @@ function buildFormalSummary({ runId, provenance, inventory, playbackConsumers, r
       teacherLifecycleUowCallerCount: inventory.teacherLifecycleUowCallerCount,
       teacherLifecycleTransactionEscapeCount: inventory.teacherLifecycleTransactionEscapeCount,
       teacherLifecycleExternalWaitInsideTransaction: inventory.teacherLifecycleExternalWaitInsideTransaction,
+      teacherAllocationReassignmentUowCallerCount: inventory.teacherAllocationReassignmentUowCallerCount,
+      teacherAllocationReassignmentTransactionEscapeCount: inventory.teacherAllocationReassignmentTransactionEscapeCount,
+      teacherAllocationReassignmentExternalWaitInsideTransaction: inventory.teacherAllocationReassignmentExternalWaitInsideTransaction,
       classifications: inventory.classifications,
       digest: inventoryDigest,
     },
@@ -3289,7 +3408,7 @@ async function main() {
     assert.equal(cleanup.ok, true, `authoritative finalization failed: ${JSON.stringify(cleanup.failureDetails)}`);
     assert.equal(context.state.authoritativeFinalizerInvocations, 1);
     const publications = cleanup.publications;
-    const final = { schemaVersion:SUMMARY_SCHEMA_VERSION,schema:SUMMARY_SCHEMA,gate:GATE,overall:'PASS',baseCommit:BASE_SHA,baseTree:BASE_TREE,changedPaths:preflightResult.changedPaths,initialDefectReproductions:INITIAL_DEFECT_REPRODUCTIONS,r3InitialDefectReproductions:R3_INITIAL_DEFECT_REPRODUCTIONS,r4InitialDefectReproductions:R4_INITIAL_DEFECT_REPRODUCTIONS,inventory:{total:inventory.total,interactive:inventory.interactive,batch:inventory.batch,classifications:inventory.classifications,manualOverrides:inventory.manualOverrides,unknown:inventory.unknown,unresolvedCallChains:inventory.unresolvedCallChains,unresolvedRuntimeRoles:inventory.unresolvedRuntimeRoles,unwiredTransactions:inventory.unwiredTransactions,duplicateIds:inventory.duplicateIds,externalWaitInsideTransaction:inventory.externalWaitInsideTransaction,externalWaitOutsideTransaction:inventory.externalWaitOutsideTransaction,teacherLifecycleUowCallerCount:inventory.teacherLifecycleUowCallerCount,teacherLifecycleTransactionEscapeCount:inventory.teacherLifecycleTransactionEscapeCount,teacherLifecycleExternalWaitInsideTransaction:inventory.teacherLifecycleExternalWaitInsideTransaction,classificationDifferences:inventory.classificationDifferences.length,digest:publications[0].summary.inventoryDigest},playbackConsumers:{total:playbackConsumers.total,counts:playbackConsumers.counts,digest:playbackConsumers.digest},candidateProductionPatchSha256:productionPatch.sha256,packageLockSha256,images:{baseline:baselineImage,candidate:candidateImage},runtime:{baseline:baselineRuntime,candidate:candidateRuntime},rehearsals,faultCoverage:publications[0].summary.faultCoverage,formalRuns:publications.map(run=>({runId:run.summary.runId,summaryPath:run.summaryPath,summarySha256:run.summarySha256})),crossRun:'PASS',authoritativeFinalizerInvocations:context.state.authoritativeFinalizerInvocations,finalAudit:publications[0].summary.finalAudit };
+    const final = { schemaVersion:SUMMARY_SCHEMA_VERSION,schema:SUMMARY_SCHEMA,gate:GATE,overall:'PASS',baseCommit:BASE_SHA,baseTree:BASE_TREE,changedPaths:preflightResult.changedPaths,initialDefectReproductions:INITIAL_DEFECT_REPRODUCTIONS,r3InitialDefectReproductions:R3_INITIAL_DEFECT_REPRODUCTIONS,r4InitialDefectReproductions:R4_INITIAL_DEFECT_REPRODUCTIONS,inventory:{total:inventory.total,interactive:inventory.interactive,batch:inventory.batch,classifications:inventory.classifications,manualOverrides:inventory.manualOverrides,unknown:inventory.unknown,unresolvedCallChains:inventory.unresolvedCallChains,unresolvedRuntimeRoles:inventory.unresolvedRuntimeRoles,unwiredTransactions:inventory.unwiredTransactions,duplicateIds:inventory.duplicateIds,externalWaitInsideTransaction:inventory.externalWaitInsideTransaction,externalWaitOutsideTransaction:inventory.externalWaitOutsideTransaction,teacherLifecycleUowCallerCount:inventory.teacherLifecycleUowCallerCount,teacherLifecycleTransactionEscapeCount:inventory.teacherLifecycleTransactionEscapeCount,teacherLifecycleExternalWaitInsideTransaction:inventory.teacherLifecycleExternalWaitInsideTransaction,teacherAllocationReassignmentUowCallerCount:inventory.teacherAllocationReassignmentUowCallerCount,teacherAllocationReassignmentTransactionEscapeCount:inventory.teacherAllocationReassignmentTransactionEscapeCount,teacherAllocationReassignmentExternalWaitInsideTransaction:inventory.teacherAllocationReassignmentExternalWaitInsideTransaction,classificationDifferences:inventory.classificationDifferences.length,digest:publications[0].summary.inventoryDigest},playbackConsumers:{total:playbackConsumers.total,counts:playbackConsumers.counts,digest:playbackConsumers.digest},candidateProductionPatchSha256:productionPatch.sha256,packageLockSha256,images:{baseline:baselineImage,candidate:candidateImage},runtime:{baseline:baselineRuntime,candidate:candidateRuntime},rehearsals,faultCoverage:publications[0].summary.faultCoverage,formalRuns:publications.map(run=>({runId:run.summary.runId,summaryPath:run.summaryPath,summarySha256:run.summarySha256})),crossRun:'PASS',authoritativeFinalizerInvocations:context.state.authoritativeFinalizerInvocations,finalAudit:publications[0].summary.finalAudit };
     assert.equal(context.state.interrupted, false);
     console.log(JSON.stringify(final, null, 2));
   } catch(error) {
@@ -3636,6 +3755,7 @@ module.exports = {
   SUMMARY_SCHEMA,
   SUMMARY_SCHEMA_VERSION,
   atomicPublishStrictSummary,
+  auditTeacherAllocationReassignmentUnitOfWorkCallbacks,
   auditTeacherLifecycleUnitOfWorkCallbacks,
   buildNamedContainerCreateArgs,
   buildOwnershipLabels,
@@ -3671,6 +3791,7 @@ module.exports = {
   validatePlaybackConsumerAudit,
   validateSanitizedSummary,
   validateStrictSummary,
+  validateTeacherAllocationReassignmentUnitOfWorkCallbacks,
   validateTeacherLifecycleUnitOfWorkCallbacks,
   verifyLoopbackTcp,
   waitForContainerExit,

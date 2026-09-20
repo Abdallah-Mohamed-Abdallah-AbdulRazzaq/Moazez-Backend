@@ -1,7 +1,10 @@
 import { Prisma, ReinforcementSource } from '@prisma/client';
 import type { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import { TEACHER_APP_ANNOUNCEMENT_METADATA_SOURCE } from '../../../communication/domain/teacher-app-announcement-metadata';
-import { TeacherAllocationReassignmentReadRepository } from '../infrastructure/teacher-allocation-reassignment-read.repository';
+import {
+  TeacherAllocationReassignmentReadRepository,
+  TeacherAllocationReassignmentSnapshotOperations,
+} from '../infrastructure/teacher-allocation-reassignment-read.repository';
 
 describe('TeacherAllocationReassignmentReadRepository', () => {
   it('loads every impact source in one read-only RepeatableRead transaction', async () => {
@@ -35,9 +38,10 @@ describe('TeacherAllocationReassignmentReadRepository', () => {
     const transaction = jest.fn(
       async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
     );
-    const repository = new TeacherAllocationReassignmentReadRepository({
-      $transaction: transaction,
-    } as unknown as PrismaService);
+    const repository = new TeacherAllocationReassignmentReadRepository(
+      { $transaction: transaction } as unknown as PrismaService,
+      new TeacherAllocationReassignmentSnapshotOperations(),
+    );
 
     const result = await repository.loadSnapshot({
       schoolId: allocation.schoolId,

@@ -1,13 +1,36 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Supertest response bodies are intentionally inspected as runtime JSON contracts. */
 import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  AttendanceMode,
+  AttendanceScopeType,
+  AttendanceSessionStatus,
+  CommunicationAnnouncementStatus,
+  CommunicationConversationStatus,
+  CommunicationConversationType,
+  CommunicationMessageKind,
+  CommunicationMessageStatus,
+  CommunicationParticipantRole,
+  CommunicationParticipantStatus,
+  GradeAssessmentApprovalStatus,
+  GradeAssessmentType,
+  GradeScopeType,
+  HomeworkAssignmentStatus,
+  LessonPlanStatus,
   MembershipStatus,
   OrganizationStatus,
   PrismaClient,
+  ReinforcementSource,
+  ReinforcementTaskStatus,
   SchoolStatus,
+  StudentEnrollmentStatus,
+  StudentStatus,
   TeacherEmploymentStatus,
   TeacherGender,
+  TimetableConfigStatus,
+  TimetableEntryStatus,
+  TimetablePublicationStatus,
   UserStatus,
   UserType,
 } from '@prisma/client';
@@ -15,6 +38,7 @@ import * as argon2 from 'argon2';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
+import { buildTeacherAnnouncementMetadata } from '../../src/modules/communication/domain/teacher-app-announcement-metadata';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'Sprint22CTeacherAllocation123!';
@@ -61,6 +85,8 @@ describe('Academics teacher allocation workflows (e2e)', () => {
   let organizationId = '';
   let schoolId = '';
   let adminEmail = '';
+  let teacherEmail = '';
+  let targetTeacherEmail = '';
   let teacherUserId = '';
   let targetTeacherUserId = '';
   let academic: AcademicBase;
@@ -137,33 +163,50 @@ describe('Academics teacher allocation workflows (e2e)', () => {
       userType: UserType.SCHOOL_USER,
       roleId: adminRoleId,
     });
+    teacherEmail = `${marker}-teacher@example.test`;
     teacherUserId = await createUserWithMembership({
-      email: `${marker}-teacher@example.test`,
+      email: teacherEmail,
       firstName: 'Mariam',
       lastName: 'Ali',
       userType: UserType.TEACHER,
       roleId: teacherRole.id,
     });
+    targetTeacherEmail = `${marker}-target-teacher@example.test`;
     targetTeacherUserId = await createUserWithMembership({
-      email: `${marker}-target-teacher@example.test`,
+      email: targetTeacherEmail,
       firstName: 'Nour',
       lastName: 'Hassan',
       userType: UserType.TEACHER,
       roleId: teacherRole.id,
     });
-    await prisma.teacherProfile.create({
-      data: {
-        schoolId,
-        userId: targetTeacherUserId,
-        teacherCode: `T-${suffix.toUpperCase()}-2`,
-        firstNameAr: 'نور',
-        lastNameAr: 'حسن',
-        firstNameEn: 'Nour',
-        lastNameEn: 'Hassan',
-        gender: TeacherGender.FEMALE,
-        employmentStatus: TeacherEmploymentStatus.ACTIVE,
-      },
-    });
+    await Promise.all([
+      prisma.teacherProfile.create({
+        data: {
+          schoolId,
+          userId: teacherUserId,
+          teacherCode: `T-${suffix.toUpperCase()}-1`,
+          firstNameAr: 'مريم',
+          lastNameAr: 'علي',
+          firstNameEn: 'Mariam',
+          lastNameEn: 'Ali',
+          gender: TeacherGender.FEMALE,
+          employmentStatus: TeacherEmploymentStatus.ACTIVE,
+        },
+      }),
+      prisma.teacherProfile.create({
+        data: {
+          schoolId,
+          userId: targetTeacherUserId,
+          teacherCode: `T-${suffix.toUpperCase()}-2`,
+          firstNameAr: 'نور',
+          lastNameAr: 'حسن',
+          firstNameEn: 'Nour',
+          lastNameEn: 'Hassan',
+          gender: TeacherGender.FEMALE,
+          employmentStatus: TeacherEmploymentStatus.ACTIVE,
+        },
+      }),
+    ]);
     closedTermAllocationId = await createTeacherAllocationDirect({
       termId: academic.closedTermId,
       subjectId: mathSubjectId,
@@ -212,6 +255,7 @@ describe('Academics teacher allocation workflows (e2e)', () => {
         'GET /api/v1/academics/allocations/validation',
         'GET /api/v1/academics/allocations/teacher-loads',
         'POST /api/v1/academics/allocations/:allocationId/reassignment-preview',
+        'POST /api/v1/academics/allocations/:allocationId/reassign',
         'GET /api/v1/teacher/schedule',
         'GET /api/v1/teacher/schedule/week',
       ]),
@@ -323,6 +367,801 @@ describe('Academics teacher allocation workflows (e2e)', () => {
         where: { id: allocationId },
       });
     }
+  });
+
+  it('reassigns the same allocation in place and writes exactly one safe success audit', async () => {
+    const allocationId = await createTeacherAllocationDirect({
+      termId: academic.termId,
+      subjectId: mathSubjectId,
+      classroomId: academic.classroomAId,
+    });
+
+    try {
+      const preview = await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/academics/allocations/${allocationId}/reassignment-preview`,
+        )
+        .set('Authorization', bearer(adminAuth))
+        .send({ newTeacherUserId: targetTeacherUserId })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/academics/allocations/${allocationId}/reassign`)
+        .set('Authorization', bearer(adminAuth))
+        .send({
+          newTeacherUserId: targetTeacherUserId,
+          impactFingerprint: preview.body.impactFingerprint,
+          reasonCode: 'teacher_replacement',
+        })
+        .expect(200)
+        .expect((response) => {
+          expect(response.body).toEqual({
+            allocation: {
+              id: allocationId,
+              teacherUserId: targetTeacherUserId,
+            },
+            previousTeacherUserId: teacherUserId,
+            newTeacherUserId: targetTeacherUserId,
+            transferred: {
+              timetableEntries: 0,
+              lessonPlans: 0,
+              homeworkAssignments: 0,
+            },
+            preservedHistorical: {
+              cancelledTimetableEntries: 0,
+              archivedLessonPlans: 0,
+              cancelledOrArchivedHomeworkAssignments: 0,
+              completedOrCancelledReinforcementTasks: 0,
+              publishedArchivedOrCancelledAnnouncements: 0,
+            },
+          });
+          expectSafeAllocationPayload(response.body);
+        });
+
+      const [allocation, audits] = await Promise.all([
+        prisma.teacherSubjectAllocation.findUniqueOrThrow({
+          where: { id: allocationId },
+          select: {
+            id: true,
+            teacherUserId: true,
+            subjectId: true,
+            classroomId: true,
+            termId: true,
+          },
+        }),
+        prisma.auditLog.findMany({
+          where: {
+            action: 'academics.allocation.reassign',
+            resourceId: allocationId,
+            outcome: 'SUCCESS',
+          },
+          select: { before: true, after: true },
+        }),
+      ]);
+      expect(allocation).toEqual({
+        id: allocationId,
+        teacherUserId: targetTeacherUserId,
+        subjectId: mathSubjectId,
+        classroomId: academic.classroomAId,
+        termId: academic.termId,
+      });
+      expect(audits).toEqual([
+        {
+          before: { teacherUserId },
+          after: {
+            teacherUserId: targetTeacherUserId,
+            reasonCode: 'teacher_replacement',
+            transferred: {
+              timetableEntries: 0,
+              lessonPlans: 0,
+              homeworkAssignments: 0,
+            },
+            blockersVerified: { reinforcement: 0, announcements: 0 },
+          },
+        },
+      ]);
+
+      const [sourceTeacherAuth, targetTeacherAuth] = await Promise.all([
+        login(teacherEmail),
+        login(targetTeacherEmail),
+      ]);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/my-classes/${allocationId}`)
+        .set('Authorization', bearer(sourceTeacherAuth))
+        .expect(404);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/my-classes/${allocationId}`)
+        .set('Authorization', bearer(targetTeacherAuth))
+        .expect(200)
+        .expect((response) => {
+          expect(response.body.class).toMatchObject({
+            id: allocationId,
+            classId: allocationId,
+          });
+        });
+    } finally {
+      await prisma.auditLog.deleteMany({ where: { resourceId: allocationId } });
+      await prisma.teacherSubjectAllocation.deleteMany({
+        where: { id: allocationId },
+      });
+    }
+  });
+
+  it('hands off all operational dependencies while preserving history, provenance, and publication state', async () => {
+    const allocationId = await createTeacherAllocationDirect({
+      termId: academic.termId,
+      subjectId: mathSubjectId,
+      classroomId: academic.classroomAId,
+    });
+    const config = await prisma.timetableConfig.create({
+      data: {
+        schoolId,
+        academicYearId: academic.academicYearId,
+        termId: academic.termId,
+        name: `${marker}-reassignment-config`,
+        activeDays: [1, 2, 3],
+        scopeKey: academic.termId,
+        status: TimetableConfigStatus.ACTIVE,
+      },
+    });
+    const periods = await Promise.all(
+      [
+        ['08:00', '09:00'],
+        ['09:00', '10:00'],
+        ['10:00', '11:00'],
+      ].map(([startTime, endTime], index) =>
+        prisma.timetablePeriod.create({
+          data: {
+            schoolId,
+            timetableConfigId: config.id,
+            periodIndex: index + 1,
+            label: `P${index + 1}`,
+            startTime,
+            endTime,
+          },
+        }),
+      ),
+    );
+    const timetableEntries = await Promise.all(
+      Object.values(TimetableEntryStatus).map((status, index) =>
+        prisma.timetableEntry.create({
+          data: {
+            schoolId,
+            academicYearId: academic.academicYearId,
+            termId: academic.termId,
+            timetableConfigId: config.id,
+            periodId: periods[index].id,
+            dayOfWeek: index + 1,
+            gradeId: academic.gradeId,
+            sectionId: academic.sectionAId,
+            classroomId: academic.classroomAId,
+            subjectId: mathSubjectId,
+            teacherUserId,
+            teacherSubjectAllocationId: allocationId,
+            status,
+          },
+        }),
+      ),
+    );
+    const publication = await prisma.timetablePublication.create({
+      data: {
+        schoolId,
+        academicYearId: academic.academicYearId,
+        termId: academic.termId,
+        timetableConfigId: config.id,
+        status: TimetablePublicationStatus.PUBLISHED,
+        revision: 7,
+        publishedAt: new Date('2026-09-10T00:00:00.000Z'),
+        publishedByUserId: teacherUserId,
+      },
+    });
+    const curriculum = await prisma.curriculum.create({
+      data: {
+        schoolId,
+        academicYearId: academic.academicYearId,
+        termId: academic.termId,
+        gradeId: academic.gradeId,
+        subjectId: mathSubjectId,
+        title: `${marker}-reassignment-curriculum`,
+        createdByUserId: teacherUserId,
+      },
+    });
+    const lessonPlans = await Promise.all(
+      Object.values(LessonPlanStatus).map((status, index) =>
+        prisma.lessonPlan.create({
+          data: {
+            schoolId,
+            academicYearId: academic.academicYearId,
+            termId: academic.termId,
+            teacherSubjectAllocationId: allocationId,
+            teacherUserId,
+            classroomId: academic.classroomAId,
+            subjectId: mathSubjectId,
+            curriculumId: curriculum.id,
+            title: `${marker}-plan-${status}`,
+            status,
+            weekStartDate: new Date(
+              `2026-09-${String(index + 1).padStart(2, '0')}T00:00:00.000Z`,
+            ),
+            weekEndDate: new Date(
+              `2026-09-${String(index + 2).padStart(2, '0')}T00:00:00.000Z`,
+            ),
+            createdByUserId: teacherUserId,
+          },
+        }),
+      ),
+    );
+    const homework = await Promise.all(
+      Object.values(HomeworkAssignmentStatus).map((status, index) =>
+        prisma.homeworkAssignment.create({
+          data: {
+            schoolId,
+            academicYearId: academic.academicYearId,
+            termId: academic.termId,
+            classroomId: academic.classroomAId,
+            subjectId: mathSubjectId,
+            teacherUserId,
+            teacherSubjectAllocationId: allocationId,
+            title: `${marker}-homework-${status}`,
+            status,
+            dueAt: new Date(
+              `2026-10-${String(index + 1).padStart(2, '0')}T12:00:00.000Z`,
+            ),
+            createdByUserId: teacherUserId,
+            publishedByUserId:
+              status === HomeworkAssignmentStatus.DRAFT ? null : teacherUserId,
+          },
+        }),
+      ),
+    );
+    const student = await prisma.student.create({
+      data: {
+        schoolId,
+        organizationId,
+        firstName: 'Historical',
+        lastName: 'Student',
+        status: StudentStatus.ACTIVE,
+      },
+    });
+    const enrollment = await prisma.enrollment.create({
+      data: {
+        schoolId,
+        studentId: student.id,
+        academicYearId: academic.academicYearId,
+        termId: academic.termId,
+        classroomId: academic.classroomAId,
+        status: StudentEnrollmentStatus.ACTIVE,
+        enrolledAt: new Date('2026-09-01T00:00:00.000Z'),
+      },
+    });
+    const reinforcementTasks = await Promise.all(
+      [
+        ReinforcementTaskStatus.COMPLETED,
+        ReinforcementTaskStatus.CANCELLED,
+      ].map(async (status) => {
+        const task = await prisma.reinforcementTask.create({
+          data: {
+            schoolId,
+            academicYearId: academic.academicYearId,
+            termId: academic.termId,
+            subjectId: mathSubjectId,
+            titleEn: `${marker}-reinforcement-${status}`,
+            source: ReinforcementSource.TEACHER,
+            status,
+            assignedById: teacherUserId,
+            assignedByName: 'Mariam Ali',
+            createdById: teacherUserId,
+            cancelledById:
+              status === ReinforcementTaskStatus.CANCELLED
+                ? teacherUserId
+                : null,
+            cancelledAt:
+              status === ReinforcementTaskStatus.CANCELLED
+                ? new Date('2026-09-12T00:00:00.000Z')
+                : null,
+            cancellationReason:
+              status === ReinforcementTaskStatus.CANCELLED
+                ? 'historical_fixture'
+                : null,
+          },
+        });
+        const assignment = await prisma.reinforcementAssignment.create({
+          data: {
+            schoolId,
+            taskId: task.id,
+            academicYearId: academic.academicYearId,
+            termId: academic.termId,
+            studentId: student.id,
+            enrollmentId: enrollment.id,
+            status,
+            progress: status === ReinforcementTaskStatus.COMPLETED ? 100 : 0,
+            completedAt:
+              status === ReinforcementTaskStatus.COMPLETED
+                ? new Date('2026-09-11T00:00:00.000Z')
+                : null,
+            cancelledAt:
+              status === ReinforcementTaskStatus.CANCELLED
+                ? new Date('2026-09-12T00:00:00.000Z')
+                : null,
+          },
+        });
+        return { task, assignment };
+      }),
+    );
+    const announcements = await Promise.all(
+      [
+        CommunicationAnnouncementStatus.PUBLISHED,
+        CommunicationAnnouncementStatus.ARCHIVED,
+        CommunicationAnnouncementStatus.CANCELLED,
+      ].map((status) =>
+        prisma.communicationAnnouncement.create({
+          data: {
+            schoolId,
+            title: `${marker}-${status}`,
+            body: 'Historical body must not be returned or changed.',
+            status,
+            createdById: teacherUserId,
+            publishedById: teacherUserId,
+            archivedById:
+              status === CommunicationAnnouncementStatus.ARCHIVED
+                ? teacherUserId
+                : null,
+            metadata: buildTeacherAnnouncementMetadata({
+              target: {
+                type: 'classroom',
+                classId: allocationId,
+                classroomId: academic.classroomAId,
+                label: 'Class A',
+              },
+              audience: 'students',
+            }),
+          },
+        }),
+      ),
+    );
+    const assessment = await prisma.gradeAssessment.create({
+      data: {
+        schoolId,
+        academicYearId: academic.academicYearId,
+        termId: academic.termId,
+        subjectId: mathSubjectId,
+        scopeType: GradeScopeType.CLASSROOM,
+        scopeKey: academic.classroomAId,
+        classroomId: academic.classroomAId,
+        titleEn: `${marker}-historical-assessment`,
+        type: GradeAssessmentType.QUIZ,
+        date: new Date('2026-09-15T00:00:00.000Z'),
+        weight: 10,
+        maxScore: 20,
+        approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+        publishedAt: new Date('2026-09-13T00:00:00.000Z'),
+        publishedById: teacherUserId,
+        approvedAt: new Date('2026-09-14T00:00:00.000Z'),
+        approvedById: teacherUserId,
+        lockedAt: new Date('2026-09-15T00:00:00.000Z'),
+        lockedById: teacherUserId,
+        createdById: teacherUserId,
+      },
+    });
+    const attendanceSession = await prisma.attendanceSession.create({
+      data: {
+        schoolId,
+        academicYearId: academic.academicYearId,
+        termId: academic.termId,
+        date: new Date('2026-09-16T00:00:00.000Z'),
+        scopeType: AttendanceScopeType.CLASSROOM,
+        scopeKey: academic.classroomAId,
+        classroomId: academic.classroomAId,
+        mode: AttendanceMode.DAILY,
+        periodKey: `${marker}-historical-attendance`,
+        status: AttendanceSessionStatus.SUBMITTED,
+        submittedAt: new Date('2026-09-16T08:00:00.000Z'),
+        submittedById: teacherUserId,
+      },
+    });
+    const conversation = await prisma.communicationConversation.create({
+      data: {
+        schoolId,
+        type: CommunicationConversationType.GROUP,
+        status: CommunicationConversationStatus.ACTIVE,
+        titleEn: `${marker}-historical-conversation`,
+        classroomId: academic.classroomAId,
+        subjectId: mathSubjectId,
+        createdById: teacherUserId,
+      },
+    });
+    await prisma.communicationConversationParticipant.createMany({
+      data: [
+        {
+          schoolId,
+          conversationId: conversation.id,
+          userId: teacherUserId,
+          role: CommunicationParticipantRole.OWNER,
+          status: CommunicationParticipantStatus.ACTIVE,
+        },
+        {
+          schoolId,
+          conversationId: conversation.id,
+          userId: targetTeacherUserId,
+          role: CommunicationParticipantRole.MEMBER,
+          status: CommunicationParticipantStatus.ACTIVE,
+        },
+      ],
+    });
+    const message = await prisma.communicationMessage.create({
+      data: {
+        schoolId,
+        conversationId: conversation.id,
+        senderUserId: teacherUserId,
+        kind: CommunicationMessageKind.TEXT,
+        status: CommunicationMessageStatus.SENT,
+        body: 'Historical conversation content must remain unchanged.',
+        clientMessageId: `${marker}-historical-message`,
+      },
+    });
+    const [conversationBefore, participantsBefore, messageBefore] =
+      await Promise.all([
+        prisma.communicationConversation.findUniqueOrThrow({
+          where: { id: conversation.id },
+        }),
+        prisma.communicationConversationParticipant.findMany({
+          where: { conversationId: conversation.id },
+          orderBy: { id: 'asc' },
+        }),
+        prisma.communicationMessage.findUniqueOrThrow({
+          where: { id: message.id },
+        }),
+      ]);
+
+    try {
+      const preview = await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/academics/allocations/${allocationId}/reassignment-preview`,
+        )
+        .set('Authorization', bearer(adminAuth))
+        .send({ newTeacherUserId: targetTeacherUserId })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/academics/allocations/${allocationId}/reassign`)
+        .set('Authorization', bearer(adminAuth))
+        .send({
+          newTeacherUserId: targetTeacherUserId,
+          impactFingerprint: preview.body.impactFingerprint,
+        })
+        .expect(200)
+        .expect((response) => {
+          expect(response.body.transferred).toEqual({
+            timetableEntries: 2,
+            lessonPlans: 2,
+            homeworkAssignments: 3,
+          });
+          expect(response.body.preservedHistorical).toMatchObject({
+            cancelledTimetableEntries: 1,
+            archivedLessonPlans: 1,
+            cancelledOrArchivedHomeworkAssignments: 2,
+            completedOrCancelledReinforcementTasks: 2,
+            publishedArchivedOrCancelledAnnouncements: 3,
+          });
+        });
+
+      const [
+        persistedEntries,
+        persistedPlans,
+        persistedHomework,
+        persistedConfig,
+        persistedPublication,
+        persistedAnnouncements,
+        persistedReinforcementTasks,
+        persistedCurriculum,
+        persistedAssessment,
+        persistedAttendance,
+        persistedConversation,
+        persistedParticipants,
+        persistedMessage,
+      ] = await Promise.all([
+        prisma.timetableEntry.findMany({
+          where: { id: { in: timetableEntries.map(({ id }) => id) } },
+          select: { status: true, teacherUserId: true },
+        }),
+        prisma.lessonPlan.findMany({
+          where: { id: { in: lessonPlans.map(({ id }) => id) } },
+          select: {
+            status: true,
+            teacherUserId: true,
+            createdByUserId: true,
+          },
+        }),
+        prisma.homeworkAssignment.findMany({
+          where: { id: { in: homework.map(({ id }) => id) } },
+          select: {
+            status: true,
+            teacherUserId: true,
+            createdByUserId: true,
+            publishedByUserId: true,
+          },
+        }),
+        prisma.timetableConfig.findUniqueOrThrow({ where: { id: config.id } }),
+        prisma.timetablePublication.findUniqueOrThrow({
+          where: { id: publication.id },
+        }),
+        prisma.communicationAnnouncement.findMany({
+          where: { id: { in: announcements.map(({ id }) => id) } },
+          select: {
+            createdById: true,
+            publishedById: true,
+            archivedById: true,
+          },
+        }),
+        prisma.reinforcementTask.findMany({
+          where: {
+            id: { in: reinforcementTasks.map(({ task }) => task.id) },
+          },
+          orderBy: { id: 'asc' },
+          select: {
+            id: true,
+            status: true,
+            assignedById: true,
+            createdById: true,
+            cancelledById: true,
+          },
+        }),
+        prisma.curriculum.findUniqueOrThrow({ where: { id: curriculum.id } }),
+        prisma.gradeAssessment.findUniqueOrThrow({
+          where: { id: assessment.id },
+          select: {
+            createdById: true,
+            publishedById: true,
+            approvedById: true,
+            lockedById: true,
+          },
+        }),
+        prisma.attendanceSession.findUniqueOrThrow({
+          where: { id: attendanceSession.id },
+          select: { submittedById: true },
+        }),
+        prisma.communicationConversation.findUniqueOrThrow({
+          where: { id: conversation.id },
+        }),
+        prisma.communicationConversationParticipant.findMany({
+          where: { conversationId: conversation.id },
+          orderBy: { id: 'asc' },
+        }),
+        prisma.communicationMessage.findUniqueOrThrow({
+          where: { id: message.id },
+        }),
+      ]);
+      for (const entry of persistedEntries) {
+        expect(entry.teacherUserId).toBe(
+          entry.status === TimetableEntryStatus.CANCELLED
+            ? teacherUserId
+            : targetTeacherUserId,
+        );
+      }
+      for (const plan of persistedPlans) {
+        expect(plan.teacherUserId).toBe(
+          plan.status === LessonPlanStatus.ARCHIVED
+            ? teacherUserId
+            : targetTeacherUserId,
+        );
+        expect(plan.createdByUserId).toBe(teacherUserId);
+      }
+      for (const assignment of persistedHomework) {
+        expect(assignment.teacherUserId).toBe(
+          assignment.status === HomeworkAssignmentStatus.CANCELLED ||
+            assignment.status === HomeworkAssignmentStatus.ARCHIVED
+            ? teacherUserId
+            : targetTeacherUserId,
+        );
+        expect(assignment.createdByUserId).toBe(teacherUserId);
+        if (assignment.publishedByUserId) {
+          expect(assignment.publishedByUserId).toBe(teacherUserId);
+        }
+      }
+      expect(persistedConfig.status).toBe(TimetableConfigStatus.ACTIVE);
+      expect(persistedPublication).toMatchObject({
+        status: TimetablePublicationStatus.PUBLISHED,
+        revision: 7,
+        publishedByUserId: teacherUserId,
+      });
+      for (const announcement of persistedAnnouncements) {
+        expect(announcement.createdById).toBe(teacherUserId);
+        expect(announcement.publishedById).toBe(teacherUserId);
+      }
+      expect(persistedReinforcementTasks).toHaveLength(2);
+      for (const task of persistedReinforcementTasks) {
+        expect(task.assignedById).toBe(teacherUserId);
+        expect(task.createdById).toBe(teacherUserId);
+        if (task.status === ReinforcementTaskStatus.CANCELLED) {
+          expect(task.cancelledById).toBe(teacherUserId);
+        }
+      }
+      expect(persistedCurriculum.createdByUserId).toBe(teacherUserId);
+      expect(persistedAssessment).toEqual({
+        createdById: teacherUserId,
+        publishedById: teacherUserId,
+        approvedById: teacherUserId,
+        lockedById: teacherUserId,
+      });
+      expect(persistedAttendance.submittedById).toBe(teacherUserId);
+      expect(persistedConversation).toEqual(conversationBefore);
+      expect(persistedParticipants).toEqual(participantsBefore);
+      expect(persistedMessage).toEqual(messageBefore);
+
+      const closedHomework = homework.find(
+        ({ status }) => status === HomeworkAssignmentStatus.CLOSED,
+      );
+      const activeEntry = timetableEntries.find(
+        ({ status }) => status === TimetableEntryStatus.ACTIVE,
+      );
+      if (!closedHomework || !activeEntry) {
+        throw new Error('Expected operational reassignment fixtures');
+      }
+      const [sourceTeacherAuth, targetTeacherAuth] = await Promise.all([
+        login(teacherEmail),
+        login(targetTeacherEmail),
+      ]);
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/homeworks/classes/${allocationId}/assignments/${closedHomework.id}`,
+        )
+        .set('Authorization', bearer(sourceTeacherAuth))
+        .expect(404);
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/homeworks/classes/${allocationId}/assignments/${closedHomework.id}`,
+        )
+        .set('Authorization', bearer(targetTeacherAuth))
+        .expect(200)
+        .expect((response) => {
+          expect(response.body).toMatchObject({ id: closedHomework.id });
+        });
+      const sourceSchedule = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/schedule/week`)
+        .query({ date: '2026-09-08' })
+        .set('Authorization', bearer(sourceTeacherAuth))
+        .expect(200);
+      const targetSchedule = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/schedule/week`)
+        .query({ date: '2026-09-08' })
+        .set('Authorization', bearer(targetTeacherAuth))
+        .expect(200);
+      expect(JSON.stringify(sourceSchedule.body)).not.toContain(activeEntry.id);
+      expect(JSON.stringify(targetSchedule.body)).toContain(activeEntry.id);
+    } finally {
+      await prisma.auditLog.deleteMany({ where: { resourceId: allocationId } });
+      await prisma.communicationMessage.deleteMany({
+        where: { id: message.id },
+      });
+      await prisma.communicationConversationParticipant.deleteMany({
+        where: { conversationId: conversation.id },
+      });
+      await prisma.communicationConversation.deleteMany({
+        where: { id: conversation.id },
+      });
+      await prisma.attendanceSession.deleteMany({
+        where: { id: attendanceSession.id },
+      });
+      await prisma.gradeAssessment.deleteMany({
+        where: { id: assessment.id },
+      });
+      await prisma.communicationAnnouncement.deleteMany({
+        where: { id: { in: announcements.map(({ id }) => id) } },
+      });
+      await prisma.reinforcementAssignment.deleteMany({
+        where: {
+          id: {
+            in: reinforcementTasks.map(({ assignment }) => assignment.id),
+          },
+        },
+      });
+      await prisma.reinforcementTask.deleteMany({
+        where: { id: { in: reinforcementTasks.map(({ task }) => task.id) } },
+      });
+      await prisma.homeworkAssignment.deleteMany({
+        where: { id: { in: homework.map(({ id }) => id) } },
+      });
+      await prisma.lessonPlan.deleteMany({
+        where: { id: { in: lessonPlans.map(({ id }) => id) } },
+      });
+      await prisma.curriculum.deleteMany({ where: { id: curriculum.id } });
+      await prisma.enrollment.deleteMany({ where: { id: enrollment.id } });
+      await prisma.student.deleteMany({ where: { id: student.id } });
+      await prisma.timetablePublication.deleteMany({
+        where: { id: publication.id },
+      });
+      await prisma.timetableEntry.deleteMany({
+        where: { id: { in: timetableEntries.map(({ id }) => id) } },
+      });
+      await prisma.timetablePeriod.deleteMany({
+        where: { id: { in: periods.map(({ id }) => id) } },
+      });
+      await prisma.timetableConfig.deleteMany({ where: { id: config.id } });
+      await prisma.teacherSubjectAllocation.deleteMany({
+        where: { id: allocationId },
+      });
+    }
+  });
+
+  it('rejects a stale fingerprint before any ownership handoff', async () => {
+    const allocationId = await createTeacherAllocationDirect({
+      termId: academic.termId,
+      subjectId: scienceSubjectId,
+      classroomId: academic.classroomBId,
+    });
+    let duplicateId: string | undefined;
+
+    try {
+      const preview = await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/academics/allocations/${allocationId}/reassignment-preview`,
+        )
+        .set('Authorization', bearer(adminAuth))
+        .send({ newTeacherUserId: targetTeacherUserId })
+        .expect(200);
+      duplicateId = (
+        await prisma.teacherSubjectAllocation.create({
+          data: {
+            schoolId,
+            teacherUserId: targetTeacherUserId,
+            subjectId: scienceSubjectId,
+            classroomId: academic.classroomBId,
+            termId: academic.termId,
+          },
+          select: { id: true },
+        })
+      ).id;
+
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/academics/allocations/${allocationId}/reassign`)
+        .set('Authorization', bearer(adminAuth))
+        .send({
+          newTeacherUserId: targetTeacherUserId,
+          impactFingerprint: preview.body.impactFingerprint,
+        })
+        .expect(409)
+        .expect((response) => {
+          expect(response.body.error?.code).toBe(
+            'academics.allocation.reassignment_stale_preview',
+          );
+        });
+
+      await expect(
+        prisma.teacherSubjectAllocation.findUniqueOrThrow({
+          where: { id: allocationId },
+          select: { teacherUserId: true },
+        }),
+      ).resolves.toEqual({ teacherUserId });
+      await expect(
+        prisma.auditLog.count({
+          where: {
+            action: 'academics.allocation.reassign',
+            resourceId: allocationId,
+            outcome: 'SUCCESS',
+          },
+        }),
+      ).resolves.toBe(0);
+    } finally {
+      await prisma.teacherSubjectAllocation.deleteMany({
+        where: {
+          id: { in: [allocationId, ...(duplicateId ? [duplicateId] : [])] },
+        },
+      });
+    }
+  });
+
+  it('validates execute fingerprint and reason code narrowly', async () => {
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/academics/allocations/${closedTermAllocationId}/reassign`,
+      )
+      .set('Authorization', bearer(adminAuth))
+      .send({
+        newTeacherUserId: targetTeacherUserId,
+        impactFingerprint: 'A'.repeat(64),
+        reasonCode: 'contains spaces',
+      })
+      .expect(400);
   });
 
   it('bulk saves allocations using the subject allocation matrix', async () => {

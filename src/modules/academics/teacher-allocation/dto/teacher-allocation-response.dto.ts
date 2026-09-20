@@ -92,6 +92,27 @@ export class TeacherAllocationReassignmentPreviewResponseDto {
   historicalRecords!: import('../domain/teacher-allocation-reassignment.types').TeacherAllocationReassignmentHistoricalRecord[];
 }
 
+export class TeacherAllocationReassignmentResponseDto {
+  allocation!: {
+    id: string;
+    teacherUserId: string;
+  };
+  previousTeacherUserId!: string;
+  newTeacherUserId!: string;
+  transferred!: {
+    timetableEntries: number;
+    lessonPlans: number;
+    homeworkAssignments: number;
+  };
+  preservedHistorical!: {
+    cancelledTimetableEntries: number;
+    archivedLessonPlans: number;
+    cancelledOrArchivedHomeworkAssignments: number;
+    completedOrCancelledReinforcementTasks: number;
+    publishedArchivedOrCancelledAnnouncements: number;
+  };
+}
+
 export type TeacherAllocationValidationStatus =
   | 'complete'
   | 'incomplete'

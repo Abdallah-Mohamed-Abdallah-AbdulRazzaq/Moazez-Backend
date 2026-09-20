@@ -237,6 +237,9 @@ does not change that global behavior.
 | `academics.allocation.clear_conflict`               | 409  | Teacher allocations cannot be cleared because dependent academic records exist |
 | `academics.allocation.reassignment_target_not_found` | 404 | Reassignment target teacher not found                                           |
 | `academics.allocation.reassignment_target_ineligible` | 409 | Reassignment target teacher is not eligible                                     |
+| `academics.allocation.reassignment_blocked`          | 409 | Teacher allocation reassignment is blocked by current domain state              |
+| `academics.allocation.reassignment_stale_preview`    | 409 | Teacher allocation reassignment preview is stale                                |
+| `academics.allocation.reassignment_concurrent_change` | 409 | Teacher allocation changed concurrently                                         |
 | `academics.timetable.config_not_found`              | 404  | Timetable config was not found or is outside scope                             |
 | `academics.timetable.period_not_found`              | 404  | Timetable period was not found or is outside scope                             |
 | `academics.timetable.entry_not_found`               | 404  | Timetable entry was not found or is outside scope                              |

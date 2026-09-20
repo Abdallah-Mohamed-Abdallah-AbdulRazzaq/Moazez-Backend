@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- Supertest response bodies are intentionally inspected as runtime JSON contracts. */
 import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -372,6 +373,15 @@ describe('Academics teacher allocation workflow tenancy isolation (security)', (
       .set('Authorization', bearer(viewOnlyAuth))
       .send({ newTeacherUserId: teacherBUserId })
       .expect(403);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/allocations/${allocationAId}/reassign`)
+      .set('Authorization', bearer(viewOnlyAuth))
+      .send({
+        newTeacherUserId: teacherBUserId,
+        impactFingerprint: 'a'.repeat(64),
+      })
+      .expect(403);
   });
 
   it('rejects cross-school term, teacher, subject, classroom, and grade ids', async () => {
@@ -387,6 +397,20 @@ describe('Academics teacher allocation workflow tenancy isolation (security)', (
           error?: { code?: string };
         };
         expect(body.error?.code).toBe(
+          'academics.allocation.reassignment_target_not_found',
+        );
+      });
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/allocations/${allocationAId}/reassign`)
+      .set('Authorization', bearer(adminAAuth))
+      .send({
+        newTeacherUserId: teacherBUserId,
+        impactFingerprint: 'a'.repeat(64),
+      })
+      .expect(404)
+      .expect((response) => {
+        expect(response.body.error?.code).toBe(
           'academics.allocation.reassignment_target_not_found',
         );
       });
@@ -1006,6 +1030,23 @@ describe('Academics teacher allocation workflow tenancy isolation (security)', (
       .post(`${GLOBAL_PREFIX}/academics/allocations/clear-subject`)
       .set('Authorization', bearer(actor.auth))
       .send(validClearPayload())
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/academics/allocations/${allocationAId}/reassignment-preview`,
+      )
+      .set('Authorization', bearer(actor.auth))
+      .send({ newTeacherUserId: teacherBUserId })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/allocations/${allocationAId}/reassign`)
+      .set('Authorization', bearer(actor.auth))
+      .send({
+        newTeacherUserId: teacherBUserId,
+        impactFingerprint: 'a'.repeat(64),
+      })
       .expect(403);
   }
 
