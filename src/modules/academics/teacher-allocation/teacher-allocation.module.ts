@@ -7,6 +7,8 @@ import { DeleteTeacherAllocationUseCase } from './application/delete-teacher-all
 import { GetTeacherLoadsUseCase } from './application/get-teacher-loads.use-case';
 import { ListTeacherAllocationsUseCase } from './application/list-teacher-allocations.use-case';
 import { PreviewTeacherAllocationReassignmentUseCase } from './application/preview-teacher-allocation-reassignment.use-case';
+import { ReassignTeacherAllocationUseCase } from './application/reassign-teacher-allocation.use-case';
+import { TeacherAllocationReassignmentUnitOfWork } from './application/teacher-allocation-reassignment.unit-of-work';
 import { TeacherAllocationReassignmentImpactService } from './application/teacher-allocation-reassignment-impact.service';
 import {
   TEACHER_ALLOCATION_LIFECYCLE_READER,
@@ -16,12 +18,22 @@ import { ValidateTeacherAllocationsUseCase } from './application/validate-teache
 import { TeacherAllocationController } from './controller/teacher-allocation.controller';
 import { TeacherAllocationRepository } from './infrastructure/teacher-allocation.repository';
 import { TeacherAllocationReassignmentReadRepository } from './infrastructure/teacher-allocation-reassignment-read.repository';
+import { TeacherAllocationReassignmentSnapshotOperations } from './infrastructure/teacher-allocation-reassignment-read.repository';
+import { PrismaTeacherAllocationReassignmentTransactionOperations } from './infrastructure/prisma-teacher-allocation-reassignment-transaction.operations';
+import { PrismaTeacherAllocationReassignmentUnitOfWork } from './infrastructure/prisma-teacher-allocation-reassignment.unit-of-work';
 
 @Module({
   controllers: [TeacherAllocationController],
   providers: [
     TeacherAllocationRepository,
+    TeacherAllocationReassignmentSnapshotOperations,
     TeacherAllocationReassignmentReadRepository,
+    PrismaTeacherAllocationReassignmentTransactionOperations,
+    PrismaTeacherAllocationReassignmentUnitOfWork,
+    {
+      provide: TeacherAllocationReassignmentUnitOfWork,
+      useExisting: PrismaTeacherAllocationReassignmentUnitOfWork,
+    },
     ListTeacherAllocationsUseCase,
     CreateTeacherAllocationUseCase,
     DeleteTeacherAllocationUseCase,
@@ -31,6 +43,7 @@ import { TeacherAllocationReassignmentReadRepository } from './infrastructure/te
     ValidateTeacherAllocationsUseCase,
     GetTeacherLoadsUseCase,
     PreviewTeacherAllocationReassignmentUseCase,
+    ReassignTeacherAllocationUseCase,
     TeacherAllocationReassignmentImpactService,
     TeacherAllocationLifecycleReadService,
     {

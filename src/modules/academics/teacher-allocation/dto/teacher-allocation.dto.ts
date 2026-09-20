@@ -4,7 +4,9 @@ import {
   ArrayNotEmpty,
   IsArray,
   IsOptional,
+  IsString,
   IsUUID,
+  Matches,
   ValidateNested,
 } from 'class-validator';
 
@@ -35,6 +37,20 @@ export class CreateTeacherAllocationDto {
 export class PreviewTeacherAllocationReassignmentDto {
   @IsUUID()
   newTeacherUserId!: string;
+}
+
+export class ReassignTeacherAllocationDto {
+  @IsUUID()
+  newTeacherUserId!: string;
+
+  @IsString()
+  @Matches(/^[a-f0-9]{64}$/u)
+  impactFingerprint!: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-z0-9][a-z0-9_-]{0,63}$/u)
+  reasonCode?: string;
 }
 
 export class BulkSaveTeacherAllocationItemDto {

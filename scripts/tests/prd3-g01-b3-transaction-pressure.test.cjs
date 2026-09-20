@@ -31,6 +31,7 @@ const {
   SUMMARY_SCHEMA,
   SUMMARY_SCHEMA_VERSION,
   atomicPublishStrictSummary,
+  auditTeacherAllocationReassignmentUnitOfWorkCallbacks,
   auditTeacherLifecycleUnitOfWorkCallbacks,
   classifyPrismaTransactionError,
   calculateExecutionReceipt,
@@ -65,6 +66,7 @@ const {
   validatePlaybackConsumerAudit,
   validateSanitizedSummary,
   validateStrictSummary,
+  validateTeacherAllocationReassignmentUnitOfWorkCallbacks,
   validateTeacherLifecycleUnitOfWorkCallbacks,
   verifyLoopbackTcp,
   waitForContainerExit,
@@ -115,6 +117,66 @@ test('corrected inventory covers every transaction without unknown or unresolved
   assert.equal(summary.teacherLifecycleUowCallerCount, 8);
   assert.equal(summary.teacherLifecycleTransactionEscapeCount, 0);
   assert.equal(summary.teacherLifecycleExternalWaitInsideTransaction, 0);
+  assert.equal(summary.teacherAllocationReassignmentUowCallerCount, 1);
+  assert.equal(summary.teacherAllocationReassignmentTransactionEscapeCount, 0);
+  assert.equal(
+    summary.teacherAllocationReassignmentExternalWaitInsideTransaction,
+    0,
+  );
+});
+
+test('Teacher allocation reassignment callback has no transaction escape or external wait', () => {
+  const rows = validateTeacherAllocationReassignmentUnitOfWorkCallbacks(
+    auditTeacherAllocationReassignmentUnitOfWorkCallbacks(),
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].owner, 'ReassignTeacherAllocationUseCase.execute');
+  assert.equal(rows[0].classification, 'PASS_TRANSACTION_CONTEXT_ONLY');
+  assert.deepEqual(rows[0].escapes, []);
+  assert.ok(
+    rows[0].transactionCalls.includes('transaction.snapshot.load'),
+  );
+  assert.ok(
+    rows[0].transactionCalls.includes('transaction.audit.writeSuccessful'),
+  );
+});
+
+test('REASSIGNMENT_TRANSACTION_ESCAPE_FIXTURE=REJECTED', () => {
+  withReassignmentFixture(
+    `
+      export abstract class TeacherAllocationReassignmentUnitOfWork {
+        abstract execute<T>(callback: (transaction: any) => Promise<T>): Promise<T>;
+      }
+    `,
+    `
+      import { TeacherAllocationReassignmentUnitOfWork } from './teacher-allocation-reassignment-unit-of-work';
+      class UnsafeReassignment {
+        constructor(
+          private readonly unitOfWork: TeacherAllocationReassignmentUnitOfWork,
+          private readonly previewRepository: any,
+        ) {}
+        execute() {
+          return this.unitOfWork.execute(async (transaction) => {
+            await transaction.snapshot.load({});
+            await this.previewRepository.loadSnapshot({});
+          });
+        }
+      }
+    `,
+    (rows) => {
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].classification, 'UNSAFE_TRANSACTION_ESCAPE');
+      assert.deepEqual(
+        rows[0].escapes.map((item) => item.target),
+        ['this.previewRepository.loadSnapshot'],
+      );
+      assert.throws(
+        () =>
+          validateTeacherAllocationReassignmentUnitOfWorkCallbacks(rows),
+        /Teacher allocation reassignment transaction escape detected/u,
+      );
+    },
+  );
 });
 
 test('Teacher lifecycle callbacks use only transaction context inside the active unit of work', () => {
@@ -1492,6 +1554,23 @@ function withTeacherLifecycleFixture(unitOfWorkSource, callerSource, assertion) 
   }
 }
 
+function withReassignmentFixture(unitOfWorkSource, callerSource, assertion) {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'b3-reassignment-'));
+  try {
+    fs.writeFileSync(
+      path.join(directory, 'teacher-allocation-reassignment-unit-of-work.ts'),
+      unitOfWorkSource,
+      'utf8',
+    );
+    fs.writeFileSync(path.join(directory, 'caller.ts'), callerSource, 'utf8');
+    assertion(
+      auditTeacherAllocationReassignmentUnitOfWorkCallbacks(directory),
+    );
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+}
+
 function publicationContext() {
   const state = new EvidenceState();
   return {
@@ -1540,7 +1619,7 @@ function validSummary(runId = 'b3-valid-run') {
     r3InitialDefectReproductions: R3_INITIAL_DEFECT_REPRODUCTIONS,
     r4InitialDefectReproductions: R4_INITIAL_DEFECT_REPRODUCTIONS,
     driverFinalization: { ok: true, phaseOneResults: [], phaseTwoResults: [], trackedPrismaClients: 0, activeOperations: 0, pendingDriverTimers: 0, pendingDriverAbortListeners: 0, firstSignal: null, requestedExitCode: 0, authoritativeFinalizerInvocations: 1 },
-    inventory: { total: 4, interactive: 3, batch: 1, unknown: 0, unresolvedCallChains: 0, unresolvedRuntimeRoles: 0, unwiredTransactions: 0, duplicateIds: 0, manualOverrides: 1, externalWaitInsideTransaction: 0, externalWaitOutsideTransaction: 1, teacherLifecycleUowCallerCount: 8, teacherLifecycleTransactionEscapeCount: 0, teacherLifecycleExternalWaitInsideTransaction: 0, classifications: { SHORT_DB_ONLY: 2, LOCK_CONTENTION_SENSITIVE: 1, SERIALIZABLE_CONFLICT_SENSITIVE: 1, EXTERNAL_WAIT_SENSITIVE: 0 }, digest: hash },
+    inventory: { total: 4, interactive: 3, batch: 1, unknown: 0, unresolvedCallChains: 0, unresolvedRuntimeRoles: 0, unwiredTransactions: 0, duplicateIds: 0, manualOverrides: 1, externalWaitInsideTransaction: 0, externalWaitOutsideTransaction: 1, teacherLifecycleUowCallerCount: 8, teacherLifecycleTransactionEscapeCount: 0, teacherLifecycleExternalWaitInsideTransaction: 0, teacherAllocationReassignmentUowCallerCount: 1, teacherAllocationReassignmentTransactionEscapeCount: 0, teacherAllocationReassignmentExternalWaitInsideTransaction: 0, classifications: { SHORT_DB_ONLY: 2, LOCK_CONTENTION_SENSITIVE: 1, SERIALIZABLE_CONFLICT_SENSITIVE: 1, EXTERNAL_WAIT_SENSITIVE: 0 }, digest: hash },
     businessPaths,
     lockEvidence,
     entryClasses: { learningMedia: 'CompleteLearningMediaUploadUseCase', lessonContent: 'UpdateLessonContentUseCase', teacherLifecycle: 'ChangeTeacherEmploymentStatusUseCase' },

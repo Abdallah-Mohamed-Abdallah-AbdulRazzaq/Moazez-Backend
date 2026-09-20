@@ -230,8 +230,164 @@ export interface TeacherAllocationReassignmentSnapshot {
 }
 
 @Injectable()
+export class TeacherAllocationReassignmentSnapshotOperations {
+  async load(
+    transaction: Prisma.TransactionClient,
+    input: {
+      schoolId: string;
+      allocationId: string;
+      newTeacherUserId: string;
+    },
+  ): Promise<TeacherAllocationReassignmentSnapshot | null> {
+    const allocation = await transaction.teacherSubjectAllocation.findFirst({
+      where: {
+        id: input.allocationId,
+        schoolId: input.schoolId,
+      },
+      select: REASSIGNMENT_ALLOCATION_SELECT,
+    });
+    if (!allocation) return null;
+
+    const target = await transaction.user.findFirst({
+      where: {
+        id: input.newTeacherUserId,
+        memberships: {
+          some: {
+            schoolId: input.schoolId,
+          },
+        },
+      },
+      select: {
+        ...REASSIGNMENT_TARGET_SELECT,
+        memberships: {
+          where: { schoolId: input.schoolId },
+          ...REASSIGNMENT_TARGET_SELECT.memberships,
+        },
+        teacherProfiles: {
+          where: { schoolId: input.schoolId },
+          ...REASSIGNMENT_TARGET_SELECT.teacherProfiles,
+        },
+      },
+    });
+
+    const [
+      duplicateTargetAllocation,
+      timetableEntries,
+      lessonPlans,
+      homeworkAssignments,
+      reinforcementTasks,
+      announcements,
+    ] = await Promise.all([
+      transaction.teacherSubjectAllocation.findFirst({
+        where: {
+          schoolId: input.schoolId,
+          id: { not: allocation.id },
+          teacherUserId: input.newTeacherUserId,
+          subjectId: allocation.subjectId,
+          classroomId: allocation.classroomId,
+          termId: allocation.termId,
+        },
+        select: { id: true },
+      }),
+      transaction.timetableEntry.findMany({
+        where: {
+          schoolId: input.schoolId,
+          termId: allocation.termId,
+          OR: [
+            { teacherSubjectAllocationId: allocation.id },
+            { teacherUserId: input.newTeacherUserId },
+          ],
+        },
+        select: REASSIGNMENT_TIMETABLE_SELECT,
+      }),
+      transaction.lessonPlan.findMany({
+        where: {
+          schoolId: input.schoolId,
+          teacherSubjectAllocationId: allocation.id,
+          deletedAt: null,
+        },
+        select: REASSIGNMENT_LESSON_PLAN_SELECT,
+      }),
+      transaction.homeworkAssignment.findMany({
+        where: {
+          schoolId: input.schoolId,
+          teacherSubjectAllocationId: allocation.id,
+          deletedAt: null,
+        },
+        select: REASSIGNMENT_HOMEWORK_SELECT,
+      }),
+      transaction.reinforcementTask.findMany({
+        where: {
+          schoolId: input.schoolId,
+          deletedAt: null,
+          source: ReinforcementSource.TEACHER,
+          academicYearId: allocation.term.academicYearId,
+          termId: allocation.termId,
+          OR: [
+            { assignedById: allocation.teacherUserId },
+            { createdById: allocation.teacherUserId },
+          ],
+          AND: [
+            {
+              OR: [{ subjectId: allocation.subjectId }, { subjectId: null }],
+            },
+            {
+              assignments: {
+                some: {
+                  enrollment: {
+                    is: {
+                      academicYearId: allocation.term.academicYearId,
+                      termId: allocation.termId,
+                      classroomId: allocation.classroomId,
+                      status: 'ACTIVE',
+                      deletedAt: null,
+                      student: {
+                        is: {
+                          status: 'ACTIVE',
+                          deletedAt: null,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        },
+        select: REASSIGNMENT_REINFORCEMENT_SELECT,
+      }),
+      transaction.communicationAnnouncement.findMany({
+        where: {
+          schoolId: input.schoolId,
+          createdById: allocation.teacherUserId,
+          metadata: {
+            path: ['teacherApp', 'source'],
+            equals: TEACHER_APP_ANNOUNCEMENT_METADATA_SOURCE,
+          },
+        },
+        select: REASSIGNMENT_ANNOUNCEMENT_SELECT,
+      }),
+    ]);
+
+    return {
+      allocation,
+      target,
+      duplicateTargetAllocationId: duplicateTargetAllocation?.id ?? null,
+      timetableEntries,
+      lessonPlans,
+      homeworkAssignments,
+      reinforcementTasks,
+      announcements,
+    };
+  }
+}
+
+@Injectable()
 export class TeacherAllocationReassignmentReadRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly snapshot: TeacherAllocationReassignmentSnapshotOperations,
+  ) {}
 
   loadSnapshot(input: {
     schoolId: string;
@@ -239,151 +395,7 @@ export class TeacherAllocationReassignmentReadRepository {
     newTeacherUserId: string;
   }): Promise<TeacherAllocationReassignmentSnapshot | null> {
     return this.prisma.$transaction(
-      async (tx) => {
-        const allocation = await tx.teacherSubjectAllocation.findFirst({
-          where: {
-            id: input.allocationId,
-            schoolId: input.schoolId,
-          },
-          select: REASSIGNMENT_ALLOCATION_SELECT,
-        });
-        if (!allocation) return null;
-
-        const target = await tx.user.findFirst({
-          where: {
-            id: input.newTeacherUserId,
-            memberships: {
-              some: {
-                schoolId: input.schoolId,
-              },
-            },
-          },
-          select: {
-            ...REASSIGNMENT_TARGET_SELECT,
-            memberships: {
-              where: { schoolId: input.schoolId },
-              ...REASSIGNMENT_TARGET_SELECT.memberships,
-            },
-            teacherProfiles: {
-              where: { schoolId: input.schoolId },
-              ...REASSIGNMENT_TARGET_SELECT.teacherProfiles,
-            },
-          },
-        });
-
-        const [
-          duplicateTargetAllocation,
-          timetableEntries,
-          lessonPlans,
-          homeworkAssignments,
-          reinforcementTasks,
-          announcements,
-        ] = await Promise.all([
-          tx.teacherSubjectAllocation.findFirst({
-            where: {
-              schoolId: input.schoolId,
-              id: { not: allocation.id },
-              teacherUserId: input.newTeacherUserId,
-              subjectId: allocation.subjectId,
-              classroomId: allocation.classroomId,
-              termId: allocation.termId,
-            },
-            select: { id: true },
-          }),
-          tx.timetableEntry.findMany({
-            where: {
-              schoolId: input.schoolId,
-              termId: allocation.termId,
-              OR: [
-                { teacherSubjectAllocationId: allocation.id },
-                { teacherUserId: input.newTeacherUserId },
-              ],
-            },
-            select: REASSIGNMENT_TIMETABLE_SELECT,
-          }),
-          tx.lessonPlan.findMany({
-            where: {
-              schoolId: input.schoolId,
-              teacherSubjectAllocationId: allocation.id,
-              deletedAt: null,
-            },
-            select: REASSIGNMENT_LESSON_PLAN_SELECT,
-          }),
-          tx.homeworkAssignment.findMany({
-            where: {
-              schoolId: input.schoolId,
-              teacherSubjectAllocationId: allocation.id,
-              deletedAt: null,
-            },
-            select: REASSIGNMENT_HOMEWORK_SELECT,
-          }),
-          tx.reinforcementTask.findMany({
-            where: {
-              schoolId: input.schoolId,
-              deletedAt: null,
-              source: ReinforcementSource.TEACHER,
-              academicYearId: allocation.term.academicYearId,
-              termId: allocation.termId,
-              OR: [
-                { assignedById: allocation.teacherUserId },
-                { createdById: allocation.teacherUserId },
-              ],
-              AND: [
-                {
-                  OR: [
-                    { subjectId: allocation.subjectId },
-                    { subjectId: null },
-                  ],
-                },
-                {
-                  assignments: {
-                    some: {
-                      enrollment: {
-                        is: {
-                          academicYearId: allocation.term.academicYearId,
-                          termId: allocation.termId,
-                          classroomId: allocation.classroomId,
-                          status: 'ACTIVE',
-                          deletedAt: null,
-                          student: {
-                            is: {
-                              status: 'ACTIVE',
-                              deletedAt: null,
-                            },
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              ],
-            },
-            select: REASSIGNMENT_REINFORCEMENT_SELECT,
-          }),
-          tx.communicationAnnouncement.findMany({
-            where: {
-              schoolId: input.schoolId,
-              createdById: allocation.teacherUserId,
-              metadata: {
-                path: ['teacherApp', 'source'],
-                equals: TEACHER_APP_ANNOUNCEMENT_METADATA_SOURCE,
-              },
-            },
-            select: REASSIGNMENT_ANNOUNCEMENT_SELECT,
-          }),
-        ]);
-
-        return {
-          allocation,
-          target,
-          duplicateTargetAllocationId: duplicateTargetAllocation?.id ?? null,
-          timetableEntries,
-          lessonPlans,
-          homeworkAssignments,
-          reinforcementTasks,
-          announcements,
-        };
-      },
+      (transaction) => this.snapshot.load(transaction, input),
       {
         isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
         maxWait: 5_000,
