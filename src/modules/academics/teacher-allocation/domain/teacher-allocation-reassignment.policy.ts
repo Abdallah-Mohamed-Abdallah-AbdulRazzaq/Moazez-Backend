@@ -27,6 +27,8 @@ export function evaluateReassignmentTargetEligibility(params: {
   }
 
   const membership = target.memberships.find((item) => {
+    if (item.schoolId !== schoolId || item.userId !== target.id) return false;
+
     const state = {
       ...item,
       user: {

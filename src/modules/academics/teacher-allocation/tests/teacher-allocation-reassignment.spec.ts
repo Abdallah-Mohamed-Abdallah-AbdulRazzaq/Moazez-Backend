@@ -94,6 +94,51 @@ describe('teacher allocation reassignment', () => {
       ).toEqual({ eligible: true });
     });
 
+    it('rejects an operational membership from another school', () => {
+      const target = buildEligibleTarget();
+      target.memberships = target.memberships.map((membership) => ({
+        ...membership,
+        schoolId: '20000000-0000-4000-8000-000000000098',
+      }));
+
+      expect(
+        evaluateReassignmentTargetEligibility({ schoolId, target }),
+      ).toEqual({
+        eligible: false,
+        reasonCode: 'membership_ineligible',
+      });
+    });
+
+    it('rejects a same-school membership with a non-Teacher role', () => {
+      const target = buildEligibleTarget();
+      target.memberships = target.memberships.map((membership) => ({
+        ...membership,
+        role: { ...membership.role, key: 'school_admin' },
+      }));
+
+      expect(
+        evaluateReassignmentTargetEligibility({ schoolId, target }),
+      ).toEqual({
+        eligible: false,
+        reasonCode: 'membership_ineligible',
+      });
+    });
+
+    it('rejects a same-school membership with a deleted Teacher role', () => {
+      const target = buildEligibleTarget();
+      target.memberships = target.memberships.map((membership) => ({
+        ...membership,
+        role: { ...membership.role, deletedAt: now },
+      }));
+
+      expect(
+        evaluateReassignmentTargetEligibility({ schoolId, target }),
+      ).toEqual({
+        eligible: false,
+        reasonCode: 'membership_ineligible',
+      });
+    });
+
     it.each([
       [
         'account_status_ineligible',
@@ -160,7 +205,7 @@ describe('teacher allocation reassignment', () => {
       expect(analysis.impact).toMatchObject({
         timetable: {
           draft: 1,
-          active: 0,
+          active: 1,
           cancelled: 1,
           targetTeacherConflicts: 1,
         },
@@ -196,7 +241,7 @@ describe('teacher allocation reassignment', () => {
         {
           domain: 'timetable',
           action: 'handoff_current_responsibility',
-          count: 1,
+          count: 2,
         },
         {
           domain: 'lesson_plans',
@@ -210,6 +255,100 @@ describe('teacher allocation reassignment', () => {
         },
       ]);
       expect(analysis.historicalRecords).toHaveLength(5);
+    });
+
+    it('blocks selecting the allocation current Teacher', () => {
+      const snapshot = buildSnapshot();
+      snapshot.target = {
+        ...buildEligibleTarget(),
+        id: currentTeacherId,
+      };
+
+      const analysis = new TeacherAllocationReassignmentImpactService().analyze(
+        snapshot,
+      );
+
+      expect(analysis.blockers).toContainEqual({
+        domain: 'allocation',
+        code: 'target_is_current_teacher',
+        count: 1,
+      });
+      expect(analysis.decision).toBe('blocked');
+      expect(analysis.canReassign).toBe(false);
+    });
+
+    it('blocks an exact allocation already owned by the target Teacher', () => {
+      const snapshot = buildSnapshot();
+      snapshot.duplicateTargetAllocationId =
+        '30000000-0000-4000-8000-000000000097';
+
+      const analysis = new TeacherAllocationReassignmentImpactService().analyze(
+        snapshot,
+      );
+
+      expect(analysis.blockers).toContainEqual({
+        domain: 'allocation',
+        code: 'target_already_allocated',
+        count: 1,
+      });
+    });
+
+    it('does not block co-teaching by a Teacher other than the requested target', () => {
+      const snapshot = buildSnapshot();
+      snapshot.timetableEntries.push(
+        timetableEntry({
+          id: '30000000-0000-4000-8000-000000000096',
+          allocationId: '30000000-0000-4000-8000-000000000095',
+          teacherUserId: '30000000-0000-4000-8000-000000000094',
+          classroomId,
+          status: TimetableEntryStatus.ACTIVE,
+          startTime: '13:00',
+          endTime: '14:00',
+        }),
+      );
+
+      const analysis = new TeacherAllocationReassignmentImpactService().analyze(
+        snapshot,
+      );
+
+      expect(
+        analysis.blockers.some(
+          (blocker) => blocker.code === 'target_already_allocated',
+        ),
+      ).toBe(false);
+    });
+
+    it('blocks a multi-scope active reinforcement task when one assignment intersects', () => {
+      const snapshot = buildSnapshot();
+      const task = snapshot.reinforcementTasks.find(
+        (item) => item.status === ReinforcementTaskStatus.NOT_COMPLETED,
+      );
+      expect(task).toBeDefined();
+      if (!task) throw new Error('Expected active reinforcement fixture');
+      const matchingAssignment = task.assignments[0];
+      task.assignments = [
+        {
+          ...matchingAssignment,
+          id: '41000000-0000-4000-8000-000000000099',
+          enrollment: {
+            ...matchingAssignment.enrollment,
+            classroomId: '41000000-0000-4000-8000-000000000098',
+          },
+        },
+        matchingAssignment,
+      ];
+      snapshot.reinforcementTasks = [task];
+
+      const analysis = new TeacherAllocationReassignmentImpactService().analyze(
+        snapshot,
+      );
+
+      expect(analysis.blockers).toContainEqual({
+        domain: 'reinforcement',
+        code: 'active_reinforcement_tasks',
+        count: 1,
+        statuses: { NOT_COMPLETED: 1 },
+      });
     });
   });
 });
@@ -273,6 +412,15 @@ function buildSnapshot(): TeacherAllocationReassignmentSnapshot {
       status: TimetableEntryStatus.DRAFT,
       startTime: '09:00',
       endTime: '10:00',
+    }),
+    timetableEntry({
+      id: '30000000-0000-4000-8000-000000000004',
+      allocationId,
+      teacherUserId: currentTeacherId,
+      classroomId,
+      status: TimetableEntryStatus.ACTIVE,
+      startTime: '11:00',
+      endTime: '12:00',
     }),
     timetableEntry({
       id: '30000000-0000-4000-8000-000000000002',

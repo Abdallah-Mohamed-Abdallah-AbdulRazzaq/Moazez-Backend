@@ -276,7 +276,7 @@ describe('Academics teacher allocation workflows (e2e)', () => {
         )
         .set('Authorization', bearer(adminAuth))
         .send({ newTeacherUserId: targetTeacherUserId })
-        .expect(201)
+        .expect(200)
         .expect((response) => {
           const body = response.body as unknown as {
             impactFingerprint: string;
@@ -656,7 +656,21 @@ describe('Academics teacher allocation workflows (e2e)', () => {
     }
   });
 
-  it('denies closed-term create, delete, bulk, apply, and clear mutations', async () => {
+  it('denies closed-term preview, create, delete, bulk, apply, and clear operations', async () => {
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/academics/allocations/${closedTermAllocationId}/reassignment-preview`,
+      )
+      .set('Authorization', bearer(adminAuth))
+      .send({ newTeacherUserId: targetTeacherUserId })
+      .expect(409)
+      .expect((response) => {
+        const body = response.body as unknown as {
+          error?: { code?: string };
+        };
+        expect(body.error?.code).toBe('academics.allocation.closed_term');
+      });
+
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/academics/allocations`)
       .set('Authorization', bearer(adminAuth))

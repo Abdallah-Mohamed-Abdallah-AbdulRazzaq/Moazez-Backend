@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { getRequestContext } from '../../../../common/context/request-context';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
+import { requireAcademicsScope } from '../../academics-context';
 import { PreviewTeacherAllocationReassignmentDto } from '../dto/teacher-allocation.dto';
 import { TeacherAllocationReassignmentPreviewResponseDto } from '../dto/teacher-allocation-response.dto';
 import {
@@ -24,15 +24,10 @@ export class PreviewTeacherAllocationReassignmentUseCase {
     allocationId: string,
     dto: PreviewTeacherAllocationReassignmentDto,
   ): Promise<TeacherAllocationReassignmentPreviewResponseDto> {
-    const schoolId = getRequestContext()?.activeMembership?.schoolId;
-    if (!schoolId) {
-      throw new Error(
-        'Teacher allocation reassignment preview requires an active school membership',
-      );
-    }
+    const scope = requireAcademicsScope();
 
     const snapshot = await this.repository.loadSnapshot({
-      schoolId,
+      schoolId: scope.schoolId,
       allocationId,
       newTeacherUserId: dto.newTeacherUserId,
     });
@@ -46,7 +41,7 @@ export class PreviewTeacherAllocationReassignmentUseCase {
       throw new TeacherAllocationReassignmentTargetNotFoundException();
     }
     const eligibility = evaluateReassignmentTargetEligibility({
-      schoolId,
+      schoolId: scope.schoolId,
       target: snapshot.target,
     });
     if (!eligibility.eligible) {

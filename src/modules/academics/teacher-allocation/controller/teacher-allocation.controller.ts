@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Post,
@@ -117,6 +119,7 @@ export class TeacherAllocationController {
   }
 
   @Post(':allocationId/reassignment-preview')
+  @HttpCode(HttpStatus.OK)
   @RequiredPermissions('academics.structure.manage')
   previewReassignment(
     @Param('allocationId', new ParseUUIDPipe()) allocationId: string,
