@@ -19,6 +19,7 @@ import {
   StudentStatus,
   TeacherEmploymentStatus,
   TeacherGender,
+  TimetableEntryStatus,
   UserStatus,
   UserType,
 } from '@prisma/client';
@@ -42,7 +43,9 @@ import {
 } from '../../../src/modules/academics/teacher-allocation/application/teacher-allocation-operational-write-gate';
 import { PrismaTeacherAllocationOperationalWriteGate } from '../../../src/modules/academics/teacher-allocation/infrastructure/prisma-teacher-allocation-operational-write-gate';
 import { PrismaTeacherAllocationReassignmentTransactionOperations } from '../../../src/modules/academics/teacher-allocation/infrastructure/prisma-teacher-allocation-reassignment-transaction.operations';
+import { BulkSaveTimetableEntriesUseCase } from '../../../src/modules/academics/timetable/application/bulk-save-timetable-entries.use-case';
 import { CreateTimetableEntryUseCase } from '../../../src/modules/academics/timetable/application/create-timetable-entry.use-case';
+import { TimetableTeacherConflictException } from '../../../src/modules/academics/timetable/domain/timetable.exceptions';
 import { CommunicationAnnouncementRepository } from '../../../src/modules/communication/infrastructure/communication-announcement.repository';
 import { buildTeacherAnnouncementMetadata } from '../../../src/modules/communication/domain/teacher-app-announcement-metadata';
 import { HomeworkRepository } from '../../../src/modules/homework/infrastructure/homework.repository';
@@ -85,6 +88,16 @@ interface RaceFixture {
   count: () => Promise<number>;
   owner: () => Promise<string | null>;
   teacherSpecific: boolean;
+}
+
+interface BulkTimetableRaceFixture {
+  existingAllocation: AllocationFixture;
+  proposedAllocation: AllocationFixture;
+  createExisting: () => Promise<unknown>;
+  write: () => Promise<unknown>;
+  proposedCount: () => Promise<number>;
+  existingEntryOwner: () => Promise<string | null>;
+  proposedEntryOwner: () => Promise<string | null>;
 }
 
 function deferred<T = void>(): Deferred<T> {
@@ -277,7 +290,7 @@ async function run(): Promise<void> {
     currentStage = 'fixture-academics';
     const academic = await createAcademicBase(fixturePrisma, schoolId, marker);
     const allocations: AllocationFixture[] = [];
-    for (let index = 0; index < 10; index += 1) {
+    for (let index = 0; index < 14; index += 1) {
       allocations.push(
         await createAllocationFixture({
           prisma: fixturePrisma,
@@ -285,7 +298,8 @@ async function run(): Promise<void> {
           index,
           schoolId,
           academic,
-          teacherUserId: sourceTeacher.id,
+          teacherUserId:
+            index === 11 || index === 13 ? targetTeacher.id : sourceTeacher.id,
           actorId: admin.id,
         }),
       );
@@ -330,6 +344,7 @@ async function run(): Promise<void> {
     const lessonPlanRepository = app.get(LessonPlansRepository);
     const homeworkRepository = app.get(HomeworkRepository);
     const createTimetableEntry = app.get(CreateTimetableEntryUseCase);
+    const bulkSaveTimetableEntries = app.get(BulkSaveTimetableEntriesUseCase);
     const applicationPrisma = app.get(PrismaService);
 
     const scope = <T>(
@@ -577,6 +592,57 @@ async function run(): Promise<void> {
     });
     console.log('TIMETABLE_REASSIGNMENT_FIRST=PASS');
 
+    const bulkReassignmentFirst = bulkTimetableScenario({
+      createUseCase: createTimetableEntry,
+      bulkUseCase: bulkSaveTimetableEntries,
+      prisma: fixturePrisma,
+      scope,
+      identity: admin,
+      schoolId,
+      academic,
+      existingAllocation: allocations[10],
+      proposedAllocation: allocations[11],
+      timetable,
+      dayOfWeek: 2,
+      marker: `${marker}-timetable-bulk-reassignment-first`,
+    });
+    currentStage = 'race-timetable-bulk-reassignment-first';
+    await proveBulkReassignmentFirst({
+      scenario: bulkReassignmentFirst,
+      coordinator,
+      preview,
+      reassign,
+      prisma: fixturePrisma,
+      targetTeacherUserId: targetTeacher.id,
+    });
+    console.log('TIMETABLE_BULK_REASSIGNMENT_FIRST=PASS');
+
+    const bulkWriterFirst = bulkTimetableScenario({
+      createUseCase: createTimetableEntry,
+      bulkUseCase: bulkSaveTimetableEntries,
+      prisma: fixturePrisma,
+      scope,
+      identity: admin,
+      schoolId,
+      academic,
+      existingAllocation: allocations[12],
+      proposedAllocation: allocations[13],
+      timetable,
+      dayOfWeek: 3,
+      marker: `${marker}-timetable-bulk-writer-first`,
+    });
+    currentStage = 'race-timetable-bulk-writer-first';
+    await proveBulkWriterFirst({
+      scenario: bulkWriterFirst,
+      coordinator,
+      preview,
+      reassign,
+      prisma: fixturePrisma,
+      sourceTeacherUserId: sourceTeacher.id,
+      targetTeacherUserId: targetTeacher.id,
+    });
+    console.log('TIMETABLE_BULK_WRITER_FIRST=PASS');
+
     currentStage = 'multi-allocation-order';
     coordinator.reset();
     const orderIds = [allocations[0].id, allocations[2].id].sort();
@@ -605,6 +671,15 @@ async function run(): Promise<void> {
       );
     }
     console.log('MULTI_ALLOCATION_DEADLOCK_TEST=PASS');
+
+    const unsafeBulkTeacherConflictCount =
+      await countUnsafeBulkTeacherConflicts(
+        fixturePrisma,
+        activeSchoolId,
+        allocations.slice(10, 14).map((allocation) => allocation.id),
+      );
+    assert.equal(unsafeBulkTeacherConflictCount, 0);
+    console.log('UNSAFE_BULK_TEACHER_CONFLICT_COUNT=0');
 
     const orphanedCount = await countOrphanedOperationalState(
       fixturePrisma,
@@ -728,6 +803,106 @@ async function proveReassignmentFirst(input: {
       })
     ).teacherUserId,
     input.targetTeacherUserId,
+  );
+  input.coordinator.reset();
+}
+
+async function proveBulkReassignmentFirst(input: {
+  scenario: BulkTimetableRaceFixture;
+  coordinator: RaceCoordinator;
+  preview: (allocationId: string) => Promise<{ impactFingerprint: string }>;
+  reassign: (allocationId: string, fingerprint: string) => Promise<unknown>;
+  prisma: PrismaClient;
+  targetTeacherUserId: string;
+}): Promise<void> {
+  await input.scenario.createExisting();
+  const allocationId = input.scenario.existingAllocation.id;
+  const before = await input.preview(allocationId);
+  input.coordinator.configure('reassignment_first', allocationId);
+  const reassignment = input.reassign(allocationId, before.impactFingerprint);
+  await withTimeout(
+    input.coordinator.reassignmentAcquired.promise,
+    10_000,
+    'bulk timetable reassignment did not acquire FOR UPDATE',
+  );
+  const writer = settle(input.scenario.write());
+  await withTimeout(
+    input.coordinator.writerAttempted.promise,
+    10_000,
+    'bulk timetable writer did not attempt the allocation gate',
+  );
+  assert.equal(await input.scenario.proposedCount(), 0);
+  input.coordinator.releaseReassignment.resolve();
+  await reassignment;
+  const writerResult = await writer;
+  assert.equal(writerResult.status, 'rejected');
+  assert.ok(writerResult.reason instanceof TimetableTeacherConflictException);
+  assert.equal(await input.scenario.proposedCount(), 0);
+  assert.equal(
+    await input.scenario.existingEntryOwner(),
+    input.targetTeacherUserId,
+  );
+  assert.equal(
+    (
+      await input.prisma.teacherSubjectAllocation.findUniqueOrThrow({
+        where: { id: allocationId },
+        select: { teacherUserId: true },
+      })
+    ).teacherUserId,
+    input.targetTeacherUserId,
+  );
+  input.coordinator.reset();
+}
+
+async function proveBulkWriterFirst(input: {
+  scenario: BulkTimetableRaceFixture;
+  coordinator: RaceCoordinator;
+  preview: (allocationId: string) => Promise<{ impactFingerprint: string }>;
+  reassign: (allocationId: string, fingerprint: string) => Promise<unknown>;
+  prisma: PrismaClient;
+  sourceTeacherUserId: string;
+  targetTeacherUserId: string;
+}): Promise<void> {
+  await input.scenario.createExisting();
+  const allocationId = input.scenario.existingAllocation.id;
+  const before = await input.preview(allocationId);
+  input.coordinator.configure('writer_first', allocationId);
+  const writer = input.scenario.write();
+  await withTimeout(
+    input.coordinator.writerAcquired.promise,
+    10_000,
+    'bulk timetable writer did not acquire all allocation gates',
+  );
+  const reassignment = settle(
+    input.reassign(allocationId, before.impactFingerprint),
+  );
+  await withTimeout(
+    input.coordinator.reassignmentAttempted.promise,
+    10_000,
+    'bulk timetable reassignment did not attempt FOR UPDATE',
+  );
+  input.coordinator.releaseWriter.resolve();
+  await writer;
+  const reassignmentResult = await reassignment;
+  assert.equal(reassignmentResult.status, 'rejected');
+  assertSafeReassignmentFailure(reassignmentResult.reason);
+  assert.equal(await input.scenario.proposedCount(), 1);
+  assert.equal(
+    await input.scenario.proposedEntryOwner(),
+    input.targetTeacherUserId,
+  );
+  assert.equal(
+    await input.scenario.existingEntryOwner(),
+    input.sourceTeacherUserId,
+  );
+  assert.equal(
+    (
+      await input.prisma.teacherSubjectAllocation.findUniqueOrThrow({
+        where: { id: allocationId },
+        select: { teacherUserId: true },
+      })
+    ).teacherUserId,
+    input.sourceTeacherUserId,
   );
   input.coordinator.reset();
 }
@@ -1011,6 +1186,78 @@ function timetableScenario(input: {
   };
 }
 
+function bulkTimetableScenario(input: {
+  createUseCase: CreateTimetableEntryUseCase;
+  bulkUseCase: BulkSaveTimetableEntriesUseCase;
+  prisma: PrismaClient;
+  scope: <T>(identity: Identity, action: () => Promise<T>) => Promise<T>;
+  identity: Identity;
+  schoolId: string;
+  academic: AcademicBase;
+  existingAllocation: AllocationFixture;
+  proposedAllocation: AllocationFixture;
+  timetable: { configId: string; periodId: string };
+  dayOfWeek: number;
+  marker: string;
+}): BulkTimetableRaceFixture {
+  const slotWhere = (allocationId: string) => ({
+    schoolId: input.schoolId,
+    termId: input.academic.termId,
+    periodId: input.timetable.periodId,
+    dayOfWeek: input.dayOfWeek,
+    teacherSubjectAllocationId: allocationId,
+    status: { in: [TimetableEntryStatus.DRAFT, TimetableEntryStatus.ACTIVE] },
+  });
+
+  return {
+    existingAllocation: input.existingAllocation,
+    proposedAllocation: input.proposedAllocation,
+    createExisting: () =>
+      input.scope(input.identity, () =>
+        input.createUseCase.execute({
+          timetableConfigId: input.timetable.configId,
+          periodId: input.timetable.periodId,
+          dayOfWeek: input.dayOfWeek,
+          classroomId: input.existingAllocation.classroomId,
+          teacherSubjectAllocationId: input.existingAllocation.id,
+          notes: `${input.marker}-existing`,
+        }),
+      ),
+    write: () =>
+      input.scope(input.identity, () =>
+        input.bulkUseCase.execute({
+          termId: input.academic.termId,
+          items: [
+            {
+              classroomId: input.proposedAllocation.classroomId,
+              dayOfWeek: input.dayOfWeek,
+              periodId: input.timetable.periodId,
+              teacherSubjectAllocationId: input.proposedAllocation.id,
+            },
+          ],
+        }),
+      ),
+    proposedCount: () =>
+      input.prisma.timetableEntry.count({
+        where: slotWhere(input.proposedAllocation.id),
+      }),
+    existingEntryOwner: () =>
+      input.prisma.timetableEntry
+        .findFirst({
+          where: slotWhere(input.existingAllocation.id),
+          select: { teacherUserId: true },
+        })
+        .then((row) => row?.teacherUserId ?? null),
+    proposedEntryOwner: () =>
+      input.prisma.timetableEntry
+        .findFirst({
+          where: slotWhere(input.proposedAllocation.id),
+          select: { teacherUserId: true },
+        })
+        .then((row) => row?.teacherUserId ?? null),
+  };
+}
+
 async function createIdentity(input: {
   prisma: PrismaClient;
   marker: string;
@@ -1212,7 +1459,7 @@ async function createTimetableFixture(
       academicYearId: academic.academicYearId,
       termId: academic.termId,
       name: `${marker}-config`,
-      activeDays: [1],
+      activeDays: [1, 2, 3],
       scopeKey: academic.termId,
     },
   });
@@ -1227,6 +1474,34 @@ async function createTimetableFixture(
     },
   });
   return { configId: config.id, periodId: period.id };
+}
+
+async function countUnsafeBulkTeacherConflicts(
+  prisma: PrismaClient,
+  schoolId: string,
+  allocationIds: string[],
+): Promise<number> {
+  const rows = await prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+    SELECT COUNT(*)::bigint AS count
+    FROM "timetable_entries" left_entry
+    JOIN "timetable_entries" right_entry
+      ON left_entry."id" < right_entry."id"
+     AND left_entry."school_id" = right_entry."school_id"
+     AND left_entry."term_id" = right_entry."term_id"
+     AND left_entry."teacher_user_id" = right_entry."teacher_user_id"
+     AND left_entry."day_of_week" = right_entry."day_of_week"
+     AND left_entry."period_id" = right_entry."period_id"
+    WHERE left_entry."school_id" = ${schoolId}::uuid
+      AND left_entry."status" IN ('DRAFT', 'ACTIVE')
+      AND right_entry."status" IN ('DRAFT', 'ACTIVE')
+      AND left_entry."teacher_subject_allocation_id" IN (${Prisma.join(
+        allocationIds.map((allocationId) => Prisma.sql`${allocationId}::uuid`),
+      )})
+      AND right_entry."teacher_subject_allocation_id" IN (${Prisma.join(
+        allocationIds.map((allocationId) => Prisma.sql`${allocationId}::uuid`),
+      )})
+  `);
+  return Number(rows[0].count);
 }
 
 async function countOrphanedOperationalState(
