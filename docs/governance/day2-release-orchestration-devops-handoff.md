@@ -224,14 +224,30 @@ The Terraform Candidate Edge capability is available only to the governed
 Staging and Production edge roots. Both roots accept:
 
 ```text
-candidate_edge_enabled = false | true
-candidate_api_tag      = null | candidate-<12 lowercase hex>[-rN]
+candidate_edge_enabled        = false | true
+candidate_smoke_route_enabled = null | false | true
+candidate_api_tag             = null | candidate-<12 lowercase hex>[-rN]
 ```
 
-Disabled requires `false` plus `null`. Enabled requires `true`, a governed
-`staging` or `production` environment, and the same tag used by that
-environment's API runtime candidate. Both roots default to `false`/`null`, so
-merging the capability alone creates no Candidate resources.
+`candidate_edge_enabled` owns the Candidate NEG and Backend lifecycle.
+`candidate_smoke_route_enabled` owns the smoke-route intent; `null` means
+inherit `candidate_edge_enabled`. `candidate_api_tag` is null when Candidate
+resources are disabled and is the same tag used by that environment's API
+runtime candidate when resources are enabled. Both roots default to
+`false`/`null`/`null`, so merging the capability alone creates no Candidate
+resources. Existing release manifests may omit the new route input and retain
+their historical behavior.
+
+The supported lifecycle matrix is:
+
+| Edge resources | Smoke-route input | Tag | Result |
+| -------------- | ----------------- | --- | ------ |
+| `false` | `null` (omitted) | `null` | NEG absent, Backend absent, route absent |
+| `true` | `null` (omitted) | valid Candidate tag | NEG present, Backend present, route present |
+| `true` | `true` | valid Candidate tag | NEG present, Backend present, route present |
+| `true` | `false` | current Candidate tag | NEG present, Backend present, route absent (safe cleanup Stage 1) |
+| `false` | `false` | `null` | NEG absent, Backend absent, route absent (safe cleanup Stage 2) |
+| `false` | `true` | `null` | rejected by the explicit Candidate smoke-route lifecycle precondition |
 
 Enabling the capability through separately governed environment inputs adds
 only:
@@ -907,7 +923,7 @@ Operation 1: `api-candidate-runtime`
 Operation 2: `api-candidate-edge`
 
 - Root: Staging edge.
-- Variables: `candidate_edge_enabled=true`, same `candidate_api_tag`.
+- Variables: `candidate_edge_enabled=true`, same `candidate_api_tag`; `candidate_smoke_route_enabled` remains omitted and therefore inherits `true`.
 - Address allowlist: candidate NEG, candidate backend, existing URL map (the three addresses listed above).
 - Attribute scope: create the NEG, create the backend, and add only `path_matcher[api].path_rule`.
 - State precondition: live edge lineage and serial.
@@ -958,17 +974,49 @@ Operation: `api-traffic-promotion`
 
 ## Candidate edge cleanup
 
-The manifest contains a non-authoritative cleanup template for a separately
-approved post-release operation:
+Live Candidate cleanup is two separate DevOps transitions. Do not represent or
+execute it as one plan or apply.
+
+### Safe cleanup Stage 1
 
 ```text
-candidate_edge_enabled = false
-candidate_api_tag      = null
+candidate_edge_enabled        = true
+candidate_smoke_route_enabled = false
+candidate_api_tag             = <current candidate tag>
 ```
 
-Its only accepted scope is removal of the candidate NEG/backend and the narrow
-URL-map path rule. Do not treat cleanup as a seventh contract gate and do not
-run it without separate approval.
+Stage 1 removes only the Candidate path rule from the existing URL map. The
+Candidate Backend and Candidate NEG remain present, and their outputs remain
+non-null. The two smoke-route outputs become null because the route is no
+longer rendered. Stage 1 must be separately planned, reviewed, approved,
+applied, and verified before Stage 2 begins.
+
+### Safe cleanup Stage 2
+
+Only after the applied Stage 1 is live-verified:
+
+```text
+candidate_edge_enabled        = false
+candidate_smoke_route_enabled = false
+candidate_api_tag             = null
+```
+
+Stage 2 removes the Candidate Backend and Candidate NEG. The Backend's existing
+reference to the NEG preserves Terraform's natural Backend-before-NEG destroy
+dependency. The URL map must have no semantic change in Stage 2. Stage 2 must
+be separately planned, reviewed, approved, applied, and verified.
+
+The two transitions are therefore two separately planned, two separately
+reviewed, two separately approved, two separately applied, and two separately
+verified DevOps operations. Neither transition uses `-target`, manual resource
+deletion, Terraform state surgery, an old Saved Plan, or the previously
+rejected targeted plan.
+
+The manifest's historical `candidateEdgeCleanupTemplate` remains
+non-authoritative, requires separate post-release approval, and describes a
+legacy one-step shape. It is not execution authority and must not be used to
+bypass the repaired two-stage cleanup. Cleanup remains outside the six
+authoritative release gates and must not be treated as a seventh gate.
 
 ## Adapter commands and execution boundary
 

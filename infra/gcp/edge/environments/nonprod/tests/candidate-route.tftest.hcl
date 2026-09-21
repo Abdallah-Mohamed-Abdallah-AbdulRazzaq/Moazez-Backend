@@ -26,7 +26,7 @@ variables {
   school_dashboard_service_name = "moazez-staging-school-dashboard"
 }
 
-run "candidate_route_defaults_disabled_and_normal_api_neg_is_unchanged" {
+run "historical_disabled_route_omitted" {
   command = plan
 
   module {
@@ -47,9 +47,14 @@ run "candidate_route_defaults_disabled_and_normal_api_neg_is_unchanged" {
     condition     = length(google_compute_url_map.edge.path_matcher[0].path_rule) == 0
     error_message = "The API URL map must have no candidate route by default."
   }
+
+  assert {
+    condition     = output.candidate_serverless_neg_name == null && output.candidate_backend_service_name == null && output.candidate_smoke_public_path == null && output.candidate_smoke_backend_path == null
+    error_message = "Historical disabled mode must expose no Candidate resource or smoke-route outputs."
+  }
 }
 
-run "staging_candidate_route_targets_tagged_revision_and_reuses_security_posture" {
+run "historical_enabled_route_omitted_targets_tagged_revision_and_reuses_security_posture" {
   command = plan
 
   module {
@@ -95,6 +100,85 @@ run "staging_candidate_route_targets_tagged_revision_and_reuses_security_posture
     condition     = google_compute_url_map.edge.path_matcher[0].path_rule[0].route_action[0].url_rewrite[0].path_prefix_rewrite == "/api/v1/auth/me"
     error_message = "The public smoke path must rewrite only to the existing authenticated GET /api/v1/auth/me endpoint."
   }
+
+  assert {
+    condition     = output.candidate_serverless_neg_name != null && output.candidate_backend_service_name != null && output.candidate_smoke_public_path == "/.well-known/moazez/candidate-readiness" && output.candidate_smoke_backend_path == "/api/v1/auth/me"
+    error_message = "Omitting the route variable while Candidate Edge is enabled must preserve every historical Candidate output."
+  }
+}
+
+run "safe_cleanup_stage_one_removes_route_and_preserves_candidate_resources" {
+  command = plan
+
+  module {
+    source = "../../modules/edge-environment"
+  }
+
+  variables {
+    candidate_edge_enabled        = true
+    candidate_smoke_route_enabled = false
+    candidate_api_tag             = "candidate-be1b01ce47ad"
+  }
+
+  assert {
+    condition     = length(google_compute_region_network_endpoint_group.api_candidate) == 1 && length(google_compute_backend_service.api_candidate) == 1
+    error_message = "Stage 1 must preserve the Candidate NEG and Candidate Backend."
+  }
+
+  assert {
+    condition     = length(google_compute_url_map.edge.path_matcher[0].path_rule) == 0
+    error_message = "Stage 1 must remove the Candidate path rule."
+  }
+
+  assert {
+    condition     = output.candidate_serverless_neg_name != null && output.candidate_backend_service_name != null
+    error_message = "Stage 1 Candidate resource outputs must remain non-null."
+  }
+
+  assert {
+    condition     = output.candidate_smoke_public_path == null && output.candidate_smoke_backend_path == null
+    error_message = "Stage 1 smoke-route outputs must be null because the route is not rendered."
+  }
+}
+
+run "safe_cleanup_stage_two_removes_candidate_resources_after_route_removal" {
+  command = plan
+
+  module {
+    source = "../../modules/edge-environment"
+  }
+
+  variables {
+    candidate_edge_enabled        = false
+    candidate_smoke_route_enabled = false
+    candidate_api_tag             = null
+  }
+
+  assert {
+    condition     = length(google_compute_region_network_endpoint_group.api_candidate) == 0 && length(google_compute_backend_service.api_candidate) == 0 && length(google_compute_url_map.edge.path_matcher[0].path_rule) == 0
+    error_message = "Stage 2 must represent Candidate NEG, Backend, and route as absent."
+  }
+
+  assert {
+    condition     = output.candidate_serverless_neg_name == null && output.candidate_backend_service_name == null && output.candidate_smoke_public_path == null && output.candidate_smoke_backend_path == null
+    error_message = "Stage 2 must expose no Candidate resource or smoke-route outputs."
+  }
+}
+
+run "candidate_route_without_candidate_resources_fails_explicit_contract" {
+  command = plan
+
+  module {
+    source = "../../modules/edge-environment"
+  }
+
+  variables {
+    candidate_edge_enabled        = false
+    candidate_smoke_route_enabled = true
+    candidate_api_tag             = null
+  }
+
+  expect_failures = [google_compute_url_map.edge]
 }
 
 run "recovery_attempt_one_targets_exact_candidate_tag" {
@@ -217,6 +301,7 @@ run "production_candidate_route_explicit_enable_targets_exact_candidate" {
     platform_admin_service_name   = "moazez-production-platform-admin"
     school_dashboard_service_name = "moazez-production-school-dashboard"
     candidate_edge_enabled        = true
+    candidate_smoke_route_enabled = true
     candidate_api_tag             = "candidate-cf720dacbc04"
   }
 

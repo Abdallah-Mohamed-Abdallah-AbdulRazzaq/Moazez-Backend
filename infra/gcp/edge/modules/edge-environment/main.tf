@@ -9,11 +9,28 @@ locals {
     length(local.candidate_neg_name) <= 63 &&
     can(regex("^[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?$", local.candidate_neg_name))
   )
-  candidate_edge_contract_valid = var.candidate_edge_enabled ? (
+  effective_candidate_smoke_route_enabled = (
+    var.candidate_smoke_route_enabled == null
+    ? var.candidate_edge_enabled
+    : var.candidate_smoke_route_enabled
+  )
+  candidate_resource_contract_valid = var.candidate_edge_enabled ? (
     contains(local.governed_candidate_environments, var.environment) &&
     var.candidate_api_tag != null &&
     can(regex("^candidate-[a-f0-9]{12}(-r[1-9][0-9]{0,14})?$", var.candidate_api_tag))
   ) : var.candidate_api_tag == null
+  candidate_smoke_route_contract_valid = (
+    !local.effective_candidate_smoke_route_enabled ||
+    var.candidate_edge_enabled
+  )
+  candidate_smoke_route_render_enabled = (
+    local.effective_candidate_smoke_route_enabled &&
+    var.candidate_edge_enabled
+  )
+  candidate_edge_contract_valid = (
+    local.candidate_resource_contract_valid &&
+    local.candidate_smoke_route_contract_valid
+  )
 
   hostnames = {
     api     = var.api_hostname
@@ -165,7 +182,7 @@ resource "google_compute_url_map" "edge" {
     default_service = google_compute_backend_service.service["api"].id
 
     dynamic "path_rule" {
-      for_each = var.candidate_edge_enabled ? [local.candidate_smoke_public_path] : []
+      for_each = local.candidate_smoke_route_render_enabled ? [local.candidate_smoke_public_path] : []
 
       content {
         paths   = [path_rule.value]
@@ -193,7 +210,7 @@ resource "google_compute_url_map" "edge" {
   lifecycle {
     precondition {
       condition     = local.candidate_edge_contract_valid
-      error_message = "Candidate edge routing is limited to governed environments, requires candidate_api_tag when enabled, and requires a null tag when disabled."
+      error_message = "Candidate Edge resources are limited to governed environments, require candidate_api_tag when enabled, and require a null tag when disabled. The Candidate smoke route cannot be enabled without Candidate Edge resources."
     }
   }
 }

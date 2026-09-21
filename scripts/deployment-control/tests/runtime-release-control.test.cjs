@@ -4564,6 +4564,13 @@ test('operation specs isolate each runtime resource and model API runtime then e
       apiGate.operations[1].requiredVariables.candidate_edge_enabled,
       true,
     );
+    assert.equal(
+      Object.hasOwn(
+        apiGate.operations[1].requiredVariables,
+        'candidate_smoke_route_enabled',
+      ),
+      false,
+    );
   });
 });
 
@@ -5150,6 +5157,13 @@ test('edge source adds only an optional tagged candidate NEG/backend and one exa
     ),
     'utf8',
   );
+  const edgeOutputs = fs.readFileSync(
+    path.join(
+      REPOSITORY_ROOT,
+      'infra/gcp/edge/modules/edge-environment/outputs.tf',
+    ),
+    'utf8',
+  );
   const authController = fs.readFileSync(
     path.join(
       REPOSITORY_ROOT,
@@ -5193,6 +5207,30 @@ test('edge source adds only an optional tagged candidate NEG/backend and one exa
     edge,
     /candidate_smoke_backend_path\s*=\s*"\/api\/v1\/auth\/me"/u,
   );
+  assert.match(
+    edge,
+    /effective_candidate_smoke_route_enabled\s*=\s*\([\s\S]*?candidate_smoke_route_enabled\s*==\s*null[\s\S]*?candidate_edge_enabled[\s\S]*?:\s*var[.]candidate_smoke_route_enabled[\s\S]*?\)/u,
+  );
+  assert.match(
+    edge,
+    /candidate_smoke_route_contract_valid\s*=\s*\([\s\S]*?!local[.]effective_candidate_smoke_route_enabled[\s\S]*?\|\|[\s\S]*?var[.]candidate_edge_enabled[\s\S]*?\)/u,
+  );
+  assert.match(
+    edge,
+    /candidate_smoke_route_render_enabled\s*=\s*\([\s\S]*?local[.]effective_candidate_smoke_route_enabled[\s\S]*?&&[\s\S]*?var[.]candidate_edge_enabled[\s\S]*?\)/u,
+  );
+  assert.match(
+    edge,
+    /dynamic "path_rule"\s*\{[\s\S]*?for_each\s*=\s*local[.]candidate_smoke_route_render_enabled\s*\?/u,
+  );
+  assert.match(
+    edgeOutputs,
+    /output "candidate_smoke_public_path"\s*\{[\s\S]*?value\s*=\s*local[.]candidate_smoke_route_render_enabled\s*\?/u,
+  );
+  assert.match(
+    edgeOutputs,
+    /output "candidate_smoke_backend_path"\s*\{[\s\S]*?value\s*=\s*local[.]candidate_smoke_route_render_enabled\s*\?/u,
+  );
   assert.equal(
     (edge.match(/resource "google_compute_global_address"/gu) ?? []).length,
     1,
@@ -5214,10 +5252,18 @@ test('edge source adds only an optional tagged candidate NEG/backend and one exa
     production,
     /candidate_edge_enabled\s*=\s*var[.]candidate_edge_enabled/u,
   );
+  assert.match(
+    production,
+    /candidate_smoke_route_enabled\s*=\s*var[.]candidate_smoke_route_enabled/u,
+  );
   assert.match(production, /candidate_api_tag\s*=\s*var[.]candidate_api_tag/u);
   assert.match(
     productionVariables,
     /variable "candidate_edge_enabled"\s*\{[^}]*default\s*=\s*false[^}]*\}/u,
+  );
+  assert.match(
+    productionVariables,
+    /variable "candidate_smoke_route_enabled"\s*\{[^}]*type\s*=\s*bool[^}]*default\s*=\s*null[^}]*nullable\s*=\s*true[^}]*\}/u,
   );
   assert.match(
     productionVariables,
