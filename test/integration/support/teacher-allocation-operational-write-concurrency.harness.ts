@@ -49,6 +49,7 @@ import { TimetableTeacherConflictException } from '../../../src/modules/academic
 import { CommunicationAnnouncementRepository } from '../../../src/modules/communication/infrastructure/communication-announcement.repository';
 import { buildTeacherAnnouncementMetadata } from '../../../src/modules/communication/domain/teacher-app-announcement-metadata';
 import { HomeworkRepository } from '../../../src/modules/homework/infrastructure/homework.repository';
+import { CreateReinforcementTaskUseCase } from '../../../src/modules/reinforcement/tasks/application/create-reinforcement-task.use-case';
 import { ReinforcementTasksRepository } from '../../../src/modules/reinforcement/tasks/infrastructure/reinforcement-tasks.repository';
 
 type RaceMode = 'idle' | 'writer_first' | 'reassignment_first';
@@ -88,6 +89,7 @@ interface RaceFixture {
   count: () => Promise<number>;
   owner: () => Promise<string | null>;
   teacherSpecific: boolean;
+  expectedReassignmentFirstFailure?: 'reinforcement_invalid_scope';
 }
 
 interface BulkTimetableRaceFixture {
@@ -290,7 +292,7 @@ async function run(): Promise<void> {
     currentStage = 'fixture-academics';
     const academic = await createAcademicBase(fixturePrisma, schoolId, marker);
     const allocations: AllocationFixture[] = [];
-    for (let index = 0; index < 14; index += 1) {
+    for (let index = 0; index < 17; index += 1) {
       allocations.push(
         await createAllocationFixture({
           prisma: fixturePrisma,
@@ -311,7 +313,13 @@ async function run(): Promise<void> {
       marker,
     );
     const taskEnrollments = await Promise.all(
-      [allocations[0], allocations[1]].map((allocation, index) =>
+      [
+        allocations[0],
+        allocations[1],
+        allocations[14],
+        allocations[15],
+        allocations[16],
+      ].map((allocation, index) =>
         createStudentEnrollment({
           prisma: fixturePrisma,
           marker,
@@ -339,6 +347,7 @@ async function run(): Promise<void> {
 
     const previewUseCase = app.get(PreviewTeacherAllocationReassignmentUseCase);
     const reassignUseCase = app.get(ReassignTeacherAllocationUseCase);
+    const createReinforcementTask = app.get(CreateReinforcementTaskUseCase);
     const taskRepository = app.get(ReinforcementTasksRepository);
     const announcementRepository = app.get(CommunicationAnnouncementRepository);
     const lessonPlanRepository = app.get(LessonPlansRepository);
@@ -507,6 +516,77 @@ async function run(): Promise<void> {
       targetTeacherUserId: targetTeacher.id,
     });
     console.log('TASK_REASSIGNMENT_FIRST=PASS');
+
+    const coreWriterFirst = coreTaskScenario({
+      useCase: createReinforcementTask,
+      prisma: fixturePrisma,
+      scope,
+      identity: admin,
+      sourceTeacherUserId: sourceTeacher.id,
+      schoolId,
+      academic,
+      allocation: allocations[14],
+      enrollment: taskEnrollments[2],
+      marker: `${marker}-core-writer`,
+    });
+    currentStage = 'race-core-reinforcement-writer-first';
+    await proveWriterFirst({
+      scenario: coreWriterFirst,
+      coordinator,
+      preview,
+      reassign,
+      prisma: fixturePrisma,
+      sourceTeacherUserId: sourceTeacher.id,
+    });
+    console.log('CORE_REINFORCEMENT_WRITER_FIRST=PASS');
+
+    const coreReassignmentFirst = coreTaskScenario({
+      useCase: createReinforcementTask,
+      prisma: fixturePrisma,
+      scope,
+      identity: admin,
+      sourceTeacherUserId: sourceTeacher.id,
+      schoolId,
+      academic,
+      allocation: allocations[15],
+      enrollment: taskEnrollments[3],
+      marker: `${marker}-core-reassignment`,
+    });
+    currentStage = 'race-core-reinforcement-reassignment-first';
+    await proveReassignmentFirst({
+      scenario: coreReassignmentFirst,
+      coordinator,
+      preview,
+      reassign,
+      prisma: fixturePrisma,
+      targetTeacherUserId: targetTeacher.id,
+    });
+    console.log('CORE_REINFORCEMENT_REASSIGNMENT_FIRST=PASS');
+    console.log('CORE_MULTI_CONNECTION_INTERLEAVING=PASS');
+
+    const corePostReassignment = coreTaskScenario({
+      useCase: createReinforcementTask,
+      prisma: fixturePrisma,
+      scope,
+      identity: admin,
+      sourceTeacherUserId: sourceTeacher.id,
+      schoolId,
+      academic,
+      allocation: allocations[16],
+      enrollment: taskEnrollments[4],
+      marker: `${marker}-core-post-reassignment`,
+    });
+    currentStage = 'core-reinforcement-post-reassignment-old-owner';
+    const postReassignmentPreview = await preview(allocations[16].id);
+    await reassign(
+      allocations[16].id,
+      postReassignmentPreview.impactFingerprint,
+    );
+    const postReassignmentCreate = await settle(corePostReassignment.write());
+    assert.equal(postReassignmentCreate.status, 'rejected');
+    assertReinforcementInvalidScope(postReassignmentCreate.reason);
+    assert.equal(await corePostReassignment.count(), 0);
+    console.log('CORE_REINFORCEMENT_POST_REASSIGN_OLD_OWNER_REJECTED=PASS');
 
     currentStage = 'race-announcement-writer-first';
     await proveWriterFirst({
@@ -687,6 +767,15 @@ async function run(): Promise<void> {
     );
     assert.equal(orphanedCount, 0);
     console.log('ORPHANED_OPERATIONAL_STATE_COUNT=0');
+
+    const activeReinforcementOrphanCount =
+      await countFixtureActiveReinforcementOrphans(
+        fixturePrisma,
+        activeSchoolId,
+        `${marker}-core-`,
+      );
+    assert.equal(activeReinforcementOrphanCount, 0);
+    console.log('ACTIVE_REINFORCEMENT_ORPHAN_COUNT=0');
   } finally {
     if (app) await app.close();
     if (schoolId) await cleanupSchool(fixturePrisma, schoolId);
@@ -785,10 +874,18 @@ async function proveReassignmentFirst(input: {
   const writerResult = await writer;
   if (input.scenario.teacherSpecific) {
     assert.equal(writerResult.status, 'rejected');
-    assert.ok(
-      writerResult.reason instanceof TeacherAllocationOperationalWriteGateError,
-    );
-    assert.equal(writerResult.reason.reason, 'OWNER_CHANGED');
+    if (
+      input.scenario.expectedReassignmentFirstFailure ===
+      'reinforcement_invalid_scope'
+    ) {
+      assertReinforcementInvalidScope(writerResult.reason);
+    } else {
+      assert.ok(
+        writerResult.reason instanceof
+          TeacherAllocationOperationalWriteGateError,
+      );
+      assert.equal(writerResult.reason.reason, 'OWNER_CHANGED');
+    }
     assert.equal(await input.scenario.count(), 0);
   } else {
     assert.equal(writerResult.status, 'fulfilled');
@@ -960,6 +1057,61 @@ function taskScenario(input: {
     count: () =>
       input.prisma.reinforcementTask.count({
         where: { schoolId: input.schoolId, titleEn: input.marker },
+      }),
+    owner: () =>
+      input.prisma.reinforcementTask
+        .findFirst({
+          where: { schoolId: input.schoolId, titleEn: input.marker },
+          select: { assignedById: true },
+        })
+        .then((row) => row?.assignedById ?? null),
+  };
+}
+
+function coreTaskScenario(input: {
+  useCase: CreateReinforcementTaskUseCase;
+  prisma: PrismaClient;
+  scope: <T>(identity: Identity, action: () => Promise<T>) => Promise<T>;
+  identity: Identity;
+  sourceTeacherUserId: string;
+  schoolId: string;
+  academic: AcademicBase;
+  allocation: AllocationFixture;
+  enrollment: { enrollmentId: string; studentId: string };
+  marker: string;
+}): RaceFixture {
+  return {
+    domain: 'core reinforcement task',
+    allocation: input.allocation,
+    marker: input.marker,
+    teacherSpecific: true,
+    expectedReassignmentFirstFailure: 'reinforcement_invalid_scope',
+    write: () =>
+      input.scope(input.identity, () =>
+        input.useCase.execute({
+          academicYearId: input.academic.academicYearId,
+          termId: input.academic.termId,
+          subjectId: input.allocation.subjectId,
+          titleEn: input.marker,
+          source: ReinforcementSource.TEACHER,
+          assignedById: input.sourceTeacherUserId,
+          targets: [
+            {
+              scopeType: ReinforcementTargetScope.CLASSROOM,
+              scopeId: input.allocation.classroomId,
+            },
+          ],
+        }),
+      ),
+    count: () =>
+      input.prisma.reinforcementTask.count({
+        where: {
+          schoolId: input.schoolId,
+          titleEn: input.marker,
+          assignments: {
+            some: { enrollmentId: input.enrollment.enrollmentId },
+          },
+        },
       }),
     owner: () =>
       input.prisma.reinforcementTask
@@ -1545,6 +1697,53 @@ async function countOrphanedOperationalState(
   return Number(lessonPlans[0].count + homework[0].count + timetable[0].count);
 }
 
+async function countFixtureActiveReinforcementOrphans(
+  prisma: PrismaClient,
+  schoolId: string,
+  titlePrefix: string,
+): Promise<number> {
+  const rows = await prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+    SELECT COUNT(DISTINCT task."id")::bigint AS count
+    FROM "reinforcement_tasks" task
+    JOIN "reinforcement_assignments" assignment
+      ON assignment."task_id" = task."id"
+     AND assignment."school_id" = task."school_id"
+    JOIN "student_enrollments" enrollment
+      ON enrollment."id" = assignment."enrollment_id"
+     AND enrollment."school_id" = assignment."school_id"
+    JOIN "students" student
+      ON student."id" = enrollment."student_id"
+     AND student."school_id" = enrollment."school_id"
+    WHERE task."school_id" = ${schoolId}::uuid
+      AND task."title_en" LIKE ${`${titlePrefix}%`}
+      AND task."source" = 'TEACHER'
+      AND task."status" IN ('NOT_COMPLETED', 'IN_PROGRESS', 'UNDER_REVIEW')
+      AND task."deleted_at" IS NULL
+      AND enrollment."academic_year_id" = task."academic_year_id"
+      AND enrollment."term_id" = task."term_id"
+      AND enrollment."status" = 'ACTIVE'
+      AND enrollment."deleted_at" IS NULL
+      AND student."status" = 'ACTIVE'
+      AND student."deleted_at" IS NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM "teacher_subject_allocations" allocation
+        WHERE allocation."school_id" = task."school_id"
+          AND allocation."term_id" = task."term_id"
+          AND allocation."classroom_id" = enrollment."classroom_id"
+          AND (
+            task."subject_id" IS NULL
+            OR allocation."subject_id" = task."subject_id"
+          )
+          AND allocation."teacher_user_id" IN (
+            task."assigned_by_id",
+            task."created_by_id"
+          )
+      )
+  `);
+  return Number(rows[0].count);
+}
+
 async function cleanupSchool(
   prisma: PrismaClient,
   schoolId: string,
@@ -1612,6 +1811,12 @@ function assertSafeReassignmentFailure(error: unknown): void {
     ].includes(error.code),
     `Unexpected reassignment failure: ${error.code}`,
   );
+}
+
+function assertReinforcementInvalidScope(error: unknown): void {
+  assert.ok(error instanceof DomainException);
+  assert.equal(error.code, 'reinforcement.task.invalid_scope');
+  assert.equal(error.httpStatus, 422);
 }
 
 async function settle<T>(

@@ -98,6 +98,9 @@ describe('Reinforcement tenancy isolation (security)', () => {
   let templateViewerEmail: string;
   let xpViewerEmail: string;
   let teacherEmail: string;
+  let teacherUserId: string;
+  let replacementTeacherUserId: string;
+  let demoTeacherAllocationId: string;
   let parentEmail: string;
   let studentEmail: string;
 
@@ -293,7 +296,16 @@ describe('Reinforcement tenancy isolation (security)', () => {
       UserType.SCHOOL_USER,
       xpViewerRoleId,
     );
-    await createUserWithMembership(teacherEmail, UserType.TEACHER, teacherRole.id);
+    teacherUserId = await createUserWithMembership(
+      teacherEmail,
+      UserType.TEACHER,
+      teacherRole.id,
+    );
+    replacementTeacherUserId = await createUserWithMembership(
+      `${testSuffix}-replacement-teacher@security.moazez.local`,
+      UserType.TEACHER,
+      teacherRole.id,
+    );
     await createUserWithMembership(parentEmail, UserType.PARENT, parentRole.id);
     await createUserWithMembership(studentEmail, UserType.STUDENT, studentRole.id);
 
@@ -354,6 +366,18 @@ describe('Reinforcement tenancy isolation (security)', () => {
     tenantBSubjectId = tenantB.subjectId;
     tenantBStudentId = tenantB.studentId;
     tenantBEnrollmentId = tenantB.enrollmentId;
+
+    const demoTeacherAllocation = await prisma.teacherSubjectAllocation.create({
+      data: {
+        schoolId: demoSchoolId,
+        teacherUserId,
+        subjectId: demoSubjectId,
+        classroomId: demoClassroomId,
+        termId: demoTermId,
+      },
+      select: { id: true },
+    });
+    demoTeacherAllocationId = demoTeacherAllocation.id;
 
     const demoTask = await createTaskFixture({
       schoolId: demoSchoolId,
@@ -588,6 +612,9 @@ describe('Reinforcement tenancy isolation (security)', () => {
       });
       await prisma.xpPolicy.deleteMany({
         where: { id: { in: createdXpPolicyIds } },
+      });
+      await prisma.teacherSubjectAllocation.deleteMany({
+        where: { id: demoTeacherAllocationId },
       });
       await prisma.enrollment.deleteMany({
         where: {
@@ -1019,6 +1046,29 @@ describe('Reinforcement tenancy isolation (security)', () => {
       .send({ reason: 'Admin cancelled' })
       .expect(201);
     expect(cancelResponse.body.status).toBe('cancelled');
+  });
+
+  it('rejects an old Teacher owner through the management task route after allocation movement', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+    const titleEn = `${testSuffix}-old-allocation-owner`;
+    await prisma.teacherSubjectAllocation.update({
+      where: { id: demoTeacherAllocationId },
+      data: { teacherUserId: replacementTeacherUserId },
+    });
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/tasks`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(taskPayload({ titleEn, assignedById: teacherUserId }))
+      .expect(422);
+
+    const responseBody = response.body as { error?: { code?: string } };
+    expect(responseBody.error?.code).toBe('reinforcement.task.invalid_scope');
+    await expect(
+      prisma.reinforcementTask.count({
+        where: { schoolId: demoSchoolId, titleEn },
+      }),
+    ).resolves.toBe(0);
   });
 
   it('teacher cannot use core task management routes', async () => {
@@ -1857,7 +1907,7 @@ describe('Reinforcement tenancy isolation (security)', () => {
     email: string,
     userType: UserType,
     roleId: string,
-  ): Promise<void> {
+  ): Promise<string> {
     const user = await prisma.user.create({
       data: {
         email,
@@ -1881,6 +1931,7 @@ describe('Reinforcement tenancy isolation (security)', () => {
         status: MembershipStatus.ACTIVE,
       },
     });
+    return user.id;
   }
 
   async function createAcademicFixture(
@@ -2434,6 +2485,7 @@ describe('Reinforcement tenancy isolation (security)', () => {
     overrides?: Partial<{
       titleEn: string;
       subjectId: string;
+      assignedById: string;
       targets: Array<{ scopeType: string; scopeId?: string }>;
     }>,
   ) {
@@ -2443,6 +2495,9 @@ describe('Reinforcement tenancy isolation (security)', () => {
       subjectId: overrides?.subjectId ?? demoSubjectId,
       titleEn: overrides?.titleEn ?? `${testSuffix}-api-task`,
       source: 'teacher',
+      ...(overrides?.assignedById
+        ? { assignedById: overrides.assignedById }
+        : {}),
       targets:
         overrides?.targets ??
         [{ scopeType: 'student', scopeId: demoStudentId }],

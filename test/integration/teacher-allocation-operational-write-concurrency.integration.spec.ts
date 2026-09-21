@@ -55,5 +55,12 @@ describe('teacher allocation operational write concurrency', () => {
     expect(stdout).toContain('MULTI_ALLOCATION_DEADLOCK_TEST=PASS');
     expect(stdout).toContain('UNSAFE_BULK_TEACHER_CONFLICT_COUNT=0');
     expect(stdout).toContain('ORPHANED_OPERATIONAL_STATE_COUNT=0');
+    expect(stdout).toContain('CORE_REINFORCEMENT_WRITER_FIRST=PASS');
+    expect(stdout).toContain('CORE_REINFORCEMENT_REASSIGNMENT_FIRST=PASS');
+    expect(stdout).toContain(
+      'CORE_REINFORCEMENT_POST_REASSIGN_OLD_OWNER_REJECTED=PASS',
+    );
+    expect(stdout).toContain('ACTIVE_REINFORCEMENT_ORPHAN_COUNT=0');
+    expect(stdout).toContain('CORE_MULTI_CONNECTION_INTERLEAVING=PASS');
   });
 });
