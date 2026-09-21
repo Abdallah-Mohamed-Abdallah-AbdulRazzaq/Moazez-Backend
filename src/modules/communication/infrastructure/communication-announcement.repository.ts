@@ -9,6 +9,10 @@ import {
   UserType,
 } from '@prisma/client';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
+import {
+  TeacherAllocationOperationalWriteGate,
+  TeacherAllocationOperationalWriteGateInput,
+} from '../../academics/teacher-allocation/application/teacher-allocation-operational-write-gate';
 
 const COMMUNICATION_ANNOUNCEMENT_AUDIENCE_ARGS =
   Prisma.validator<Prisma.CommunicationAnnouncementAudienceDefaultArgs>()({
@@ -268,7 +272,10 @@ export interface CommunicationAnnouncementAudienceValidationResult {
 
 @Injectable()
 export class CommunicationAnnouncementRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly teacherAllocationWriteGate: TeacherAllocationOperationalWriteGate,
+  ) {}
 
   private get scopedPrisma(): PrismaService {
     return this.prisma.scoped as unknown as PrismaService;
@@ -330,11 +337,22 @@ export class CommunicationAnnouncementRepository {
     schoolId: string;
     data: CommunicationAnnouncementCreateData;
     audienceRows: CommunicationAnnouncementAudienceData[];
+    operationalWriteGate?: Omit<
+      TeacherAllocationOperationalWriteGateInput,
+      'schoolId'
+    >;
     buildAuditEntry: (
       announcement: CommunicationAnnouncementDetailRecord,
     ) => CommunicationAnnouncementAuditInput;
   }): Promise<CommunicationAnnouncementDetailRecord> {
     return this.scopedPrisma.$transaction(async (tx) => {
+      if (input.operationalWriteGate) {
+        await this.teacherAllocationWriteGate.lock(tx, {
+          schoolId: input.schoolId,
+          ...input.operationalWriteGate,
+        });
+      }
+
       const created = await tx.communicationAnnouncement.create({
         data: {
           schoolId: input.schoolId,
@@ -365,6 +383,7 @@ export class CommunicationAnnouncementRepository {
   async updateCurrentSchoolAnnouncement(input: {
     announcementId: string;
     data: CommunicationAnnouncementUpdateData;
+    operationalWriteGate?: TeacherAllocationOperationalWriteGateInput;
     replaceAudience?: {
       schoolId: string;
       audienceRows: CommunicationAnnouncementAudienceData[];
@@ -374,6 +393,13 @@ export class CommunicationAnnouncementRepository {
     ) => CommunicationAnnouncementAuditInput;
   }): Promise<CommunicationAnnouncementDetailRecord> {
     return this.scopedPrisma.$transaction(async (tx) => {
+      if (input.operationalWriteGate) {
+        await this.teacherAllocationWriteGate.lock(
+          tx,
+          input.operationalWriteGate,
+        );
+      }
+
       await tx.communicationAnnouncement.updateMany({
         where: { id: input.announcementId },
         data: this.toAnnouncementUpdateInput(input.data),

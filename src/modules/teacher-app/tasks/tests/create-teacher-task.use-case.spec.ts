@@ -74,6 +74,10 @@ describe('CreateTeacherTaskUseCase', () => {
           { scopeType: 'CLASSROOM', scopeId: 'classroom-2' },
         ],
       }),
+      {
+        allocationIds: ['allocation-1', 'allocation-2'],
+        expectedTeacherUserId: TEACHER_ID,
+      },
     );
   });
 
@@ -86,7 +90,9 @@ describe('CreateTeacherTaskUseCase', () => {
     );
 
     await expect(
-      useCase.execute(validCreateDto({ classIds: ['other-teacher-allocation'] })),
+      useCase.execute(
+        validCreateDto({ classIds: ['other-teacher-allocation'] }),
+      ),
     ).rejects.toMatchObject({ code: 'teacher_app.allocation.not_found' });
     expect(coreCreateUseCase.execute).not.toHaveBeenCalled();
 
@@ -97,7 +103,9 @@ describe('CreateTeacherTaskUseCase', () => {
     );
 
     await expect(
-      useCase.execute(validCreateDto({ classIds: ['cross-school-allocation'] })),
+      useCase.execute(
+        validCreateDto({ classIds: ['cross-school-allocation'] }),
+      ),
     ).rejects.toMatchObject({ code: 'teacher_app.allocation.not_found' });
     expect(coreCreateUseCase.execute).not.toHaveBeenCalled();
   });
@@ -123,6 +131,10 @@ describe('CreateTeacherTaskUseCase', () => {
         rewardLabelEn: '10 XP',
         targets: [{ scopeType: 'STUDENT', scopeId: 'student-1' }],
       }),
+      {
+        allocationIds: ['allocation-1'],
+        expectedTeacherUserId: TEACHER_ID,
+      },
     );
   });
 
@@ -223,6 +235,7 @@ describe('CreateTeacherTaskUseCase', () => {
 
       expect(coreCreateUseCase.execute).toHaveBeenCalledWith(
         expect.objectContaining(item.expected),
+        expect.objectContaining({ expectedTeacherUserId: TEACHER_ID }),
       );
     }
   });

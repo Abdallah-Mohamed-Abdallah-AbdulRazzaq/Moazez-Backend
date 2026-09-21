@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { TeacherAllocationOperationalWriteGateInput } from '../../../academics/teacher-allocation/application/teacher-allocation-operational-write-gate';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { requireReinforcementScope } from '../../reinforcement-context';
 import { CreateReinforcementTaskDto } from '../dto/reinforcement-task.dto';
@@ -16,7 +17,13 @@ export class CreateReinforcementTaskUseCase {
     private readonly authRepository: AuthRepository,
   ) {}
 
-  async execute(command: CreateReinforcementTaskDto) {
+  async execute(
+    command: CreateReinforcementTaskDto,
+    operationalWriteGate?: Omit<
+      TeacherAllocationOperationalWriteGateInput,
+      'schoolId'
+    >,
+  ) {
     const scope = requireReinforcementScope();
     const input = await buildCreateTaskMutationInput({
       scope,
@@ -26,7 +33,7 @@ export class CreateReinforcementTaskUseCase {
 
     const task =
       await this.reinforcementTasksRepository.createTaskWithTargetsStagesAssignments(
-        input,
+        { ...input, operationalWriteGate },
       );
 
     await this.authRepository.createAuditLog(

@@ -10,6 +10,7 @@ import { PreviewTeacherAllocationReassignmentUseCase } from './application/previ
 import { ReassignTeacherAllocationUseCase } from './application/reassign-teacher-allocation.use-case';
 import { TeacherAllocationReassignmentUnitOfWork } from './application/teacher-allocation-reassignment.unit-of-work';
 import { TeacherAllocationReassignmentImpactService } from './application/teacher-allocation-reassignment-impact.service';
+import { TeacherAllocationOperationalWriteGate } from './application/teacher-allocation-operational-write-gate';
 import {
   TEACHER_ALLOCATION_LIFECYCLE_READER,
   TeacherAllocationLifecycleReadService,
@@ -21,6 +22,7 @@ import { TeacherAllocationReassignmentReadRepository } from './infrastructure/te
 import { TeacherAllocationReassignmentSnapshotOperations } from './infrastructure/teacher-allocation-reassignment-read.repository';
 import { PrismaTeacherAllocationReassignmentTransactionOperations } from './infrastructure/prisma-teacher-allocation-reassignment-transaction.operations';
 import { PrismaTeacherAllocationReassignmentUnitOfWork } from './infrastructure/prisma-teacher-allocation-reassignment.unit-of-work';
+import { PrismaTeacherAllocationOperationalWriteGate } from './infrastructure/prisma-teacher-allocation-operational-write-gate';
 
 @Module({
   controllers: [TeacherAllocationController],
@@ -30,6 +32,11 @@ import { PrismaTeacherAllocationReassignmentUnitOfWork } from './infrastructure/
     TeacherAllocationReassignmentReadRepository,
     PrismaTeacherAllocationReassignmentTransactionOperations,
     PrismaTeacherAllocationReassignmentUnitOfWork,
+    PrismaTeacherAllocationOperationalWriteGate,
+    {
+      provide: TeacherAllocationOperationalWriteGate,
+      useExisting: PrismaTeacherAllocationOperationalWriteGate,
+    },
     {
       provide: TeacherAllocationReassignmentUnitOfWork,
       useExisting: PrismaTeacherAllocationReassignmentUnitOfWork,
@@ -51,6 +58,9 @@ import { PrismaTeacherAllocationReassignmentUnitOfWork } from './infrastructure/
       useExisting: TeacherAllocationLifecycleReadService,
     },
   ],
-  exports: [TEACHER_ALLOCATION_LIFECYCLE_READER],
+  exports: [
+    TEACHER_ALLOCATION_LIFECYCLE_READER,
+    TeacherAllocationOperationalWriteGate,
+  ],
 })
 export class TeacherAllocationModule {}

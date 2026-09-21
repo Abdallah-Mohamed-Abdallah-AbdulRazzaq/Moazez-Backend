@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { TeacherAllocationModule } from '../academics/teacher-allocation/teacher-allocation.module';
 import { AssessmentsModule } from '../grades/assessments/assessments.module';
 import { AuthModule } from '../iam/auth/auth.module';
 import {
@@ -79,7 +80,7 @@ import { HomeworkCoreAccessGuard } from './guards/homework-core-access.guard';
 import { HomeworkRepository } from './infrastructure/homework.repository';
 
 @Module({
-  imports: [AuthModule, AssessmentsModule],
+  imports: [AuthModule, AssessmentsModule, TeacherAllocationModule],
   controllers: [
     HomeworkAssignmentsController,
     HomeworkGradeSyncController,

@@ -29,6 +29,9 @@ export class CreateTimetableEntryUseCase {
         timetableConfigIds: [configLocator.id],
       },
       async (repository) => {
+        await repository.lockTeacherAllocations([
+          command.teacherSubjectAllocationId,
+        ]);
         const resolved = await resolveTimetableEntryWrite(repository, command);
         const entry = await repository.createEntry({
           schoolId: resolved.schoolId,

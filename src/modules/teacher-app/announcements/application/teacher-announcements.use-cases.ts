@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
+import { TeacherAllocationOperationalWriteGateError } from '../../../academics/teacher-allocation/application/teacher-allocation-operational-write-gate';
 import {
   ArchiveCommunicationAnnouncementUseCase,
   CreateCommunicationAnnouncementUseCase,
@@ -12,6 +13,7 @@ import type {
 } from '../../../communication/dto/communication-announcement.dto';
 import { TeacherAppAccessService } from '../../access/teacher-app-access.service';
 import type { TeacherAppContext } from '../../shared/teacher-app-context';
+import { TeacherAppAllocationNotFoundException } from '../../shared/teacher-app.errors';
 import type { TeacherAppAllocationRecord } from '../../shared/teacher-app.types';
 import {
   buildTeacherAnnouncementMetadata,
@@ -48,12 +50,13 @@ export class ListTeacherAnnouncementsUseCase {
   ): Promise<TeacherAnnouncementsListResponseDto> {
     const context = this.accessService.assertCurrentTeacher();
     const allocations = await this.accessService.listOwnedTeacherAllocations();
-    const result =
-      await this.announcementsReadAdapter.listTeacherAnnouncements({
+    const result = await this.announcementsReadAdapter.listTeacherAnnouncements(
+      {
         context,
         allocations,
         filters: query,
-      });
+      },
+    );
 
     return TeacherAnnouncementsPresenter.presentList(result);
   }
@@ -66,7 +69,9 @@ export class GetTeacherAnnouncementUseCase {
     private readonly announcementsReadAdapter: TeacherAnnouncementsReadAdapter,
   ) {}
 
-  async execute(announcementId: string): Promise<TeacherAnnouncementResponseDto> {
+  async execute(
+    announcementId: string,
+  ): Promise<TeacherAnnouncementResponseDto> {
     const { context, allocations } = await getTeacherAnnouncementScope(
       this.accessService,
     );
@@ -102,15 +107,23 @@ export class CreateTeacherAnnouncementUseCase {
     });
     const audience = normalizeTeacherAnnouncementAudience(dto.audience);
     const audienceRows = await this.resolveAudienceRows(target, audience);
-    const created = await this.createAnnouncementUseCase.execute({
-      title: dto.title,
-      body: dto.body,
-      status: 'draft',
-      priority: mapTeacherAnnouncementPriorityToCore(dto.priority),
-      audienceType: 'custom',
-      audiences: audienceRows,
-      metadata: buildTeacherAnnouncementMetadata({ target, audience }),
-    });
+    const created = await translateAllocationGateFailure(() =>
+      this.createAnnouncementUseCase.execute(
+        {
+          title: dto.title,
+          body: dto.body,
+          status: 'draft',
+          priority: mapTeacherAnnouncementPriorityToCore(dto.priority),
+          audienceType: 'custom',
+          audiences: audienceRows,
+          metadata: buildTeacherAnnouncementMetadata({ target, audience }),
+        },
+        {
+          allocationIds: [target.classId],
+          expectedTeacherUserId: context.teacherUserId,
+        },
+      ),
+    );
 
     if (dto.publishNow === true) {
       await this.publishAnnouncementUseCase.execute(created.id);
@@ -158,14 +171,25 @@ export class UpdateTeacherAnnouncementUseCase {
       allocations,
       announcementId,
     });
-    const command = await buildUpdateCommand({
+    const update = await buildUpdateCommand({
       dto,
       existing,
       allocations,
       announcementsReadAdapter: this.announcementsReadAdapter,
     });
 
-    await this.updateAnnouncementUseCase.execute(announcementId, command);
+    await translateAllocationGateFailure(() =>
+      this.updateAnnouncementUseCase.execute(
+        announcementId,
+        update.command,
+        update.allocationIds
+          ? {
+              allocationIds: update.allocationIds,
+              expectedTeacherUserId: context.teacherUserId,
+            }
+          : undefined,
+      ),
+    );
 
     const announcement = await requireTeacherAnnouncement({
       announcementsReadAdapter: this.announcementsReadAdapter,
@@ -186,7 +210,9 @@ export class PublishTeacherAnnouncementUseCase {
     private readonly publishAnnouncementUseCase: PublishCommunicationAnnouncementUseCase,
   ) {}
 
-  async execute(announcementId: string): Promise<TeacherAnnouncementResponseDto> {
+  async execute(
+    announcementId: string,
+  ): Promise<TeacherAnnouncementResponseDto> {
     const { context, allocations } = await getTeacherAnnouncementScope(
       this.accessService,
     );
@@ -218,7 +244,9 @@ export class ArchiveTeacherAnnouncementUseCase {
     private readonly archiveAnnouncementUseCase: ArchiveCommunicationAnnouncementUseCase,
   ) {}
 
-  async execute(announcementId: string): Promise<TeacherAnnouncementResponseDto> {
+  async execute(
+    announcementId: string,
+  ): Promise<TeacherAnnouncementResponseDto> {
     const { context, allocations } = await getTeacherAnnouncementScope(
       this.accessService,
     );
@@ -281,7 +309,10 @@ async function buildUpdateCommand(params: {
   existing: TeacherAnnouncementRecord;
   allocations: TeacherAppAllocationRecord[];
   announcementsReadAdapter: TeacherAnnouncementsReadAdapter;
-}): Promise<UpdateCommunicationAnnouncementDto> {
+}): Promise<{
+  command: UpdateCommunicationAnnouncementDto;
+  allocationIds?: string[];
+}> {
   const metadata = parseTeacherAnnouncementMetadata(params.existing.metadata);
   if (!metadata) {
     throw new NotFoundDomainException('Teacher announcement not found', {
@@ -314,20 +345,40 @@ async function buildUpdateCommand(params: {
     : undefined;
 
   return {
-    ...(params.dto.title !== undefined ? { title: params.dto.title } : {}),
-    ...(params.dto.body !== undefined ? { body: params.dto.body } : {}),
-    ...(params.dto.priority !== undefined
-      ? { priority: mapTeacherAnnouncementPriorityToCore(params.dto.priority) }
-      : {}),
+    command: {
+      ...(params.dto.title !== undefined ? { title: params.dto.title } : {}),
+      ...(params.dto.body !== undefined ? { body: params.dto.body } : {}),
+      ...(params.dto.priority !== undefined
+        ? {
+            priority: mapTeacherAnnouncementPriorityToCore(params.dto.priority),
+          }
+        : {}),
+      ...(shouldReplaceAudience
+        ? {
+            audienceType: 'custom',
+            audiences: audienceRows as TeacherAnnouncementAudienceRow[],
+            metadata: buildTeacherAnnouncementMetadata({
+              target: nextTarget,
+              audience: nextAudience,
+            }),
+          }
+        : {}),
+    },
     ...(shouldReplaceAudience
-      ? {
-          audienceType: 'custom',
-          audiences: audienceRows as TeacherAnnouncementAudienceRow[],
-          metadata: buildTeacherAnnouncementMetadata({
-            target: nextTarget,
-            audience: nextAudience,
-          }),
-        }
+      ? { allocationIds: [currentTarget.classId, nextTarget.classId] }
       : {}),
   };
+}
+
+async function translateAllocationGateFailure<T>(
+  operation: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof TeacherAllocationOperationalWriteGateError) {
+      throw new TeacherAppAllocationNotFoundException();
+    }
+    throw error;
+  }
 }

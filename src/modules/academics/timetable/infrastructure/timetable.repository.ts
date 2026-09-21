@@ -8,6 +8,11 @@ import {
 } from '@prisma/client';
 import { getRequestContext } from '../../../../common/context/request-context';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import {
+  TeacherAllocationOperationalWriteGate,
+  TeacherAllocationOperationalWriteGateError,
+} from '../../teacher-allocation/application/teacher-allocation-operational-write-gate';
+import { TimetableAllocationNotFoundException } from '../domain/timetable.exceptions';
 
 const ACADEMIC_YEAR_ARGS = Prisma.validator<Prisma.AcademicYearDefaultArgs>()({
   select: {
@@ -387,6 +392,12 @@ export interface TimetableWriteRepository {
   ): Promise<BulkSaveTimetableEntriesResult>;
 }
 
+export interface SerializedTimetableWriteRepository extends TimetableWriteRepository {
+  lockTeacherAllocations(
+    allocationIds: readonly string[],
+  ): Promise<TimetableTeacherAllocationRecord[]>;
+}
+
 export type SerializedTimetableWriteResult<T> =
   | { status: 'not_found' }
   | { status: 'completed'; value: T };
@@ -444,7 +455,10 @@ export interface ListTimetableEntriesFilters {
 
 @Injectable()
 export class TimetableRepository implements TimetableWriteRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly teacherAllocationWriteGate: TeacherAllocationOperationalWriteGate,
+  ) {}
 
   private get scopedPrisma(): PrismaService {
     return this.prisma.scoped as unknown as PrismaService;
@@ -541,6 +555,16 @@ export class TimetableRepository implements TimetableWriteRepository {
         });
         if (!config) return { status: 'not_found' as const };
 
+        const allocationIds = await tx.teacherSubjectAllocation.findMany({
+          where: { schoolId, termId: config.termId },
+          orderBy: { id: 'asc' },
+          select: { id: true },
+        });
+        await this.teacherAllocationWriteGate.lock(tx, {
+          schoolId,
+          allocationIds: allocationIds.map((allocation) => allocation.id),
+        });
+
         const before = await this.loadGenerationSnapshotWithClient(
           tx,
           schoolId,
@@ -591,11 +615,16 @@ export class TimetableRepository implements TimetableWriteRepository {
 
   async withSerializedTermWrite<T>(
     input: { termId: string; timetableConfigIds?: string[] },
-    operation: (repository: TimetableWriteRepository) => Promise<T>,
+    operation: (repository: SerializedTimetableWriteRepository) => Promise<T>,
   ): Promise<SerializedTimetableWriteResult<T>> {
     return this.runSerializedTermWrite(input, (tx, schoolId) =>
       operation(
-        new TransactionTimetableWriteRepository(tx, schoolId, input.termId),
+        new TransactionTimetableWriteRepository(
+          tx,
+          schoolId,
+          input.termId,
+          this.teacherAllocationWriteGate,
+        ),
       ),
     );
   }
@@ -1384,12 +1413,39 @@ export class TimetableRepository implements TimetableWriteRepository {
   }
 }
 
-class TransactionTimetableWriteRepository implements TimetableWriteRepository {
+class TransactionTimetableWriteRepository implements SerializedTimetableWriteRepository {
+  private readonly lockedAllocations = new Map<
+    string,
+    TimetableTeacherAllocationRecord
+  >();
+
   constructor(
     private readonly tx: Prisma.TransactionClient,
     private readonly schoolId: string,
     private readonly termId: string,
+    private readonly teacherAllocationWriteGate: TeacherAllocationOperationalWriteGate,
   ) {}
+
+  async lockTeacherAllocations(
+    allocationIds: readonly string[],
+  ): Promise<TimetableTeacherAllocationRecord[]> {
+    let allocations: TimetableTeacherAllocationRecord[];
+    try {
+      allocations = await this.teacherAllocationWriteGate.lock(this.tx, {
+        schoolId: this.schoolId,
+        allocationIds,
+      });
+    } catch (error: unknown) {
+      if (error instanceof TeacherAllocationOperationalWriteGateError) {
+        throw new TimetableAllocationNotFoundException();
+      }
+      throw error;
+    }
+    for (const allocation of allocations) {
+      this.lockedAllocations.set(allocation.id, allocation);
+    }
+    return allocations;
+  }
 
   findTermById(termId: string): Promise<TimetableTermRecord | null> {
     if (termId !== this.termId) return Promise.resolve(null);
@@ -1444,10 +1500,7 @@ class TransactionTimetableWriteRepository implements TimetableWriteRepository {
   findTeacherAllocationById(
     allocationId: string,
   ): Promise<TimetableTeacherAllocationRecord | null> {
-    return this.tx.teacherSubjectAllocation.findFirst({
-      where: { id: allocationId, schoolId: this.schoolId },
-      ...TEACHER_ALLOCATION_ARGS,
-    });
+    return Promise.resolve(this.lockedAllocations.get(allocationId) ?? null);
   }
 
   findSubjectAllocationByKey(input: {
@@ -1539,8 +1592,17 @@ class TransactionTimetableWriteRepository implements TimetableWriteRepository {
   ): Promise<TimetableEntryRecord> {
     assertWriteSchool(data.schoolId, this.schoolId);
     assertLockedTerm(data.termId, this.termId);
+    const allocation = this.requireLockedAllocation(
+      data.teacherSubjectAllocationId,
+    );
     return this.tx.timetableEntry.create({
-      data,
+      data: {
+        ...data,
+        termId: allocation.termId,
+        teacherUserId: allocation.teacherUserId,
+        classroomId: allocation.classroomId,
+        subjectId: allocation.subjectId,
+      },
       ...TIMETABLE_ENTRY_ARGS,
     });
   }
@@ -1552,9 +1614,21 @@ class TransactionTimetableWriteRepository implements TimetableWriteRepository {
     if (typeof data.termId === 'string') {
       assertLockedTerm(data.termId, this.termId);
     }
+    if (typeof data.teacherSubjectAllocationId !== 'string') {
+      throw new Error('Timetable update requires a locked teacher allocation');
+    }
+    const allocation = this.requireLockedAllocation(
+      data.teacherSubjectAllocationId,
+    );
     return this.tx.timetableEntry.update({
       where: { id_schoolId: { id: entryId, schoolId: this.schoolId } },
-      data,
+      data: {
+        ...data,
+        termId: allocation.termId,
+        teacherUserId: allocation.teacherUserId,
+        classroomId: allocation.classroomId,
+        subjectId: allocation.subjectId,
+      },
       ...TIMETABLE_ENTRY_ARGS,
     });
   }
@@ -1570,7 +1644,33 @@ class TransactionTimetableWriteRepository implements TimetableWriteRepository {
     ) {
       throw new Error('Timetable bulk entries do not match locked scope');
     }
-    return bulkUpsertEntriesWithClient(this.tx, this.schoolId, entries);
+    const authoritativeEntries = entries.map((entry) => {
+      const allocation = this.requireLockedAllocation(
+        entry.teacherSubjectAllocationId,
+      );
+      return {
+        ...entry,
+        termId: allocation.termId,
+        teacherUserId: allocation.teacherUserId,
+        classroomId: allocation.classroomId,
+        subjectId: allocation.subjectId,
+      };
+    });
+    return bulkUpsertEntriesWithClient(
+      this.tx,
+      this.schoolId,
+      authoritativeEntries,
+    );
+  }
+
+  private requireLockedAllocation(
+    allocationId: string,
+  ): TimetableTeacherAllocationRecord {
+    const allocation = this.lockedAllocations.get(allocationId);
+    if (!allocation) {
+      throw new Error('Timetable teacher allocation was not locked');
+    }
+    return allocation;
   }
 }
 

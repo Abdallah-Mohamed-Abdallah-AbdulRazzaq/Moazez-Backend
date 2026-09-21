@@ -39,6 +39,7 @@ import { UpdateTimetablePeriodUseCase } from '../application/update-timetable-pe
 import { UpsertTimetableConfigUseCase } from '../application/upsert-timetable-config.use-case';
 import { ValidateTimetableUseCase } from '../application/validate-timetable.use-case';
 import { computeTimetableConflicts } from '../domain/timetable-conflicts';
+import { TimetableTeacherConflictException } from '../domain/timetable.exceptions';
 import {
   SerializedTimetableWriteResult,
   TimetableRepository,
@@ -233,6 +234,16 @@ describe('Timetable use cases', () => {
         .mockImplementation(
           async (id: string) =>
             allocations.find((allocation) => allocation.id === id) ?? null,
+        ),
+      lockTeacherAllocations: jest
+        .fn()
+        .mockImplementation(async (ids: string[]) =>
+          [...new Set(ids)]
+            .sort()
+            .map((id) => allocations.find((allocation) => allocation.id === id))
+            .filter((allocation): allocation is AllocationRecord =>
+              Boolean(allocation),
+            ),
         ),
       findSubjectAllocationByKey: jest
         .fn()
@@ -2757,6 +2768,94 @@ describe('Timetable use cases', () => {
     });
   });
 
+  it('uses the authoritative post-gate entry snapshot for bulk teacher conflicts', async () => {
+    const period = seedPeriod();
+    const classroom2 = seedClassroom({
+      id: 'classroom-2',
+      sectionId: 'section-2',
+      nameAr: 'Classroom 2',
+      nameEn: 'Classroom 2',
+      section: {
+        id: 'section-2',
+        gradeId: 'grade-1',
+        grade: { id: 'grade-1', stageId: 'stage-1' },
+      },
+    });
+    const discoveryEntry = seedEntry({
+      id: 'entry-existing',
+      teacherUserId: 'teacher-a',
+      teacherSubjectAllocationId: 'allocation-x',
+      period,
+    });
+    const authoritativeEntry = seedEntry({
+      ...discoveryEntry,
+      teacherUserId: 'teacher-b',
+      teacherUser: {
+        id: 'teacher-b',
+        firstName: 'Teacher',
+        lastName: 'B',
+      },
+    });
+    const repository = createRepository({
+      configs: [seedConfig()],
+      periods: [period],
+      classrooms: [seedClassroom(), classroom2],
+      allocations: [
+        seedAllocation({
+          id: 'allocation-x',
+          teacherUserId: 'teacher-b',
+        }),
+        seedAllocation({
+          id: 'allocation-y',
+          teacherUserId: 'teacher-b',
+          classroomId: 'classroom-2',
+        }),
+      ],
+    });
+    const listEntriesByTerm = jest
+      .mocked(repository.listEntriesByTerm)
+      .mockResolvedValueOnce([discoveryEntry])
+      .mockResolvedValueOnce([authoritativeEntry]);
+    const lockTeacherAllocations = jest.mocked(
+      repository.lockTeacherAllocations,
+    );
+    const findTeacherAllocationById = jest.mocked(
+      repository.findTeacherAllocationById,
+    );
+
+    await withScope(async () => {
+      await expect(
+        new BulkSaveTimetableEntriesUseCase(repository).execute({
+          termId: 'term-1',
+          items: [
+            {
+              classroomId: 'classroom-2',
+              dayOfWeek: 0,
+              periodId: 'period-1',
+              teacherSubjectAllocationId: 'allocation-y',
+            },
+          ],
+        }),
+      ).rejects.toBeInstanceOf(TimetableTeacherConflictException);
+    });
+
+    expect(listEntriesByTerm).toHaveBeenCalledTimes(2);
+    expect(lockTeacherAllocations).toHaveBeenCalledWith([
+      'allocation-y',
+      'allocation-x',
+    ]);
+    expect(listEntriesByTerm.mock.invocationCallOrder[0]).toBeLessThan(
+      lockTeacherAllocations.mock.invocationCallOrder[0],
+    );
+    expect(lockTeacherAllocations.mock.invocationCallOrder[0]).toBeLessThan(
+      listEntriesByTerm.mock.invocationCallOrder[1],
+    );
+    expect(listEntriesByTerm.mock.invocationCallOrder[1]).toBeLessThan(
+      findTeacherAllocationById.mock.invocationCallOrder[0],
+    );
+    expect(repository.bulkUpsertEntries).not.toHaveBeenCalled();
+  });
+
   it('keeps conflict checking and bulk writing in parity for partial overlap', async () => {
     const period1 = seedPeriod({
       id: 'period-1',
@@ -4012,7 +4111,7 @@ describe('Timetable use cases', () => {
         timetableEntry: { update: updateEntry },
       },
     };
-    const repository = new TimetableRepository(prisma as never);
+    const repository = new TimetableRepository(prisma as never, {} as never);
 
     await repository.findConfigById('config-1');
 

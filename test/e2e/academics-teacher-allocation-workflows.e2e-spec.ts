@@ -614,13 +614,56 @@ describe('Academics teacher allocation workflows (e2e)', () => {
         }),
       ),
     );
+    const [studentRole, parentRole] = await Promise.all([
+      findSystemRole('student'),
+      findSystemRole('parent'),
+    ]);
+    const studentEmail = `${marker}-continuity-student@example.test`;
+    const parentEmail = `${marker}-continuity-parent@example.test`;
+    const [studentUserId, parentUserId] = await Promise.all([
+      createUserWithMembership({
+        email: studentEmail,
+        firstName: 'Historical',
+        lastName: 'Student',
+        userType: UserType.STUDENT,
+        roleId: studentRole.id,
+      }),
+      createUserWithMembership({
+        email: parentEmail,
+        firstName: 'Historical',
+        lastName: 'Parent',
+        userType: UserType.PARENT,
+        roleId: parentRole.id,
+      }),
+    ]);
     const student = await prisma.student.create({
       data: {
         schoolId,
         organizationId,
+        userId: studentUserId,
         firstName: 'Historical',
         lastName: 'Student',
         status: StudentStatus.ACTIVE,
+      },
+    });
+    const guardian = await prisma.guardian.create({
+      data: {
+        schoolId,
+        organizationId,
+        userId: parentUserId,
+        firstName: 'Historical',
+        lastName: 'Parent',
+        phone: `+2010${suffix.replace(/\D/gu, '').padEnd(8, '0').slice(0, 8)}`,
+        relation: 'parent',
+        isPrimary: true,
+      },
+    });
+    await prisma.studentGuardian.create({
+      data: {
+        schoolId,
+        studentId: student.id,
+        guardianId: guardian.id,
+        isPrimary: true,
       },
     });
     const enrollment = await prisma.enrollment.create({
@@ -997,10 +1040,13 @@ describe('Academics teacher allocation workflows (e2e)', () => {
       if (!closedHomework || !activeEntry) {
         throw new Error('Expected operational reassignment fixtures');
       }
-      const [sourceTeacherAuth, targetTeacherAuth] = await Promise.all([
-        login(teacherEmail),
-        login(targetTeacherEmail),
-      ]);
+      const [sourceTeacherAuth, targetTeacherAuth, studentAuth, parentAuth] =
+        await Promise.all([
+          login(teacherEmail),
+          login(targetTeacherEmail),
+          login(studentEmail),
+          login(parentEmail),
+        ]);
       await request(app.getHttpServer())
         .get(
           `${GLOBAL_PREFIX}/teacher/homeworks/classes/${allocationId}/assignments/${closedHomework.id}`,
@@ -1028,6 +1074,78 @@ describe('Academics teacher allocation workflows (e2e)', () => {
         .expect(200);
       expect(JSON.stringify(sourceSchedule.body)).not.toContain(activeEntry.id);
       expect(JSON.stringify(targetSchedule.body)).toContain(activeEntry.id);
+
+      const studentSchedule = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/student/schedule/week`)
+        .query({ date: '2026-09-21' })
+        .set('Authorization', bearer(studentAuth))
+        .expect(200);
+      expect(JSON.stringify(studentSchedule.body)).toContain(activeEntry.id);
+
+      const parentSchedule = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/parent/children/${student.id}/schedule/weekly`)
+        .set('Authorization', bearer(parentAuth))
+        .expect(200);
+      expect(JSON.stringify(parentSchedule.body)).toContain(activeEntry.id);
+
+      for (const role of ['student', 'parent']) {
+        const sourceContacts = await request(app.getHttpServer())
+          .get(`${GLOBAL_PREFIX}/teacher/messages/contacts`)
+          .query({ role })
+          .set('Authorization', bearer(sourceTeacherAuth))
+          .expect(200);
+        const targetContacts = await request(app.getHttpServer())
+          .get(`${GLOBAL_PREFIX}/teacher/messages/contacts`)
+          .query({ role })
+          .set('Authorization', bearer(targetTeacherAuth))
+          .expect(200);
+        const expectedContactId =
+          role === 'student'
+            ? `student:${student.id}`
+            : `guardian:${guardian.id}`;
+        // Contacts are classroom-scoped. The source teacher retains another
+        // allocation in this classroom, while the target gains this one.
+        expect(JSON.stringify(sourceContacts.body)).toContain(
+          expectedContactId,
+        );
+        expect(JSON.stringify(targetContacts.body)).toContain(
+          expectedContactId,
+        );
+      }
+
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${allocationId}/grades/assessments`,
+        )
+        .set('Authorization', bearer(sourceTeacherAuth))
+        .expect(404);
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${allocationId}/grades/assessments`,
+        )
+        .set('Authorization', bearer(targetTeacherAuth))
+        .expect(200)
+        .expect((response) => {
+          expect(JSON.stringify(response.body)).toContain(assessment.id);
+        });
+
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${allocationId}/attendance/roster`,
+        )
+        .query({ date: '2026-09-16' })
+        .set('Authorization', bearer(sourceTeacherAuth))
+        .expect(404);
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${allocationId}/attendance/roster`,
+        )
+        .query({ date: '2026-09-16' })
+        .set('Authorization', bearer(targetTeacherAuth))
+        .expect(200)
+        .expect((response) => {
+          expect(JSON.stringify(response.body)).toContain(student.id);
+        });
     } finally {
       await prisma.auditLog.deleteMany({ where: { resourceId: allocationId } });
       await prisma.communicationMessage.deleteMany({
@@ -1065,6 +1183,10 @@ describe('Academics teacher allocation workflows (e2e)', () => {
         where: { id: { in: lessonPlans.map(({ id }) => id) } },
       });
       await prisma.curriculum.deleteMany({ where: { id: curriculum.id } });
+      await prisma.studentGuardian.deleteMany({
+        where: { studentId: student.id },
+      });
+      await prisma.guardian.deleteMany({ where: { id: guardian.id } });
       await prisma.enrollment.deleteMany({ where: { id: enrollment.id } });
       await prisma.student.deleteMany({ where: { id: student.id } });
       await prisma.timetablePublication.deleteMany({

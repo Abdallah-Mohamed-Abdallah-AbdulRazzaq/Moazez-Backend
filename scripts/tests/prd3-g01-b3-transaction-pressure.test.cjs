@@ -31,6 +31,7 @@ const {
   SUMMARY_SCHEMA,
   SUMMARY_SCHEMA_VERSION,
   atomicPublishStrictSummary,
+  auditTeacherAllocationOperationalWriteGate,
   auditTeacherAllocationReassignmentUnitOfWorkCallbacks,
   auditTeacherLifecycleUnitOfWorkCallbacks,
   classifyPrismaTransactionError,
@@ -66,6 +67,7 @@ const {
   validatePlaybackConsumerAudit,
   validateSanitizedSummary,
   validateStrictSummary,
+  validateTeacherAllocationOperationalWriteGate,
   validateTeacherAllocationReassignmentUnitOfWorkCallbacks,
   validateTeacherLifecycleUnitOfWorkCallbacks,
   verifyLoopbackTcp,
@@ -139,6 +141,16 @@ test('Teacher allocation reassignment callback has no transaction escape or exte
   assert.ok(
     rows[0].transactionCalls.includes('transaction.audit.writeSuccessful'),
   );
+});
+
+test('operational allocation write gate stays on supplied transactions only', () => {
+  const audit = validateTeacherAllocationOperationalWriteGate(
+    auditTeacherAllocationOperationalWriteGate(),
+  );
+  assert.ok(audit.callerCount >= 5);
+  assert.equal(audit.transactionEscapeCount, 0);
+  assert.equal(audit.nestedTransactionCount, 0);
+  assert.equal(audit.externalWaitInsideGateCount, 0);
 });
 
 test('REASSIGNMENT_TRANSACTION_ESCAPE_FIXTURE=REJECTED', () => {

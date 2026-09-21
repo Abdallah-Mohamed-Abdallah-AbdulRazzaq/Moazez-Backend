@@ -6,6 +6,7 @@ import {
   CommunicationAnnouncementStatus,
 } from '@prisma/client';
 import { NotFoundDomainException } from '../../../common/exceptions/domain-exception';
+import type { TeacherAllocationOperationalWriteGateInput } from '../../academics/teacher-allocation/application/teacher-allocation-operational-write-gate';
 import { FilesNotFoundException } from '../../files/uploads/domain/file-upload.exceptions';
 import {
   CommunicationScope,
@@ -23,7 +24,6 @@ import {
   CommunicationAnnouncementAudienceInput,
   CommunicationAnnouncementAudienceTypeValue,
   CommunicationAnnouncementInvalidException,
-  CommunicationAnnouncementPriorityValue,
   CommunicationAnnouncementStatusValue,
   normalizeAnnouncementBody,
   normalizeAnnouncementTitle,
@@ -124,7 +124,13 @@ export class CreateCommunicationAnnouncementUseCase {
     private readonly communicationAnnouncementRepository: CommunicationAnnouncementRepository,
   ) {}
 
-  async execute(command: CreateCommunicationAnnouncementDto) {
+  async execute(
+    command: CreateCommunicationAnnouncementDto,
+    operationalWriteGate?: Omit<
+      TeacherAllocationOperationalWriteGateInput,
+      'schoolId'
+    >,
+  ) {
     const scope = requireCommunicationScope();
     const title = normalizeAnnouncementTitle(command.title);
     const body = normalizeAnnouncementBody(command.body);
@@ -173,6 +179,7 @@ export class CreateCommunicationAnnouncementUseCase {
             metadata: command.metadata ?? null,
           },
           audienceRows: audienceRows as CommunicationAnnouncementAudienceData[],
+          operationalWriteGate,
           buildAuditEntry: (created) =>
             buildCommunicationAnnouncementAuditEntry({
               scope,
@@ -222,6 +229,10 @@ export class UpdateCommunicationAnnouncementUseCase {
   async execute(
     announcementId: string,
     command: UpdateCommunicationAnnouncementDto,
+    operationalWriteGate?: Omit<
+      TeacherAllocationOperationalWriteGateInput,
+      'schoolId'
+    >,
   ) {
     const scope = requireCommunicationScope();
     const announcement = await requireAnnouncement(
@@ -297,6 +308,9 @@ export class UpdateCommunicationAnnouncementUseCase {
       await this.communicationAnnouncementRepository.updateCurrentSchoolAnnouncement(
         {
           announcementId: announcement.id,
+          operationalWriteGate: operationalWriteGate
+            ? { schoolId: scope.schoolId, ...operationalWriteGate }
+            : undefined,
           data: {
             ...(command.title !== undefined ? { title } : {}),
             ...(command.body !== undefined ? { body } : {}),

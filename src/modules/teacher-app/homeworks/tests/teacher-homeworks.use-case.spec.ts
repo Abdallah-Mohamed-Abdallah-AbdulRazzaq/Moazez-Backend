@@ -76,23 +76,26 @@ describe('Teacher Homeworks use cases', () => {
       totalMarks: 10,
     });
 
-    expect(coreCreate.execute).toHaveBeenCalledWith({
-      academicYearId: 'year-1',
-      termId: 'term-1',
-      teacherSubjectAllocationId: 'allocation-1',
-      timetableEntryId: 'entry-1',
-      scheduleDate: '2026-09-14',
-      title: 'Selected reading',
-      description: undefined,
-      mode: HomeworkAssignmentMode.WORKSHEET,
-      targetMode: HomeworkTargetMode.SELECTED_STUDENTS,
-      studentIds: ['student-1'],
-      publishAt: undefined,
-      dueAt: '2026-09-20T10:00:00.000Z',
-      estimatedMinutes: undefined,
-      totalMarks: 10,
-      isGraded: true,
-    });
+    expect(coreCreate.execute).toHaveBeenCalledWith(
+      {
+        academicYearId: 'year-1',
+        termId: 'term-1',
+        teacherSubjectAllocationId: 'allocation-1',
+        timetableEntryId: 'entry-1',
+        scheduleDate: '2026-09-14',
+        title: 'Selected reading',
+        description: undefined,
+        mode: HomeworkAssignmentMode.WORKSHEET,
+        targetMode: HomeworkTargetMode.SELECTED_STUDENTS,
+        studentIds: ['student-1'],
+        publishAt: undefined,
+        dueAt: '2026-09-20T10:00:00.000Z',
+        estimatedMinutes: undefined,
+        totalMarks: 10,
+        isGraded: true,
+      },
+      { expectedTeacherUserId: 'teacher-1' },
+    );
     expect(result.classId).toBe('allocation-1');
     expect(JSON.stringify(result)).not.toContain('schoolId');
     expect(JSON.stringify(result)).not.toContain('organizationId');
@@ -128,14 +131,17 @@ describe('Teacher Homeworks use cases', () => {
         teacherSubjectAllocationId: 'allocation-1',
         title: 'Updated homework',
       }),
+      { expectedTeacherUserId: 'teacher-1' },
     );
-    expect(coreUpdate.execute.mock.calls[0][1]).not.toHaveProperty(
-      'teacherUserId',
+    expect(coreUpdate.execute).toHaveBeenCalledWith(
+      'homework-1',
+      expect.not.objectContaining({
+        teacherUserId: expect.anything(),
+        classroomId: expect.anything(),
+        subjectId: expect.anything(),
+      }),
+      { expectedTeacherUserId: 'teacher-1' },
     );
-    expect(coreUpdate.execute.mock.calls[0][1]).not.toHaveProperty(
-      'classroomId',
-    );
-    expect(coreUpdate.execute.mock.calls[0][1]).not.toHaveProperty('subjectId');
   });
 
   it('lets Core lifecycle block published homework updates', async () => {

@@ -143,6 +143,11 @@ describe('Homework assignment use cases', () => {
           studentId: 'student-1',
         }),
       ]),
+      {
+        schoolId: 'school-1',
+        allocationId: 'allocation-1',
+        expectedTeacherUserId: undefined,
+      },
     );
     expect(response.status).toBe('draft');
     expect(JSON.stringify(response)).not.toContain('schoolId');
