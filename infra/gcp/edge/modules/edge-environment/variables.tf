@@ -49,9 +49,16 @@ variable "school_dashboard_service_name" {
 }
 
 variable "candidate_edge_enabled" {
-  description = "Whether the optional governed candidate smoke route and tagged NEG are enabled."
+  description = "Whether the optional governed Candidate NEG and backend resources are enabled."
   type        = bool
   default     = false
+}
+
+variable "candidate_smoke_route_enabled" {
+  description = "Whether the governed Candidate smoke route is enabled. Null preserves the historical candidate_edge_enabled behavior."
+  type        = bool
+  default     = null
+  nullable    = true
 }
 
 variable "candidate_api_tag" {

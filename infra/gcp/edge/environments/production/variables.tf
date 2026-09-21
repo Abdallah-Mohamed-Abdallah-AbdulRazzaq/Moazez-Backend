@@ -1,7 +1,14 @@
 variable "candidate_edge_enabled" {
-  description = "Whether to provision the optional governed Production candidate smoke path."
+  description = "Whether to provision the governed Production Candidate NEG and backend resources."
   type        = bool
   default     = false
+}
+
+variable "candidate_smoke_route_enabled" {
+  description = "Whether the governed Production Candidate smoke route is enabled. Null preserves the historical candidate_edge_enabled behavior."
+  type        = bool
+  default     = null
+  nullable    = true
 }
 
 variable "candidate_api_tag" {

@@ -14,20 +14,38 @@ certificate, proxy, forwarding rule, or parallel ingress architecture.
 
 ## Optional governed candidate route
 
-The two candidate inputs are:
+The three candidate inputs are:
 
-| Input                    | Disabled contract | Enabled contract                                                 |
-| ------------------------ | ----------------- | ---------------------------------------------------------------- |
-| `candidate_edge_enabled` | `false`           | `true`, for governed Staging or Production only                  |
-| `candidate_api_tag`      | `null`            | `candidate-<12 lowercase hex>` or that base plus canonical `-rN` |
+| Input                            | Contract |
+| -------------------------------- | -------- |
+| `candidate_edge_enabled`         | Owns the Candidate NEG and Candidate Backend lifecycle. |
+| `candidate_smoke_route_enabled` | Owns Candidate smoke-route intent. `null` inherits `candidate_edge_enabled` for backward compatibility. |
+| `candidate_api_tag`              | `null` when Candidate resources are disabled; otherwise `candidate-<12 lowercase hex>` or that base plus canonical `-rN`. |
 
-Both Staging and Production default to `candidate_edge_enabled=false` and
-`candidate_api_tag=null`. Merging this source therefore creates no Candidate
-resources. Production activation requires explicit, separately governed
-DevOps inputs and a new Saved Plan; this source change is not that operation.
-The module rejects an enabled candidate route outside the governed `staging`
-and `production` environments, rejects an enabled route without a valid tag,
-and rejects a stale tag while the capability is disabled.
+Both Staging and Production default to `candidate_edge_enabled=false`,
+`candidate_smoke_route_enabled=null`, and `candidate_api_tag=null`. Merging
+this source therefore creates no Candidate resources. Existing release
+operations may continue to omit `candidate_smoke_route_enabled`: omission
+preserves the historical behavior in which enabling Candidate resources also
+renders the smoke route. Production activation requires explicit, separately
+governed DevOps inputs and a new Saved Plan; this source change is not that
+operation.
+
+The module rejects Candidate resources outside the governed `staging` and
+`production` environments, rejects enabled resources without a valid tag,
+rejects a stale tag while resources are disabled, and rejects an enabled smoke
+route when Candidate resources are disabled.
+
+The supported state matrix is:
+
+| `candidate_edge_enabled` | `candidate_smoke_route_enabled` | `candidate_api_tag` | Candidate NEG/Backend | Smoke route |
+| ------------------------ | -------------------------------- | ------------------- | --------------------- | ----------- |
+| `false` | `null` (omitted) | `null` | absent | absent |
+| `true` | `null` (omitted) | valid Candidate tag | present | present |
+| `true` | `true` | valid Candidate tag | present | present |
+| `true` | `false` | current Candidate tag | present | absent (safe cleanup Stage 1) |
+| `false` | `false` | `null` | absent | absent (safe cleanup Stage 2) |
+| `false` | `true` | `null` | rejected by the explicit lifecycle contract | rejected |
 
 The recovery suffix range is `1` through `999999999999999`, with no leading
 zero. Edge validates canonical shape only because it does not own the image
@@ -92,10 +110,25 @@ the rotation.
 
 The `api-no-traffic-promotion` release gate first creates the tagged API
 revision in the backend-runtime root and then enables this edge capability as
-an ordered suboperation. After candidate verification and normal traffic
-promotion, disabling the candidate inputs removes only the tagged NEG,
-candidate backend, and exact route. Cleanup is intentionally outside the six
-authoritative release gates and requires separate post-release approval.
+an ordered suboperation. Its historical manifest continues to provide only
+`candidate_edge_enabled=true` plus `candidate_api_tag`; the omitted smoke-route
+input inherits `true`.
+
+After candidate verification and normal traffic promotion, cleanup is a
+mandatory two-stage DevOps transition. Stage 1 keeps
+`candidate_edge_enabled=true` and the current tag while setting
+`candidate_smoke_route_enabled=false`; this removes the URL-map reference but
+preserves the Candidate Backend and NEG. Only after Stage 1 is separately
+planned, reviewed, approved, applied, and verified may Stage 2 set
+`candidate_edge_enabled=false`, `candidate_smoke_route_enabled=false`, and
+`candidate_api_tag=null` to remove the Backend and then the NEG through their
+natural dependency. Stage 2 is separately planned, reviewed, approved,
+applied, and verified. Neither stage uses `-target`, manual deletion, state
+surgery, or a prior Saved Plan.
+
+Cleanup is intentionally outside the six authoritative release gates and
+requires separate post-release approval. The historical one-step cleanup
+template remains non-authoritative and cannot bypass this two-stage procedure.
 
 Normal manifest v1 reaches this gate after Core and Media promotion. Recovery
 manifest v2 treats those stages as passed evidence, binds API Runtime directly

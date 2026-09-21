@@ -945,6 +945,10 @@ test('Production Edge defaults disabled and supports only governed explicit Cand
     'var.candidate_edge_enabled',
   );
   assert.equal(
+    assignmentExpression(productionMain, 'candidate_smoke_route_enabled'),
+    'var.candidate_smoke_route_enabled',
+  );
+  assert.equal(
     assignmentExpression(productionMain, 'candidate_api_tag'),
     'var.candidate_api_tag',
   );
@@ -953,6 +957,7 @@ test('Production Edge defaults disabled and supports only governed explicit Cand
   assert.deepEqual(variableNames(productionVariables).sort(), [
     'candidate_api_tag',
     'candidate_edge_enabled',
+    'candidate_smoke_route_enabled',
   ]);
   const productionCandidateEnabled = variableBlock(
     productionVariables,
@@ -965,6 +970,22 @@ test('Production Edge defaults disabled and supports only governed explicit Cand
   assert.equal(
     assignmentExpression(productionCandidateEnabled, 'default'),
     'false',
+  );
+  const productionCandidateSmokeRoute = variableBlock(
+    productionVariables,
+    'candidate_smoke_route_enabled',
+  );
+  assert.equal(
+    assignmentExpression(productionCandidateSmokeRoute, 'type'),
+    'bool',
+  );
+  assert.equal(
+    assignmentExpression(productionCandidateSmokeRoute, 'default'),
+    'null',
+  );
+  assert.equal(
+    assignmentExpression(productionCandidateSmokeRoute, 'nullable'),
+    'true',
   );
   const productionCandidateTag = variableBlock(
     productionVariables,
@@ -986,8 +1007,36 @@ test('Production Edge defaults disabled and supports only governed explicit Cand
     'var.candidate_edge_enabled',
   );
   assert.equal(
+    assignmentExpression(nonprodMain, 'candidate_smoke_route_enabled'),
+    'var.candidate_smoke_route_enabled',
+  );
+  assert.equal(
     assignmentExpression(nonprodMain, 'candidate_api_tag'),
     'var.candidate_api_tag',
+  );
+  const nonprodVariables = normalizedHclSource(
+    `${EDGE_NONPROD_ROOT}/variables.tf`,
+  );
+  assert.deepEqual(variableNames(nonprodVariables).sort(), [
+    'candidate_api_tag',
+    'candidate_edge_enabled',
+    'candidate_smoke_route_enabled',
+  ]);
+  const nonprodCandidateSmokeRoute = variableBlock(
+    nonprodVariables,
+    'candidate_smoke_route_enabled',
+  );
+  assert.equal(
+    assignmentExpression(nonprodCandidateSmokeRoute, 'type'),
+    'bool',
+  );
+  assert.equal(
+    assignmentExpression(nonprodCandidateSmokeRoute, 'default'),
+    'null',
+  );
+  assert.equal(
+    assignmentExpression(nonprodCandidateSmokeRoute, 'nullable'),
+    'true',
   );
 
   const moduleMain = normalizedHclSource(`${EDGE_MODULE}/main.tf`);
@@ -1007,7 +1056,23 @@ test('Production Edge defaults disabled and supports only governed explicit Cand
   );
   assert.match(
     moduleMain,
-    /candidate_edge_contract_valid\s*=\s*var[.]candidate_edge_enabled\s*\?\s*\([\s\S]*?var[.]candidate_api_tag\s*!=\s*null[\s\S]*?regex\("\^candidate-\[a-f0-9\]\{12\}\(-r\[1-9\]\[0-9\]\{0,14\}\)\?\$"[\s\S]*?\)\s*:\s*var[.]candidate_api_tag\s*==\s*null/u,
+    /effective_candidate_smoke_route_enabled\s*=\s*\(\s*var[.]candidate_smoke_route_enabled\s*==\s*null\s*\?\s*var[.]candidate_edge_enabled\s*:\s*var[.]candidate_smoke_route_enabled\s*\)/u,
+  );
+  assert.match(
+    moduleMain,
+    /candidate_resource_contract_valid\s*=\s*var[.]candidate_edge_enabled\s*\?\s*\([\s\S]*?var[.]candidate_api_tag\s*!=\s*null[\s\S]*?regex\("\^candidate-\[a-f0-9\]\{12\}\(-r\[1-9\]\[0-9\]\{0,14\}\)\?\$"[\s\S]*?\)\s*:\s*var[.]candidate_api_tag\s*==\s*null/u,
+  );
+  assert.match(
+    moduleMain,
+    /candidate_smoke_route_contract_valid\s*=\s*\(\s*!local[.]effective_candidate_smoke_route_enabled\s*\|\|\s*var[.]candidate_edge_enabled\s*\)/u,
+  );
+  assert.match(
+    moduleMain,
+    /candidate_smoke_route_render_enabled\s*=\s*\(\s*local[.]effective_candidate_smoke_route_enabled\s*&&\s*var[.]candidate_edge_enabled\s*\)/u,
+  );
+  assert.match(
+    moduleMain,
+    /candidate_edge_contract_valid\s*=\s*\(\s*local[.]candidate_resource_contract_valid\s*&&\s*local[.]candidate_smoke_route_contract_valid\s*\)/u,
   );
   assert.equal(
     (
@@ -1024,6 +1089,22 @@ test('Production Edge defaults disabled and supports only governed explicit Cand
   const moduleCandidateTag = variableBlock(
     moduleVariables,
     'candidate_api_tag',
+  );
+  const moduleCandidateSmokeRoute = variableBlock(
+    moduleVariables,
+    'candidate_smoke_route_enabled',
+  );
+  assert.equal(
+    assignmentExpression(moduleCandidateSmokeRoute, 'type'),
+    'bool',
+  );
+  assert.equal(
+    assignmentExpression(moduleCandidateSmokeRoute, 'default'),
+    'null',
+  );
+  assert.equal(
+    assignmentExpression(moduleCandidateSmokeRoute, 'nullable'),
+    'true',
   );
   assert.deepEqual(validationPatterns(moduleCandidateTag), [
     '^candidate-[a-f0-9]{12}(-r[1-9][0-9]{0,14})?$',
@@ -1075,6 +1156,10 @@ test('Production Edge defaults disabled and supports only governed explicit Cand
     'google_compute_security_policy.edge.self_link',
   );
   assert.equal(
+    assignmentExpression(candidateBackend, 'count'),
+    'var.candidate_edge_enabled ? 1 : 0',
+  );
+  assert.equal(
     assignmentExpression(candidateBackend, 'name'),
     '"${local.name_prefix}-api-candidate-backend"',
   );
@@ -1102,11 +1187,29 @@ test('Production Edge defaults disabled and supports only governed explicit Cand
   const urlMap = resourceBlock(moduleMain, 'google_compute_url_map', 'edge');
   assert.match(
     urlMap,
-    /for_each\s*=\s*var[.]candidate_edge_enabled\s*\?\s*\[local[.]candidate_smoke_public_path\]\s*:\s*\[\]/u,
+    /for_each\s*=\s*local[.]candidate_smoke_route_render_enabled\s*\?\s*\[local[.]candidate_smoke_public_path\]\s*:\s*\[\]/u,
   );
   assert.match(
     urlMap,
     /paths\s*=\s*\[path_rule[.]value\][\s\S]*?service\s*=\s*google_compute_backend_service[.]api_candidate\[0\][.]id[\s\S]*?path_prefix_rewrite\s*=\s*local[.]candidate_smoke_backend_path/u,
+  );
+  const candidateSmokePublicPathOutput = extractBlock(
+    moduleOutputs,
+    /^output\s+"candidate_smoke_public_path"\s*\{/mu,
+    'candidate_smoke_public_path output',
+  );
+  const candidateSmokeBackendPathOutput = extractBlock(
+    moduleOutputs,
+    /^output\s+"candidate_smoke_backend_path"\s*\{/mu,
+    'candidate_smoke_backend_path output',
+  );
+  assert.equal(
+    assignmentExpression(candidateSmokePublicPathOutput, 'value'),
+    'local.candidate_smoke_route_render_enabled ? local.candidate_smoke_public_path : null',
+  );
+  assert.equal(
+    assignmentExpression(candidateSmokeBackendPathOutput, 'value'),
+    'local.candidate_smoke_route_render_enabled ? local.candidate_smoke_backend_path : null',
   );
   assert.equal(
     (moduleMain.match(/^resource\s+"google_compute_global_address"/gmu) ?? [])

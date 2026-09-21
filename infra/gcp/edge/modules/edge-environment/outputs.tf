@@ -60,11 +60,11 @@ output "candidate_backend_service_name" {
 }
 
 output "candidate_smoke_public_path" {
-  description = "Exact existing-hostname path routed only to the candidate backend when enabled."
-  value       = var.candidate_edge_enabled ? local.candidate_smoke_public_path : null
+  description = "Exact existing-hostname path routed only to the candidate backend when the smoke route is rendered."
+  value       = local.candidate_smoke_route_render_enabled ? local.candidate_smoke_public_path : null
 }
 
 output "candidate_smoke_backend_path" {
-  description = "Existing protected application path used by candidate smoke verification."
-  value       = var.candidate_edge_enabled ? local.candidate_smoke_backend_path : null
+  description = "Existing protected application path used when the candidate smoke route is rendered."
+  value       = local.candidate_smoke_route_render_enabled ? local.candidate_smoke_backend_path : null
 }
