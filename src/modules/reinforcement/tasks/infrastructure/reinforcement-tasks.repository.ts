@@ -6,9 +6,12 @@ import {
   ReinforcementTaskStatus,
   StudentEnrollmentStatus,
   StudentStatus,
+  UserType,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import { TeacherAllocationOperationalWriteGate } from '../../../academics/teacher-allocation/application/teacher-allocation-operational-write-gate';
+import { isTeacherAuthoredReinforcementTaskInAllocationScope } from '../domain/reinforcement-task-allocation-scope';
+import { ReinforcementTaskInvalidScopeException } from '../domain/reinforcement-task-domain';
 import { NormalizedReinforcementStage } from '../domain/reinforcement-task-domain';
 
 const TARGET_SELECT = {
@@ -570,6 +573,8 @@ export class ReinforcementTasksRepository {
           schoolId: input.schoolId,
           ...input.operationalWriteGate,
         });
+      } else {
+        await this.coordinateCoreTeacherTaskWithAllocations(tx, input);
       }
 
       const task = await tx.reinforcementTask.create({
@@ -587,6 +592,114 @@ export class ReinforcementTasksRepository {
 
       return this.findTaskInTransaction(tx, input.schoolId, task.id);
     });
+  }
+
+  private async coordinateCoreTeacherTaskWithAllocations(
+    tx: Prisma.TransactionClient,
+    input: CreateTaskWithChildrenInput,
+  ): Promise<void> {
+    if (input.task.source !== ReinforcementSource.TEACHER) return;
+
+    const responsibilityCandidateIds = [
+      input.task.assignedById,
+      input.task.createdById,
+    ].filter((id): id is string => typeof id === 'string');
+    const candidateIds = [...new Set(responsibilityCandidateIds)];
+    if (candidateIds.length === 0) return;
+
+    const enrollmentIds = [
+      ...new Set(input.assignments.map(({ enrollmentId }) => enrollmentId)),
+    ];
+    const activeEnrollments = await tx.enrollment.findMany({
+      where: {
+        id: { in: enrollmentIds },
+        schoolId: input.schoolId,
+        academicYearId: input.task.academicYearId,
+        termId: input.task.termId,
+        status: StudentEnrollmentStatus.ACTIVE,
+        deletedAt: null,
+        student: {
+          is: {
+            status: StudentStatus.ACTIVE,
+            deletedAt: null,
+          },
+        },
+      },
+      select: {
+        academicYearId: true,
+        termId: true,
+        classroomId: true,
+        status: true,
+        deletedAt: true,
+        student: {
+          select: {
+            status: true,
+            deletedAt: true,
+          },
+        },
+      },
+    });
+    if (activeEnrollments.length === 0) return;
+
+    const classroomIds = [
+      ...new Set(activeEnrollments.map(({ classroomId }) => classroomId)),
+    ];
+    const allocations = await tx.teacherSubjectAllocation.findMany({
+      where: {
+        schoolId: input.schoolId,
+        termId: input.task.termId,
+        classroomId: { in: classroomIds },
+        teacherUserId: { in: candidateIds },
+        ...(input.task.subjectId ? { subjectId: input.task.subjectId } : {}),
+      },
+      orderBy: { id: 'asc' },
+      select: { id: true },
+    });
+    if (allocations.length === 0) {
+      const teacherUsers = await tx.user.findMany({
+        where: {
+          id: { in: candidateIds },
+          userType: UserType.TEACHER,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      if (teacherUsers.length > 0) {
+        throw new ReinforcementTaskInvalidScopeException();
+      }
+      return;
+    }
+
+    const lockedAllocations = await this.teacherAllocationWriteGate.lock(tx, {
+      schoolId: input.schoolId,
+      allocationIds: allocations.map(({ id }) => id),
+    });
+    const taskScopeCandidate = {
+      academicYearId: input.task.academicYearId,
+      termId: input.task.termId,
+      subjectId: input.task.subjectId ?? null,
+      assignedById: input.task.assignedById ?? null,
+      createdById: input.task.createdById ?? null,
+      assignments: activeEnrollments.map((enrollment) => ({ enrollment })),
+    };
+
+    if (
+      lockedAllocations.some(
+        (allocation) =>
+          !isTeacherAuthoredReinforcementTaskInAllocationScope({
+            task: taskScopeCandidate,
+            scope: {
+              academicYearId: input.task.academicYearId,
+              termId: allocation.termId,
+              subjectId: allocation.subjectId,
+              classroomId: allocation.classroomId,
+            },
+            teacherUserId: allocation.teacherUserId,
+          }),
+      )
+    ) {
+      throw new ReinforcementTaskInvalidScopeException();
+    }
   }
 
   async duplicateTaskWithTargetsStagesAssignments(
