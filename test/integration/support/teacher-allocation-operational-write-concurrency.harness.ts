@@ -272,7 +272,20 @@ async function run(): Promise<void> {
       roleId: teacherRoleId,
       userType: UserType.TEACHER,
     });
-    for (const teacher of [sourceTeacher, targetTeacher]) {
+    const nonOperationalTeacher = await createIdentity({
+      prisma: fixturePrisma,
+      marker,
+      label: 'non-operational',
+      organizationId,
+      schoolId,
+      roleId: teacherRoleId,
+      userType: UserType.TEACHER,
+    });
+    for (const teacher of [
+      sourceTeacher,
+      targetTeacher,
+      nonOperationalTeacher,
+    ]) {
       await fixturePrisma.teacherProfile.create({
         data: {
           schoolId,
@@ -292,7 +305,7 @@ async function run(): Promise<void> {
     currentStage = 'fixture-academics';
     const academic = await createAcademicBase(fixturePrisma, schoolId, marker);
     const allocations: AllocationFixture[] = [];
-    for (let index = 0; index < 17; index += 1) {
+    for (let index = 0; index < 20; index += 1) {
       allocations.push(
         await createAllocationFixture({
           prisma: fixturePrisma,
@@ -301,7 +314,11 @@ async function run(): Promise<void> {
           schoolId,
           academic,
           teacherUserId:
-            index === 11 || index === 13 ? targetTeacher.id : sourceTeacher.id,
+            index >= 17
+              ? nonOperationalTeacher.id
+              : index === 11 || index === 13
+                ? targetTeacher.id
+                : sourceTeacher.id,
           actorId: admin.id,
         }),
       );
@@ -319,6 +336,9 @@ async function run(): Promise<void> {
         allocations[14],
         allocations[15],
         allocations[16],
+        allocations[17],
+        allocations[18],
+        allocations[19],
       ].map((allocation, index) =>
         createStudentEnrollment({
           prisma: fixturePrisma,
@@ -562,7 +582,6 @@ async function run(): Promise<void> {
       targetTeacherUserId: targetTeacher.id,
     });
     console.log('CORE_REINFORCEMENT_REASSIGNMENT_FIRST=PASS');
-    console.log('CORE_MULTI_CONNECTION_INTERLEAVING=PASS');
 
     const corePostReassignment = coreTaskScenario({
       useCase: createReinforcementTask,
@@ -587,6 +606,92 @@ async function run(): Promise<void> {
     assertReinforcementInvalidScope(postReassignmentCreate.reason);
     assert.equal(await corePostReassignment.count(), 0);
     console.log('CORE_REINFORCEMENT_POST_REASSIGN_OLD_OWNER_REJECTED=PASS');
+
+    currentStage = 'fixture-non-operational-teacher';
+    await Promise.all([
+      fixturePrisma.user.update({
+        where: { id: nonOperationalTeacher.id },
+        data: { status: UserStatus.DISABLED },
+      }),
+      fixturePrisma.membership.update({
+        where: { id: nonOperationalTeacher.membershipId },
+        data: { status: MembershipStatus.SUSPENDED, endedAt: null },
+      }),
+      fixturePrisma.teacherProfile.updateMany({
+        where: { schoolId, userId: nonOperationalTeacher.id },
+        data: { employmentStatus: TeacherEmploymentStatus.INACTIVE },
+      }),
+    ]);
+
+    const suspendedCoreWriterFirst = coreTaskScenario({
+      useCase: createReinforcementTask,
+      prisma: fixturePrisma,
+      scope,
+      identity: admin,
+      sourceTeacherUserId: nonOperationalTeacher.id,
+      schoolId,
+      academic,
+      allocation: allocations[17],
+      enrollment: taskEnrollments[5],
+      marker: `${marker}-core-suspended-writer`,
+    });
+    currentStage = 'race-suspended-core-reinforcement-writer-first';
+    await proveWriterFirst({
+      scenario: suspendedCoreWriterFirst,
+      coordinator,
+      preview,
+      reassign,
+      prisma: fixturePrisma,
+      sourceTeacherUserId: nonOperationalTeacher.id,
+    });
+    console.log('SUSPENDED_TEACHER_CORE_WRITER_FIRST=PASS');
+
+    const suspendedCoreReassignmentFirst = coreTaskScenario({
+      useCase: createReinforcementTask,
+      prisma: fixturePrisma,
+      scope,
+      identity: admin,
+      sourceTeacherUserId: nonOperationalTeacher.id,
+      schoolId,
+      academic,
+      allocation: allocations[18],
+      enrollment: taskEnrollments[6],
+      marker: `${marker}-core-suspended-reassignment`,
+    });
+    currentStage = 'race-suspended-core-reinforcement-reassignment-first';
+    await proveReassignmentFirst({
+      scenario: suspendedCoreReassignmentFirst,
+      coordinator,
+      preview,
+      reassign,
+      prisma: fixturePrisma,
+      targetTeacherUserId: targetTeacher.id,
+    });
+    console.log('SUSPENDED_TEACHER_CORE_REASSIGNMENT_FIRST=PASS');
+
+    const suspendedCorePostReassignment = coreTaskScenario({
+      useCase: createReinforcementTask,
+      prisma: fixturePrisma,
+      scope,
+      identity: admin,
+      sourceTeacherUserId: nonOperationalTeacher.id,
+      schoolId,
+      academic,
+      allocation: allocations[19],
+      enrollment: taskEnrollments[7],
+      marker: `${marker}-core-suspended-post-reassignment`,
+    });
+    currentStage = 'suspended-core-post-reassignment-old-owner';
+    const suspendedPostPreview = await preview(allocations[19].id);
+    await reassign(allocations[19].id, suspendedPostPreview.impactFingerprint);
+    const suspendedPostCreate = await settle(
+      suspendedCorePostReassignment.write(),
+    );
+    assert.equal(suspendedPostCreate.status, 'rejected');
+    assertReinforcementInvalidScope(suspendedPostCreate.reason);
+    assert.equal(await suspendedCorePostReassignment.count(), 0);
+    console.log('SUSPENDED_TEACHER_POST_REASSIGN_OLD_OWNER_REJECTED=PASS');
+    console.log('CORE_MULTI_CONNECTION_INTERLEAVING=PASS');
 
     currentStage = 'race-announcement-writer-first';
     await proveWriterFirst({

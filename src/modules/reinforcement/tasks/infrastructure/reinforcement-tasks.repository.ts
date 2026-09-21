@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import {
-  MembershipStatus,
   Prisma,
   ReinforcementSource,
   ReinforcementTargetScope,
@@ -608,25 +607,6 @@ export class ReinforcementTasksRepository {
     const candidateIds = [...new Set(responsibilityCandidateIds)];
     if (candidateIds.length === 0) return;
 
-    const teacherUsers = await tx.user.findMany({
-      where: {
-        id: { in: candidateIds },
-        userType: UserType.TEACHER,
-        deletedAt: null,
-        memberships: {
-          some: {
-            userType: UserType.TEACHER,
-            status: MembershipStatus.ACTIVE,
-            endedAt: null,
-            deletedAt: null,
-          },
-        },
-      },
-      select: { id: true },
-    });
-    const teacherUserIds = teacherUsers.map(({ id }) => id);
-    if (teacherUserIds.length === 0) return;
-
     const enrollmentIds = [
       ...new Set(input.assignments.map(({ enrollmentId }) => enrollmentId)),
     ];
@@ -669,14 +649,25 @@ export class ReinforcementTasksRepository {
         schoolId: input.schoolId,
         termId: input.task.termId,
         classroomId: { in: classroomIds },
-        teacherUserId: { in: teacherUserIds },
+        teacherUserId: { in: candidateIds },
         ...(input.task.subjectId ? { subjectId: input.task.subjectId } : {}),
       },
       orderBy: { id: 'asc' },
       select: { id: true },
     });
     if (allocations.length === 0) {
-      throw new ReinforcementTaskInvalidScopeException();
+      const teacherUsers = await tx.user.findMany({
+        where: {
+          id: { in: candidateIds },
+          userType: UserType.TEACHER,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      if (teacherUsers.length > 0) {
+        throw new ReinforcementTaskInvalidScopeException();
+      }
+      return;
     }
 
     const lockedAllocations = await this.teacherAllocationWriteGate.lock(tx, {

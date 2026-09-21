@@ -16,6 +16,7 @@ import {
   SchoolStatus,
   StudentEnrollmentStatus,
   StudentStatus,
+  TeacherEmploymentStatus,
   UserStatus,
   UserType,
   XpSourceType,
@@ -98,9 +99,11 @@ describe('Reinforcement tenancy isolation (security)', () => {
   let templateViewerEmail: string;
   let xpViewerEmail: string;
   let teacherEmail: string;
-  let teacherUserId: string;
   let replacementTeacherUserId: string;
+  let nonOperationalTeacherUserId: string;
+  let foreignTeacherUserId: string;
   let demoTeacherAllocationId: string;
+  let foreignTeacherAllocationId: string;
   let parentEmail: string;
   let studentEmail: string;
 
@@ -296,7 +299,7 @@ describe('Reinforcement tenancy isolation (security)', () => {
       UserType.SCHOOL_USER,
       xpViewerRoleId,
     );
-    teacherUserId = await createUserWithMembership(
+    await createUserWithMembership(
       teacherEmail,
       UserType.TEACHER,
       teacherRole.id,
@@ -306,6 +309,26 @@ describe('Reinforcement tenancy isolation (security)', () => {
       UserType.TEACHER,
       teacherRole.id,
     );
+    nonOperationalTeacherUserId = await createUserWithMembership(
+      `${testSuffix}-non-operational-teacher@security.moazez.local`,
+      UserType.TEACHER,
+      teacherRole.id,
+    );
+    await prisma.teacherProfile.create({
+      data: {
+        schoolId: demoSchoolId,
+        userId: nonOperationalTeacherUserId,
+        employmentStatus: TeacherEmploymentStatus.INACTIVE,
+      },
+    });
+    await prisma.user.update({
+      where: { id: nonOperationalTeacherUserId },
+      data: { status: UserStatus.DISABLED },
+    });
+    await prisma.membership.updateMany({
+      where: { userId: nonOperationalTeacherUserId },
+      data: { status: MembershipStatus.SUSPENDED, endedAt: null },
+    });
     await createUserWithMembership(parentEmail, UserType.PARENT, parentRole.id);
     await createUserWithMembership(studentEmail, UserType.STUDENT, studentRole.id);
 
@@ -338,6 +361,15 @@ describe('Reinforcement tenancy isolation (security)', () => {
     });
     tenantBSchoolId = schoolB.id;
     await cleanupReinforcementTenantSchool(tenantBSchoolId);
+    foreignTeacherUserId = await createUserWithMembership(
+      `${testSuffix}-foreign-teacher@security.moazez.local`,
+      UserType.TEACHER,
+      teacherRole.id,
+      {
+        organizationId: tenantBOrganizationId,
+        schoolId: tenantBSchoolId,
+      },
+    );
 
     const demo = await createAcademicFixture('a', demoSchoolId, demoOrganizationId);
     demoYearId = demo.yearId;
@@ -367,10 +399,23 @@ describe('Reinforcement tenancy isolation (security)', () => {
     tenantBStudentId = tenantB.studentId;
     tenantBEnrollmentId = tenantB.enrollmentId;
 
+    const foreignTeacherAllocation =
+      await prisma.teacherSubjectAllocation.create({
+        data: {
+          schoolId: tenantBSchoolId,
+          teacherUserId: foreignTeacherUserId,
+          subjectId: tenantBSubjectId,
+          classroomId: tenantBClassroomId,
+          termId: tenantBTermId,
+        },
+        select: { id: true },
+      });
+    foreignTeacherAllocationId = foreignTeacherAllocation.id;
+
     const demoTeacherAllocation = await prisma.teacherSubjectAllocation.create({
       data: {
         schoolId: demoSchoolId,
-        teacherUserId,
+        teacherUserId: nonOperationalTeacherUserId,
         subjectId: demoSubjectId,
         classroomId: demoClassroomId,
         termId: demoTermId,
@@ -614,7 +659,13 @@ describe('Reinforcement tenancy isolation (security)', () => {
         where: { id: { in: createdXpPolicyIds } },
       });
       await prisma.teacherSubjectAllocation.deleteMany({
-        where: { id: demoTeacherAllocationId },
+        where: {
+          id: {
+            in: [demoTeacherAllocationId, foreignTeacherAllocationId].filter(
+              Boolean,
+            ),
+          },
+        },
       });
       await prisma.enrollment.deleteMany({
         where: {
@@ -659,6 +710,9 @@ describe('Reinforcement tenancy isolation (security)', () => {
       });
       await prisma.file.deleteMany({
         where: { id: { in: createdFileIds } },
+      });
+      await prisma.teacherProfile.deleteMany({
+        where: { userId: { in: createdUserIds } },
       });
       await prisma.membership.deleteMany({
         where: { userId: { in: createdUserIds } },
@@ -1048,7 +1102,7 @@ describe('Reinforcement tenancy isolation (security)', () => {
     expect(cancelResponse.body.status).toBe('cancelled');
   });
 
-  it('rejects an old Teacher owner through the management task route after allocation movement', async () => {
+  it('rejects an old non-operational Teacher owner through the management task route after allocation movement', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL);
     const titleEn = `${testSuffix}-old-allocation-owner`;
     await prisma.teacherSubjectAllocation.update({
@@ -1059,7 +1113,12 @@ describe('Reinforcement tenancy isolation (security)', () => {
     const response = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/reinforcement/tasks`)
       .set('Authorization', `Bearer ${accessToken}`)
-      .send(taskPayload({ titleEn, assignedById: teacherUserId }))
+      .send(
+        taskPayload({
+          titleEn,
+          assignedById: nonOperationalTeacherUserId,
+        }),
+      )
       .expect(422);
 
     const responseBody = response.body as { error?: { code?: string } };
@@ -1069,6 +1128,42 @@ describe('Reinforcement tenancy isolation (security)', () => {
         where: { schoolId: demoSchoolId, titleEn },
       }),
     ).resolves.toBe(0);
+  });
+
+  it('rejects foreign Teacher allocation ownership without cross-school leakage', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+    const titleEn = `${testSuffix}-foreign-allocation-owner`;
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/tasks`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(taskPayload({ titleEn, assignedById: foreignTeacherUserId }))
+      .expect(422);
+
+    const responseBody = response.body as { error?: { code?: string } };
+    expect(responseBody.error?.code).toBe('reinforcement.task.invalid_scope');
+    await expect(
+      prisma.reinforcementTask.count({
+        where: { schoolId: demoSchoolId, titleEn },
+      }),
+    ).resolves.toBe(0);
+  });
+
+  it('rejects client-controlled allocation coordination fields', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/tasks`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        ...taskPayload({ titleEn: `${testSuffix}-client-gate` }),
+        allocationId: demoTeacherAllocationId,
+        operationalWriteGate: {
+          allocationIds: [demoTeacherAllocationId],
+          expectedTeacherUserId: nonOperationalTeacherUserId,
+        },
+      })
+      .expect(400);
   });
 
   it('teacher cannot use core task management routes', async () => {
@@ -1907,6 +2002,13 @@ describe('Reinforcement tenancy isolation (security)', () => {
     email: string,
     userType: UserType,
     roleId: string,
+    tenant: {
+      organizationId: string;
+      schoolId: string;
+    } = {
+      organizationId: demoOrganizationId,
+      schoolId: demoSchoolId,
+    },
   ): Promise<string> {
     const user = await prisma.user.create({
       data: {
@@ -1924,8 +2026,8 @@ describe('Reinforcement tenancy isolation (security)', () => {
     await prisma.membership.create({
       data: {
         userId: user.id,
-        organizationId: demoOrganizationId,
-        schoolId: demoSchoolId,
+        organizationId: tenant.organizationId,
+        schoolId: tenant.schoolId,
         roleId,
         userType,
         status: MembershipStatus.ACTIVE,

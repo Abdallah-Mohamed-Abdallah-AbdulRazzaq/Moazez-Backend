@@ -7,6 +7,7 @@ import {
   ReinforcementTaskStatus,
   StudentEnrollmentStatus,
   StudentStatus,
+  UserType,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import {
@@ -29,8 +30,8 @@ const CLASSROOM_A = 'classroom-a';
 const CLASSROOM_B = 'classroom-b';
 
 describe('Core Reinforcement allocation write coordination', () => {
-  it('automatically gates the exact subject allocation before inserting', async () => {
-    const harness = repositoryHarness();
+  it('gates a current allocation for a suspended or disabled Teacher without lifecycle lookup', async () => {
+    const harness = repositoryHarness({ teacherIdentityIds: [] });
 
     await harness.repository.createTaskWithTargetsStagesAssignments(
       baseInput(),
@@ -45,7 +46,7 @@ describe('Core Reinforcement allocation write coordination', () => {
           termId: TERM_ID,
           classroomId: { in: [CLASSROOM_A] },
           subjectId: SUBJECT_ID,
-          teacherUserId: { in: [TEACHER_ID] },
+          teacherUserId: { in: [TEACHER_ID, MANAGEMENT_ID] },
         }),
       }),
     );
@@ -53,6 +54,7 @@ describe('Core Reinforcement allocation write coordination', () => {
       schoolId: SCHOOL_ID,
       allocationIds: ['allocation-a'],
     });
+    expect(harness.transaction.user.findMany).not.toHaveBeenCalled();
     expect(harness.transaction.reinforcementTask.create).toHaveBeenCalledTimes(
       1,
     );
@@ -122,28 +124,46 @@ describe('Core Reinforcement allocation write coordination', () => {
     });
   });
 
-  it('rejects an actual Teacher responsibility with no current matching allocation before insert', async () => {
+  it('rejects a non-active Teacher identity with no current matching allocation before insert', async () => {
     const harness = repositoryHarness({ allocationIds: [] });
 
     await expect(
       harness.repository.createTaskWithTargetsStagesAssignments(baseInput()),
     ).rejects.toBeInstanceOf(ReinforcementTaskInvalidScopeException);
 
+    expect(
+      harness.transaction.teacherSubjectAllocation.findMany.mock
+        .invocationCallOrder[0],
+    ).toBeLessThan(
+      harness.transaction.user.findMany.mock.invocationCallOrder[0],
+    );
+    expect(harness.transaction.user.findMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: [TEACHER_ID, MANAGEMENT_ID] },
+        userType: UserType.TEACHER,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
     expect(harness.gate.lock).not.toHaveBeenCalled();
     expect(harness.transaction.reinforcementTask.create).not.toHaveBeenCalled();
   });
 
   it('preserves management-owned source=TEACHER creation without a false allocation requirement', async () => {
-    const harness = repositoryHarness({ teacherUserIds: [] });
+    const harness = repositoryHarness({
+      teacherIdentityIds: [],
+      allocationIds: [],
+    });
 
     await harness.repository.createTaskWithTargetsStagesAssignments(
       baseInput({ assignedById: MANAGEMENT_ID, createdById: MANAGEMENT_ID }),
     );
 
-    expect(harness.transaction.enrollment.findMany).not.toHaveBeenCalled();
+    expect(harness.transaction.enrollment.findMany).toHaveBeenCalledTimes(1);
     expect(
       harness.transaction.teacherSubjectAllocation.findMany,
-    ).not.toHaveBeenCalled();
+    ).toHaveBeenCalledTimes(1);
+    expect(harness.transaction.user.findMany).toHaveBeenCalledTimes(1);
     expect(harness.gate.lock).not.toHaveBeenCalled();
     expect(harness.transaction.reinforcementTask.create).toHaveBeenCalledTimes(
       1,
@@ -186,6 +206,7 @@ describe('Core Reinforcement allocation write coordination', () => {
     ).rejects.toBeInstanceOf(ReinforcementTaskInvalidScopeException);
 
     expect(harness.gate.lock).toHaveBeenCalledTimes(1);
+    expect(harness.transaction.user.findMany).not.toHaveBeenCalled();
     expect(harness.transaction.reinforcementTask.create).not.toHaveBeenCalled();
   });
 
@@ -216,12 +237,12 @@ describe('Core Reinforcement allocation write coordination', () => {
 });
 
 function repositoryHarness(options?: {
-  teacherUserIds?: string[];
+  teacherIdentityIds?: string[];
   enrollments?: ReturnType<typeof activeEnrollment>[];
   allocationIds?: string[];
   lockedAllocations?: LockedTeacherAllocation[];
 }) {
-  const teacherUserIds = options?.teacherUserIds ?? [TEACHER_ID];
+  const teacherIdentityIds = options?.teacherIdentityIds ?? [TEACHER_ID];
   const enrollments = options?.enrollments ?? [
     activeEnrollment('enrollment-a', CLASSROOM_A),
   ];
@@ -233,7 +254,7 @@ function repositoryHarness(options?: {
     user: {
       findMany: jest
         .fn()
-        .mockResolvedValue(teacherUserIds.map((id) => ({ id }))),
+        .mockResolvedValue(teacherIdentityIds.map((id) => ({ id }))),
     },
     enrollment: { findMany: jest.fn().mockResolvedValue(enrollments) },
     teacherSubjectAllocation: {

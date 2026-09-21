@@ -60,6 +60,11 @@ describe('teacher allocation operational write concurrency', () => {
     expect(stdout).toContain(
       'CORE_REINFORCEMENT_POST_REASSIGN_OLD_OWNER_REJECTED=PASS',
     );
+    expect(stdout).toContain('SUSPENDED_TEACHER_CORE_WRITER_FIRST=PASS');
+    expect(stdout).toContain('SUSPENDED_TEACHER_CORE_REASSIGNMENT_FIRST=PASS');
+    expect(stdout).toContain(
+      'SUSPENDED_TEACHER_POST_REASSIGN_OLD_OWNER_REJECTED=PASS',
+    );
     expect(stdout).toContain('ACTIVE_REINFORCEMENT_ORPHAN_COUNT=0');
     expect(stdout).toContain('CORE_MULTI_CONNECTION_INTERLEAVING=PASS');
   });
