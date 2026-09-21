@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import {
   HomeworkAssignmentMode,
   HomeworkAssignmentStatus,
-  HomeworkQuestionType,
   HomeworkSubmissionStatus,
   HomeworkTargetStatus,
   Prisma,
@@ -13,6 +12,7 @@ import {
   TimetablePublicationStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
+import { TeacherAllocationOperationalWriteGate } from '../../academics/teacher-allocation/application/teacher-allocation-operational-write-gate';
 
 const REVIEWABLE_SUBMISSION_STATUSES: HomeworkSubmissionStatus[] = [
   HomeworkSubmissionStatus.SUBMITTED,
@@ -594,6 +594,11 @@ export type CreateHomeworkAssignmentData =
   Prisma.HomeworkAssignmentUncheckedCreateInput;
 export type UpdateHomeworkAssignmentData =
   Prisma.HomeworkAssignmentUncheckedUpdateInput;
+export interface HomeworkAllocationWriteContext {
+  schoolId: string;
+  allocationId: string;
+  expectedTeacherUserId?: string;
+}
 export type CreateHomeworkTargetData =
   Prisma.HomeworkTargetUncheckedCreateInput;
 export type CreateHomeworkQuestionData =
@@ -633,7 +638,10 @@ export type ReviewHomeworkSubmissionAnswersResult =
 
 @Injectable()
 export class HomeworkRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly teacherAllocationWriteGate: TeacherAllocationOperationalWriteGate,
+  ) {}
 
   private get scopedPrisma(): PrismaService {
     return this.prisma.scoped as unknown as PrismaService;
@@ -678,19 +686,29 @@ export class HomeworkRepository {
   async createAssignmentWithTargets(
     data: CreateHomeworkAssignmentData,
     targets: CreateHomeworkTargetData[],
+    writeContext: HomeworkAllocationWriteContext,
   ): Promise<HomeworkAssignmentWithCounters> {
-    await this.scopedPrisma.$transaction([
-      this.scopedPrisma.homeworkAssignment.create({
-        data,
-      }),
-      ...(targets.length > 0
-        ? [
-            this.scopedPrisma.homeworkTarget.createMany({
-              data: targets,
-            }),
-          ]
-        : []),
-    ]);
+    await this.prisma.$transaction(async (tx) => {
+      const [allocation] = await this.teacherAllocationWriteGate.lock(tx, {
+        schoolId: writeContext.schoolId,
+        allocationIds: [writeContext.allocationId],
+        expectedTeacherUserId: writeContext.expectedTeacherUserId,
+      });
+
+      await tx.homeworkAssignment.create({
+        data: {
+          ...data,
+          termId: allocation.termId,
+          teacherSubjectAllocationId: allocation.id,
+          teacherUserId: allocation.teacherUserId,
+          classroomId: allocation.classroomId,
+          subjectId: allocation.subjectId,
+        },
+      });
+      if (targets.length > 0) {
+        await tx.homeworkTarget.createMany({ data: targets });
+      }
+    });
 
     return this.findMutationResult(String(data.id));
   }
@@ -699,23 +717,57 @@ export class HomeworkRepository {
     homeworkId: string,
     data: UpdateHomeworkAssignmentData,
     targets: CreateHomeworkTargetData[],
+    writeContext: HomeworkAllocationWriteContext,
   ): Promise<HomeworkAssignmentWithCounters> {
-    await this.scopedPrisma.$transaction([
-      this.scopedPrisma.homeworkTarget.deleteMany({
-        where: { homeworkAssignmentId: homeworkId },
-      }),
-      this.scopedPrisma.homeworkAssignment.updateMany({
-        where: { id: homeworkId, deletedAt: null },
-        data: data as Prisma.HomeworkAssignmentUncheckedUpdateManyInput,
-      }),
-      ...(targets.length > 0
-        ? [
-            this.scopedPrisma.homeworkTarget.createMany({
-              data: targets,
-            }),
-          ]
-        : []),
-    ]);
+    await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.homeworkAssignment.findFirst({
+        where: {
+          id: homeworkId,
+          schoolId: writeContext.schoolId,
+          deletedAt: null,
+        },
+        select: { teacherSubjectAllocationId: true },
+      });
+      const allocations = await this.teacherAllocationWriteGate.lock(tx, {
+        schoolId: writeContext.schoolId,
+        allocationIds: [
+          ...(existing ? [existing.teacherSubjectAllocationId] : []),
+          writeContext.allocationId,
+        ],
+        expectedTeacherUserId: writeContext.expectedTeacherUserId,
+      });
+      const allocation = allocations.find(
+        (candidate) => candidate.id === writeContext.allocationId,
+      );
+      if (!allocation) {
+        throw new Error('Homework target allocation was not locked');
+      }
+
+      await tx.homeworkTarget.deleteMany({
+        where: {
+          schoolId: writeContext.schoolId,
+          homeworkAssignmentId: homeworkId,
+        },
+      });
+      await tx.homeworkAssignment.updateMany({
+        where: {
+          id: homeworkId,
+          schoolId: writeContext.schoolId,
+          deletedAt: null,
+        },
+        data: {
+          ...(data as Prisma.HomeworkAssignmentUncheckedUpdateManyInput),
+          termId: allocation.termId,
+          teacherSubjectAllocationId: allocation.id,
+          teacherUserId: allocation.teacherUserId,
+          classroomId: allocation.classroomId,
+          subjectId: allocation.subjectId,
+        },
+      });
+      if (targets.length > 0) {
+        await tx.homeworkTarget.createMany({ data: targets });
+      }
+    });
 
     return this.findMutationResult(homeworkId);
   }

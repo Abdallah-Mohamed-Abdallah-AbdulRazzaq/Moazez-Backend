@@ -7,8 +7,8 @@ import {
   StudentEnrollmentStatus,
   StudentStatus,
 } from '@prisma/client';
-import { withSoftDeleted } from '../../../../common/context/request-context';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import { TeacherAllocationOperationalWriteGate } from '../../../academics/teacher-allocation/application/teacher-allocation-operational-write-gate';
 import { NormalizedReinforcementStage } from '../domain/reinforcement-task-domain';
 
 const TARGET_SELECT = {
@@ -272,6 +272,10 @@ export interface CreateTaskWithChildrenInput {
   targets: NormalizedTargetForWrite[];
   stages: NormalizedReinforcementStage[];
   assignments: MaterializedAssignmentForWrite[];
+  operationalWriteGate?: {
+    allocationIds: readonly string[];
+    expectedTeacherUserId?: string;
+  };
 }
 
 export interface ListTasksFilters {
@@ -297,7 +301,10 @@ export interface ListTasksFilters {
 
 @Injectable()
 export class ReinforcementTasksRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly teacherAllocationWriteGate: TeacherAllocationOperationalWriteGate,
+  ) {}
 
   private get scopedPrisma(): PrismaService {
     return this.prisma.scoped as unknown as PrismaService;
@@ -318,7 +325,11 @@ export class ReinforcementTasksRepository {
 
     return Promise.all([
       this.scopedPrisma.academicYear.findMany({
-        orderBy: [{ isActive: 'desc' }, { startDate: 'desc' }, { nameEn: 'asc' }],
+        orderBy: [
+          { isActive: 'desc' },
+          { startDate: 'desc' },
+          { nameEn: 'asc' },
+        ],
         select: ACADEMIC_YEAR_SELECT,
       }),
       this.scopedPrisma.term.findMany({
@@ -554,6 +565,13 @@ export class ReinforcementTasksRepository {
     input: CreateTaskWithChildrenInput,
   ): Promise<ReinforcementTaskRecord> {
     return this.prisma.$transaction(async (tx) => {
+      if (input.operationalWriteGate) {
+        await this.teacherAllocationWriteGate.lock(tx, {
+          schoolId: input.schoolId,
+          ...input.operationalWriteGate,
+        });
+      }
+
       const task = await tx.reinforcementTask.create({
         data: {
           ...input.task,
@@ -582,7 +600,10 @@ export class ReinforcementTasksRepository {
     taskId: string;
     actorId: string;
     reason?: string | null;
-  }): Promise<{ task: ReinforcementTaskRecord; affectedAssignmentCount: number }> {
+  }): Promise<{
+    task: ReinforcementTaskRecord;
+    affectedAssignmentCount: number;
+  }> {
     return this.prisma.$transaction(async (tx) => {
       const cancelledAt = new Date();
       await tx.reinforcementTask.updateMany({
@@ -692,8 +713,8 @@ export class ReinforcementTasksRepository {
         data: input.assignments.map((assignment) => ({
           schoolId: input.schoolId,
           taskId: input.taskId,
-          academicYearId: input.task.academicYearId as string,
-          termId: input.task.termId as string,
+          academicYearId: input.task.academicYearId,
+          termId: input.task.termId,
           studentId: assignment.studentId,
           enrollmentId: assignment.enrollmentId,
           status: ReinforcementTaskStatus.NOT_COMPLETED,

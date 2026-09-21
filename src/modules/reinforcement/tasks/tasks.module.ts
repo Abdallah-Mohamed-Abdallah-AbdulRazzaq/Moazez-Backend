@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { TeacherAllocationModule } from '../../academics/teacher-allocation/teacher-allocation.module';
 import { AuthModule } from '../../iam/auth/auth.module';
 import { CancelReinforcementTaskUseCase } from './application/cancel-reinforcement-task.use-case';
 import { CreateReinforcementTaskUseCase } from './application/create-reinforcement-task.use-case';
@@ -10,7 +11,7 @@ import { ReinforcementTasksController } from './controller/reinforcement-tasks.c
 import { ReinforcementTasksRepository } from './infrastructure/reinforcement-tasks.repository';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, TeacherAllocationModule],
   controllers: [ReinforcementTasksController],
   providers: [
     ReinforcementTasksRepository,

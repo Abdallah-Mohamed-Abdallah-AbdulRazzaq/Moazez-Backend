@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../../iam/auth/auth.module';
+import { TeacherAllocationModule } from '../teacher-allocation/teacher-allocation.module';
 import {
   AutoPlanLessonPlanUseCase,
   GetLessonPlanSummaryUseCase,
@@ -28,7 +29,7 @@ import { LessonPlansController } from './controller/lesson-plans.controller';
 import { LessonPlansRepository } from './infrastructure/lesson-plans.repository';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, TeacherAllocationModule],
   controllers: [LessonPlansController],
   providers: [
     LessonPlansRepository,

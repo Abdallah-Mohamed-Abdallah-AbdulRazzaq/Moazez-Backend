@@ -1313,7 +1313,12 @@ function createPrismaBackedRepository(): {
   };
 
   return {
-    repository: new HomeworkRepository(prisma as any),
+    repository: new HomeworkRepository(
+      prisma as any,
+      {
+        lock: jest.fn(),
+      } as any,
+    ),
     prismaMocks,
     txMocks,
   };

@@ -108,7 +108,10 @@ export class CreateHomeworkAssignmentUseCase {
     private readonly authRepository: AuthRepository,
   ) {}
 
-  async execute(command: CreateHomeworkAssignmentDto) {
+  async execute(
+    command: CreateHomeworkAssignmentDto,
+    operationalWriteContext?: { expectedTeacherUserId: string },
+  ) {
     const scope = requireHomeworkScope();
     const context = await resolveHomeworkWriteContext(
       this.homeworkRepository,
@@ -138,7 +141,11 @@ export class CreateHomeworkAssignmentUseCase {
     });
 
     const assignment =
-      await this.homeworkRepository.createAssignmentWithTargets(data, targets);
+      await this.homeworkRepository.createAssignmentWithTargets(data, targets, {
+        schoolId: scope.schoolId,
+        allocationId: context.allocation.id,
+        expectedTeacherUserId: operationalWriteContext?.expectedTeacherUserId,
+      });
 
     await this.authRepository.createAuditLog(
       buildHomeworkAuditEntry({
@@ -159,7 +166,11 @@ export class UpdateHomeworkAssignmentUseCase {
     private readonly authRepository: AuthRepository,
   ) {}
 
-  async execute(homeworkId: string, command: UpdateHomeworkAssignmentDto) {
+  async execute(
+    homeworkId: string,
+    command: UpdateHomeworkAssignmentDto,
+    operationalWriteContext?: { expectedTeacherUserId: string },
+  ) {
     const scope = requireHomeworkScope();
     const assignment = await findAssignmentOrThrow(
       this.homeworkRepository,
@@ -193,6 +204,11 @@ export class UpdateHomeworkAssignmentUseCase {
       homeworkId,
       data,
       targets,
+      {
+        schoolId: scope.schoolId,
+        allocationId: context.allocation.id,
+        expectedTeacherUserId: operationalWriteContext?.expectedTeacherUserId,
+      },
     );
 
     await this.authRepository.createAuditLog(
@@ -961,7 +977,7 @@ function uniqueIds(ids: string[]): string[] {
 }
 
 function hasOwn<T extends object>(object: T, key: PropertyKey): boolean {
-  return Object.prototype.hasOwnProperty.call(object, key);
+  return Object.hasOwn(object, key);
 }
 
 function buildHomeworkAuditEntry(input: {

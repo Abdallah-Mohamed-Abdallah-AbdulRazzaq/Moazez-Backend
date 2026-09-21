@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { TeacherAllocationModule } from '../teacher-allocation/teacher-allocation.module';
 import { PrismaModule } from '../../../infrastructure/database/prisma.module';
 import { BulkSaveTimetableEntriesUseCase } from './application/bulk-save-timetable-entries.use-case';
 import { CheckTimetableConflictsUseCase } from './application/check-timetable-conflicts.use-case';
@@ -27,7 +28,7 @@ import { TimetableController } from './controller/timetable.controller';
 import { TimetableRepository } from './infrastructure/timetable.repository';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, TeacherAllocationModule],
   controllers: [TimetableController],
   providers: [
     TimetableRepository,

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { TeacherAllocationOperationalWriteGateError } from '../../../academics/teacher-allocation/application/teacher-allocation-operational-write-gate';
 import {
   CreateHomeworkAssignmentUseCase,
   CloseHomeworkAssignmentUseCase,
@@ -176,8 +177,11 @@ export class CreateTeacherHomeworkAssignmentUseCase {
     dto: TeacherHomeworkCreateDto,
   ): Promise<TeacherHomeworkAssignmentDto> {
     const context = await this.ownershipService.resolveOwnedClass(classId);
-    const created = await this.createHomeworkAssignmentUseCase.execute(
-      mapCreateCommand({ dto, allocation: context.allocation }),
+    const created = await translateAllocationGateFailure(() =>
+      this.createHomeworkAssignmentUseCase.execute(
+        mapCreateCommand({ dto, allocation: context.allocation }),
+        { expectedTeacherUserId: context.teacherUserId },
+      ),
     );
     this.ownershipService.assertAssignmentResponseBelongsToClass({
       assignment: created,
@@ -231,9 +235,12 @@ export class UpdateTeacherHomeworkAssignmentUseCase {
       classId,
       homeworkId,
     });
-    const updated = await this.updateHomeworkAssignmentUseCase.execute(
-      homeworkId,
-      mapUpdateCommand({ dto, allocation: context.allocation }),
+    const updated = await translateAllocationGateFailure(() =>
+      this.updateHomeworkAssignmentUseCase.execute(
+        homeworkId,
+        mapUpdateCommand({ dto, allocation: context.allocation }),
+        { expectedTeacherUserId: context.teacherUserId },
+      ),
     );
     this.ownershipService.assertAssignmentResponseBelongsToClass({
       assignment: updated,
@@ -986,5 +993,18 @@ function mapSubmissionStatusFilter(
         HomeworkSubmissionStatus.SUBMITTED,
         HomeworkSubmissionStatus.LATE,
       ];
+  }
+}
+
+async function translateAllocationGateFailure<T>(
+  operation: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof TeacherAllocationOperationalWriteGateError) {
+      throw new TeacherAppAllocationNotFoundException();
+    }
+    throw error;
   }
 }

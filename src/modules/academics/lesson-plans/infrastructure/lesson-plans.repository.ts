@@ -10,6 +10,7 @@ import {
 } from '@prisma/client';
 import { getRequestContext } from '../../../../common/context/request-context';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import { TeacherAllocationOperationalWriteGate } from '../../teacher-allocation/application/teacher-allocation-operational-write-gate';
 
 function dateToDateOnly(value: Date): string {
   return value.toISOString().slice(0, 10);
@@ -77,42 +78,41 @@ const CURRICULUM_SUMMARY_SELECT = {
   status: true,
 } satisfies Prisma.CurriculumSelect;
 
-const LESSON_PLAN_LIST_ARGS =
-  Prisma.validator<Prisma.LessonPlanDefaultArgs>()({
-    select: {
-      id: true,
-      schoolId: true,
-      academicYearId: true,
-      termId: true,
-      teacherSubjectAllocationId: true,
-      teacherUserId: true,
-      classroomId: true,
-      subjectId: true,
-      curriculumId: true,
-      title: true,
-      description: true,
-      status: true,
-      weekStartDate: true,
-      weekEndDate: true,
-      createdByUserId: true,
-      updatedByUserId: true,
-      activatedAt: true,
-      archivedAt: true,
-      deletedAt: true,
-      createdAt: true,
-      updatedAt: true,
-      academicYear: SUMMARY_NAME_ARGS,
-      term: TERM_SUMMARY_ARGS,
-      teacherUser: { select: TEACHER_SUMMARY_SELECT },
-      classroom: { select: CLASSROOM_SUMMARY_SELECT },
-      subject: { select: SUBJECT_SUMMARY_SELECT },
-      curriculum: { select: CURRICULUM_SUMMARY_SELECT },
-      items: {
-        where: { deletedAt: null },
-        select: { id: true },
-      },
+const LESSON_PLAN_LIST_ARGS = Prisma.validator<Prisma.LessonPlanDefaultArgs>()({
+  select: {
+    id: true,
+    schoolId: true,
+    academicYearId: true,
+    termId: true,
+    teacherSubjectAllocationId: true,
+    teacherUserId: true,
+    classroomId: true,
+    subjectId: true,
+    curriculumId: true,
+    title: true,
+    description: true,
+    status: true,
+    weekStartDate: true,
+    weekEndDate: true,
+    createdByUserId: true,
+    updatedByUserId: true,
+    activatedAt: true,
+    archivedAt: true,
+    deletedAt: true,
+    createdAt: true,
+    updatedAt: true,
+    academicYear: SUMMARY_NAME_ARGS,
+    term: TERM_SUMMARY_ARGS,
+    teacherUser: { select: TEACHER_SUMMARY_SELECT },
+    classroom: { select: CLASSROOM_SUMMARY_SELECT },
+    subject: { select: SUBJECT_SUMMARY_SELECT },
+    curriculum: { select: CURRICULUM_SUMMARY_SELECT },
+    items: {
+      where: { deletedAt: null },
+      select: { id: true },
     },
-  });
+  },
+});
 
 const LESSON_PLAN_ITEM_ARGS =
   Prisma.validator<Prisma.LessonPlanItemDefaultArgs>()({
@@ -411,7 +411,10 @@ export type SoftDeleteLessonPlanItemResult =
 
 @Injectable()
 export class LessonPlansRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly teacherAllocationWriteGate: TeacherAllocationOperationalWriteGate,
+  ) {}
 
   private get scopedPrisma(): PrismaService {
     return this.prisma.scoped as unknown as PrismaService;
@@ -438,7 +441,9 @@ export class LessonPlansRepository {
         ...(filters.teacherSubjectAllocationId
           ? { teacherSubjectAllocationId: filters.teacherSubjectAllocationId }
           : {}),
-        ...(filters.teacherUserId ? { teacherUserId: filters.teacherUserId } : {}),
+        ...(filters.teacherUserId
+          ? { teacherUserId: filters.teacherUserId }
+          : {}),
         ...(filters.classroomId ? { classroomId: filters.classroomId } : {}),
         ...(filters.subjectId ? { subjectId: filters.subjectId } : {}),
         ...(filters.curriculumId ? { curriculumId: filters.curriculumId } : {}),
@@ -460,7 +465,11 @@ export class LessonPlansRepository {
             }
           : {}),
       },
-      orderBy: [{ weekStartDate: 'desc' }, { createdAt: 'desc' }, { id: 'asc' }],
+      orderBy: [
+        { weekStartDate: 'desc' },
+        { createdAt: 'desc' },
+        { id: 'asc' },
+      ],
       ...LESSON_PLAN_LIST_ARGS,
     });
   }
@@ -546,12 +555,25 @@ export class LessonPlansRepository {
     });
   }
 
-  createPlan(
+  async createPlan(
     data: Prisma.LessonPlanUncheckedCreateInput,
   ): Promise<LessonPlanDetailRecord> {
-    return this.scopedPrisma.lessonPlan.create({
-      data,
-      ...LESSON_PLAN_DETAIL_ARGS,
+    return this.prisma.$transaction(async (tx) => {
+      const [allocation] = await this.teacherAllocationWriteGate.lock(tx, {
+        schoolId: data.schoolId,
+        allocationIds: [data.teacherSubjectAllocationId],
+      });
+
+      return tx.lessonPlan.create({
+        data: {
+          ...data,
+          termId: allocation.termId,
+          teacherUserId: allocation.teacherUserId,
+          classroomId: allocation.classroomId,
+          subjectId: allocation.subjectId,
+        },
+        ...LESSON_PLAN_DETAIL_ARGS,
+      });
     });
   }
 
@@ -869,6 +891,11 @@ export class LessonPlansRepository {
     const updatedItems: LessonPlanItemRecord[] = [];
 
     await this.prisma.$transaction(async (tx) => {
+      const [allocation] = await this.teacherAllocationWriteGate.lock(tx, {
+        schoolId: input.schoolId,
+        allocationIds: [input.allocation.id],
+      });
+
       for (const item of input.items) {
         let lessonPlan = await tx.lessonPlan.findFirst({
           where: {
@@ -885,11 +912,11 @@ export class LessonPlansRepository {
             data: {
               schoolId: input.schoolId,
               academicYearId: input.term.academicYearId,
-              termId: input.term.id,
+              termId: allocation.termId,
               teacherSubjectAllocationId: input.allocation.id,
-              teacherUserId: input.allocation.teacherUserId,
-              classroomId: input.allocation.classroomId,
-              subjectId: input.allocation.subjectId,
+              teacherUserId: allocation.teacherUserId,
+              classroomId: allocation.classroomId,
+              subjectId: allocation.subjectId,
               curriculumId: item.curriculumId,
               title: `Auto plan week ${dateToDateOnly(item.weekStartDate)}`,
               description: null,
@@ -965,6 +992,11 @@ export class LessonPlansRepository {
     let movedItem: LessonPlanItemRecord | null = null;
 
     await this.prisma.$transaction(async (tx) => {
+      const [allocation] = await this.teacherAllocationWriteGate.lock(tx, {
+        schoolId: input.schoolId,
+        allocationIds: [input.sourcePlan.teacherSubjectAllocationId],
+      });
+
       let targetPlan = await tx.lessonPlan.findFirst({
         where: {
           schoolId: input.schoolId,
@@ -981,12 +1013,12 @@ export class LessonPlansRepository {
           data: {
             schoolId: input.schoolId,
             academicYearId: input.sourcePlan.academicYearId,
-            termId: input.sourcePlan.termId,
+            termId: allocation.termId,
             teacherSubjectAllocationId:
               input.sourcePlan.teacherSubjectAllocationId,
-            teacherUserId: input.sourcePlan.teacherUserId,
-            classroomId: input.sourcePlan.classroomId,
-            subjectId: input.sourcePlan.subjectId,
+            teacherUserId: allocation.teacherUserId,
+            classroomId: allocation.classroomId,
+            subjectId: allocation.subjectId,
             curriculumId: input.sourcePlan.curriculumId,
             title: `Rescheduled week ${dateToDateOnly(input.weekStartDate)}`,
             description: null,
@@ -1017,7 +1049,9 @@ export class LessonPlansRepository {
     });
 
     if (!movedItem) {
-      throw new Error('Lesson plan item move transaction did not return an item');
+      throw new Error(
+        'Lesson plan item move transaction did not return an item',
+      );
     }
 
     return movedItem;

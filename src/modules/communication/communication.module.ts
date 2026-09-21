@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { TeacherAllocationModule } from '../academics/teacher-allocation/teacher-allocation.module';
 import { QueueModule } from '../../infrastructure/queue/queue.module';
 import { RealtimeModule } from '../../infrastructure/realtime/realtime.module';
 import { StorageModule } from '../../infrastructure/storage/storage.module';
@@ -139,6 +140,7 @@ import { CommunicationNotificationRepository } from './infrastructure/communicat
 
 @Module({
   imports: [
+    TeacherAllocationModule,
     AuthModule,
     QueueModule,
     RealtimeModule,

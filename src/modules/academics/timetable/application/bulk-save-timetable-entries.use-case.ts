@@ -31,14 +31,28 @@ export class BulkSaveTimetableEntriesUseCase {
         const { term } = await resolveReadableTimetableContext(repository, {
           termId: command.termId,
         });
+        const existingEntries = await repository.listEntriesByTerm({
+          termId: term.id,
+        });
+        const replacedAllocationIds = existingEntries
+          .filter((entry) =>
+            command.items.some(
+              (item) =>
+                item.classroomId === entry.classroomId &&
+                item.dayOfWeek === entry.dayOfWeek &&
+                item.periodId === entry.periodId,
+            ),
+          )
+          .map((entry) => entry.teacherSubjectAllocationId);
+        await repository.lockTeacherAllocations([
+          ...command.items.map((item) => item.teacherSubjectAllocationId),
+          ...replacedAllocationIds,
+        ]);
         const { resolvedItems } = await resolveTimetableBulkItems(
           repository,
           term,
           command.items,
         );
-        const existingEntries = await repository.listEntriesByTerm({
-          termId: term.id,
-        });
         const conflicts = buildTimetableConflictCheckItems({
           existingEntries,
           proposedItems: resolvedItems,

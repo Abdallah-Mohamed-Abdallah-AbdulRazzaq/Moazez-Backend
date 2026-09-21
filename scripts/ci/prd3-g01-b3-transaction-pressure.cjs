@@ -359,6 +359,12 @@ const REVIEWED_CALL_OVERRIDES = Object.freeze([
     evidence: 'Each caller receives only the school- and term-scoped transaction repository after the authoritative term/config row locks are acquired; the reviewed callbacks contain Prisma reads/writes and in-memory timetable validation without external waits.',
   }),
   Object.freeze({
+    target: /^this\.teacherAllocationWriteGate\.lock$/,
+    reason: 'The shared allocation writer gate is an abstract injected port whose concrete implementation is audited independently.',
+    classification: 'LOCK_CONTENTION_SENSITIVE',
+    evidence: 'Every source-derived caller supplies its active Prisma TransactionClient; the dedicated gate audit rejects nested transactions, transaction escapes, and non-transaction waits.',
+  }),
+  Object.freeze({
     path: 'src/modules/academics/curriculum/infrastructure/prisma-lesson-content.unit-of-work.ts',
     target: /^this\.repository\.createTransactionContext$/,
     reason: 'The repository context factory is a synchronous transaction-client adapter.',
@@ -1368,6 +1374,95 @@ function validateTeacherAllocationReassignmentUnitOfWorkCallbacks(rows) {
     `Teacher allocation reassignment transaction escape detected: ${escapes.map((item) => `${item.path}#${item.owner}:${item.target}`).join(', ')}`,
   );
   return rows;
+}
+
+function auditTeacherAllocationOperationalWriteGate(
+  sourceRoot = path.join(ROOT, 'src'),
+  suppliedProgram,
+) {
+  const program = suppliedProgram ?? createInventoryProgram(sourceRoot);
+  const providers = [];
+  const callers = [];
+  for (const source of program.getSourceFiles()) {
+    const absolute = path.resolve(source.fileName);
+    if (!isPathWithinDirectory(absolute, sourceRoot) || absolute.endsWith('.spec.ts')) continue;
+    const visit = (node, className = null) => {
+      const currentClassName = ts.isClassDeclaration(node)
+        ? (node.name?.text ?? null)
+        : className;
+      if (
+        ts.isMethodDeclaration(node) &&
+        propertyName(node.name) === 'lock' &&
+        currentClassName === 'PrismaTeacherAllocationOperationalWriteGate'
+      ) {
+        let nestedTransactions = 0;
+        const externalWaits = [];
+        const transactionCalls = [];
+        const inspectProvider = (candidate, awaitedCall = false) => {
+          if (ts.isAwaitExpression(candidate)) {
+            inspectProvider(candidate.expression, true);
+            return;
+          }
+          if (
+            ts.isCallExpression(candidate) &&
+            ts.isPropertyAccessExpression(candidate.expression)
+          ) {
+            const target = candidate.expression.getText(source);
+            if (candidate.expression.name.text === '$transaction') nestedTransactions += 1;
+            if (awaitedCall) {
+              if (/^transaction\.\$queryRaw$/u.test(target)) transactionCalls.push(target);
+              else externalWaits.push(target);
+            }
+          }
+          ts.forEachChild(candidate, (child) => inspectProvider(child, false));
+        };
+        inspectProvider(node);
+        providers.push({
+          path: normalized(path.relative(ROOT, absolute)),
+          nestedTransactions,
+          externalWaits: [...new Set(externalWaits)].sort(),
+          transactionCalls: [...new Set(transactionCalls)].sort(),
+        });
+      }
+      if (
+        ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression) &&
+        node.expression.name.text === 'lock' &&
+        /teacherAllocationWriteGate$/u.test(node.expression.expression.getText(source))
+      ) {
+        const transactionArgument = node.arguments[0]?.getText(source) ?? '';
+        callers.push({
+          path: normalized(path.relative(ROOT, absolute)),
+          owner: enclosingOwner(node),
+          transactionArgument,
+          transactionEscape: !/^(?:tx|transaction|this\.tx)$/u.test(transactionArgument),
+        });
+      }
+      ts.forEachChild(node, (child) => visit(child, currentClassName));
+    };
+    visit(source);
+  }
+  const transactionEscapes = callers.filter((caller) => caller.transactionEscape);
+  return Object.freeze({
+    providerCount: providers.length,
+    callerCount: callers.length,
+    transactionEscapeCount: transactionEscapes.length,
+    nestedTransactionCount: providers.reduce((count, provider) => count + provider.nestedTransactions, 0),
+    externalWaitInsideGateCount: providers.reduce((count, provider) => count + provider.externalWaits.length, 0),
+    providers,
+    callers,
+    transactionEscapes,
+  });
+}
+
+function validateTeacherAllocationOperationalWriteGate(audit) {
+  assert.equal(audit.providerCount, 1, 'Operational write gate provider must be unique');
+  assert.ok(audit.callerCount >= 5, 'Operational write gate must protect the source-proven writer domains');
+  assert.equal(audit.transactionEscapeCount, 0, 'Operational write gate transaction escapes must be zero');
+  assert.equal(audit.nestedTransactionCount, 0, 'Operational write gate nested transactions must be zero');
+  assert.equal(audit.externalWaitInsideGateCount, 0, 'Operational write gate external waits must be zero');
+  assert.deepEqual(audit.providers[0].transactionCalls, ['transaction.$queryRaw']);
+  return audit;
 }
 
 function createInventoryProgram(sourceRoot) {
@@ -3755,6 +3850,7 @@ module.exports = {
   SUMMARY_SCHEMA,
   SUMMARY_SCHEMA_VERSION,
   atomicPublishStrictSummary,
+  auditTeacherAllocationOperationalWriteGate,
   auditTeacherAllocationReassignmentUnitOfWorkCallbacks,
   auditTeacherLifecycleUnitOfWorkCallbacks,
   buildNamedContainerCreateArgs,
@@ -3791,6 +3887,7 @@ module.exports = {
   validatePlaybackConsumerAudit,
   validateSanitizedSummary,
   validateStrictSummary,
+  validateTeacherAllocationOperationalWriteGate,
   validateTeacherAllocationReassignmentUnitOfWorkCallbacks,
   validateTeacherLifecycleUnitOfWorkCallbacks,
   verifyLoopbackTcp,

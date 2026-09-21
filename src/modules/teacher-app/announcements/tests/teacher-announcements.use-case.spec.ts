@@ -67,25 +67,31 @@ describe('Teacher announcements use cases', () => {
       classroomId: 'classroom-1',
       audience: 'students_and_parents',
     });
-    expect(createCore.execute).toHaveBeenCalledWith({
-      title: 'Quiz tomorrow',
-      body: 'Please revise chapter 3.',
-      status: 'draft',
-      priority: 'high',
-      audienceType: 'custom',
-      audiences: [
-        { audienceType: 'custom', userId: 'student-user-1' },
-        { audienceType: 'custom', guardianId: 'guardian-1' },
-      ],
-      metadata: {
-        teacherApp: expect.objectContaining({
-          source: 'teacher_app',
-          classId: 'allocation-1',
-          classroomId: 'classroom-1',
-          audience: 'students_and_parents',
-        }),
+    expect(createCore.execute).toHaveBeenCalledWith(
+      {
+        title: 'Quiz tomorrow',
+        body: 'Please revise chapter 3.',
+        status: 'draft',
+        priority: 'high',
+        audienceType: 'custom',
+        audiences: [
+          { audienceType: 'custom', userId: 'student-user-1' },
+          { audienceType: 'custom', guardianId: 'guardian-1' },
+        ],
+        metadata: {
+          teacherApp: expect.objectContaining({
+            source: 'teacher_app',
+            classId: 'allocation-1',
+            classroomId: 'classroom-1',
+            audience: 'students_and_parents',
+          }),
+        },
       },
-    });
+      {
+        allocationIds: ['allocation-1'],
+        expectedTeacherUserId: 'teacher-user-1',
+      },
+    );
     expect(publishCore.execute).not.toHaveBeenCalled();
     expect(result.announcement).toMatchObject({
       announcementId: 'announcement-1',
@@ -147,28 +153,35 @@ describe('Teacher announcements use cases', () => {
       allocations: [allocationFixture()],
       announcementId: 'announcement-1',
     });
-    expect(updateCore.execute).toHaveBeenCalledWith('announcement-1', {
-      title: 'Updated title',
-      priority: 'normal',
-      audienceType: 'custom',
-      audiences: [{ audienceType: 'custom', guardianId: 'guardian-1' }],
-      metadata: {
-        teacherApp: expect.objectContaining({
-          classId: 'allocation-1',
-          classroomId: 'classroom-1',
-          audience: 'parents',
-        }),
+    expect(updateCore.execute).toHaveBeenCalledWith(
+      'announcement-1',
+      {
+        title: 'Updated title',
+        priority: 'normal',
+        audienceType: 'custom',
+        audiences: [{ audienceType: 'custom', guardianId: 'guardian-1' }],
+        metadata: {
+          teacherApp: expect.objectContaining({
+            classId: 'allocation-1',
+            classroomId: 'classroom-1',
+            audience: 'parents',
+          }),
+        },
       },
-    });
+      {
+        allocationIds: ['allocation-1', 'allocation-1'],
+        expectedTeacherUserId: 'teacher-user-1',
+      },
+    );
   });
 
   it('returns not found for announcement ids outside the teacher scope', async () => {
     const { detailUseCase, updateUseCase, readAdapter } = createUseCases();
     readAdapter.findTeacherAnnouncement.mockResolvedValue(null);
 
-    await expect(detailUseCase.execute('foreign-announcement')).rejects.toMatchObject(
-      { code: 'not_found' },
-    );
+    await expect(
+      detailUseCase.execute('foreign-announcement'),
+    ).rejects.toMatchObject({ code: 'not_found' });
     await expect(
       updateUseCase.execute('foreign-announcement', { title: 'Nope' }),
     ).rejects.toMatchObject({ code: 'not_found' });

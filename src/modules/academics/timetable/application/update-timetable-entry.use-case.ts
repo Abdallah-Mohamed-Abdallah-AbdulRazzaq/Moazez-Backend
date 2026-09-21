@@ -59,6 +59,14 @@ export class UpdateTimetableEntryUseCase {
           });
         }
 
+        const targetAllocationId =
+          command.teacherSubjectAllocationId ??
+          current.teacherSubjectAllocationId;
+        await repository.lockTeacherAllocations([
+          current.teacherSubjectAllocationId,
+          targetAllocationId,
+        ]);
+
         const resolved = await resolveTimetableEntryWrite(
           repository,
           {
@@ -66,9 +74,7 @@ export class UpdateTimetableEntryUseCase {
             periodId: command.periodId ?? current.periodId,
             dayOfWeek: command.dayOfWeek ?? current.dayOfWeek,
             classroomId: command.classroomId ?? current.classroomId,
-            teacherSubjectAllocationId:
-              command.teacherSubjectAllocationId ??
-              current.teacherSubjectAllocationId,
+            teacherSubjectAllocationId: targetAllocationId,
             subjectId: command.subjectId,
             roomId: hasOwn(command, 'roomId') ? command.roomId : current.roomId,
             notes: hasOwn(command, 'notes') ? command.notes : current.notes,

@@ -9,9 +9,11 @@ import {
   NotFoundDomainException,
   ValidationDomainException,
 } from '../../../../common/exceptions/domain-exception';
+import { TeacherAllocationOperationalWriteGateError } from '../../../academics/teacher-allocation/application/teacher-allocation-operational-write-gate';
 import { CreateReinforcementTaskUseCase } from '../../../reinforcement/tasks/application/create-reinforcement-task.use-case';
 import { CreateReinforcementTaskDto } from '../../../reinforcement/tasks/dto/reinforcement-task.dto';
 import { TeacherAppAccessService } from '../../access/teacher-app-access.service';
+import { TeacherAppAllocationNotFoundException } from '../../shared/teacher-app.errors';
 import type {
   TeacherAppAllocationRecord,
   TeacherAppClassId,
@@ -56,15 +58,27 @@ export class CreateTeacherTaskUseCase {
       }
     }
 
-    const created = await this.createReinforcementTaskUseCase.execute(
-      mapTeacherTaskCreateDto({
-        dto,
-        teacherUserId: context.teacherUserId,
-        taskContext,
-        studentIds,
-        allocations,
-      }),
-    );
+    let created: Awaited<ReturnType<CreateReinforcementTaskUseCase['execute']>>;
+    try {
+      created = await this.createReinforcementTaskUseCase.execute(
+        mapTeacherTaskCreateDto({
+          dto,
+          teacherUserId: context.teacherUserId,
+          taskContext,
+          studentIds,
+          allocations,
+        }),
+        {
+          allocationIds: allocations.map((allocation) => allocation.id),
+          expectedTeacherUserId: context.teacherUserId,
+        },
+      );
+    } catch (error) {
+      if (error instanceof TeacherAllocationOperationalWriteGateError) {
+        throw new TeacherAppAllocationNotFoundException();
+      }
+      throw error;
+    }
 
     const task = await this.tasksReadAdapter.findVisibleTaskById({
       teacherUserId: context.teacherUserId,
@@ -87,7 +101,9 @@ export class CreateTeacherTaskUseCase {
     const allocations: TeacherAppAllocationRecord[] = [];
 
     for (const classId of classIds) {
-      allocations.push(await this.accessService.assertTeacherOwnsAllocation(classId));
+      allocations.push(
+        await this.accessService.assertTeacherOwnsAllocation(classId),
+      );
     }
 
     return allocations;
@@ -148,9 +164,12 @@ function resolveSharedTaskContext(
   const academicYearId = first?.term?.academicYearId;
 
   if (!first || !academicYearId) {
-    throw new ValidationDomainException('Teacher task class context is invalid', {
-      field: 'classIds',
-    });
+    throw new ValidationDomainException(
+      'Teacher task class context is invalid',
+      {
+        field: 'classIds',
+      },
+    );
   }
 
   for (const allocation of allocations) {
@@ -260,10 +279,13 @@ function requirePositiveRewardValue(
   type: TeacherTaskCreateRewardType,
 ): number {
   if (value === null || value <= 0) {
-    throw new ValidationDomainException('Teacher task reward value is required', {
-      field: 'reward.value',
-      rewardType: type,
-    });
+    throw new ValidationDomainException(
+      'Teacher task reward value is required',
+      {
+        field: 'reward.value',
+        rewardType: type,
+      },
+    );
   }
 
   return value;

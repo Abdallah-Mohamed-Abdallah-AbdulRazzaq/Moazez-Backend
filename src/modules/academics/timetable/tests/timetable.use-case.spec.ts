@@ -234,6 +234,16 @@ describe('Timetable use cases', () => {
           async (id: string) =>
             allocations.find((allocation) => allocation.id === id) ?? null,
         ),
+      lockTeacherAllocations: jest
+        .fn()
+        .mockImplementation(async (ids: string[]) =>
+          [...new Set(ids)]
+            .sort()
+            .map((id) => allocations.find((allocation) => allocation.id === id))
+            .filter((allocation): allocation is AllocationRecord =>
+              Boolean(allocation),
+            ),
+        ),
       findSubjectAllocationByKey: jest
         .fn()
         .mockImplementation(
@@ -4012,7 +4022,7 @@ describe('Timetable use cases', () => {
         timetableEntry: { update: updateEntry },
       },
     };
-    const repository = new TimetableRepository(prisma as never);
+    const repository = new TimetableRepository(prisma as never, {} as never);
 
     await repository.findConfigById('config-1');
 

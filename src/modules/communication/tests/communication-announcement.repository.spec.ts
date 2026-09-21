@@ -17,16 +17,18 @@ describe('CommunicationAnnouncementRepository', () => {
         findMany: jest.fn().mockResolvedValue([dueAnnouncement]),
       },
     };
-    const repository = new CommunicationAnnouncementRepository({
-      scoped,
-    } as unknown as PrismaService);
+    const repository = new CommunicationAnnouncementRepository(
+      {
+        scoped,
+      } as unknown as PrismaService,
+      {} as never,
+    );
     const now = new Date('2026-05-03T10:00:00.000Z');
 
-    const result =
-      await repository.findDueScheduledCurrentSchoolAnnouncements({
-        now,
-        limit: 25,
-      });
+    const result = await repository.findDueScheduledCurrentSchoolAnnouncements({
+      now,
+      limit: 25,
+    });
 
     expect(result).toEqual([dueAnnouncement]);
     expect(scoped.communicationAnnouncement.findMany).toHaveBeenCalledWith(
@@ -38,11 +40,7 @@ describe('CommunicationAnnouncementRepository', () => {
           archivedAt: null,
           OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
         },
-        orderBy: [
-          { scheduledAt: 'asc' },
-          { createdAt: 'asc' },
-          { id: 'asc' },
-        ],
+        orderBy: [{ scheduledAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
         take: 25,
         select: expect.objectContaining({
           id: true,
