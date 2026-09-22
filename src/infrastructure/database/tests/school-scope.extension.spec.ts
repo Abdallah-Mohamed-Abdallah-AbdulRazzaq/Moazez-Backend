@@ -1,6 +1,7 @@
 import {
   EXCLUDED_FROM_SCHOOL_SCOPE,
   SCHOOL_SCOPED_MODELS,
+  SOFT_DELETE_MODELS,
 } from '../school-scope.extension';
 
 describe('schoolScope communication registration', () => {
@@ -67,5 +68,11 @@ describe('schoolScope communication registration', () => {
       expect(SCHOOL_SCOPED_MODELS.has(model)).toBe(true);
       expect(EXCLUDED_FROM_SCHOOL_SCOPE.has(model)).toBe(false);
     }
+  });
+
+  it('registers AcademicContent for school scope and soft-delete filtering', () => {
+    expect(SCHOOL_SCOPED_MODELS.has('AcademicContent')).toBe(true);
+    expect(SOFT_DELETE_MODELS.has('AcademicContent')).toBe(true);
+    expect(EXCLUDED_FROM_SCHOOL_SCOPE.has('AcademicContent')).toBe(false);
   });
 });
