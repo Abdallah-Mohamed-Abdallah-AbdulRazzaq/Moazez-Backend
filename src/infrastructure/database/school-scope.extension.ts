@@ -60,6 +60,7 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
   'StudentDocument',
   'StudentMedicalProfile',
   'StudentNote',
+  'AcademicContent',
   'AcademicYear',
   'Term',
   'Stage',
@@ -155,7 +156,7 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
 // Models that use soft delete (have a deletedAt column). Read operations
 // automatically exclude deletedAt != null unless the caller opts in via
 // withSoftDeleted().
-const SOFT_DELETE_MODELS = new Set<string>([
+export const SOFT_DELETE_MODELS = new Set<string>([
   'Organization',
   'School',
   'User',
@@ -168,6 +169,7 @@ const SOFT_DELETE_MODELS = new Set<string>([
   'Student',
   'Guardian',
   'Enrollment',
+  'AcademicContent',
   'AcademicYear',
   'Term',
   'Stage',

@@ -708,7 +708,7 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
   });
 
   it('verifies the final Teacher role, catalog, Parent role, and Student role state', async () => {
-    expect(await prisma.permission.count()).toBe(236);
+    expect(await prisma.permission.count()).toBe(242);
     const dashboardTodoCatalogCodes = await prisma.permission.findMany({
       where: {
         code: {

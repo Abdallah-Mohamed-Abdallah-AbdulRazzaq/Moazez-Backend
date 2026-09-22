@@ -239,9 +239,9 @@ describe('authorization reference-data bootstrap operator CLI', () => {
           'PERMISSIONS_READY=YES',
           'SYSTEM_ROLES_READY=YES',
           'PLATFORM_SUPER_ADMIN_READY=YES',
-          'PERMISSION_COUNT=236',
+          'PERMISSION_COUNT=242',
           'SYSTEM_ROLE_COUNT=7',
-          'PLATFORM_SUPER_ADMIN_PERMISSION_COUNT=236',
+          'PLATFORM_SUPER_ADMIN_PERMISSION_COUNT=242',
           'USER_MUTATION=NO',
         ].join('\n'),
       ]);
@@ -400,9 +400,9 @@ function successfulResult() {
     permissionsReady: true as const,
     systemRolesReady: true as const,
     platformSuperAdminReady: true as const,
-    permissionCount: 236,
+    permissionCount: 242,
     systemRoleCount: 7,
-    platformSuperAdminPermissionCount: 236,
+    platformSuperAdminPermissionCount: 242,
     userMutation: false as const,
   };
 }

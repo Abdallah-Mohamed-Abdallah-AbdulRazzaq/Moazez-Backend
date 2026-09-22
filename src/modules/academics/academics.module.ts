@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AcademicContentModule } from './academic-content/academic-content.module';
 import { CalendarModule } from './calendar/calendar.module';
 import { CurriculumModule } from './curriculum/curriculum.module';
 import { LessonPlansModule } from './lesson-plans/lesson-plans.module';
@@ -12,6 +13,7 @@ import { TeacherAllocationModule } from './teacher-allocation/teacher-allocation
 
 @Module({
   imports: [
+    AcademicContentModule,
     StructureModule,
     SubjectsModule,
     SubjectAllocationModule,

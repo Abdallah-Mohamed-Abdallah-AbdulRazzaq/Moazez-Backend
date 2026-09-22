@@ -534,6 +534,48 @@ export const PERMISSIONS: PermissionSeed[] = [
     action: 'manage',
     description: 'Create and manage lesson plans and planned teaching items',
   },
+  {
+    code: 'academics.academic_content.view',
+    module: 'academics',
+    resource: 'academic_content',
+    action: 'view',
+    description: 'View academic content records',
+  },
+  {
+    code: 'academics.academic_content.manage',
+    module: 'academics',
+    resource: 'academic_content',
+    action: 'manage',
+    description: 'Manage academic content records',
+  },
+  {
+    code: 'academics.academic_content.publish',
+    module: 'academics',
+    resource: 'academic_content',
+    action: 'publish',
+    description: 'Publish academic content records',
+  },
+  {
+    code: 'academics.academic_content.approve',
+    module: 'academics',
+    resource: 'academic_content',
+    action: 'approve',
+    description: 'Approve academic content records',
+  },
+  {
+    code: 'academics.academic_content.analytics.view',
+    module: 'academics',
+    resource: 'academic_content.analytics',
+    action: 'view',
+    description: 'View academic content analytics',
+  },
+  {
+    code: 'academics.academic_content.settings.manage',
+    module: 'academics',
+    resource: 'academic_content.settings',
+    action: 'manage',
+    description: 'Manage academic content settings',
+  },
 
   // attendance
   {

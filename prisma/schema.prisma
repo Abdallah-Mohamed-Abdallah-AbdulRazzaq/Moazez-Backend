@@ -1183,6 +1183,17 @@ enum AppDeviceTokenSurface {
   @@map("app_device_token_surface")
 }
 
+enum AcademicContentType {
+  TEACHER_PREPARATION
+  WEEKLY_PLAN
+  GUARDIAN_WEEKLY_NOTE
+  SUBJECT_RESOURCE
+  ONLINE_SESSION
+  GENERAL_RESOURCE
+
+  @@map("academic_content_type")
+}
+
 enum AcademicCalendarEventType {
   HOLIDAY
   EXAM
@@ -1391,6 +1402,7 @@ model School {
   teacherSubjectAllocations             TeacherSubjectAllocation[]
   teacherProfiles                       TeacherProfile[]
   rooms                                 Room[]
+  academicContents                      AcademicContent[]
   academicCalendarEvents                AcademicCalendarEvent[]
   curricula                             Curriculum[]
   curriculumUnits                       CurriculumUnit[]
@@ -1603,6 +1615,8 @@ model User {
   admissionDecisionsCreated                      AdmissionDecision[]                    @relation("AdmissionDecisionDecidedBy")
   teacherSubjectAllocations                      TeacherSubjectAllocation[]             @relation("TeacherSubjectAllocationTeacher")
   teacherProfiles                                TeacherProfile[]
+  academicContentsCreated                        AcademicContent[]                      @relation("AcademicContentCreatedBy")
+  academicContentsUpdated                        AcademicContent[]                      @relation("AcademicContentUpdatedBy")
   curriculaCreated                               Curriculum[]                           @relation("CurriculumCreatedBy")
   curriculaUpdated                               Curriculum[]                           @relation("CurriculumUpdatedBy")
   lessonContentItemsCreated                      LessonContentItem[]                    @relation("LessonContentItemCreatedBy")
@@ -2731,6 +2745,29 @@ model AdmissionDecision {
 // ============================================================
 // ACADEMICS - years, terms, structure, subjects, rooms, allocations, curriculum
 // ============================================================
+
+model AcademicContent {
+  id              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String              @map("school_id") @db.Uuid
+  type            AcademicContentType
+  createdByUserId String              @map("created_by_user_id") @db.Uuid
+  updatedByUserId String?             @map("updated_by_user_id") @db.Uuid
+  deletedAt       DateTime?           @map("deleted_at")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  school    School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  createdBy User   @relation("AcademicContentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy User?  @relation("AcademicContentUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([schoolId, type])
+  @@index([createdByUserId])
+  @@index([updatedByUserId])
+  @@index([deletedAt])
+  @@map("academic_contents")
+}
 
 model AcademicYear {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
