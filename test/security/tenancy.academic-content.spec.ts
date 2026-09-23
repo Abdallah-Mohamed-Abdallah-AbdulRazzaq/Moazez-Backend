@@ -1,4 +1,7 @@
-import { AcademicContentType } from '@prisma/client';
+import {
+  AcademicContentAudienceType,
+  AcademicContentType,
+} from '@prisma/client';
 import {
   createRequestContext,
   getRequestContext,
@@ -12,6 +15,9 @@ type ContentRow = {
   id: string;
   schoolId: string;
   type: AcademicContentType;
+  academicYearId: string;
+  termId: string;
+  audience: AcademicContentAudienceType;
   createdByUserId: string;
   updatedByUserId: string | null;
   deletedAt: Date | null;
@@ -65,6 +71,9 @@ describe('AcademicContentRepository tenancy', () => {
       repository.create({
         schoolId: schoolA,
         type: AcademicContentType.WEEKLY_PLAN,
+        academicYearId: '00000000-0000-4000-8000-000000000006',
+        termId: '00000000-0000-4000-8000-000000000007',
+        audience: AcademicContentAudienceType.STUDENTS,
         createdByUserId: actorId,
       }),
     );
@@ -87,6 +96,9 @@ describe('AcademicContentRepository tenancy', () => {
       id,
       schoolId,
       type: AcademicContentType.TEACHER_PREPARATION,
+      academicYearId: '00000000-0000-4000-8000-000000000006',
+      termId: '00000000-0000-4000-8000-000000000007',
+      audience: AcademicContentAudienceType.INTERNAL_STAFF,
       createdByUserId: actorId,
       updatedByUserId: null,
       deletedAt,

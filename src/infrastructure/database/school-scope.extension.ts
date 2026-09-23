@@ -61,6 +61,7 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
   'StudentMedicalProfile',
   'StudentNote',
   'AcademicContent',
+  'AcademicContentTarget',
   'AcademicYear',
   'Term',
   'Stage',

@@ -1194,6 +1194,25 @@ enum AcademicContentType {
   @@map("academic_content_type")
 }
 
+enum AcademicContentAudienceType {
+  INTERNAL_STAFF
+  STUDENTS
+  GUARDIANS
+  STUDENTS_AND_GUARDIANS
+
+  @@map("academic_content_audience_type")
+}
+
+enum AcademicContentTargetScopeType {
+  SCHOOL
+  STAGE
+  GRADE
+  SECTION
+  CLASSROOM
+
+  @@map("academic_content_target_scope_type")
+}
+
 enum AcademicCalendarEventType {
   HOLIDAY
   EXAM
@@ -1403,6 +1422,7 @@ model School {
   teacherProfiles                       TeacherProfile[]
   rooms                                 Room[]
   academicContents                      AcademicContent[]
+  academicContentTargets                AcademicContentTarget[]
   academicCalendarEvents                AcademicCalendarEvent[]
   curricula                             Curriculum[]
   curriculumUnits                       CurriculumUnit[]
@@ -1617,6 +1637,7 @@ model User {
   teacherProfiles                                TeacherProfile[]
   academicContentsCreated                        AcademicContent[]                      @relation("AcademicContentCreatedBy")
   academicContentsUpdated                        AcademicContent[]                      @relation("AcademicContentUpdatedBy")
+  academicContentTargetsCreated                  AcademicContentTarget[]                @relation("AcademicContentTargetCreatedBy")
   curriculaCreated                               Curriculum[]                           @relation("CurriculumCreatedBy")
   curriculaUpdated                               Curriculum[]                           @relation("CurriculumUpdatedBy")
   lessonContentItemsCreated                      LessonContentItem[]                    @relation("LessonContentItemCreatedBy")
@@ -2747,26 +2768,73 @@ model AdmissionDecision {
 // ============================================================
 
 model AcademicContent {
-  id              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schoolId        String              @map("school_id") @db.Uuid
+  id              String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String                      @map("school_id") @db.Uuid
+  academicYearId  String                      @map("academic_year_id") @db.Uuid
+  termId          String                      @map("term_id") @db.Uuid
   type            AcademicContentType
-  createdByUserId String              @map("created_by_user_id") @db.Uuid
-  updatedByUserId String?             @map("updated_by_user_id") @db.Uuid
-  deletedAt       DateTime?           @map("deleted_at")
-  createdAt       DateTime            @default(now()) @map("created_at")
-  updatedAt       DateTime            @updatedAt @map("updated_at")
+  audience        AcademicContentAudienceType
+  createdByUserId String                      @map("created_by_user_id") @db.Uuid
+  updatedByUserId String?                     @map("updated_by_user_id") @db.Uuid
+  deletedAt       DateTime?                   @map("deleted_at")
+  createdAt       DateTime                    @default(now()) @map("created_at")
+  updatedAt       DateTime                    @updatedAt @map("updated_at")
 
-  school    School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  createdBy User   @relation("AcademicContentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  updatedBy User?  @relation("AcademicContentUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  school       School                  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear AcademicYear            @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term         Term                    @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  createdBy    User                    @relation("AcademicContentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy    User?                   @relation("AcademicContentUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  targets      AcademicContentTarget[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
   @@index([schoolId, type])
+  @@index([schoolId, academicYearId, termId])
+  @@index([schoolId, audience])
   @@index([createdByUserId])
   @@index([updatedByUserId])
   @@index([deletedAt])
   @@map("academic_contents")
+}
+
+model AcademicContentTarget {
+  id                         String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                   String                         @map("school_id") @db.Uuid
+  academicContentId          String                         @map("academic_content_id") @db.Uuid
+  scopeType                  AcademicContentTargetScopeType @map("scope_type")
+  stageId                    String?                        @map("stage_id") @db.Uuid
+  gradeId                    String?                        @map("grade_id") @db.Uuid
+  sectionId                  String?                        @map("section_id") @db.Uuid
+  classroomId                String?                        @map("classroom_id") @db.Uuid
+  subjectId                  String?                        @map("subject_id") @db.Uuid
+  teacherSubjectAllocationId String?                        @map("teacher_subject_allocation_id") @db.Uuid
+  identityFingerprint        String                         @map("identity_fingerprint") @db.VarChar(64)
+  createdByUserId            String                         @map("created_by_user_id") @db.Uuid
+  createdAt                  DateTime                       @default(now()) @map("created_at")
+  updatedAt                  DateTime                       @updatedAt @map("updated_at")
+
+  school                   School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicContent          AcademicContent           @relation(fields: [academicContentId, schoolId], references: [id, schoolId], onDelete: Cascade)
+  stage                    Stage?                    @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  grade                    Grade?                    @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  section                  Section?                  @relation(fields: [sectionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom                Classroom?                @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  subject                  Subject?                  @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  teacherSubjectAllocation TeacherSubjectAllocation? @relation(fields: [teacherSubjectAllocationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  createdBy                User                      @relation("AcademicContentTargetCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([schoolId, academicContentId, identityFingerprint])
+  @@index([schoolId, academicContentId])
+  @@index([schoolId, scopeType])
+  @@index([stageId])
+  @@index([gradeId])
+  @@index([sectionId])
+  @@index([classroomId])
+  @@index([subjectId])
+  @@index([teacherSubjectAllocationId])
+  @@index([createdByUserId])
+  @@map("academic_content_targets")
 }
 
 model AcademicYear {
@@ -2797,6 +2865,7 @@ model AcademicYear {
   homeworkAssignments            HomeworkAssignment[]
   academicCalendarEvents         AcademicCalendarEvent[]
   subjectAllocations             SubjectAllocation[]
+  academicContents               AcademicContent[]
   curricula                      Curriculum[]
   lessonPlans                    LessonPlan[]
   reinforcementTasks             ReinforcementTask[]
@@ -2843,6 +2912,7 @@ model Term {
   academicYear                   AcademicYear                   @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
   subjectAllocations             SubjectAllocation[]
   teacherSubjectAllocations      TeacherSubjectAllocation[]
+  academicContents               AcademicContent[]
   enrollments                    Enrollment[]
   studentBulkRegistrationBatches StudentBulkRegistrationBatch[]
   attendancePolicies             AttendancePolicy[]
@@ -2907,6 +2977,7 @@ model Stage {
   dismissalStaffAssignments          DismissalStaffAssignment[]
   studentCredentialBatches           StudentCredentialBatch[]
   timetableConfigs                   TimetableConfig[]
+  academicContentTargets             AcademicContentTarget[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, nameAr])
@@ -2949,6 +3020,7 @@ model Grade {
   timetableEntries                   TimetableEntry[]
   dismissalStaffAssignments          DismissalStaffAssignment[]
   studentCredentialBatches           StudentCredentialBatch[]
+  academicContentTargets             AcademicContentTarget[]
 
   @@unique([id, schoolId])
   @@unique([stageId, nameAr])
@@ -2986,6 +3058,7 @@ model Section {
   timetableEntries                   TimetableEntry[]
   dismissalStaffAssignments          DismissalStaffAssignment[]
   studentCredentialBatches           StudentCredentialBatch[]
+  academicContentTargets             AcademicContentTarget[]
 
   @@unique([id, schoolId])
   @@unique([gradeId, nameAr])
@@ -3018,6 +3091,7 @@ model Classroom {
   enrollments                        Enrollment[]
   studentBulkRegistrationBatches     StudentBulkRegistrationBatch[]
   studentCredentialBatches           StudentCredentialBatch[]
+  academicContentTargets             AcademicContentTarget[]
   attendancePolicies                 AttendancePolicy[]
   attendanceSessions                 AttendanceSession[]
   gradeAssessments                   GradeAssessment[]
@@ -3064,6 +3138,7 @@ model Subject {
   heroMissions               HeroMission[]
   communicationConversations CommunicationConversation[]
   timetableEntries           TimetableEntry[]
+  academicContentTargets     AcademicContentTarget[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, code])
@@ -3118,14 +3193,15 @@ model TeacherSubjectAllocation {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  school              School               @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  teacherUser         User                 @relation("TeacherSubjectAllocationTeacher", fields: [teacherUserId], references: [id], onDelete: Restrict)
-  subject             Subject              @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  classroom           Classroom            @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  term                Term                 @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  timetableEntries    TimetableEntry[]
-  lessonPlans         LessonPlan[]
-  homeworkAssignments HomeworkAssignment[]
+  school                 School                  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  teacherUser            User                    @relation("TeacherSubjectAllocationTeacher", fields: [teacherUserId], references: [id], onDelete: Restrict)
+  subject                Subject                 @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom              Classroom               @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term                   Term                    @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  timetableEntries       TimetableEntry[]
+  lessonPlans            LessonPlan[]
+  homeworkAssignments    HomeworkAssignment[]
+  academicContentTargets AcademicContentTarget[]
 
   @@unique([id, schoolId])
   @@unique([teacherUserId, subjectId, classroomId, termId])
