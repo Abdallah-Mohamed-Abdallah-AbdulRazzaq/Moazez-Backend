@@ -3,6 +3,8 @@ import { AcademicContentType } from '@prisma/client';
 import { AcademicsModule } from '../../academics.module';
 import { AcademicContentModule } from '../academic-content.module';
 import { AcademicContentRepository } from '../infrastructure/academic-content.repository';
+import { AcademicContentAudienceResolver } from '../application/academic-content-audience.resolver';
+import { ReplaceAcademicContentTargetsUseCase } from '../application/replace-academic-content-targets.use-case';
 
 describe('Academic Content foundation', () => {
   it('keeps the V1 content type contract exact', () => {
@@ -35,9 +37,11 @@ describe('Academic Content foundation', () => {
     );
 
     expect(academicsImports).toContain(AcademicContentModule);
-    expect(providers).toEqual([AcademicContentRepository]);
+    expect(providers).toContain(AcademicContentRepository);
+    expect(providers).toContain(AcademicContentAudienceResolver);
+    expect(providers).toContain(ReplaceAcademicContentTargetsUseCase);
     expect(controllers).toEqual([]);
-    expect(exports).toEqual([]);
+    expect(exports).toContain(AcademicContentAudienceResolver);
   });
 });
 

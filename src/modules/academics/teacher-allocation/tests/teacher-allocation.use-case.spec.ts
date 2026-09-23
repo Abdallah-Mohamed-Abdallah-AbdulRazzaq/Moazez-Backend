@@ -99,6 +99,7 @@ type DependencyCounts = {
   timetableEntries: number;
   lessonPlans: number;
   homeworkAssignments: number;
+  academicContentTargets: number;
 };
 
 describe('Teacher allocation use cases', () => {
@@ -140,7 +141,8 @@ describe('Teacher allocation use cases', () => {
 
     function buildClassroom(classroom: ClassroomStoreItem) {
       const grade = grades.find(
-        (item) => item.id === classroom.gradeId && item.schoolId === classroom.schoolId,
+        (item) =>
+          item.id === classroom.gradeId && item.schoolId === classroom.schoolId,
       );
       if (!grade) throw new Error('Classroom fixture is missing grade');
 
@@ -166,13 +168,19 @@ describe('Teacher allocation use cases', () => {
           item.schoolId === allocation.schoolId,
       );
       const subject = subjects.find(
-        (item) => item.id === allocation.subjectId && item.schoolId === allocation.schoolId,
+        (item) =>
+          item.id === allocation.subjectId &&
+          item.schoolId === allocation.schoolId,
       );
       const classroom = classrooms.find(
-        (item) => item.id === allocation.classroomId && item.schoolId === allocation.schoolId,
+        (item) =>
+          item.id === allocation.classroomId &&
+          item.schoolId === allocation.schoolId,
       );
       const term = terms.find(
-        (item) => item.id === allocation.termId && item.schoolId === allocation.schoolId,
+        (item) =>
+          item.id === allocation.termId &&
+          item.schoolId === allocation.schoolId,
       );
 
       if (!teacherMembership || !subject || !classroom || !term) {
@@ -225,24 +233,32 @@ describe('Teacher allocation use cases', () => {
               ? allocation.classroomId === filters.classroomId
               : true,
           )
-          .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())
+          .sort(
+            (left, right) =>
+              right.createdAt.getTime() - left.createdAt.getTime(),
+          )
           .map((allocation) => buildRecord(allocation)),
       ),
-      findAllocationById: jest.fn().mockImplementation(async (allocationId: string) => {
-        const allocation = allocations.find(
-          (item) => item.id === allocationId && item.schoolId === 'school-1',
-        );
-        return allocation ? buildRecord(allocation) : null;
-      }),
-      findActiveMembershipByUserId: jest.fn().mockImplementation(async (userId: string) =>
-        memberships.find(
-          (item) =>
-            item.user.id === userId &&
-            item.schoolId === 'school-1' &&
-            item.status === MembershipStatus.ACTIVE &&
-            item.endedAt === null,
-        ) ?? null,
-      ),
+      findAllocationById: jest
+        .fn()
+        .mockImplementation(async (allocationId: string) => {
+          const allocation = allocations.find(
+            (item) => item.id === allocationId && item.schoolId === 'school-1',
+          );
+          return allocation ? buildRecord(allocation) : null;
+        }),
+      findActiveMembershipByUserId: jest
+        .fn()
+        .mockImplementation(
+          async (userId: string) =>
+            memberships.find(
+              (item) =>
+                item.user.id === userId &&
+                item.schoolId === 'school-1' &&
+                item.status === MembershipStatus.ACTIVE &&
+                item.endedAt === null,
+            ) ?? null,
+        ),
       findActiveMembershipsByUserIds: jest
         .fn()
         .mockImplementation(async (userIds: string[]) =>
@@ -254,114 +270,159 @@ describe('Teacher allocation use cases', () => {
               userIds.includes(item.user.id),
           ),
         ),
-      findSubjectById: jest.fn().mockImplementation(async (subjectId: string) =>
-        subjects.find(
-          (item) => item.id === subjectId && item.schoolId === 'school-1',
-        ) ?? null,
-      ),
-      findSubjectsByIds: jest.fn().mockImplementation(async (subjectIds: string[]) =>
-        subjects.filter(
-          (item) => item.schoolId === 'school-1' && subjectIds.includes(item.id),
+      findSubjectById: jest
+        .fn()
+        .mockImplementation(
+          async (subjectId: string) =>
+            subjects.find(
+              (item) => item.id === subjectId && item.schoolId === 'school-1',
+            ) ?? null,
         ),
-      ),
-      findClassroomById: jest.fn().mockImplementation(async (classroomId: string) => {
-        const classroom = classrooms.find(
-          (item) => item.id === classroomId && item.schoolId === 'school-1',
-        );
-        return classroom ? buildClassroom(classroom) : null;
-      }),
-      findClassroomsByIds: jest.fn().mockImplementation(async (classroomIds: string[]) =>
-        classrooms
-          .filter(
-            (item) => item.schoolId === 'school-1' && classroomIds.includes(item.id),
-          )
-          .map((classroom) => buildClassroom(classroom)),
-      ),
-      findClassroomsByGradeId: jest.fn().mockImplementation(async (gradeId: string) =>
-        classrooms
-          .filter((item) => item.schoolId === 'school-1' && item.gradeId === gradeId)
-          .map((classroom) => buildClassroom(classroom)),
-      ),
-      findClassroomsByGradeIds: jest.fn().mockImplementation(async (gradeIds: string[]) =>
-        classrooms
-          .filter(
-            (item) => item.schoolId === 'school-1' && gradeIds.includes(item.gradeId),
-          )
-          .map((classroom) => buildClassroom(classroom)),
-      ),
-      findGradeById: jest.fn().mockImplementation(async (gradeId: string) =>
-        grades.find((item) => item.id === gradeId && item.schoolId === 'school-1') ??
-        null,
-      ),
-      findGradesByIds: jest.fn().mockImplementation(async (gradeIds: string[]) =>
-        grades.filter(
-          (item) => item.schoolId === 'school-1' && gradeIds.includes(item.id),
+      findSubjectsByIds: jest
+        .fn()
+        .mockImplementation(async (subjectIds: string[]) =>
+          subjects.filter(
+            (item) =>
+              item.schoolId === 'school-1' && subjectIds.includes(item.id),
+          ),
         ),
-      ),
-      findTermById: jest.fn().mockImplementation(async (termId: string) =>
-        terms.find((item) => item.id === termId && item.schoolId === 'school-1') ??
-        null,
-      ),
-      findSubjectAllocationByKey: jest.fn().mockImplementation(async (input) => {
-        const row = subjectAllocations.find(
-          (item) =>
-            item.schoolId === 'school-1' &&
-            item.termId === input.termId &&
-            item.gradeId === input.gradeId &&
-            item.subjectId === input.subjectId,
-        );
-        return row ? buildSubjectAllocation(row) : null;
-      }),
-      findSubjectAllocationsByKeys: jest.fn().mockImplementation(async (termId, keys) =>
-        subjectAllocations
-          .filter(
-            (row) =>
-              row.schoolId === 'school-1' &&
-              row.termId === termId &&
-              keys.some(
-                (key: { gradeId: string; subjectId: string }) =>
-                  key.gradeId === row.gradeId && key.subjectId === row.subjectId,
-              ),
-          )
-          .map((row) => buildSubjectAllocation(row)),
-      ),
-      listSubjectAllocationsForValidation: jest.fn().mockImplementation(async (filters) =>
-        subjectAllocations
-          .filter((row) => row.schoolId === 'school-1')
-          .filter((row) => row.termId === filters.termId)
-          .filter((row) => (filters.gradeId ? row.gradeId === filters.gradeId : true))
-          .filter((row) =>
-            filters.subjectId ? row.subjectId === filters.subjectId : true,
-          )
-          .map((row) => buildSubjectAllocation(row)),
-      ),
-      listAllocationsForValidation: jest.fn().mockImplementation(async (filters) =>
-        allocations
-          .filter((allocation) => allocation.schoolId === 'school-1')
-          .filter((allocation) => allocation.termId === filters.termId)
-          .filter((allocation) =>
-            filters.subjectId ? allocation.subjectId === filters.subjectId : true,
-          )
-          .filter((allocation) => {
-            if (!filters.gradeId) return true;
-            const classroom = classrooms.find(
-              (item) => item.id === allocation.classroomId,
-            );
-            return classroom?.gradeId === filters.gradeId;
-          })
-          .map((allocation) => buildRecord(allocation)),
-      ),
-      listAllocationsForTeacherLoads: jest.fn().mockImplementation(async (filters) =>
-        allocations
-          .filter((allocation) => allocation.schoolId === 'school-1')
-          .filter((allocation) => allocation.termId === filters.termId)
-          .filter((allocation) =>
-            filters.teacherUserId
-              ? allocation.teacherUserId === filters.teacherUserId
-              : true,
-          )
-          .map((allocation) => buildRecord(allocation)),
-      ),
+      findClassroomById: jest
+        .fn()
+        .mockImplementation(async (classroomId: string) => {
+          const classroom = classrooms.find(
+            (item) => item.id === classroomId && item.schoolId === 'school-1',
+          );
+          return classroom ? buildClassroom(classroom) : null;
+        }),
+      findClassroomsByIds: jest
+        .fn()
+        .mockImplementation(async (classroomIds: string[]) =>
+          classrooms
+            .filter(
+              (item) =>
+                item.schoolId === 'school-1' && classroomIds.includes(item.id),
+            )
+            .map((classroom) => buildClassroom(classroom)),
+        ),
+      findClassroomsByGradeId: jest
+        .fn()
+        .mockImplementation(async (gradeId: string) =>
+          classrooms
+            .filter(
+              (item) =>
+                item.schoolId === 'school-1' && item.gradeId === gradeId,
+            )
+            .map((classroom) => buildClassroom(classroom)),
+        ),
+      findClassroomsByGradeIds: jest
+        .fn()
+        .mockImplementation(async (gradeIds: string[]) =>
+          classrooms
+            .filter(
+              (item) =>
+                item.schoolId === 'school-1' && gradeIds.includes(item.gradeId),
+            )
+            .map((classroom) => buildClassroom(classroom)),
+        ),
+      findGradeById: jest
+        .fn()
+        .mockImplementation(
+          async (gradeId: string) =>
+            grades.find(
+              (item) => item.id === gradeId && item.schoolId === 'school-1',
+            ) ?? null,
+        ),
+      findGradesByIds: jest
+        .fn()
+        .mockImplementation(async (gradeIds: string[]) =>
+          grades.filter(
+            (item) =>
+              item.schoolId === 'school-1' && gradeIds.includes(item.id),
+          ),
+        ),
+      findTermById: jest
+        .fn()
+        .mockImplementation(
+          async (termId: string) =>
+            terms.find(
+              (item) => item.id === termId && item.schoolId === 'school-1',
+            ) ?? null,
+        ),
+      findSubjectAllocationByKey: jest
+        .fn()
+        .mockImplementation(async (input) => {
+          const row = subjectAllocations.find(
+            (item) =>
+              item.schoolId === 'school-1' &&
+              item.termId === input.termId &&
+              item.gradeId === input.gradeId &&
+              item.subjectId === input.subjectId,
+          );
+          return row ? buildSubjectAllocation(row) : null;
+        }),
+      findSubjectAllocationsByKeys: jest
+        .fn()
+        .mockImplementation(async (termId, keys) =>
+          subjectAllocations
+            .filter(
+              (row) =>
+                row.schoolId === 'school-1' &&
+                row.termId === termId &&
+                keys.some(
+                  (key: { gradeId: string; subjectId: string }) =>
+                    key.gradeId === row.gradeId &&
+                    key.subjectId === row.subjectId,
+                ),
+            )
+            .map((row) => buildSubjectAllocation(row)),
+        ),
+      listSubjectAllocationsForValidation: jest
+        .fn()
+        .mockImplementation(async (filters) =>
+          subjectAllocations
+            .filter((row) => row.schoolId === 'school-1')
+            .filter((row) => row.termId === filters.termId)
+            .filter((row) =>
+              filters.gradeId ? row.gradeId === filters.gradeId : true,
+            )
+            .filter((row) =>
+              filters.subjectId ? row.subjectId === filters.subjectId : true,
+            )
+            .map((row) => buildSubjectAllocation(row)),
+        ),
+      listAllocationsForValidation: jest
+        .fn()
+        .mockImplementation(async (filters) =>
+          allocations
+            .filter((allocation) => allocation.schoolId === 'school-1')
+            .filter((allocation) => allocation.termId === filters.termId)
+            .filter((allocation) =>
+              filters.subjectId
+                ? allocation.subjectId === filters.subjectId
+                : true,
+            )
+            .filter((allocation) => {
+              if (!filters.gradeId) return true;
+              const classroom = classrooms.find(
+                (item) => item.id === allocation.classroomId,
+              );
+              return classroom?.gradeId === filters.gradeId;
+            })
+            .map((allocation) => buildRecord(allocation)),
+        ),
+      listAllocationsForTeacherLoads: jest
+        .fn()
+        .mockImplementation(async (filters) =>
+          allocations
+            .filter((allocation) => allocation.schoolId === 'school-1')
+            .filter((allocation) => allocation.termId === filters.termId)
+            .filter((allocation) =>
+              filters.teacherUserId
+                ? allocation.teacherUserId === filters.teacherUserId
+                : true,
+            )
+            .map((allocation) => buildRecord(allocation)),
+        ),
       createAllocation: jest.fn().mockImplementation(async (data) => {
         if (
           allocations.some(
@@ -425,37 +486,45 @@ describe('Teacher allocation use cases', () => {
 
         return {
           allocations: affectedIds.map((id) =>
-            buildRecord(allocations.find((allocation) => allocation.id === id)!),
+            buildRecord(
+              allocations.find((allocation) => allocation.id === id)!,
+            ),
           ),
           createdCount,
           existingCount,
         };
       }),
-      countAllocationDependencies: jest.fn().mockImplementation(async (allocationIds) =>
-        allocationIds.reduce(
-          (total, allocationId) => {
-            const current = dependencies[allocationId] ?? emptyDependencies();
-            return {
-              timetableEntries: total.timetableEntries + current.timetableEntries,
-              lessonPlans: total.lessonPlans + current.lessonPlans,
-              homeworkAssignments:
-                total.homeworkAssignments + current.homeworkAssignments,
-            };
-          },
-          emptyDependencies(),
+      countAllocationDependencies: jest
+        .fn()
+        .mockImplementation((allocationIds: string[]) =>
+          Promise.resolve(
+            allocationIds.reduce((total: DependencyCounts, allocationId) => {
+              const current = dependencies[allocationId] ?? emptyDependencies();
+              return {
+                timetableEntries:
+                  total.timetableEntries + current.timetableEntries,
+                lessonPlans: total.lessonPlans + current.lessonPlans,
+                homeworkAssignments:
+                  total.homeworkAssignments + current.homeworkAssignments,
+                academicContentTargets:
+                  total.academicContentTargets + current.academicContentTargets,
+              };
+            }, emptyDependencies()),
+          ),
         ),
-      ),
-      deleteAllocation: jest.fn().mockImplementation(async (allocationId: string) => {
-        const index = allocations.findIndex(
-          (item) => item.id === allocationId && item.schoolId === 'school-1',
-        );
-        if (index === -1) {
-          return { status: 'not_found' as const };
-        }
+      deleteAllocation: jest
+        .fn()
+        .mockImplementation(async (allocationId: string) => {
+          const index = allocations.findIndex(
+            (item) => item.id === allocationId && item.schoolId === 'school-1',
+          );
+          if (index === -1) {
+            return { status: 'not_found' as const };
+          }
 
-        allocations.splice(index, 1);
-        return { status: 'deleted' as const };
-      }),
+          allocations.splice(index, 1);
+          return { status: 'deleted' as const };
+        }),
       clearSubjectAllocations: jest.fn().mockImplementation(async (input) => {
         const targetIds = allocations
           .filter((allocation) => allocation.schoolId === 'school-1')
@@ -467,13 +536,14 @@ describe('Teacher allocation use cases', () => {
               : true,
           )
           .map((allocation) => allocation.id);
-        const dependencyCounts = await repository.countAllocationDependencies(
+        const dependencyCounts = (await repository.countAllocationDependencies(
           targetIds,
-        );
+        )) as DependencyCounts;
         if (
           dependencyCounts.timetableEntries > 0 ||
           dependencyCounts.lessonPlans > 0 ||
-          dependencyCounts.homeworkAssignments > 0
+          dependencyCounts.homeworkAssignments > 0 ||
+          dependencyCounts.academicContentTargets > 0
         ) {
           return {
             status: 'conflict' as const,
@@ -484,7 +554,9 @@ describe('Teacher allocation use cases', () => {
 
         let deletedCount = 0;
         for (const allocationId of targetIds) {
-          const index = allocations.findIndex((item) => item.id === allocationId);
+          const index = allocations.findIndex(
+            (item) => item.id === allocationId,
+          );
           if (index !== -1) {
             allocations.splice(index, 1);
             deletedCount += 1;
@@ -978,14 +1050,19 @@ describe('Teacher allocation use cases', () => {
     const repository = createRepository({
       classrooms: [classroomFixture, secondClassroomFixture],
       allocations: [
-        allocationFixture({ id: 'allocation-1', classroomId: classroomFixture.id }),
+        allocationFixture({
+          id: 'allocation-1',
+          classroomId: classroomFixture.id,
+        }),
         allocationFixture({
           id: 'allocation-2',
           classroomId: secondClassroomFixture.id,
         }),
       ],
     });
-    const clearUseCase = new ClearTeacherAllocationsBySubjectUseCase(repository);
+    const clearUseCase = new ClearTeacherAllocationsBySubjectUseCase(
+      repository,
+    );
     const listUseCase = new ListTeacherAllocationsUseCase(repository);
 
     await withScope(async () => {
@@ -1011,22 +1088,111 @@ describe('Teacher allocation use cases', () => {
           timetableEntries: 1,
           lessonPlans: 0,
           homeworkAssignments: 0,
+          academicContentTargets: 0,
         },
       },
     });
     const deleteUseCase = new DeleteTeacherAllocationUseCase(repository);
-    const clearUseCase = new ClearTeacherAllocationsBySubjectUseCase(repository);
+    const clearUseCase = new ClearTeacherAllocationsBySubjectUseCase(
+      repository,
+    );
 
     await withScope(async () => {
-      await expect(deleteUseCase.execute('allocation-1')).rejects.toBeInstanceOf(
-        TeacherAllocationDeleteConflictException,
-      );
+      await expect(
+        deleteUseCase.execute('allocation-1'),
+      ).rejects.toBeInstanceOf(TeacherAllocationDeleteConflictException);
       await expect(
         clearUseCase.execute({
           termId: termFixture.id,
           subjectId: subjectFixture.id,
         }),
       ).rejects.toBeInstanceOf(TeacherAllocationClearConflictException);
+    });
+  });
+
+  it('rejects delete before the FK when an ACC target references the allocation', async () => {
+    const repository = createRepository({
+      allocations: [allocationFixture()],
+      dependencies: {
+        'allocation-1': {
+          ...emptyDependencies(),
+          academicContentTargets: 1,
+        },
+      },
+    });
+    await withScope(async () => {
+      await expect(
+        new DeleteTeacherAllocationUseCase(repository).execute('allocation-1'),
+      ).rejects.toMatchObject({
+        code: 'academics.allocation.delete_conflict',
+        httpStatus: 409,
+        details: { academicContentTargets: 1 },
+      });
+      expect(
+        await repository.findAllocationById('allocation-1'),
+      ).not.toBeNull();
+    });
+  });
+
+  it('rejects clear before deletion when an ACC target references the allocation', async () => {
+    const repository = createRepository({
+      allocations: [allocationFixture()],
+      dependencies: {
+        'allocation-1': {
+          ...emptyDependencies(),
+          academicContentTargets: 2,
+        },
+      },
+    });
+    await withScope(async () => {
+      await expect(
+        new ClearTeacherAllocationsBySubjectUseCase(repository).execute({
+          termId: termFixture.id,
+          subjectId: subjectFixture.id,
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.allocation.clear_conflict',
+        httpStatus: 409,
+        details: { academicContentTargets: 2 },
+      });
+      expect(
+        await repository.findAllocationById('allocation-1'),
+      ).not.toBeNull();
+    });
+  });
+
+  it('keeps the zero-dependency delete path open', async () => {
+    const repository = createRepository({ allocations: [allocationFixture()] });
+    await withScope(async () => {
+      await expect(
+        new DeleteTeacherAllocationUseCase(repository).execute('allocation-1'),
+      ).resolves.toEqual({ ok: true });
+      expect(await repository.findAllocationById('allocation-1')).toBeNull();
+    });
+  });
+
+  it('translates a concurrent FK rejection into the delete conflict contract', async () => {
+    const repository = createRepository({ allocations: [allocationFixture()] });
+    (repository.countAllocationDependencies as jest.Mock)
+      .mockResolvedValueOnce(emptyDependencies())
+      .mockResolvedValueOnce({
+        ...emptyDependencies(),
+        academicContentTargets: 1,
+      });
+    (repository.deleteAllocation as jest.Mock).mockRejectedValue({
+      code: 'P2003',
+    });
+    await withScope(async () => {
+      await expect(
+        new DeleteTeacherAllocationUseCase(repository).execute('allocation-1'),
+      ).rejects.toMatchObject({
+        code: 'academics.allocation.delete_conflict',
+        httpStatus: 409,
+        details: { academicContentTargets: 1 },
+      });
+      expect(
+        await repository.findAllocationById('allocation-1'),
+      ).not.toBeNull();
     });
   });
 
@@ -1038,9 +1204,9 @@ describe('Teacher allocation use cases', () => {
     const deleteUseCase = new DeleteTeacherAllocationUseCase(repository);
 
     await withScope(async () => {
-      await expect(deleteUseCase.execute('allocation-1')).rejects.toBeInstanceOf(
-        TeacherAllocationClosedTermException,
-      );
+      await expect(
+        deleteUseCase.execute('allocation-1'),
+      ).rejects.toBeInstanceOf(TeacherAllocationClosedTermException);
       expect(repository.deleteAllocation).not.toHaveBeenCalled();
     });
   });
@@ -1049,7 +1215,10 @@ describe('Teacher allocation use cases', () => {
     const repository = createRepository({
       classrooms: [classroomFixture, secondClassroomFixture],
       allocations: [
-        allocationFixture({ id: 'allocation-1', classroomId: classroomFixture.id }),
+        allocationFixture({
+          id: 'allocation-1',
+          classroomId: classroomFixture.id,
+        }),
       ],
     });
     const validateUseCase = new ValidateTeacherAllocationsUseCase(repository);
@@ -1074,7 +1243,10 @@ describe('Teacher allocation use cases', () => {
     const repository = createRepository({
       subjects: [subjectFixture, scienceSubjectFixture],
       subjectAllocations: [
-        subjectAllocationFixture({ subjectId: subjectFixture.id, weeklyHours: 5 }),
+        subjectAllocationFixture({
+          subjectId: subjectFixture.id,
+          weeklyHours: 5,
+        }),
         subjectAllocationFixture({
           id: 'subject-allocation-2',
           subjectId: scienceSubjectFixture.id,
@@ -1158,5 +1330,6 @@ function emptyDependencies(): DependencyCounts {
     timetableEntries: 0,
     lessonPlans: 0,
     homeworkAssignments: 0,
+    academicContentTargets: 0,
   };
 }

@@ -10,7 +10,6 @@ import {
 } from '../domain/teacher-allocation.exceptions';
 import {
   ActiveMembershipRecord,
-  ClassroomReferenceRecord,
   SubjectReferenceRecord,
   TeacherAllocationDependencyCounts,
   TeacherAllocationRepository,
@@ -25,8 +24,7 @@ export interface TeacherAllocationCandidate {
   classroomId: string;
 }
 
-export interface ResolvedTeacherAllocationCandidate
-  extends TeacherAllocationCandidate {
+export interface ResolvedTeacherAllocationCandidate extends TeacherAllocationCandidate {
   gradeId: string;
 }
 
@@ -207,6 +205,7 @@ export function dependencyConflictDetails(
     timetableEntries: counts.timetableEntries,
     lessonPlans: counts.lessonPlans,
     homeworkAssignments: counts.homeworkAssignments,
+    academicContentTargets: counts.academicContentTargets,
   };
 }
 
@@ -216,7 +215,8 @@ export function hasDependencyCounts(
   return (
     counts.timetableEntries > 0 ||
     counts.lessonPlans > 0 ||
-    counts.homeworkAssignments > 0
+    counts.homeworkAssignments > 0 ||
+    counts.academicContentTargets > 0
   );
 }
 

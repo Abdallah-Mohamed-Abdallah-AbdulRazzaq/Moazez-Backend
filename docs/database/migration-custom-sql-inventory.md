@@ -155,6 +155,24 @@ one `LEGACY` session for each existing File referenced by Lesson Content, after
 failing closed on missing ownership or an invalid normalized display name. It
 does not rewrite a File row or storage object.
 
+## ACC-2 incremental custom SQL
+
+`20260922220822_academic_content_targeting_audience_foundation` adds three
+named checks that Prisma cannot express:
+
+| Constraint | Invariant | Direct protection |
+| --- | --- | --- |
+| `academic_contents_type_audience_check` | Exact ContentType-to-Audience matrix. | `test/security/tenancy.academic-content-targeting.spec.ts` |
+| `academic_content_targets_scope_shape_check` | Exactly the hierarchy anchor named by the scope. | `test/security/tenancy.academic-content-targeting.spec.ts` |
+| `academic_content_targets_teacher_allocation_shape_check` | An attached TeacherSubjectAllocation requires CLASSROOM and Subject. | `test/security/tenancy.academic-content-targeting.spec.ts` |
+
+The same migration contains an explicit no-backfill guard. It aborts if
+`academic_contents` contains any rows before adding the three required
+context/audience columns. This is intentional fail-closed compatibility policy,
+not data-rewriting DML. Prisma represents all new indexes and foreign keys.
+The historical baseline/early-chain counts above are preserved as the audit
+snapshot they describe.
+
 ## Reviewed PostgreSQL-specific SQL that must not be copied
 
 - The 16 raw enum additions are historical transition mechanics. The final

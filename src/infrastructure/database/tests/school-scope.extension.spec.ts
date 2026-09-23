@@ -75,4 +75,10 @@ describe('schoolScope communication registration', () => {
     expect(SOFT_DELETE_MODELS.has('AcademicContent')).toBe(true);
     expect(EXCLUDED_FROM_SCHOOL_SCOPE.has('AcademicContent')).toBe(false);
   });
+
+  it('registers AcademicContentTarget for school scope without soft-delete filtering', () => {
+    expect(SCHOOL_SCOPED_MODELS.has('AcademicContentTarget')).toBe(true);
+    expect(SOFT_DELETE_MODELS.has('AcademicContentTarget')).toBe(false);
+    expect(EXCLUDED_FROM_SCHOOL_SCOPE.has('AcademicContentTarget')).toBe(false);
+  });
 });

@@ -25,6 +25,7 @@ export async function classifyTeacherAllocationLifecycleStateInTransaction(
     timetableEntries: 0,
     lessonPlans: 0,
     homeworkAssignments: 0,
+    academicContentTargets: 0,
   };
   let cursor: string | undefined;
 
@@ -85,6 +86,7 @@ function addDependencyCounts(
   target.timetableEntries += page.timetableEntries;
   target.lessonPlans += page.lessonPlans;
   target.homeworkAssignments += page.homeworkAssignments;
+  target.academicContentTargets += page.academicContentTargets;
 }
 
 async function countDependenciesInTransaction(
@@ -93,30 +95,47 @@ async function countDependenciesInTransaction(
   allocationIds: string[],
 ) {
   if (allocationIds.length === 0) {
-    return { timetableEntries: 0, lessonPlans: 0, homeworkAssignments: 0 };
+    return {
+      timetableEntries: 0,
+      lessonPlans: 0,
+      homeworkAssignments: 0,
+      academicContentTargets: 0,
+    };
   }
-  const [timetableEntries, lessonPlans, homeworkAssignments] =
-    await Promise.all([
-      transaction.timetableEntry.count({
-        where: {
-          schoolId,
-          teacherSubjectAllocationId: { in: allocationIds },
-        },
-      }),
-      transaction.lessonPlan.count({
-        where: {
-          schoolId,
-          teacherSubjectAllocationId: { in: allocationIds },
-          deletedAt: null,
-        },
-      }),
-      transaction.homeworkAssignment.count({
-        where: {
-          schoolId,
-          teacherSubjectAllocationId: { in: allocationIds },
-          deletedAt: null,
-        },
-      }),
-    ]);
-  return { timetableEntries, lessonPlans, homeworkAssignments };
+  const [
+    timetableEntries,
+    lessonPlans,
+    homeworkAssignments,
+    academicContentTargets,
+  ] = await Promise.all([
+    transaction.timetableEntry.count({
+      where: {
+        schoolId,
+        teacherSubjectAllocationId: { in: allocationIds },
+      },
+    }),
+    transaction.lessonPlan.count({
+      where: {
+        schoolId,
+        teacherSubjectAllocationId: { in: allocationIds },
+        deletedAt: null,
+      },
+    }),
+    transaction.homeworkAssignment.count({
+      where: {
+        schoolId,
+        teacherSubjectAllocationId: { in: allocationIds },
+        deletedAt: null,
+      },
+    }),
+    transaction.academicContentTarget.count({
+      where: { schoolId, teacherSubjectAllocationId: { in: allocationIds } },
+    }),
+  ]);
+  return {
+    timetableEntries,
+    lessonPlans,
+    homeworkAssignments,
+    academicContentTargets,
+  };
 }

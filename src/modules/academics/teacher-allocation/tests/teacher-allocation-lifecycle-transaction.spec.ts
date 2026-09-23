@@ -19,6 +19,7 @@ function transactionWithTerms(terms: Array<Record<string, unknown>>) {
       timetableEntry: { count },
       lessonPlan: { count },
       homeworkAssignment: { count },
+      academicContentTarget: { count },
     } as unknown as Prisma.TransactionClient,
     findMany,
     count,
@@ -84,6 +85,7 @@ describe('transaction-local Teacher allocation lifecycle read', () => {
       timetableEntry: { count },
       lessonPlan: { count },
       homeworkAssignment: { count },
+      academicContentTarget: { count },
     } as unknown as Prisma.TransactionClient;
 
     const result = await classifyTeacherAllocationLifecycleStateInTransaction(
@@ -117,7 +119,7 @@ describe('transaction-local Teacher allocation lifecycle read', () => {
       fixture.transaction,
       { schoolId: SCHOOL_ID, teacherUserId: USER_ID, asOf: AS_OF },
     );
-    expect(fixture.count).toHaveBeenCalledTimes(3);
+    expect(fixture.count).toHaveBeenCalledTimes(4);
     for (const [query] of fixture.count.mock.calls) {
       expect(query.where.schoolId).toBe(SCHOOL_ID);
       expect(query.where.teacherSubjectAllocationId.in).toEqual([

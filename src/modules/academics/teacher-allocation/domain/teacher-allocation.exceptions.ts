@@ -14,6 +14,14 @@ export function isUniqueConstraintError(error: unknown): boolean {
   return (error as PrismaErrorLike).code === 'P2002';
 }
 
+export function isForeignKeyConstraintError(error: unknown): boolean {
+  return (
+    error !== null &&
+    typeof error === 'object' &&
+    (error as PrismaErrorLike).code === 'P2003'
+  );
+}
+
 export class TeacherAllocationConflictException extends DomainException {
   constructor(details?: Record<string, unknown>) {
     super({

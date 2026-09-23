@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { AcademicContentType, Prisma } from '@prisma/client';
+import {
+  AcademicContentAudienceType,
+  AcademicContentType,
+  Prisma,
+} from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 
 const ACADEMIC_CONTENT_ARGS =
@@ -7,7 +11,10 @@ const ACADEMIC_CONTENT_ARGS =
     select: {
       id: true,
       schoolId: true,
+      academicYearId: true,
+      termId: true,
       type: true,
+      audience: true,
       createdByUserId: true,
       updatedByUserId: true,
       deletedAt: true,
@@ -22,7 +29,10 @@ export type AcademicContentRecord = Prisma.AcademicContentGetPayload<
 
 export type CreateAcademicContentInput = {
   schoolId: string;
+  academicYearId: string;
+  termId: string;
   type: AcademicContentType;
+  audience: AcademicContentAudienceType;
   createdByUserId: string;
   updatedByUserId?: string | null;
 };
@@ -42,11 +52,24 @@ export class AcademicContentRepository {
     });
   }
 
+  findByIdInSchool(
+    id: string,
+    schoolId: string,
+  ): Promise<AcademicContentRecord | null> {
+    return this.prisma.academicContent.findFirst({
+      where: { id, schoolId, deletedAt: null },
+      ...ACADEMIC_CONTENT_ARGS,
+    });
+  }
+
   create(data: CreateAcademicContentInput): Promise<AcademicContentRecord> {
     return this.scopedPrisma.academicContent.create({
       data: {
         schoolId: data.schoolId,
+        academicYearId: data.academicYearId,
+        termId: data.termId,
         type: data.type,
+        audience: data.audience,
         createdByUserId: data.createdByUserId,
         updatedByUserId: data.updatedByUserId,
       },

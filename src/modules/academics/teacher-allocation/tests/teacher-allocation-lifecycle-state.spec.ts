@@ -9,6 +9,7 @@ import {
   classifyTeacherAllocationTermState,
   evaluateTeacherAllocationLifecycleGate,
   summarizeTeacherAllocationLifecycleStates,
+  teacherAllocationAuditCounts,
   type TeacherAllocationLifecycleTermInput,
 } from '../domain/teacher-allocation-lifecycle-state';
 import type { TeacherAllocationRepository } from '../infrastructure/teacher-allocation.repository';
@@ -16,6 +17,19 @@ import type { TeacherAllocationRepository } from '../infrastructure/teacher-allo
 const AS_OF = new Date('2028-02-29T12:00:00.000Z');
 const SCHOOL_ID = '40000000-0000-4000-8000-000000000001';
 const TEACHER_USER_ID = '40000000-0000-4000-8000-000000000002';
+
+it('keeps the fixed Teacher lifecycle audit payload unchanged when ACC targets exist', () => {
+  const summary = summarizeTeacherAllocationLifecycleStates(['current_active'], {
+    timetableEntries: 0,
+    lessonPlans: 0,
+    homeworkAssignments: 0,
+    academicContentTargets: 2,
+  });
+  expect(summary.dependencyCounts.academicContentTargets).toBe(2);
+  expect(teacherAllocationAuditCounts(summary)).not.toHaveProperty(
+    'academicContentTargets',
+  );
+});
 
 function term(
   overrides: Partial<TeacherAllocationLifecycleTermInput> = {},
@@ -244,6 +258,7 @@ describe('Teacher allocation lifecycle state', () => {
         timetableEntries: 1,
         lessonPlans: 2,
         homeworkAssignments: 3,
+        academicContentTargets: 4,
       }),
       createAllocation: jest.fn(),
       deleteAllocation: jest.fn(),
@@ -267,6 +282,7 @@ describe('Teacher allocation lifecycle state', () => {
         timetableEntries: 1,
         lessonPlans: 2,
         homeworkAssignments: 3,
+        academicContentTargets: 4,
       },
     });
     expect(repository.countAllocationDependencies).toHaveBeenCalledWith([
