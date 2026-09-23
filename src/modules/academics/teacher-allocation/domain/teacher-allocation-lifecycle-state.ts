@@ -213,7 +213,6 @@ export function teacherAllocationAuditCounts(
     timetableEntries: summary.dependencyCounts.timetableEntries,
     lessonPlans: summary.dependencyCounts.lessonPlans,
     homeworkAssignments: summary.dependencyCounts.homeworkAssignments,
-    academicContentTargets: summary.dependencyCounts.academicContentTargets,
   };
 }
 
