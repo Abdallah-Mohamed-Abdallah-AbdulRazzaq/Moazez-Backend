@@ -1,5 +1,5 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { Prisma, UserType } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { getRequestContext } from '../../../../common/context/request-context';
 import {
   DomainException,
@@ -7,6 +7,7 @@ import {
 } from '../../../../common/exceptions/domain-exception';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import { assertAcademicContentAudience } from '../domain/academic-content-audience.policy';
+import { canReplaceAcademicContentTargets } from '../domain/academic-content-authoring.policy';
 import {
   AcademicContentTargetInput,
   normalizeAcademicContentTargets,
@@ -34,10 +35,10 @@ export class ReplaceAcademicContentTargetsUseCase {
     if (
       !schoolId ||
       !actor ||
-      (actor.userType !== UserType.TEACHER &&
-        !context.activeMembership?.permissions.includes(
-          'academics.academic_content.manage',
-        ))
+      !canReplaceAcademicContentTargets(
+        actor.userType,
+        context?.activeMembership?.permissions ?? [],
+      )
     ) {
       throw new DomainException({
         code: 'auth.scope.missing',

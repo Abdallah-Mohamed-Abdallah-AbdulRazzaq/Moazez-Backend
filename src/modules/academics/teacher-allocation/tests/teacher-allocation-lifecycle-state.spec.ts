@@ -244,6 +244,7 @@ describe('Teacher allocation lifecycle state', () => {
         timetableEntries: 1,
         lessonPlans: 2,
         homeworkAssignments: 3,
+        academicContentTargets: 4,
       }),
       createAllocation: jest.fn(),
       deleteAllocation: jest.fn(),
@@ -267,6 +268,7 @@ describe('Teacher allocation lifecycle state', () => {
         timetableEntries: 1,
         lessonPlans: 2,
         homeworkAssignments: 3,
+        academicContentTargets: 4,
       },
     });
     expect(repository.countAllocationDependencies).toHaveBeenCalledWith([

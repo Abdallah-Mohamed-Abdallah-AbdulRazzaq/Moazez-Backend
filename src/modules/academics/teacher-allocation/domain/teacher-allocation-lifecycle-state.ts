@@ -34,6 +34,7 @@ export interface TeacherAllocationDependencyCounts {
   timetableEntries: number;
   lessonPlans: number;
   homeworkAssignments: number;
+  academicContentTargets: number;
 }
 
 export type TeacherAllocationLifecycleIntegrityReason =
@@ -107,6 +108,7 @@ export function summarizeTeacherAllocationLifecycleStates(
     timetableEntries: 0,
     lessonPlans: 0,
     homeworkAssignments: 0,
+    academicContentTargets: 0,
   },
 ): TeacherAllocationLifecycleSummary {
   const counts: TeacherAllocationLifecycleCounts = {
@@ -128,6 +130,7 @@ export function summarizeTeacherAllocationLifecycleCounts(
     timetableEntries: 0,
     lessonPlans: 0,
     homeworkAssignments: 0,
+    academicContentTargets: 0,
   },
 ): TeacherAllocationLifecycleSummary {
   const counts = { ...countsInput };
@@ -210,6 +213,7 @@ export function teacherAllocationAuditCounts(
     timetableEntries: summary.dependencyCounts.timetableEntries,
     lessonPlans: summary.dependencyCounts.lessonPlans,
     homeworkAssignments: summary.dependencyCounts.homeworkAssignments,
+    academicContentTargets: summary.dependencyCounts.academicContentTargets,
   };
 }
 

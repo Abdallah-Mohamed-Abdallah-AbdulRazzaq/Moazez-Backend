@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { MembershipStatus, Prisma } from '@prisma/client';
 import { getRequestContext } from '../../../../common/context/request-context';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import { isForeignKeyConstraintError } from '../domain/teacher-allocation.exceptions';
 
 const TEACHER_ALLOCATION_ARGS =
   Prisma.validator<Prisma.TeacherSubjectAllocationDefaultArgs>()({
@@ -228,6 +229,7 @@ export interface TeacherAllocationDependencyCounts {
   timetableEntries: number;
   lessonPlans: number;
   homeworkAssignments: number;
+  academicContentTargets: number;
 }
 
 export type DeleteTeacherAllocationResult =
@@ -661,23 +663,36 @@ export class TeacherAllocationRepository {
         timetableEntries: 0,
         lessonPlans: 0,
         homeworkAssignments: 0,
+        academicContentTargets: 0,
       };
     }
 
-    const [timetableEntries, lessonPlans, homeworkAssignments] =
-      await Promise.all([
-        this.scopedPrisma.timetableEntry.count({
-          where: { teacherSubjectAllocationId: { in: allocationIds } },
-        }),
-        this.scopedPrisma.lessonPlan.count({
-          where: { teacherSubjectAllocationId: { in: allocationIds } },
-        }),
-        this.scopedPrisma.homeworkAssignment.count({
-          where: { teacherSubjectAllocationId: { in: allocationIds } },
-        }),
-      ]);
+    const [
+      timetableEntries,
+      lessonPlans,
+      homeworkAssignments,
+      academicContentTargets,
+    ] = await Promise.all([
+      this.scopedPrisma.timetableEntry.count({
+        where: { teacherSubjectAllocationId: { in: allocationIds } },
+      }),
+      this.scopedPrisma.lessonPlan.count({
+        where: { teacherSubjectAllocationId: { in: allocationIds } },
+      }),
+      this.scopedPrisma.homeworkAssignment.count({
+        where: { teacherSubjectAllocationId: { in: allocationIds } },
+      }),
+      this.scopedPrisma.academicContentTarget.count({
+        where: { teacherSubjectAllocationId: { in: allocationIds } },
+      }),
+    ]);
 
-    return { timetableEntries, lessonPlans, homeworkAssignments };
+    return {
+      timetableEntries,
+      lessonPlans,
+      homeworkAssignments,
+      academicContentTargets,
+    };
   }
 
   async deleteAllocation(
@@ -697,38 +712,46 @@ export class TeacherAllocationRepository {
   }): Promise<ClearTeacherAllocationsResult> {
     const schoolId = this.getCurrentSchoolId();
 
-    return this.prisma.$transaction(async (tx) => {
-      const allocations = await tx.teacherSubjectAllocation.findMany({
-        where: {
+    let allocationIds: string[] = [];
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const allocations = await tx.teacherSubjectAllocation.findMany({
+          where: {
+            schoolId,
+            termId: input.termId,
+            subjectId: input.subjectId,
+            ...(input.classroomIds
+              ? { classroomId: { in: input.classroomIds } }
+              : {}),
+          },
+          select: { id: true },
+        });
+        allocationIds = allocations.map((allocation) => allocation.id);
+        if (allocationIds.length === 0) {
+          return { status: 'deleted', deletedCount: 0 };
+        }
+
+        const dependencyCounts = await this.countAllocationDependenciesInTx(
+          tx,
           schoolId,
-          termId: input.termId,
-          subjectId: input.subjectId,
-          ...(input.classroomIds
-            ? { classroomId: { in: input.classroomIds } }
-            : {}),
-        },
-        select: { id: true },
+          allocationIds,
+        );
+        if (hasDependencyCounts(dependencyCounts)) {
+          return { status: 'conflict', dependencyCounts, allocationIds };
+        }
+
+        const result = await tx.teacherSubjectAllocation.deleteMany({
+          where: { schoolId, id: { in: allocationIds } },
+        });
+
+        return { status: 'deleted', deletedCount: result.count };
       });
-      const allocationIds = allocations.map((allocation) => allocation.id);
-      if (allocationIds.length === 0) {
-        return { status: 'deleted', deletedCount: 0 };
-      }
-
-      const dependencyCounts = await this.countAllocationDependenciesInTx(
-        tx,
-        schoolId,
-        allocationIds,
-      );
-      if (hasDependencyCounts(dependencyCounts)) {
-        return { status: 'conflict', dependencyCounts, allocationIds };
-      }
-
-      const result = await tx.teacherSubjectAllocation.deleteMany({
-        where: { schoolId, id: { in: allocationIds } },
-      });
-
-      return { status: 'deleted', deletedCount: result.count };
-    });
+    } catch (error) {
+      if (!isForeignKeyConstraintError(error)) throw error;
+      const dependencyCounts =
+        await this.countAllocationDependencies(allocationIds);
+      return { status: 'conflict', dependencyCounts, allocationIds };
+    }
   }
 
   private async countAllocationDependenciesInTx(
@@ -736,31 +759,46 @@ export class TeacherAllocationRepository {
     schoolId: string,
     allocationIds: string[],
   ): Promise<TeacherAllocationDependencyCounts> {
-    const [timetableEntries, lessonPlans, homeworkAssignments] =
-      await Promise.all([
-        tx.timetableEntry.count({
-          where: {
-            schoolId,
-            teacherSubjectAllocationId: { in: allocationIds },
-          },
-        }),
-        tx.lessonPlan.count({
-          where: {
-            schoolId,
-            teacherSubjectAllocationId: { in: allocationIds },
-            deletedAt: null,
-          },
-        }),
-        tx.homeworkAssignment.count({
-          where: {
-            schoolId,
-            teacherSubjectAllocationId: { in: allocationIds },
-            deletedAt: null,
-          },
-        }),
-      ]);
+    const [
+      timetableEntries,
+      lessonPlans,
+      homeworkAssignments,
+      academicContentTargets,
+    ] = await Promise.all([
+      tx.timetableEntry.count({
+        where: {
+          schoolId,
+          teacherSubjectAllocationId: { in: allocationIds },
+        },
+      }),
+      tx.lessonPlan.count({
+        where: {
+          schoolId,
+          teacherSubjectAllocationId: { in: allocationIds },
+          deletedAt: null,
+        },
+      }),
+      tx.homeworkAssignment.count({
+        where: {
+          schoolId,
+          teacherSubjectAllocationId: { in: allocationIds },
+          deletedAt: null,
+        },
+      }),
+      tx.academicContentTarget.count({
+        where: {
+          schoolId,
+          teacherSubjectAllocationId: { in: allocationIds },
+        },
+      }),
+    ]);
 
-    return { timetableEntries, lessonPlans, homeworkAssignments };
+    return {
+      timetableEntries,
+      lessonPlans,
+      homeworkAssignments,
+      academicContentTargets,
+    };
   }
 }
 
@@ -770,6 +808,7 @@ function hasDependencyCounts(
   return (
     counts.timetableEntries > 0 ||
     counts.lessonPlans > 0 ||
-    counts.homeworkAssignments > 0
+    counts.homeworkAssignments > 0 ||
+    counts.academicContentTargets > 0
   );
 }

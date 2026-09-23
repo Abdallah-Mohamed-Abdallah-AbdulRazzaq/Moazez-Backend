@@ -16,6 +16,9 @@ import { AcademicContentAudienceResolver } from '../../src/modules/academics/aca
 import { AcademicContentContextValidator } from '../../src/modules/academics/academic-content/application/academic-content-context-validator';
 import { AcademicContentTargetValidator } from '../../src/modules/academics/academic-content/application/academic-content-target-validator';
 import { ReplaceAcademicContentTargetsUseCase } from '../../src/modules/academics/academic-content/application/replace-academic-content-targets.use-case';
+import { ClearTeacherAllocationsBySubjectUseCase } from '../../src/modules/academics/teacher-allocation/application/clear-teacher-allocations-by-subject.use-case';
+import { DeleteTeacherAllocationUseCase } from '../../src/modules/academics/teacher-allocation/application/delete-teacher-allocation.use-case';
+import { TeacherAllocationRepository } from '../../src/modules/academics/teacher-allocation/infrastructure/teacher-allocation.repository';
 import { AcademicContentAudienceRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-audience.repository';
 import { AcademicContentRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content.repository';
 
@@ -59,6 +62,16 @@ describe('ACC-2 database tenancy, replacement, and audience', () => {
           firstName: 'ACC',
           lastName: 'Admin',
           userType: UserType.SCHOOL_USER,
+        },
+      })
+    ).id;
+    ids.orgAdmin = (
+      await prisma.user.create({
+        data: {
+          email: `acc2-org-admin-${suffix}@example.test`,
+          firstName: 'ACC',
+          lastName: 'Org Admin',
+          userType: UserType.ORGANIZATION_USER,
         },
       })
     ).id;
@@ -231,7 +244,12 @@ describe('ACC-2 database tenancy, replacement, and audience', () => {
       await prisma.academicYear.deleteMany({ where: { schoolId: ids.school } });
       await prisma.school.delete({ where: { id: ids.school } });
     }
-    for (const id of [ids.teacherA, ids.teacherB, ids.admin].filter(Boolean))
+    for (const id of [
+      ids.teacherA,
+      ids.teacherB,
+      ids.admin,
+      ids.orgAdmin,
+    ].filter(Boolean))
       await prisma.user.delete({ where: { id } });
     if (ids.org) await prisma.organization.delete({ where: { id: ids.org } });
     await prisma.$disconnect();
@@ -359,6 +377,116 @@ describe('ACC-2 database tenancy, replacement, and audience', () => {
       ]),
     );
     expect(owned).toHaveLength(1);
+  });
+
+  it('allows only school and organization managers to replace targets', async () => {
+    for (const [actorId, userType] of [
+      [ids.admin, UserType.SCHOOL_USER],
+      [ids.orgAdmin, UserType.ORGANIZATION_USER],
+    ] as const) {
+      await expect(
+        asActor(actorId, userType, ['academics.academic_content.manage'], () =>
+          replace.execute(ids.content, [{ scopeType: Scope.SCHOOL }]),
+        ),
+      ).resolves.toHaveLength(1);
+      await expect(
+        asActor(actorId, userType, [], () =>
+          replace.execute(ids.content, [{ scopeType: Scope.SCHOOL }]),
+        ),
+      ).rejects.toMatchObject({ code: 'auth.scope.missing', httpStatus: 403 });
+    }
+    for (const userType of [
+      UserType.PARENT,
+      UserType.STUDENT,
+      UserType.DISMISSAL_STAFF,
+    ]) {
+      await expect(
+        asActor(
+          ids.admin,
+          userType,
+          ['academics.academic_content.manage'],
+          () => replace.execute(ids.content, [{ scopeType: Scope.SCHOOL }]),
+        ),
+      ).rejects.toMatchObject({ code: 'auth.scope.missing', httpStatus: 403 });
+    }
+  });
+
+  it('classifies FK-backed ACC targets as delete and clear conflicts before deletion', async () => {
+    const repository = new TeacherAllocationRepository(prisma);
+    const deleteAllocation = new DeleteTeacherAllocationUseCase(repository);
+    const clearAllocations = new ClearTeacherAllocationsBySubjectUseCase(
+      repository,
+    );
+    await prisma.term.update({
+      where: { id: ids.term },
+      data: { isActive: true },
+    });
+    try {
+      await asActor(
+        ids.admin,
+        UserType.SCHOOL_USER,
+        ['academics.academic_content.manage'],
+        () =>
+          replace.execute(ids.content, [
+            {
+              scopeType: Scope.CLASSROOM,
+              classroomId: ids.classroom,
+              subjectId: ids.subject,
+              teacherSubjectAllocationId: ids.allocationA,
+            },
+          ]),
+      );
+      await asActor(
+        ids.admin,
+        UserType.SCHOOL_USER,
+        ['academics.structure.manage'],
+        async () => {
+          const counts = await repository.countAllocationDependencies([
+            ids.allocationA,
+          ]);
+          expect(counts.academicContentTargets).toBe(1);
+          await expect(
+            deleteAllocation.execute(ids.allocationA),
+          ).rejects.toMatchObject({
+            code: 'academics.allocation.delete_conflict',
+            httpStatus: 409,
+            details: { academicContentTargets: 1 },
+          });
+          await expect(
+            clearAllocations.execute({
+              termId: ids.term,
+              subjectId: ids.subject,
+            }),
+          ).rejects.toMatchObject({
+            code: 'academics.allocation.clear_conflict',
+            httpStatus: 409,
+            details: { academicContentTargets: 1 },
+          });
+        },
+      );
+      expect(
+        await prisma.teacherSubjectAllocation.findUnique({
+          where: { id: ids.allocationA },
+        }),
+      ).not.toBeNull();
+      expect(
+        await prisma.academicContentTarget.count({
+          where: {
+            schoolId: ids.school,
+            academicContentId: ids.content,
+            teacherSubjectAllocationId: ids.allocationA,
+          },
+        }),
+      ).toBe(1);
+    } finally {
+      await prisma.academicContentTarget.deleteMany({
+        where: { schoolId: ids.school, academicContentId: ids.content },
+      });
+      await prisma.term.update({
+        where: { id: ids.term },
+        data: { isActive: false },
+      });
+    }
   });
 
   it('rejects foreign school academic context and hierarchy without changing targets', async () => {
