@@ -83,6 +83,7 @@ export class LearningMediaRepository {
   ): Promise<LearningMediaCleanupCandidate[]> {
     const sessions = await this.prisma.fileUploadSession.findMany({
       where: {
+        purpose: FileUploadPurpose.LESSON_CONTENT,
         OR: [
           {
             stagingCleanupEligibleAt: { lte: now },
@@ -145,6 +146,7 @@ export class LearningMediaRepository {
         SELECT "id"
         FROM "file_upload_sessions"
         WHERE "status" IN ('CREATED', 'UPLOADING')
+          AND "purpose" = 'LESSON_CONTENT'
           AND "expires_at" <= ${now}
         ORDER BY "expires_at" ASC, "id" ASC
         LIMIT 100
@@ -197,12 +199,17 @@ export class LearningMediaRepository {
         SELECT "id"
         FROM "file_upload_sessions"
         WHERE "id" = ${uploadId}::uuid
+          AND "purpose" = 'LESSON_CONTENT'
         FOR UPDATE
       `);
       const session = rows[0]
         ? await tx.fileUploadSession.findUnique({ where: { id: rows[0].id } })
         : null;
-      if (!session || session.status === FileUploadSessionStatus.LEGACY) {
+      if (
+        !session ||
+        session.purpose !== FileUploadPurpose.LESSON_CONTENT ||
+        session.status === FileUploadSessionStatus.LEGACY
+      ) {
         return null;
       }
 
@@ -280,9 +287,19 @@ export class LearningMediaRepository {
     finalDeleted: boolean;
   }): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
-      const session = await tx.fileUploadSession.findUniqueOrThrow({
-        where: { id: input.uploadId },
+      const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT "id"
+        FROM "file_upload_sessions"
+        WHERE "id" = ${input.uploadId}::uuid
+          AND "purpose" = 'LESSON_CONTENT'
+        FOR UPDATE
+      `);
+      if (!rows[0]) return;
+      const session = await tx.fileUploadSession.findUnique({
+        where: { id: rows[0].id },
       });
+      if (!session || session.purpose !== FileUploadPurpose.LESSON_CONTENT)
+        return;
       let status = session.status;
       let failureReason: string | null | undefined;
       if (
@@ -646,6 +663,7 @@ export class LearningMediaRepository {
       FROM "file_upload_sessions"
       WHERE "id" = ${input.uploadId}::uuid
         AND "school_id" = ${input.schoolId}::uuid
+        AND "purpose" = 'LESSON_CONTENT'
         AND (
           "created_by_user_id" = ${input.actorId}::uuid
           OR "staging_object_key" IS NULL
@@ -691,6 +709,7 @@ export class LearningMediaRepository {
       where: {
         id: input.uploadId,
         schoolId: input.schoolId,
+        purpose: FileUploadPurpose.LESSON_CONTENT,
         status: FileUploadSessionStatus.VERIFYING,
         stagingObjectKey: { not: null },
       },
@@ -700,6 +719,7 @@ export class LearningMediaRepository {
       where: {
         id: input.uploadId,
         schoolId: input.schoolId,
+        purpose: FileUploadPurpose.LESSON_CONTENT,
         status: FileUploadSessionStatus.VERIFYING,
         stagingObjectKey: null,
         verificationVersion: 'legacy_metadata_v1',
@@ -716,6 +736,7 @@ export class LearningMediaRepository {
       where: {
         id: input.uploadId,
         schoolId: input.schoolId,
+        purpose: FileUploadPurpose.LESSON_CONTENT,
         status: FileUploadSessionStatus.VERIFYING,
       },
       data: {
@@ -800,6 +821,7 @@ export class LearningMediaRepository {
       where: {
         id: input.uploadId,
         schoolId: input.schoolId,
+        purpose: FileUploadPurpose.LESSON_CONTENT,
         status: input.from,
       },
       data: { status: input.to },

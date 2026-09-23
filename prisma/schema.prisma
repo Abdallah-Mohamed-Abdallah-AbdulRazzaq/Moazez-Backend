@@ -251,6 +251,7 @@ enum FileVisibility {
 
 enum FileUploadPurpose {
   LESSON_CONTENT
+  ACADEMIC_CONTENT
 
   @@map("file_upload_purpose")
 }
@@ -1423,6 +1424,8 @@ model School {
   rooms                                 Room[]
   academicContents                      AcademicContent[]
   academicContentTargets                AcademicContentTarget[]
+  academicContentAssets                 AcademicContentAsset[]
+  academicContentFilePolicy             AcademicContentFilePolicy?
   academicCalendarEvents                AcademicCalendarEvent[]
   curricula                             Curriculum[]
   curriculumUnits                       CurriculumUnit[]
@@ -1638,6 +1641,7 @@ model User {
   academicContentsCreated                        AcademicContent[]                      @relation("AcademicContentCreatedBy")
   academicContentsUpdated                        AcademicContent[]                      @relation("AcademicContentUpdatedBy")
   academicContentTargetsCreated                  AcademicContentTarget[]                @relation("AcademicContentTargetCreatedBy")
+  academicContentAssetsCreated                   AcademicContentAsset[]                 @relation("AcademicContentAssetCreatedBy")
   curriculaCreated                               Curriculum[]                           @relation("CurriculumCreatedBy")
   curriculaUpdated                               Curriculum[]                           @relation("CurriculumUpdatedBy")
   lessonContentItemsCreated                      LessonContentItem[]                    @relation("LessonContentItemCreatedBy")
@@ -2786,6 +2790,7 @@ model AcademicContent {
   createdBy    User                    @relation("AcademicContentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   updatedBy    User?                   @relation("AcademicContentUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
   targets      AcademicContentTarget[]
+  assets       AcademicContentAsset[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -2835,6 +2840,50 @@ model AcademicContentTarget {
   @@index([teacherSubjectAllocationId])
   @@index([createdByUserId])
   @@map("academic_content_targets")
+}
+
+model AcademicContentAsset {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String    @map("school_id") @db.Uuid
+  academicContentId String    @map("academic_content_id") @db.Uuid
+  fileId            String    @map("file_id") @db.Uuid
+  createdByUserId   String    @map("created_by_user_id") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  school          School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicContent AcademicContent @relation(fields: [academicContentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  file            File            @relation(fields: [fileId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  createdBy       User            @relation("AcademicContentAssetCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([schoolId, academicContentId])
+  @@index([schoolId, fileId])
+  @@index([createdByUserId])
+  @@index([deletedAt])
+  @@map("academic_content_assets")
+}
+
+model AcademicContentFilePolicy {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId              String   @unique @map("school_id") @db.Uuid
+  attachmentsEnabled    Boolean  @map("attachments_enabled")
+  maximumFileSizeBytes  BigInt   @map("maximum_file_size_bytes")
+  documentsEnabled      Boolean  @map("documents_enabled")
+  imagesEnabled         Boolean  @map("images_enabled")
+  videosEnabled         Boolean  @map("videos_enabled")
+  audioEnabled          Boolean  @map("audio_enabled")
+  archivesEnabled       Boolean  @map("archives_enabled")
+  otherFilesEnabled     Boolean  @map("other_files_enabled")
+  allowStudentDownload  Boolean  @map("allow_student_download")
+  allowGuardianDownload Boolean  @map("allow_guardian_download")
+  allowInlinePreview    Boolean  @map("allow_inline_preview")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+
+  @@map("academic_content_file_policies")
 }
 
 model AcademicYear {
@@ -6935,6 +6984,7 @@ model File {
   schoolProfileLogos                   SchoolProfile[]                       @relation("SchoolProfileLogoFile")
   studentCredentialSecretArtifacts     StudentCredentialBatch[]              @relation("StudentCredentialBatchSecretArtifact")
   uploadSession                        FileUploadSession?
+  academicContentAssets                AcademicContentAsset[]
 
   @@unique([bucket, objectKey])
   @@unique([id, schoolId])
@@ -6953,6 +7003,7 @@ model FileUploadSession {
   createdByUserId          String                  @map("created_by_user_id") @db.Uuid
   clientRequestId          String                  @map("client_request_id") @db.Uuid
   purpose                  FileUploadPurpose
+  purposeContextId         String?                 @map("purpose_context_id") @db.Uuid
   originalName             String                  @map("original_name")
   expectedMimeType         String                  @map("expected_mime_type")
   expectedSizeBytes        BigInt                  @map("expected_size_bytes")

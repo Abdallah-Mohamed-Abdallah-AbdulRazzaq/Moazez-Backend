@@ -81,4 +81,14 @@ describe('schoolScope communication registration', () => {
     expect(SOFT_DELETE_MODELS.has('AcademicContentTarget')).toBe(false);
     expect(EXCLUDED_FROM_SCHOOL_SCOPE.has('AcademicContentTarget')).toBe(false);
   });
+
+  it('registers ACC files models with their distinct soft-delete contracts', () => {
+    for (const model of ['AcademicContentAsset', 'AcademicContentFilePolicy']) {
+      expect(SCHOOL_SCOPED_MODELS.has(model)).toBe(true);
+      expect(EXCLUDED_FROM_SCHOOL_SCOPE.has(model)).toBe(false);
+    }
+    expect(SOFT_DELETE_MODELS.has('AcademicContentAsset')).toBe(true);
+    expect(SOFT_DELETE_MODELS.has('AcademicContentFilePolicy')).toBe(false);
+    expect(SOFT_DELETE_MODELS.has('FileUploadSession')).toBe(false);
+  });
 });
