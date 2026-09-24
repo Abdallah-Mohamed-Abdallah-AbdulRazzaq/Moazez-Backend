@@ -140,6 +140,7 @@ try {
       env: {
         ...process.env,
         NODE_ENV: 'test',
+        DATABASE_URL: databaseUrl,
         RUN_PRD3_G03_RECOVERY_INTEGRATION: '1',
         RUN_ACC_3C_LIFECYCLE_INTEGRATION: '1',
         PRD3_G03_RUN_ID: RUN_ID,

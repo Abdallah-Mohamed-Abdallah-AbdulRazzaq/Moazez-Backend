@@ -31,17 +31,21 @@ import { AcademicContentCleanupWorker } from '../../src/modules/academics/academ
 import { AcademicContentFileRepository } from '../../src/modules/academics/academic-content/files/infrastructure/academic-content-file.repository';
 import type { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
 
-const enabled = process.env.RUN_ACC_3C_LIFECYCLE_INTEGRATION === '1';
-const describeEvidence = enabled ? describe : describe.skip;
+const databaseUrl =
+  process.env.DATABASE_URL ??
+  (process.env.RUN_ACC_3C_LIFECYCLE_INTEGRATION === '1' &&
+  process.env.PRD3_G03_DATABASE_PORT
+    ? `postgresql://g03_fixture:g03_fixture@127.0.0.1:${process.env.PRD3_G03_DATABASE_PORT}/g03_fixture?schema=public`
+    : null);
+const describeEvidence = databaseUrl ? describe : describe.skip;
 const pdf = Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\n', 'utf8');
 
 describeEvidence('ACC-3C real PostgreSQL lifecycle', () => {
   jest.setTimeout(120_000);
-  const databasePort = process.env.PRD3_G03_DATABASE_PORT;
   const prisma = new PrismaService({
     datasources: {
       db: {
-        url: `postgresql://g03_fixture:g03_fixture@127.0.0.1:${databasePort}/g03_fixture?schema=public`,
+        url: databaseUrl ?? 'postgresql://unused:unused@127.0.0.1:1/unused',
       },
     },
   });
