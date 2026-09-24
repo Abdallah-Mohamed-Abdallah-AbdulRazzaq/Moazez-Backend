@@ -129,7 +129,7 @@ test('central CI executes G03 through the exact-candidate regression matrix', ()
   );
 });
 
-test('the existing seven queues and seven consumers remain the complete inventory', () => {
+test('the seven legacy queues and ACC cleanup form the eight-consumer inventory', () => {
   const manifest = read('src/modules/health/operational-probe.manifests.ts');
   const coreModule = read(
     'src/runtime/core-worker/core-worker-consumers.module.ts',
@@ -137,7 +137,11 @@ test('the existing seven queues and seven consumers remain the complete inventor
   const mediaModule = read(
     'src/runtime/media-worker/media-worker-consumer.module.ts',
   );
+  const accConstants = read(
+    'src/modules/academics/academic-content/files/domain/academic-content-file.constants.ts',
+  );
   const queues = [
+    'academic-content-cleanup',
     'communication-notifications',
     'communication-notification-push',
     'school-email-delivery',
@@ -146,18 +150,21 @@ test('the existing seven queues and seven consumers remain the complete inventor
     'learning-media-cleanup',
     'settings-branding-logo-cleanup',
   ];
-  for (const queue of queues) assert.match(manifest, new RegExp(queue, 'u'));
+  for (const queue of queues.slice(1))
+    assert.match(manifest, new RegExp(queue, 'u'));
+  assert.match(accConstants, /academic-content-cleanup/u);
+  assert.match(manifest, /ACADEMIC_CONTENT_CLEANUP_QUEUE/u);
   const providerBlock =
     /CORE_WORKER_CONSUMER_PROVIDERS = Object\.freeze\(\[([\s\S]*?)\]\s+satisfies Provider\[\]\)/u.exec(
       coreModule,
     )?.[1];
   assert.ok(providerBlock);
-  assert.equal((providerBlock.match(/Worker|Service/gu) || []).length, 6);
+  assert.equal((providerBlock.match(/Worker|Service/gu) || []).length, 7);
   assert.match(mediaModule, /LearningMediaCleanupService/u);
-  assert.equal(queues.length, 7);
+  assert.equal(queues.length, 8);
 });
 
-test('Maintenance Scheduler owns exactly seven current repeat definitions', () => {
+test('Maintenance Scheduler owns exactly eight current repeat definitions', () => {
   const schedules = read(
     'src/runtime/maintenance-scheduler/maintenance-schedules.module.ts',
   );
@@ -166,10 +173,10 @@ test('Maintenance Scheduler owns exactly seven current repeat definitions', () =
   );
   const manifest = read('src/modules/health/operational-probe.manifests.ts');
 
-  assert.match(runtimeContract, /owns exactly seven registrations/u);
-  assert.match(runtimeContract, /toHaveBeenCalledTimes\(7\)/u);
-  assert.equal((schedules.match(/Schedule,/gu) || []).length, 7);
-  assert.equal((manifest.match(/queueName:/gu) || []).length, 7);
+  assert.match(runtimeContract, /owns exactly eight registrations/u);
+  assert.match(runtimeContract, /toHaveBeenCalledTimes\(8\)/u);
+  assert.equal((schedules.match(/Schedule,/gu) || []).length, 8);
+  assert.equal((manifest.match(/queueName:/gu) || []).length, 8);
   for (const jobName of [
     'communication.announcement.notifications.reconcile',
     'communication.notification.push.reconcile',
@@ -285,7 +292,7 @@ test('real harness uses immutable local images, empty replacement, and exact cle
   assert.match(integration, /productionStoragePathCount: 3/u);
   assert.match(integration, /productionWorkerDispatchCount: 7/u);
   assert.match(integration, /poisonRejectedCount/u);
-  assert.match(integration, /actualUniqueScheduleRegistrations: 7/u);
+  assert.match(integration, /actualUniqueScheduleRegistrations: 8/u);
   assert.match(
     integration,
     /expect\(dispatch\.pushKnownSuccessReplayCount\)\.toBe\(0\)/u,

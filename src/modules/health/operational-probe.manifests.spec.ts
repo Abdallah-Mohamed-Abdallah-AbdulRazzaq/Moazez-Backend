@@ -1,3 +1,4 @@
+import { ACADEMIC_CONTENT_CLEANUP_QUEUE } from '../academics/academic-content/files/domain/academic-content-file.constants';
 import {
   COMMUNICATION_NOTIFICATION_PUSH_QUEUE_NAME,
   COMMUNICATION_NOTIFICATION_QUEUE_NAME,
@@ -16,6 +17,7 @@ import {
 describe('operational role dependency manifests', () => {
   it('matches the approved current Core and Media worker assignments', () => {
     expect(CORE_WORKER_ASSIGNED_CONSUMERS).toEqual([
+      ACADEMIC_CONTENT_CLEANUP_QUEUE,
       COMMUNICATION_NOTIFICATION_QUEUE_NAME,
       COMMUNICATION_NOTIFICATION_PUSH_QUEUE_NAME,
       SCHOOL_EMAIL_DELIVERY_QUEUE_NAME,

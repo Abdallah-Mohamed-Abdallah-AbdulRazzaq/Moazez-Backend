@@ -218,7 +218,7 @@ describeEvidence('PRD3-G03 production-model recovery evidence', () => {
           },
         );
       }
-      expect(queue.getDesiredRepeatRegistrations()).toHaveLength(7);
+      expect(queue.getDesiredRepeatRegistrations()).toHaveLength(8);
 
       const firstRecovery = await reconstructProductionWork(
         components,
@@ -310,7 +310,7 @@ describeEvidence('PRD3-G03 production-model recovery evidence', () => {
       redisAdmin(['CONFIG', 'SET', 'requirepass', ''], true);
       redisAdmin(['CLIENT', 'KILL', 'TYPE', 'normal', 'SKIPME', 'yes']);
       await waitFor(
-        () => queue.getRepeatRegistrations().length === 7,
+        () => queue.getRepeatRegistrations().length === 8,
         30_000,
         'repeat_inventory_restore_timeout',
       );
@@ -393,7 +393,7 @@ describeEvidence('PRD3-G03 production-model recovery evidence', () => {
         productionReconcilerCount: 7,
         productionWorkerDispatchCount: 7,
         reconstructedJobsByQueue: reconstructed,
-        actualUniqueScheduleRegistrations: 7,
+        actualUniqueScheduleRegistrations: 8,
         poisonRejectedCount: dispatch.poisonResults.length,
         ineligibleTerminalOutcomes: ineligibleBeforeReplacement,
         finalModels,

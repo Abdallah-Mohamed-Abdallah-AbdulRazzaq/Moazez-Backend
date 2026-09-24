@@ -1,0 +1,13 @@
+export const ACADEMIC_CONTENT_PLATFORM_DEFAULT_MAX_FILE_SIZE_BYTES = 536870912n;
+export const ACADEMIC_CONTENT_PLATFORM_HARD_MAX_FILE_SIZE_BYTES = 10737418240n;
+export const ACADEMIC_CONTENT_UPLOAD_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+export const ACADEMIC_CONTENT_READY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+export const ACADEMIC_CONTENT_CLEANUP_INTERVAL_MS = 15 * 60 * 1000;
+export const ACADEMIC_CONTENT_STALE_CLAIM_MS = 15 * 60 * 1000;
+export const ACADEMIC_CONTENT_VERIFICATION_VERSION =
+  'academic-content-bounded-v1';
+export const ACADEMIC_CONTENT_CLEANUP_QUEUE = 'academic-content-cleanup';
+export const ACADEMIC_CONTENT_DISCOVERY_JOB = 'discover';
+export const ACADEMIC_CONTENT_DISCOVERY_JOB_ID =
+  'academic-content-cleanup-discovery';
+export const ACADEMIC_CONTENT_OBJECT_CLEANUP_JOB = 'cleanup-object';
