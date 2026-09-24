@@ -20,12 +20,27 @@ const {
   loadPlan,
   parseAppliedMigrationCount,
   redactText,
+  requireMinioFixture,
   removeAndVerify,
   runProcess,
   safeHostEnvironment,
   sanitizeEvidence,
   validateShard,
 } = require('../ci/run-ci-shard.cjs');
+const {
+  BINARY_SHA256,
+  IMAGE: MINIO_IMAGE,
+  LABELS: MINIO_LABELS,
+  RELEASE,
+  RELEASE_URL,
+  UPSTREAM_COMMIT,
+  validateImageInspect,
+} = require('../ci/minio-fixture.contract.cjs');
+const {
+  allowedReleaseUrl,
+  assertSavedImageSize,
+  parseArgs: parseMinioFixtureArgs,
+} = require('../ci/build-minio-fixture.cjs');
 
 const CANDIDATE = 'a'.repeat(40);
 const BASE = 'b'.repeat(40);
@@ -117,14 +132,163 @@ test('every self-contained Phase 3 profile preloads its exact fresh-run images',
     {
       'prd3-g01': ['postgres:16-alpine'],
       'prd3-g02': ['redis:7-alpine'],
-      'prd3-g03': [
-        'postgres:16-alpine',
-        'redis:7-alpine',
-        'quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e',
-      ],
+      'prd3-g03': ['postgres:16-alpine', 'redis:7-alpine', MINIO_IMAGE],
       'prd3-g04': ['postgres:16-alpine'],
       'prd3-g05': ['postgres:16-alpine'],
     },
+  );
+});
+
+test('MinIO fixture pins the official release binary and fails closed on provenance', () => {
+  assert.equal(RELEASE, 'RELEASE.2025-09-07T16-13-09Z');
+  assert.equal(UPSTREAM_COMMIT, '07c3a429bfed433e49018cb0f78a52145d4bedeb');
+  assert.equal(
+    BINARY_SHA256,
+    '7c5bd8512c6e966455b1d198209358b2d191c77a83ab377c4073281065fb855f',
+  );
+  assert.equal(MINIO_IMAGE, `moazez-ci/minio:${RELEASE}`);
+  assert.equal(
+    RELEASE_URL,
+    `https://github.com/minio/minio/releases/download/${RELEASE}/minio.linux-amd64.${RELEASE}`,
+  );
+  const valid = {
+    Id: `sha256:${'a'.repeat(64)}`,
+    Os: 'linux',
+    Architecture: 'amd64',
+    Config: { Entrypoint: ['/minio'], Labels: { ...MINIO_LABELS } },
+  };
+  assert.equal(validateImageInspect(valid), valid.Id);
+  assert.throws(() =>
+    validateImageInspect({ ...valid, Architecture: 'arm64' }),
+  );
+  assert.throws(() =>
+    validateImageInspect({
+      ...valid,
+      Config: {
+        ...valid.Config,
+        Labels: {
+          ...MINIO_LABELS,
+          'com.moazez.ci.minio.binary.sha256': 'wrong',
+        },
+      },
+    }),
+  );
+});
+
+test('MinIO release downloader rejects unapproved redirects and output modes', () => {
+  assert.equal(allowedReleaseUrl(new URL(RELEASE_URL), false), true);
+  assert.equal(
+    allowedReleaseUrl(
+      new URL(
+        'https://release-assets.githubusercontent.com/github-production-release-asset/29261473/pinned?token=secret',
+      ),
+      true,
+    ),
+    true,
+  );
+  assert.equal(
+    allowedReleaseUrl(
+      new URL(
+        'https://release-assets.githubusercontent.com/github-production-release-asset-2e65be/29261473/pinned',
+      ),
+      true,
+    ),
+    true,
+  );
+  for (const target of [
+    'http://release-assets.githubusercontent.com/github-production-release-asset/29261473/pinned',
+    'https://mirror.example/github-production-release-asset/29261473/pinned',
+    'https://release-assets.githubusercontent.com/github-production-release-asset/other/pinned',
+  ]) {
+    assert.equal(allowedReleaseUrl(new URL(target), true), false);
+  }
+  assert.deepEqual(parseMinioFixtureArgs(['--verify-only']), {
+    verifyOnly: true,
+  });
+  assert.throws(() =>
+    parseMinioFixtureArgs(['--verify-only', '--output', 'fixture.tar']),
+  );
+  assert.doesNotThrow(() => assertSavedImageSize(39_465_472));
+  assert.throws(() => assertSavedImageSize(0));
+  assert.throws(() => assertSavedImageSize(257 * 1024 * 1024));
+});
+
+test('shard MinIO lookup fails closed without a governed local image', async () => {
+  const calls = [];
+  const context = {
+    repositoryRoot: REPOSITORY_ROOT,
+    environment: {},
+    sensitiveValues: [],
+    execute: async (command, args) => {
+      calls.push([command, args]);
+      return { ok: false, outputTail: '' };
+    },
+  };
+  await assert.rejects(requireMinioFixture(context), {
+    classification: 'FIXTURE_CONTRACT_FAILURE',
+  });
+  assert.deepEqual(calls, [
+    ['docker', ['image', 'inspect', MINIO_IMAGE, '--format', '{{json .}}']],
+  ]);
+  context.execute = async () => ({
+    ok: true,
+    outputTail: JSON.stringify({
+      Id: `sha256:${'a'.repeat(64)}`,
+      Os: 'linux',
+      Architecture: 'amd64',
+      Config: { Entrypoint: ['/minio'], Labels: {} },
+    }),
+  });
+  await assert.rejects(requireMinioFixture(context), {
+    classification: 'FIXTURE_CONTRACT_FAILURE',
+  });
+});
+
+test('current CI owns one verified MinIO artifact and never pulls public MinIO', () => {
+  const workflow = fs.readFileSync(
+    path.join(REPOSITORY_ROOT, '.github', 'workflows', 'ci.yml'),
+    'utf8',
+  );
+  const builder = fs.readFileSync(
+    path.join(REPOSITORY_ROOT, 'scripts', 'ci', 'build-minio-fixture.cjs'),
+    'utf8',
+  );
+  const g03 = fs.readFileSync(
+    path.join(
+      REPOSITORY_ROOT,
+      'scripts',
+      'ci',
+      'prd3-g03-critical-queue-recovery.cjs',
+    ),
+    'utf8',
+  );
+  assert.match(builder, /FROM scratch/u);
+  assert.match(builder, /COPY --chmod=0755 minio \/minio/u);
+  assert.match(builder, /downloadVerifiedBinary/u);
+  assert.match(builder, /validateImageInspect/u);
+  assert.match(builder, /'--pull',\s*'never'/u);
+  assert.match(workflow, /Build and smoke the governed MinIO fixture/u);
+  assert.match(
+    workflow,
+    /ci-minio-fixture-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/u,
+  );
+  assert.match(
+    workflow,
+    /docker load --input artifacts\/ci\/minio-fixture\/minio-image\.tar/u,
+  );
+  assert.match(workflow, /build-minio-fixture\.cjs --verify-only/u);
+  assert.match(RUN_CI_SHARD_SOURCE, /requireMinioFixture\(context\)/u);
+  assert.match(RUN_CI_SHARD_SOURCE, /minioImageId/u);
+  assert.match(g03, /validateImageInspect\(inspect\)/u);
+  for (const source of [workflow, RUN_CI_SHARD_SOURCE, g03]) {
+    assert.doesNotMatch(
+      source,
+      /(?:quay\.io|docker\.io|ghcr\.io)\/minio\/minio/iu,
+    );
+  }
+  assert.doesNotMatch(
+    RUN_CI_SHARD_SOURCE,
+    /args: \['pull', MINIO_IMAGE\]|'pull', MINIO_IMAGE/u,
   );
 });
 
@@ -166,10 +330,7 @@ test('media health endpoints use owned container DNS while host fixtures stay lo
     mediaRuntimeEnd,
   );
 
-  assert.match(
-    RUN_CI_SHARD_SOURCE,
-    /--publish',\s*'127\.0\.0\.1::5432'/u,
-  );
+  assert.match(RUN_CI_SHARD_SOURCE, /--publish',\s*'127\.0\.0\.1::5432'/u);
   assert.match(
     RUN_CI_SHARD_SOURCE,
     /minioPublish\s*=\s*[\s\S]*?'127\.0\.0\.1::9000'/u,
@@ -196,18 +357,12 @@ test('media health endpoints use owned container DNS while host fixtures stay lo
     mediaRuntime,
     /HEALTH_POSTGRES_CONTAINER: context\.identity\.postgres/u,
   );
-  assert.match(
-    mediaRuntime,
-    /HEALTH_DATABASE_URL: healthDatabaseUrlValue/u,
-  );
+  assert.match(mediaRuntime, /HEALTH_DATABASE_URL: healthDatabaseUrlValue/u);
   assert.match(
     mediaRuntime,
     /HEALTH_MINIO_CONTAINER: context\.identity\.minio/u,
   );
-  assert.match(
-    mediaRuntime,
-    /HEALTH_STORAGE_ENDPOINT: healthStorageEndpoint/u,
-  );
+  assert.match(mediaRuntime, /HEALTH_STORAGE_ENDPOINT: healthStorageEndpoint/u);
   assert.match(
     mediaRuntime,
     /context\.sensitiveValues\.push\([\s\S]*?healthDatabaseUrlValue/u,
@@ -682,9 +837,7 @@ test('all workflow actions are immutable official pins and historical Phase 3 is
     if (!/^\s/u.test(line)) {
       break;
     }
-    const permission = line
-      .trim()
-      .match(/^([a-z-]+):\s*(\S+?)(?:\s+#.*)?$/u);
+    const permission = line.trim().match(/^([a-z-]+):\s*(\S+?)(?:\s+#.*)?$/u);
     assert.ok(permission, `invalid staging WIF permission: ${line.trim()}`);
     permissions.push([permission[1], permission[2]]);
   }
@@ -713,10 +866,7 @@ test('the staging backend image workflow is manual, least-privileged, and immuta
   assert.doesNotMatch(workflow, /^\s*(?:pull_request|push):/mu);
 
   const workflowLines = workflow.split(/\r?\n/u);
-  assert.equal(
-    (workflow.match(/^\s*permissions:\s*$/gmu) ?? []).length,
-    1,
-  );
+  assert.equal((workflow.match(/^\s*permissions:\s*$/gmu) ?? []).length, 1);
   const permissionsIndex = workflowLines.findIndex((line) =>
     /^permissions:\s*$/u.test(line),
   );
@@ -734,9 +884,7 @@ test('the staging backend image workflow is manual, least-privileged, and immuta
     if (!/^\s/u.test(line)) {
       break;
     }
-    const permission = line
-      .trim()
-      .match(/^([a-z-]+):\s*(\S+?)(?:\s+#.*)?$/u);
+    const permission = line.trim().match(/^([a-z-]+):\s*(\S+?)(?:\s+#.*)?$/u);
     assert.ok(permission, `invalid staging image permission: ${line.trim()}`);
     permissions.push([permission[1], permission[2]]);
   }
@@ -759,7 +907,10 @@ test('the staging backend image workflow is manual, least-privileged, and immuta
   }
 
   assert.equal((workflow.match(/uses: actions\/checkout@/gu) ?? []).length, 1);
-  assert.equal((workflow.match(/persist-credentials: false/gu) ?? []).length, 1);
+  assert.equal(
+    (workflow.match(/persist-credentials: false/gu) ?? []).length,
+    1,
+  );
   assert.match(
     workflow,
     /uses: actions\/checkout@[0-9a-f]{40}[^\r\n]*\r?\n        with:\r?\n(?:          [^\r\n]*\r?\n)*          persist-credentials: false(?:\r?\n|$)/u,

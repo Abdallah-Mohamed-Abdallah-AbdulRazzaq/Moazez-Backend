@@ -7,11 +7,14 @@ const { createHash } = require('node:crypto');
 const { spawn } = require('node:child_process');
 
 const { MEDIA_RUNTIME_JEST_FILES, requireExactSha } = require('./plan-ci.cjs');
+const {
+  IMAGE: MINIO_IMAGE,
+  validateImageInspect,
+} = require('./minio-fixture.contract.cjs');
 
 const SCHEMA_VERSION = 1;
 const POSTGRES_IMAGE = 'postgres:16-alpine';
 const REDIS_IMAGE = 'redis:7-alpine';
-const MINIO_IMAGE = 'quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e';
 const SHARD_CLEANUP_RESERVE_MINUTES = 8;
 const JEST_OPEN_HANDLE_WARNING_PATTERN =
   /Jest has detected the following.*open handle|open handles? potentially keeping Jest from exiting|did not exit.*after the test run/iu;
@@ -697,6 +700,32 @@ async function assertLocalDocker(context) {
   }
 }
 
+async function requireMinioFixture(context) {
+  const result = await docker(context, [
+    'image',
+    'inspect',
+    MINIO_IMAGE,
+    '--format',
+    '{{json .}}',
+  ]);
+  if (!result.ok) {
+    throw commandFailure(
+      'Governed MinIO fixture is absent locally',
+      'FIXTURE_CONTRACT_FAILURE',
+    );
+  }
+  try {
+    return validateImageInspect(JSON.parse(result.outputTail.trim()));
+  } catch (error) {
+    throw commandFailure(
+      error instanceof Error
+        ? error.message
+        : 'Governed MinIO fixture inspect failed',
+      'FIXTURE_CONTRACT_FAILURE',
+    );
+  }
+}
+
 async function waitForContainer(context, container, timeoutMs = 90_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -843,6 +872,9 @@ class CleanupManager {
 
 async function startInfrastructure(context, options = {}) {
   await assertLocalDocker(context);
+  const minioImageId = options.minio
+    ? await requireMinioFixture(context)
+    : null;
   const identity = context.identity;
   const labels = dockerLabelArgs(identity.labels);
   context.cleanup.add('owned Docker network', () =>
@@ -955,6 +987,8 @@ async function startInfrastructure(context, options = {}) {
       [
         'run',
         '--detach',
+        '--pull',
+        'never',
         '--rm',
         '--name',
         identity.minio,
@@ -971,7 +1005,7 @@ async function startInfrastructure(context, options = {}) {
         'MINIO_ROOT_PASSWORD=ci-only-storage-secret',
         '--env',
         'MINIO_API_CORS_ALLOW_ORIGIN=http://127.0.0.1:3001',
-        MINIO_IMAGE,
+        minioImageId,
         'server',
         '/data',
       ],
@@ -979,8 +1013,8 @@ async function startInfrastructure(context, options = {}) {
     );
     if (!outcome.ok)
       throw commandFailure(
-        'MinIO image pull/start failed',
-        'IMAGE_PULL_OR_BUILD_FAILURE',
+        'Governed MinIO fixture start failed',
+        'FIXTURE_CONTRACT_FAILURE',
       );
   }
 
@@ -1068,6 +1102,10 @@ async function preloadSelfContainedImages(context, profile) {
   }
   await assertLocalDocker(context);
   for (const { id, image } of images) {
+    if (id === 'minio') {
+      await requireMinioFixture(context);
+      continue;
+    }
     await runStage(context, {
       id: `${profile}-pull-${id}`,
       command: 'docker',
@@ -1708,10 +1746,7 @@ async function runMediaRuntime(context, files) {
   healthDatabaseUrl.port = '5432';
   const healthDatabaseUrlValue = healthDatabaseUrl.toString();
   const healthStorageEndpoint = `http://${context.identity.minio}:9000`;
-  context.sensitiveValues.push(
-    healthDatabaseUrlValue,
-    healthStorageEndpoint,
-  );
+  context.sensitiveValues.push(healthDatabaseUrlValue, healthStorageEndpoint);
   const healthEnvironment = {
     ...context.testEnvironment,
     GITHUB_RUN_ID: context.identity.runId,
@@ -2079,6 +2114,7 @@ module.exports = {
   preloadSelfContainedImages,
   prepareMediaDatabase,
   redactText,
+  requireMinioFixture,
   removeAndVerify,
   runProcess,
   runShard,

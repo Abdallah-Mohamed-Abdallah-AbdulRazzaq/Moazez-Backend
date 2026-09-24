@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { rootCertificates } from 'node:tls';
 import { ConfigService } from '@nestjs/config';
@@ -180,7 +181,9 @@ describe('learning media upload foundation contract', () => {
       join(root, 'scripts/ci/health-probe-runtime.sh'),
       'utf8',
     );
-    const planner = require(join(root, 'scripts/ci/plan-ci.cjs')) as {
+    const planner = createRequire(__filename)(
+      join(root, 'scripts/ci/plan-ci.cjs'),
+    ) as {
       classifyTestFile(relativePath: string): {
         execution: string;
         profile: string;
@@ -222,9 +225,10 @@ describe('learning media upload foundation contract', () => {
       "const POSTGRES_IMAGE = 'postgres:16-alpine'",
     );
     expect(shardRunner).toContain("const REDIS_IMAGE = 'redis:7-alpine'");
-    expect(shardRunner).toContain(
-      "const MINIO_IMAGE = 'quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e'",
-    );
+    expect(shardRunner).toContain('IMAGE: MINIO_IMAGE');
+    expect(shardRunner).toContain('requireMinioFixture(context)');
+    expect(shardRunner).toContain("'pull',");
+    expect(shardRunner).toContain("'never',");
     expect(shardRunner).toContain('scripts/verify-media-runtime.cjs');
     expect(shardRunner).toContain('async function provisionBuckets');
     expect(shardRunner).toContain('client.bucketExists(bucket)');
@@ -243,7 +247,7 @@ describe('learning media upload foundation contract', () => {
     }
 
     const dispatchedScenarios = Array.from(
-      harness.matchAll(/^  ([a-z-]+)\) scenario_[a-z_]+ ;;/gmu),
+      harness.matchAll(/^[ ]{2}([a-z-]+)\) scenario_[a-z_]+ ;;/gmu),
       (match) => match[1],
     );
     expect(dispatchedScenarios).toEqual(scenarios);
