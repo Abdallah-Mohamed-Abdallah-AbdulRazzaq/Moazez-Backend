@@ -21,6 +21,8 @@ import { DeleteTeacherAllocationUseCase } from '../../src/modules/academics/teac
 import { TeacherAllocationRepository } from '../../src/modules/academics/teacher-allocation/infrastructure/teacher-allocation.repository';
 import { AcademicContentAudienceRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-audience.repository';
 import { AcademicContentRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content.repository';
+import { AcademicContentTargetRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-target.repository';
+import { AcademicContentValidationRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-validation.repository';
 
 describe('ACC-2 database tenancy, replacement, and audience', () => {
   let prisma: PrismaService;
@@ -32,11 +34,12 @@ describe('ACC-2 database tenancy, replacement, and audience', () => {
   beforeAll(async () => {
     prisma = new PrismaService();
     await prisma.$connect();
+    const validation = new AcademicContentValidationRepository(prisma);
     replace = new ReplaceAcademicContentTargetsUseCase(
-      prisma,
       new AcademicContentRepository(prisma),
-      new AcademicContentContextValidator(prisma),
-      new AcademicContentTargetValidator(prisma),
+      new AcademicContentContextValidator(validation),
+      new AcademicContentTargetValidator(validation),
+      new AcademicContentTargetRepository(prisma),
     );
     resolve = new AcademicContentAudienceResolver(
       new AcademicContentAudienceRepository(prisma),
@@ -584,7 +587,9 @@ describe('ACC-2 database tenancy, replacement, and audience', () => {
         })
       ).id;
 
-      const contexts = new AcademicContentContextValidator(prisma);
+      const contexts = new AcademicContentContextValidator(
+        new AcademicContentValidationRepository(prisma),
+      );
       await expect(
         contexts.validate({
           schoolId: ids.school,

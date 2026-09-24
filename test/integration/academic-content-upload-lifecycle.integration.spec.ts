@@ -459,4 +459,43 @@ describeEvidence('ACC-3C real PostgreSQL lifecycle', () => {
       'ACC_3C_LIFECYCLE_EVIDENCE_JSON={"createdToUploading":1,"uploadingToVerifying":1,"verifyingToReady":1,"readyToPurged":1,"terminalCleanupEvidence":1}\n',
     );
   });
+
+  it('rejects a real READY replay after content soft-delete without exposing File or Asset', async () => {
+    const intent = await createIntent();
+    const session = await prisma.fileUploadSession.findUniqueOrThrow({
+      where: { id: intent.uploadId },
+    });
+    objects.set(session.finalObjectKey, pdf);
+    const command = { contentId: ids.content, uploadId: intent.uploadId };
+    const finalized = await asManager(() => complete.execute(command));
+    expect(await asManager(() => complete.execute(command))).toEqual(finalized);
+
+    await prisma.academicContent.update({
+      where: { id: ids.content },
+      data: { deletedAt: new Date() },
+    });
+    try {
+      const rejection: unknown = await asManager(() =>
+        complete.execute(command),
+      ).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      expect(rejection).toMatchObject({
+        code: 'academic_content.file.ready_relationship_invalid',
+      });
+      expect(rejection).not.toHaveProperty('file');
+      expect(rejection).not.toHaveProperty('asset');
+      const unchanged = await prisma.fileUploadSession.findUniqueOrThrow({
+        where: { id: intent.uploadId },
+      });
+      expect(unchanged.status).toBe(FileUploadSessionStatus.READY);
+      expect(unchanged.fileId).toBe(finalized.file.id);
+    } finally {
+      await prisma.academicContent.update({
+        where: { id: ids.content },
+        data: { deletedAt: null },
+      });
+    }
+  });
 });

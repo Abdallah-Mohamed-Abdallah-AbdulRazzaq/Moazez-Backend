@@ -5,6 +5,119 @@ import {
 } from '@prisma/client';
 import { AcademicContentFileRepository } from '../infrastructure/academic-content-file.repository';
 
+describe('ACC READY relationship boundary', () => {
+  const schoolId = '11111111-1111-4111-8111-111111111111';
+  const contentId = '22222222-2222-4222-8222-222222222222';
+  const fileId = '33333333-3333-4333-8333-333333333333';
+  const session = { schoolId, purposeContextId: contentId, fileId };
+
+  async function readyLink(rows: {
+    content?: { id: string; schoolId: string; deletedAt: Date | null };
+    file?: { id: string; schoolId: string; deletedAt: Date | null };
+    asset?: {
+      schoolId: string;
+      academicContentId: string;
+      fileId: string;
+      deletedAt: Date | null;
+    };
+  }) {
+    const find = <T extends { deletedAt: Date | null }>(
+      row: T | undefined,
+      where: Record<string, unknown>,
+    ) =>
+      Promise.resolve(
+        row &&
+          Object.entries(where).every(
+            ([key, value]) => row[key as keyof T] === value,
+          )
+          ? row
+          : null,
+      );
+    const tx = {
+      academicContent: {
+        findFirst: jest.fn(({ where }: { where: Record<string, unknown> }) =>
+          find(rows.content, where),
+        ),
+      },
+      file: {
+        findFirst: jest.fn(({ where }: { where: Record<string, unknown> }) =>
+          find(rows.file, where),
+        ),
+      },
+      academicContentAsset: {
+        findFirst: jest.fn(({ where }: { where: Record<string, unknown> }) =>
+          find(rows.asset, where),
+        ),
+      },
+    };
+    const repository = new AcademicContentFileRepository({
+      $transaction: (callback: (client: typeof tx) => unknown) => callback(tx),
+    } as never);
+    const result = await repository.withTransaction((context) =>
+      context.readyLink(session as never),
+    );
+    return { result, tx };
+  }
+
+  const active = {
+    content: { id: contentId, schoolId, deletedAt: null },
+    file: { id: fileId, schoolId, deletedAt: null },
+    asset: { schoolId, academicContentId: contentId, fileId, deletedAt: null },
+  };
+
+  it('returns metadata only for active content, File, and Asset in one school and relationship', async () => {
+    const { result, tx } = await readyLink(active);
+    expect(result).toEqual({ file: active.file, asset: active.asset });
+    expect(tx.academicContent.findFirst).toHaveBeenCalledWith({
+      where: { id: contentId, schoolId, deletedAt: null },
+      select: { id: true },
+    });
+    expect(tx.file.findFirst).toHaveBeenCalledWith({
+      where: { id: fileId, schoolId, deletedAt: null },
+    });
+    expect(tx.academicContentAsset.findFirst).toHaveBeenCalledWith({
+      where: {
+        academicContentId: contentId,
+        fileId,
+        schoolId,
+        deletedAt: null,
+      },
+    });
+  });
+
+  it.each([
+    [
+      'content soft-delete',
+      { content: { ...active.content, deletedAt: new Date() } },
+    ],
+    ['File soft-delete', { file: { ...active.file, deletedAt: new Date() } }],
+    [
+      'Asset soft-delete',
+      { asset: { ...active.asset, deletedAt: new Date() } },
+    ],
+    [
+      'foreign content school',
+      { content: { ...active.content, schoolId: 'foreign' } },
+    ],
+    ['foreign File school', { file: { ...active.file, schoolId: 'foreign' } }],
+    [
+      'foreign Asset school',
+      { asset: { ...active.asset, schoolId: 'foreign' } },
+    ],
+    [
+      'wrong content relationship',
+      { asset: { ...active.asset, academicContentId: 'other' } },
+    ],
+    [
+      'wrong File relationship',
+      { asset: { ...active.asset, fileId: 'other' } },
+    ],
+  ])('does not expose metadata for %s', async (_case, changed) => {
+    const { result } = await readyLink({ ...active, ...changed });
+    expect(result).toBeNull();
+  });
+});
+
 describe('ACC cleanup repository purpose isolation', () => {
   const updateMany = jest.fn().mockResolvedValue({ count: 2 });
   const executeRaw = jest.fn().mockResolvedValue(2);
