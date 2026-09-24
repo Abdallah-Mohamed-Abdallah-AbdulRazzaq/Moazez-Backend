@@ -1,7 +1,6 @@
 import {
   FileUploadPurpose,
   FileUploadSessionStatus,
-  Prisma,
   UserType,
 } from '@prisma/client';
 import {
@@ -56,13 +55,11 @@ describe('ACC upload intent', () => {
   };
   const repository = {
     findContent: jest.fn().mockResolvedValue({ id: contentId }),
-    create: jest.fn().mockResolvedValue(existing),
-    findRequest: jest.fn().mockResolvedValue(existing),
-    prisma: {
-      fileUploadSession: {
-        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-      },
-    },
+    createOrFindRequest: jest
+      .fn()
+      .mockResolvedValue({ session: existing, created: true }),
+    markCapabilityFailed: jest.fn().mockResolvedValue(undefined),
+    persistCapabilityExpiry: jest.fn().mockResolvedValue(true),
   };
   const policy = {
     resolve: jest.fn().mockResolvedValue({
@@ -103,56 +100,53 @@ describe('ACC upload intent', () => {
       sessionUrl: 'https://provider.example/session',
       capabilityExpiresAt,
     });
-    expect(repository.create).toHaveBeenCalledWith(
+    expect(repository.createOrFindRequest).toHaveBeenCalledWith(
       expect.objectContaining({
         schoolId,
         createdByUserId: actorId,
-        purpose: FileUploadPurpose.ACADEMIC_CONTENT,
         purposeContextId: contentId,
         finalBucket: 'private',
         expectedSizeBytes: 10n,
       }),
     );
     const createdInput = (
-      repository.create.mock.calls as unknown as Array<
+      repository.createOrFindRequest.mock.calls as unknown as Array<
         [Record<string, unknown>]
       >
     )[0][0];
     expect(createdInput).not.toHaveProperty('stagingBucket');
     expect(createdInput).not.toHaveProperty('stagingObjectKey');
+    expect(createdInput).not.toHaveProperty('purpose');
     expect(storage.createResumableUploadSession).toHaveBeenCalledTimes(1);
-    expect(repository.prisma.fileUploadSession.updateMany).toHaveBeenCalledWith(
+    expect(repository.persistCapabilityExpiry).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: {
-          status: FileUploadSessionStatus.UPLOADING,
-          latestUploadUrlExpiresAt: capabilityExpiresAt,
-        },
+        uploadId: existing.id,
+        schoolId,
+        actorId,
+        contentId,
       }),
+      capabilityExpiresAt,
     );
     expect(
-      JSON.stringify(repository.prisma.fileUploadSession.updateMany.mock.calls),
+      JSON.stringify(repository.persistCapabilityExpiry.mock.calls),
     ).not.toContain('provider.example/session');
   });
 
   it('never reissues capability on unique-key replay, and detects payload mismatch', async () => {
-    repository.create.mockRejectedValueOnce(
-      new Prisma.PrismaClientKnownRequestError('unique', {
-        code: 'P2002',
-        clientVersion: 'test',
-      }),
-    );
+    repository.createOrFindRequest.mockResolvedValueOnce({
+      session: existing,
+      created: false,
+    });
     await expect(
       withManager(() => useCase.execute(command)),
     ).rejects.toMatchObject({
       code: 'academic_content.file.upload_capability_not_reissuable',
     });
     expect(storage.createResumableUploadSession).not.toHaveBeenCalled();
-    repository.create.mockRejectedValueOnce(
-      new Prisma.PrismaClientKnownRequestError('unique', {
-        code: 'P2002',
-        clientVersion: 'test',
-      }),
-    );
+    repository.createOrFindRequest.mockResolvedValueOnce({
+      session: existing,
+      created: false,
+    });
     await expect(
       withManager(() =>
         useCase.execute({ ...command, expectedSizeBytes: '11' }),
@@ -169,12 +163,10 @@ describe('ACC upload intent', () => {
   ])(
     'rejects replay with changed $originalName$contentId$expectedSizeBytes',
     async (change) => {
-      repository.create.mockRejectedValueOnce(
-        new Prisma.PrismaClientKnownRequestError('unique', {
-          code: 'P2002',
-          clientVersion: 'test',
-        }),
-      );
+      repository.createOrFindRequest.mockResolvedValueOnce({
+        session: existing,
+        created: false,
+      });
       await expect(
         withManager(() => useCase.execute({ ...command, ...change })),
       ).rejects.toMatchObject({
@@ -193,23 +185,15 @@ describe('ACC upload intent', () => {
     ).rejects.toMatchObject({
       code: 'academic_content.file.resumable_capability_failed',
     });
-    const update = (
-      repository.prisma.fileUploadSession.updateMany.mock
-        .calls as unknown as Array<
-        [
-          {
-            data: {
-              status: string;
-              failureReason: string;
-              finalCleanupEligibleAt: Date;
-            };
-          },
-        ]
-      >
-    )[0][0];
-    expect(update.data.status).toBe(FileUploadSessionStatus.FAILED);
-    expect(update.data.failureReason).toBe('resumable_capability_failed');
-    expect(update.data.finalCleanupEligibleAt).toBeInstanceOf(Date);
+    expect(repository.markCapabilityFailed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        uploadId: existing.id,
+        schoolId,
+        actorId,
+        contentId,
+      }),
+      expect.any(Date),
+    );
   });
 
   it('fails closed for teachers and unavailable resumable storage', async () => {
@@ -241,7 +225,7 @@ describe('ACC upload intent', () => {
     await expect(
       withManager(() => useCase.execute(command)),
     ).rejects.toMatchObject({ code: 'not_found' });
-    expect(repository.create).not.toHaveBeenCalled();
+    expect(repository.createOrFindRequest).not.toHaveBeenCalled();
   });
 
   it('rejects disabled uploads, disabled categories, school-size excess and malformed declarations', async () => {
@@ -294,7 +278,7 @@ describe('ACC upload intent', () => {
     await expect(
       withManager(() => useCase.execute({ ...command, originalName: '' })),
     ).rejects.toMatchObject({ code: 'validation.failed' });
-    expect(repository.create).not.toHaveBeenCalled();
+    expect(repository.createOrFindRequest).not.toHaveBeenCalled();
     expect(storage.createResumableUploadSession).not.toHaveBeenCalled();
   });
 });
@@ -317,29 +301,22 @@ describe('ACC completion and cancellation', () => {
     latestUploadUrlExpiresAt: capabilityExpiresAt,
   };
   const tx = {
-    fileUploadSession: { update: jest.fn().mockResolvedValue(base) },
-    academicContent: {
-      findFirst: jest.fn().mockResolvedValue({ id: contentId }),
-    },
-    file: { create: jest.fn().mockResolvedValue({ id: 'file' }) },
-    academicContentAsset: {
-      create: jest.fn().mockResolvedValue({ id: 'asset' }),
-    },
-    auditLog: { create: jest.fn() },
-  };
-  const repository = {
-    lock: jest.fn().mockResolvedValue(base),
+    lockUpload: jest.fn().mockResolvedValue(base),
     readyLink: jest
       .fn()
       .mockResolvedValue({ file: { id: 'file' }, asset: { id: 'asset' } }),
-    prisma: {
-      $transaction: jest.fn((callback: (value: typeof tx) => unknown) =>
-        callback(tx),
-      ),
-      fileUploadSession: {
-        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-      },
-    },
+    updateUpload: jest.fn().mockResolvedValue(base),
+    contentExists: jest.fn().mockResolvedValue(true),
+    createFile: jest.fn().mockResolvedValue({ id: 'file' }),
+    createAsset: jest.fn().mockResolvedValue({ id: 'asset' }),
+    recordCompletedAudit: jest.fn().mockResolvedValue(undefined),
+  };
+  const repository = {
+    withTransaction: jest.fn((callback: (value: typeof tx) => unknown) =>
+      callback(tx),
+    ),
+    markVerificationFailed: jest.fn().mockResolvedValue(undefined),
+    releaseVerification: jest.fn().mockResolvedValue(undefined),
   };
   const verifier = {
     verify: jest
@@ -354,11 +331,11 @@ describe('ACC completion and cancellation', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    repository.lock.mockResolvedValue(base);
+    tx.lockUpload.mockResolvedValue(base);
   });
 
   it('finalizes File, Asset, READY and audit in one transaction after verification', async () => {
-    repository.lock.mockResolvedValueOnce(base).mockResolvedValueOnce({
+    tx.lockUpload.mockResolvedValueOnce(base).mockResolvedValueOnce({
       ...base,
       status: FileUploadSessionStatus.VERIFYING,
     });
@@ -366,31 +343,30 @@ describe('ACC completion and cancellation', () => {
       withManager(() => complete.execute({ contentId, uploadId })),
     ).resolves.toMatchObject({ file: { id: 'file' }, asset: { id: 'asset' } });
     expect(verifier.verify).toHaveBeenCalledTimes(1);
-    expect(tx.file.create).toHaveBeenCalledTimes(1);
-    expect(tx.academicContentAsset.create).toHaveBeenCalledTimes(1);
+    expect(tx.createFile).toHaveBeenCalledTimes(1);
+    expect(tx.createAsset).toHaveBeenCalledTimes(1);
     const readyUpdate = (
-      tx.fileUploadSession.update.mock.calls as unknown as Array<
+      tx.updateUpload.mock.calls as unknown as Array<
         [
+          string,
           {
-            data: {
-              status: string;
-              verifiedMimeType: string;
-              verificationVersion: string;
-            };
+            status: string;
+            verifiedMimeType: string;
+            verificationVersion: string;
           },
         ]
       >
-    )[1][0];
-    expect(readyUpdate.data).toMatchObject({
+    )[1][1];
+    expect(readyUpdate).toMatchObject({
       status: FileUploadSessionStatus.READY,
       verifiedMimeType: 'application/pdf',
       verificationVersion: 'academic-content-bounded-v1',
     });
-    expect(tx.auditLog.create).toHaveBeenCalledTimes(1);
+    expect(tx.recordCompletedAudit).toHaveBeenCalledTimes(1);
   });
 
   it('returns READY relationship without re-verifying or creating duplicates', async () => {
-    repository.lock.mockResolvedValueOnce({
+    tx.lockUpload.mockResolvedValueOnce({
       ...base,
       status: FileUploadSessionStatus.READY,
       fileId: 'file',
@@ -399,7 +375,7 @@ describe('ACC completion and cancellation', () => {
       withManager(() => complete.execute({ contentId, uploadId })),
     ).resolves.toMatchObject({ file: { id: 'file' }, asset: { id: 'asset' } });
     expect(verifier.verify).not.toHaveBeenCalled();
-    expect(tx.file.create).not.toHaveBeenCalled();
+    expect(tx.createFile).not.toHaveBeenCalled();
   });
 
   it('marks deterministic rejection FAILED but releases retryable infrastructure failure', async () => {
@@ -412,13 +388,11 @@ describe('ACC completion and cancellation', () => {
       code: 'academic_content.file.mime_signature_mismatch',
     });
     const failedUpdate = (
-      repository.prisma.fileUploadSession.updateMany.mock
-        .calls as unknown as Array<
-        [{ data: { status: string; finalCleanupEligibleAt: Date } }]
+      repository.markVerificationFailed.mock.calls as unknown as Array<
+        [{ cleanupEligibleAt: Date }]
       >
     )[0][0];
-    expect(failedUpdate.data.status).toBe(FileUploadSessionStatus.FAILED);
-    expect(failedUpdate.data.finalCleanupEligibleAt.getTime()).toBeLessThan(
+    expect(failedUpdate.cleanupEligibleAt.getTime()).toBeLessThan(
       capabilityExpiresAt.getTime(),
     );
     verifier.verify.mockRejectedValueOnce(new Error('temporary'));
@@ -427,10 +401,8 @@ describe('ACC completion and cancellation', () => {
     ).rejects.toMatchObject({
       code: 'academic_content.file.verification_retryable',
     });
-    expect(repository.prisma.fileUploadSession.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: { status: FileUploadSessionStatus.UPLOADING },
-      }),
+    expect(repository.releaseVerification).toHaveBeenCalledWith(
+      expect.objectContaining({ uploadId, schoolId, actorId, contentId }),
     );
   });
 
@@ -442,18 +414,13 @@ describe('ACC completion and cancellation', () => {
       withManager(() => complete.execute({ contentId, uploadId })),
     ).rejects.toMatchObject({ code: 'academic_content.file.object_missing' });
     const update = (
-      repository.prisma.fileUploadSession.updateMany.mock
-        .calls as unknown as Array<
-        [
-          {
-            data: { status: string; finalCleanupEligibleAt: Date };
-          },
-        ]
+      repository.markVerificationFailed.mock.calls as unknown as Array<
+        [{ reason: string; cleanupEligibleAt: Date }]
       >
     )[0][0];
-    expect(update.data).toMatchObject({
-      status: FileUploadSessionStatus.FAILED,
-      finalCleanupEligibleAt: capabilityExpiresAt,
+    expect(update).toMatchObject({
+      reason: 'object_missing',
+      cleanupEligibleAt: capabilityExpiresAt,
     });
   });
 
@@ -462,15 +429,13 @@ describe('ACC completion and cancellation', () => {
       withManager(() => cancel.execute({ contentId, uploadId })),
     ).resolves.toBeDefined();
     const cancelUpdate = (
-      tx.fileUploadSession.update.mock.calls as unknown as Array<
-        [{ data: { status: string; finalCleanupEligibleAt: Date } }]
+      tx.updateUpload.mock.calls as unknown as Array<
+        [string, { status: string; finalCleanupEligibleAt: Date }]
       >
-    )[0][0];
-    expect(cancelUpdate.data.status).toBe(FileUploadSessionStatus.CANCELLED);
-    expect(cancelUpdate.data.finalCleanupEligibleAt).toEqual(
-      capabilityExpiresAt,
-    );
-    repository.lock.mockResolvedValueOnce({
+    )[0][1];
+    expect(cancelUpdate.status).toBe(FileUploadSessionStatus.CANCELLED);
+    expect(cancelUpdate.finalCleanupEligibleAt).toEqual(capabilityExpiresAt);
+    tx.lockUpload.mockResolvedValueOnce({
       ...base,
       status: FileUploadSessionStatus.READY,
     });
@@ -482,40 +447,36 @@ describe('ACC completion and cancellation', () => {
   });
 
   it('defers completion-time expiry until the issued capability expires', async () => {
-    repository.lock.mockResolvedValueOnce({
+    tx.lockUpload.mockResolvedValueOnce({
       ...base,
       expiresAt: new Date('2026-09-23T00:00:00.000Z'),
     });
     await expect(
       withManager(() => complete.execute({ contentId, uploadId })),
     ).rejects.toMatchObject({ code: 'academic_content.file.upload_expired' });
-    expect(tx.fileUploadSession.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: {
-          status: FileUploadSessionStatus.EXPIRED,
-          finalCleanupEligibleAt: capabilityExpiresAt,
-        },
-      }),
-    );
+    expect(tx.updateUpload).toHaveBeenCalledWith(uploadId, {
+      status: FileUploadSessionStatus.EXPIRED,
+      finalCleanupEligibleAt: capabilityExpiresAt,
+    });
     expect(verifier.verify).not.toHaveBeenCalled();
   });
 
   it('uses exact school, actor, purpose and content ownership for completion and cancellation', async () => {
-    repository.lock.mockResolvedValueOnce(null);
+    tx.lockUpload.mockResolvedValueOnce(null);
     await expect(
       withManager(() => complete.execute({ contentId, uploadId })),
     ).rejects.toMatchObject({ code: 'not_found' });
-    expect(repository.lock).toHaveBeenCalledWith(tx, {
+    expect(tx.lockUpload).toHaveBeenCalledWith({
       uploadId,
       contentId,
       schoolId,
       actorId,
     });
     expect(verifier.verify).not.toHaveBeenCalled();
-    repository.lock.mockResolvedValueOnce(null);
+    tx.lockUpload.mockResolvedValueOnce(null);
     await expect(
       withManager(() => cancel.execute({ contentId, uploadId })),
     ).rejects.toMatchObject({ code: 'not_found' });
-    expect(tx.fileUploadSession.update).not.toHaveBeenCalled();
+    expect(tx.updateUpload).not.toHaveBeenCalled();
   });
 });

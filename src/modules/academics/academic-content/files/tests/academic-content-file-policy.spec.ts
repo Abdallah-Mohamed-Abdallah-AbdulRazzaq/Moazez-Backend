@@ -1,9 +1,15 @@
+import type { AcademicContentFilePolicy } from '@prisma/client';
 import { AcademicContentFilePolicyResolver } from '../application/academic-content-file-policy.resolver';
 
 describe('ACC effective file policy', () => {
   const findUnique = jest.fn().mockResolvedValue(null);
   const resolver = new AcademicContentFilePolicyResolver({
-    academicContentFilePolicy: { findUnique },
+    findPolicy: async (
+      schoolId: string,
+    ): Promise<AcademicContentFilePolicy | null> =>
+      (await findUnique({
+        where: { schoolId },
+      })) as AcademicContentFilePolicy | null,
   } as never);
 
   beforeEach(() => {

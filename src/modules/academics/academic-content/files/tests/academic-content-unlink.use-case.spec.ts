@@ -20,28 +20,20 @@ describe('ACC asset unlink', () => {
     deletedAt: null,
   };
   const tx = {
-    academicContent: {
-      findFirst: jest.fn().mockResolvedValue({ id: contentId }),
-    },
-    academicContentAsset: {
-      findFirst: jest.fn().mockResolvedValue(asset),
-      update: jest.fn().mockResolvedValue(asset),
-      count: jest.fn().mockResolvedValue(0),
-    },
-    fileUploadSession: {
-      findFirst: jest.fn().mockResolvedValue({ id: 'upload' }),
-      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-    },
-    file: { update: jest.fn() },
-    $queryRaw: jest.fn().mockResolvedValue([{ id: fileId }]),
+    contentExists: jest.fn().mockResolvedValue(true),
+    findActiveAsset: jest.fn().mockResolvedValue(asset),
+    findUploadIdForFile: jest.fn().mockResolvedValue('upload'),
+    lockUploadById: jest.fn().mockResolvedValue({ id: 'upload' }),
+    lockActiveFile: jest.fn().mockResolvedValue(true),
+    lockActiveAsset: jest.fn().mockResolvedValue(true),
+    softDeleteAsset: jest.fn().mockResolvedValue(asset),
+    countActiveAssets: jest.fn().mockResolvedValue(0),
+    extendReadyCleanup: jest.fn().mockResolvedValue(undefined),
   };
   const repository = {
-    lockById: jest.fn().mockResolvedValue({ id: 'upload' }),
-    prisma: {
-      $transaction: jest.fn((callback: (value: typeof tx) => unknown) =>
-        callback(tx),
-      ),
-    },
+    withTransaction: jest.fn((callback: (value: typeof tx) => unknown) =>
+      callback(tx),
+    ),
   };
   const useCase = new UnlinkAcademicContentAssetUseCase(repository as never);
 
@@ -62,34 +54,31 @@ describe('ACC asset unlink', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    tx.academicContentAsset.count.mockResolvedValue(0);
+    tx.countActiveAssets.mockResolvedValue(0);
   });
 
   it('soft-deletes only the last link and starts at least seven days of orphan grace', async () => {
     const before = Date.now();
     await expect(run()).resolves.toEqual(asset);
-    expect(repository.lockById).toHaveBeenCalledWith(tx, 'upload');
-    const assetUpdate = (
-      tx.academicContentAsset.update.mock.calls as unknown as Array<
-        [{ where: { id: string }; data: { deletedAt: Date } }]
-      >
-    )[0][0];
-    expect(assetUpdate.where.id).toBe(assetId);
-    expect(assetUpdate.data.deletedAt).toBeInstanceOf(Date);
-    expect(tx.file.update).not.toHaveBeenCalled();
-    const update = (
-      tx.fileUploadSession.updateMany.mock.calls as unknown as Array<
-        [{ data: { finalCleanupEligibleAt: Date } }]
-      >
-    )[0][0];
-    expect(update.data.finalCleanupEligibleAt.getTime()).toBeGreaterThanOrEqual(
+    expect(tx.lockUploadById).toHaveBeenCalledWith('upload');
+    expect(tx.softDeleteAsset).toHaveBeenCalledWith(assetId, expect.any(Date));
+    expect(tx.extendReadyCleanup).toHaveBeenCalledWith(
+      fileId,
+      schoolId,
+      expect.any(Date),
+    );
+    const calls = tx.extendReadyCleanup.mock.calls as unknown as Array<
+      [string, string, Date]
+    >;
+    const eligibleAt = calls[0][2];
+    expect(eligibleAt.getTime()).toBeGreaterThanOrEqual(
       before + 7 * 24 * 60 * 60 * 1000,
     );
   });
 
   it('does not schedule orphan cleanup while another active asset remains', async () => {
-    tx.academicContentAsset.count.mockResolvedValue(1);
+    tx.countActiveAssets.mockResolvedValue(1);
     await run();
-    expect(tx.fileUploadSession.updateMany).not.toHaveBeenCalled();
+    expect(tx.extendReadyCleanup).not.toHaveBeenCalled();
   });
 });

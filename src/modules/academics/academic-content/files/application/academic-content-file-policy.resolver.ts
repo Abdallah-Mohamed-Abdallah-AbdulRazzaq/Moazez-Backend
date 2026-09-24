@@ -1,19 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../../../../infrastructure/database/prisma.service';
 import {
   ACADEMIC_CONTENT_PLATFORM_DEFAULT_MAX_FILE_SIZE_BYTES,
   ACADEMIC_CONTENT_PLATFORM_HARD_MAX_FILE_SIZE_BYTES,
 } from '../domain/academic-content-file.constants';
 import type { AcademicContentFileCategory } from '../domain/academic-content-file.registry';
+import { AcademicContentFileRepository } from '../infrastructure/academic-content-file.repository';
 
 @Injectable()
 export class AcademicContentFilePolicyResolver {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly repository: AcademicContentFileRepository) {}
 
   async resolve(schoolId: string) {
-    const row = await this.prisma.academicContentFilePolicy.findUnique({
-      where: { schoolId },
-    });
+    const row = await this.repository.findPolicy(schoolId);
     const maximumFileSizeBytes =
       row?.maximumFileSizeBytes ??
       ACADEMIC_CONTENT_PLATFORM_DEFAULT_MAX_FILE_SIZE_BYTES;

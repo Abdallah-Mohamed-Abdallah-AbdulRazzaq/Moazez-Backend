@@ -1,5 +1,5 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { FileUploadPurpose, FileUploadSessionStatus } from '@prisma/client';
+import { FileUploadSessionStatus } from '@prisma/client';
 import { BullmqService } from '../../../../../infrastructure/queue/bullmq.service';
 import { StorageService } from '../../../../../infrastructure/storage/storage.service';
 import {
@@ -73,8 +73,8 @@ export class AcademicContentCleanupWorker implements OnModuleInit {
     const staleBefore = new Date(
       now.getTime() - ACADEMIC_CONTENT_STALE_CLAIM_MS,
     );
-    const claim = await this.repository.prisma.$transaction(async (tx) => {
-      const session = await this.repository.lockById(tx, uploadId);
+    const claim = await this.repository.withTransaction(async (tx) => {
+      const session = await tx.lockUploadById(uploadId);
       if (
         !session ||
         !new Set<string>([
@@ -89,10 +89,7 @@ export class AcademicContentCleanupWorker implements OnModuleInit {
           session.finalCleanupClaimedAt >= staleBefore)
       )
         return null;
-      await tx.fileUploadSession.update({
-        where: { id: session.id },
-        data: { finalCleanupClaimedAt: now },
-      });
+      await tx.updateUpload(session.id, { finalCleanupClaimedAt: now });
       return { bucket: session.finalBucket, objectKey: session.finalObjectKey };
     });
     if (!claim) {
@@ -105,19 +102,11 @@ export class AcademicContentCleanupWorker implements OnModuleInit {
         objectKey: claim.objectKey,
       });
     } catch (error) {
-      await this.repository.prisma.fileUploadSession.updateMany({
-        where: {
-          id: uploadId,
-          purpose: FileUploadPurpose.ACADEMIC_CONTENT,
-          finalCleanupClaimedAt: now,
-          finalObjectDeletedAt: null,
-        },
-        data: { finalCleanupClaimedAt: null },
-      });
+      await this.repository.releaseTerminalCleanupClaim(uploadId, now);
       throw error;
     }
-    await this.repository.prisma.$transaction(async (tx) => {
-      const session = await this.repository.lockById(tx, uploadId);
+    await this.repository.withTransaction(async (tx) => {
+      const session = await tx.lockUploadById(uploadId);
       if (
         !session ||
         !session.finalCleanupClaimedAt ||
@@ -132,10 +121,7 @@ export class AcademicContentCleanupWorker implements OnModuleInit {
           FileUploadSessionStatus.EXPIRED,
         ]).has(session.status)
       ) {
-        await tx.fileUploadSession.update({
-          where: { id: uploadId },
-          data: { finalObjectDeletedAt: new Date() },
-        });
+        await tx.updateUpload(uploadId, { finalObjectDeletedAt: new Date() });
       }
     });
   }
@@ -144,9 +130,9 @@ export class AcademicContentCleanupWorker implements OnModuleInit {
     // The ACC DB contract forbids a persisted claim while status is READY. Keep
     // the row lock across deletion, then record claim and deletion atomically
     // with the READY -> PURGED transition. A failed transaction is retryable.
-    await this.repository.prisma.$transaction(
+    await this.repository.withTransaction(
       async (tx) => {
-        const session = await this.repository.lockById(tx, uploadId);
+        const session = await tx.lockUploadById(uploadId);
         if (
           !session ||
           session.status !== FileUploadSessionStatus.READY ||
@@ -155,46 +141,28 @@ export class AcademicContentCleanupWorker implements OnModuleInit {
           session.finalCleanupEligibleAt > now
         )
           return;
-        const fileRows = await tx.$queryRaw<
-          Array<{ id: string }>
-        >`SELECT id FROM files WHERE id = ${session.fileId}::uuid AND school_id = ${session.schoolId}::uuid AND deleted_at IS NULL FOR UPDATE`;
-        if (fileRows.length === 0) return;
-        const active = await tx.academicContentAsset.count({
-          where: {
-            schoolId: session.schoolId,
-            fileId: session.fileId,
-            deletedAt: null,
-          },
-        });
+        if (!(await tx.lockActiveFile(session.fileId, session.schoolId)))
+          return;
+        const active = await tx.countActiveAssets(
+          session.fileId,
+          session.schoolId,
+        );
         if (active > 0) return;
         await this.storage.deleteObjectAndConfirmAbsent({
           bucket: session.finalBucket,
           objectKey: session.finalObjectKey,
         });
-        const stillActive = await tx.academicContentAsset.count({
-          where: {
-            schoolId: session.schoolId,
-            fileId: session.fileId,
-            deletedAt: null,
-          },
-        });
+        const stillActive = await tx.countActiveAssets(
+          session.fileId,
+          session.schoolId,
+        );
         if (stillActive > 0)
           throw new Error('academic_content_cleanup_asset_race');
-        await tx.file.updateMany({
-          where: {
-            id: session.fileId,
-            schoolId: session.schoolId,
-            deletedAt: null,
-          },
-          data: { deletedAt: new Date() },
-        });
-        await tx.fileUploadSession.update({
-          where: { id: uploadId },
-          data: {
-            status: FileUploadSessionStatus.PURGED,
-            finalCleanupClaimedAt: now,
-            finalObjectDeletedAt: new Date(),
-          },
+        await tx.softDeleteFile(session.fileId, session.schoolId, new Date());
+        await tx.updateUpload(uploadId, {
+          status: FileUploadSessionStatus.PURGED,
+          finalCleanupClaimedAt: now,
+          finalObjectDeletedAt: new Date(),
         });
       },
       { maxWait: 10000, timeout: 120000 },

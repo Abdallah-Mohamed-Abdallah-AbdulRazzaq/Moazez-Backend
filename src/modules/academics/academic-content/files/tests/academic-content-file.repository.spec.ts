@@ -1,4 +1,8 @@
-import { FileUploadPurpose, FileUploadSessionStatus } from '@prisma/client';
+import {
+  FileUploadPurpose,
+  FileUploadSessionStatus,
+  Prisma,
+} from '@prisma/client';
 import { AcademicContentFileRepository } from '../infrastructure/academic-content-file.repository';
 
 describe('ACC cleanup repository purpose isolation', () => {
@@ -89,5 +93,70 @@ describe('ACC cleanup repository purpose isolation', () => {
       input.where.OR[1].file?.is.academicContentAssets.none.deletedAt,
     ).toBeNull();
     expect(input.take).toBe(50);
+  });
+});
+
+describe('ACC intent repository idempotency boundary', () => {
+  const input = {
+    id: '11111111-1111-4111-8111-111111111111',
+    organizationId: '22222222-2222-4222-8222-222222222222',
+    schoolId: '33333333-3333-4333-8333-333333333333',
+    createdByUserId: '44444444-4444-4444-8444-444444444444',
+    clientRequestId: '55555555-5555-4555-8555-555555555555',
+    purposeContextId: '66666666-6666-4666-8666-666666666666',
+    originalName: 'lecture.pdf',
+    expectedMimeType: 'application/pdf',
+    expectedSizeBytes: 10n,
+    finalBucket: 'private',
+    finalObjectKey: 'academic-content/object',
+    expiresAt: new Date('2030-01-01T00:00:00.000Z'),
+  };
+  const create = jest.fn();
+  const findUnique = jest.fn();
+  const repository = new AcademicContentFileRepository({
+    fileUploadSession: { create, findUnique },
+  } as never);
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('sets ACC purpose and CREATED state inside infrastructure', async () => {
+    const session = { ...input, purpose: FileUploadPurpose.ACADEMIC_CONTENT };
+    create.mockResolvedValueOnce(session);
+    await expect(repository.createOrFindRequest(input)).resolves.toEqual({
+      session,
+      created: true,
+    });
+    expect(create).toHaveBeenCalledWith({
+      data: {
+        ...input,
+        purpose: FileUploadPurpose.ACADEMIC_CONTENT,
+        status: FileUploadSessionStatus.CREATED,
+      },
+    });
+  });
+
+  it('normalizes only a unique-key replay into an owned existing intent', async () => {
+    const existing = { ...input, purpose: FileUploadPurpose.ACADEMIC_CONTENT };
+    create.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError('unique', {
+        code: 'P2002',
+        clientVersion: 'test',
+      }),
+    );
+    findUnique.mockResolvedValueOnce(existing);
+    await expect(repository.createOrFindRequest(input)).resolves.toEqual({
+      session: existing,
+      created: false,
+    });
+    expect(findUnique).toHaveBeenCalledWith({
+      where: {
+        schoolId_createdByUserId_purpose_clientRequestId: {
+          schoolId: input.schoolId,
+          createdByUserId: input.createdByUserId,
+          purpose: FileUploadPurpose.ACADEMIC_CONTENT,
+          clientRequestId: input.clientRequestId,
+        },
+      },
+    });
   });
 });

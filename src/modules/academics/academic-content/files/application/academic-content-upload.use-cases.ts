@@ -1,12 +1,5 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import {
-  AuditOutcome,
-  FileUploadPurpose,
-  FileUploadSessionStatus,
-  FileVisibility,
-  Prisma,
-  type FileUploadSession,
-} from '@prisma/client';
+import { FileUploadSessionStatus, FileVisibility } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import {
   DomainException,
@@ -23,10 +16,8 @@ import {
 } from '../domain/academic-content-file.constants';
 import { academicContentFinalCleanupDeadline } from '../domain/academic-content-file.cleanup-deadline';
 import { resolveAcademicContentFileType } from '../domain/academic-content-file.registry';
-import {
-  AcademicContentFileRepository,
-  type AcademicUploadIdentity,
-} from '../infrastructure/academic-content-file.repository';
+import { AcademicContentFileRepository } from '../infrastructure/academic-content-file.repository';
+import type { AcademicUploadIdentity } from './academic-content-file.unit-of-work';
 import { academicContentFileScope } from './academic-content-file-scope';
 import { AcademicContentFilePolicyResolver } from './academic-content-file-policy.resolver';
 import {
@@ -108,38 +99,24 @@ export class CreateAcademicContentUploadUseCase {
       throw conflict('storage_resumable_upload_unavailable');
     const uploadId = randomUUID();
     const now = new Date();
-    let session: FileUploadSession;
-    try {
-      session = await this.repository.create({
-        id: uploadId,
-        organizationId: scope.organizationId,
-        schoolId: scope.schoolId,
-        createdByUserId: scope.actorId,
-        clientRequestId: command.clientRequestId,
-        purpose: FileUploadPurpose.ACADEMIC_CONTENT,
-        purposeContextId: command.contentId,
-        originalName,
-        expectedMimeType: type.mimeType,
-        expectedSizeBytes,
-        finalBucket: this.storage.resolveBucket(FileVisibility.PRIVATE),
-        finalObjectKey: `academic-content/${scope.schoolId}/objects/${uploadId}`,
-        status: FileUploadSessionStatus.CREATED,
-        expiresAt: new Date(
-          now.getTime() + ACADEMIC_CONTENT_UPLOAD_SESSION_TTL_MS,
-        ),
-      });
-    } catch (error) {
-      if (
-        !(error instanceof Prisma.PrismaClientKnownRequestError) ||
-        error.code !== 'P2002'
-      )
-        throw error;
-      const existing = await this.repository.findRequest(
-        scope.schoolId,
-        scope.actorId,
-        command.clientRequestId,
-      );
-      if (!existing) throw error;
+    const intent = await this.repository.createOrFindRequest({
+      id: uploadId,
+      organizationId: scope.organizationId,
+      schoolId: scope.schoolId,
+      createdByUserId: scope.actorId,
+      clientRequestId: command.clientRequestId,
+      purposeContextId: command.contentId,
+      originalName,
+      expectedMimeType: type.mimeType,
+      expectedSizeBytes,
+      finalBucket: this.storage.resolveBucket(FileVisibility.PRIVATE),
+      finalObjectKey: `academic-content/${scope.schoolId}/objects/${uploadId}`,
+      expiresAt: new Date(
+        now.getTime() + ACADEMIC_CONTENT_UPLOAD_SESSION_TTL_MS,
+      ),
+    });
+    if (!intent.created) {
+      const existing = intent.session;
       if (
         existing.purposeContextId !== command.contentId ||
         existing.originalName !== originalName ||
@@ -149,6 +126,8 @@ export class CreateAcademicContentUploadUseCase {
         throw conflict('idempotency_payload_mismatch');
       throw conflict('upload_capability_not_reissuable');
     }
+    const session = intent.session;
+    const owner = identity(session.id, command.contentId);
     let sessionUrl: string;
     let capabilityExpiresAt: Date;
     try {
@@ -161,41 +140,14 @@ export class CreateAcademicContentUploadUseCase {
       sessionUrl = capability.sessionUrl;
       capabilityExpiresAt = capability.expiresAt;
     } catch {
-      await this.repository.prisma.fileUploadSession.updateMany({
-        where: {
-          id: session.id,
-          schoolId: scope.schoolId,
-          createdByUserId: scope.actorId,
-          purpose: FileUploadPurpose.ACADEMIC_CONTENT,
-          purposeContextId: command.contentId,
-          status: FileUploadSessionStatus.CREATED,
-        },
-        data: {
-          status: FileUploadSessionStatus.FAILED,
-          failedAt: new Date(),
-          failureReason: 'resumable_capability_failed',
-          finalCleanupEligibleAt: new Date(),
-        },
-      });
+      await this.repository.markCapabilityFailed(owner, new Date());
       throw conflict('resumable_capability_failed');
     }
-    const transitioned =
-      await this.repository.prisma.fileUploadSession.updateMany({
-        where: {
-          id: session.id,
-          schoolId: scope.schoolId,
-          createdByUserId: scope.actorId,
-          purpose: FileUploadPurpose.ACADEMIC_CONTENT,
-          purposeContextId: command.contentId,
-          status: FileUploadSessionStatus.CREATED,
-        },
-        data: {
-          status: FileUploadSessionStatus.UPLOADING,
-          latestUploadUrlExpiresAt: capabilityExpiresAt,
-        },
-      });
-    if (transitioned.count !== 1)
-      throw conflict('upload_capability_not_reissuable');
+    const transitioned = await this.repository.persistCapabilityExpiry(
+      owner,
+      capabilityExpiresAt,
+    );
+    if (!transitioned) throw conflict('upload_capability_not_reissuable');
     return {
       uploadId: session.id,
       status: FileUploadSessionStatus.UPLOADING,
@@ -218,12 +170,12 @@ export class CompleteAcademicContentUploadUseCase {
 
   async execute(command: { contentId: string; uploadId: string }) {
     const owner = identity(command.uploadId, command.contentId);
-    const claimed = await this.repository.prisma.$transaction(async (tx) => {
-      const session = await this.repository.lock(tx, owner);
+    const claimed = await this.repository.withTransaction(async (tx) => {
+      const session = await tx.lockUpload(owner);
       if (!session)
         throw new NotFoundDomainException('Academic upload not found');
       if (session.status === FileUploadSessionStatus.READY) {
-        const link = await this.repository.readyLink(tx, session);
+        const link = await tx.readyLink(session);
         if (!link) throw conflict('ready_relationship_invalid');
         return { kind: 'ready' as const, ...link };
       }
@@ -236,23 +188,19 @@ export class CompleteAcademicContentUploadUseCase {
         throw conflict('upload_not_completable');
       if (session.expiresAt <= new Date()) {
         const now = new Date();
-        await tx.fileUploadSession.update({
-          where: { id: session.id },
-          data: {
-            status: FileUploadSessionStatus.EXPIRED,
-            finalCleanupEligibleAt: academicContentFinalCleanupDeadline(
-              now,
-              session,
-            ),
-          },
+        await tx.updateUpload(session.id, {
+          status: FileUploadSessionStatus.EXPIRED,
+          finalCleanupEligibleAt: academicContentFinalCleanupDeadline(
+            now,
+            session,
+          ),
         });
         return { kind: 'expired' as const };
       }
       if (session.status === FileUploadSessionStatus.CREATED)
         throw conflict('upload_not_completable');
-      await tx.fileUploadSession.update({
-        where: { id: session.id },
-        data: { status: FileUploadSessionStatus.VERIFYING },
+      await tx.updateUpload(session.id, {
+        status: FileUploadSessionStatus.VERIFYING,
       });
       return { kind: 'claimed' as const, session };
     });
@@ -268,37 +216,17 @@ export class CompleteAcademicContentUploadUseCase {
         const objectKnownPresent =
           error.reason !== 'object_missing' &&
           error.reason !== 'unsupported_file_type';
-        await this.repository.prisma.fileUploadSession.updateMany({
-          where: {
-            id: owner.uploadId,
-            schoolId: owner.schoolId,
-            createdByUserId: owner.actorId,
-            purpose: FileUploadPurpose.ACADEMIC_CONTENT,
-            purposeContextId: owner.contentId,
-            status: FileUploadSessionStatus.VERIFYING,
-          },
-          data: {
-            status: FileUploadSessionStatus.FAILED,
-            failedAt,
-            failureReason: error.reason,
-            finalCleanupEligibleAt: objectKnownPresent
-              ? failedAt
-              : academicContentFinalCleanupDeadline(failedAt, claimed.session),
-          },
+        await this.repository.markVerificationFailed({
+          owner,
+          failedAt,
+          reason: error.reason,
+          cleanupEligibleAt: objectKnownPresent
+            ? failedAt
+            : academicContentFinalCleanupDeadline(failedAt, claimed.session),
         });
         throw conflict(error.reason);
       }
-      await this.repository.prisma.fileUploadSession.updateMany({
-        where: {
-          id: owner.uploadId,
-          schoolId: owner.schoolId,
-          createdByUserId: owner.actorId,
-          purpose: FileUploadPurpose.ACADEMIC_CONTENT,
-          purposeContextId: owner.contentId,
-          status: FileUploadSessionStatus.VERIFYING,
-        },
-        data: { status: FileUploadSessionStatus.UPLOADING },
-      });
+      await this.repository.releaseVerification(owner);
       throw conflict('verification_retryable');
     }
     const fileId = randomUUID();
@@ -306,77 +234,55 @@ export class CompleteAcademicContentUploadUseCase {
     const readyCleanupEligibleAt = new Date(
       completedAt.getTime() + ACADEMIC_CONTENT_READY_RETENTION_MS,
     );
-    return this.repository.prisma.$transaction(async (tx) => {
-      const session = await this.repository.lock(tx, owner);
+    return this.repository.withTransaction(async (tx) => {
+      const session = await tx.lockUpload(owner);
       if (!session || session.status !== FileUploadSessionStatus.VERIFYING)
         throw conflict('verification_state_changed');
-      const content = await tx.academicContent.findFirst({
-        where: {
-          id: owner.contentId,
-          schoolId: owner.schoolId,
-          deletedAt: null,
-        },
-      });
-      if (!content)
+      if (!(await tx.contentExists(owner.contentId, owner.schoolId)))
         throw new NotFoundDomainException('Academic content not found');
-      const file = await tx.file.create({
-        data: {
-          id: fileId,
-          organizationId: session.organizationId,
-          schoolId: session.schoolId,
-          uploaderId: session.createdByUserId,
-          bucket: session.finalBucket,
-          objectKey: session.finalObjectKey,
-          originalName: session.originalName,
-          mimeType: verified.mimeType,
-          sizeBytes: verified.sizeBytes,
-          checksumSha256: null,
-          visibility: FileVisibility.PRIVATE,
-        },
+      const file = await tx.createFile({
+        id: fileId,
+        organizationId: session.organizationId,
+        schoolId: session.schoolId,
+        uploaderId: session.createdByUserId,
+        bucket: session.finalBucket,
+        objectKey: session.finalObjectKey,
+        originalName: session.originalName,
+        mimeType: verified.mimeType,
+        sizeBytes: verified.sizeBytes,
+        checksumSha256: null,
+        visibility: FileVisibility.PRIVATE,
       });
-      const asset = await tx.academicContentAsset.create({
-        data: {
-          schoolId: session.schoolId,
-          academicContentId: owner.contentId,
-          fileId: file.id,
-          createdByUserId: session.createdByUserId,
-        },
+      const asset = await tx.createAsset({
+        schoolId: session.schoolId,
+        academicContentId: owner.contentId,
+        fileId: file.id,
+        createdByUserId: session.createdByUserId,
       });
-      await tx.fileUploadSession.update({
-        where: { id: session.id },
-        data: {
-          status: FileUploadSessionStatus.READY,
-          fileId: file.id,
-          completedAt,
-          verifiedMimeType: verified.mimeType,
-          actualSizeBytes: verified.sizeBytes,
-          checksumSha256: null,
-          durationSeconds: null,
-          width: null,
-          height: null,
-          verifiedAt: completedAt,
-          verificationVersion: ACADEMIC_CONTENT_VERIFICATION_VERSION,
-          finalCleanupEligibleAt: readyCleanupEligibleAt,
-          finalCleanupClaimedAt: null,
-          finalObjectDeletedAt: null,
-        },
+      await tx.updateUpload(session.id, {
+        status: FileUploadSessionStatus.READY,
+        fileId: file.id,
+        completedAt,
+        verifiedMimeType: verified.mimeType,
+        actualSizeBytes: verified.sizeBytes,
+        checksumSha256: null,
+        durationSeconds: null,
+        width: null,
+        height: null,
+        verifiedAt: completedAt,
+        verificationVersion: ACADEMIC_CONTENT_VERIFICATION_VERSION,
+        finalCleanupEligibleAt: readyCleanupEligibleAt,
+        finalCleanupClaimedAt: null,
+        finalObjectDeletedAt: null,
       });
-      await tx.auditLog.create({
-        data: {
-          actorId: session.createdByUserId,
-          organizationId: session.organizationId,
-          schoolId: session.schoolId,
-          module: 'academic-content',
-          action: 'file.upload.completed',
-          resourceType: 'AcademicContentAsset',
-          resourceId: asset.id,
-          outcome: AuditOutcome.SUCCESS,
-          after: {
-            uploadId: session.id,
-            contentId: owner.contentId,
-            fileId: file.id,
-          },
-        },
+      await tx.recordCompletedAudit({
+        actorId: session.createdByUserId,
+        organizationId: session.organizationId,
+        schoolId: session.schoolId,
+        assetId: asset.id,
+        uploadId: session.id,
+        contentId: owner.contentId,
+        fileId: file.id,
       });
       return { file, asset };
     });
@@ -388,8 +294,8 @@ export class CancelAcademicContentUploadUseCase {
   constructor(private readonly repository: AcademicContentFileRepository) {}
   async execute(command: { contentId: string; uploadId: string }) {
     const owner = identity(command.uploadId, command.contentId);
-    return this.repository.prisma.$transaction(async (tx) => {
-      const session = await this.repository.lock(tx, owner);
+    return this.repository.withTransaction(async (tx) => {
+      const session = await tx.lockUpload(owner);
       if (!session)
         throw new NotFoundDomainException('Academic upload not found');
       if (
@@ -398,16 +304,13 @@ export class CancelAcademicContentUploadUseCase {
       )
         throw conflict('upload_not_cancellable');
       const now = new Date();
-      return tx.fileUploadSession.update({
-        where: { id: session.id },
-        data: {
-          status: FileUploadSessionStatus.CANCELLED,
-          cancelledAt: now,
-          finalCleanupEligibleAt: academicContentFinalCleanupDeadline(
-            now,
-            session,
-          ),
-        },
+      return tx.updateUpload(session.id, {
+        status: FileUploadSessionStatus.CANCELLED,
+        cancelledAt: now,
+        finalCleanupEligibleAt: academicContentFinalCleanupDeadline(
+          now,
+          session,
+        ),
       });
     });
   }
@@ -418,73 +321,41 @@ export class UnlinkAcademicContentAssetUseCase {
   constructor(private readonly repository: AcademicContentFileRepository) {}
   async execute(command: { contentId: string; assetId: string }) {
     const scope = academicContentFileScope();
-    return this.repository.prisma.$transaction(async (tx) => {
-      const content = await tx.academicContent.findFirst({
-        where: {
-          id: command.contentId,
-          schoolId: scope.schoolId,
-          deletedAt: null,
-        },
-      });
-      if (!content)
+    return this.repository.withTransaction(async (tx) => {
+      if (!(await tx.contentExists(command.contentId, scope.schoolId)))
         throw new NotFoundDomainException('Academic content not found');
-      const candidate = await tx.academicContentAsset.findFirst({
-        where: {
-          id: command.assetId,
-          schoolId: scope.schoolId,
-          academicContentId: command.contentId,
-          deletedAt: null,
-        },
+      const candidate = await tx.findActiveAsset({
+        assetId: command.assetId,
+        schoolId: scope.schoolId,
+        contentId: command.contentId,
       });
       if (!candidate)
         throw new NotFoundDomainException('Academic asset not found');
-      const upload = await tx.fileUploadSession.findFirst({
-        where: {
-          purpose: FileUploadPurpose.ACADEMIC_CONTENT,
-          schoolId: scope.schoolId,
-          fileId: candidate.fileId,
-        },
-        select: { id: true },
-      });
-      if (upload) await this.repository.lockById(tx, upload.id);
-      const fileRows = await tx.$queryRaw<
-        Array<{ id: string }>
-      >`SELECT id FROM files WHERE id = ${candidate.fileId}::uuid AND school_id = ${scope.schoolId}::uuid AND deleted_at IS NULL FOR UPDATE`;
-      if (fileRows.length === 0)
+      const uploadId = await tx.findUploadIdForFile(
+        candidate.fileId,
+        scope.schoolId,
+      );
+      if (uploadId) await tx.lockUploadById(uploadId);
+      if (!(await tx.lockActiveFile(candidate.fileId, scope.schoolId)))
         throw new NotFoundDomainException('Academic file not found');
-      const rows = await tx.$queryRaw<
-        Array<{ id: string }>
-      >`SELECT id FROM academic_content_assets WHERE id = ${command.assetId}::uuid AND school_id = ${scope.schoolId}::uuid AND academic_content_id = ${command.contentId}::uuid AND deleted_at IS NULL FOR UPDATE`;
-      if (rows.length === 0)
-        throw new NotFoundDomainException('Academic asset not found');
-      const asset = await tx.academicContentAsset.update({
-        where: { id: command.assetId },
-        data: { deletedAt: new Date() },
-      });
-      const remaining = await tx.academicContentAsset.count({
-        where: {
+      if (
+        !(await tx.lockActiveAsset({
+          assetId: command.assetId,
           schoolId: scope.schoolId,
-          fileId: asset.fileId,
-          deletedAt: null,
-        },
-      });
+          contentId: command.contentId,
+        }))
+      )
+        throw new NotFoundDomainException('Academic asset not found');
+      const asset = await tx.softDeleteAsset(command.assetId, new Date());
+      const remaining = await tx.countActiveAssets(
+        asset.fileId,
+        scope.schoolId,
+      );
       if (remaining === 0) {
         const eligibleAt = new Date(
           Date.now() + ACADEMIC_CONTENT_READY_RETENTION_MS,
         );
-        await tx.fileUploadSession.updateMany({
-          where: {
-            purpose: FileUploadPurpose.ACADEMIC_CONTENT,
-            schoolId: scope.schoolId,
-            fileId: asset.fileId,
-            status: FileUploadSessionStatus.READY,
-            OR: [
-              { finalCleanupEligibleAt: null },
-              { finalCleanupEligibleAt: { lt: eligibleAt } },
-            ],
-          },
-          data: { finalCleanupEligibleAt: eligibleAt },
-        });
+        await tx.extendReadyCleanup(asset.fileId, scope.schoolId, eligibleAt);
       }
       return asset;
     });

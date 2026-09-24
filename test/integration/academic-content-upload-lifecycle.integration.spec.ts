@@ -97,7 +97,7 @@ describeEvidence('ACC-3C real PostgreSQL lifecycle', () => {
   const repository = new AcademicContentFileRepository(prisma);
   const create = new CreateAcademicContentUploadUseCase(
     repository,
-    new AcademicContentFilePolicyResolver(prisma),
+    new AcademicContentFilePolicyResolver(repository),
     storage,
   );
   const verifier = new AcademicContentFileVerifier(storage);
