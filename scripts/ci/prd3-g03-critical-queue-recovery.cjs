@@ -129,6 +129,7 @@ try {
       '--runInBand',
       '--runTestsByPath',
       'test/integration/prd3-g03-critical-queue-recovery.integration.spec.ts',
+      'test/integration/academic-content-upload-lifecycle.integration.spec.ts',
     ],
     {
       cwd: process.cwd(),
@@ -140,6 +141,7 @@ try {
         ...process.env,
         NODE_ENV: 'test',
         RUN_PRD3_G03_RECOVERY_INTEGRATION: '1',
+        RUN_ACC_3C_LIFECYCLE_INTEGRATION: '1',
         PRD3_G03_RUN_ID: RUN_ID,
         PRD3_G03_NETWORK: NETWORK,
         PRD3_G03_QUEUE_CONTAINER: resources.queue.name,
@@ -156,6 +158,9 @@ try {
   if (testRun.status !== 0) throw new Error('real_recovery_evidence_failed');
   if (!/PRD3_G03_EVIDENCE_JSON=/u.test(testRun.stdout || '')) {
     throw new Error('real_recovery_evidence_summary_missing');
+  }
+  if (!/ACC_3C_LIFECYCLE_EVIDENCE_JSON=/u.test(testRun.stdout || '')) {
+    throw new Error('real_acc_lifecycle_evidence_summary_missing');
   }
 } catch (error) {
   primaryFailure = error;

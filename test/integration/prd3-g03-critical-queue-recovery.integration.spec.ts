@@ -115,6 +115,12 @@ import {
   DISMISSAL_REQUEST_EXPIRY_QUEUE_NAME,
 } from '../../src/modules/dismissal/requests/domain/dismissal-request-expiry.constants';
 import { LEARNING_MEDIA_CLEANUP_QUEUE } from '../../src/modules/files/uploads/domain/learning-media-cleanup.constants';
+import { AcademicContentFileRepository } from '../../src/modules/academics/academic-content/files/infrastructure/academic-content-file.repository';
+import { AcademicContentCleanupWorker } from '../../src/modules/academics/academic-content/files/infrastructure/academic-content-cleanup.worker';
+import {
+  ACADEMIC_CONTENT_CLEANUP_QUEUE,
+  ACADEMIC_CONTENT_OBJECT_CLEANUP_JOB,
+} from '../../src/modules/academics/academic-content/files/domain/academic-content-file.constants';
 
 const enabled = process.env.RUN_PRD3_G03_RECOVERY_INTEGRATION === '1';
 const describeEvidence = enabled ? describe : describe.skip;
@@ -145,10 +151,12 @@ interface ProductionFixture {
   inactiveImportJobId: string;
   deletedImportJobId: string;
   learningUploadId: string;
+  academicUploadId: string;
   brandingFileId: string;
   dismissalRequestId: string;
   importObject: { bucket: string; objectKey: string };
   learningObject: { bucket: string; objectKey: string };
+  academicObject: { bucket: string; objectKey: string };
   brandingObject: { bucket: string; objectKey: string };
   emailConnection: SchoolEmailConnection;
 }
@@ -231,6 +239,7 @@ describeEvidence('PRD3-G03 production-model recovery evidence', () => {
         emailRestored: 4,
         emailTerminalized: 1,
         learningMedia: 1,
+        academicContent: 1,
       });
       const bulkExecutionJobId = studentBulkRegistrationExecutionJobId(
         fixture.bulkExecutionBatchId,
@@ -326,6 +335,7 @@ describeEvidence('PRD3-G03 production-model recovery evidence', () => {
         emailRestored: 4,
         emailTerminalized: 0,
         learningMedia: 1,
+        academicContent: 1,
       });
       const reconstructed = await assertReconstructedJobs(queue, fixture);
       expect(reconstructed).toEqual({
@@ -336,6 +346,7 @@ describeEvidence('PRD3-G03 production-model recovery evidence', () => {
         bulkExecution: 1,
         dismissal: 1,
         learningMedia: 1,
+        academicContent: 1,
         branding: 1,
       });
 
@@ -351,7 +362,11 @@ describeEvidence('PRD3-G03 production-model recovery evidence', () => {
         'dismissal_expiry_job_unknown',
         'learning_media_cleanup_job_unknown',
         'branding_logo_cleanup_job_unknown',
+        'academic_content_cleanup_job_unknown',
       ]);
+      expect(dispatch.academicInvalidJobCode).toBe(
+        'academic_content_cleanup_job_invalid',
+      );
       expect(dispatch.pushKnownSuccessReplayCount).toBe(0);
       expect(dispatch.emailOutcomeUnknownReplayCount).toBe(0);
       expect(dispatch.pushActorlessContextCount).toBe(3);
@@ -382,16 +397,18 @@ describeEvidence('PRD3-G03 production-model recovery evidence', () => {
         importCompleted: 1,
         dismissalExpired: 1,
         learningMediaDeleted: 1,
+        academicContentCleanupCompleted: 1,
       });
       expect(await storage.objectExists(fixture.learningObject)).toBe(false);
+      expect(await storage.objectExists(fixture.academicObject)).toBe(false);
       expect(await storage.objectExists(fixture.brandingObject)).toBe(false);
       expect(await storage.objectExists(fixture.importObject)).toBe(true);
 
       const evidence = {
         emptyRedisDbSize: 0,
-        productionModelSourceCount: 7,
-        productionReconcilerCount: 7,
-        productionWorkerDispatchCount: 7,
+        productionModelSourceCount: 8,
+        productionReconcilerCount: 8,
+        productionWorkerDispatchCount: 8,
         reconstructedJobsByQueue: reconstructed,
         actualUniqueScheduleRegistrations: 8,
         poisonRejectedCount: dispatch.poisonResults.length,
@@ -400,7 +417,7 @@ describeEvidence('PRD3-G03 production-model recovery evidence', () => {
         knownSuccessReplayCount: dispatch.pushKnownSuccessReplayCount,
         emailOutcomeUnknownAutomaticReplayCount:
           dispatch.emailOutcomeUnknownReplayCount,
-        productionStoragePathCount: 3,
+        productionStoragePathCount: 4,
         fakeProviderProductionServiceCount: 2,
         primaryGenerationExecution: dispatch.generation,
         pushActorlessContextCount: dispatch.pushActorlessContextCount,
@@ -574,6 +591,12 @@ function createProductionComponents(
     learningRepository,
     storage,
   );
+  const academicContentRepository = new AcademicContentFileRepository(prisma);
+  const academicContentCleanup = new AcademicContentCleanupWorker(
+    queue,
+    academicContentRepository,
+    storage,
+  );
   const brandingRepository = new BrandingRepository(prisma);
   const brandingQueue = new BrandingLogoCleanupQueueService(queue, storage);
   const brandingProcess = new ProcessBrandingLogoCleanupUseCase(
@@ -603,6 +626,8 @@ function createProductionComponents(
     learningRepository,
     storage,
     learningMedia,
+    academicContentRepository,
+    academicContentCleanup,
     brandingQueue,
     brandingProcess,
   };
@@ -620,6 +645,8 @@ async function reconstructProductionWork(
     now,
   );
   const learningMedia = await components.learningMedia.discoverAndEnqueue(now);
+  const academicContent =
+    await components.academicContentCleanup.discoverAndEnqueue(now);
   await components.brandingProcess.reconcile();
   return {
     generation,
@@ -628,6 +655,7 @@ async function reconstructProductionWork(
     emailRestored: email.restored,
     emailTerminalized: email.terminalized + email.outcomeUnknown,
     learningMedia,
+    academicContent,
   };
 }
 
@@ -706,10 +734,16 @@ async function exerciseProductionWorkerDispatch(
     components.learningRepository,
     components.storage,
   ).onModuleInit();
+  new AcademicContentCleanupWorker(
+    bullmq,
+    components.academicContentRepository,
+    components.storage,
+  ).onModuleInit();
   new BrandingLogoCleanupWorker(bullmq, components.brandingProcess, {
     ...components.brandingQueue,
     getReadiness: jest.fn().mockResolvedValue({ counts: {} }),
   } as unknown as BrandingLogoCleanupQueueService).onModuleInit();
+  expect(harness.processors.size).toBe(8);
 
   const base = {
     schoolId: fixture.activeSchoolId,
@@ -866,6 +900,11 @@ async function exerciseProductionWorkerDispatch(
     name: 'cleanup',
     data: { uploadId: fixture.learningUploadId, target: 'staging' },
   });
+  await harness.processor(ACADEMIC_CONTENT_CLEANUP_QUEUE)({
+    id: `academic-content-cleanup-${fixture.academicUploadId}`,
+    name: ACADEMIC_CONTENT_OBJECT_CLEANUP_JOB,
+    data: { uploadId: fixture.academicUploadId },
+  });
   await harness.processor(BRANDING_LOGO_CLEANUP_QUEUE)({
     id: `branding-logo-cleanup-${fixture.brandingFileId}`,
     name: BRANDING_LOGO_CLEANUP_JOB,
@@ -881,6 +920,7 @@ async function exerciseProductionWorkerDispatch(
     DISMISSAL_REQUEST_EXPIRY_QUEUE_NAME,
     LEARNING_MEDIA_CLEANUP_QUEUE,
     BRANDING_LOGO_CLEANUP_QUEUE,
+    ACADEMIC_CONTENT_CLEANUP_QUEUE,
   ]) {
     try {
       await harness.processor(queueName)({
@@ -895,8 +935,19 @@ async function exerciseProductionWorkerDispatch(
       poisonResults.push(error instanceof Error ? error.message : 'unknown');
     }
   }
+  let academicInvalidJobCode = 'invalid_job_unexpectedly_accepted';
+  try {
+    await harness.processor(ACADEMIC_CONTENT_CLEANUP_QUEUE)({
+      id: 'poison-academic-content-payload',
+      name: ACADEMIC_CONTENT_OBJECT_CLEANUP_JOB,
+      data: {},
+    });
+  } catch (error) {
+    academicInvalidJobCode = error instanceof Error ? error.message : 'unknown';
+  }
   return {
     poisonResults,
+    academicInvalidJobCode,
     pushKnownSuccessReplayCount,
     emailOutcomeUnknownReplayCount,
     pushActorlessContextCount: observedPushContexts.length,
@@ -1475,6 +1526,35 @@ async function seedProductionModels(
     },
   });
 
+  const academicUploadId = id();
+  const academicObject = {
+    bucket,
+    objectKey: `academic-content/${activeSchoolId}/objects/${academicUploadId}`,
+  };
+  await storage.saveObject({ ...academicObject, body: 'synthetic-academic' });
+  const academicCapabilityExpiry = new Date(old.getTime() + 3 * 60 * 60 * 1000);
+  await prisma.fileUploadSession.create({
+    data: {
+      id: academicUploadId,
+      organizationId,
+      schoolId: activeSchoolId,
+      createdByUserId: actorUserId,
+      clientRequestId: id(),
+      purpose: FileUploadPurpose.ACADEMIC_CONTENT,
+      purposeContextId: id(),
+      originalName: 'academic.pdf',
+      expectedMimeType: 'application/pdf',
+      expectedSizeBytes: 18n,
+      finalBucket: bucket,
+      finalObjectKey: academicObject.objectKey,
+      status: FileUploadSessionStatus.EXPIRED,
+      createdAt: old,
+      expiresAt: new Date(old.getTime() + 2 * 60 * 60 * 1000),
+      latestUploadUrlExpiresAt: academicCapabilityExpiry,
+      finalCleanupEligibleAt: academicCapabilityExpiry,
+    },
+  });
+
   const brandingFileId = id();
   const brandingObject = {
     bucket,
@@ -1526,10 +1606,12 @@ async function seedProductionModels(
     inactiveImportJobId,
     deletedImportJobId,
     learningUploadId,
+    academicUploadId,
     brandingFileId,
     dismissalRequestId,
     importObject,
     learningObject,
+    academicObject,
     brandingObject,
     emailConnection: {
       id: id(),
@@ -1782,7 +1864,7 @@ async function readFinalProductionOutcomes(
   prisma: PrismaService,
   fixture: ProductionFixture,
 ) {
-  const [push, attempts, recipients, importJob, dismissal, learning] =
+  const [push, attempts, recipients, importJob, dismissal, learning, academic] =
     await Promise.all([
       prisma.communicationNotificationDelivery.findUniqueOrThrow({
         where: { id: fixture.pushDeliveryId },
@@ -1802,6 +1884,9 @@ async function readFinalProductionOutcomes(
       prisma.fileUploadSession.findUniqueOrThrow({
         where: { id: fixture.learningUploadId },
       }),
+      prisma.fileUploadSession.findUniqueOrThrow({
+        where: { id: fixture.academicUploadId },
+      }),
     ]);
   return {
     pushDelivery: push.status,
@@ -1819,6 +1904,11 @@ async function readFinalProductionOutcomes(
     importCompleted: importJob.status === 'COMPLETED' ? 1 : 0,
     dismissalExpired: dismissal.status === 'EXPIRED' ? 1 : 0,
     learningMediaDeleted: learning.stagingObjectDeletedAt ? 1 : 0,
+    academicContentCleanupCompleted:
+      academic.status === FileUploadSessionStatus.EXPIRED &&
+      academic.finalObjectDeletedAt
+        ? 1
+        : 0,
   };
 }
 
@@ -1879,6 +1969,13 @@ async function assertReconstructedJobs(
           .getJob(
             learningMediaCleanupJobId(fixture.learningUploadId, 'staging'),
           ),
+      ),
+    ),
+    academicContent: Number(
+      Boolean(
+        await queue
+          .getQueue(ACADEMIC_CONTENT_CLEANUP_QUEUE)
+          .getJob(`academic-content-cleanup-${fixture.academicUploadId}`),
       ),
     ),
     branding: Number(

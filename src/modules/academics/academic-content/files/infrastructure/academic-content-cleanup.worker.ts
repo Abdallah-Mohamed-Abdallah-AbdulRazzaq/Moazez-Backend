@@ -24,12 +24,18 @@ export class AcademicContentCleanupWorker implements OnModuleInit {
       async (job) => {
         if (job.name === ACADEMIC_CONTENT_DISCOVERY_JOB)
           return this.discoverAndEnqueue();
-        if (
-          job.name === ACADEMIC_CONTENT_OBJECT_CLEANUP_JOB &&
-          typeof job.data.uploadId === 'string'
-        )
-          return this.cleanUpload(job.data.uploadId);
-        throw new Error('academic_content_cleanup_job_invalid');
+        if (job.name === ACADEMIC_CONTENT_OBJECT_CLEANUP_JOB) {
+          const uploadId = job.data?.uploadId;
+          if (
+            typeof uploadId !== 'string' ||
+            !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(
+              uploadId,
+            )
+          )
+            throw new Error('academic_content_cleanup_job_invalid');
+          return this.cleanUpload(uploadId);
+        }
+        throw new Error('academic_content_cleanup_job_unknown');
       },
     );
   }

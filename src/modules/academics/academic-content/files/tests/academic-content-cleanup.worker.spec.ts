@@ -76,6 +76,28 @@ describe('ACC cleanup worker', () => {
     );
   });
 
+  it('distinguishes unknown poison jobs from invalid cleanup payloads', async () => {
+    worker.onModuleInit();
+    type Processor = (job: {
+      name: string;
+      data: { uploadId?: string };
+    }) => Promise<unknown>;
+    const calls = queue.createWorker.mock.calls as unknown as Array<
+      [string, Processor]
+    >;
+    const processor = calls[0][1];
+    await expect(
+      processor({ name: 'g03.malformed.unknown', data: {} }),
+    ).rejects.toThrow('academic_content_cleanup_job_unknown');
+    await expect(
+      processor({ name: 'cleanup-object', data: {} }),
+    ).rejects.toThrow('academic_content_cleanup_job_invalid');
+    await expect(
+      processor({ name: 'cleanup-object', data: { uploadId: 'invalid' } }),
+    ).rejects.toThrow('academic_content_cleanup_job_invalid');
+    expect(repository.lockById).not.toHaveBeenCalled();
+  });
+
   it('never claims or deletes READY File while an active asset exists', async () => {
     tx.academicContentAsset.count.mockResolvedValue(1);
     await worker.cleanUpload(uploadId, now);

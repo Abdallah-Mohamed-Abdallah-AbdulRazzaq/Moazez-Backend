@@ -242,11 +242,14 @@ test('poison jobs receive stable handling without becoming persisted truth', () 
     'src/modules/dismissal/requests/worker/dismissal-request-expiry.worker.ts',
     'src/modules/files/uploads/application/learning-media-cleanup.service.ts',
     'src/modules/settings/branding/infrastructure/branding-logo-cleanup.worker.ts',
+    'src/modules/academics/academic-content/files/infrastructure/academic-content-cleanup.worker.ts',
   ]
     .map(read)
     .join('\n');
   assert.equal((sources.match(/job_unknown/gu) || []).length >= 6, true);
   assert.match(sources, /learning_media_cleanup_job_invalid/u);
+  assert.match(sources, /academic_content_cleanup_job_unknown/u);
+  assert.match(sources, /academic_content_cleanup_job_invalid/u);
   assert.doesNotMatch(sources, /failedJob\.data|copy.*payload/iu);
 });
 
@@ -288,9 +291,25 @@ test('real harness uses immutable local images, empty replacement, and exact cle
   );
   assert.match(integration, /redisCopies: 0/u);
   assert.match(wrapper, /'migrate', 'deploy'/u);
-  assert.match(integration, /productionModelSourceCount: 7/u);
-  assert.match(integration, /productionStoragePathCount: 3/u);
-  assert.match(integration, /productionWorkerDispatchCount: 7/u);
+  assert.match(integration, /productionModelSourceCount: 8/u);
+  assert.match(integration, /productionReconcilerCount: 8/u);
+  assert.match(integration, /productionStoragePathCount: 4/u);
+  assert.match(integration, /productionWorkerDispatchCount: 8/u);
+  assert.match(integration, /expect\(harness\.processors\.size\)\.toBe\(8\)/u);
+  assert.match(integration, /AcademicContentFileRepository/u);
+  assert.match(integration, /AcademicContentCleanupWorker/u);
+  assert.match(
+    integration,
+    /academicContentCleanup\.discoverAndEnqueue\(now\)/u,
+  );
+  assert.match(integration, /academicContentCleanupCompleted/u);
+  assert.match(
+    integration,
+    /harness\.processor\(ACADEMIC_CONTENT_CLEANUP_QUEUE\)/u,
+  );
+  assert.match(integration, /ACADEMIC_CONTENT_OBJECT_CLEANUP_JOB/u);
+  assert.match(integration, /academic_content_cleanup_job_unknown/u);
+  assert.match(integration, /academic_content_cleanup_job_invalid/u);
   assert.match(integration, /poisonRejectedCount/u);
   assert.match(integration, /actualUniqueScheduleRegistrations: 8/u);
   assert.match(
