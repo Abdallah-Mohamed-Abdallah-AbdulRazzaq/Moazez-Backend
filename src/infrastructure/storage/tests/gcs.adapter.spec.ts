@@ -5,6 +5,7 @@ import { PassThrough, Readable } from 'node:stream';
 import {
   DefaultGcsClientFactory,
   GCS_READINESS_REQUEST_TIMEOUT_MS,
+  GCS_RESUMABLE_SESSION_MAX_LIFETIME_MS,
   GcsAdapter,
   IamCredentialsGcsSigningAuth,
   type GcsClientFactory,
@@ -39,6 +40,9 @@ describe('GcsAdapter object operations', () => {
         }),
       ).resolves.toEqual({
         sessionUrl: 'https://storage.invalid/resumable-secret',
+        expiresAt: new Date(
+          NOW.getTime() + GCS_RESUMABLE_SESSION_MAX_LIFETIME_MS,
+        ),
       });
       expect(harness.runtimeClient.bucket).toHaveBeenCalledWith(
         'private-bucket',
@@ -63,6 +67,30 @@ describe('GcsAdapter object operations', () => {
     } finally {
       logged.mockRestore();
     }
+  });
+
+  it('starts the conservative seven-day expiry after provider initiation succeeds', async () => {
+    let clock = new Date('2026-08-10T12:00:00.000Z');
+    const harness = createHarness(() => clock);
+    let resolveProvider!: (value: string[]) => void;
+    harness.runtimeFile.createResumableUpload.mockReturnValueOnce(
+      new Promise<string[]>((resolve) => {
+        resolveProvider = resolve;
+      }),
+    );
+    const session = harness.adapter.createResumableUploadSession({
+      bucket: 'private-bucket',
+      objectKey: 'direct/upload-id',
+    });
+    clock = new Date('2026-08-10T12:00:03.000Z');
+    resolveProvider(['https://storage.invalid/resumable-secret']);
+    await expect(session).resolves.toEqual({
+      sessionUrl: 'https://storage.invalid/resumable-secret',
+      expiresAt: new Date('2026-08-17T12:00:03.000Z'),
+    });
+    expect(GCS_RESUMABLE_SESSION_MAX_LIFETIME_MS).toBe(
+      7 * 24 * 60 * 60 * 1_000,
+    );
   });
 
   it.each([
@@ -585,7 +613,7 @@ describe('DefaultGcsClientFactory keyless authentication', () => {
   });
 });
 
-function createHarness() {
+function createHarness(now: () => Date = () => NOW) {
   const uploadedBodies: Buffer[] = [];
   const runtimeFile = {
     createWriteStream: jest.fn(() => {
@@ -650,7 +678,7 @@ function createHarness() {
   const config = {
     getOrThrow: jest.fn((key: string) => values[key]),
   } as unknown as ConfigService & { getOrThrow: jest.Mock };
-  const adapter = new GcsAdapter(config, factory, () => NOW);
+  const adapter = new GcsAdapter(config, factory, now);
 
   return {
     adapter,

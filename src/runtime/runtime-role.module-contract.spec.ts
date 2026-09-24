@@ -22,6 +22,7 @@ import { MEDIA_WORKER_CONSUMER_PROVIDERS } from './media-worker/media-worker-con
 import { BrandingLogoReconciliationSchedule } from './maintenance-scheduler/branding-logo-reconciliation.schedule';
 import { DismissalExpirySchedule } from './maintenance-scheduler/dismissal-expiry.schedule';
 import { LearningMediaCleanupSchedule } from './maintenance-scheduler/learning-media-cleanup.schedule';
+import { AcademicContentCleanupSchedule } from './maintenance-scheduler/academic-content-cleanup.schedule';
 import { CommunicationNotificationReconciliationSchedule } from './maintenance-scheduler/communication-notification-reconciliation.schedule';
 import { CommunicationPushReconciliationSchedule } from './maintenance-scheduler/communication-push-reconciliation.schedule';
 import { ImportValidationReconciliationSchedule } from './maintenance-scheduler/import-validation-reconciliation.schedule';
@@ -33,6 +34,7 @@ import {
 } from './runtime-env.validation';
 
 const CONSUMER_PROVIDER_NAMES = [
+  'AcademicContentCleanupWorker',
   'CommunicationNotificationGenerationWorker',
   'CommunicationNotificationPushWorker',
   'SchoolEmailDeliveryWorker',
@@ -43,6 +45,7 @@ const CONSUMER_PROVIDER_NAMES = [
 ];
 
 const SCHEDULE_PROVIDER_NAMES = [
+  AcademicContentCleanupSchedule.name,
   DismissalExpirySchedule.name,
   LearningMediaCleanupSchedule.name,
   BrandingLogoReconciliationSchedule.name,
@@ -89,7 +92,10 @@ describe('runtime role module graphs', () => {
   });
 
   it('keeps Learning Media completion on POST 200 with synchronous verifier ownership', () => {
-    const completion = LearningMediaController.prototype.complete;
+    const completion = Object.getOwnPropertyDescriptor(
+      LearningMediaController.prototype,
+      'complete',
+    )?.value as object;
     const dependencies = Reflect.getMetadata(
       'design:paramtypes',
       CompleteLearningMediaUploadUseCase,
@@ -112,7 +118,7 @@ describe('runtime role module graphs', () => {
     );
   });
 
-  it('owns exactly the six Core consumers without HTTP or local Socket.IO', async () => {
+  it('owns exactly the seven Core consumers without HTTP or local Socket.IO', () => {
     setDatabaseRuntimeEnvironment('core-worker');
     const { CoreWorkerRuntimeModule } = jest.requireActual<
       typeof import('./core-worker/core-worker-runtime.module')
@@ -120,6 +126,7 @@ describe('runtime role module graphs', () => {
     const graph = inspectModuleGraph(CoreWorkerRuntimeModule);
 
     expect(CORE_WORKER_CONSUMER_PROVIDERS.map(providerName).sort()).toEqual([
+      'AcademicContentCleanupWorker',
       'BrandingLogoCleanupWorker',
       'CommunicationNotificationGenerationWorker',
       'CommunicationNotificationPushWorker',
@@ -127,9 +134,9 @@ describe('runtime role module graphs', () => {
       'ImportValidationWorker',
       'SchoolEmailDeliveryWorker',
     ]);
-    expect(CORE_WORKER_ASSIGNED_CONSUMERS).toHaveLength(6);
+    expect(CORE_WORKER_ASSIGNED_CONSUMERS).toHaveLength(7);
     expect(intersection(graph.providers, CONSUMER_PROVIDER_NAMES)).toHaveLength(
-      6,
+      7,
     );
     expect(intersection(graph.providers, SCHEDULE_PROVIDER_NAMES)).toEqual([]);
     expect(graph.controllers).toEqual([]);
@@ -137,7 +144,7 @@ describe('runtime role module graphs', () => {
     expect(graph.providers).not.toContain(RealtimeGateway.name);
   });
 
-  it('owns only Learning Media cleanup without API media verification capability', async () => {
+  it('owns only Learning Media cleanup without API media verification capability', () => {
     setDatabaseRuntimeEnvironment('media-worker');
     const { MediaWorkerRuntimeModule } = jest.requireActual<
       typeof import('./media-worker/media-worker-runtime.module')
@@ -158,7 +165,7 @@ describe('runtime role module graphs', () => {
     expect(graph.providers).not.toContain('TemporaryDiskProbe');
   });
 
-  it('owns exactly seven registrations and no consumer, controller, Gateway, or storage provider', async () => {
+  it('owns exactly eight registrations and no consumer, controller, Gateway, or storage provider', async () => {
     for (const field of DATABASE_RUNTIME_ENVIRONMENT_FIELDS) {
       delete process.env[field];
     }
@@ -167,6 +174,10 @@ describe('runtime role module graphs', () => {
     >('./maintenance-scheduler/maintenance-scheduler-runtime.module');
     const graph = inspectModuleGraph(MaintenanceSchedulerRuntimeModule);
     const registerRepeatJob = jest.fn().mockResolvedValue(undefined);
+
+    await new AcademicContentCleanupSchedule({
+      registerRepeatJob,
+    } as never).onModuleInit();
 
     await new DismissalExpirySchedule({
       registerRepeatJob,
@@ -197,9 +208,17 @@ describe('runtime role module graphs', () => {
     expect(graph.controllers).toEqual([]);
     expect(graph.providers).not.toContain(RealtimeGateway.name);
     expect(graph.providers).not.toContain(StorageService.name);
-    expect(registerRepeatJob).toHaveBeenCalledTimes(7);
+    expect(registerRepeatJob).toHaveBeenCalledTimes(8);
+    const registrations = registerRepeatJob.mock.calls as unknown as Array<
+      [
+        string,
+        string,
+        unknown,
+        { jobId: string; repeat: { pattern?: string; every?: number } },
+      ]
+    >;
     expect(
-      registerRepeatJob.mock.calls.map(([queueName, jobName, , options]) => ({
+      registrations.map(([queueName, jobName, , options]) => ({
         queueName,
         jobName,
         jobId: options.jobId,
@@ -280,15 +299,21 @@ function inspectModuleGraph(root: unknown): {
     if (typeof moduleClass !== 'function') return;
 
     const moduleProviders = [
-      ...(Reflect.getMetadata(MODULE_METADATA.PROVIDERS, moduleClass) ?? []),
+      ...((Reflect.getMetadata(MODULE_METADATA.PROVIDERS, moduleClass) as
+        | unknown[]
+        | undefined) ?? []),
       ...(dynamic?.providers ?? []),
     ];
     const moduleControllers = [
-      ...(Reflect.getMetadata(MODULE_METADATA.CONTROLLERS, moduleClass) ?? []),
+      ...((Reflect.getMetadata(MODULE_METADATA.CONTROLLERS, moduleClass) as
+        | unknown[]
+        | undefined) ?? []),
       ...(dynamic?.controllers ?? []),
     ];
     const moduleImports = [
-      ...(Reflect.getMetadata(MODULE_METADATA.IMPORTS, moduleClass) ?? []),
+      ...((Reflect.getMetadata(MODULE_METADATA.IMPORTS, moduleClass) as
+        | unknown[]
+        | undefined) ?? []),
       ...(dynamic?.imports ?? []),
     ];
 
@@ -324,7 +349,7 @@ function intersection(values: string[], expected: string[]): string[] {
 }
 
 function isDynamicModule(value: unknown): value is {
-  module: Function;
+  module: (...args: unknown[]) => unknown;
   imports?: unknown[];
   providers?: unknown[];
   controllers?: unknown[];

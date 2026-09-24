@@ -61,7 +61,6 @@ const APPROVED_PRISMA_SCHEMA_DATABASE_URL =
 const PHASE3_FIXTURE_IMAGES = Object.freeze([
   'postgres:16-alpine',
   'redis:7-alpine',
-  'quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e',
 ]);
 const PHASE3_FIXTURE_IMAGE_SOURCES = Object.freeze({
   'postgres:16-alpine': Object.freeze([
@@ -72,9 +71,6 @@ const PHASE3_FIXTURE_IMAGE_SOURCES = Object.freeze({
   ]),
   'redis:7-alpine': Object.freeze([
     'scripts/ci/prd3-g02-redis-topology-recovery.cjs',
-    'scripts/ci/prd3-g03-critical-queue-recovery.cjs',
-  ]),
-  'quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e': Object.freeze([
     'scripts/ci/prd3-g03-critical-queue-recovery.cjs',
   ]),
 });
@@ -931,6 +927,12 @@ test('workflow preloads every verifier-owned Phase 3 fixture image before the ex
     ...imageArray.groups.entries.matchAll(/^\s*'([^']+)'\s*$/gmu),
   ].map((match) => match[1]);
   assert.deepEqual(declaredImages, PHASE3_FIXTURE_IMAGES);
+  assert.match(workflow, /node scripts\/ci\/build-minio-fixture\.cjs/u);
+  assert.doesNotMatch(workflow, /quay\.io\/minio|docker\.io\/minio/iu);
+  assert.match(
+    read('scripts/ci/prd3-g03-critical-queue-recovery.cjs'),
+    /image: MINIO_IMAGE/u,
+  );
 
   const gateEnd = workflow.indexOf(
     '\n      - name:',
@@ -945,6 +947,34 @@ test('workflow preloads every verifier-owned Phase 3 fixture image before the ex
   for (const [image, sources] of Object.entries(PHASE3_FIXTURE_IMAGE_SOURCES)) {
     for (const source of sources)
       assert.match(read(source), new RegExp(escapeRegExp(image), 'u'));
+  }
+});
+
+test('current pull-request CI uses the governed local MinIO fixture, distinct from historical certification', () => {
+  const workflow = read('.github/workflows/ci.yml');
+  const shard = read('scripts/ci/run-ci-shard.cjs');
+  const g03 = read('scripts/ci/prd3-g03-critical-queue-recovery.cjs');
+  const contract = read('scripts/ci/minio-fixture.contract.cjs');
+  const builder = read('scripts/ci/build-minio-fixture.cjs');
+  assert.match(contract, /RELEASE\.2025-09-07T16-13-09Z/u);
+  assert.match(contract, /07c3a429bfed433e49018cb0f78a52145d4bedeb/u);
+  assert.match(
+    contract,
+    /7c5bd8512c6e966455b1d198209358b2d191c77a83ab377c4073281065fb855f/u,
+  );
+  assert.match(contract, /moazez-ci\/minio:/u);
+  assert.match(builder, /FROM scratch/u);
+  assert.match(builder, /digest\.digest\('hex'\) !== BINARY_SHA256/u);
+  assert.match(workflow, /Upload the immutable MinIO fixture/u);
+  assert.match(workflow, /Download the immutable MinIO fixture/u);
+  assert.match(workflow, /docker load --input/u);
+  assert.match(shard, /requireMinioFixture/u);
+  assert.match(g03, /validateImageInspect/u);
+  for (const source of [workflow, shard, g03, contract, builder]) {
+    assert.doesNotMatch(
+      source,
+      /quay\.io\/minio|docker\.io\/minio|ghcr\.io\/minio/iu,
+    );
   }
 });
 

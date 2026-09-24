@@ -13,6 +13,7 @@ describe('StorageService readiness', () => {
     objectStorage.getCapabilities.mockReturnValue(capabilities);
     objectStorage.createResumableUploadSession.mockResolvedValue({
       sessionUrl: 'https://storage.invalid/session-secret',
+      expiresAt: new Date('2026-08-17T12:00:00.000Z'),
     });
     objectStorage.readObjectRange.mockResolvedValue(Buffer.from('bytes'));
     const resumableInput = {
@@ -34,6 +35,7 @@ describe('StorageService readiness', () => {
       service.createResumableUploadSession(resumableInput),
     ).resolves.toEqual({
       sessionUrl: 'https://storage.invalid/session-secret',
+      expiresAt: new Date('2026-08-17T12:00:00.000Z'),
     });
     await expect(service.readObjectRange(rangeInput)).resolves.toEqual(
       Buffer.from('bytes'),

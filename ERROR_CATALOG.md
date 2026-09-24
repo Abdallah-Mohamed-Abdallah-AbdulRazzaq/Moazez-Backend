@@ -693,6 +693,31 @@ output, credentials, or foreign-tenant identifiers.
 | `dismissal.escalation.invalid_reason`             | 422  | Dismissal request escalation reason is invalid                 |
 | `dismissal.escalation.terminal_request`           | 409  | Terminal dismissal requests cannot be escalated                |
 
+### Academic Content internal file lifecycle
+
+These codes are emitted by internal ACC-3C use cases; ACC-3C adds no HTTP routes.
+
+| Code | HTTP | Message |
+| ---- | ---- | ------- |
+| `academic_content.file.storage_resumable_upload_unavailable` | 409 | Resumable upload capability is unavailable |
+| `academic_content.file.idempotency_payload_mismatch` | 409 | Client request id was reused with different upload metadata |
+| `academic_content.file.upload_capability_not_reissuable` | 409 | An existing upload capability cannot be reissued |
+| `academic_content.file.resumable_capability_failed` | 409 | Initial resumable capability could not be created |
+| `academic_content.file.ready_relationship_invalid` | 409 | Ready upload has an inconsistent File or active Asset relationship |
+| `academic_content.file.verification_in_progress` | 409 | Upload verification is in progress |
+| `academic_content.file.upload_not_completable` | 409 | Upload is not in a completable state |
+| `academic_content.file.upload_expired` | 409 | Upload session has expired |
+| `academic_content.file.unsupported_file_type` | 409 | File type is not supported by the current registry |
+| `academic_content.file.object_missing` | 409 | Uploaded object was not found |
+| `academic_content.file.actual_size_invalid` | 409 | Provider object size is invalid |
+| `academic_content.file.actual_size_mismatch` | 409 | Uploaded object size differs from the authorized size |
+| `academic_content.file.platform_size_exceeded` | 409 | Uploaded object exceeds the platform hard limit |
+| `academic_content.file.provider_content_type_mismatch` | 409 | Provider content type contradicts the authorized type |
+| `academic_content.file.mime_signature_mismatch` | 409 | Bounded file signature contradicts the authorized type |
+| `academic_content.file.verification_retryable` | 409 | Verification failed due to a retryable dependency issue |
+| `academic_content.file.verification_state_changed` | 409 | Upload state changed during verification |
+| `academic_content.file.upload_not_cancellable` | 409 | Upload cannot be cancelled in its current state |
+
 ### Cross-cutting
 
 | Code                  | HTTP | Message                                            |

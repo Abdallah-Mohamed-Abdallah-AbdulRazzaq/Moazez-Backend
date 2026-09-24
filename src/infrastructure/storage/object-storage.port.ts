@@ -4,6 +4,10 @@ export const OBJECT_STORAGE_PORT = Symbol('OBJECT_STORAGE_PORT');
 
 export const MAX_SIGNED_URL_TTL_SECONDS = 60 * 60;
 export const MAX_OBJECT_RANGE_READ_BYTES = 1_048_576;
+// Upper bound for providers supported by the resumable-upload contract.
+// A missing persisted expiry must never make an issued capability cleanup-ready.
+export const MAX_RESUMABLE_UPLOAD_CAPABILITY_LIFETIME_MS =
+  7 * 24 * 60 * 60 * 1_000;
 
 export type ObjectStorageCapabilities = Readonly<{
   resumableUpload: boolean;
@@ -20,6 +24,7 @@ export type ObjectStorageResumableUploadInput = {
 
 export type ObjectStorageResumableUploadSession = {
   sessionUrl: string;
+  expiresAt: Date;
 };
 
 export type ObjectStorageRangeInput = {

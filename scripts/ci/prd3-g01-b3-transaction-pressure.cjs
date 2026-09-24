@@ -335,6 +335,14 @@ const REVIEWED_CALL_OVERRIDES = Object.freeze([
     evidence: 'The reviewed callers receive only LearningMediaTransactionContext; external verifier and storage waits occur before or after these transaction callbacks.',
   }),
   Object.freeze({
+    path: 'src/modules/academics/academic-content/files/infrastructure/academic-content-file.repository.ts',
+    target: /^callback$/,
+    reason: 'The ACC repository transaction facade accepts only the reviewed upload, unlink, and cleanup callers.',
+    classification: 'EXTERNAL_WAIT_SENSITIVE',
+    resolvedCallers: Object.freeze(['CompleteAcademicContentUploadUseCase.execute', 'CancelAcademicContentUploadUseCase.execute', 'UnlinkAcademicContentAssetUseCase.execute', 'AcademicContentCleanupWorker.cleanUpload', 'AcademicContentCleanupWorker.cleanReadyOrphan']),
+    evidence: 'All callers receive only AcademicContentFileTransaction. READY orphan cleanup intentionally holds upload and file row locks across confirmed storage deletion, with a 120-second transaction timeout, to preserve its no-claim concurrency guarantee; other callers perform database-only transactions.',
+  }),
+  Object.freeze({
     path: 'src/modules/teachers/lifecycle/infrastructure/prisma-teacher-lifecycle.unit-of-work.ts',
     target: /^callback$/,
     reason: 'The generic unit-of-work callback is supplied by reviewed teacher lifecycle application coordinators and use cases.',

@@ -1,5 +1,11 @@
 import type { BullmqRepeatRegistration } from '../../infrastructure/queue/bullmq.service';
 import {
+  ACADEMIC_CONTENT_CLEANUP_INTERVAL_MS,
+  ACADEMIC_CONTENT_CLEANUP_QUEUE,
+  ACADEMIC_CONTENT_DISCOVERY_JOB,
+  ACADEMIC_CONTENT_DISCOVERY_JOB_ID,
+} from '../academics/academic-content/files/domain/academic-content-file.constants';
+import {
   DISMISSAL_REQUEST_EXPIRY_JOB_NAME,
   DISMISSAL_REQUEST_EXPIRY_QUEUE_NAME,
   DISMISSAL_REQUEST_EXPIRY_REPEAT_JOB_ID,
@@ -80,6 +86,7 @@ export const CURRENT_OPERATIONAL_ROLE_POLICY: OperationalRolePolicy =
   });
 
 export const CORE_WORKER_ASSIGNED_CONSUMERS = Object.freeze([
+  ACADEMIC_CONTENT_CLEANUP_QUEUE,
   'communication-notifications',
   'communication-notification-push',
   'school-email-delivery',
@@ -93,6 +100,12 @@ export const MEDIA_WORKER_ASSIGNED_CONSUMERS = Object.freeze([
 ]);
 
 export const MAINTENANCE_SCHEDULE_REGISTRATIONS = Object.freeze([
+  Object.freeze({
+    queueName: ACADEMIC_CONTENT_CLEANUP_QUEUE,
+    jobName: ACADEMIC_CONTENT_DISCOVERY_JOB,
+    jobId: ACADEMIC_CONTENT_DISCOVERY_JOB_ID,
+    every: ACADEMIC_CONTENT_CLEANUP_INTERVAL_MS,
+  }),
   Object.freeze({
     queueName: DISMISSAL_REQUEST_EXPIRY_QUEUE_NAME,
     jobName: DISMISSAL_REQUEST_EXPIRY_JOB_NAME,

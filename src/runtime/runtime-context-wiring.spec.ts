@@ -48,6 +48,7 @@ describe('runtime application-context wiring', () => {
 
     await module.init();
     expect(queue.workerQueues.sort()).toEqual([
+      'academic-content-cleanup',
       'communication-notification-push',
       'communication-notifications',
       'dismissal-request-expiry',
@@ -82,7 +83,7 @@ describe('runtime application-context wiring', () => {
     await module.close();
   });
 
-  it('initializes Maintenance Scheduler with seven repeats and no consumers', async () => {
+  it('initializes Maintenance Scheduler with eight repeats and no consumers', async () => {
     for (const field of DATABASE_RUNTIME_ENVIRONMENT_FIELDS) {
       delete process.env[field];
     }
@@ -99,7 +100,7 @@ describe('runtime application-context wiring', () => {
 
     await module.init();
     expect(queue.workerQueues).toEqual([]);
-    expect(queue.repeatRegistrations).toHaveLength(7);
+    expect(queue.repeatRegistrations).toHaveLength(8);
     await module.close();
   });
 });
@@ -115,8 +116,9 @@ function queueHarness() {
       return { on: jest.fn() };
     }),
     registerRepeatJob: jest.fn(
-      async (queueName: string, jobName: string): Promise<void> => {
+      (queueName: string, jobName: string): Promise<void> => {
         repeatRegistrations.push({ queueName, jobName });
+        return Promise.resolve();
       },
     ),
     addJob: jest.fn().mockResolvedValue({ id: 'job' }),

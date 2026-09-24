@@ -4,6 +4,10 @@ const { randomUUID } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 const { resolveCiParentRunId } = require('./ci-parent-run-id.cjs');
+const {
+  IMAGE: MINIO_IMAGE,
+  validateImageInspect,
+} = require('./minio-fixture.contract.cjs');
 
 const GATE = 'PRD3-G03';
 const RUN_ID = resolveCiParentRunId(process.env.MOAZEZ_CI_PARENT_RUN_ID, () =>
@@ -30,8 +34,7 @@ const resources = {
   },
   storage: {
     name: `moazez-prd3-g03-storage-${RUN_ID}`,
-    image:
-      'quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e',
+    image: MINIO_IMAGE,
     containerPort: 9000,
     port: allocateLoopbackPort(),
   },
@@ -51,6 +54,14 @@ try {
     ]).trim();
     if (!/^sha256:[a-f0-9]{64}$/u.test(imageIds[role])) {
       throw new Error(`local_${role}_image_identity_invalid`);
+    }
+    if (role === 'storage') {
+      const inspect = JSON.parse(
+        docker(['image', 'inspect', resource.image, '--format', '{{json .}}']),
+      );
+      if (validateImageInspect(inspect) !== imageIds.storage) {
+        throw new Error('local_storage_fixture_identity_changed');
+      }
     }
   }
 
@@ -129,6 +140,7 @@ try {
       '--runInBand',
       '--runTestsByPath',
       'test/integration/prd3-g03-critical-queue-recovery.integration.spec.ts',
+      'test/integration/academic-content-upload-lifecycle.integration.spec.ts',
     ],
     {
       cwd: process.cwd(),
@@ -139,7 +151,9 @@ try {
       env: {
         ...process.env,
         NODE_ENV: 'test',
+        DATABASE_URL: databaseUrl,
         RUN_PRD3_G03_RECOVERY_INTEGRATION: '1',
+        RUN_ACC_3C_LIFECYCLE_INTEGRATION: '1',
         PRD3_G03_RUN_ID: RUN_ID,
         PRD3_G03_NETWORK: NETWORK,
         PRD3_G03_QUEUE_CONTAINER: resources.queue.name,
@@ -156,6 +170,9 @@ try {
   if (testRun.status !== 0) throw new Error('real_recovery_evidence_failed');
   if (!/PRD3_G03_EVIDENCE_JSON=/u.test(testRun.stdout || '')) {
     throw new Error('real_recovery_evidence_summary_missing');
+  }
+  if (!/ACC_3C_LIFECYCLE_EVIDENCE_JSON=/u.test(testRun.stdout || '')) {
+    throw new Error('real_acc_lifecycle_evidence_summary_missing');
   }
 } catch (error) {
   primaryFailure = error;

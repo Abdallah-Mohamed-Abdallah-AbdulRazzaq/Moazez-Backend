@@ -1,4 +1,6 @@
 import { Module, type Provider } from '@nestjs/common';
+import { AcademicContentCleanupWorker } from '../../modules/academics/academic-content/files/infrastructure/academic-content-cleanup.worker';
+import { AcademicContentFileRepository } from '../../modules/academics/academic-content/files/infrastructure/academic-content-file.repository';
 import { FirebaseAdminModule } from '../../infrastructure/push/firebase/firebase-admin.module';
 import { QueueModule } from '../../infrastructure/queue/queue.module';
 import { RealtimeEmitterModule } from '../../infrastructure/realtime/realtime-emitter.module';
@@ -66,6 +68,7 @@ import { StudentCredentialBatchReconciliationService } from '../../modules/stude
 import { StudentCredentialSecretArtifactCleanupService } from '../../modules/students/credentials/application/student-credential-secret-artifact-cleanup.service';
 
 export const CORE_WORKER_CONSUMER_PROVIDERS = Object.freeze([
+  AcademicContentCleanupWorker,
   CommunicationNotificationGenerationWorker,
   CommunicationNotificationPushWorker,
   SchoolEmailDeliveryWorker,
@@ -75,6 +78,7 @@ export const CORE_WORKER_CONSUMER_PROVIDERS = Object.freeze([
 ] satisfies Provider[]);
 
 const CORE_WORKER_SUPPORT_PROVIDERS: Provider[] = [
+  AcademicContentFileRepository,
   AppDeviceTokenCrypto,
   AppDeviceTokenRepository,
   CommunicationNotificationGenerationRepository,

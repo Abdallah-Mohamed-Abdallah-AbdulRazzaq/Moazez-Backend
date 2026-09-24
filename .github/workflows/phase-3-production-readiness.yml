@@ -38,6 +38,12 @@ jobs:
           echo "Historical Phase 3 audit expected SHA: $EXPECTED_SHA"
           echo "Historical Phase 3 audit tested SHA:   $actual_sha"
 
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22.23.1'
+          cache: npm
+
       - name: Preload Phase 3 disposable fixture images
         shell: bash
         run: |
@@ -48,7 +54,6 @@ jobs:
           images=(
             'postgres:16-alpine'
             'redis:7-alpine'
-            'quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e'
           )
 
           for image in "${images[@]}"; do
@@ -63,11 +68,8 @@ jobs:
             echo "Phase 3 fixture image ready: $image"
           done
 
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '22.23.1'
-          cache: npm
+      - name: Build the governed MinIO fixture for the historical audit
+        run: node scripts/ci/build-minio-fixture.cjs
 
       - name: Install locked dependencies
         run: npm ci

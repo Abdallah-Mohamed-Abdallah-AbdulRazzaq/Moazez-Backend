@@ -13,6 +13,7 @@ import { collectObjectRange } from './object-storage.range';
 import {
   assertObjectRange,
   assertSignedUrlTtl,
+  MAX_RESUMABLE_UPLOAD_CAPABILITY_LIFETIME_MS,
   type ObjectStorageCapabilities,
   type ObjectStorageListPage,
   type ObjectStoragePort,
@@ -27,6 +28,8 @@ import {
 } from './object-storage.port';
 
 export const GCS_READINESS_REQUEST_TIMEOUT_MS = 5_000;
+export const GCS_RESUMABLE_SESSION_MAX_LIFETIME_MS =
+  MAX_RESUMABLE_UPLOAD_CAPABILITY_LIFETIME_MS;
 
 const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
 const IAM_CREDENTIALS_SIGN_BLOB_ENDPOINT =
@@ -176,7 +179,12 @@ export class GcsAdapter implements ObjectStoragePort {
       if (typeof sessionUrl !== 'string' || sessionUrl.length === 0) {
         throw new ObjectStorageError('unknown');
       }
-      return { sessionUrl };
+      // Provider initiation precedes this successful return. This local
+      // deadline is therefore no earlier than the provider's one-week limit.
+      const expiresAt = new Date(
+        this.now().getTime() + GCS_RESUMABLE_SESSION_MAX_LIFETIME_MS,
+      );
+      return { sessionUrl, expiresAt };
     } catch (error) {
       throw normalizeGcsStorageError(error);
     }

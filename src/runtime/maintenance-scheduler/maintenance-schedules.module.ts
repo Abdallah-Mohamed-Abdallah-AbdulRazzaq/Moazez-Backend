@@ -1,4 +1,5 @@
 import { Module, type Provider } from '@nestjs/common';
+import { AcademicContentCleanupSchedule } from './academic-content-cleanup.schedule';
 import { QueueModule } from '../../infrastructure/queue/queue.module';
 import { BrandingLogoReconciliationSchedule } from './branding-logo-reconciliation.schedule';
 import { DismissalExpirySchedule } from './dismissal-expiry.schedule';
@@ -9,6 +10,7 @@ import { ImportValidationReconciliationSchedule } from './import-validation-reco
 import { SchoolEmailDeliveryReconciliationSchedule } from './school-email-delivery-reconciliation.schedule';
 
 export const MAINTENANCE_SCHEDULE_PROVIDERS = Object.freeze([
+  AcademicContentCleanupSchedule,
   DismissalExpirySchedule,
   LearningMediaCleanupSchedule,
   BrandingLogoReconciliationSchedule,
