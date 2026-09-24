@@ -127,6 +127,19 @@ test('corrected inventory covers every transaction without unknown or unresolved
   );
 });
 
+test('ACC transaction facade has a scoped reviewed storage-wait record', () => {
+  const row = INVENTORY.find((item) =>
+    item.path === 'src/modules/academics/academic-content/files/infrastructure/academic-content-file.repository.ts' &&
+    item.entryOwner === 'AcademicContentFileRepository.withTransaction',
+  );
+  assert.ok(row);
+  const override = row.manualOverrides.find((item) => item.unresolvedCallExpression === 'callback');
+  assert.ok(override);
+  assert.equal(override.classification, 'EXTERNAL_WAIT_SENSITIVE');
+  assert.match(override.reason, /ACC repository transaction facade/u);
+  assert.match(override.reviewEvidence, /READY orphan cleanup.*storage deletion.*120-second/u);
+});
+
 test('Teacher allocation reassignment callback has no transaction escape or external wait', () => {
   const rows = validateTeacherAllocationReassignmentUnitOfWorkCallbacks(
     auditTeacherAllocationReassignmentUnitOfWorkCallbacks(),
