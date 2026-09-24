@@ -11,21 +11,32 @@ import { Agent as HttpsAgent, request as httpsRequest } from 'node:https';
 import { Readable } from 'node:stream';
 import { type BucketItem, type BucketItemStat, Client } from 'minio';
 import {
+  ObjectStorageError,
   normalizeMinioStorageError,
   normalizeObjectStorageReadStream,
 } from './object-storage.errors';
+import { collectObjectRange } from './object-storage.range';
 import {
+  assertObjectRange,
   assertSignedUrlTtl,
+  type ObjectStorageCapabilities,
   type ObjectStorageListPage,
   type ObjectStoragePort,
   type ObjectStoragePutInput,
   type ObjectStoragePutResult,
+  type ObjectStorageRangeInput,
+  type ObjectStorageResumableUploadInput,
+  type ObjectStorageResumableUploadSession,
   type ObjectStorageSignedCapability,
   type ObjectStorageSignedGetOverrides,
   type ObjectStorageStat,
 } from './object-storage.port';
 
 export const STORAGE_READINESS_REQUEST_TIMEOUT_MS = 500;
+const MINIO_CAPABILITIES: ObjectStorageCapabilities = Object.freeze({
+  resumableUpload: false,
+  rangeRead: true,
+});
 
 const MINIO_STANDARD_METADATA_KEYS = new Set([
   'content-type',
@@ -98,6 +109,32 @@ export class MinioAdapter implements ObjectStoragePort {
             maxTotalSockets: 2,
           }),
     });
+  }
+
+  getCapabilities(): ObjectStorageCapabilities {
+    return MINIO_CAPABILITIES;
+  }
+
+  createResumableUploadSession(
+    input: ObjectStorageResumableUploadInput,
+  ): Promise<ObjectStorageResumableUploadSession> {
+    void input;
+    return Promise.reject(new ObjectStorageError('unsupported_capability'));
+  }
+
+  async readObjectRange(input: ObjectStorageRangeInput): Promise<Buffer> {
+    assertObjectRange(input);
+    try {
+      const source = await this.client.getPartialObject(
+        input.bucket,
+        input.objectKey,
+        input.offset,
+        input.length,
+      );
+      return await collectObjectRange(source, input.length, 'minio');
+    } catch (error) {
+      throw normalizeMinioStorageError(error);
+    }
   }
 
   async ensureBucketExists(bucket: string): Promise<void> {

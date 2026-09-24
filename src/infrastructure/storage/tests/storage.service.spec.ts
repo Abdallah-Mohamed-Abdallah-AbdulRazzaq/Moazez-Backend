@@ -4,6 +4,46 @@ import { SignedUrlService } from '../signed-url.service';
 import { StorageService } from '../storage.service';
 
 describe('StorageService readiness', () => {
+  it('delegates storage capabilities, resumable sessions, and range reads without provider branching', async () => {
+    const { service, objectStorage } = createService();
+    const capabilities = Object.freeze({
+      resumableUpload: true,
+      rangeRead: true,
+    });
+    objectStorage.getCapabilities.mockReturnValue(capabilities);
+    objectStorage.createResumableUploadSession.mockResolvedValue({
+      sessionUrl: 'https://storage.invalid/session-secret',
+    });
+    objectStorage.readObjectRange.mockResolvedValue(Buffer.from('bytes'));
+    const resumableInput = {
+      bucket: 'private-bucket',
+      objectKey: 'staging/upload',
+      contentType: 'video/mp4',
+      metadata: { purpose: 'inspection' },
+      origin: 'https://schools.moazez.cloud',
+    };
+    const rangeInput = {
+      bucket: 'private-bucket',
+      objectKey: 'staging/upload',
+      offset: 100,
+      length: 5,
+    };
+
+    expect(service.getCapabilities()).toBe(capabilities);
+    await expect(
+      service.createResumableUploadSession(resumableInput),
+    ).resolves.toEqual({
+      sessionUrl: 'https://storage.invalid/session-secret',
+    });
+    await expect(service.readObjectRange(rangeInput)).resolves.toEqual(
+      Buffer.from('bytes'),
+    );
+    expect(objectStorage.createResumableUploadSession).toHaveBeenCalledWith(
+      resumableInput,
+    );
+    expect(objectStorage.readObjectRange).toHaveBeenCalledWith(rangeInput);
+  });
+
   it('resolves when both configured buckets are available', async () => {
     const { service, objectStorage } = createService();
     objectStorage.isBucketAvailable.mockResolvedValue(true);
@@ -149,11 +189,17 @@ function createService(): {
   objectStorage: {
     isBucketAvailable: jest.Mock<Promise<boolean>, [string]>;
     putObject: jest.Mock;
+    getCapabilities: jest.Mock;
+    createResumableUploadSession: jest.Mock;
+    readObjectRange: jest.Mock;
   };
 } {
   const objectStorage = {
     isBucketAvailable: jest.fn<Promise<boolean>, [string]>(),
     putObject: jest.fn(),
+    getCapabilities: jest.fn(),
+    createResumableUploadSession: jest.fn(),
+    readObjectRange: jest.fn(),
   };
   const signedUrlService = {
     resolveBucket: jest.fn((visibility: FileVisibility) =>

@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
+import * as ts from 'typescript';
 
 const SOURCE_ROOT = resolve(__dirname, '../../..');
 
@@ -49,8 +50,9 @@ describe('storage cutover source boundary', () => {
     expect(violations).toEqual([]);
   });
 
-  it('keeps signed capability URLs transient rather than persistence inputs', () => {
-    const violations = collectSignedUrlPersistenceViolations(productionSources);
+  it('keeps signed and resumable capability URLs transient rather than persistence inputs', () => {
+    const violations =
+      collectCapabilityPersistenceViolations(productionSources);
     expect(violations).toEqual([]);
   });
 
@@ -73,9 +75,44 @@ describe('storage cutover source boundary', () => {
           'const capability = await storage.createDownloadUrl(input);\nawait repository.update({ data: { url: capability.url } });',
       },
     ];
-    expect(collectSignedUrlPersistenceViolations(signedPersistence)).toEqual([
+    expect(collectCapabilityPersistenceViolations(signedPersistence)).toEqual([
       'modules/example/application/persist.ts:signed-url-persistence',
     ]);
+
+    const resumablePersistence = [
+      {
+        path: 'modules/example/application/resumable.ts',
+        source:
+          'const capability = await storage.createResumableUploadSession(input);\nawait repository.create({ data: { sessionUrl: capability.sessionUrl } });',
+      },
+    ];
+    expect(
+      collectCapabilityPersistenceViolations(resumablePersistence),
+    ).toEqual([
+      'modules/example/application/resumable.ts:resumable-capability-persistence',
+    ]);
+
+    expect(
+      collectCapabilityPersistenceViolations([
+        {
+          path: 'modules/example/application/alias.ts',
+          source:
+            'const { sessionUrl: uploadUrl } = await storage.createResumableUploadSession(input);\nawait prisma.file.create({ data: { url: uploadUrl } });',
+        },
+      ]),
+    ).toEqual([
+      'modules/example/application/alias.ts:resumable-capability-persistence',
+    ]);
+
+    expect(
+      collectCapabilityPersistenceViolations([
+        {
+          path: 'modules/example/controllers/upload.controller.ts',
+          source:
+            'const capability = await storage.createResumableUploadSession(input);\nawait repository.update({ data: { status: "ready" } });\nreturn { sessionUrl: capability.sessionUrl };',
+        },
+      ]),
+    ).toEqual([]);
   });
 
   it('allows the governed bootstrap project identity without exposing storage secrets', () => {
@@ -182,27 +219,144 @@ function collectCredentialBoundaryViolations(files: SourceFile[]): string[] {
     .map(({ path }) => `${path}:provider-config-reference`);
 }
 
-function collectSignedUrlPersistenceViolations(files: SourceFile[]): string[] {
+function collectCapabilityPersistenceViolations(files: SourceFile[]): string[] {
   return files.flatMap(({ path, source }) => {
     if (path.startsWith('infrastructure/storage/')) return [];
-    const capabilityVariables = [
-      ...source.matchAll(
-        /(?:const|let|var)?\s*([A-Za-z_$][\w$]*)\s*(?::[^=;]+)?=\s*await\s+[\s\S]{0,160}?\.(?:createUploadUrl|createDownloadUrl|createSignedPutUrl|createSignedGetUrl|getSignedUrl)\s*\(/g,
-      ),
-    ].map((match) => match[1]);
-    const persistenceCall =
-      /\b(?:repository|prisma|store)\b[\s\S]{0,80}?\.(?:create|createMany|update|updateMany|upsert|save|persist)\s*\(/i;
-    for (const variable of capabilityVariables) {
-      const escaped = variable.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      if (
-        persistenceCall.test(source) &&
-        new RegExp(`\\b${escaped}\\.url\\b`).test(source)
-      ) {
-        return [`${path}:signed-url-persistence`];
+    const ast = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
+    const capabilityVariables = new Map<
+      string,
+      {
+        kind: 'signed' | 'resumable';
+        direct: boolean;
       }
-    }
-    return [];
+    >();
+
+    walkNode(ast, (node) => {
+      if (!ts.isVariableDeclaration(node) || !node.initializer) return;
+      const initializer = ts.isAwaitExpression(node.initializer)
+        ? node.initializer.expression
+        : node.initializer;
+      if (!ts.isCallExpression(initializer)) return;
+      const operation = initializer.expression;
+      if (!ts.isPropertyAccessExpression(operation)) return;
+      const kind =
+        operation.name.text === 'createResumableUploadSession'
+          ? 'resumable'
+          : /^(?:createUploadUrl|createDownloadUrl|createSignedPutUrl|createSignedGetUrl|getSignedUrl)$/u.test(
+                operation.name.text,
+              )
+            ? 'signed'
+            : null;
+      if (!kind) return;
+      if (ts.isIdentifier(node.name)) {
+        capabilityVariables.set(node.name.text, { kind, direct: false });
+      } else if (ts.isObjectBindingPattern(node.name)) {
+        for (const element of node.name.elements) {
+          if (!ts.isIdentifier(element.name)) continue;
+          const field = element.propertyName?.getText(ast) ?? element.name.text;
+          if (
+            (kind === 'resumable' &&
+              /^(?:sessionUrl|uploadUrl|url)$/u.test(field)) ||
+            (kind === 'signed' && field === 'url')
+          ) {
+            capabilityVariables.set(element.name.text, { kind, direct: true });
+          }
+        }
+      }
+    });
+
+    walkNode(ast, (node) => {
+      if (
+        !ts.isVariableDeclaration(node) ||
+        !ts.isIdentifier(node.name) ||
+        !node.initializer
+      )
+        return;
+      if (
+        !ts.isPropertyAccessExpression(node.initializer) ||
+        !ts.isIdentifier(node.initializer.expression)
+      )
+        return;
+      const sourceCapability = capabilityVariables.get(
+        node.initializer.expression.text,
+      );
+      if (!sourceCapability) return;
+      const field = node.initializer.name.text;
+      if (
+        (sourceCapability.kind === 'resumable' &&
+          /^(?:sessionUrl|uploadUrl|url)$/u.test(field)) ||
+        (sourceCapability.kind === 'signed' && field === 'url')
+      ) {
+        capabilityVariables.set(node.name.text, {
+          kind: sourceCapability.kind,
+          direct: true,
+        });
+      }
+    });
+
+    const violations = new Set<string>();
+    walkNode(ast, (node) => {
+      if (
+        !ts.isCallExpression(node) ||
+        !isPersistenceCall(node.expression, ast)
+      )
+        return;
+      for (const argument of node.arguments) {
+        walkNode(argument, (child) => {
+          if (ts.isIdentifier(child)) {
+            const capability = capabilityVariables.get(child.text);
+            if (capability?.direct) {
+              violations.add(
+                `${path}:${capability.kind === 'resumable' ? 'resumable-capability' : 'signed-url'}-persistence`,
+              );
+            }
+          }
+          if (
+            ts.isPropertyAccessExpression(child) &&
+            ts.isIdentifier(child.expression)
+          ) {
+            const capability = capabilityVariables.get(child.expression.text);
+            if (!capability || capability.direct) return;
+            const field = child.name.text;
+            if (
+              (capability.kind === 'resumable' &&
+                /^(?:sessionUrl|uploadUrl|url)$/u.test(field)) ||
+              (capability.kind === 'signed' && field === 'url')
+            ) {
+              violations.add(
+                `${path}:${capability.kind === 'resumable' ? 'resumable-capability' : 'signed-url'}-persistence`,
+              );
+            }
+          }
+        });
+      }
+    });
+    return [...violations];
   });
+}
+
+function isPersistenceCall(
+  expression: ts.LeftHandSideExpression,
+  ast: ts.SourceFile,
+): boolean {
+  if (ts.isIdentifier(expression))
+    return /^(?:store|persist)$/u.test(expression.text);
+  if (!ts.isPropertyAccessExpression(expression)) return false;
+  const method = expression.name.text;
+  if (
+    !/^(?:create|createMany|update|updateMany|upsert|save|persist|store)$/u.test(
+      method,
+    )
+  )
+    return false;
+  return /(?:repository|prisma|store)/iu.test(
+    expression.expression.getText(ast),
+  );
+}
+
+function walkNode(node: ts.Node, visit: (node: ts.Node) => void): void {
+  visit(node);
+  ts.forEachChild(node, (child) => walkNode(child, visit));
 }
 
 function readProductionSources(): SourceFile[] {

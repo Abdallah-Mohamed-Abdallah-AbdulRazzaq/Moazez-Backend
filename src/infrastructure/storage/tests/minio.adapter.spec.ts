@@ -9,7 +9,9 @@ import {
   type ServerResponse,
 } from 'node:http';
 import type { AddressInfo, Socket } from 'node:net';
-import { Readable } from 'node:stream';
+import { PassThrough, Readable } from 'node:stream';
+import { ObjectStorageError } from '../object-storage.errors';
+import { MAX_OBJECT_RANGE_READ_BYTES } from '../object-storage.port';
 import {
   MinioAdapter,
   STORAGE_READINESS_REQUEST_TIMEOUT_MS,
@@ -88,6 +90,115 @@ describe('MinioAdapter bounded object listing', () => {
 });
 
 describe('MinioAdapter provider-neutral regression', () => {
+  it('reports range support and explicit resumable non-support without a signed PUT fallback', async () => {
+    const adapter = createAdapter([]);
+    const client = productClientOf(adapter);
+    client.presignedPutObject = jest.fn();
+    expect(adapter.getCapabilities()).toEqual({
+      resumableUpload: false,
+      rangeRead: true,
+    });
+    await expect(
+      adapter.createResumableUploadSession({
+        bucket: 'private-bucket',
+        objectKey: 'staging/upload-id',
+      }),
+    ).rejects.toEqual(new ObjectStorageError('unsupported_capability'));
+    expect(client.presignedPutObject).not.toHaveBeenCalled();
+  });
+
+  it('reads an exact partial-object window as a bounded Buffer', async () => {
+    const adapter = createAdapter([]);
+    const client = productClientOf(adapter);
+    client.getObject = jest.fn();
+    client.getPartialObject = jest
+      .fn()
+      .mockResolvedValue(Readable.from([Buffer.from('partial')]));
+    await expect(
+      adapter.readObjectRange({
+        bucket: 'private-bucket',
+        objectKey: 'object.bin',
+        offset: 100,
+        length: 7,
+      }),
+    ).resolves.toEqual(Buffer.from('partial'));
+    expect(client.getPartialObject).toHaveBeenCalledWith(
+      'private-bucket',
+      'object.bin',
+      100,
+      7,
+    );
+    expect(client.getObject).not.toHaveBeenCalled();
+  });
+
+  it('normalizes partial-object failures and refuses oversized provider output', async () => {
+    const adapter = createAdapter([]);
+    const client = productClientOf(adapter);
+    client.getPartialObject = jest
+      .fn()
+      .mockRejectedValueOnce({
+        code: 'AccessDenied',
+        message: 'private provider detail',
+      })
+      .mockResolvedValueOnce(Readable.from([Buffer.alloc(9)]));
+    await expect(
+      adapter.readObjectRange({
+        bucket: 'private-bucket',
+        objectKey: 'object.bin',
+        offset: 0,
+        length: 8,
+      }),
+    ).rejects.toEqual(new ObjectStorageError('permission_denied'));
+    await expect(
+      adapter.readObjectRange({
+        bucket: 'private-bucket',
+        objectKey: 'object.bin',
+        offset: 0,
+        length: 8,
+      }),
+    ).rejects.toEqual(new ObjectStorageError('unknown'));
+  });
+
+  it('normalizes asynchronous partial-read stream failures', async () => {
+    const adapter = createAdapter([]);
+    const client = productClientOf(adapter);
+    const source = new PassThrough();
+    client.getPartialObject = jest.fn().mockResolvedValue(source);
+    const read = adapter.readObjectRange({
+      bucket: 'private-bucket',
+      objectKey: 'object.bin',
+      offset: 0,
+      length: 8,
+    });
+    await Promise.resolve();
+    source.destroy(
+      Object.assign(new Error('private detail'), { code: 'NoSuchKey' }),
+    );
+    await expect(read).rejects.toEqual(new ObjectStorageError('not_found'));
+  });
+
+  it('rejects invalid ranges before MinIO invocation', async () => {
+    const adapter = createAdapter([]);
+    const client = productClientOf(adapter);
+    client.getPartialObject = jest.fn();
+    for (const [offset, length] of [
+      [-1, 1],
+      [0, 0],
+      [0, MAX_OBJECT_RANGE_READ_BYTES + 1],
+      [Number.MAX_SAFE_INTEGER, 2],
+    ]) {
+      await expect(
+        adapter.readObjectRange({
+          bucket: 'private-bucket',
+          objectKey: 'object.bin',
+          offset,
+          length,
+        }),
+      ).rejects.toThrow('storage_object_range_invalid');
+    }
+    expect(client.getPartialObject).not.toHaveBeenCalled();
+  });
+
   it('preserves put, stat, stream, delete, exists, and local bucket creation', async () => {
     const adapter = createAdapter([]);
     const client = productClientOf(adapter);
@@ -398,6 +509,7 @@ function productClientOf(adapter: MinioAdapter) {
         putObject: jest.Mock;
         statObject: jest.Mock;
         getObject: jest.Mock;
+        getPartialObject: jest.Mock;
         removeObject: jest.Mock;
         presignedPutObject: jest.Mock;
         presignedGetObject: jest.Mock;
