@@ -265,7 +265,7 @@ describe('learning media cleanup and BullMQ integration', () => {
       target: 'staging' | 'final' | 'finalization-recovery',
     ) => string;
     try {
-      await service.onModuleInit();
+      service.onModuleInit();
       await service.discoverAndEnqueue();
       const stagingJobId = buildTargetJobId(session.id, 'staging');
       await waitForJobState(bull, stagingJobId, 'completed');
@@ -354,7 +354,7 @@ describe('learning media cleanup and BullMQ integration', () => {
       'finalization-recovery',
     );
     try {
-      await service.onModuleInit();
+      service.onModuleInit();
       await service.discoverAndEnqueue();
       await waitForJobState(bull, jobId, 'completed');
       await expectRecoveryCycle(session.id, 1);
@@ -452,7 +452,7 @@ describe('learning media cleanup and BullMQ integration', () => {
       retryStorage,
     );
     try {
-      await service.onModuleInit();
+      service.onModuleInit();
       await expect(
         service.discoverAndEnqueue(),
       ).resolves.toBeGreaterThanOrEqual(1);
@@ -488,7 +488,7 @@ describe('learning media cleanup and BullMQ integration', () => {
       deleteObjectAndConfirmAbsent: deletion,
     } as unknown as StorageService);
     try {
-      await service.onModuleInit();
+      service.onModuleInit();
       await service.discoverAndEnqueue();
       const job = await waitForJobState(
         bull,
@@ -544,7 +544,7 @@ describe('learning media cleanup and BullMQ integration', () => {
       deleteObjectAndConfirmAbsent: deletion,
     } as unknown as StorageService);
     try {
-      await service.onModuleInit();
+      service.onModuleInit();
       await service.discoverAndEnqueue();
       const job = await waitForJobState(
         bull,
@@ -730,6 +730,106 @@ describe('learning media cleanup and BullMQ integration', () => {
     await expect(
       storage.objectExists({ bucket, objectKey: uploadedObjectKey }),
     ).resolves.toBe(false);
+  });
+
+  it('never discovers, expires, claims, or finishes ACC sessions', async () => {
+    const createdAt = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    const expiresAt = new Date(createdAt.getTime() + 60 * 60 * 1000);
+    const abandoned = await prisma.fileUploadSession.create({
+      data: {
+        organizationId: ids.organizationId,
+        schoolId: ids.schoolId,
+        createdByUserId: ids.actorId,
+        clientRequestId: randomUUID(),
+        purpose: FileUploadPurpose.ACADEMIC_CONTENT,
+        purposeContextId: randomUUID(),
+        originalName: 'acc.pdf',
+        expectedMimeType: 'application/pdf',
+        expectedSizeBytes: 1024n,
+        finalBucket: bucket,
+        finalObjectKey: `acc3a/abandoned/${randomUUID()}`,
+        status: FileUploadSessionStatus.CREATED,
+        createdAt,
+        expiresAt,
+      },
+    });
+    const objectKey = `acc3a/ready/${randomUUID()}`;
+    const file = await prisma.file.create({
+      data: {
+        organizationId: ids.organizationId,
+        schoolId: ids.schoolId,
+        uploaderId: ids.actorId,
+        bucket,
+        objectKey,
+        originalName: 'acc-ready.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024n,
+      },
+    });
+    const completedAt = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const ready = await prisma.fileUploadSession.create({
+      data: {
+        organizationId: ids.organizationId,
+        schoolId: ids.schoolId,
+        createdByUserId: ids.actorId,
+        clientRequestId: randomUUID(),
+        purpose: FileUploadPurpose.ACADEMIC_CONTENT,
+        purposeContextId: randomUUID(),
+        originalName: 'acc-ready.pdf',
+        expectedMimeType: 'application/pdf',
+        expectedSizeBytes: 1024n,
+        finalBucket: bucket,
+        finalObjectKey: objectKey,
+        status: FileUploadSessionStatus.READY,
+        createdAt,
+        expiresAt,
+        completedAt,
+        verifiedMimeType: 'application/pdf',
+        actualSizeBytes: 1024n,
+        verifiedAt: completedAt,
+        verificationVersion: 'academic-content-bounded-v1',
+        fileId: file.id,
+        finalCleanupEligibleAt: new Date(Date.now() - 1000),
+      },
+    });
+
+    const now = new Date();
+    const candidates = await repository.discoverCleanupCandidates(
+      now,
+      new Date(now.getTime() - 60_000),
+    );
+    expect(candidates).not.toContainEqual({
+      uploadId: ready.id,
+      target: 'final',
+    });
+    await repository.expireAbandonedSessions(now);
+    await expect(
+      repository.claimCleanup(ready.id, 'final', now, now),
+    ).resolves.toBeNull();
+    await repository.finishCleanup({
+      uploadId: ready.id,
+      target: 'final',
+      now,
+      stagingDeleted: false,
+      finalDeleted: true,
+    });
+    expect(
+      (
+        await prisma.fileUploadSession.findUniqueOrThrow({
+          where: { id: abandoned.id },
+        })
+      ).status,
+    ).toBe(FileUploadSessionStatus.CREATED);
+    const persistedReady = await prisma.fileUploadSession.findUniqueOrThrow({
+      where: { id: ready.id },
+    });
+    expect(persistedReady.status).toBe(FileUploadSessionStatus.READY);
+    expect(persistedReady.finalCleanupClaimedAt).toBeNull();
+    expect(persistedReady.finalObjectDeletedAt).toBeNull();
+    expect(
+      (await prisma.file.findUniqueOrThrow({ where: { id: file.id } }))
+        .deletedAt,
+    ).toBeNull();
   });
 
   async function createTerminalSession(input: {

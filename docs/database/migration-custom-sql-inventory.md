@@ -173,6 +173,37 @@ not data-rewriting DML. Prisma represents all new indexes and foreign keys.
 The historical baseline/early-chain counts above are preserved as the audit
 snapshot they describe.
 
+## ACC-3A purpose-safe Files custom SQL
+
+`20260923165955_academic_content_upload_purpose_enum` owns only the
+`file_upload_purpose` enum extension. Its separate migration commit makes
+`ACADEMIC_CONTENT` usable in the subsequent CHECK expressions.
+
+`20260923165956_academic_content_purpose_safe_files_foundation` owns the
+remaining ACC-3A schema changes, one partial unique index, and three new named
+checks. Prisma cannot express their predicates. It also replaces eleven
+existing validated Learning Media checks under the same names with a purpose
+branch, preserving each original predicate verbatim for `LESSON_CONTENT` while
+the new ACC check owns `ACADEMIC_CONTENT`. This second migration reads only the
+named, validated CHECK definitions from PostgreSQL's catalog; it aborts if
+any is missing or malformed, and does not rewrite historical data.
+
+| Classification | Existing checks | ACC-3A treatment |
+| --- | --- | --- |
+| `GENERIC_ALREADY_SAFE` / `UNCHANGED` | `file_upload_sessions_expected_metadata_check`, `file_upload_sessions_actual_size_check`, `file_upload_sessions_checksum_check`, `file_upload_sessions_duration_check`, `file_upload_sessions_dimensions_check`, `file_upload_sessions_original_name_check`, `file_upload_sessions_object_identity_check`, `file_upload_sessions_cleanup_evidence_check` | Remain active for both purposes. ACC's separate contract adds the 10 GiB ceiling; the existing metadata predicate remains exact for Learning Media. |
+| `LESSON_CONTENT_SPECIFIC` / `MUST_BECOME_PURPOSE_AWARE` | `file_upload_sessions_expiry_check`, `file_upload_sessions_authoritative_facts_check`, `file_upload_sessions_created_check`, `file_upload_sessions_uploading_check`, `file_upload_sessions_verifying_check`, `file_upload_sessions_ready_check`, `file_upload_sessions_legacy_check`, `file_upload_sessions_failed_check`, `file_upload_sessions_cancelled_check`, `file_upload_sessions_expired_check`, `file_upload_sessions_purged_check` | Recreated under the same names as `ACADEMIC_CONTENT OR (original predicate)`. The `LESSON_CONTENT` branch is therefore semantically identical to the historical definition. |
+
+| New object | Invariant | Direct protection |
+| --- | --- | --- |
+| `file_upload_sessions_purpose_context_check` | Historical `LESSON_CONTENT` context stays null; every `ACADEMIC_CONTENT` session has a UUID context. No Files-to-AcademicContent foreign key is introduced. | `test/integration/academic-content-files-foundation.integration.spec.ts` |
+| `file_upload_sessions_academic_content_contract_check` | Direct-to-final ACC states, 10 GiB ceiling, ACC-owned bounded verification version, required READY facts with optional checksum/dimensions, and no ACC LEGACY state. | `test/integration/academic-content-files-foundation.integration.spec.ts` |
+| `academic_content_assets_active_link_key` | Partial uniqueness for an active school/content/File link only; soft-deleted historical links may coexist. | `test/integration/academic-content-files-foundation.integration.spec.ts` |
+| `academic_content_file_policies_maximum_file_size_bytes_check` | The BIGINT setting is positive and at most 10 GiB. | `test/integration/academic-content-files-foundation.integration.spec.ts` |
+
+Both ACC-3A migrations are additive for existing `LESSON_CONTENT` rows and do
+not backfill policies, infer Academic Content ownership for historical Files,
+or enable ACC uploads or cleanup.
+
 ## Reviewed PostgreSQL-specific SQL that must not be copied
 
 - The 16 raw enum additions are historical transition mechanics. The final
