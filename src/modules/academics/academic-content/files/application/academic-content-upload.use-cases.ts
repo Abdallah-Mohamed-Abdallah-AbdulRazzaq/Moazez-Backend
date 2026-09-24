@@ -284,6 +284,11 @@ export class CompleteAcademicContentUploadUseCase {
       });
       throw conflict('verification_retryable');
     }
+    const fileId = randomUUID();
+    const completedAt = new Date();
+    const readyCleanupEligibleAt = new Date(
+      completedAt.getTime() + ACADEMIC_CONTENT_READY_RETENTION_MS,
+    );
     return this.repository.prisma.$transaction(async (tx) => {
       const session = await this.repository.lock(tx, owner);
       if (!session || session.status !== FileUploadSessionStatus.VERIFYING)
@@ -297,10 +302,9 @@ export class CompleteAcademicContentUploadUseCase {
       });
       if (!content)
         throw new NotFoundDomainException('Academic content not found');
-      const now = new Date();
       const file = await tx.file.create({
         data: {
-          id: randomUUID(),
+          id: fileId,
           organizationId: session.organizationId,
           schoolId: session.schoolId,
           uploaderId: session.createdByUserId,
@@ -326,18 +330,16 @@ export class CompleteAcademicContentUploadUseCase {
         data: {
           status: FileUploadSessionStatus.READY,
           fileId: file.id,
-          completedAt: now,
+          completedAt,
           verifiedMimeType: verified.mimeType,
           actualSizeBytes: verified.sizeBytes,
           checksumSha256: null,
           durationSeconds: null,
           width: null,
           height: null,
-          verifiedAt: now,
+          verifiedAt: completedAt,
           verificationVersion: ACADEMIC_CONTENT_VERIFICATION_VERSION,
-          finalCleanupEligibleAt: new Date(
-            now.getTime() + ACADEMIC_CONTENT_READY_RETENTION_MS,
-          ),
+          finalCleanupEligibleAt: readyCleanupEligibleAt,
           finalCleanupClaimedAt: null,
           finalObjectDeletedAt: null,
         },

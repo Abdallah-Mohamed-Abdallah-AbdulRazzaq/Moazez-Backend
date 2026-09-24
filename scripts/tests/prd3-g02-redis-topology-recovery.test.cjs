@@ -88,14 +88,11 @@ test('realtime adapter, state, and emitter use only Realtime Redis', () => {
   assert.match(state, /environment !== 'staging'/u);
   assert.match(state, /environment !== 'production'/u);
   assert.match(state, /realtime_state_redis_unavailable/u);
-  assert.doesNotMatch(
-    emitter,
-    /RedisConnectionConfiguration\s*\|\s*string/u,
-  );
+  assert.doesNotMatch(emitter, /RedisConnectionConfiguration\s*\|\s*string/u);
   assert.doesNotMatch(emitter, /nodeEnvironment:\s*'test'/u);
 });
 
-test('runtime role ownership stays at the completed Phase 2 graph', () => {
+test('runtime role ownership retains Phase 2 isolation with the current ACC inventory', () => {
   const contract = read('src/runtime/runtime-role.module-contract.spec.ts');
 
   assert.match(
@@ -104,13 +101,13 @@ test('runtime role ownership stays at the completed Phase 2 graph', () => {
   );
   assert.match(
     contract,
-    /CORE_WORKER_ASSIGNED_CONSUMERS\)\.toHaveLength\(6\)/u,
+    /CORE_WORKER_ASSIGNED_CONSUMERS\)\.toHaveLength\(7\)/u,
   );
   assert.match(
     contract,
     /MEDIA_WORKER_ASSIGNED_CONSUMERS\)\.toEqual\(\['learning-media-cleanup'\]\)/u,
   );
-  assert.match(contract, /registerRepeatJob\)\.toHaveBeenCalledTimes\(7\)/u);
+  assert.match(contract, /registerRepeatJob\)\.toHaveBeenCalledTimes\(8\)/u);
 });
 
 test('real evidence harness locks two instances, budgets, outages, and cleanup', () => {
