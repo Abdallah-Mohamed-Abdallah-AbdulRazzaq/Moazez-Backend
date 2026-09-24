@@ -21,6 +21,7 @@ import {
   ACADEMIC_CONTENT_UPLOAD_SESSION_TTL_MS,
   ACADEMIC_CONTENT_VERIFICATION_VERSION,
 } from '../domain/academic-content-file.constants';
+import { academicContentFinalCleanupDeadline } from '../domain/academic-content-file.cleanup-deadline';
 import { resolveAcademicContentFileType } from '../domain/academic-content-file.registry';
 import {
   AcademicContentFileRepository,
@@ -149,6 +150,7 @@ export class CreateAcademicContentUploadUseCase {
       throw conflict('upload_capability_not_reissuable');
     }
     let sessionUrl: string;
+    let capabilityExpiresAt: Date;
     try {
       const capability = await this.storage.createResumableUploadSession({
         bucket: session.finalBucket,
@@ -157,6 +159,7 @@ export class CreateAcademicContentUploadUseCase {
         origin: command.trustedOrigin,
       });
       sessionUrl = capability.sessionUrl;
+      capabilityExpiresAt = capability.expiresAt;
     } catch {
       await this.repository.prisma.fileUploadSession.updateMany({
         where: {
@@ -186,7 +189,10 @@ export class CreateAcademicContentUploadUseCase {
           purposeContextId: command.contentId,
           status: FileUploadSessionStatus.CREATED,
         },
-        data: { status: FileUploadSessionStatus.UPLOADING },
+        data: {
+          status: FileUploadSessionStatus.UPLOADING,
+          latestUploadUrlExpiresAt: capabilityExpiresAt,
+        },
       });
     if (transitioned.count !== 1)
       throw conflict('upload_capability_not_reissuable');
@@ -194,6 +200,7 @@ export class CreateAcademicContentUploadUseCase {
       uploadId: session.id,
       status: FileUploadSessionStatus.UPLOADING,
       sessionUrl,
+      capabilityExpiresAt,
       expiresAt: session.expiresAt,
       expectedMimeType: type.mimeType,
       expectedSizeBytes,
@@ -228,11 +235,15 @@ export class CompleteAcademicContentUploadUseCase {
       )
         throw conflict('upload_not_completable');
       if (session.expiresAt <= new Date()) {
+        const now = new Date();
         await tx.fileUploadSession.update({
           where: { id: session.id },
           data: {
             status: FileUploadSessionStatus.EXPIRED,
-            finalCleanupEligibleAt: new Date(),
+            finalCleanupEligibleAt: academicContentFinalCleanupDeadline(
+              now,
+              session,
+            ),
           },
         });
         return { kind: 'expired' as const };
@@ -253,6 +264,10 @@ export class CompleteAcademicContentUploadUseCase {
       verified = await this.verifier.verify(claimed.session);
     } catch (error) {
       if (error instanceof AcademicContentFileRejection) {
+        const failedAt = new Date();
+        const objectKnownPresent =
+          error.reason !== 'object_missing' &&
+          error.reason !== 'unsupported_file_type';
         await this.repository.prisma.fileUploadSession.updateMany({
           where: {
             id: owner.uploadId,
@@ -264,9 +279,11 @@ export class CompleteAcademicContentUploadUseCase {
           },
           data: {
             status: FileUploadSessionStatus.FAILED,
-            failedAt: new Date(),
+            failedAt,
             failureReason: error.reason,
-            finalCleanupEligibleAt: new Date(),
+            finalCleanupEligibleAt: objectKnownPresent
+              ? failedAt
+              : academicContentFinalCleanupDeadline(failedAt, claimed.session),
           },
         });
         throw conflict(error.reason);
@@ -386,7 +403,10 @@ export class CancelAcademicContentUploadUseCase {
         data: {
           status: FileUploadSessionStatus.CANCELLED,
           cancelledAt: now,
-          finalCleanupEligibleAt: now,
+          finalCleanupEligibleAt: academicContentFinalCleanupDeadline(
+            now,
+            session,
+          ),
         },
       });
     });

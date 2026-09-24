@@ -6,6 +6,7 @@ import {
   type FileUploadSession,
 } from '@prisma/client';
 import { PrismaService } from '../../../../../infrastructure/database/prisma.service';
+import { missingAcademicCapabilityCleanupDeadline } from '../domain/academic-content-file.cleanup-deadline';
 
 export type AcademicUploadIdentity = {
   uploadId: string;
@@ -92,23 +93,28 @@ export class AcademicContentFileRepository {
   }
 
   async expireAbandoned(now: Date): Promise<number> {
-    const result = await this.prisma.fileUploadSession.updateMany({
-      where: {
-        purpose: FileUploadPurpose.ACADEMIC_CONTENT,
-        status: {
-          in: [
-            FileUploadSessionStatus.CREATED,
-            FileUploadSessionStatus.UPLOADING,
-          ],
-        },
-        expiresAt: { lte: now },
-      },
-      data: {
-        status: FileUploadSessionStatus.EXPIRED,
-        finalCleanupEligibleAt: now,
-      },
-    });
-    return result.count;
+    // The provider may still accept a resumable URI after ACC's 24-hour
+    // application TTL. A malformed old UPLOADING row is deferred a full
+    // supported capability lifetime from discovery, never treated as absent.
+    const missingCapabilityDeadline =
+      missingAcademicCapabilityCleanupDeadline(now);
+    return this.prisma.$executeRaw`
+      UPDATE file_upload_sessions
+      SET status = 'EXPIRED'::file_upload_session_status,
+          final_cleanup_eligible_at = CASE
+            WHEN status = 'CREATED'::file_upload_session_status THEN ${now}
+            ELSE GREATEST(
+              ${now},
+              COALESCE(latest_upload_url_expires_at, ${missingCapabilityDeadline})
+            )
+          END,
+          updated_at = ${now}
+      WHERE purpose = 'ACADEMIC_CONTENT'::file_upload_purpose
+        AND status IN (
+          'CREATED'::file_upload_session_status,
+          'UPLOADING'::file_upload_session_status
+        )
+        AND expires_at <= ${now}`;
   }
 
   async recoverStaleVerification(staleBefore: Date): Promise<number> {

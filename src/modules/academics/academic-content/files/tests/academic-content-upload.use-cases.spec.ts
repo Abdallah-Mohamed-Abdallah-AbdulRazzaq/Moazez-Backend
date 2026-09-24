@@ -20,6 +20,7 @@ const actorId = '22222222-2222-4222-8222-222222222222';
 const contentId = '33333333-3333-4333-8333-333333333333';
 const uploadId = '44444444-4444-4444-8444-444444444444';
 const requestId = '55555555-5555-4555-8555-555555555555';
+const capabilityExpiresAt = new Date('2030-09-24T00:00:00.000Z');
 
 function withManager<T>(
   run: () => T,
@@ -73,9 +74,10 @@ describe('ACC upload intent', () => {
   const storage = {
     getCapabilities: jest.fn().mockReturnValue({ resumableUpload: true }),
     resolveBucket: jest.fn().mockReturnValue('private'),
-    createResumableUploadSession: jest
-      .fn()
-      .mockResolvedValue({ sessionUrl: 'https://provider.example/session' }),
+    createResumableUploadSession: jest.fn().mockResolvedValue({
+      sessionUrl: 'https://provider.example/session',
+      expiresAt: capabilityExpiresAt,
+    }),
   };
   const useCase = new CreateAcademicContentUploadUseCase(
     repository as never,
@@ -99,6 +101,7 @@ describe('ACC upload intent', () => {
       status: FileUploadSessionStatus.UPLOADING,
       uploadMode: 'resumable',
       sessionUrl: 'https://provider.example/session',
+      capabilityExpiresAt,
     });
     expect(repository.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -120,9 +123,15 @@ describe('ACC upload intent', () => {
     expect(storage.createResumableUploadSession).toHaveBeenCalledTimes(1);
     expect(repository.prisma.fileUploadSession.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: { status: FileUploadSessionStatus.UPLOADING },
+        data: {
+          status: FileUploadSessionStatus.UPLOADING,
+          latestUploadUrlExpiresAt: capabilityExpiresAt,
+        },
       }),
     );
+    expect(
+      JSON.stringify(repository.prisma.fileUploadSession.updateMany.mock.calls),
+    ).not.toContain('provider.example/session');
   });
 
   it('never reissues capability on unique-key replay, and detects payload mismatch', async () => {
@@ -305,6 +314,7 @@ describe('ACC completion and cancellation', () => {
     originalName: 'x.pdf',
     expectedMimeType: 'application/pdf',
     expectedSizeBytes: 10n,
+    latestUploadUrlExpiresAt: capabilityExpiresAt,
   };
   const tx = {
     fileUploadSession: { update: jest.fn().mockResolvedValue(base) },
@@ -403,9 +413,14 @@ describe('ACC completion and cancellation', () => {
     });
     const failedUpdate = (
       repository.prisma.fileUploadSession.updateMany.mock
-        .calls as unknown as Array<[{ data: { status: string } }]>
+        .calls as unknown as Array<
+        [{ data: { status: string; finalCleanupEligibleAt: Date } }]
+      >
     )[0][0];
     expect(failedUpdate.data.status).toBe(FileUploadSessionStatus.FAILED);
+    expect(failedUpdate.data.finalCleanupEligibleAt.getTime()).toBeLessThan(
+      capabilityExpiresAt.getTime(),
+    );
     verifier.verify.mockRejectedValueOnce(new Error('temporary'));
     await expect(
       withManager(() => complete.execute({ contentId, uploadId })),
@@ -419,6 +434,29 @@ describe('ACC completion and cancellation', () => {
     );
   });
 
+  it('defers a missing-object rejection while the provider capability can still finalize', async () => {
+    verifier.verify.mockRejectedValueOnce(
+      new AcademicContentFileRejection('object_missing'),
+    );
+    await expect(
+      withManager(() => complete.execute({ contentId, uploadId })),
+    ).rejects.toMatchObject({ code: 'academic_content.file.object_missing' });
+    const update = (
+      repository.prisma.fileUploadSession.updateMany.mock
+        .calls as unknown as Array<
+        [
+          {
+            data: { status: string; finalCleanupEligibleAt: Date };
+          },
+        ]
+      >
+    )[0][0];
+    expect(update.data).toMatchObject({
+      status: FileUploadSessionStatus.FAILED,
+      finalCleanupEligibleAt: capabilityExpiresAt,
+    });
+  });
+
   it('cancels only an owned CREATED/UPLOADING session, without storage deletion', async () => {
     await expect(
       withManager(() => cancel.execute({ contentId, uploadId })),
@@ -429,7 +467,9 @@ describe('ACC completion and cancellation', () => {
       >
     )[0][0];
     expect(cancelUpdate.data.status).toBe(FileUploadSessionStatus.CANCELLED);
-    expect(cancelUpdate.data.finalCleanupEligibleAt).toBeInstanceOf(Date);
+    expect(cancelUpdate.data.finalCleanupEligibleAt).toEqual(
+      capabilityExpiresAt,
+    );
     repository.lock.mockResolvedValueOnce({
       ...base,
       status: FileUploadSessionStatus.READY,
@@ -439,6 +479,25 @@ describe('ACC completion and cancellation', () => {
     ).rejects.toMatchObject({
       code: 'academic_content.file.upload_not_cancellable',
     });
+  });
+
+  it('defers completion-time expiry until the issued capability expires', async () => {
+    repository.lock.mockResolvedValueOnce({
+      ...base,
+      expiresAt: new Date('2026-09-23T00:00:00.000Z'),
+    });
+    await expect(
+      withManager(() => complete.execute({ contentId, uploadId })),
+    ).rejects.toMatchObject({ code: 'academic_content.file.upload_expired' });
+    expect(tx.fileUploadSession.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          status: FileUploadSessionStatus.EXPIRED,
+          finalCleanupEligibleAt: capabilityExpiresAt,
+        },
+      }),
+    );
+    expect(verifier.verify).not.toHaveBeenCalled();
   });
 
   it('uses exact school, actor, purpose and content ownership for completion and cancellation', async () => {
