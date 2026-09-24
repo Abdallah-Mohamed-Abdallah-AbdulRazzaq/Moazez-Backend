@@ -3,7 +3,11 @@ import { FileVisibility } from '@prisma/client';
 import { Readable } from 'node:stream';
 import {
   OBJECT_STORAGE_PORT,
+  type ObjectStorageCapabilities,
   type ObjectStoragePort,
+  type ObjectStorageRangeInput,
+  type ObjectStorageResumableUploadInput,
+  type ObjectStorageResumableUploadSession,
   type ObjectStorageSignedCapability,
 } from './object-storage.port';
 import type { SignedGetDisposition } from './signed-url.service';
@@ -16,6 +20,20 @@ export class StorageService {
     private readonly objectStorage: ObjectStoragePort,
     private readonly signedUrlService: SignedUrlService,
   ) {}
+
+  getCapabilities(): ObjectStorageCapabilities {
+    return this.objectStorage.getCapabilities();
+  }
+
+  createResumableUploadSession(
+    input: ObjectStorageResumableUploadInput,
+  ): Promise<ObjectStorageResumableUploadSession> {
+    return this.objectStorage.createResumableUploadSession(input);
+  }
+
+  readObjectRange(input: ObjectStorageRangeInput): Promise<Buffer> {
+    return this.objectStorage.readObjectRange(input);
+  }
 
   async saveObject(input: {
     objectKey: string;

@@ -10,10 +10,173 @@ import {
   type GcsClientFactory,
 } from '../gcs.adapter';
 import { ObjectStorageError } from '../object-storage.errors';
+import { MAX_OBJECT_RANGE_READ_BYTES } from '../object-storage.port';
 
 const NOW = new Date('2026-08-10T12:00:00.000Z');
 
 describe('GcsAdapter object operations', () => {
+  it('reports semantic capabilities without exposing provider identity', () => {
+    const harness = createHarness();
+    expect(harness.adapter.getCapabilities()).toEqual({
+      resumableUpload: true,
+      rangeRead: true,
+    });
+  });
+
+  it('creates a direct resumable session with runtime ADC, overwrite protection, metadata, and origin', async () => {
+    const harness = createHarness();
+    const logged = jest
+      .spyOn(console, 'log')
+      .mockImplementation(() => undefined);
+    try {
+      await expect(
+        harness.adapter.createResumableUploadSession({
+          bucket: 'private-bucket',
+          objectKey: 'staging/upload-id',
+          contentType: 'video/mp4',
+          metadata: { purpose: 'inspection' },
+          origin: 'https://schools.moazez.cloud',
+        }),
+      ).resolves.toEqual({
+        sessionUrl: 'https://storage.invalid/resumable-secret',
+      });
+      expect(harness.runtimeClient.bucket).toHaveBeenCalledWith(
+        'private-bucket',
+      );
+      expect(harness.runtimeBucket.file).toHaveBeenCalledWith(
+        'staging/upload-id',
+      );
+      expect(harness.runtimeFile.createResumableUpload).toHaveBeenCalledWith({
+        preconditionOpts: { ifGenerationMatch: 0 },
+        origin: 'https://schools.moazez.cloud',
+        metadata: {
+          contentType: 'video/mp4',
+          metadata: { purpose: 'inspection' },
+        },
+      });
+      expect(harness.createSigningClient).not.toHaveBeenCalled();
+      expect(harness.signingClient.bucket).not.toHaveBeenCalled();
+      expect(harness.config.getOrThrow).not.toHaveBeenCalledWith(
+        'GCS_SIGNING_SERVICE_ACCOUNT',
+      );
+      expect(logged).not.toHaveBeenCalled();
+    } finally {
+      logged.mockRestore();
+    }
+  });
+
+  it.each([
+    [403, 'permission_denied'],
+    [412, 'precondition_conflict'],
+    [429, 'rate_quota'],
+    [503, 'transient'],
+    ['ETIMEDOUT', 'transient'],
+  ] as const)(
+    'normalizes resumable provider failure %p as %s',
+    async (code, kind) => {
+      const harness = createHarness();
+      harness.runtimeFile.createResumableUpload.mockRejectedValueOnce({
+        code,
+        message: 'https://secret.invalid/session?token=private',
+      });
+      const failure = await harness.adapter
+        .createResumableUploadSession({
+          bucket: 'private-bucket',
+          objectKey: 'staging/upload-id',
+        })
+        .catch((error: unknown) => error);
+      expect(failure).toEqual(new ObjectStorageError(kind));
+      expect(String(failure)).not.toContain('secret.invalid');
+    },
+  );
+
+  it.each([
+    [0, 8, 7],
+    [100, 64, 163],
+  ])(
+    'reads only the requested GCS byte window',
+    async (offset, length, end) => {
+      const harness = createHarness();
+      harness.runtimeFile.createReadStream.mockReturnValue(
+        Readable.from([Buffer.alloc(length, 7)]),
+      );
+      await expect(
+        harness.adapter.readObjectRange({
+          bucket: 'private-bucket',
+          objectKey: 'object.bin',
+          offset,
+          length,
+        }),
+      ).resolves.toEqual(Buffer.alloc(length, 7));
+      expect(harness.runtimeFile.createReadStream).toHaveBeenCalledWith({
+        start: offset,
+        end,
+      });
+      expect(harness.runtimeFile.createReadStream).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('normalizes asynchronous and synchronous bounded-range failures', async () => {
+    const harness = createHarness();
+    const source = new PassThrough();
+    harness.runtimeFile.createReadStream.mockReturnValueOnce(source);
+    const read = harness.adapter.readObjectRange({
+      bucket: 'private-bucket',
+      objectKey: 'object.bin',
+      offset: 0,
+      length: 8,
+    });
+    source.destroy({
+      code: 404,
+      message: 'private object URL',
+    } as unknown as Error);
+    await expect(read).rejects.toEqual(new ObjectStorageError('not_found'));
+
+    harness.runtimeFile.createReadStream.mockImplementationOnce(() => {
+      throw Object.assign(new Error('private provider detail'), { code: 503 });
+    });
+    await expect(
+      harness.adapter.readObjectRange({
+        bucket: 'private-bucket',
+        objectKey: 'object.bin',
+        offset: 0,
+        length: 8,
+      }),
+    ).rejects.toEqual(new ObjectStorageError('transient'));
+  });
+
+  it('rejects invalid ranges before GCS invocation and refuses over-returned bytes', async () => {
+    const harness = createHarness();
+    for (const [offset, length] of [
+      [-1, 1],
+      [0, 0],
+      [0, MAX_OBJECT_RANGE_READ_BYTES + 1],
+      [Number.MAX_SAFE_INTEGER, 2],
+      [1.5, 1],
+    ]) {
+      await expect(
+        harness.adapter.readObjectRange({
+          bucket: 'private-bucket',
+          objectKey: 'object.bin',
+          offset,
+          length,
+        }),
+      ).rejects.toThrow('storage_object_range_invalid');
+    }
+    expect(harness.runtimeClient.bucket).not.toHaveBeenCalled();
+    harness.runtimeFile.createReadStream.mockReturnValueOnce(
+      Readable.from([Buffer.alloc(9)]),
+    );
+    await expect(
+      harness.adapter.readObjectRange({
+        bucket: 'private-bucket',
+        objectKey: 'object.bin',
+        offset: 0,
+        length: 8,
+      }),
+    ).rejects.toEqual(new ObjectStorageError('unknown'));
+  });
+
   it('streams Buffer, string, and Readable uploads with metadata intact', async () => {
     const harness = createHarness();
 
@@ -362,7 +525,9 @@ describe('DefaultGcsClientFactory keyless authentication', () => {
 
     expect(getClient).toHaveBeenCalledTimes(2);
     expect(request).toHaveBeenCalledTimes(2);
-    for (const [requestOptions] of request.mock.calls) {
+    for (const [requestOptions] of request.mock.calls as Array<
+      [{ method: string; url: string; data: { payload: string } }]
+    >) {
       expect(requestOptions.method).toBe('POST');
       expect(decodeURIComponent(new URL(requestOptions.url).pathname)).toBe(
         `/v1/projects/-/serviceAccounts/${signerServiceAccount}:signBlob`,
@@ -441,6 +606,9 @@ function createHarness() {
       },
     ]),
     createReadStream: jest.fn(),
+    createResumableUpload: jest
+      .fn()
+      .mockResolvedValue(['https://storage.invalid/resumable-secret']),
     delete: jest.fn().mockResolvedValue([{}]),
     exists: jest.fn(),
   };

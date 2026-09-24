@@ -9,12 +9,18 @@ import {
   normalizeGcsStorageError,
   normalizeObjectStorageReadStream,
 } from './object-storage.errors';
+import { collectObjectRange } from './object-storage.range';
 import {
+  assertObjectRange,
   assertSignedUrlTtl,
+  type ObjectStorageCapabilities,
   type ObjectStorageListPage,
   type ObjectStoragePort,
   type ObjectStoragePutInput,
   type ObjectStoragePutResult,
+  type ObjectStorageRangeInput,
+  type ObjectStorageResumableUploadInput,
+  type ObjectStorageResumableUploadSession,
   type ObjectStorageSignedCapability,
   type ObjectStorageSignedGetOverrides,
   type ObjectStorageStat,
@@ -25,6 +31,10 @@ export const GCS_READINESS_REQUEST_TIMEOUT_MS = 5_000;
 const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
 const IAM_CREDENTIALS_SIGN_BLOB_ENDPOINT =
   'https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts';
+const GCS_CAPABILITIES: ObjectStorageCapabilities = Object.freeze({
+  resumableUpload: true,
+  rangeRead: true,
+});
 
 type GcsSourceAuth = Pick<GoogleAuth, 'getClient'>;
 
@@ -43,8 +53,8 @@ export class IamCredentialsGcsSigningAuth implements StorageV4SigningAuth {
     private readonly signerServiceAccount: string,
   ) {}
 
-  async getCredentials(): Promise<{ client_email: string }> {
-    return { client_email: this.signerServiceAccount };
+  getCredentials(): Promise<{ client_email: string }> {
+    return Promise.resolve({ client_email: this.signerServiceAccount });
   }
 
   async sign(blobToSign: string): Promise<string> {
@@ -102,7 +112,7 @@ export class DefaultGcsClientFactory implements GcsClientFactory {
     });
   }
 
-  async createSigningClient(input: {
+  createSigningClient(input: {
     projectId: string;
     signerServiceAccount: string;
   }): Promise<Storage> {
@@ -117,7 +127,7 @@ export class DefaultGcsClientFactory implements GcsClientFactory {
     (
       signingClient as unknown as { authClient: StorageV4SigningAuth }
     ).authClient = signingAuth;
-    return signingClient;
+    return Promise.resolve(signingClient);
   }
 }
 
@@ -138,6 +148,54 @@ export class GcsAdapter implements ObjectStoragePort {
     this.readinessClient = this.clientFactory.createReadinessClient(
       this.projectId,
     );
+  }
+
+  getCapabilities(): ObjectStorageCapabilities {
+    return GCS_CAPABILITIES;
+  }
+
+  async createResumableUploadSession(
+    input: ObjectStorageResumableUploadInput,
+  ): Promise<ObjectStorageResumableUploadSession> {
+    try {
+      const [sessionUrl] = await this.runtimeClient
+        .bucket(input.bucket)
+        .file(input.objectKey)
+        .createResumableUpload({
+          preconditionOpts: { ifGenerationMatch: 0 },
+          ...(input.origin !== undefined ? { origin: input.origin } : {}),
+          metadata: {
+            ...(input.contentType !== undefined
+              ? { contentType: input.contentType }
+              : {}),
+            ...(input.metadata !== undefined
+              ? { metadata: input.metadata }
+              : {}),
+          },
+        });
+      if (typeof sessionUrl !== 'string' || sessionUrl.length === 0) {
+        throw new ObjectStorageError('unknown');
+      }
+      return { sessionUrl };
+    } catch (error) {
+      throw normalizeGcsStorageError(error);
+    }
+  }
+
+  async readObjectRange(input: ObjectStorageRangeInput): Promise<Buffer> {
+    assertObjectRange(input);
+    try {
+      const source = this.runtimeClient
+        .bucket(input.bucket)
+        .file(input.objectKey)
+        .createReadStream({
+          start: input.offset,
+          end: input.offset + input.length - 1,
+        });
+      return await collectObjectRange(source, input.length, 'gcs');
+    } catch (error) {
+      throw normalizeGcsStorageError(error);
+    }
   }
 
   async putObject(

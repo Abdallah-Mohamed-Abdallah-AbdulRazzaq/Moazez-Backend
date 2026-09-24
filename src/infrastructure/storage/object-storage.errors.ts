@@ -6,6 +6,7 @@ export type ObjectStorageErrorKind =
   | 'precondition_conflict'
   | 'transient'
   | 'rate_quota'
+  | 'unsupported_capability'
   | 'unknown';
 
 type ObjectStorageProvider = 'minio' | 'gcs';
@@ -16,6 +17,7 @@ const ERROR_MESSAGES: Record<ObjectStorageErrorKind, string> = {
   precondition_conflict: 'object_storage_precondition_conflict',
   transient: 'object_storage_transient_failure',
   rate_quota: 'object_storage_rate_quota_failure',
+  unsupported_capability: 'object_storage_unsupported_capability',
   unknown: 'object_storage_provider_failure',
 };
 
