@@ -15,7 +15,12 @@ export class AcademicContentValidationRepository {
   findTerm(id: string, schoolId: string) {
     return this.prisma.term.findFirst({
       where: { id, schoolId, deletedAt: null },
-      select: { academicYearId: true },
+      select: {
+        academicYearId: true,
+        startDate: true,
+        endDate: true,
+        isActive: true,
+      },
     });
   }
 

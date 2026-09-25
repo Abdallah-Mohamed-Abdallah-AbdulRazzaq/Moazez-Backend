@@ -83,6 +83,7 @@ describe('ACC-3A purpose-safe Files database foundation', () => {
             termId: ids[`term${suffix}`],
             type: AcademicContentType.GENERAL_RESOURCE,
             audience: AcademicContentAudienceType.STUDENTS,
+            title: 'Resource',
             createdByUserId: ids[`user${suffix}`],
           },
         })

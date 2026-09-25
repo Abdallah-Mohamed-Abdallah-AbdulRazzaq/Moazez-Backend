@@ -1,5 +1,6 @@
 import {
   AcademicContentAudienceType,
+  AcademicContentStatus,
   AcademicContentType,
 } from '@prisma/client';
 import {
@@ -18,6 +19,10 @@ type ContentRow = {
   academicYearId: string;
   termId: string;
   audience: AcademicContentAudienceType;
+  title: string;
+  description: string | null;
+  status: AcademicContentStatus;
+  archivedAt: Date | null;
   createdByUserId: string;
   updatedByUserId: string | null;
   deletedAt: Date | null;
@@ -63,7 +68,7 @@ describe('AcademicContentRepository tenancy', () => {
     });
   });
 
-  it('persists the explicit schoolId supplied to create without a transaction', async () => {
+  it('persists the explicit schoolId and audit atomically on create', async () => {
     const transaction = jest.fn();
     const repository = createRepository(rows, transaction);
 
@@ -74,6 +79,10 @@ describe('AcademicContentRepository tenancy', () => {
         academicYearId: '00000000-0000-4000-8000-000000000006',
         termId: '00000000-0000-4000-8000-000000000007',
         audience: AcademicContentAudienceType.STUDENTS,
+        title: 'Weekly plan',
+        description: null,
+        status: AcademicContentStatus.DRAFT,
+        organizationId: '00000000-0000-4000-8000-000000000004',
         createdByUserId: actorId,
       }),
     );
@@ -84,7 +93,7 @@ describe('AcademicContentRepository tenancy', () => {
       createdByUserId: actorId,
     });
     expect(rows.at(-1)?.schoolId).toBe(schoolA);
-    expect(transaction).not.toHaveBeenCalled();
+    expect(transaction).toHaveBeenCalledTimes(1);
   });
 
   function content(
@@ -99,6 +108,10 @@ describe('AcademicContentRepository tenancy', () => {
       academicYearId: '00000000-0000-4000-8000-000000000006',
       termId: '00000000-0000-4000-8000-000000000007',
       audience: AcademicContentAudienceType.INTERNAL_STAFF,
+      title: 'Preparation',
+      description: null,
+      status: AcademicContentStatus.DRAFT,
+      archivedAt: null,
       createdByUserId: actorId,
       updatedByUserId: null,
       deletedAt,
@@ -132,7 +145,10 @@ function createRepository(
         },
       }),
     create: (args: {
-      data: Omit<ContentRow, 'id' | 'deletedAt' | 'createdAt' | 'updatedAt'>;
+      data: Omit<
+        ContentRow,
+        'id' | 'deletedAt' | 'createdAt' | 'updatedAt' | 'archivedAt'
+      >;
     }) =>
       extensionOperation({
         model: 'AcademicContent',
@@ -145,6 +161,7 @@ function createRepository(
             ...data,
             updatedByUserId: data.updatedByUserId ?? null,
             deletedAt: null,
+            archivedAt: null,
             createdAt: new Date(),
             updatedAt: new Date(),
           };
@@ -153,7 +170,14 @@ function createRepository(
         },
       }),
   };
+  transaction.mockImplementation((callback: (tx: unknown) => unknown) =>
+    callback({
+      academicContent: delegate,
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
+    }),
+  );
   const prisma = {
+    academicContent: delegate,
     scoped: { academicContent: delegate },
     $transaction: transaction,
   } as unknown as ConstructorParameters<typeof AcademicContentRepository>[0];

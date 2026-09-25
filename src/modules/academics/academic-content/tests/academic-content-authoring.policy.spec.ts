@@ -1,5 +1,6 @@
 import {
   AcademicContentAudienceType,
+  AcademicContentStatus,
   AcademicContentType,
   UserType,
 } from '@prisma/client';
@@ -80,6 +81,7 @@ describe('Academic Content authoring boundary', () => {
           permissions: [...permissions],
         });
         const command = {
+          title: 'Resource',
           academicYearId: 'year-1',
           termId: 'term-1',
           type: AcademicContentType.GENERAL_RESOURCE,
@@ -93,6 +95,8 @@ describe('Academic Content authoring boundary', () => {
             expect.objectContaining({
               schoolId: 'school-1',
               createdByUserId: 'actor-1',
+              title: 'Resource',
+              status: AcademicContentStatus.DRAFT,
             }),
           );
         } else {

@@ -1,5 +1,5 @@
 import { MODULE_METADATA } from '@nestjs/common/constants';
-import { AcademicContentType } from '@prisma/client';
+import { AcademicContentStatus, AcademicContentType } from '@prisma/client';
 import { AcademicsModule } from '../../academics.module';
 import { AcademicContentModule } from '../academic-content.module';
 import { AcademicContentRepository } from '../infrastructure/academic-content.repository';
@@ -15,6 +15,20 @@ describe('Academic Content foundation', () => {
       'SUBJECT_RESOURCE',
       'ONLINE_SESSION',
       'GENERAL_RESOURCE',
+    ]);
+  });
+
+  it('reserves the complete lifecycle vocabulary while ACC-4A activates draft and archive', () => {
+    expect(Object.values(AcademicContentStatus)).toEqual([
+      'DRAFT',
+      'SUBMITTED',
+      'CHANGES_REQUESTED',
+      'APPROVED',
+      'SCHEDULED',
+      'PUBLISHED',
+      'EXPIRED',
+      'ARCHIVED',
+      'CANCELLED',
     ]);
   });
 

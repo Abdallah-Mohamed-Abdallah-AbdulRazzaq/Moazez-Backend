@@ -14,6 +14,7 @@ import { AcademicContentContextValidator } from './application/academic-content-
 import { AcademicContentTargetValidator } from './application/academic-content-target-validator';
 import { CreateAcademicContentUseCase } from './application/create-academic-content.use-case';
 import { ReplaceAcademicContentTargetsUseCase } from './application/replace-academic-content-targets.use-case';
+import { AcademicContentLifecycleUseCases } from './application/academic-content-lifecycle.use-cases';
 import { AcademicContentAudienceRepository } from './infrastructure/academic-content-audience.repository';
 import { AcademicContentRepository } from './infrastructure/academic-content.repository';
 import { AcademicContentTargetRepository } from './infrastructure/academic-content-target.repository';
@@ -36,6 +37,7 @@ import { AcademicContentValidationRepository } from './infrastructure/academic-c
     AcademicContentContextValidator,
     AcademicContentTargetValidator,
     CreateAcademicContentUseCase,
+    AcademicContentLifecycleUseCases,
     ReplaceAcademicContentTargetsUseCase,
     AcademicContentAudienceResolver,
   ],
@@ -45,6 +47,7 @@ import { AcademicContentValidationRepository } from './infrastructure/academic-c
     CancelAcademicContentUploadUseCase,
     UnlinkAcademicContentAssetUseCase,
     CreateAcademicContentUseCase,
+    AcademicContentLifecycleUseCases,
     ReplaceAcademicContentTargetsUseCase,
     AcademicContentAudienceResolver,
   ],

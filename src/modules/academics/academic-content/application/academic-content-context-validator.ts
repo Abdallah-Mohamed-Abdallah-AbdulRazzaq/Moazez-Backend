@@ -4,6 +4,7 @@ import {
   ValidationDomainException,
 } from '../../../../common/exceptions/domain-exception';
 import { AcademicContentValidationRepository } from '../infrastructure/academic-content-validation.repository';
+import { assertAcademicContentTermWritable } from '../domain/academic-content-lifecycle.policy';
 
 export interface AcademicContentContext {
   schoolId: string;
@@ -17,7 +18,10 @@ export class AcademicContentContextValidator {
     private readonly validation: AcademicContentValidationRepository,
   ) {}
 
-  async validate(context: AcademicContentContext): Promise<void> {
+  async validate(
+    context: AcademicContentContext,
+    now = new Date(),
+  ): Promise<void> {
     const year = await this.validation.findAcademicYear(
       context.academicYearId,
       context.schoolId,
@@ -34,5 +38,6 @@ export class AcademicContentContextValidator {
         'Term does not belong to academic year',
       );
     }
+    assertAcademicContentTermWritable(term, now);
   }
 }

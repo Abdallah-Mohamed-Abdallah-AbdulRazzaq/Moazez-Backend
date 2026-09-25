@@ -1195,6 +1195,20 @@ enum AcademicContentType {
   @@map("academic_content_type")
 }
 
+enum AcademicContentStatus {
+  DRAFT
+  SUBMITTED
+  CHANGES_REQUESTED
+  APPROVED
+  SCHEDULED
+  PUBLISHED
+  EXPIRED
+  ARCHIVED
+  CANCELLED
+
+  @@map("academic_content_status")
+}
+
 enum AcademicContentAudienceType {
   INTERNAL_STAFF
   STUDENTS
@@ -2778,6 +2792,10 @@ model AcademicContent {
   termId          String                      @map("term_id") @db.Uuid
   type            AcademicContentType
   audience        AcademicContentAudienceType
+  title           String                      @db.VarChar(180)
+  description     String?                     @db.VarChar(4000)
+  status          AcademicContentStatus       @default(DRAFT)
+  archivedAt      DateTime?                   @map("archived_at")
   createdByUserId String                      @map("created_by_user_id") @db.Uuid
   updatedByUserId String?                     @map("updated_by_user_id") @db.Uuid
   deletedAt       DateTime?                   @map("deleted_at")
@@ -2795,6 +2813,7 @@ model AcademicContent {
   @@unique([id, schoolId])
   @@index([schoolId])
   @@index([schoolId, type])
+  @@index([schoolId, status])
   @@index([schoolId, academicYearId, termId])
   @@index([schoolId, audience])
   @@index([createdByUserId])
