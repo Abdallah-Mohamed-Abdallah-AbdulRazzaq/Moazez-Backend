@@ -5,6 +5,8 @@ import { AcademicContentModule } from '../academic-content.module';
 import { AcademicContentRepository } from '../infrastructure/academic-content.repository';
 import { AcademicContentAudienceResolver } from '../application/academic-content-audience.resolver';
 import { ReplaceAcademicContentTargetsUseCase } from '../application/replace-academic-content-targets.use-case';
+import { AcademicContentController } from '../controller/academic-content.controller';
+import { AcademicContentFilePolicyController } from '../controller/academic-content-file-policy.controller';
 
 describe('Academic Content foundation', () => {
   it('keeps the V1 content type contract exact', () => {
@@ -32,7 +34,7 @@ describe('Academic Content foundation', () => {
     ]);
   });
 
-  it('wires a provider-only AcademicContentModule into AcademicsModule', () => {
+  it('wires the ACC management controllers into AcademicContentModule', () => {
     const academicsImports = moduleMetadata(
       MODULE_METADATA.IMPORTS,
       AcademicsModule,
@@ -54,7 +56,10 @@ describe('Academic Content foundation', () => {
     expect(providers).toContain(AcademicContentRepository);
     expect(providers).toContain(AcademicContentAudienceResolver);
     expect(providers).toContain(ReplaceAcademicContentTargetsUseCase);
-    expect(controllers).toEqual([]);
+    expect(controllers).toEqual([
+      AcademicContentFilePolicyController,
+      AcademicContentController,
+    ]);
     expect(exports).toContain(AcademicContentAudienceResolver);
   });
 });

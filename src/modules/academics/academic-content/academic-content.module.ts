@@ -19,12 +19,25 @@ import { AcademicContentAudienceRepository } from './infrastructure/academic-con
 import { AcademicContentRepository } from './infrastructure/academic-content.repository';
 import { AcademicContentTargetRepository } from './infrastructure/academic-content-target.repository';
 import { AcademicContentValidationRepository } from './infrastructure/academic-content-validation.repository';
+import { AcademicContentController } from './controller/academic-content.controller';
+import { AcademicContentFilePolicyController } from './controller/academic-content-file-policy.controller';
+import {
+  GetAcademicContentForManagementUseCase,
+  ListAcademicContentForManagementUseCase,
+} from './application/academic-content-management-read.use-cases';
+import {
+  GetAcademicContentFilePolicyUseCase,
+  UpdateAcademicContentFilePolicyUseCase,
+} from './files/application/academic-content-file-policy.use-cases';
 
 @Module({
   imports: [StorageModule],
+  controllers: [AcademicContentFilePolicyController, AcademicContentController],
   providers: [
     AcademicContentFileRepository,
     AcademicContentFilePolicyResolver,
+    GetAcademicContentFilePolicyUseCase,
+    UpdateAcademicContentFilePolicyUseCase,
     AcademicContentFileVerifier,
     CreateAcademicContentUploadUseCase,
     CompleteAcademicContentUploadUseCase,
@@ -38,6 +51,8 @@ import { AcademicContentValidationRepository } from './infrastructure/academic-c
     AcademicContentTargetValidator,
     CreateAcademicContentUseCase,
     AcademicContentLifecycleUseCases,
+    ListAcademicContentForManagementUseCase,
+    GetAcademicContentForManagementUseCase,
     ReplaceAcademicContentTargetsUseCase,
     AcademicContentAudienceResolver,
   ],
