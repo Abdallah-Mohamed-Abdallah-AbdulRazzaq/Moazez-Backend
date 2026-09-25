@@ -9,6 +9,11 @@ import {
 import { PrismaService } from '../../../../../infrastructure/database/prisma.service';
 import { missingAcademicCapabilityCleanupDeadline } from '../domain/academic-content-file.cleanup-deadline';
 import {
+  AcademicContentEffectiveFilePolicy,
+  effectiveAcademicContentFilePolicy,
+  sameAcademicContentFilePolicy,
+} from '../domain/academic-content-file-policy';
+import {
   assertAcademicContentMutable,
   assertAcademicContentTermWritable,
 } from '../../domain/academic-content-lifecycle.policy';
@@ -159,6 +164,67 @@ export class AcademicContentFileRepository {
     return this.prisma.academicContentFilePolicy.findUnique({
       where: { schoolId },
     });
+  }
+
+  async updatePolicy(input: {
+    schoolId: string;
+    organizationId: string;
+    actorId: string;
+    changes: Partial<AcademicContentEffectiveFilePolicy>;
+  }): Promise<AcademicContentEffectiveFilePolicy> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await this.prisma.$transaction(
+          async (tx) => {
+            const current = await tx.academicContentFilePolicy.findUnique({
+              where: { schoolId: input.schoolId },
+            });
+            const before = effectiveAcademicContentFilePolicy(current);
+            const after = effectiveAcademicContentFilePolicy({
+              ...before,
+              ...input.changes,
+            });
+            if (sameAcademicContentFilePolicy(before, after)) return before;
+            const policy = current
+              ? await tx.academicContentFilePolicy.update({
+                  where: { schoolId: input.schoolId },
+                  data: after,
+                })
+              : await tx.academicContentFilePolicy.create({
+                  data: { schoolId: input.schoolId, ...after },
+                });
+            const auditValue = (value: AcademicContentEffectiveFilePolicy) => ({
+              ...value,
+              maximumFileSizeBytes: String(value.maximumFileSizeBytes),
+            });
+            await tx.auditLog.create({
+              data: {
+                actorId: input.actorId,
+                organizationId: input.organizationId,
+                schoolId: input.schoolId,
+                module: 'academic-content',
+                action: 'academics.academic_content.file_policy.update',
+                resourceType: 'academic_content_file_policy',
+                resourceId: policy.id,
+                outcome: AuditOutcome.SUCCESS,
+                before: auditValue(before),
+                after: auditValue(after),
+              },
+            });
+            return after;
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        );
+      } catch (error) {
+        if (
+          !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+          !['P2034', 'P2002'].includes(error.code) ||
+          attempt === 2
+        )
+          throw error;
+      }
+    }
+    throw new Error('Unreachable Academic Content policy retry state');
   }
 
   findContent(contentId: string, schoolId: string) {

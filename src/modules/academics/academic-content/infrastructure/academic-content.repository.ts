@@ -39,8 +39,43 @@ const ACADEMIC_CONTENT_ARGS =
     },
   });
 
+const ACADEMIC_CONTENT_DETAIL_ARGS =
+  Prisma.validator<Prisma.AcademicContentDefaultArgs>()({
+    select: {
+      ...ACADEMIC_CONTENT_ARGS.select,
+      targets: {
+        select: {
+          id: true,
+          scopeType: true,
+          stageId: true,
+          gradeId: true,
+          sectionId: true,
+          classroomId: true,
+          subjectId: true,
+          teacherSubjectAllocationId: true,
+        },
+        orderBy: [{ identityFingerprint: 'asc' }, { id: 'asc' }],
+      },
+      assets: {
+        where: { deletedAt: null, file: { is: { deletedAt: null } } },
+        select: {
+          id: true,
+          fileId: true,
+          createdAt: true,
+          file: {
+            select: { originalName: true, mimeType: true, sizeBytes: true },
+          },
+        },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      },
+    },
+  });
+
 export type AcademicContentRecord = Prisma.AcademicContentGetPayload<
   typeof ACADEMIC_CONTENT_ARGS
+>;
+export type AcademicContentManagementDetail = Prisma.AcademicContentGetPayload<
+  typeof ACADEMIC_CONTENT_DETAIL_ARGS
 >;
 
 export type CreateAcademicContentInput = {
@@ -79,6 +114,31 @@ export class AcademicContentRepository {
     return this.prisma.academicContent.findFirst({
       where: { id, schoolId, deletedAt: null },
       ...ACADEMIC_CONTENT_ARGS,
+    });
+  }
+
+  async listForManagement(schoolId: string, page: number, limit: number) {
+    const where: Prisma.AcademicContentWhereInput = {
+      schoolId,
+      deletedAt: null,
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.academicContent.findMany({
+        where,
+        ...ACADEMIC_CONTENT_ARGS,
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.academicContent.count({ where }),
+    ]);
+    return { items, page, limit, total };
+  }
+
+  findManagementDetail(id: string, schoolId: string) {
+    return this.prisma.academicContent.findFirst({
+      where: { id, schoolId, deletedAt: null },
+      ...ACADEMIC_CONTENT_DETAIL_ARGS,
     });
   }
 
