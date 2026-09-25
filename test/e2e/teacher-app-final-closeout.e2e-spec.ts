@@ -57,6 +57,10 @@ import { TeacherXpController } from '../../src/modules/teacher-app/xp/controller
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'TeacherApp123!';
+function futureIso(): string {
+  return new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+}
+
 const ARGON2_OPTIONS: argon2.Options = {
   type: argon2.argon2id,
   memoryCost: 19 * 1024,
@@ -893,6 +897,8 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     });
     expectSafeTeacherPayload(attendance.body);
 
+    const homeworkDueAt = futureIso();
+    expect(Date.parse(homeworkDueAt)).toBeGreaterThan(Date.now());
     const homework = await request(app.getHttpServer())
       .post(
         `${GLOBAL_PREFIX}/teacher/homeworks/classes/${ownFixture.allocationId}/assignments`,
@@ -902,7 +908,7 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
         title: `${testMarker}-final-homework-action`,
         description: `${testMarker}-final-homework-action-description`,
         targetMode: 'classroom',
-        dueAt: '2026-09-25T00:00:00.000Z',
+        dueAt: homeworkDueAt,
         estimatedMinutes: 20,
         isGraded: false,
       })
