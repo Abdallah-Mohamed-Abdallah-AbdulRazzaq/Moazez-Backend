@@ -309,7 +309,15 @@ export class AcademicContentFileRepository {
     session: FileUploadSession,
   ) {
     if (!session.fileId || !session.purposeContextId) return null;
-    const [file, asset] = await Promise.all([
+    const [content, file, asset] = await Promise.all([
+      tx.academicContent.findFirst({
+        where: {
+          id: session.purposeContextId,
+          schoolId: session.schoolId,
+          deletedAt: null,
+        },
+        select: { id: true },
+      }),
       tx.file.findFirst({
         where: {
           id: session.fileId,
@@ -326,7 +334,7 @@ export class AcademicContentFileRepository {
         },
       }),
     ]);
-    return file && asset ? { file, asset } : null;
+    return content && file && asset ? { file, asset } : null;
   }
 
   async expireAbandoned(now: Date): Promise<number> {

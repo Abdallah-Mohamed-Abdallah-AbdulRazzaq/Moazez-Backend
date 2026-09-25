@@ -3,7 +3,7 @@ import {
   NotFoundDomainException,
   ValidationDomainException,
 } from '../../../../common/exceptions/domain-exception';
-import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import { AcademicContentValidationRepository } from '../infrastructure/academic-content-validation.repository';
 
 export interface AcademicContentContext {
   schoolId: string;
@@ -13,27 +13,21 @@ export interface AcademicContentContext {
 
 @Injectable()
 export class AcademicContentContextValidator {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly validation: AcademicContentValidationRepository,
+  ) {}
 
   async validate(context: AcademicContentContext): Promise<void> {
-    const year = await this.prisma.academicYear.findFirst({
-      where: {
-        id: context.academicYearId,
-        schoolId: context.schoolId,
-        deletedAt: null,
-      },
-      select: { id: true },
-    });
+    const year = await this.validation.findAcademicYear(
+      context.academicYearId,
+      context.schoolId,
+    );
     if (!year) throw new NotFoundDomainException('Academic year not found');
 
-    const term = await this.prisma.term.findFirst({
-      where: {
-        id: context.termId,
-        schoolId: context.schoolId,
-        deletedAt: null,
-      },
-      select: { academicYearId: true },
-    });
+    const term = await this.validation.findTerm(
+      context.termId,
+      context.schoolId,
+    );
     if (!term) throw new NotFoundDomainException('Term not found');
     if (term.academicYearId !== year.id) {
       throw new ValidationDomainException(

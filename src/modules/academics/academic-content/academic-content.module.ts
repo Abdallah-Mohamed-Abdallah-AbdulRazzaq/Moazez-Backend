@@ -16,6 +16,8 @@ import { CreateAcademicContentUseCase } from './application/create-academic-cont
 import { ReplaceAcademicContentTargetsUseCase } from './application/replace-academic-content-targets.use-case';
 import { AcademicContentAudienceRepository } from './infrastructure/academic-content-audience.repository';
 import { AcademicContentRepository } from './infrastructure/academic-content.repository';
+import { AcademicContentTargetRepository } from './infrastructure/academic-content-target.repository';
+import { AcademicContentValidationRepository } from './infrastructure/academic-content-validation.repository';
 
 @Module({
   imports: [StorageModule],
@@ -28,6 +30,8 @@ import { AcademicContentRepository } from './infrastructure/academic-content.rep
     CancelAcademicContentUploadUseCase,
     UnlinkAcademicContentAssetUseCase,
     AcademicContentRepository,
+    AcademicContentTargetRepository,
+    AcademicContentValidationRepository,
     AcademicContentAudienceRepository,
     AcademicContentContextValidator,
     AcademicContentTargetValidator,
