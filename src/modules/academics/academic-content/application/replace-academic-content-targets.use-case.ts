@@ -6,6 +6,7 @@ import {
 } from '../../../../common/exceptions/domain-exception';
 import { assertAcademicContentAudience } from '../domain/academic-content-audience.policy';
 import { canReplaceAcademicContentTargets } from '../domain/academic-content-authoring.policy';
+import { assertAcademicContentMutable } from '../domain/academic-content-lifecycle.policy';
 import {
   AcademicContentTargetInput,
   normalizeAcademicContentTargets,
@@ -51,6 +52,7 @@ export class ReplaceAcademicContentTargetsUseCase {
     );
     if (!content)
       throw new NotFoundDomainException('Academic content not found');
+    assertAcademicContentMutable(content.status);
     await this.contextValidator.validate(content);
     assertAcademicContentAudience(content.type, content.audience);
     const normalized = normalizeAcademicContentTargets(

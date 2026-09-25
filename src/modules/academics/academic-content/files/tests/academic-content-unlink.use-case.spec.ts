@@ -20,7 +20,7 @@ describe('ACC asset unlink', () => {
     deletedAt: null,
   };
   const tx = {
-    contentExists: jest.fn().mockResolvedValue(true),
+    lockMutableContent: jest.fn().mockResolvedValue(undefined),
     findActiveAsset: jest.fn().mockResolvedValue(asset),
     findUploadIdForFile: jest.fn().mockResolvedValue('upload'),
     lockUploadById: jest.fn().mockResolvedValue({ id: 'upload' }),

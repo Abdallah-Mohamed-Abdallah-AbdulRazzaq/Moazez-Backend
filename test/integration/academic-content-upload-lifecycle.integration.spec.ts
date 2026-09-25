@@ -171,8 +171,8 @@ describeEvidence('ACC-3C real PostgreSQL lifecycle', () => {
           schoolId: ids.school,
           nameAr: `سنة ${tag}`,
           nameEn: `Year ${tag}`,
-          startDate: new Date('2026-09-01'),
-          endDate: new Date('2027-06-30'),
+          startDate: new Date(Date.now() - 30 * 86_400_000),
+          endDate: new Date(Date.now() + 365 * 86_400_000),
         },
       })
     ).id;
@@ -183,8 +183,9 @@ describeEvidence('ACC-3C real PostgreSQL lifecycle', () => {
           academicYearId: ids.year,
           nameAr: `فصل ${tag}`,
           nameEn: `Term ${tag}`,
-          startDate: new Date('2026-09-01'),
-          endDate: new Date('2026-12-31'),
+          startDate: new Date(Date.now() - 30 * 86_400_000),
+          endDate: new Date(Date.now() + 365 * 86_400_000),
+          isActive: true,
         },
       })
     ).id;
@@ -196,6 +197,7 @@ describeEvidence('ACC-3C real PostgreSQL lifecycle', () => {
           termId: ids.term,
           type: AcademicContentType.GENERAL_RESOURCE,
           audience: AcademicContentAudienceType.STUDENTS,
+          title: 'Resource',
           createdByUserId: ids.user,
         },
       })

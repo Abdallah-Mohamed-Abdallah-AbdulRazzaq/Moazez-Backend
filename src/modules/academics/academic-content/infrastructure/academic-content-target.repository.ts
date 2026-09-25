@@ -6,6 +6,10 @@ import {
 } from '../../../../common/exceptions/domain-exception';
 import { NormalizedAcademicContentTarget } from '../domain/academic-content-target.policy';
 import { AcademicContentRecord } from './academic-content.repository';
+import {
+  assertAcademicContentMutable,
+  assertAcademicContentTermWritable,
+} from '../domain/academic-content-lifecycle.policy';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 
 @Injectable()
@@ -41,6 +45,7 @@ export class AcademicContentTargetRepository {
                 termId: true,
                 type: true,
                 audience: true,
+                status: true,
               },
             });
             if (
@@ -55,6 +60,13 @@ export class AcademicContentTargetRepository {
                 message: 'Academic content changed during target replacement',
               });
             }
+            assertAcademicContentMutable(current.status);
+            const term = await tx.term.findFirst({
+              where: { id: current.termId, schoolId, deletedAt: null },
+              select: { startDate: true, endDate: true, isActive: true },
+            });
+            if (!term) throw new NotFoundDomainException('Term not found');
+            assertAcademicContentTermWritable(term, new Date());
             await tx.academicContentTarget.deleteMany({
               where: { schoolId, academicContentId },
             });

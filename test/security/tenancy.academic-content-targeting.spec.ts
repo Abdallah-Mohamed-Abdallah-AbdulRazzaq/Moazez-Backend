@@ -104,8 +104,8 @@ describe('ACC-2 database tenancy, replacement, and audience', () => {
           schoolId: ids.school,
           nameAr: `سنة ${suffix}`,
           nameEn: `Year ${suffix}`,
-          startDate: new Date('2026-09-01'),
-          endDate: new Date('2027-06-30'),
+          startDate: new Date(Date.now() - 30 * 86_400_000),
+          endDate: new Date(Date.now() + 365 * 86_400_000),
         },
       })
     ).id;
@@ -116,8 +116,9 @@ describe('ACC-2 database tenancy, replacement, and audience', () => {
           academicYearId: ids.year,
           nameAr: `فصل ${suffix}`,
           nameEn: `Term ${suffix}`,
-          startDate: new Date('2026-09-01'),
-          endDate: new Date('2026-12-31'),
+          startDate: new Date(Date.now() - 30 * 86_400_000),
+          endDate: new Date(Date.now() + 365 * 86_400_000),
+          isActive: true,
         },
       })
     ).id;
@@ -211,6 +212,7 @@ describe('ACC-2 database tenancy, replacement, and audience', () => {
           termId: ids.term,
           type: ContentType.GENERAL_RESOURCE,
           audience: Audience.STUDENTS_AND_GUARDIANS,
+          title: 'Resource',
           createdByUserId: ids.admin,
         },
       })
@@ -286,6 +288,7 @@ describe('ACC-2 database tenancy, replacement, and audience', () => {
           termId: ids.term,
           type: ContentType.TEACHER_PREPARATION,
           audience: Audience.STUDENTS,
+          title: 'Invalid audience',
           createdByUserId: ids.admin,
         },
       }),
@@ -487,7 +490,7 @@ describe('ACC-2 database tenancy, replacement, and audience', () => {
       });
       await prisma.term.update({
         where: { id: ids.term },
-        data: { isActive: false },
+        data: { isActive: true },
       });
     }
   });

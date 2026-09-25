@@ -17,6 +17,10 @@ import {
 import { academicContentFinalCleanupDeadline } from '../domain/academic-content-file.cleanup-deadline';
 import { resolveAcademicContentFileType } from '../domain/academic-content-file.registry';
 import { AcademicContentFileRepository } from '../infrastructure/academic-content-file.repository';
+import {
+  assertAcademicContentMutable,
+  assertAcademicContentTermWritable,
+} from '../../domain/academic-content-lifecycle.policy';
 import type { AcademicUploadIdentity } from './academic-content-file.unit-of-work';
 import { academicContentFileScope } from './academic-content-file-scope';
 import { AcademicContentFilePolicyResolver } from './academic-content-file-policy.resolver';
@@ -74,8 +78,14 @@ export class CreateAcademicContentUploadUseCase {
 
   async execute(command: CreateAcademicContentUploadCommand) {
     const scope = academicContentFileScope();
-    if (!(await this.repository.findContent(command.contentId, scope.schoolId)))
+    const content = await this.repository.findContent(
+      command.contentId,
+      scope.schoolId,
+    );
+    if (!content)
       throw new NotFoundDomainException('Academic content not found');
+    assertAcademicContentMutable(content.status);
+    assertAcademicContentTermWritable(content.term, new Date());
     const originalName = sanitizeOriginalName(command.originalName);
     const type = resolveAcademicContentFileType(
       originalName,
@@ -234,58 +244,81 @@ export class CompleteAcademicContentUploadUseCase {
     const readyCleanupEligibleAt = new Date(
       completedAt.getTime() + ACADEMIC_CONTENT_READY_RETENTION_MS,
     );
-    return this.repository.withTransaction(async (tx) => {
-      const session = await tx.lockUpload(owner);
-      if (!session || session.status !== FileUploadSessionStatus.VERIFYING)
-        throw conflict('verification_state_changed');
-      if (!(await tx.contentExists(owner.contentId, owner.schoolId)))
-        throw new NotFoundDomainException('Academic content not found');
-      const file = await tx.createFile({
-        id: fileId,
-        organizationId: session.organizationId,
-        schoolId: session.schoolId,
-        uploaderId: session.createdByUserId,
-        bucket: session.finalBucket,
-        objectKey: session.finalObjectKey,
-        originalName: session.originalName,
-        mimeType: verified.mimeType,
-        sizeBytes: verified.sizeBytes,
-        checksumSha256: null,
-        visibility: FileVisibility.PRIVATE,
+    try {
+      return await this.repository.withTransaction(async (tx) => {
+        await tx.lockMutableContent(
+          owner.contentId,
+          owner.schoolId,
+          new Date(),
+        );
+        const session = await tx.lockUpload(owner);
+        if (!session || session.status !== FileUploadSessionStatus.VERIFYING)
+          throw conflict('verification_state_changed');
+        const file = await tx.createFile({
+          id: fileId,
+          organizationId: session.organizationId,
+          schoolId: session.schoolId,
+          uploaderId: session.createdByUserId,
+          bucket: session.finalBucket,
+          objectKey: session.finalObjectKey,
+          originalName: session.originalName,
+          mimeType: verified.mimeType,
+          sizeBytes: verified.sizeBytes,
+          checksumSha256: null,
+          visibility: FileVisibility.PRIVATE,
+        });
+        const asset = await tx.createAsset({
+          schoolId: session.schoolId,
+          academicContentId: owner.contentId,
+          fileId: file.id,
+          createdByUserId: session.createdByUserId,
+        });
+        await tx.updateUpload(session.id, {
+          status: FileUploadSessionStatus.READY,
+          fileId: file.id,
+          completedAt,
+          verifiedMimeType: verified.mimeType,
+          actualSizeBytes: verified.sizeBytes,
+          checksumSha256: null,
+          durationSeconds: null,
+          width: null,
+          height: null,
+          verifiedAt: completedAt,
+          verificationVersion: ACADEMIC_CONTENT_VERIFICATION_VERSION,
+          finalCleanupEligibleAt: readyCleanupEligibleAt,
+          finalCleanupClaimedAt: null,
+          finalObjectDeletedAt: null,
+        });
+        await tx.recordCompletedAudit({
+          actorId: session.createdByUserId,
+          organizationId: session.organizationId,
+          schoolId: session.schoolId,
+          assetId: asset.id,
+          uploadId: session.id,
+          contentId: owner.contentId,
+          fileId: file.id,
+        });
+        return { file, asset };
       });
-      const asset = await tx.createAsset({
-        schoolId: session.schoolId,
-        academicContentId: owner.contentId,
-        fileId: file.id,
-        createdByUserId: session.createdByUserId,
-      });
-      await tx.updateUpload(session.id, {
-        status: FileUploadSessionStatus.READY,
-        fileId: file.id,
-        completedAt,
-        verifiedMimeType: verified.mimeType,
-        actualSizeBytes: verified.sizeBytes,
-        checksumSha256: null,
-        durationSeconds: null,
-        width: null,
-        height: null,
-        verifiedAt: completedAt,
-        verificationVersion: ACADEMIC_CONTENT_VERIFICATION_VERSION,
-        finalCleanupEligibleAt: readyCleanupEligibleAt,
-        finalCleanupClaimedAt: null,
-        finalObjectDeletedAt: null,
-      });
-      await tx.recordCompletedAudit({
-        actorId: session.createdByUserId,
-        organizationId: session.organizationId,
-        schoolId: session.schoolId,
-        assetId: asset.id,
-        uploadId: session.id,
-        contentId: owner.contentId,
-        fileId: file.id,
-      });
-      return { file, asset };
-    });
+    } catch (error) {
+      if (
+        error instanceof DomainException &&
+        (error.code === 'academic_content.status.read_only' ||
+          error.code === 'academic_content.term.closed')
+      ) {
+        const failedAt = new Date();
+        await this.repository.markVerificationFailed({
+          owner,
+          failedAt,
+          reason: 'content_not_mutable',
+          cleanupEligibleAt: academicContentFinalCleanupDeadline(
+            failedAt,
+            claimed.session,
+          ),
+        });
+      }
+      throw error;
+    }
   }
 }
 
@@ -322,8 +355,11 @@ export class UnlinkAcademicContentAssetUseCase {
   async execute(command: { contentId: string; assetId: string }) {
     const scope = academicContentFileScope();
     return this.repository.withTransaction(async (tx) => {
-      if (!(await tx.contentExists(command.contentId, scope.schoolId)))
-        throw new NotFoundDomainException('Academic content not found');
+      await tx.lockMutableContent(
+        command.contentId,
+        scope.schoolId,
+        new Date(),
+      );
       const candidate = await tx.findActiveAsset({
         assetId: command.assetId,
         schoolId: scope.schoolId,

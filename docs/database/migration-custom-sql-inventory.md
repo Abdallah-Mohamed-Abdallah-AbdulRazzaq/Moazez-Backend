@@ -204,6 +204,18 @@ Both ACC-3A migrations are additive for existing `LESSON_CONTENT` rows and do
 not backfill policies, infer Academic Content ownership for historical Files,
 or enable ACC uploads or cleanup.
 
+## ACC-4A draft lifecycle custom SQL
+
+`20260925120000_academic_content_draft_lifecycle` starts with a no-backfill
+guard. It aborts when `academic_contents` is non-empty because no existing
+field truthfully supplies the new required title. An explicit Academic Content
+data migration decision is required; the migration performs no data rewrite.
+
+The named `academic_contents_archive_state_check` enforces that `ARCHIVED`
+rows have `archived_at` and every other status has null `archived_at`. Prisma
+cannot represent this cross-field predicate. Direct PostgreSQL protection is
+in `test/integration/academic-content-draft-lifecycle.integration.spec.ts`.
+
 ## Reviewed PostgreSQL-specific SQL that must not be copied
 
 - The 16 raw enum additions are historical transition mechanics. The final

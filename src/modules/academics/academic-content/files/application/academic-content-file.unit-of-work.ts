@@ -79,7 +79,11 @@ export interface AcademicContentFileTransaction {
     uploadId: string,
     data: AcademicUploadUpdate,
   ): Promise<FileUploadSession>;
-  contentExists(contentId: string, schoolId: string): Promise<boolean>;
+  lockMutableContent(
+    contentId: string,
+    schoolId: string,
+    now: Date,
+  ): Promise<void>;
   createFile(data: AcademicFileCreate): Promise<File>;
   createAsset(data: AcademicAssetCreate): Promise<AcademicContentAsset>;
   recordCompletedAudit(input: {

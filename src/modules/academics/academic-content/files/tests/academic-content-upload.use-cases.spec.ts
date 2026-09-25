@@ -1,4 +1,5 @@
 import {
+  AcademicContentStatus,
   FileUploadPurpose,
   FileUploadSessionStatus,
   UserType,
@@ -19,6 +20,7 @@ const actorId = '22222222-2222-4222-8222-222222222222';
 const contentId = '33333333-3333-4333-8333-333333333333';
 const uploadId = '44444444-4444-4444-8444-444444444444';
 const requestId = '55555555-5555-4555-8555-555555555555';
+const termPolicyNow = new Date('2030-09-15T12:00:00.000Z');
 const capabilityExpiresAt = new Date('2030-09-24T00:00:00.000Z');
 
 function withManager<T>(
@@ -39,6 +41,9 @@ function withManager<T>(
 }
 
 describe('ACC upload intent', () => {
+  beforeAll(() => jest.useFakeTimers({ now: termPolicyNow }));
+  afterAll(() => jest.useRealTimers());
+
   const existing = {
     id: uploadId,
     schoolId,
@@ -50,11 +55,19 @@ describe('ACC upload intent', () => {
     expectedSizeBytes: 10n,
     finalBucket: 'private',
     finalObjectKey: `academic-content/${schoolId}/objects/${uploadId}`,
-    expiresAt: new Date(Date.now() + 10000),
+    expiresAt: new Date(termPolicyNow.getTime() + 10000),
     status: FileUploadSessionStatus.CREATED,
   };
   const repository = {
-    findContent: jest.fn().mockResolvedValue({ id: contentId }),
+    findContent: jest.fn().mockResolvedValue({
+      id: contentId,
+      status: AcademicContentStatus.DRAFT,
+      term: {
+        startDate: new Date('2030-09-01'),
+        endDate: new Date('2030-09-30'),
+        isActive: true,
+      },
+    }),
     createOrFindRequest: jest
       .fn()
       .mockResolvedValue({ session: existing, created: true }),
@@ -90,6 +103,38 @@ describe('ACC upload intent', () => {
   };
 
   beforeEach(() => jest.clearAllMocks());
+
+  it('denies archived content before creating a provider capability', async () => {
+    repository.findContent.mockResolvedValueOnce({
+      id: contentId,
+      status: AcademicContentStatus.ARCHIVED,
+      term: {
+        startDate: new Date('2030-09-01'),
+        endDate: new Date('2030-09-30'),
+        isActive: true,
+      },
+    });
+    await expect(
+      withManager(() => useCase.execute(command)),
+    ).rejects.toMatchObject({ code: 'academic_content.status.read_only' });
+    expect(storage.createResumableUploadSession).not.toHaveBeenCalled();
+  });
+
+  it('denies historically ended content before creating a provider capability', async () => {
+    repository.findContent.mockResolvedValueOnce({
+      id: contentId,
+      status: AcademicContentStatus.DRAFT,
+      term: {
+        startDate: new Date('2030-09-01'),
+        endDate: new Date('2030-09-14'),
+        isActive: true,
+      },
+    });
+    await expect(
+      withManager(() => useCase.execute(command)),
+    ).rejects.toMatchObject({ code: 'academic_content.term.closed' });
+    expect(storage.createResumableUploadSession).not.toHaveBeenCalled();
+  });
 
   it('creates one purpose-bound direct-to-private intent and returns only transient capability', async () => {
     await expect(
@@ -306,7 +351,7 @@ describe('ACC completion and cancellation', () => {
       .fn()
       .mockResolvedValue({ file: { id: 'file' }, asset: { id: 'asset' } }),
     updateUpload: jest.fn().mockResolvedValue(base),
-    contentExists: jest.fn().mockResolvedValue(true),
+    lockMutableContent: jest.fn().mockResolvedValue(undefined),
     createFile: jest.fn().mockResolvedValue({ id: 'file' }),
     createAsset: jest.fn().mockResolvedValue({ id: 'asset' }),
     recordCompletedAudit: jest.fn().mockResolvedValue(undefined),

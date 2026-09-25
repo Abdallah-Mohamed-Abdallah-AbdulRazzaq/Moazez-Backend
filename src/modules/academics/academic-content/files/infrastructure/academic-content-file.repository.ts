@@ -8,6 +8,11 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../../../../infrastructure/database/prisma.service';
 import { missingAcademicCapabilityCleanupDeadline } from '../domain/academic-content-file.cleanup-deadline';
+import {
+  assertAcademicContentMutable,
+  assertAcademicContentTermWritable,
+} from '../../domain/academic-content-lifecycle.policy';
+import { NotFoundDomainException } from '../../../../../common/exceptions/domain-exception';
 import type {
   AcademicContentFileTransaction,
   AcademicUploadIdentity,
@@ -39,13 +44,27 @@ export class AcademicContentFileRepository {
       readyLink: (session: FileUploadSession) => this.readyLink(tx, session),
       updateUpload: (uploadId, data) =>
         tx.fileUploadSession.update({ where: { id: uploadId }, data }),
-      contentExists: async (contentId, schoolId) =>
-        Boolean(
-          await tx.academicContent.findFirst({
-            where: { id: contentId, schoolId, deletedAt: null },
-            select: { id: true },
-          }),
-        ),
+      lockMutableContent: async (contentId, schoolId, now) => {
+        const rows = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM academic_contents
+          WHERE id = ${contentId}::uuid AND school_id = ${schoolId}::uuid
+            AND deleted_at IS NULL FOR UPDATE`;
+        if (!rows.length)
+          throw new NotFoundDomainException('Academic content not found');
+        const content = await tx.academicContent.findFirst({
+          where: { id: contentId, schoolId, deletedAt: null },
+          select: { status: true, termId: true },
+        });
+        if (!content)
+          throw new NotFoundDomainException('Academic content not found');
+        assertAcademicContentMutable(content.status);
+        const term = await tx.term.findFirst({
+          where: { id: content.termId, schoolId, deletedAt: null },
+          select: { startDate: true, endDate: true, isActive: true },
+        });
+        if (!term) throw new NotFoundDomainException('Term not found');
+        assertAcademicContentTermWritable(term, now);
+      },
       createFile: (data) => tx.file.create({ data }),
       createAsset: (data) => tx.academicContentAsset.create({ data }),
       recordCompletedAudit: async (input) => {
@@ -145,6 +164,9 @@ export class AcademicContentFileRepository {
   findContent(contentId: string, schoolId: string) {
     return this.prisma.academicContent.findFirst({
       where: { id: contentId, schoolId, deletedAt: null },
+      include: {
+        term: { select: { startDate: true, endDate: true, isActive: true } },
+      },
     });
   }
 
