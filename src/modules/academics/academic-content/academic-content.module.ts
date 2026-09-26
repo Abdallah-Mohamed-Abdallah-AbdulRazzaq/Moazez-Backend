@@ -18,6 +18,17 @@ import { AcademicContentLifecycleUseCases } from './application/academic-content
 import { AcademicContentAudienceRepository } from './infrastructure/academic-content-audience.repository';
 import { AcademicContentRepository } from './infrastructure/academic-content.repository';
 import { AcademicContentTargetRepository } from './infrastructure/academic-content-target.repository';
+import { AcademicContentLinksTagsRepository } from './infrastructure/academic-content-links-tags.repository';
+import { AcademicContentRevisionRepository } from './infrastructure/academic-content-revision.repository';
+import {
+  ReplaceAcademicContentLinksUseCase,
+  ReplaceAcademicContentTagsUseCase,
+} from './application/replace-academic-content-links-tags.use-cases';
+import {
+  CaptureAcademicContentRevisionUseCase,
+  GetAcademicContentRevisionUseCase,
+  ListAcademicContentRevisionsUseCase,
+} from './application/academic-content-revision.use-cases';
 import { AcademicContentValidationRepository } from './infrastructure/academic-content-validation.repository';
 import { AcademicContentController } from './controller/academic-content.controller';
 import { AcademicContentFilePolicyController } from './controller/academic-content-file-policy.controller';
@@ -45,6 +56,8 @@ import {
     UnlinkAcademicContentAssetUseCase,
     AcademicContentRepository,
     AcademicContentTargetRepository,
+    AcademicContentLinksTagsRepository,
+    AcademicContentRevisionRepository,
     AcademicContentValidationRepository,
     AcademicContentAudienceRepository,
     AcademicContentContextValidator,
@@ -54,6 +67,11 @@ import {
     ListAcademicContentForManagementUseCase,
     GetAcademicContentForManagementUseCase,
     ReplaceAcademicContentTargetsUseCase,
+    ReplaceAcademicContentLinksUseCase,
+    ReplaceAcademicContentTagsUseCase,
+    CaptureAcademicContentRevisionUseCase,
+    ListAcademicContentRevisionsUseCase,
+    GetAcademicContentRevisionUseCase,
     AcademicContentAudienceResolver,
   ],
   exports: [
@@ -64,6 +82,7 @@ import {
     CreateAcademicContentUseCase,
     AcademicContentLifecycleUseCases,
     ReplaceAcademicContentTargetsUseCase,
+    CaptureAcademicContentRevisionUseCase,
     AcademicContentAudienceResolver,
   ],
 })

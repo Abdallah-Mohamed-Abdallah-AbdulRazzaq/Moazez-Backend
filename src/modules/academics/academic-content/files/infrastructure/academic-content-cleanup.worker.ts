@@ -143,7 +143,7 @@ export class AcademicContentCleanupWorker implements OnModuleInit {
           return;
         if (!(await tx.lockActiveFile(session.fileId, session.schoolId)))
           return;
-        const active = await tx.countActiveAssets(
+        const active = await tx.countAcademicContentFileReferences(
           session.fileId,
           session.schoolId,
         );
@@ -152,7 +152,7 @@ export class AcademicContentCleanupWorker implements OnModuleInit {
           bucket: session.finalBucket,
           objectKey: session.finalObjectKey,
         });
-        const stillActive = await tx.countActiveAssets(
+        const stillActive = await tx.countAcademicContentFileReferences(
           session.fileId,
           session.schoolId,
         );

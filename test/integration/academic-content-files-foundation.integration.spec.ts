@@ -166,6 +166,7 @@ describe('ACC-3A purpose-safe Files database foundation', () => {
       academicContentId: ids.contenta,
       fileId: ids.filea,
       createdByUserId: ids.usera,
+      sortOrder: 0,
     };
     const first = await prisma.academicContentAsset.create({ data });
     await expect(

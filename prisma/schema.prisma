@@ -1439,6 +1439,13 @@ model School {
   academicContents                      AcademicContent[]
   academicContentTargets                AcademicContentTarget[]
   academicContentAssets                 AcademicContentAsset[]
+  academicContentLinks                  AcademicContentLink[]
+  academicContentTags                   AcademicContentTag[]
+  academicContentRevisions              AcademicContentRevision[]
+  academicContentRevisionTargets        AcademicContentRevisionTarget[]
+  academicContentRevisionAssets         AcademicContentRevisionAsset[]
+  academicContentRevisionLinks          AcademicContentRevisionLink[]
+  academicContentRevisionTags           AcademicContentRevisionTag[]
   academicContentFilePolicy             AcademicContentFilePolicy?
   academicCalendarEvents                AcademicCalendarEvent[]
   curricula                             Curriculum[]
@@ -1656,6 +1663,9 @@ model User {
   academicContentsUpdated                        AcademicContent[]                      @relation("AcademicContentUpdatedBy")
   academicContentTargetsCreated                  AcademicContentTarget[]                @relation("AcademicContentTargetCreatedBy")
   academicContentAssetsCreated                   AcademicContentAsset[]                 @relation("AcademicContentAssetCreatedBy")
+  academicContentLinksCreated                    AcademicContentLink[]                  @relation("AcademicContentLinkCreatedBy")
+  academicContentTagsCreated                     AcademicContentTag[]                   @relation("AcademicContentTagCreatedBy")
+  academicContentRevisionsCaptured               AcademicContentRevision[]              @relation("AcademicContentRevisionCapturedBy")
   curriculaCreated                               Curriculum[]                           @relation("CurriculumCreatedBy")
   curriculaUpdated                               Curriculum[]                           @relation("CurriculumUpdatedBy")
   lessonContentItemsCreated                      LessonContentItem[]                    @relation("LessonContentItemCreatedBy")
@@ -2802,13 +2812,16 @@ model AcademicContent {
   createdAt       DateTime                    @default(now()) @map("created_at")
   updatedAt       DateTime                    @updatedAt @map("updated_at")
 
-  school       School                  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  academicYear AcademicYear            @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  term         Term                    @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  createdBy    User                    @relation("AcademicContentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  updatedBy    User?                   @relation("AcademicContentUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  school       School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear AcademicYear              @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term         Term                      @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  createdBy    User                      @relation("AcademicContentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy    User?                     @relation("AcademicContentUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
   targets      AcademicContentTarget[]
   assets       AcademicContentAsset[]
+  links        AcademicContentLink[]
+  tags         AcademicContentTag[]
+  revisions    AcademicContentRevision[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -2867,6 +2880,7 @@ model AcademicContentAsset {
   academicContentId String    @map("academic_content_id") @db.Uuid
   fileId            String    @map("file_id") @db.Uuid
   createdByUserId   String    @map("created_by_user_id") @db.Uuid
+  sortOrder         Int       @map("sort_order")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
   deletedAt         DateTime? @map("deleted_at")
@@ -2881,6 +2895,161 @@ model AcademicContentAsset {
   @@index([createdByUserId])
   @@index([deletedAt])
   @@map("academic_content_assets")
+}
+
+model AcademicContentLink {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String   @map("school_id") @db.Uuid
+  academicContentId String   @map("academic_content_id") @db.Uuid
+  label             String   @db.VarChar(180)
+  url               String   @db.VarChar(2048)
+  sortOrder         Int      @map("sort_order")
+  createdByUserId   String   @map("created_by_user_id") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  school          School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicContent AcademicContent @relation(fields: [academicContentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  createdBy       User            @relation("AcademicContentLinkCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([schoolId, academicContentId, sortOrder])
+  @@index([schoolId, academicContentId])
+  @@index([createdByUserId])
+  @@map("academic_content_links")
+}
+
+model AcademicContentTag {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String   @map("school_id") @db.Uuid
+  academicContentId String   @map("academic_content_id") @db.Uuid
+  displayValue      String   @map("display_value") @db.VarChar(80)
+  normalizedValue   String   @map("normalized_value") @db.VarChar(80)
+  sortOrder         Int      @map("sort_order")
+  createdByUserId   String   @map("created_by_user_id") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  school          School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicContent AcademicContent @relation(fields: [academicContentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  createdBy       User            @relation("AcademicContentTagCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([schoolId, academicContentId, normalizedValue])
+  @@unique([schoolId, academicContentId, sortOrder])
+  @@index([schoolId, academicContentId])
+  @@index([createdByUserId])
+  @@map("academic_content_tags")
+}
+
+model AcademicContentRevision {
+  id                      String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                String                      @map("school_id") @db.Uuid
+  academicContentId       String                      @map("academic_content_id") @db.Uuid
+  revisionNumber          Int                         @map("revision_number")
+  snapshotContractVersion Int                         @map("snapshot_contract_version")
+  academicYearId          String                      @map("academic_year_id") @db.Uuid
+  termId                  String                      @map("term_id") @db.Uuid
+  type                    AcademicContentType
+  audience                AcademicContentAudienceType
+  title                   String                      @db.VarChar(180)
+  description             String?                     @db.VarChar(4000)
+  sourceStatus            AcademicContentStatus       @map("source_status")
+  capturedByUserId        String                      @map("captured_by_user_id") @db.Uuid
+  capturedAt              DateTime                    @default(now()) @map("captured_at")
+  createdAt               DateTime                    @default(now()) @map("created_at")
+
+  school          School                          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicContent AcademicContent                 @relation(fields: [academicContentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  academicYear    AcademicYear                    @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term            Term                            @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  capturedBy      User                            @relation("AcademicContentRevisionCapturedBy", fields: [capturedByUserId], references: [id], onDelete: Restrict)
+  targets         AcademicContentRevisionTarget[]
+  assets          AcademicContentRevisionAsset[]
+  links           AcademicContentRevisionLink[]
+  tags            AcademicContentRevisionTag[]
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, academicContentId, revisionNumber])
+  @@index([schoolId, academicContentId])
+  @@index([academicYearId, schoolId])
+  @@index([termId, schoolId])
+  @@index([capturedByUserId])
+  @@map("academic_content_revisions")
+}
+
+model AcademicContentRevisionTarget {
+  id                         String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                   String                         @map("school_id") @db.Uuid
+  revisionId                 String                         @map("revision_id") @db.Uuid
+  scopeType                  AcademicContentTargetScopeType @map("scope_type")
+  stageId                    String?                        @map("stage_id") @db.Uuid
+  gradeId                    String?                        @map("grade_id") @db.Uuid
+  sectionId                  String?                        @map("section_id") @db.Uuid
+  classroomId                String?                        @map("classroom_id") @db.Uuid
+  subjectId                  String?                        @map("subject_id") @db.Uuid
+  teacherSubjectAllocationId String?                        @map("teacher_subject_allocation_id") @db.Uuid
+  identityFingerprint        String                         @map("identity_fingerprint") @db.VarChar(64)
+  createdAt                  DateTime                       @default(now()) @map("created_at")
+
+  school   School                  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  revision AcademicContentRevision @relation(fields: [revisionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([schoolId, revisionId, identityFingerprint])
+  @@index([schoolId, revisionId])
+  @@map("academic_content_revision_targets")
+}
+
+model AcademicContentRevisionAsset {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId   String   @map("school_id") @db.Uuid
+  revisionId String   @map("revision_id") @db.Uuid
+  fileId     String   @map("file_id") @db.Uuid
+  sortOrder  Int      @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  school   School                  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  revision AcademicContentRevision @relation(fields: [revisionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  file     File                    @relation(fields: [fileId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([schoolId, revisionId, fileId])
+  @@unique([schoolId, revisionId, sortOrder])
+  @@index([schoolId, revisionId])
+  @@index([schoolId, fileId])
+  @@map("academic_content_revision_assets")
+}
+
+model AcademicContentRevisionLink {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId   String   @map("school_id") @db.Uuid
+  revisionId String   @map("revision_id") @db.Uuid
+  label      String   @db.VarChar(180)
+  url        String   @db.VarChar(2048)
+  sortOrder  Int      @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  school   School                  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  revision AcademicContentRevision @relation(fields: [revisionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([schoolId, revisionId, sortOrder])
+  @@index([schoolId, revisionId])
+  @@map("academic_content_revision_links")
+}
+
+model AcademicContentRevisionTag {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String   @map("school_id") @db.Uuid
+  revisionId      String   @map("revision_id") @db.Uuid
+  displayValue    String   @map("display_value") @db.VarChar(80)
+  normalizedValue String   @map("normalized_value") @db.VarChar(80)
+  sortOrder       Int      @map("sort_order")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  school   School                  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  revision AcademicContentRevision @relation(fields: [revisionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([schoolId, revisionId, normalizedValue])
+  @@unique([schoolId, revisionId, sortOrder])
+  @@index([schoolId, revisionId])
+  @@map("academic_content_revision_tags")
 }
 
 model AcademicContentFilePolicy {
@@ -2934,6 +3103,7 @@ model AcademicYear {
   academicCalendarEvents         AcademicCalendarEvent[]
   subjectAllocations             SubjectAllocation[]
   academicContents               AcademicContent[]
+  academicContentRevisions       AcademicContentRevision[]
   curricula                      Curriculum[]
   lessonPlans                    LessonPlan[]
   reinforcementTasks             ReinforcementTask[]
@@ -2981,6 +3151,7 @@ model Term {
   subjectAllocations             SubjectAllocation[]
   teacherSubjectAllocations      TeacherSubjectAllocation[]
   academicContents               AcademicContent[]
+  academicContentRevisions       AcademicContentRevision[]
   enrollments                    Enrollment[]
   studentBulkRegistrationBatches StudentBulkRegistrationBatch[]
   attendancePolicies             AttendancePolicy[]
@@ -7004,6 +7175,7 @@ model File {
   studentCredentialSecretArtifacts     StudentCredentialBatch[]              @relation("StudentCredentialBatchSecretArtifact")
   uploadSession                        FileUploadSession?
   academicContentAssets                AcademicContentAsset[]
+  academicContentRevisionAssets        AcademicContentRevisionAsset[]
 
   @@unique([bucket, objectKey])
   @@unique([id, schoolId])

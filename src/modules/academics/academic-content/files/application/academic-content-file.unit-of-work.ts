@@ -111,7 +111,10 @@ export interface AcademicContentFileTransaction {
     assetId: string,
     deletedAt: Date,
   ): Promise<AcademicContentAsset>;
-  countActiveAssets(fileId: string, schoolId: string): Promise<number>;
+  countAcademicContentFileReferences(
+    fileId: string,
+    schoolId: string,
+  ): Promise<number>;
   extendReadyCleanup(
     fileId: string,
     schoolId: string,

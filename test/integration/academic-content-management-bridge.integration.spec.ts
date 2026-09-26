@@ -470,6 +470,7 @@ describeDatabase(
           academicContentId: created.id,
           fileId: file.id,
           createdByUserId: ids.schoolUser,
+          sortOrder: 0,
         },
       });
       await prisma.term.update({

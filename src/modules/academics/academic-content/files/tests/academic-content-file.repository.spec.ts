@@ -190,7 +190,12 @@ describe('ACC cleanup repository purpose isolation', () => {
               OR: Array<{
                 status: unknown;
                 file?: {
-                  is: { academicContentAssets: { none: { deletedAt: null } } };
+                  is: {
+                    academicContentAssets: { none: { deletedAt: null } };
+                    academicContentRevisionAssets: {
+                      none: Record<string, never>;
+                    };
+                  };
                 };
               }>;
             };
@@ -205,6 +210,9 @@ describe('ACC cleanup repository purpose isolation', () => {
     expect(
       input.where.OR[1].file?.is.academicContentAssets.none.deletedAt,
     ).toBeNull();
+    expect(
+      input.where.OR[1].file?.is.academicContentRevisionAssets.none,
+    ).toEqual({});
     expect(input.take).toBe(50);
   });
 });
