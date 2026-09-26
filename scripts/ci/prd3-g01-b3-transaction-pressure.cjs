@@ -313,7 +313,7 @@ const PURE_CALL_ROOTS = new Set([
 ]);
 const PURE_METHODS = new Set([
   'at', 'catch', 'concat', 'entries', 'every', 'filter', 'find', 'flat', 'flatMap',
-  'forEach', 'from', 'has', 'includes', 'join', 'keys', 'map', 'parse',
+  'forEach', 'from', 'getTime', 'has', 'includes', 'join', 'keys', 'map', 'parse',
   'reduce', 'replace', 'slice', 'some', 'sort', 'startsWith', 'stringify', 'toISOString',
   'toLowerCase', 'trim', 'values',
 ]);

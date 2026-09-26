@@ -140,6 +140,17 @@ test('ACC transaction facade has a scoped reviewed storage-wait record', () => {
   assert.match(override.reviewEvidence, /READY orphan cleanup.*storage deletion.*120-second/u);
 });
 
+test('ACC-5B type authoring uses one locked database-only transaction site', () => {
+  const rows = INVENTORY.filter((item) =>
+    item.path === 'src/modules/academics/academic-content/infrastructure/academic-content-type-detail.repository.ts');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].entryOwner, 'AcademicContentTypeDetailRepository.mutate');
+  assert.equal(rows[0].classification, 'LOCK_CONTENTION_SENSITIVE');
+  assert.equal(rows[0].explicitLock, true);
+  assert.equal(rows[0].externalWaitInsideTransaction, false);
+  assert.deepEqual(rows[0].unresolvedCalls, []);
+});
+
 test('Teacher allocation reassignment callback has no transaction escape or external wait', () => {
   const rows = validateTeacherAllocationReassignmentUnitOfWorkCallbacks(
     auditTeacherAllocationReassignmentUnitOfWorkCallbacks(),

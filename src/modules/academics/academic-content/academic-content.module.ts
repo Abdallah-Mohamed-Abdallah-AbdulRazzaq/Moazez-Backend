@@ -18,6 +18,9 @@ import { AcademicContentLifecycleUseCases } from './application/academic-content
 import { AcademicContentAudienceRepository } from './infrastructure/academic-content-audience.repository';
 import { AcademicContentRepository } from './infrastructure/academic-content.repository';
 import { AcademicContentTargetRepository } from './infrastructure/academic-content-target.repository';
+import { AcademicContentTypeDetailRepository } from './infrastructure/academic-content-type-detail.repository';
+import { AcademicContentTypeDetailUseCases } from './application/academic-content-type-detail.use-cases';
+import { ACADEMIC_CONTENT_TYPE_DETAIL_UNIT_OF_WORK } from './application/academic-content-type-detail.unit-of-work';
 import { AcademicContentLinksTagsRepository } from './infrastructure/academic-content-links-tags.repository';
 import { AcademicContentRevisionRepository } from './infrastructure/academic-content-revision.repository';
 import {
@@ -56,6 +59,12 @@ import {
     UnlinkAcademicContentAssetUseCase,
     AcademicContentRepository,
     AcademicContentTargetRepository,
+    AcademicContentTypeDetailRepository,
+    {
+      provide: ACADEMIC_CONTENT_TYPE_DETAIL_UNIT_OF_WORK,
+      useExisting: AcademicContentTypeDetailRepository,
+    },
+    AcademicContentTypeDetailUseCases,
     AcademicContentLinksTagsRepository,
     AcademicContentRevisionRepository,
     AcademicContentValidationRepository,
@@ -67,6 +76,7 @@ import {
     ListAcademicContentForManagementUseCase,
     GetAcademicContentForManagementUseCase,
     ReplaceAcademicContentTargetsUseCase,
+    AcademicContentTypeDetailUseCases,
     ReplaceAcademicContentLinksUseCase,
     ReplaceAcademicContentTagsUseCase,
     CaptureAcademicContentRevisionUseCase,
