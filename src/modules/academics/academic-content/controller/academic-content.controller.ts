@@ -54,6 +54,7 @@ import {
   UnlinkAcademicContentAssetUseCase,
 } from '../files/application/academic-content-upload.use-cases';
 import {
+  AcademicContentPaginationQueryDto,
   CreateAcademicContentDto,
   CreateAcademicContentUploadDto,
   ListAcademicContentQueryDto,
@@ -245,7 +246,7 @@ export class AcademicContentController {
   @ApiOkResponse({ type: AcademicContentRevisionListDto })
   async revisions(
     @Param('contentId', new ParseUUIDPipe()) contentId: string,
-    @Query() query: ListAcademicContentQueryDto,
+    @Query() query: AcademicContentPaginationQueryDto,
   ): Promise<AcademicContentRevisionListDto> {
     return presentAcademicContentRevisionList(
       await this.listRevisions.execute(contentId, query),

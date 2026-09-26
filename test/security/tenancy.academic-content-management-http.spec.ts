@@ -485,6 +485,14 @@ describe('ACC-4B management HTTP security and transport', () => {
     expect(schemas).not.toMatch(
       /trustedOrigin|bucket|objectKey|finalBucket|cleanup/,
     );
+    const revisionParameters =
+      document.paths[`${base}/{contentId}/revisions`].get?.parameters ?? [];
+    expect(
+      revisionParameters
+        .filter((parameter) => 'name' in parameter)
+        .map((parameter) => parameter.name)
+        .sort(),
+    ).toEqual(['contentId', 'limit', 'page']);
   });
 
   it('allows School and Organization managers and presents a safe draft', async () => {
@@ -975,5 +983,63 @@ describe('ACC-4B management HTTP security and transport', () => {
     await request(app.getHttpServer())
       .delete(`${base}/${contentId}/revisions/${revisionId}`)
       .expect(404);
+  });
+
+  it('accepts only bounded pagination on revision history', async () => {
+    for (const [query, expected] of [
+      [{ page: '1' }, { page: 1 }],
+      [{ limit: '100' }, { limit: 100 }],
+      [
+        { page: '2', limit: '50' },
+        { page: 2, limit: 50 },
+      ],
+    ] as const) {
+      await request(app.getHttpServer())
+        .get(`${base}/${contentId}/revisions`)
+        .query(query)
+        .expect(200);
+      expect(services.revisionList.execute).toHaveBeenLastCalledWith(
+        contentId,
+        expected,
+      );
+    }
+
+    for (const query of [{ page: '0' }, { limit: '101' }]) {
+      services.revisionList.execute.mockClear();
+      await request(app.getHttpServer())
+        .get(`${base}/${contentId}/revisions`)
+        .query(query)
+        .expect(400);
+      expect(services.revisionList.execute).not.toHaveBeenCalled();
+    }
+  });
+
+  it('rejects Library-only and unknown revision-history filters', async () => {
+    const uuid = randomUUID();
+    const rejectedQueries = {
+      academicYearId: uuid,
+      termId: uuid,
+      type: AcademicContentType.GENERAL_RESOURCE,
+      status: AcademicContentStatus.DRAFT,
+      audience: AcademicContentAudienceType.STUDENTS,
+      stageId: uuid,
+      gradeId: uuid,
+      sectionId: uuid,
+      classroomId: uuid,
+      subjectId: uuid,
+      teacherUserId: uuid,
+      tag: 'x',
+      search: 'test',
+      schoolId: uuid,
+      createdByUserId: uuid,
+      unknown: 'x',
+    };
+    for (const [field, value] of Object.entries(rejectedQueries)) {
+      await request(app.getHttpServer())
+        .get(`${base}/${contentId}/revisions`)
+        .query({ [field]: value })
+        .expect(400);
+      expect(services.revisionList.execute).not.toHaveBeenCalled();
+    }
   });
 });

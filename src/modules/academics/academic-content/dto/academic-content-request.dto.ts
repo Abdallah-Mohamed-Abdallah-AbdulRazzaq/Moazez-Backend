@@ -68,7 +68,24 @@ export class UpdateAcademicContentDto {
   audience?: AcademicContentAudienceType;
 }
 
-export class ListAcademicContentQueryDto {
+export class AcademicContentPaginationQueryDto {
+  @ApiPropertyOptional({ minimum: 1, default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 50 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+}
+
+export class ListAcademicContentQueryDto extends AcademicContentPaginationQueryDto {
   @ApiPropertyOptional({ format: 'uuid' })
   @IsOptional()
   @IsUUID()
@@ -135,21 +152,6 @@ export class ListAcademicContentQueryDto {
   @IsString()
   @MaxLength(120)
   search?: string;
-
-  @ApiPropertyOptional({ minimum: 1, default: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number;
-
-  @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 50 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit?: number;
 }
 
 export class AcademicContentTargetDto {
