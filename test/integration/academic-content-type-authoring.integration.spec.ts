@@ -22,8 +22,12 @@ import { AcademicContentRepository } from '../../src/modules/academics/academic-
 import { AcademicContentValidationRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-validation.repository';
 import { GetAcademicContentForManagementUseCase } from '../../src/modules/academics/academic-content/application/academic-content-management-read.use-cases';
 import { GetAcademicContentReadinessUseCase } from '../../src/modules/academics/academic-content/application/academic-content-readiness.use-case';
-import { presentAcademicContentDetail } from '../../src/modules/academics/academic-content/presenters/academic-content.presenter';
+import {
+  presentAcademicContentDetail,
+  presentAcademicContentRevisionDetail,
+} from '../../src/modules/academics/academic-content/presenters/academic-content.presenter';
 import { AcademicContentTypeDetailRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-type-detail.repository';
+import { AcademicContentRevisionRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-revision.repository';
 import { AcademicContentTargetRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-target.repository';
 import {
   normalizeGuardianNote,
@@ -47,6 +51,7 @@ describeDatabase('ACC-5B PostgreSQL type authoring', () => {
     },
   });
   const writer = new AcademicContentTypeDetailRepository(prisma);
+  const revisions = new AcademicContentRevisionRepository(prisma);
   const contentReader = new AcademicContentRepository(prisma);
   const managementDetail = new GetAcademicContentForManagementUseCase(
     contentReader,
@@ -102,6 +107,111 @@ describeDatabase('ACC-5B PostgreSQL type authoring', () => {
     actorId: ids.user,
     now: new Date('2026-09-26T10:00:00Z'),
   });
+  const revisionScope = (contentId: string) => ({
+    contentId,
+    schoolId: ids.school,
+    organizationId: ids.organization,
+    actorId: ids.user,
+    now: new Date('2026-09-26T10:00:00Z'),
+  });
+  function revisionStates(
+    type: AcademicContentType,
+  ): [NormalizedDetail, NormalizedDetail] {
+    switch (type) {
+      case AcademicContentType.TEACHER_PREPARATION:
+        return [
+          normalizePreparation({
+            ...preparation().state,
+            topic: 'Before revision',
+            objectives: ['First objective', 'Second objective'],
+            learningOutcomes: ['First outcome'],
+            teachingStrategies: ['Discussion'],
+            activities: ['Practice'],
+            resourceNotes: 'Old resource note',
+            curriculumId: ids.curriculum,
+            curriculumUnitId: ids.unit,
+            curriculumLessonId: ids.lesson,
+            lessonPlanId: ids.lessonPlan,
+            lessonPlanItemId: ids.lessonPlanItem,
+            timetableEntryId: ids.timetableEntry,
+          }),
+          normalizePreparation({
+            ...preparation().state,
+            topic: 'After revision',
+            objectives: ['Replacement objective'],
+            learningOutcomes: ['Replacement outcome'],
+            teachingStrategies: ['Lab'],
+            activities: ['Review'],
+            teacherNotes: 'New teacher note',
+          }),
+        ];
+      case AcademicContentType.WEEKLY_PLAN:
+        return [
+          normalizeWeeklyPlan({
+            ...weekly().state,
+            objectives: ['First', 'Second'],
+            topics: ['Topic A', 'Topic B'],
+            expectedHomework: 'Old homework',
+            homeworkAssignmentIds: [ids.homework],
+            gradeAssessmentIds: [ids.assessment],
+          }),
+          normalizeWeeklyPlan({
+            ...weekly().state,
+            weekStartDate: '2028-09-17',
+            weekEndDate: '2028-09-23',
+            objectives: ['Replacement'],
+            topics: ['Topic C'],
+            notes: 'New note',
+            homeworkAssignmentIds: [],
+            gradeAssessmentIds: [],
+          }),
+        ];
+      case AcademicContentType.GUARDIAN_WEEKLY_NOTE:
+        return [
+          normalizeGuardianNote({
+            body: 'Before revision',
+            priority: AcademicGuardianNotePriority.NORMAL,
+            requiresAcknowledgement: false,
+          }),
+          normalizeGuardianNote({
+            body: 'After revision',
+            priority: AcademicGuardianNotePriority.IMPORTANT,
+            requiresAcknowledgement: true,
+          }),
+        ];
+      case AcademicContentType.SUBJECT_RESOURCE:
+        return [
+          normalizeSubjectResource({
+            resourceCategory: AcademicSubjectResourceCategory.VIDEO,
+            curriculumId: ids.curriculum,
+            curriculumUnitId: ids.unit,
+            curriculumLessonId: ids.lesson,
+          }),
+          normalizeSubjectResource({
+            resourceCategory: AcademicSubjectResourceCategory.DOCUMENT,
+          }),
+        ];
+      case AcademicContentType.ONLINE_SESSION:
+        return [
+          normalizeOnlineSession({
+            ...session().state,
+            accessCode: 'old-secret-code',
+            instructions: 'Old instructions',
+            timetableEntryId: ids.timetableEntry,
+          }),
+          normalizeOnlineSession({
+            ...session().state,
+            joinUrl: 'https://example.test/new-meeting',
+            accessCode: 'new-secret-code',
+            instructions: 'New instructions',
+            startAt: '2028-09-11T10:00:00Z',
+            endAt: '2028-09-11T11:00:00Z',
+          }),
+        ];
+      case AcademicContentType.GENERAL_RESOURCE:
+        throw new Error('General Resource has no typed detail');
+    }
+  }
   function asViewer<T>(action: () => Promise<T>): Promise<T> {
     return runWithRequestContext(createRequestContext(), () => {
       setActor({ id: ids.user, userType: UserType.SCHOOL_USER });
@@ -972,6 +1082,11 @@ describeDatabase('ACC-5B PostgreSQL type authoring', () => {
       const schools = [ids.school, ids.foreignSchool].filter(Boolean);
       const where = { schoolId: { in: schools } };
       await prisma.auditLog.deleteMany({ where });
+      await prisma.academicContentRevisionTarget.deleteMany({ where });
+      await prisma.academicContentRevisionAsset.deleteMany({ where });
+      await prisma.academicContentRevisionLink.deleteMany({ where });
+      await prisma.academicContentRevisionTag.deleteMany({ where });
+      await prisma.academicContentRevision.deleteMany({ where });
       await prisma.academicContentWeeklyPlanHomeworkReference.deleteMany({
         where,
       });
@@ -1742,6 +1857,10 @@ describeDatabase('ACC-5B PostgreSQL type authoring', () => {
         where: { academicContentId: row.id },
       });
     expect(current.curriculumId).toBe(ids.curriculum);
+    await prisma.curriculum.update({
+      where: { id: ids.curriculum },
+      data: { deletedAt: null },
+    });
   });
 
   it('reads each current typed detail, ordered weekly references, and no General Resource detail', async () => {
@@ -1862,4 +1981,305 @@ describeDatabase('ACC-5B PostgreSQL type authoring', () => {
       writer.mutate(scope(foreign.id, preparation())),
     ).rejects.toMatchObject({ code: 'not_found' });
   });
+
+  it.each([
+    AcademicContentType.TEACHER_PREPARATION,
+    AcademicContentType.WEEKLY_PLAN,
+    AcademicContentType.GUARDIAN_WEEKLY_NOTE,
+    AcademicContentType.SUBJECT_RESOURCE,
+    AcademicContentType.ONLINE_SESSION,
+  ])(
+    'captures immutable V2 %s state and presents it without current-detail fallback',
+    async (type) => {
+      const row = await content(type);
+      const gradeScoped =
+        type === AcademicContentType.TEACHER_PREPARATION ||
+        type === AcademicContentType.SUBJECT_RESOURCE;
+      await target(
+        row.id,
+        ids.subject,
+        gradeScoped ? Scope.GRADE : Scope.SCHOOL,
+        gradeScoped ? ids.grade : undefined,
+      );
+      const [before, after] = revisionStates(type);
+      await writer.mutate(scope(row.id, before));
+      const captured = await revisions.capture(revisionScope(row.id));
+      expect(captured.snapshotContractVersion).toBe(2);
+      expect(captured.typeSpecificSnapshot).toEqual(before);
+      expect((captured.typeSpecificSnapshot as { type: string }).type).toBe(
+        type,
+      );
+      expect(JSON.stringify(captured.typeSpecificSnapshot)).not.toMatch(
+        /schoolId|contentType|createdAt|updatedAt|createdBy|updatedBy|homeworkReferences|assessmentReferences|"id"/,
+      );
+      const oldResponse = presentAcademicContentRevisionDetail(captured);
+      expect(oldResponse.details).toEqual(before.state);
+      expect(JSON.stringify(oldResponse)).not.toMatch(/typeSpecificSnapshot/);
+      await writer.mutate(scope(row.id, after));
+      const reread = await revisions.detail({
+        schoolId: ids.school,
+        contentId: row.id,
+        revisionId: captured.id,
+      });
+      expect(presentAcademicContentRevisionDetail(reread).details).toEqual(
+        before.state,
+      );
+      const current = presentAcademicContentDetail(
+        await asViewer(() => managementDetail.execute(row.id)),
+      );
+      expect(current.details).toEqual(after.state);
+      if (type === AcademicContentType.WEEKLY_PLAN) {
+        expect(oldResponse.details).toMatchObject({
+          weekStartDate: '2028-09-10',
+          weekEndDate: '2028-09-16',
+          objectives: ['First', 'Second'],
+          topics: ['Topic A', 'Topic B'],
+          homeworkAssignmentIds: [ids.homework],
+          gradeAssessmentIds: [ids.assessment],
+        });
+        expect(JSON.stringify(captured.typeSpecificSnapshot)).not.toMatch(
+          /homeworkReferences|assessmentReferences|title|dueAt|maxScore/,
+        );
+      }
+      if (type === AcademicContentType.ONLINE_SESSION) {
+        expect(oldResponse.details).toMatchObject({
+          joinUrl: 'https://example.test/meeting',
+          accessCode: 'old-secret-code',
+          startAt: '2028-09-10T10:00:00.000Z',
+          endAt: '2028-09-10T11:00:00.000Z',
+          timezone: 'Africa/Cairo',
+          timetableEntryId: ids.timetableEntry,
+        });
+        const audit = await prisma.auditLog.findFirstOrThrow({
+          where: {
+            resourceId: captured.id,
+            action: 'academics.academic_content.revision.capture',
+          },
+        });
+        expect(JSON.stringify(audit.after)).not.toContain('old-secret-code');
+        expect(JSON.stringify(audit.after)).not.toContain(
+          'https://example.test/meeting',
+        );
+      }
+    },
+  );
+
+  it('keeps V2 missing detail and General Resource detail null after later authoring', async () => {
+    const typed = await content(AcademicContentType.TEACHER_PREPARATION);
+    await target(typed.id);
+    const missing = await revisions.capture(revisionScope(typed.id));
+    expect(missing).toMatchObject({
+      snapshotContractVersion: 2,
+      typeSpecificSnapshot: null,
+    });
+    await writer.mutate(scope(typed.id, preparation()));
+    expect(
+      presentAcademicContentRevisionDetail(
+        await revisions.detail({
+          schoolId: ids.school,
+          contentId: typed.id,
+          revisionId: missing.id,
+        }),
+      ).details,
+    ).toBeNull();
+    const general = await content(AcademicContentType.GENERAL_RESOURCE);
+    const generalRevision = await revisions.capture(revisionScope(general.id));
+    expect(generalRevision).toMatchObject({
+      snapshotContractVersion: 2,
+      typeSpecificSnapshot: null,
+    });
+    expect(
+      presentAcademicContentRevisionDetail(generalRevision).details,
+    ).toBeNull();
+  });
+
+  it('reads an untouched V1 typed revision without falling back to current detail', async () => {
+    const row = await content(AcademicContentType.TEACHER_PREPARATION);
+    await target(row.id);
+    const legacy = await prisma.academicContentRevision.create({
+      data: {
+        schoolId: ids.school,
+        academicContentId: row.id,
+        revisionNumber: 1,
+        snapshotContractVersion: 1,
+        academicYearId: ids.year,
+        termId: ids.term,
+        type: row.type,
+        audience: row.audience,
+        title: row.title,
+        description: row.description,
+        sourceStatus: row.status,
+        capturedByUserId: ids.user,
+      },
+    });
+    await writer.mutate(scope(row.id, preparation()));
+    const reread = await revisions.detail({
+      schoolId: ids.school,
+      contentId: row.id,
+      revisionId: legacy.id,
+    });
+    expect(reread.typeSpecificSnapshot).toBeNull();
+    expect(presentAcademicContentRevisionDetail(reread)).toMatchObject({
+      snapshotContractVersion: 1,
+      title: row.title,
+      type: row.type,
+      targets: [],
+      assets: [],
+      links: [],
+      tags: [],
+      details: null,
+    });
+    expect(
+      await prisma.academicContentRevision.findUniqueOrThrow({
+        where: { id: legacy.id },
+      }),
+    ).toEqual(legacy);
+  });
+
+  it('rolls back a V2 snapshot and revision children when capture audit fails', async () => {
+    const row = await content(AcademicContentType.GUARDIAN_WEEKLY_NOTE);
+    await target(row.id);
+    await writer.mutate(scope(row.id, note()));
+    const auditsBefore = await prisma.auditLog.count({
+      where: {
+        schoolId: ids.school,
+        action: 'academics.academic_content.revision.capture',
+      },
+    });
+    const sabotaged = {
+      $transaction: (
+        operation: (tx: Prisma.TransactionClient) => Promise<unknown>,
+        options: object,
+      ) =>
+        prisma.$transaction(
+          (tx) =>
+            operation(
+              new Proxy(tx, {
+                get(target, property) {
+                  if (property === 'auditLog')
+                    return {
+                      create: () =>
+                        Promise.reject(new Error('capture audit unavailable')),
+                    };
+                  return Reflect.get(target, property) as unknown;
+                },
+              }) as Prisma.TransactionClient,
+            ),
+          options,
+        ),
+    } as unknown as PrismaService;
+    const failing = new AcademicContentRevisionRepository(sabotaged);
+    await expect(failing.capture(revisionScope(row.id))).rejects.toThrow(
+      'capture audit unavailable',
+    );
+    expect(
+      await prisma.academicContentRevision.count({
+        where: { academicContentId: row.id },
+      }),
+    ).toBe(0);
+    expect(
+      await prisma.academicContentRevisionTarget.count({
+        where: {
+          schoolId: ids.school,
+          revision: { academicContentId: row.id },
+        },
+      }),
+    ).toBe(0);
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          schoolId: ids.school,
+          action: 'academics.academic_content.revision.capture',
+        },
+      }),
+    ).toBe(auditsBefore);
+  });
+
+  it('rolls back the V2 revision when a revision child write fails', async () => {
+    const row = await content(AcademicContentType.WEEKLY_PLAN);
+    await target(row.id);
+    await writer.mutate(scope(row.id, weekly()));
+    const auditsBefore = await prisma.auditLog.count({
+      where: {
+        schoolId: ids.school,
+        action: 'academics.academic_content.revision.capture',
+      },
+    });
+    const sabotaged = {
+      $transaction: (
+        operation: (tx: Prisma.TransactionClient) => Promise<unknown>,
+        options: object,
+      ) =>
+        prisma.$transaction(
+          (tx) =>
+            operation(
+              new Proxy(tx, {
+                get(target, property) {
+                  if (property === 'academicContentRevisionTarget')
+                    return {
+                      createMany: () =>
+                        Promise.reject(new Error('revision child unavailable')),
+                    };
+                  return Reflect.get(target, property) as unknown;
+                },
+              }) as Prisma.TransactionClient,
+            ),
+          options,
+        ),
+    } as unknown as PrismaService;
+    const failing = new AcademicContentRevisionRepository(sabotaged);
+    await expect(failing.capture(revisionScope(row.id))).rejects.toThrow(
+      'revision child unavailable',
+    );
+    expect(
+      await prisma.academicContentRevision.count({
+        where: { academicContentId: row.id },
+      }),
+    ).toBe(0);
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          schoolId: ids.school,
+          action: 'academics.academic_content.revision.capture',
+        },
+      }),
+    ).toBe(auditsBefore);
+  });
+
+  it.each([
+    AcademicContentType.TEACHER_PREPARATION,
+    AcademicContentType.WEEKLY_PLAN,
+    AcademicContentType.GUARDIAN_WEEKLY_NOTE,
+    AcademicContentType.SUBJECT_RESOURCE,
+    AcademicContentType.ONLINE_SESSION,
+  ])(
+    'serializes V2 %s capture against the real detail mutation',
+    async (type) => {
+      const row = await content(type);
+      const gradeScoped =
+        type === AcademicContentType.TEACHER_PREPARATION ||
+        type === AcademicContentType.SUBJECT_RESOURCE;
+      await target(
+        row.id,
+        ids.subject,
+        gradeScoped ? Scope.GRADE : Scope.SCHOOL,
+        gradeScoped ? ids.grade : undefined,
+      );
+      const [before, after] = revisionStates(type);
+      await writer.mutate(scope(row.id, before));
+      const [captured] = await Promise.all([
+        revisions.capture(revisionScope(row.id)),
+        writer.mutate(scope(row.id, after)),
+      ]);
+      expect(captured.snapshotContractVersion).toBe(2);
+      expect([before, after]).toContainEqual(captured.typeSpecificSnapshot);
+      const response = presentAcademicContentRevisionDetail(captured);
+      expect([before.state, after.state]).toContainEqual(response.details);
+      expect(
+        await prisma.academicContentRevision.count({
+          where: { academicContentId: row.id },
+        }),
+      ).toBe(1);
+    },
+  );
 });

@@ -140,6 +140,7 @@ const revision = {
   academicContentId: contentId,
   revisionNumber: 1,
   snapshotContractVersion: 1,
+  typeSpecificSnapshot: null,
   academicYearId: content.academicYearId,
   termId: content.termId,
   type: content.type,
@@ -629,6 +630,13 @@ describe('ACC-4B management HTTP security and transport', () => {
       document.components?.schemas?.AcademicContentDetailResponseDto;
     expect(JSON.stringify(detailSchema)).toContain('details');
     expect(JSON.stringify(detailSchema)).toContain('oneOf');
+    const revisionDetailSchema =
+      document.components?.schemas?.AcademicContentRevisionDetailDto;
+    expect(JSON.stringify(revisionDetailSchema)).toContain('details');
+    expect(JSON.stringify(revisionDetailSchema)).toContain('oneOf');
+    expect(JSON.stringify(revisionDetailSchema)).not.toContain(
+      'typeSpecificSnapshot',
+    );
     for (const [route, requestDto, responseDto] of [
       [
         'preparation',
@@ -1142,6 +1150,9 @@ describe('ACC-4B management HTTP security and transport', () => {
     const detail = await request(app.getHttpServer())
       .get(`${base}/${contentId}`)
       .expect(200);
+    expect(detail.headers['cache-control']).toBe(
+      'no-store, private, max-age=0',
+    );
     const detailBody = detail.body as {
       targets: Record<string, unknown>[];
       assets: Record<string, unknown>[];
@@ -1450,9 +1461,18 @@ describe('ACC-4B management HTTP security and transport', () => {
     });
     expect(detailBody.links[0]).toMatchObject(link);
     expect(detailBody.tags[0]).toMatchObject({ value: 'Algebra' });
+    expect(detail.body).toMatchObject({ details: null });
     expect(JSON.stringify(detail.body)).not.toMatch(
-      /schoolId|createdByUserId|capturedByUserId|normalizedValue|bucket|objectKey|identityFingerprint/,
+      /schoolId|createdByUserId|capturedByUserId|normalizedValue|bucket|objectKey|identityFingerprint|typeSpecificSnapshot/,
     );
+    await request(app.getHttpServer())
+      .get(`${base}/${contentId}/revisions/${revisionId}`)
+      .set('x-test-actor', 'viewOnly')
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`${base}/${contentId}/revisions/${revisionId}`)
+      .set('x-test-actor', 'school')
+      .expect(200);
     for (const actor of [
       'manageOnly',
       'teacher',
@@ -1474,6 +1494,12 @@ describe('ACC-4B management HTTP security and transport', () => {
     await request(app.getHttpServer())
       .get(`${base}/${contentId}/revisions/bad`)
       .expect(400);
+    services.revisionDetail.execute.mockRejectedValueOnce(
+      new NotFoundDomainException('Academic content revision not found'),
+    );
+    await request(app.getHttpServer())
+      .get(`${base}/${contentId}/revisions/${randomUUID()}`)
+      .expect(404);
     await request(app.getHttpServer())
       .post(`${base}/${contentId}/revisions`)
       .send({})
@@ -1485,6 +1511,46 @@ describe('ACC-4B management HTTP security and transport', () => {
     await request(app.getHttpServer())
       .delete(`${base}/${contentId}/revisions/${revisionId}`)
       .expect(404);
+  });
+
+  it('presents an authorized V2 Online Session snapshot without exposing raw JSON', async () => {
+    services.revisionDetail.execute.mockResolvedValueOnce({
+      ...revision,
+      snapshotContractVersion: 2,
+      type: AcademicContentType.ONLINE_SESSION,
+      typeSpecificSnapshot: {
+        type: AcademicContentType.ONLINE_SESSION,
+        state: {
+          platform: AcademicOnlineSessionPlatform.ZOOM,
+          providerName: null,
+          joinUrl: 'https://example.test/meeting',
+          accessCode: 'historical-code',
+          instructions: null,
+          startAt: '2028-09-10T10:00:00.000Z',
+          endAt: '2028-09-10T11:00:00.000Z',
+          timezone: 'Africa/Cairo',
+          timetableEntryId: null,
+          internalExtra: 'must stay private',
+        },
+      },
+    });
+    const response = await request(app.getHttpServer())
+      .get(`${base}/${contentId}/revisions/${revisionId}`)
+      .set('x-test-actor', 'viewOnly')
+      .expect(200);
+    expect(response.headers['cache-control']).toBe(
+      'no-store, private, max-age=0',
+    );
+    expect(response.body).toMatchObject({
+      snapshotContractVersion: 2,
+      details: {
+        joinUrl: 'https://example.test/meeting',
+        accessCode: 'historical-code',
+      },
+    });
+    expect(JSON.stringify(response.body)).not.toMatch(
+      /typeSpecificSnapshot|internalExtra/,
+    );
   });
 
   it('accepts only bounded pagination on revision history', async () => {

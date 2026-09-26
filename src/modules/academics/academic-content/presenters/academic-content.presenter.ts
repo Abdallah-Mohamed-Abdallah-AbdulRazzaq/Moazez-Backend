@@ -23,6 +23,8 @@ import {
   AcademicContentRevisionSummaryDto,
 } from '../dto/academic-content-revision-response.dto';
 import { AcademicContentRevisionDetail } from '../infrastructure/academic-content-revision.repository';
+import { InternalServerErrorException } from '@nestjs/common';
+import { decodeAcademicContentRevisionSnapshotV2 } from '../domain/academic-content-revision-snapshot';
 import { AcademicContentEffectiveFilePolicy } from '../files/domain/academic-content-file-policy';
 import { AcademicContentTargetInput } from '../domain/academic-content-target.policy';
 import { AcademicContentType, FileUploadSessionStatus } from '@prisma/client';
@@ -331,6 +333,40 @@ export function presentAcademicContentRevisionList(input: {
 export function presentAcademicContentRevisionDetail(
   revision: AcademicContentRevisionDetail,
 ): AcademicContentRevisionDetailDto {
+  let details: AcademicContentTypeDetailResponseDto | null = null;
+  if (
+    revision.snapshotContractVersion === 2 &&
+    revision.typeSpecificSnapshot !== null
+  ) {
+    const snapshot = decodeAcademicContentRevisionSnapshotV2(
+      revision.typeSpecificSnapshot,
+      revision.type,
+    );
+    switch (snapshot.type) {
+      case AcademicContentType.TEACHER_PREPARATION:
+        details = presentAcademicContentPreparationDetail(snapshot.state);
+        break;
+      case AcademicContentType.WEEKLY_PLAN:
+        details = presentAcademicContentWeeklyPlanDetail(snapshot.state);
+        break;
+      case AcademicContentType.GUARDIAN_WEEKLY_NOTE:
+        details = presentAcademicContentGuardianNoteDetail(snapshot.state);
+        break;
+      case AcademicContentType.SUBJECT_RESOURCE:
+        details = presentAcademicContentSubjectResourceDetail(snapshot.state);
+        break;
+      case AcademicContentType.ONLINE_SESSION:
+        details = presentAcademicContentOnlineSessionDetail(snapshot.state);
+        break;
+    }
+  } else if (
+    revision.snapshotContractVersion !== 1 &&
+    revision.snapshotContractVersion !== 2
+  ) {
+    throw new InternalServerErrorException(
+      'Academic content revision contract is invalid',
+    );
+  }
   return {
     ...presentAcademicContentRevisionSummary(revision),
     academicContentId: revision.academicContentId,
@@ -349,6 +385,7 @@ export function presentAcademicContentRevisionDetail(
     })),
     links: revision.links.map(presentAcademicContentLink),
     tags: revision.tags.map(presentAcademicContentTag),
+    details,
   };
 }
 

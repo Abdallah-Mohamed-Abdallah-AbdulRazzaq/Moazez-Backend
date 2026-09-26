@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiExtraModels, ApiProperty, getSchemaPath } from '@nestjs/swagger';
 import {
   AcademicContentAudienceType,
   AcademicContentStatus,
@@ -9,6 +9,22 @@ import {
   AcademicContentTagResponseDto,
   AcademicContentTargetResponseDto,
 } from './academic-content-response.dto';
+import {
+  AcademicContentGuardianNoteDetailResponseDto,
+  AcademicContentOnlineSessionDetailResponseDto,
+  AcademicContentPreparationDetailResponseDto,
+  AcademicContentSubjectResourceDetailResponseDto,
+  AcademicContentTypeDetailResponseDto,
+  AcademicContentWeeklyPlanDetailResponseDto,
+} from './academic-content-type-detail.dto';
+
+const detailSchemas = [
+  AcademicContentPreparationDetailResponseDto,
+  AcademicContentWeeklyPlanDetailResponseDto,
+  AcademicContentGuardianNoteDetailResponseDto,
+  AcademicContentSubjectResourceDetailResponseDto,
+  AcademicContentOnlineSessionDetailResponseDto,
+];
 
 export class AcademicContentRevisionSummaryDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
@@ -37,6 +53,7 @@ export class AcademicContentRevisionAssetDto {
   sizeBytes!: string;
 }
 
+@ApiExtraModels(...detailSchemas)
 export class AcademicContentRevisionDetailDto extends AcademicContentRevisionSummaryDto {
   @ApiProperty({ format: 'uuid' }) academicContentId!: string;
   @ApiProperty({ format: 'uuid' }) academicYearId!: string;
@@ -53,4 +70,11 @@ export class AcademicContentRevisionDetailDto extends AcademicContentRevisionSum
   links!: AcademicContentLinkResponseDto[];
   @ApiProperty({ type: () => AcademicContentTagResponseDto, isArray: true })
   tags!: AcademicContentTagResponseDto[];
+  @ApiProperty({
+    nullable: true,
+    oneOf: detailSchemas.map((detail) => ({ $ref: getSchemaPath(detail) })),
+    description:
+      'Immutable V2 type detail; null for V1, General Resource, or missing detail.',
+  })
+  details!: AcademicContentTypeDetailResponseDto | null;
 }
