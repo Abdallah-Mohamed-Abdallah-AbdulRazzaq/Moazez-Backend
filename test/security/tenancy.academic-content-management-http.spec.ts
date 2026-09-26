@@ -457,23 +457,35 @@ describe('ACC-4B management HTTP security and transport', () => {
       app,
       new DocumentBuilder().build(),
     );
-    expect(
-      Object.keys(document.paths).filter((path) => path.startsWith(base)),
-    ).toEqual(
-      expect.arrayContaining([
-        base,
-        `${base}/{contentId}`,
-        `${base}/{contentId}/targets`,
-        `${base}/{contentId}/links`,
-        `${base}/{contentId}/tags`,
-        `${base}/{contentId}/revisions`,
-        `${base}/{contentId}/revisions/{revisionId}`,
-        `${base}/{contentId}/uploads`,
-        `${base}/{contentId}/uploads/{uploadId}/complete`,
-        `${base}/{contentId}/uploads/{uploadId}/cancel`,
-        `${base}/{contentId}/assets/{assetId}`,
-        `${base}/settings/file-policy`,
-      ]),
+    const registeredRoutes = Object.entries(document.paths)
+      .filter(([path]) => path.startsWith(base))
+      .flatMap(([path, operations]) =>
+        Object.keys(operations)
+          .filter((method) => /^(get|post|put|patch|delete)$/u.test(method))
+          .map((method) => `${method.toUpperCase()} ${path}`),
+      )
+      .sort();
+    expect(registeredRoutes).toEqual(
+      [
+        `GET ${base}`,
+        `POST ${base}`,
+        `GET ${base}/{contentId}`,
+        `PATCH ${base}/{contentId}`,
+        `DELETE ${base}/{contentId}`,
+        `POST ${base}/{contentId}/archive`,
+        `POST ${base}/{contentId}/restore`,
+        `PUT ${base}/{contentId}/targets`,
+        `PUT ${base}/{contentId}/links`,
+        `PUT ${base}/{contentId}/tags`,
+        `GET ${base}/{contentId}/revisions`,
+        `GET ${base}/{contentId}/revisions/{revisionId}`,
+        `POST ${base}/{contentId}/uploads`,
+        `POST ${base}/{contentId}/uploads/{uploadId}/complete`,
+        `POST ${base}/{contentId}/uploads/{uploadId}/cancel`,
+        `DELETE ${base}/{contentId}/assets/{assetId}`,
+        `GET ${base}/settings/file-policy`,
+        `PATCH ${base}/settings/file-policy`,
+      ].sort(),
     );
     const accPaths = Object.keys(document.paths).filter((path) =>
       path.startsWith(base),

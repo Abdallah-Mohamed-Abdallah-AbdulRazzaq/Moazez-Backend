@@ -29,4 +29,17 @@ describe('ACC-3D Prisma boundary', () => {
       expect(source).not.toMatch(/infrastructure\/database\/prisma\.service/u);
     }
   });
+
+  it('keeps controllers, DTOs, presenters, and domain policy free of direct persistence access', () => {
+    const sourceRoot = join(__dirname, '../..');
+    for (const directory of ['controller', 'dto', 'presenters', 'domain']) {
+      for (const source of productionSources(join(sourceRoot, directory))) {
+        expect(source).not.toMatch(/PrismaService|Prisma\.TransactionClient/u);
+        expect(source).not.toMatch(/\$(?:queryRaw|executeRaw|transaction)/u);
+        expect(source).not.toMatch(
+          /infrastructure\/database\/prisma\.service/u,
+        );
+      }
+    }
+  });
 });
