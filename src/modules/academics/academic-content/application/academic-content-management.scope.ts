@@ -5,6 +5,7 @@ import { DomainException } from '../../../../common/exceptions/domain-exception'
 
 export type AcademicContentManagementPermission =
   | 'academics.academic_content.view'
+  | 'academics.academic_content.manage'
   | 'academics.academic_content.settings.manage';
 
 export function academicContentManagementScope(

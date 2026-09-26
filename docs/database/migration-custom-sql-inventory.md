@@ -216,6 +216,33 @@ rows have `archived_at` and every other status has null `archived_at`. Prisma
 cannot represent this cross-field predicate. Direct PostgreSQL protection is
 in `test/integration/academic-content-draft-lifecycle.integration.spec.ts`.
 
+## ACC-4C ordered authoring and revision checks
+
+`20260926002741_academic_content_links_tags_revisions` adds the required
+`academic_content_assets.sort_order` without assuming the table is empty. Its
+PostgreSQL `ROW_NUMBER()` backfill partitions by `(school_id,
+academic_content_id)` and orders **all** existing rows, including soft-deleted
+rows, by `(created_at, id)`. It assigns zero-based positions before setting the
+column `NOT NULL`. Prisma cannot express this deterministic data backfill.
+
+The migration adds these stable named PostgreSQL `CHECK` constraints, which
+Prisma schema cannot represent:
+
+| Constraint | Predicate |
+| --- | --- |
+| `academic_content_assets_sort_order_nonnegative_check` | `sort_order >= 0` |
+| `academic_content_links_sort_order_nonnegative_check` | `sort_order >= 0` |
+| `academic_content_tags_sort_order_nonnegative_check` | `sort_order >= 0` |
+| `academic_content_revisions_number_positive_check` | `revision_number >= 1` |
+| `academic_content_revisions_contract_version_positive_check` | `snapshot_contract_version >= 1` |
+| `academic_content_revision_assets_sort_order_nonnegative_check` | `sort_order >= 0` |
+| `academic_content_revision_links_sort_order_nonnegative_check` | `sort_order >= 0` |
+| `academic_content_revision_tags_sort_order_nonnegative_check` | `sort_order >= 0` |
+
+The remaining tables, unique indexes, foreign keys, and ordinary indexes are
+generated from `schema.prisma`. The new migration is append-only; historical
+migrations remain unchanged.
+
 ## Reviewed PostgreSQL-specific SQL that must not be copied
 
 - The 16 raw enum additions are historical transition mechanics. The final

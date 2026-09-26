@@ -383,7 +383,7 @@ export class UnlinkAcademicContentAssetUseCase {
       )
         throw new NotFoundDomainException('Academic asset not found');
       const asset = await tx.softDeleteAsset(command.assetId, new Date());
-      const remaining = await tx.countActiveAssets(
+      const remaining = await tx.countAcademicContentFileReferences(
         asset.fileId,
         scope.schoolId,
       );

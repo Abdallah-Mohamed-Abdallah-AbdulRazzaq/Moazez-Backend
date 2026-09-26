@@ -8,6 +8,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import {
+  DomainException,
   NotFoundDomainException,
   ValidationDomainException,
 } from '../../../../common/exceptions/domain-exception';
@@ -61,12 +62,21 @@ const ACADEMIC_CONTENT_DETAIL_ARGS =
         select: {
           id: true,
           fileId: true,
+          sortOrder: true,
           createdAt: true,
           file: {
             select: { originalName: true, mimeType: true, sizeBytes: true },
           },
         },
-        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+      },
+      links: {
+        select: { id: true, label: true, url: true, sortOrder: true },
+        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+      },
+      tags: {
+        select: { id: true, displayValue: true, sortOrder: true },
+        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
       },
     },
   });
@@ -218,6 +228,17 @@ export class AcademicContentRepository {
         });
         if (!term) throw new NotFoundDomainException('Term not found');
         assertAcademicContentTermWritable(term, input.now);
+      }
+      if (input.action === 'delete') {
+        const revisionCount = await tx.academicContentRevision.count({
+          where: { schoolId: input.schoolId, academicContentId: input.id },
+        });
+        if (revisionCount > 0)
+          throw new DomainException({
+            code: 'academic_content.revision_history',
+            message: 'Academic content with revision history cannot be deleted',
+            httpStatus: 409,
+          });
       }
       const changes = input.changes ?? {};
       if (

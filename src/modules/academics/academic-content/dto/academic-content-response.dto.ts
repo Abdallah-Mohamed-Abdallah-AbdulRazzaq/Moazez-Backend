@@ -46,7 +46,31 @@ export class AcademicContentAssetResponseDto {
   @ApiProperty() mimeType!: string;
   @ApiProperty({ type: String, description: 'Decimal bytes' })
   sizeBytes!: string;
+  @ApiProperty({ minimum: 0 }) sortOrder!: number;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
+}
+
+export class AcademicContentLinkResponseDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() label!: string;
+  @ApiProperty() url!: string;
+  @ApiProperty({ minimum: 0 }) sortOrder!: number;
+}
+
+export class AcademicContentTagResponseDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() value!: string;
+  @ApiProperty({ minimum: 0 }) sortOrder!: number;
+}
+
+export class AcademicContentLinksResponseDto {
+  @ApiProperty({ type: () => AcademicContentLinkResponseDto, isArray: true })
+  links!: AcademicContentLinkResponseDto[];
+}
+
+export class AcademicContentTagsResponseDto {
+  @ApiProperty({ type: () => AcademicContentTagResponseDto, isArray: true })
+  tags!: AcademicContentTagResponseDto[];
 }
 
 export class AcademicContentDetailResponseDto extends AcademicContentResponseDto {
@@ -54,6 +78,10 @@ export class AcademicContentDetailResponseDto extends AcademicContentResponseDto
   targets!: AcademicContentTargetResponseDto[];
   @ApiProperty({ type: () => AcademicContentAssetResponseDto, isArray: true })
   assets!: AcademicContentAssetResponseDto[];
+  @ApiProperty({ type: () => AcademicContentLinkResponseDto, isArray: true })
+  links!: AcademicContentLinkResponseDto[];
+  @ApiProperty({ type: () => AcademicContentTagResponseDto, isArray: true })
+  tags!: AcademicContentTagResponseDto[];
 }
 
 export class AcademicContentListResponseDto {

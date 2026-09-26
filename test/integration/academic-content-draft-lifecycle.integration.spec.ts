@@ -184,6 +184,7 @@ describeDatabase('ACC-4A real PostgreSQL lifecycle and aggregate races', () => {
         academicContentId: content.id,
         fileId: file.id,
         createdByUserId: ids.user,
+        sortOrder: 0,
       },
     });
     await expect(
@@ -430,6 +431,7 @@ describeDatabase('ACC-4A real PostgreSQL lifecycle and aggregate races', () => {
         academicContentId: content.id,
         fileId: file.id,
         createdByUserId: ids.user,
+        sortOrder: 0,
       },
     });
     const results = await Promise.allSettled([
@@ -508,6 +510,7 @@ describeDatabase('ACC-4A real PostgreSQL lifecycle and aggregate races', () => {
           academicContentId: draftCandidate.id,
           fileId: file.id,
           createdByUserId: ids.user,
+          sortOrder: 0,
         },
       });
       await expect(

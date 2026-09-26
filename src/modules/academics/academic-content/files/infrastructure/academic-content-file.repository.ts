@@ -71,7 +71,19 @@ export class AcademicContentFileRepository {
         assertAcademicContentTermWritable(term, now);
       },
       createFile: (data) => tx.file.create({ data }),
-      createAsset: (data) => tx.academicContentAsset.create({ data }),
+      createAsset: async (data) => {
+        const latest = await tx.academicContentAsset.aggregate({
+          where: {
+            schoolId: data.schoolId,
+            academicContentId: data.academicContentId,
+            deletedAt: null,
+          },
+          _max: { sortOrder: true },
+        });
+        return tx.academicContentAsset.create({
+          data: { ...data, sortOrder: (latest._max.sortOrder ?? -1) + 1 },
+        });
+      },
       recordCompletedAudit: async (input) => {
         await tx.auditLog.create({
           data: {
@@ -131,10 +143,15 @@ export class AcademicContentFileRepository {
           where: { id: assetId },
           data: { deletedAt },
         }),
-      countActiveAssets: (fileId, schoolId) =>
-        tx.academicContentAsset.count({
+      countAcademicContentFileReferences: async (fileId, schoolId) => {
+        const current = await tx.academicContentAsset.count({
           where: { schoolId, fileId, deletedAt: null },
-        }),
+        });
+        const historical = await tx.academicContentRevisionAsset.count({
+          where: { schoolId, fileId },
+        });
+        return current + historical;
+      },
       extendReadyCleanup: async (fileId, schoolId, eligibleAt) => {
         await tx.fileUploadSession.updateMany({
           where: {
@@ -486,7 +503,10 @@ export class AcademicContentFileRepository {
           {
             status: FileUploadSessionStatus.READY,
             file: {
-              is: { academicContentAssets: { none: { deletedAt: null } } },
+              is: {
+                academicContentAssets: { none: { deletedAt: null } },
+                academicContentRevisionAssets: { none: {} },
+              },
             },
           },
         ],

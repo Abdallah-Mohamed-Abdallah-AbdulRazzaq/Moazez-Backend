@@ -91,4 +91,20 @@ describe('schoolScope communication registration', () => {
     expect(SOFT_DELETE_MODELS.has('AcademicContentFilePolicy')).toBe(false);
     expect(SOFT_DELETE_MODELS.has('FileUploadSession')).toBe(false);
   });
+
+  it('registers ACC links, tags, and immutable revisions as School scoped', () => {
+    for (const model of [
+      'AcademicContentLink',
+      'AcademicContentTag',
+      'AcademicContentRevision',
+      'AcademicContentRevisionTarget',
+      'AcademicContentRevisionAsset',
+      'AcademicContentRevisionLink',
+      'AcademicContentRevisionTag',
+    ]) {
+      expect(SCHOOL_SCOPED_MODELS.has(model)).toBe(true);
+      expect(EXCLUDED_FROM_SCHOOL_SCOPE.has(model)).toBe(false);
+      expect(SOFT_DELETE_MODELS.has(model)).toBe(false);
+    }
+  });
 });

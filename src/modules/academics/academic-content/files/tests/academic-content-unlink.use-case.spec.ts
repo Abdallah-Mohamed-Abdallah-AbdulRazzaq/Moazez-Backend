@@ -27,7 +27,7 @@ describe('ACC asset unlink', () => {
     lockActiveFile: jest.fn().mockResolvedValue(true),
     lockActiveAsset: jest.fn().mockResolvedValue(true),
     softDeleteAsset: jest.fn().mockResolvedValue(asset),
-    countActiveAssets: jest.fn().mockResolvedValue(0),
+    countAcademicContentFileReferences: jest.fn().mockResolvedValue(0),
     extendReadyCleanup: jest.fn().mockResolvedValue(undefined),
   };
   const repository = {
@@ -54,7 +54,7 @@ describe('ACC asset unlink', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    tx.countActiveAssets.mockResolvedValue(0);
+    tx.countAcademicContentFileReferences.mockResolvedValue(0);
   });
 
   it('soft-deletes only the last link and starts at least seven days of orphan grace', async () => {
@@ -77,7 +77,7 @@ describe('ACC asset unlink', () => {
   });
 
   it('does not schedule orphan cleanup while another active asset remains', async () => {
-    tx.countActiveAssets.mockResolvedValue(1);
+    tx.countAcademicContentFileReferences.mockResolvedValue(1);
     await run();
     expect(tx.extendReadyCleanup).not.toHaveBeenCalled();
   });

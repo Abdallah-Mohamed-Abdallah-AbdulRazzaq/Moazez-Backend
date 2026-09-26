@@ -32,6 +32,22 @@ import { AcademicContentLifecycleUseCases } from '../application/academic-conten
 import { CreateAcademicContentUseCase } from '../application/create-academic-content.use-case';
 import { ReplaceAcademicContentTargetsUseCase } from '../application/replace-academic-content-targets.use-case';
 import {
+  ReplaceAcademicContentLinksUseCase,
+  ReplaceAcademicContentTagsUseCase,
+} from '../application/replace-academic-content-links-tags.use-cases';
+import {
+  GetAcademicContentRevisionUseCase,
+  ListAcademicContentRevisionsUseCase,
+} from '../application/academic-content-revision.use-cases';
+import {
+  ReplaceAcademicContentLinksDto,
+  ReplaceAcademicContentTagsDto,
+} from '../dto/academic-content-links-tags.dto';
+import {
+  AcademicContentRevisionDetailDto,
+  AcademicContentRevisionListDto,
+} from '../dto/academic-content-revision-response.dto';
+import {
   CancelAcademicContentUploadUseCase,
   CompleteAcademicContentUploadUseCase,
   CreateAcademicContentUploadUseCase,
@@ -51,6 +67,8 @@ import {
   AcademicContentListResponseDto,
   AcademicContentResponseDto,
   AcademicContentTargetsResponseDto,
+  AcademicContentLinksResponseDto,
+  AcademicContentTagsResponseDto,
   AcademicContentUploadCancelResponseDto,
   AcademicContentUploadCompleteResponseDto,
   AcademicContentUploadIntentResponseDto,
@@ -60,6 +78,10 @@ import {
   presentAcademicContentDetail,
   presentAcademicContentList,
   presentAcademicContentTargets,
+  presentAcademicContentLinks,
+  presentAcademicContentTags,
+  presentAcademicContentRevisionList,
+  presentAcademicContentRevisionDetail,
   presentAcademicContentUploadCancel,
   presentAcademicContentUploadComplete,
   presentAcademicContentUploadIntent,
@@ -76,6 +98,10 @@ export class AcademicContentController {
     private readonly getContent: GetAcademicContentForManagementUseCase,
     private readonly lifecycle: AcademicContentLifecycleUseCases,
     private readonly replaceTargets: ReplaceAcademicContentTargetsUseCase,
+    private readonly replaceLinks: ReplaceAcademicContentLinksUseCase,
+    private readonly replaceTags: ReplaceAcademicContentTagsUseCase,
+    private readonly listRevisions: ListAcademicContentRevisionsUseCase,
+    private readonly getRevision: GetAcademicContentRevisionUseCase,
     private readonly createUpload: CreateAcademicContentUploadUseCase,
     private readonly completeUpload: CompleteAcademicContentUploadUseCase,
     private readonly cancelUpload: CancelAcademicContentUploadUseCase,
@@ -177,6 +203,65 @@ export class AcademicContentController {
   ): Promise<AcademicContentTargetsResponseDto> {
     return presentAcademicContentTargets(
       await this.replaceTargets.execute(contentId, dto.targets),
+    );
+  }
+
+  @Put(':contentId/links')
+  @RequiredPermissions('academics.academic_content.manage')
+  @ApiOperation({ summary: 'Replace ordered Academic Content links' })
+  @ApiParam({ name: 'contentId', format: 'uuid' })
+  @ApiBody({ type: ReplaceAcademicContentLinksDto })
+  @ApiOkResponse({ type: AcademicContentLinksResponseDto })
+  async links(
+    @Param('contentId', new ParseUUIDPipe()) contentId: string,
+    @Body() dto: ReplaceAcademicContentLinksDto,
+  ): Promise<AcademicContentLinksResponseDto> {
+    return presentAcademicContentLinks(
+      await this.replaceLinks.execute(contentId, dto.links),
+    );
+  }
+
+  @Put(':contentId/tags')
+  @RequiredPermissions('academics.academic_content.manage')
+  @ApiOperation({ summary: 'Replace ordered Academic Content tags' })
+  @ApiParam({ name: 'contentId', format: 'uuid' })
+  @ApiBody({ type: ReplaceAcademicContentTagsDto })
+  @ApiOkResponse({ type: AcademicContentTagsResponseDto })
+  async tags(
+    @Param('contentId', new ParseUUIDPipe()) contentId: string,
+    @Body() dto: ReplaceAcademicContentTagsDto,
+  ): Promise<AcademicContentTagsResponseDto> {
+    return presentAcademicContentTags(
+      await this.replaceTags.execute(contentId, dto.tags),
+    );
+  }
+
+  @Get(':contentId/revisions')
+  @RequiredPermissions('academics.academic_content.view')
+  @ApiOperation({ summary: 'List Academic Content revision history' })
+  @ApiParam({ name: 'contentId', format: 'uuid' })
+  @ApiOkResponse({ type: AcademicContentRevisionListDto })
+  async revisions(
+    @Param('contentId', new ParseUUIDPipe()) contentId: string,
+    @Query() query: ListAcademicContentQueryDto,
+  ): Promise<AcademicContentRevisionListDto> {
+    return presentAcademicContentRevisionList(
+      await this.listRevisions.execute(contentId, query),
+    );
+  }
+
+  @Get(':contentId/revisions/:revisionId')
+  @RequiredPermissions('academics.academic_content.view')
+  @ApiOperation({ summary: 'Read an immutable Academic Content revision' })
+  @ApiParam({ name: 'contentId', format: 'uuid' })
+  @ApiParam({ name: 'revisionId', format: 'uuid' })
+  @ApiOkResponse({ type: AcademicContentRevisionDetailDto })
+  async revisionDetail(
+    @Param('contentId', new ParseUUIDPipe()) contentId: string,
+    @Param('revisionId', new ParseUUIDPipe()) revisionId: string,
+  ): Promise<AcademicContentRevisionDetailDto> {
+    return presentAcademicContentRevisionDetail(
+      await this.getRevision.execute(contentId, revisionId),
     );
   }
 

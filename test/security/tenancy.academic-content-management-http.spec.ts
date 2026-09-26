@@ -30,6 +30,14 @@ import {
 import { AcademicContentLifecycleUseCases } from '../../src/modules/academics/academic-content/application/academic-content-lifecycle.use-cases';
 import { CreateAcademicContentUseCase } from '../../src/modules/academics/academic-content/application/create-academic-content.use-case';
 import { ReplaceAcademicContentTargetsUseCase } from '../../src/modules/academics/academic-content/application/replace-academic-content-targets.use-case';
+import {
+  ReplaceAcademicContentLinksUseCase,
+  ReplaceAcademicContentTagsUseCase,
+} from '../../src/modules/academics/academic-content/application/replace-academic-content-links-tags.use-cases';
+import {
+  GetAcademicContentRevisionUseCase,
+  ListAcademicContentRevisionsUseCase,
+} from '../../src/modules/academics/academic-content/application/academic-content-revision.use-cases';
 import { AcademicContentController } from '../../src/modules/academics/academic-content/controller/academic-content.controller';
 import { AcademicContentFilePolicyController } from '../../src/modules/academics/academic-content/controller/academic-content-file-policy.controller';
 import {
@@ -51,6 +59,7 @@ const contentId = randomUUID();
 const uploadId = randomUUID();
 const assetId = randomUUID();
 const fileId = randomUUID();
+const revisionId = randomUUID();
 const now = new Date('2030-09-15T12:00:00.000Z');
 const secret = 'https://provider.example/upload?secret=capability';
 const permissions = [
@@ -108,6 +117,39 @@ const policy = {
   allowGuardianDownload: true,
   allowInlinePreview: true,
 };
+const link = {
+  id: randomUUID(),
+  label: 'Reference',
+  url: 'https://example.test/ref',
+  sortOrder: 0,
+};
+const tag = {
+  id: randomUUID(),
+  displayValue: 'Algebra',
+  normalizedValue: 'algebra',
+  sortOrder: 0,
+};
+const revision = {
+  id: revisionId,
+  schoolId,
+  academicContentId: contentId,
+  revisionNumber: 1,
+  snapshotContractVersion: 1,
+  academicYearId: content.academicYearId,
+  termId: content.termId,
+  type: content.type,
+  audience: content.audience,
+  title: content.title,
+  description: null,
+  sourceStatus: AcademicContentStatus.DRAFT,
+  capturedByUserId: actorId,
+  capturedAt: now,
+  createdAt: now,
+  targets: [target],
+  assets: [{ id: randomUUID(), fileId, sortOrder: 0, file }],
+  links: [link],
+  tags: [tag],
+};
 
 const services = {
   create: { execute: jest.fn() },
@@ -120,6 +162,10 @@ const services = {
     delete: jest.fn(),
   },
   targets: { execute: jest.fn() },
+  links: { execute: jest.fn() },
+  tags: { execute: jest.fn() },
+  revisionList: { execute: jest.fn() },
+  revisionDetail: { execute: jest.fn() },
   uploadIntent: { execute: jest.fn() },
   uploadComplete: { execute: jest.fn() },
   uploadCancel: { execute: jest.fn() },
@@ -155,6 +201,19 @@ describe('ACC-4B management HTTP security and transport', () => {
         {
           provide: ReplaceAcademicContentTargetsUseCase,
           useValue: services.targets,
+        },
+        {
+          provide: ReplaceAcademicContentLinksUseCase,
+          useValue: services.links,
+        },
+        { provide: ReplaceAcademicContentTagsUseCase, useValue: services.tags },
+        {
+          provide: ListAcademicContentRevisionsUseCase,
+          useValue: services.revisionList,
+        },
+        {
+          provide: GetAcademicContentRevisionUseCase,
+          useValue: services.revisionDetail,
         },
         {
           provide: CreateAcademicContentUploadUseCase,
@@ -250,7 +309,9 @@ describe('ACC-4B management HTTP security and transport', () => {
     services.detail.execute.mockResolvedValue({
       ...content,
       targets: [target],
-      assets: [{ id: assetId, fileId, createdAt: now, file }],
+      assets: [{ id: assetId, fileId, sortOrder: 0, createdAt: now, file }],
+      links: [],
+      tags: [],
     });
     services.lifecycle.update.mockResolvedValue(content);
     services.lifecycle.archive.mockResolvedValue({
@@ -261,6 +322,15 @@ describe('ACC-4B management HTTP security and transport', () => {
     services.lifecycle.restore.mockResolvedValue(content);
     services.lifecycle.delete.mockResolvedValue({ ...content, deletedAt: now });
     services.targets.execute.mockResolvedValue([target]);
+    services.links.execute.mockResolvedValue([link]);
+    services.tags.execute.mockResolvedValue([tag]);
+    services.revisionList.execute.mockResolvedValue({
+      items: [revision],
+      page: 1,
+      limit: 50,
+      total: 1,
+    });
+    services.revisionDetail.execute.mockResolvedValue(revision);
     services.uploadIntent.execute.mockResolvedValue({
       uploadId,
       status: FileUploadSessionStatus.UPLOADING,
@@ -336,6 +406,18 @@ describe('ACC-4B management HTTP security and transport', () => {
     route('archive', ':contentId/archive', 'academics.academic_content.manage');
     route('restore', ':contentId/restore', 'academics.academic_content.manage');
     route('targets', ':contentId/targets', 'academics.academic_content.manage');
+    route('links', ':contentId/links', 'academics.academic_content.manage');
+    route('tags', ':contentId/tags', 'academics.academic_content.manage');
+    route(
+      'revisions',
+      ':contentId/revisions',
+      'academics.academic_content.view',
+    );
+    route(
+      'revisionDetail',
+      ':contentId/revisions/:revisionId',
+      'academics.academic_content.view',
+    );
     route(
       'uploadIntent',
       ':contentId/uploads',
@@ -382,6 +464,10 @@ describe('ACC-4B management HTTP security and transport', () => {
         base,
         `${base}/{contentId}`,
         `${base}/{contentId}/targets`,
+        `${base}/{contentId}/links`,
+        `${base}/{contentId}/tags`,
+        `${base}/{contentId}/revisions`,
+        `${base}/{contentId}/revisions/{revisionId}`,
         `${base}/{contentId}/uploads`,
         `${base}/{contentId}/uploads/{uploadId}/complete`,
         `${base}/{contentId}/uploads/{uploadId}/cancel`,
@@ -697,5 +783,140 @@ describe('ACC-4B management HTTP security and transport', () => {
         .send({ maximumFileSizeBytes })
         .expect(400);
     }
+  });
+
+  it('validates ordered link and tag replacement bodies and presents safe values', async () => {
+    const links = await request(app.getHttpServer())
+      .put(`${base}/${contentId}/links`)
+      .send({
+        links: [{ label: 'Reference', url: 'https://example.test/ref' }],
+      })
+      .expect(200);
+    expect(links.body).toEqual({ links: [link] });
+    expect(services.links.execute).toHaveBeenCalledWith(contentId, [
+      { label: 'Reference', url: 'https://example.test/ref' },
+    ]);
+    const tags = await request(app.getHttpServer())
+      .put(`${base}/${contentId}/tags`)
+      .send({ tags: [{ value: 'Algebra' }] })
+      .expect(200);
+    expect(tags.body).toEqual({
+      tags: [{ id: tag.id, value: 'Algebra', sortOrder: 0 }],
+    });
+    for (const [route, body] of [
+      [
+        'links',
+        {
+          links: [
+            { label: 'Reference', url: 'https://example.test', schoolId },
+          ],
+        },
+      ],
+      [
+        'links',
+        {
+          links: [
+            { label: 'Reference', url: 'https://example.test', sortOrder: 9 },
+          ],
+        },
+      ],
+      ['tags', { tags: [{ value: 'Algebra', normalizedValue: 'algebra' }] }],
+      ['tags', { tags: [{ value: 'Algebra', id: randomUUID() }] }],
+    ] as const) {
+      await request(app.getHttpServer())
+        .put(`${base}/${contentId}/${route}`)
+        .send(body)
+        .expect(400);
+    }
+    await request(app.getHttpServer())
+      .put(`${base}/bad/links`)
+      .send({ links: [] })
+      .expect(400);
+    await request(app.getHttpServer())
+      .put(`${base}/bad/tags`)
+      .send({ tags: [] })
+      .expect(400);
+    for (const actor of [
+      'viewOnly',
+      'teacher',
+      'student',
+      'parent',
+      'applicant',
+      'missing',
+    ]) {
+      await request(app.getHttpServer())
+        .put(`${base}/${contentId}/links`)
+        .set('x-test-actor', actor)
+        .send({ links: [] })
+        .expect(403);
+      await request(app.getHttpServer())
+        .put(`${base}/${contentId}/tags`)
+        .set('x-test-actor', actor)
+        .send({ tags: [] })
+        .expect(403);
+    }
+  });
+
+  it('exposes read-only revision history with view permission and safe BigInt output', async () => {
+    const list = await request(app.getHttpServer())
+      .get(`${base}/${contentId}/revisions`)
+      .set('x-test-actor', 'viewOnly')
+      .expect(200);
+    const listBody = list.body as { items: Record<string, unknown>[] };
+    expect(listBody.items[0]).toMatchObject({
+      revisionNumber: 1,
+      snapshotContractVersion: 1,
+    });
+    const detail = await request(app.getHttpServer())
+      .get(`${base}/${contentId}/revisions/${revisionId}`)
+      .set('x-test-actor', 'organization')
+      .expect(200);
+    const detailBody = detail.body as {
+      assets: Record<string, unknown>[];
+      links: Record<string, unknown>[];
+      tags: Record<string, unknown>[];
+    };
+    expect(detailBody.assets[0]).toMatchObject({
+      fileId,
+      sizeBytes: '123',
+      sortOrder: 0,
+    });
+    expect(detailBody.links[0]).toMatchObject(link);
+    expect(detailBody.tags[0]).toMatchObject({ value: 'Algebra' });
+    expect(JSON.stringify(detail.body)).not.toMatch(
+      /schoolId|createdByUserId|capturedByUserId|normalizedValue|bucket|objectKey|identityFingerprint/,
+    );
+    for (const actor of [
+      'manageOnly',
+      'teacher',
+      'student',
+      'parent',
+      'applicant',
+      'missing',
+    ]) {
+      await request(app.getHttpServer())
+        .get(`${base}/${contentId}/revisions`)
+        .set('x-test-actor', actor)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${base}/${contentId}/revisions/${revisionId}`)
+        .set('x-test-actor', actor)
+        .expect(403);
+    }
+    await request(app.getHttpServer()).get(`${base}/bad/revisions`).expect(400);
+    await request(app.getHttpServer())
+      .get(`${base}/${contentId}/revisions/bad`)
+      .expect(400);
+    await request(app.getHttpServer())
+      .post(`${base}/${contentId}/revisions`)
+      .send({})
+      .expect(404);
+    await request(app.getHttpServer())
+      .patch(`${base}/${contentId}/revisions/${revisionId}`)
+      .send({})
+      .expect(404);
+    await request(app.getHttpServer())
+      .delete(`${base}/${contentId}/revisions/${revisionId}`)
+      .expect(404);
   });
 });
