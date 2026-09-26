@@ -12,7 +12,7 @@ The original ACC-4 base is `8160f6c8d8619c6accb6c188db486b215ee23eda`. The fetch
 | ACC-4B | #143 | `6f174925ac1d5beaa1ccceb0d941cbe5144b63ec` |
 | ACC-4C | #144 | `0fc084126c798c35599b5fbbcce35b864450c7ff` |
 | ACC-4D | #145 | `457b651bdbc4c7391deba7f5251dceba054e71ed` |
-| ACC-4E | Draft PR, linked from the final handoff | Pending owner merge |
+| ACC-4E | #146 (Draft) | Pending owner merge |
 
 `FINAL_ACC_4_MERGE_SHA=PENDING_OWNER_MERGE`; `FINAL_EXACT_MAIN_CI=PENDING_OWNER_MERGE`. The last pre-ACC-4E exact-main CI was run `36239910358`, PASS, with 35 jobs, 26 regression shards, 897 discovered and executed, and zero missing, duplicate, or unexpected tests. These are historical observations, not acceptance constants. The ACC-4E candidate requires a new exact-head run; its run ID and dynamic inventory belong in the final PR handoff.
 
