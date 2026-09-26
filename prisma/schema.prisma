@@ -1195,6 +1195,38 @@ enum AcademicContentType {
   @@map("academic_content_type")
 }
 
+enum AcademicGuardianNotePriority {
+  NORMAL
+  IMPORTANT
+  URGENT
+
+  @@map("academic_guardian_note_priority")
+}
+
+enum AcademicSubjectResourceCategory {
+  WORKSHEET
+  PRESENTATION
+  REFERENCE
+  REVISION
+  ACTIVITY
+  EXAM_PREPARATION
+  VIDEO
+  DOCUMENT
+  OTHER
+
+  @@map("academic_subject_resource_category")
+}
+
+enum AcademicOnlineSessionPlatform {
+  GOOGLE_MEET
+  ZOOM
+  MICROSOFT_TEAMS
+  WEBEX
+  OTHER
+
+  @@map("academic_online_session_platform")
+}
+
 enum AcademicContentStatus {
   DRAFT
   SUBMITTED
@@ -1405,154 +1437,161 @@ model School {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
-  memberships                           Membership[]
-  roles                                 Role[]
-  schoolProfile                         SchoolProfile?
-  dismissalSettings                     DismissalSettings?
-  dismissalGates                        DismissalGate[]
-  dismissalStaffAssignments             DismissalStaffAssignment[]
-  dismissalRequests                     DismissalRequest[]
-  dismissalRequestEvents                DismissalRequestEvent[]
-  entitlement                           SchoolEntitlement?
-  featureControls                       SchoolFeatureControl[]
-  securitySetting                       SecuritySetting?
-  schoolLoginSettings                   SchoolLoginSettings?
-  schoolEmailConnection                 SchoolEmailConnection?
-  schoolEmailTemplates                  SchoolEmailTemplate[]
-  schoolEmailDeliveryBatches            SchoolEmailDeliveryBatch[]
-  schoolEmailDeliveryRecipients         SchoolEmailDeliveryRecipient[]
-  notificationTemplates                 NotificationTemplate[]
-  notificationTemplateChannelStates     NotificationTemplateChannelState[]
-  integrationConnections                IntegrationConnection[]
-  backupJobs                            BackupJob[]
-  academicYears                         AcademicYear[]
-  terms                                 Term[]
-  stages                                Stage[]
-  grades                                Grade[]
-  sections                              Section[]
-  classrooms                            Classroom[]
-  subjects                              Subject[]
-  subjectAllocations                    SubjectAllocation[]
-  teacherSubjectAllocations             TeacherSubjectAllocation[]
-  teacherProfiles                       TeacherProfile[]
-  rooms                                 Room[]
-  academicContents                      AcademicContent[]
-  academicContentTargets                AcademicContentTarget[]
-  academicContentAssets                 AcademicContentAsset[]
-  academicContentLinks                  AcademicContentLink[]
-  academicContentTags                   AcademicContentTag[]
-  academicContentRevisions              AcademicContentRevision[]
-  academicContentRevisionTargets        AcademicContentRevisionTarget[]
-  academicContentRevisionAssets         AcademicContentRevisionAsset[]
-  academicContentRevisionLinks          AcademicContentRevisionLink[]
-  academicContentRevisionTags           AcademicContentRevisionTag[]
-  academicContentFilePolicy             AcademicContentFilePolicy?
-  academicCalendarEvents                AcademicCalendarEvent[]
-  curricula                             Curriculum[]
-  curriculumUnits                       CurriculumUnit[]
-  curriculumLessons                     CurriculumLesson[]
-  lessonContentItems                    LessonContentItem[]
-  lessonPlans                           LessonPlan[]
-  lessonPlanItems                       LessonPlanItem[]
-  timetableConfigs                      TimetableConfig[]
-  timetablePeriods                      TimetablePeriod[]
-  timetableEntries                      TimetableEntry[]
-  timetablePublications                 TimetablePublication[]
-  timetableConflicts                    TimetableConflict[]
-  attachments                           Attachment[]
-  importJobs                            ImportJob[]
-  auditLogs                             AuditLog[]
-  files                                 File[]
-  fileUploadSessions                    FileUploadSession[]
-  leads                                 Lead[]
-  applications                          Application[]
-  applicantAdmissionRequests            ApplicantAdmissionRequest[]
-  applicantAdmissionRequestDocuments    ApplicantAdmissionRequestDocument[]
-  admissionRequiredDocuments            AdmissionRequiredDocument[]
-  admissionWorkflowPolicy               AdmissionWorkflowPolicy?
-  applicationDocuments                  ApplicationDocument[]
-  placementTests                        PlacementTest[]
-  interviews                            Interview[]
-  admissionDecisions                    AdmissionDecision[]
-  students                              Student[]
-  guardians                             Guardian[]
-  studentGuardians                      StudentGuardian[]
-  enrollments                           Enrollment[]
-  studentBulkRegistrationBatches        StudentBulkRegistrationBatch[]
-  studentBulkRegistrationRows           StudentBulkRegistrationRow[]
-  studentCredentialBatches              StudentCredentialBatch[]
-  studentCredentialRows                 StudentCredentialRow[]
-  studentDocuments                      StudentDocument[]
-  studentProfileCorrectionRequests      StudentProfileCorrectionRequest[]
-  studentMedicalProfiles                StudentMedicalProfile[]
-  studentNotes                          StudentNote[]
-  attendancePolicies                    AttendancePolicy[]
-  attendanceSessions                    AttendanceSession[]
-  attendanceEntries                     AttendanceEntry[]
-  attendanceExcuseRequests              AttendanceExcuseRequest[]
-  attendanceExcuseRequestSessions       AttendanceExcuseRequestSession[]
-  gradeAssessments                      GradeAssessment[]
-  gradeAssessmentQuestions              GradeAssessmentQuestion[]
-  gradeAssessmentQuestionOptions        GradeAssessmentQuestionOption[]
-  gradeSubmissions                      GradeSubmission[]
-  gradeSubmissionAnswers                GradeSubmissionAnswer[]
-  gradeSubmissionAnswerOptions          GradeSubmissionAnswerOption[]
-  gradeItems                            GradeItem[]
-  gradeRules                            GradeRule[]
-  homeworkAssignments                   HomeworkAssignment[]
-  homeworkTargets                       HomeworkTarget[]
-  homeworkSubmissions                   HomeworkSubmission[]
-  homeworkSubmissionAnswers             HomeworkSubmissionAnswer[]
-  homeworkSubmissionAttachments         HomeworkSubmissionAttachment[]
-  homeworkQuestions                     HomeworkQuestion[]
-  homeworkQuestionOptions               HomeworkQuestionOption[]
-  homeworkAssignmentAttachments         HomeworkAssignmentAttachment[]
-  reinforcementTasks                    ReinforcementTask[]
-  reinforcementTaskTargets              ReinforcementTaskTarget[]
-  reinforcementTaskStages               ReinforcementTaskStage[]
-  reinforcementAssignments              ReinforcementAssignment[]
-  reinforcementSubmissions              ReinforcementSubmission[]
-  reinforcementReviews                  ReinforcementReview[]
-  reinforcementTaskTemplates            ReinforcementTaskTemplate[]
-  reinforcementTaskTemplateStages       ReinforcementTaskTemplateStage[]
-  xpPolicies                            XpPolicy[]
-  xpLedgers                             XpLedger[]
-  heroBadges                            HeroBadge[]
-  heroMissions                          HeroMission[]
-  heroMissionObjectives                 HeroMissionObjective[]
-  heroMissionProgress                   HeroMissionProgress[]
-  heroMissionObjectiveProgress          HeroMissionObjectiveProgress[]
-  heroStudentBadges                     HeroStudentBadge[]
-  heroJourneyEvents                     HeroJourneyEvent[]
-  rewardCatalogItems                    RewardCatalogItem[]
-  rewardRedemptions                     RewardRedemption[]
-  behaviorCategories                    BehaviorCategory[]
-  behaviorRecords                       BehaviorRecord[]
-  behaviorPointLedgerEntries            BehaviorPointLedger[]
-  communicationPolicy                   CommunicationPolicy?
-  communicationConversations            CommunicationConversation[]
-  communicationConversationParticipants CommunicationConversationParticipant[]
-  communicationConversationInvites      CommunicationConversationInvite[]
-  communicationConversationJoinRequests CommunicationConversationJoinRequest[]
-  communicationMessages                 CommunicationMessage[]
-  communicationMessageReads             CommunicationMessageRead[]
-  communicationMessageDeliveries        CommunicationMessageDelivery[]
-  communicationMessageReactions         CommunicationMessageReaction[]
-  communicationMessageAttachments       CommunicationMessageAttachment[]
-  communicationMessageReports           CommunicationMessageReport[]
-  communicationModerationActions        CommunicationModerationAction[]
-  communicationUserBlocks               CommunicationUserBlock[]
-  communicationUserRestrictions         CommunicationUserRestriction[]
-  communicationAnnouncements            CommunicationAnnouncement[]
-  communicationAnnouncementAudiences    CommunicationAnnouncementAudience[]
-  communicationAnnouncementReads        CommunicationAnnouncementRead[]
-  communicationAnnouncementAttachments  CommunicationAnnouncementAttachment[]
-  communicationNotifications            CommunicationNotification[]
-  communicationNotificationDeliveries   CommunicationNotificationDelivery[]
-  communicationNotificationPushAttempts CommunicationNotificationPushAttempt[]
-  communicationNotificationPreferences  CommunicationNotificationPreference[]
-  appDeviceTokens                       AppDeviceToken[]
-  dashboardTodos                        DashboardTodo[]
+  memberships                                   Membership[]
+  roles                                         Role[]
+  schoolProfile                                 SchoolProfile?
+  dismissalSettings                             DismissalSettings?
+  dismissalGates                                DismissalGate[]
+  dismissalStaffAssignments                     DismissalStaffAssignment[]
+  dismissalRequests                             DismissalRequest[]
+  dismissalRequestEvents                        DismissalRequestEvent[]
+  entitlement                                   SchoolEntitlement?
+  featureControls                               SchoolFeatureControl[]
+  securitySetting                               SecuritySetting?
+  schoolLoginSettings                           SchoolLoginSettings?
+  schoolEmailConnection                         SchoolEmailConnection?
+  schoolEmailTemplates                          SchoolEmailTemplate[]
+  schoolEmailDeliveryBatches                    SchoolEmailDeliveryBatch[]
+  schoolEmailDeliveryRecipients                 SchoolEmailDeliveryRecipient[]
+  notificationTemplates                         NotificationTemplate[]
+  notificationTemplateChannelStates             NotificationTemplateChannelState[]
+  integrationConnections                        IntegrationConnection[]
+  backupJobs                                    BackupJob[]
+  academicYears                                 AcademicYear[]
+  terms                                         Term[]
+  stages                                        Stage[]
+  grades                                        Grade[]
+  sections                                      Section[]
+  classrooms                                    Classroom[]
+  subjects                                      Subject[]
+  subjectAllocations                            SubjectAllocation[]
+  teacherSubjectAllocations                     TeacherSubjectAllocation[]
+  teacherProfiles                               TeacherProfile[]
+  rooms                                         Room[]
+  academicContents                              AcademicContent[]
+  academicContentTargets                        AcademicContentTarget[]
+  academicContentAssets                         AcademicContentAsset[]
+  academicContentLinks                          AcademicContentLink[]
+  academicContentTags                           AcademicContentTag[]
+  academicContentRevisions                      AcademicContentRevision[]
+  academicContentRevisionTargets                AcademicContentRevisionTarget[]
+  academicContentRevisionAssets                 AcademicContentRevisionAsset[]
+  academicContentRevisionLinks                  AcademicContentRevisionLink[]
+  academicContentRevisionTags                   AcademicContentRevisionTag[]
+  academicContentPreparationDetails             AcademicContentPreparationDetail[]
+  academicContentWeeklyPlanDetails              AcademicContentWeeklyPlanDetail[]
+  academicContentGuardianNoteDetails            AcademicContentGuardianNoteDetail[]
+  academicContentSubjectResourceDetails         AcademicContentSubjectResourceDetail[]
+  academicContentOnlineSessionDetails           AcademicContentOnlineSessionDetail[]
+  academicContentWeeklyPlanHomeworkReferences   AcademicContentWeeklyPlanHomeworkReference[]
+  academicContentWeeklyPlanAssessmentReferences AcademicContentWeeklyPlanAssessmentReference[]
+  academicContentFilePolicy                     AcademicContentFilePolicy?
+  academicCalendarEvents                        AcademicCalendarEvent[]
+  curricula                                     Curriculum[]
+  curriculumUnits                               CurriculumUnit[]
+  curriculumLessons                             CurriculumLesson[]
+  lessonContentItems                            LessonContentItem[]
+  lessonPlans                                   LessonPlan[]
+  lessonPlanItems                               LessonPlanItem[]
+  timetableConfigs                              TimetableConfig[]
+  timetablePeriods                              TimetablePeriod[]
+  timetableEntries                              TimetableEntry[]
+  timetablePublications                         TimetablePublication[]
+  timetableConflicts                            TimetableConflict[]
+  attachments                                   Attachment[]
+  importJobs                                    ImportJob[]
+  auditLogs                                     AuditLog[]
+  files                                         File[]
+  fileUploadSessions                            FileUploadSession[]
+  leads                                         Lead[]
+  applications                                  Application[]
+  applicantAdmissionRequests                    ApplicantAdmissionRequest[]
+  applicantAdmissionRequestDocuments            ApplicantAdmissionRequestDocument[]
+  admissionRequiredDocuments                    AdmissionRequiredDocument[]
+  admissionWorkflowPolicy                       AdmissionWorkflowPolicy?
+  applicationDocuments                          ApplicationDocument[]
+  placementTests                                PlacementTest[]
+  interviews                                    Interview[]
+  admissionDecisions                            AdmissionDecision[]
+  students                                      Student[]
+  guardians                                     Guardian[]
+  studentGuardians                              StudentGuardian[]
+  enrollments                                   Enrollment[]
+  studentBulkRegistrationBatches                StudentBulkRegistrationBatch[]
+  studentBulkRegistrationRows                   StudentBulkRegistrationRow[]
+  studentCredentialBatches                      StudentCredentialBatch[]
+  studentCredentialRows                         StudentCredentialRow[]
+  studentDocuments                              StudentDocument[]
+  studentProfileCorrectionRequests              StudentProfileCorrectionRequest[]
+  studentMedicalProfiles                        StudentMedicalProfile[]
+  studentNotes                                  StudentNote[]
+  attendancePolicies                            AttendancePolicy[]
+  attendanceSessions                            AttendanceSession[]
+  attendanceEntries                             AttendanceEntry[]
+  attendanceExcuseRequests                      AttendanceExcuseRequest[]
+  attendanceExcuseRequestSessions               AttendanceExcuseRequestSession[]
+  gradeAssessments                              GradeAssessment[]
+  gradeAssessmentQuestions                      GradeAssessmentQuestion[]
+  gradeAssessmentQuestionOptions                GradeAssessmentQuestionOption[]
+  gradeSubmissions                              GradeSubmission[]
+  gradeSubmissionAnswers                        GradeSubmissionAnswer[]
+  gradeSubmissionAnswerOptions                  GradeSubmissionAnswerOption[]
+  gradeItems                                    GradeItem[]
+  gradeRules                                    GradeRule[]
+  homeworkAssignments                           HomeworkAssignment[]
+  homeworkTargets                               HomeworkTarget[]
+  homeworkSubmissions                           HomeworkSubmission[]
+  homeworkSubmissionAnswers                     HomeworkSubmissionAnswer[]
+  homeworkSubmissionAttachments                 HomeworkSubmissionAttachment[]
+  homeworkQuestions                             HomeworkQuestion[]
+  homeworkQuestionOptions                       HomeworkQuestionOption[]
+  homeworkAssignmentAttachments                 HomeworkAssignmentAttachment[]
+  reinforcementTasks                            ReinforcementTask[]
+  reinforcementTaskTargets                      ReinforcementTaskTarget[]
+  reinforcementTaskStages                       ReinforcementTaskStage[]
+  reinforcementAssignments                      ReinforcementAssignment[]
+  reinforcementSubmissions                      ReinforcementSubmission[]
+  reinforcementReviews                          ReinforcementReview[]
+  reinforcementTaskTemplates                    ReinforcementTaskTemplate[]
+  reinforcementTaskTemplateStages               ReinforcementTaskTemplateStage[]
+  xpPolicies                                    XpPolicy[]
+  xpLedgers                                     XpLedger[]
+  heroBadges                                    HeroBadge[]
+  heroMissions                                  HeroMission[]
+  heroMissionObjectives                         HeroMissionObjective[]
+  heroMissionProgress                           HeroMissionProgress[]
+  heroMissionObjectiveProgress                  HeroMissionObjectiveProgress[]
+  heroStudentBadges                             HeroStudentBadge[]
+  heroJourneyEvents                             HeroJourneyEvent[]
+  rewardCatalogItems                            RewardCatalogItem[]
+  rewardRedemptions                             RewardRedemption[]
+  behaviorCategories                            BehaviorCategory[]
+  behaviorRecords                               BehaviorRecord[]
+  behaviorPointLedgerEntries                    BehaviorPointLedger[]
+  communicationPolicy                           CommunicationPolicy?
+  communicationConversations                    CommunicationConversation[]
+  communicationConversationParticipants         CommunicationConversationParticipant[]
+  communicationConversationInvites              CommunicationConversationInvite[]
+  communicationConversationJoinRequests         CommunicationConversationJoinRequest[]
+  communicationMessages                         CommunicationMessage[]
+  communicationMessageReads                     CommunicationMessageRead[]
+  communicationMessageDeliveries                CommunicationMessageDelivery[]
+  communicationMessageReactions                 CommunicationMessageReaction[]
+  communicationMessageAttachments               CommunicationMessageAttachment[]
+  communicationMessageReports                   CommunicationMessageReport[]
+  communicationModerationActions                CommunicationModerationAction[]
+  communicationUserBlocks                       CommunicationUserBlock[]
+  communicationUserRestrictions                 CommunicationUserRestriction[]
+  communicationAnnouncements                    CommunicationAnnouncement[]
+  communicationAnnouncementAudiences            CommunicationAnnouncementAudience[]
+  communicationAnnouncementReads                CommunicationAnnouncementRead[]
+  communicationAnnouncementAttachments          CommunicationAnnouncementAttachment[]
+  communicationNotifications                    CommunicationNotification[]
+  communicationNotificationDeliveries           CommunicationNotificationDelivery[]
+  communicationNotificationPushAttempts         CommunicationNotificationPushAttempt[]
+  communicationNotificationPreferences          CommunicationNotificationPreference[]
+  appDeviceTokens                               AppDeviceToken[]
+  dashboardTodos                                DashboardTodo[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -2812,18 +2851,24 @@ model AcademicContent {
   createdAt       DateTime                    @default(now()) @map("created_at")
   updatedAt       DateTime                    @updatedAt @map("updated_at")
 
-  school       School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  academicYear AcademicYear              @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  term         Term                      @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  createdBy    User                      @relation("AcademicContentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  updatedBy    User?                     @relation("AcademicContentUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
-  targets      AcademicContentTarget[]
-  assets       AcademicContentAsset[]
-  links        AcademicContentLink[]
-  tags         AcademicContentTag[]
-  revisions    AcademicContentRevision[]
+  school                School                                @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear          AcademicYear                          @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term                  Term                                  @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  createdBy             User                                  @relation("AcademicContentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy             User?                                 @relation("AcademicContentUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  targets               AcademicContentTarget[]
+  assets                AcademicContentAsset[]
+  links                 AcademicContentLink[]
+  tags                  AcademicContentTag[]
+  revisions             AcademicContentRevision[]
+  preparationDetail     AcademicContentPreparationDetail?
+  weeklyPlanDetail      AcademicContentWeeklyPlanDetail?
+  guardianNoteDetail    AcademicContentGuardianNoteDetail?
+  subjectResourceDetail AcademicContentSubjectResourceDetail?
+  onlineSessionDetail   AcademicContentOnlineSessionDetail?
 
   @@unique([id, schoolId])
+  @@unique([id, schoolId, type])
   @@index([schoolId])
   @@index([schoolId, type])
   @@index([schoolId, status])
@@ -2833,6 +2878,182 @@ model AcademicContent {
   @@index([updatedByUserId])
   @@index([deletedAt])
   @@map("academic_contents")
+}
+
+model AcademicContentPreparationDetail {
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId           String              @map("school_id") @db.Uuid
+  academicContentId  String              @map("academic_content_id") @db.Uuid
+  contentType        AcademicContentType @default(TEACHER_PREPARATION) @map("content_type")
+  topic              String?             @db.VarChar(500)
+  objectives         Json                @default("[]")
+  learningOutcomes   Json                @default("[]") @map("learning_outcomes")
+  teachingStrategies Json                @default("[]") @map("teaching_strategies")
+  activities         Json                @default("[]")
+  resourceNotes      String?             @map("resource_notes") @db.VarChar(4000)
+  assessmentNotes    String?             @map("assessment_notes") @db.VarChar(4000)
+  teacherNotes       String?             @map("teacher_notes") @db.VarChar(4000)
+  curriculumId       String?             @map("curriculum_id") @db.Uuid
+  curriculumUnitId   String?             @map("curriculum_unit_id") @db.Uuid
+  curriculumLessonId String?             @map("curriculum_lesson_id") @db.Uuid
+  lessonPlanId       String?             @map("lesson_plan_id") @db.Uuid
+  lessonPlanItemId   String?             @map("lesson_plan_item_id") @db.Uuid
+  timetableEntryId   String?             @map("timetable_entry_id") @db.Uuid
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+
+  school           School            @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicContent  AcademicContent   @relation(fields: [academicContentId, schoolId, contentType], references: [id, schoolId, type], onDelete: Cascade)
+  curriculum       Curriculum?       @relation(fields: [curriculumId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  curriculumUnit   CurriculumUnit?   @relation(fields: [curriculumUnitId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  curriculumLesson CurriculumLesson? @relation(fields: [curriculumLessonId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  lessonPlan       LessonPlan?       @relation(fields: [lessonPlanId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  lessonPlanItem   LessonPlanItem?   @relation(fields: [lessonPlanItemId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, academicContentId])
+  @@unique([academicContentId, schoolId, contentType], map: "acc_preparation_parent_type_unique")
+  @@index([schoolId, curriculumId])
+  @@index([schoolId, curriculumUnitId])
+  @@index([schoolId, curriculumLessonId])
+  @@index([schoolId, lessonPlanId], map: "acc_preparation_lesson_plan_idx")
+  @@index([schoolId, lessonPlanItemId], map: "acc_preparation_lesson_plan_item_idx")
+  @@index([schoolId, timetableEntryId])
+  @@map("academic_content_preparation_details")
+}
+
+model AcademicContentWeeklyPlanDetail {
+  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId            String              @map("school_id") @db.Uuid
+  academicContentId   String              @map("academic_content_id") @db.Uuid
+  contentType         AcademicContentType @default(WEEKLY_PLAN) @map("content_type")
+  weekStartDate       DateTime            @map("week_start_date") @db.Date
+  weekEndDate         DateTime            @map("week_end_date") @db.Date
+  objectives          Json                @default("[]")
+  topics              Json                @default("[]")
+  expectedHomework    String?             @map("expected_homework") @db.VarChar(4000)
+  upcomingAssessments String?             @map("upcoming_assessments") @db.VarChar(4000)
+  notes               String?             @db.VarChar(4000)
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+
+  school               School                                         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicContent      AcademicContent                                @relation(fields: [academicContentId, schoolId, contentType], references: [id, schoolId, type], onDelete: Cascade)
+  homeworkReferences   AcademicContentWeeklyPlanHomeworkReference[]
+  assessmentReferences AcademicContentWeeklyPlanAssessmentReference[]
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, academicContentId])
+  @@unique([academicContentId, schoolId, contentType], map: "acc_weekly_plan_parent_type_unique")
+  @@map("academic_content_weekly_plan_details")
+}
+
+model AcademicContentGuardianNoteDetail {
+  id                      String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                String                       @map("school_id") @db.Uuid
+  academicContentId       String                       @map("academic_content_id") @db.Uuid
+  contentType             AcademicContentType          @default(GUARDIAN_WEEKLY_NOTE) @map("content_type")
+  body                    String                       @db.VarChar(10000)
+  priority                AcademicGuardianNotePriority
+  requiresAcknowledgement Boolean                      @map("requires_acknowledgement")
+  createdAt               DateTime                     @default(now()) @map("created_at")
+  updatedAt               DateTime                     @updatedAt @map("updated_at")
+
+  school          School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicContent AcademicContent @relation(fields: [academicContentId, schoolId, contentType], references: [id, schoolId, type], onDelete: Cascade)
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, academicContentId])
+  @@unique([academicContentId, schoolId, contentType], map: "acc_guardian_note_parent_type_unique")
+  @@map("academic_content_guardian_note_details")
+}
+
+model AcademicContentSubjectResourceDetail {
+  id                 String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId           String                          @map("school_id") @db.Uuid
+  academicContentId  String                          @map("academic_content_id") @db.Uuid
+  contentType        AcademicContentType             @default(SUBJECT_RESOURCE) @map("content_type")
+  resourceCategory   AcademicSubjectResourceCategory @map("resource_category")
+  curriculumId       String?                         @map("curriculum_id") @db.Uuid
+  curriculumUnitId   String?                         @map("curriculum_unit_id") @db.Uuid
+  curriculumLessonId String?                         @map("curriculum_lesson_id") @db.Uuid
+  createdAt          DateTime                        @default(now()) @map("created_at")
+  updatedAt          DateTime                        @updatedAt @map("updated_at")
+
+  school           School            @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicContent  AcademicContent   @relation(fields: [academicContentId, schoolId, contentType], references: [id, schoolId, type], onDelete: Cascade)
+  curriculum       Curriculum?       @relation(fields: [curriculumId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  curriculumUnit   CurriculumUnit?   @relation(fields: [curriculumUnitId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  curriculumLesson CurriculumLesson? @relation(fields: [curriculumLessonId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, academicContentId])
+  @@unique([academicContentId, schoolId, contentType], map: "acc_subject_resource_parent_type_unique")
+  @@index([schoolId, curriculumId], map: "acc_subject_resource_curriculum_idx")
+  @@index([schoolId, curriculumUnitId], map: "acc_subject_resource_unit_idx")
+  @@index([schoolId, curriculumLessonId], map: "acc_subject_resource_lesson_idx")
+  @@map("academic_content_subject_resource_details")
+}
+
+model AcademicContentOnlineSessionDetail {
+  id                String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String                        @map("school_id") @db.Uuid
+  academicContentId String                        @map("academic_content_id") @db.Uuid
+  contentType       AcademicContentType           @default(ONLINE_SESSION) @map("content_type")
+  platform          AcademicOnlineSessionPlatform
+  providerName      String?                       @map("provider_name") @db.VarChar(180)
+  joinUrl           String                        @map("join_url") @db.VarChar(2048)
+  accessCode        String?                       @map("access_code") @db.VarChar(255)
+  instructions      String?                       @db.VarChar(4000)
+  startAt           DateTime                      @map("start_at")
+  endAt             DateTime                      @map("end_at")
+  timezone          String                        @db.VarChar(100)
+  timetableEntryId  String?                       @map("timetable_entry_id") @db.Uuid
+  createdAt         DateTime                      @default(now()) @map("created_at")
+  updatedAt         DateTime                      @updatedAt @map("updated_at")
+
+  school          School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicContent AcademicContent @relation(fields: [academicContentId, schoolId, contentType], references: [id, schoolId, type], onDelete: Cascade)
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, academicContentId])
+  @@unique([academicContentId, schoolId, contentType], map: "acc_online_session_parent_type_unique")
+  @@index([schoolId, timetableEntryId])
+  @@map("academic_content_online_session_details")
+}
+
+model AcademicContentWeeklyPlanHomeworkReference {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId             String   @map("school_id") @db.Uuid
+  weeklyPlanDetailId   String   @map("weekly_plan_detail_id") @db.Uuid
+  homeworkAssignmentId String   @map("homework_assignment_id") @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  school             School                          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  weeklyPlanDetail   AcademicContentWeeklyPlanDetail @relation(fields: [weeklyPlanDetailId, schoolId], references: [id, schoolId], onDelete: Cascade)
+  homeworkAssignment HomeworkAssignment              @relation(fields: [homeworkAssignmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([schoolId, weeklyPlanDetailId, homeworkAssignmentId])
+  @@index([schoolId, weeklyPlanDetailId], map: "acc_weekly_homework_detail_idx")
+  @@index([schoolId, homeworkAssignmentId], map: "acc_weekly_homework_assignment_idx")
+  @@map("academic_content_weekly_plan_homework_references")
+}
+
+model AcademicContentWeeklyPlanAssessmentReference {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId           String   @map("school_id") @db.Uuid
+  weeklyPlanDetailId String   @map("weekly_plan_detail_id") @db.Uuid
+  gradeAssessmentId  String   @map("grade_assessment_id") @db.Uuid
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  school           School                          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  weeklyPlanDetail AcademicContentWeeklyPlanDetail @relation(fields: [weeklyPlanDetailId, schoolId], references: [id, schoolId], onDelete: Cascade)
+  gradeAssessment  GradeAssessment                 @relation(fields: [gradeAssessmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([schoolId, weeklyPlanDetailId, gradeAssessmentId])
+  @@index([schoolId, weeklyPlanDetailId], map: "acc_weekly_assessment_detail_idx")
+  @@index([schoolId, gradeAssessmentId], map: "acc_weekly_assessment_grade_idx")
+  @@map("academic_content_weekly_plan_assessment_references")
 }
 
 model AcademicContentTarget {
@@ -2952,6 +3173,7 @@ model AcademicContentRevision {
   audience                AcademicContentAudienceType
   title                   String                      @db.VarChar(180)
   description             String?                     @db.VarChar(4000)
+  typeSpecificSnapshot    Json?                       @map("type_specific_snapshot")
   sourceStatus            AcademicContentStatus       @map("source_status")
   capturedByUserId        String                      @map("captured_by_user_id") @db.Uuid
   capturedAt              DateTime                    @default(now()) @map("captured_at")
@@ -3550,18 +3772,20 @@ model Curriculum {
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
 
-  school       School              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  academicYear AcademicYear        @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  term         Term                @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  grade        Grade               @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  subject      Subject             @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  createdBy    User                @relation("CurriculumCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  updatedBy    User?               @relation("CurriculumUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
-  units        CurriculumUnit[]
-  lessons      CurriculumLesson[]
-  contentItems LessonContentItem[]
-  lessonPlans  LessonPlan[]
-  planItems    LessonPlanItem[]
+  school                                School                                 @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear                          AcademicYear                           @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term                                  Term                                   @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  grade                                 Grade                                  @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  subject                               Subject                                @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  createdBy                             User                                   @relation("CurriculumCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy                             User?                                  @relation("CurriculumUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  units                                 CurriculumUnit[]
+  lessons                               CurriculumLesson[]
+  contentItems                          LessonContentItem[]
+  lessonPlans                           LessonPlan[]
+  planItems                             LessonPlanItem[]
+  academicContentPreparationDetails     AcademicContentPreparationDetail[]
+  academicContentSubjectResourceDetails AcademicContentSubjectResourceDetail[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -3589,11 +3813,13 @@ model CurriculumUnit {
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
-  school       School              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  curriculum   Curriculum          @relation(fields: [curriculumId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  lessons      CurriculumLesson[]
-  contentItems LessonContentItem[]
-  planItems    LessonPlanItem[]
+  school                                School                                 @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  curriculum                            Curriculum                             @relation(fields: [curriculumId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  lessons                               CurriculumLesson[]
+  contentItems                          LessonContentItem[]
+  planItems                             LessonPlanItem[]
+  academicContentPreparationDetails     AcademicContentPreparationDetail[]
+  academicContentSubjectResourceDetails AcademicContentSubjectResourceDetail[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -3617,11 +3843,13 @@ model CurriculumLesson {
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
-  school       School              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  curriculum   Curriculum          @relation(fields: [curriculumId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  unit         CurriculumUnit      @relation(fields: [unitId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  contentItems LessonContentItem[]
-  planItems    LessonPlanItem[]
+  school                                School                                 @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  curriculum                            Curriculum                             @relation(fields: [curriculumId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  unit                                  CurriculumUnit                         @relation(fields: [unitId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  contentItems                          LessonContentItem[]
+  planItems                             LessonPlanItem[]
+  academicContentPreparationDetails     AcademicContentPreparationDetail[]
+  academicContentSubjectResourceDetails AcademicContentSubjectResourceDetail[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -3708,17 +3936,18 @@ model LessonPlan {
   createdAt                  DateTime         @default(now()) @map("created_at")
   updatedAt                  DateTime         @updatedAt @map("updated_at")
 
-  school                   School                   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  academicYear             AcademicYear             @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  term                     Term                     @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  teacherSubjectAllocation TeacherSubjectAllocation @relation(fields: [teacherSubjectAllocationId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  teacherUser              User                     @relation("LessonPlanTeacher", fields: [teacherUserId], references: [id], onDelete: Restrict)
-  classroom                Classroom                @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  subject                  Subject                  @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  curriculum               Curriculum               @relation(fields: [curriculumId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  createdBy                User                     @relation("LessonPlanCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  updatedBy                User?                    @relation("LessonPlanUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
-  items                    LessonPlanItem[]
+  school                            School                             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear                      AcademicYear                       @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term                              Term                               @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  teacherSubjectAllocation          TeacherSubjectAllocation           @relation(fields: [teacherSubjectAllocationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  teacherUser                       User                               @relation("LessonPlanTeacher", fields: [teacherUserId], references: [id], onDelete: Restrict)
+  classroom                         Classroom                          @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  subject                           Subject                            @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  curriculum                        Curriculum                         @relation(fields: [curriculumId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  createdBy                         User                               @relation("LessonPlanCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy                         User?                              @relation("LessonPlanUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  items                             LessonPlanItem[]
+  academicContentPreparationDetails AcademicContentPreparationDetail[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -3764,16 +3993,17 @@ model LessonPlanItem {
   createdAt             DateTime             @default(now()) @map("created_at")
   updatedAt             DateTime             @updatedAt @map("updated_at")
 
-  school              School           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  lessonPlan          LessonPlan       @relation(fields: [lessonPlanId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  curriculum          Curriculum       @relation(fields: [curriculumId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  unit                CurriculumUnit   @relation(fields: [unitId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  lesson              CurriculumLesson @relation(fields: [lessonId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  timetableEntry      TimetableEntry?  @relation(fields: [timetableEntryId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  rescheduledFromItem LessonPlanItem?  @relation("LessonPlanItemReschedule", fields: [rescheduledFromItemId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  rescheduledItems    LessonPlanItem[] @relation("LessonPlanItemReschedule")
-  createdBy           User             @relation("LessonPlanItemCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  updatedBy           User?            @relation("LessonPlanItemUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  school                            School                             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  lessonPlan                        LessonPlan                         @relation(fields: [lessonPlanId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  curriculum                        Curriculum                         @relation(fields: [curriculumId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  unit                              CurriculumUnit                     @relation(fields: [unitId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  lesson                            CurriculumLesson                   @relation(fields: [lessonId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  timetableEntry                    TimetableEntry?                    @relation(fields: [timetableEntryId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  rescheduledFromItem               LessonPlanItem?                    @relation("LessonPlanItemReschedule", fields: [rescheduledFromItemId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  rescheduledItems                  LessonPlanItem[]                   @relation("LessonPlanItemReschedule")
+  createdBy                         User                               @relation("LessonPlanItemCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy                         User?                              @relation("LessonPlanItemUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  academicContentPreparationDetails AcademicContentPreparationDetail[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -4784,26 +5014,27 @@ model GradeAssessment {
   updatedAt           DateTime                      @updatedAt @map("updated_at")
   deletedAt           DateTime?                     @map("deleted_at")
 
-  school              School                          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  academicYear        AcademicYear                    @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  term                Term                            @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  subject             Subject                         @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  stage               Stage?                          @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  grade               Grade?                          @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  section             Section?                        @relation(fields: [sectionId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  classroom           Classroom?                      @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  publishedBy         User?                           @relation("GradeAssessmentPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
-  approvedBy          User?                           @relation("GradeAssessmentApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
-  lockedBy            User?                           @relation("GradeAssessmentLockedBy", fields: [lockedById], references: [id], onDelete: SetNull)
-  createdBy           User?                           @relation("GradeAssessmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  questions           GradeAssessmentQuestion[]
-  questionOptions     GradeAssessmentQuestionOption[]
-  submissions         GradeSubmission[]
-  submissionAnswers   GradeSubmissionAnswer[]
-  items               GradeItem[]
-  homeworkAssignments HomeworkAssignment[]
-  heroMissions        HeroMission[]
-  heroObjectives      HeroMissionObjective[]
+  school                                        School                                         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear                                  AcademicYear                                   @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term                                          Term                                           @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  subject                                       Subject                                        @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  stage                                         Stage?                                         @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  grade                                         Grade?                                         @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  section                                       Section?                                       @relation(fields: [sectionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom                                     Classroom?                                     @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  publishedBy                                   User?                                          @relation("GradeAssessmentPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+  approvedBy                                    User?                                          @relation("GradeAssessmentApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  lockedBy                                      User?                                          @relation("GradeAssessmentLockedBy", fields: [lockedById], references: [id], onDelete: SetNull)
+  createdBy                                     User?                                          @relation("GradeAssessmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  questions                                     GradeAssessmentQuestion[]
+  questionOptions                               GradeAssessmentQuestionOption[]
+  submissions                                   GradeSubmission[]
+  submissionAnswers                             GradeSubmissionAnswer[]
+  items                                         GradeItem[]
+  homeworkAssignments                           HomeworkAssignment[]
+  heroMissions                                  HeroMission[]
+  heroObjectives                                HeroMissionObjective[]
+  academicContentWeeklyPlanAssessmentReferences AcademicContentWeeklyPlanAssessmentReference[]
 
   @@unique([id, schoolId], map: "grade_assessments_id_school_id_unique")
   @@index([schoolId])
@@ -5086,23 +5317,24 @@ model HomeworkAssignment {
   createdAt                  DateTime                 @default(now()) @map("created_at")
   updatedAt                  DateTime                 @updatedAt @map("updated_at")
 
-  school                   School                         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  academicYear             AcademicYear                   @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  term                     Term                           @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  classroom                Classroom                      @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  subject                  Subject                        @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  teacherUser              User                           @relation("HomeworkAssignmentTeacher", fields: [teacherUserId], references: [id], onDelete: Restrict)
-  teacherSubjectAllocation TeacherSubjectAllocation       @relation(fields: [teacherSubjectAllocationId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  timetableEntry           TimetableEntry?                @relation(fields: [timetableEntryId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  gradeAssessment          GradeAssessment?               @relation(fields: [gradeAssessmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  createdBy                User                           @relation("HomeworkAssignmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  publishedBy              User?                          @relation("HomeworkAssignmentPublishedBy", fields: [publishedByUserId], references: [id], onDelete: SetNull)
-  targets                  HomeworkTarget[]
-  submissions              HomeworkSubmission[]
-  submissionAnswers        HomeworkSubmissionAnswer[]
-  submissionAttachments    HomeworkSubmissionAttachment[]
-  questions                HomeworkQuestion[]
-  attachments              HomeworkAssignmentAttachment[]
+  school                                      School                                       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear                                AcademicYear                                 @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term                                        Term                                         @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom                                   Classroom                                    @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  subject                                     Subject                                      @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  teacherUser                                 User                                         @relation("HomeworkAssignmentTeacher", fields: [teacherUserId], references: [id], onDelete: Restrict)
+  teacherSubjectAllocation                    TeacherSubjectAllocation                     @relation(fields: [teacherSubjectAllocationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  timetableEntry                              TimetableEntry?                              @relation(fields: [timetableEntryId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  gradeAssessment                             GradeAssessment?                             @relation(fields: [gradeAssessmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  createdBy                                   User                                         @relation("HomeworkAssignmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  publishedBy                                 User?                                        @relation("HomeworkAssignmentPublishedBy", fields: [publishedByUserId], references: [id], onDelete: SetNull)
+  targets                                     HomeworkTarget[]
+  submissions                                 HomeworkSubmission[]
+  submissionAnswers                           HomeworkSubmissionAnswer[]
+  submissionAttachments                       HomeworkSubmissionAttachment[]
+  questions                                   HomeworkQuestion[]
+  attachments                                 HomeworkAssignmentAttachment[]
+  academicContentWeeklyPlanHomeworkReferences AcademicContentWeeklyPlanHomeworkReference[]
 
   @@unique([id, schoolId])
   @@index([schoolId])

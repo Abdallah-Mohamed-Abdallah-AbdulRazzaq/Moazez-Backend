@@ -243,6 +243,57 @@ The remaining tables, unique indexes, foreign keys, and ordinary indexes are
 generated from `schema.prisma`. The new migration is append-only; historical
 migrations remain unchanged.
 
+## ACC-5A type-detail persistence checks
+
+`20260926175931_academic_content_type_specific_authoring_foundation` is one
+additive migration. Prisma generated its enums, seven tables, indexes, same-School
+foreign keys, referential actions, and nullable `type_specific_snapshot` column.
+It contains no backfill. Prisma cannot represent the following PostgreSQL
+`CHECK` predicates; the named constraints are tested through real PostgreSQL
+in `test/integration/academic-content-type-details.integration.spec.ts`.
+
+| Constraint | Invariant and direct test |
+| --- | --- |
+| `acc_preparation_fixed_type_check` | Preparation discriminator is `TEACHER_PREPARATION`; wrong-parent and spoofing test. |
+| `acc_weekly_plan_fixed_type_check` | Weekly discriminator is `WEEKLY_PLAN`; General Resource and wrong-parent tests. |
+| `acc_guardian_note_fixed_type_check` | Guardian discriminator is `GUARDIAN_WEEKLY_NOTE`; General Resource test. |
+| `acc_subject_resource_fixed_type_check` | Resource discriminator is `SUBJECT_RESOURCE`; General Resource test. |
+| `acc_online_session_fixed_type_check` | Session discriminator is `ONLINE_SESSION`; General Resource test. |
+| `acc_preparation_objectives_array_check` | Objectives JSON is an array; accepted detail and JSON-shape tests. |
+| `acc_preparation_outcomes_array_check` | Learning outcomes JSON is an array; accepted detail and JSON-shape tests. |
+| `acc_preparation_strategies_array_check` | Strategies JSON is an array; accepted detail and JSON-shape tests. |
+| `acc_preparation_activities_array_check` | Activities JSON is an array; JSON object rejection test. |
+| `acc_weekly_objectives_array_check` | Weekly objectives JSON is an array; JSON object rejection test. |
+| `acc_weekly_topics_array_check` | Weekly topics JSON is an array; accepted detail and JSON-shape tests. |
+| `acc_preparation_unit_requires_curriculum_check` | Unit ID requires Curriculum ID; hierarchy rejection test. |
+| `acc_preparation_lesson_requires_unit_check` | Lesson ID requires Unit and Curriculum IDs; hierarchy rejection test. |
+| `acc_preparation_item_requires_plan_check` | LessonPlanItem ID requires LessonPlan ID; hierarchy rejection test. |
+| `acc_resource_unit_requires_curriculum_check` | Resource Unit ID requires Curriculum ID; hierarchy rejection test. |
+| `acc_resource_lesson_requires_unit_check` | Resource Lesson ID requires Unit and Curriculum IDs; hierarchy rejection test. |
+| `acc_weekly_date_order_check` | Week start is not after week end; inverted-date test. |
+| `acc_session_time_order_check` | Session starts before it ends; equal-time test. |
+| `acc_session_other_provider_check` | `OTHER` platform has a nonblank provider name; whitespace-provider test. |
+
+The five fixed discriminators combine with each detail's composite foreign key
+to `(academic_contents.id, school_id, type)` and its per-content unique key.
+This rejects every typed detail on `GENERAL_RESOURCE`, rejects wrong parent
+types, and prevents a discriminator override from bypassing the relationship.
+The JSON checks establish array shape only; ACC-5B owns item and semantic
+validation. The hierarchy checks establish presence only; ACC-5B owns
+cross-table academic context. There is no General Resource detail table.
+
+Curriculum, CurriculumUnit, CurriculumLesson, LessonPlan, LessonPlanItem,
+HomeworkAssignment, and GradeAssessment have `deletedAt` in the existing
+schema. ACC's new same-School foreign references to them use `ON DELETE
+RESTRICT`, so neither domain can delete the other's rows through a cascade.
+ACC-owned details cascade only from their AcademicContent parent; weekly join
+rows cascade only from their weekly detail. TimetableEntry is hard-owned by
+TimetableConfig with `ON DELETE CASCADE`. Preparation and Online Session store
+an indexed nullable `timetableEntryId` UUID with no cross-domain foreign key,
+preserving that lifecycle; ACC-5B must validate its School and context before
+use. The revision snapshot column is nullable, and current V1 capture remains
+at contract version 1 with a null type-specific snapshot.
+
 ## Reviewed PostgreSQL-specific SQL that must not be copied
 
 - The 16 raw enum additions are historical transition mechanics. The final
