@@ -107,4 +107,20 @@ describe('schoolScope communication registration', () => {
       expect(SOFT_DELETE_MODELS.has(model)).toBe(false);
     }
   });
+
+  it('registers every ACC-5A detail and weekly reference without soft deletion or exclusion', () => {
+    for (const model of [
+      'AcademicContentPreparationDetail',
+      'AcademicContentWeeklyPlanDetail',
+      'AcademicContentGuardianNoteDetail',
+      'AcademicContentSubjectResourceDetail',
+      'AcademicContentOnlineSessionDetail',
+      'AcademicContentWeeklyPlanHomeworkReference',
+      'AcademicContentWeeklyPlanAssessmentReference',
+    ]) {
+      expect(SCHOOL_SCOPED_MODELS.has(model)).toBe(true);
+      expect(SOFT_DELETE_MODELS.has(model)).toBe(false);
+      expect(EXCLUDED_FROM_SCHOOL_SCOPE.has(model)).toBe(false);
+    }
+  });
 });
