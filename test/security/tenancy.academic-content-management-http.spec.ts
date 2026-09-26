@@ -652,6 +652,63 @@ describe('ACC-4B management HTTP security and transport', () => {
       .expect(404);
   });
 
+  it('accepts the Library query contract on the existing management collection', async () => {
+    const filters = {
+      academicYearId: randomUUID(),
+      termId: randomUUID(),
+      type: AcademicContentType.GENERAL_RESOURCE,
+      status: AcademicContentStatus.ARCHIVED,
+      audience: AcademicContentAudienceType.STUDENTS,
+      stageId: randomUUID(),
+      gradeId: randomUUID(),
+      sectionId: randomUUID(),
+      classroomId: randomUUID(),
+      subjectId: randomUUID(),
+      teacherUserId: randomUUID(),
+      tag: 'x'.repeat(80),
+      search: 'y'.repeat(120),
+      page: 2,
+      limit: 100,
+    };
+    await request(app.getHttpServer()).get(base).query(filters).expect(200);
+    expect(services.list.execute).toHaveBeenCalledWith(filters);
+    await request(app.getHttpServer())
+      .get(base)
+      .set('x-test-actor', 'organization')
+      .query({ gradeId: randomUUID() })
+      .expect(200);
+  });
+
+  it.each([
+    ['academicYearId', 'not-a-uuid'],
+    ['termId', 'not-a-uuid'],
+    ['stageId', 'not-a-uuid'],
+    ['gradeId', 'not-a-uuid'],
+    ['sectionId', 'not-a-uuid'],
+    ['classroomId', 'not-a-uuid'],
+    ['subjectId', 'not-a-uuid'],
+    ['teacherUserId', 'not-a-uuid'],
+    ['type', 'NOT_A_TYPE'],
+    ['status', 'NOT_A_STATUS'],
+    ['audience', 'NOT_AN_AUDIENCE'],
+    ['search', 'x'.repeat(121)],
+    ['tag', 'x'.repeat(81)],
+    ['page', '0'],
+    ['limit', '0'],
+    ['limit', '101'],
+    ['schoolId', randomUUID()],
+    ['createdByUserId', randomUUID()],
+    ['week', '1'],
+    ['date', '2030-01-01'],
+    ['unknown', 'x'],
+  ])('rejects invalid or unowned Library query %s', async (field, value) => {
+    await request(app.getHttpServer())
+      .get(base)
+      .query({ [field]: value })
+      .expect(400);
+    expect(services.list.execute).not.toHaveBeenCalled();
+  });
+
   it('delegates lifecycle and targets while rejecting immutable and malformed fields', async () => {
     await request(app.getHttpServer())
       .patch(`${base}/${contentId}`)

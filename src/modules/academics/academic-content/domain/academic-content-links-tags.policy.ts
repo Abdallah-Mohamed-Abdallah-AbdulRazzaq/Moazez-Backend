@@ -11,6 +11,19 @@ export type NormalizedAcademicContentTag = {
   sortOrder: number;
 };
 
+export function normalizeAcademicContentTagValue(value: string): {
+  displayValue: string;
+  normalizedValue: string;
+} {
+  if (typeof value !== 'string')
+    throw new ValidationDomainException('Invalid Academic Content tag');
+  const displayValue = value.normalize('NFKC').trim().replace(/\s+/gu, ' ');
+  const normalizedValue = displayValue.toLowerCase();
+  if (!displayValue || displayValue.length > 80 || normalizedValue.length > 80)
+    throw new ValidationDomainException('Invalid Academic Content tag');
+  return { displayValue, normalizedValue };
+}
+
 export function normalizeAcademicContentLinks(
   input: readonly AcademicContentLinkInput[],
 ): NormalizedAcademicContentLink[] {
@@ -53,17 +66,10 @@ export function normalizeAcademicContentTags(
   return input.map((entry, sortOrder) => {
     if (!entry || typeof entry.value !== 'string')
       throw new ValidationDomainException('Invalid Academic Content tag');
-    const displayValue = entry.value
-      .normalize('NFKC')
-      .trim()
-      .replace(/\s+/gu, ' ');
-    const normalizedValue = displayValue.toLowerCase();
-    if (
-      !displayValue ||
-      displayValue.length > 80 ||
-      normalizedValue.length > 80 ||
-      seen.has(normalizedValue)
-    )
+    const { displayValue, normalizedValue } = normalizeAcademicContentTagValue(
+      entry.value,
+    );
+    if (seen.has(normalizedValue))
       throw new ValidationDomainException(
         'Invalid or duplicate Academic Content tag',
       );

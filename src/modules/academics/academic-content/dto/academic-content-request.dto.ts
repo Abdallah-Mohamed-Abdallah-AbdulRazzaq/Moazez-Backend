@@ -15,6 +15,7 @@ import {
 } from 'class-validator';
 import {
   AcademicContentAudienceType,
+  AcademicContentStatus,
   AcademicContentTargetScopeType,
   AcademicContentType,
 } from '@prisma/client';
@@ -68,6 +69,73 @@ export class UpdateAcademicContentDto {
 }
 
 export class ListAcademicContentQueryDto {
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  academicYearId?: string;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  termId?: string;
+
+  @ApiPropertyOptional({ enum: AcademicContentType })
+  @IsOptional()
+  @IsEnum(AcademicContentType)
+  type?: AcademicContentType;
+
+  @ApiPropertyOptional({ enum: AcademicContentStatus })
+  @IsOptional()
+  @IsEnum(AcademicContentStatus)
+  status?: AcademicContentStatus;
+
+  @ApiPropertyOptional({ enum: AcademicContentAudienceType })
+  @IsOptional()
+  @IsEnum(AcademicContentAudienceType)
+  audience?: AcademicContentAudienceType;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  stageId?: string;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  gradeId?: string;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  sectionId?: string;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  classroomId?: string;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  subjectId?: string;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  teacherUserId?: string;
+
+  @ApiPropertyOptional({ maxLength: 80 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  tag?: string;
+
+  @ApiPropertyOptional({ maxLength: 120 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  search?: string;
+
   @ApiPropertyOptional({ minimum: 1, default: 1 })
   @IsOptional()
   @Type(() => Number)

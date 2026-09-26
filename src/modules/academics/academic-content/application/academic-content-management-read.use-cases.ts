@@ -4,13 +4,14 @@ import {
   ValidationDomainException,
 } from '../../../../common/exceptions/domain-exception';
 import { AcademicContentRepository } from '../infrastructure/academic-content.repository';
+import type { AcademicContentLibraryQuery } from '../domain/academic-content-library.query';
 import { academicContentManagementScope } from './academic-content-management.scope';
 
 @Injectable()
 export class ListAcademicContentForManagementUseCase {
   constructor(private readonly contents: AcademicContentRepository) {}
 
-  execute(query: { page?: number; limit?: number }) {
+  execute(query: AcademicContentLibraryQuery) {
     const { schoolId } = academicContentManagementScope(
       'academics.academic_content.view',
     );
@@ -26,7 +27,7 @@ export class ListAcademicContentForManagementUseCase {
     ) {
       throw new ValidationDomainException('Invalid management pagination');
     }
-    return this.contents.listForManagement(schoolId, page, limit);
+    return this.contents.listForManagement(schoolId, page, limit, query);
   }
 }
 

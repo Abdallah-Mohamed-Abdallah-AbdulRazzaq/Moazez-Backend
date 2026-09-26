@@ -121,7 +121,9 @@ export class AcademicContentController {
 
   @Get()
   @RequiredPermissions('academics.academic_content.view')
-  @ApiOperation({ summary: 'List School Academic Content for management' })
+  @ApiOperation({
+    summary: 'List and filter the School Academic Content Library',
+  })
   @ApiOkResponse({ type: AcademicContentListResponseDto })
   async list(
     @Query() query: ListAcademicContentQueryDto,
