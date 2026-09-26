@@ -28,6 +28,15 @@ import {
   GetAcademicContentForManagementUseCase,
   ListAcademicContentForManagementUseCase,
 } from '../application/academic-content-management-read.use-cases';
+import { GetAcademicContentReadinessUseCase } from '../application/academic-content-readiness.use-case';
+import { AcademicContentTypeDetailUseCases } from '../application/academic-content-type-detail.use-cases';
+import type {
+  GuardianNoteCommand,
+  NormalizedDetail,
+  PreparationCommand,
+  SubjectResourceCommand,
+  WeeklyPlanCommand,
+} from '../domain/academic-content-type-detail.policy';
 import { AcademicContentLifecycleUseCases } from '../application/academic-content-lifecycle.use-cases';
 import { CreateAcademicContentUseCase } from '../application/create-academic-content.use-case';
 import { ReplaceAcademicContentTargetsUseCase } from '../application/replace-academic-content-targets.use-case';
@@ -47,6 +56,18 @@ import {
   AcademicContentRevisionDetailDto,
   AcademicContentRevisionListDto,
 } from '../dto/academic-content-revision-response.dto';
+import {
+  AcademicContentGuardianNoteDetailResponseDto,
+  AcademicContentOnlineSessionDetailResponseDto,
+  AcademicContentPreparationDetailResponseDto,
+  AcademicContentSubjectResourceDetailResponseDto,
+  AcademicContentWeeklyPlanDetailResponseDto,
+  ReplaceAcademicContentGuardianNoteDetailDto,
+  ReplaceAcademicContentOnlineSessionDetailDto,
+  ReplaceAcademicContentPreparationDetailDto,
+  ReplaceAcademicContentSubjectResourceDetailDto,
+  ReplaceAcademicContentWeeklyPlanDetailDto,
+} from '../dto/academic-content-type-detail.dto';
 import {
   CancelAcademicContentUploadUseCase,
   CompleteAcademicContentUploadUseCase,
@@ -70,6 +91,7 @@ import {
   AcademicContentTargetsResponseDto,
   AcademicContentLinksResponseDto,
   AcademicContentTagsResponseDto,
+  AcademicContentReadinessResponseDto,
   AcademicContentUploadCancelResponseDto,
   AcademicContentUploadCompleteResponseDto,
   AcademicContentUploadIntentResponseDto,
@@ -86,6 +108,12 @@ import {
   presentAcademicContentUploadCancel,
   presentAcademicContentUploadComplete,
   presentAcademicContentUploadIntent,
+  presentAcademicContentPreparationDetail,
+  presentAcademicContentWeeklyPlanDetail,
+  presentAcademicContentGuardianNoteDetail,
+  presentAcademicContentSubjectResourceDetail,
+  presentAcademicContentOnlineSessionDetail,
+  presentAcademicContentReadiness,
 } from '../presenters/academic-content.presenter';
 
 @ApiTags('academics-academic-content')
@@ -97,6 +125,8 @@ export class AcademicContentController {
     private readonly createContent: CreateAcademicContentUseCase,
     private readonly listContent: ListAcademicContentForManagementUseCase,
     private readonly getContent: GetAcademicContentForManagementUseCase,
+    private readonly getReadiness: GetAcademicContentReadinessUseCase,
+    private readonly typeDetails: AcademicContentTypeDetailUseCases,
     private readonly lifecycle: AcademicContentLifecycleUseCases,
     private readonly replaceTargets: ReplaceAcademicContentTargetsUseCase,
     private readonly replaceLinks: ReplaceAcademicContentLinksUseCase,
@@ -133,6 +163,7 @@ export class AcademicContentController {
   }
 
   @Get(':contentId')
+  @Header('Cache-Control', 'no-store, private, max-age=0')
   @RequiredPermissions('academics.academic_content.view')
   @ApiOperation({ summary: 'Get Academic Content management detail' })
   @ApiParam({ name: 'contentId', format: 'uuid' })
@@ -142,6 +173,108 @@ export class AcademicContentController {
   ): Promise<AcademicContentDetailResponseDto> {
     return presentAcademicContentDetail(
       await this.getContent.execute(contentId),
+    );
+  }
+
+  @Get(':contentId/readiness')
+  @RequiredPermissions('academics.academic_content.view')
+  @ApiOperation({
+    summary: 'Evaluate current Academic Content authoring readiness',
+  })
+  @ApiParam({ name: 'contentId', format: 'uuid' })
+  @ApiOkResponse({ type: AcademicContentReadinessResponseDto })
+  async readiness(
+    @Param('contentId', new ParseUUIDPipe()) contentId: string,
+  ): Promise<AcademicContentReadinessResponseDto> {
+    return presentAcademicContentReadiness(
+      await this.getReadiness.execute(contentId),
+    );
+  }
+
+  @Put(':contentId/details/preparation')
+  @RequiredPermissions('academics.academic_content.manage')
+  @ApiOperation({ summary: 'Replace draft Teacher Preparation detail' })
+  @ApiParam({ name: 'contentId', format: 'uuid' })
+  @ApiBody({ type: ReplaceAcademicContentPreparationDetailDto })
+  @ApiOkResponse({ type: AcademicContentPreparationDetailResponseDto })
+  async replacePreparation(
+    @Param('contentId', new ParseUUIDPipe()) contentId: string,
+    @Body() dto: ReplaceAcademicContentPreparationDetailDto,
+  ): Promise<AcademicContentPreparationDetailResponseDto> {
+    const result = await this.typeDetails.replacePreparation(contentId, dto);
+    return presentAcademicContentPreparationDetail(
+      result.state as Required<PreparationCommand>,
+    );
+  }
+
+  @Put(':contentId/details/weekly-plan')
+  @RequiredPermissions('academics.academic_content.manage')
+  @ApiOperation({ summary: 'Replace draft Weekly Plan detail' })
+  @ApiParam({ name: 'contentId', format: 'uuid' })
+  @ApiBody({ type: ReplaceAcademicContentWeeklyPlanDetailDto })
+  @ApiOkResponse({ type: AcademicContentWeeklyPlanDetailResponseDto })
+  async replaceWeeklyPlan(
+    @Param('contentId', new ParseUUIDPipe()) contentId: string,
+    @Body() dto: ReplaceAcademicContentWeeklyPlanDetailDto,
+  ): Promise<AcademicContentWeeklyPlanDetailResponseDto> {
+    const result = await this.typeDetails.replaceWeeklyPlan(contentId, dto);
+    return presentAcademicContentWeeklyPlanDetail(
+      result.state as Required<WeeklyPlanCommand>,
+    );
+  }
+
+  @Put(':contentId/details/guardian-note')
+  @RequiredPermissions('academics.academic_content.manage')
+  @ApiOperation({ summary: 'Replace draft Guardian Weekly Note detail' })
+  @ApiParam({ name: 'contentId', format: 'uuid' })
+  @ApiBody({ type: ReplaceAcademicContentGuardianNoteDetailDto })
+  @ApiOkResponse({ type: AcademicContentGuardianNoteDetailResponseDto })
+  async replaceGuardianNote(
+    @Param('contentId', new ParseUUIDPipe()) contentId: string,
+    @Body() dto: ReplaceAcademicContentGuardianNoteDetailDto,
+  ): Promise<AcademicContentGuardianNoteDetailResponseDto> {
+    const result = await this.typeDetails.replaceGuardianNote(contentId, dto);
+    return presentAcademicContentGuardianNoteDetail(
+      result.state as GuardianNoteCommand,
+    );
+  }
+
+  @Put(':contentId/details/subject-resource')
+  @RequiredPermissions('academics.academic_content.manage')
+  @ApiOperation({ summary: 'Replace draft Subject Resource detail' })
+  @ApiParam({ name: 'contentId', format: 'uuid' })
+  @ApiBody({ type: ReplaceAcademicContentSubjectResourceDetailDto })
+  @ApiOkResponse({ type: AcademicContentSubjectResourceDetailResponseDto })
+  async replaceSubjectResource(
+    @Param('contentId', new ParseUUIDPipe()) contentId: string,
+    @Body() dto: ReplaceAcademicContentSubjectResourceDetailDto,
+  ): Promise<AcademicContentSubjectResourceDetailResponseDto> {
+    const result = await this.typeDetails.replaceSubjectResource(
+      contentId,
+      dto,
+    );
+    return presentAcademicContentSubjectResourceDetail(
+      result.state as Required<SubjectResourceCommand>,
+    );
+  }
+
+  @Put(':contentId/details/online-session')
+  @Header('Cache-Control', 'no-store, private, max-age=0')
+  @RequiredPermissions('academics.academic_content.manage')
+  @ApiOperation({ summary: 'Replace draft Online Session detail' })
+  @ApiParam({ name: 'contentId', format: 'uuid' })
+  @ApiBody({ type: ReplaceAcademicContentOnlineSessionDetailDto })
+  @ApiOkResponse({ type: AcademicContentOnlineSessionDetailResponseDto })
+  async replaceOnlineSession(
+    @Param('contentId', new ParseUUIDPipe()) contentId: string,
+    @Body() dto: ReplaceAcademicContentOnlineSessionDetailDto,
+  ): Promise<AcademicContentOnlineSessionDetailResponseDto> {
+    const result = await this.typeDetails.replaceOnlineSession(contentId, dto);
+    return presentAcademicContentOnlineSessionDetail(
+      result.state as Extract<
+        NormalizedDetail,
+        { type: 'ONLINE_SESSION' }
+      >['state'],
     );
   }
 

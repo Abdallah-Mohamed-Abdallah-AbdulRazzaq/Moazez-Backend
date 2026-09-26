@@ -28,11 +28,18 @@ export function assertAcademicContentAudience(
   type: ContentType,
   audience: Audience,
 ): void {
-  if (!ALLOWED_AUDIENCES[type]?.includes(audience)) {
+  if (!isAcademicContentAudienceAllowed(type, audience)) {
     throw new ValidationDomainException(
       'Academic content audience is invalid for its type',
     );
   }
+}
+
+export function isAcademicContentAudienceAllowed(
+  type: ContentType,
+  audience: Audience,
+): boolean {
+  return ALLOWED_AUDIENCES[type]?.includes(audience) ?? false;
 }
 
 export function requiresAcademicContentSubject(type: ContentType): boolean {

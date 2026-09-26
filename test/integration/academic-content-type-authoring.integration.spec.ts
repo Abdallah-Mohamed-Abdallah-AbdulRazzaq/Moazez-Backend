@@ -12,6 +12,17 @@ import {
   UserType,
 } from '@prisma/client';
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
+import {
+  createRequestContext,
+  runWithRequestContext,
+  setActiveMembership,
+  setActor,
+} from '../../src/common/context/request-context';
+import { AcademicContentRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content.repository';
+import { AcademicContentValidationRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-validation.repository';
+import { GetAcademicContentForManagementUseCase } from '../../src/modules/academics/academic-content/application/academic-content-management-read.use-cases';
+import { GetAcademicContentReadinessUseCase } from '../../src/modules/academics/academic-content/application/academic-content-readiness.use-case';
+import { presentAcademicContentDetail } from '../../src/modules/academics/academic-content/presenters/academic-content.presenter';
 import { AcademicContentTypeDetailRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-type-detail.repository';
 import { AcademicContentTargetRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-target.repository';
 import {
@@ -36,6 +47,14 @@ describeDatabase('ACC-5B PostgreSQL type authoring', () => {
     },
   });
   const writer = new AcademicContentTypeDetailRepository(prisma);
+  const contentReader = new AcademicContentRepository(prisma);
+  const managementDetail = new GetAcademicContentForManagementUseCase(
+    contentReader,
+  );
+  const readiness = new GetAcademicContentReadinessUseCase(
+    contentReader,
+    new AcademicContentValidationRepository(prisma),
+  );
   const targets = new AcademicContentTargetRepository(prisma);
   const suffix = randomUUID().slice(0, 8);
   const ids: Record<string, string> = {};
@@ -83,6 +102,19 @@ describeDatabase('ACC-5B PostgreSQL type authoring', () => {
     actorId: ids.user,
     now: new Date('2026-09-26T10:00:00Z'),
   });
+  function asViewer<T>(action: () => Promise<T>): Promise<T> {
+    return runWithRequestContext(createRequestContext(), () => {
+      setActor({ id: ids.user, userType: UserType.SCHOOL_USER });
+      setActiveMembership({
+        membershipId: randomUUID(),
+        schoolId: ids.school,
+        organizationId: ids.organization,
+        roleId: randomUUID(),
+        permissions: ['academics.academic_content.view'],
+      });
+      return Promise.resolve().then(action);
+    });
+  }
 
   async function content(type: AcademicContentType) {
     const row = await prisma.academicContent.create({
@@ -1710,5 +1742,124 @@ describeDatabase('ACC-5B PostgreSQL type authoring', () => {
         where: { academicContentId: row.id },
       });
     expect(current.curriculumId).toBe(ids.curriculum);
+  });
+
+  it('reads each current typed detail, ordered weekly references, and no General Resource detail', async () => {
+    const weeklyWithReferences = normalizeWeeklyPlan({
+      ...weekly().state,
+      objectives: ['First', 'Second'],
+      homeworkAssignmentIds: [ids.homework],
+      gradeAssessmentIds: [ids.assessment],
+    });
+    const cases: NormalizedDetail[] = [
+      preparation(),
+      weeklyWithReferences,
+      note(),
+      resource(),
+      session(),
+    ];
+    for (const detail of cases) {
+      const row = await content(detail.type);
+      await target(row.id);
+      await writer.mutate(scope(row.id, detail));
+      const projected = await asViewer(() => managementDetail.execute(row.id));
+      const response = presentAcademicContentDetail(projected);
+      expect(response.type).toBe(detail.type);
+      expect(response.details).not.toBeNull();
+      expect(JSON.stringify(response.details)).not.toMatch(
+        /schoolId|contentType|createdBy|updatedBy|"id"/,
+      );
+      if (detail.type === AcademicContentType.WEEKLY_PLAN) {
+        expect(response.details).toMatchObject({
+          weekStartDate: '2028-09-10',
+          weekEndDate: '2028-09-16',
+          objectives: ['First', 'Second'],
+          homeworkAssignmentIds: [ids.homework],
+          gradeAssessmentIds: [ids.assessment],
+        });
+        expect(JSON.stringify(response.details)).not.toMatch(
+          /homeworkReferences|assessmentReferences/,
+        );
+      }
+      if (detail.type === AcademicContentType.ONLINE_SESSION)
+        expect(response.details).toMatchObject({
+          joinUrl: 'https://example.test/meeting',
+          startAt: '2028-09-10T10:00:00.000Z',
+          timezone: 'Africa/Cairo',
+        });
+    }
+    const general = await content(AcademicContentType.GENERAL_RESOURCE);
+    await target(general.id);
+    expect(
+      presentAcademicContentDetail(
+        await asViewer(() => managementDetail.execute(general.id)),
+      ).details,
+    ).toBeNull();
+    const missing = await content(AcademicContentType.TEACHER_PREPARATION);
+    await target(missing.id);
+    expect(
+      presentAcademicContentDetail(
+        await asViewer(() => managementDetail.execute(missing.id)),
+      ).details,
+    ).toBeNull();
+  });
+
+  it('evaluates readiness without mutating the aggregate or disclosing a foreign school', async () => {
+    await prisma.term.update({
+      where: { id: ids.term },
+      data: { isActive: true },
+    });
+    const row = await content(AcademicContentType.TEACHER_PREPARATION);
+    await target(row.id);
+    await writer.mutate(scope(row.id, preparation()));
+    const before = await prisma.academicContent.findUniqueOrThrow({
+      where: { id: row.id },
+    });
+    const auditsBefore = await prisma.auditLog.count({
+      where: { resourceId: row.id },
+    });
+    const revisionsBefore = await prisma.academicContentRevision.count({
+      where: { academicContentId: row.id },
+    });
+    expect(
+      await asViewer(() =>
+        readiness.execute(row.id, new Date('2028-09-15T12:00:00Z')),
+      ),
+    ).toEqual({
+      canAdvance: true,
+      blockingReasons: [],
+    });
+    expect(
+      await prisma.academicContent.findUniqueOrThrow({ where: { id: row.id } }),
+    ).toEqual(before);
+    expect(await prisma.auditLog.count({ where: { resourceId: row.id } })).toBe(
+      auditsBefore,
+    );
+    expect(
+      await prisma.academicContentRevision.count({
+        where: { academicContentId: row.id },
+      }),
+    ).toBe(revisionsBefore);
+
+    const foreign = await prisma.academicContent.create({
+      data: {
+        schoolId: ids.foreignSchool,
+        academicYearId: ids.foreignYear,
+        termId: ids.foreignTerm,
+        type: AcademicContentType.TEACHER_PREPARATION,
+        audience: 'INTERNAL_STAFF',
+        title: 'Private foreign preparation',
+        createdByUserId: ids.user,
+      },
+    });
+    await expect(
+      asViewer(() => managementDetail.execute(foreign.id)),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    await expect(
+      asViewer(() => readiness.execute(foreign.id)),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    await expect(
+      writer.mutate(scope(foreign.id, preparation())),
+    ).rejects.toMatchObject({ code: 'not_found' });
   });
 });

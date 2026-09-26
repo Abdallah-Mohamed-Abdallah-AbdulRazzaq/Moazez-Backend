@@ -1,4 +1,9 @@
-import { ApiProperty } from '@nestjs/swagger';
+import {
+  ApiExtraModels,
+  ApiProperty,
+  ApiPropertyOptional,
+  getSchemaPath,
+} from '@nestjs/swagger';
 import {
   AcademicContentAudienceType,
   AcademicContentStatus,
@@ -6,6 +11,22 @@ import {
   AcademicContentType,
   FileUploadSessionStatus,
 } from '@prisma/client';
+import {
+  AcademicContentGuardianNoteDetailResponseDto,
+  AcademicContentOnlineSessionDetailResponseDto,
+  AcademicContentPreparationDetailResponseDto,
+  AcademicContentSubjectResourceDetailResponseDto,
+  AcademicContentTypeDetailResponseDto,
+  AcademicContentWeeklyPlanDetailResponseDto,
+} from './academic-content-type-detail.dto';
+
+const detailSchemas = [
+  AcademicContentPreparationDetailResponseDto,
+  AcademicContentWeeklyPlanDetailResponseDto,
+  AcademicContentGuardianNoteDetailResponseDto,
+  AcademicContentSubjectResourceDetailResponseDto,
+  AcademicContentOnlineSessionDetailResponseDto,
+];
 
 export class AcademicContentResponseDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
@@ -73,6 +94,7 @@ export class AcademicContentTagsResponseDto {
   tags!: AcademicContentTagResponseDto[];
 }
 
+@ApiExtraModels(...detailSchemas)
 export class AcademicContentDetailResponseDto extends AcademicContentResponseDto {
   @ApiProperty({ type: () => AcademicContentTargetResponseDto, isArray: true })
   targets!: AcademicContentTargetResponseDto[];
@@ -82,6 +104,26 @@ export class AcademicContentDetailResponseDto extends AcademicContentResponseDto
   links!: AcademicContentLinkResponseDto[];
   @ApiProperty({ type: () => AcademicContentTagResponseDto, isArray: true })
   tags!: AcademicContentTagResponseDto[];
+  @ApiProperty({
+    nullable: true,
+    oneOf: detailSchemas.map((detail) => ({ $ref: getSchemaPath(detail) })),
+    description:
+      'Current authoring detail selected by the outer Academic Content type; null until authored or for GENERAL_RESOURCE.',
+  })
+  details!: AcademicContentTypeDetailResponseDto | null;
+}
+
+export class AcademicContentReadinessReasonDto {
+  @ApiProperty() code!: string;
+  @ApiProperty() message!: string;
+  @ApiPropertyOptional({ type: 'object', additionalProperties: true })
+  details?: Record<string, unknown>;
+}
+
+export class AcademicContentReadinessResponseDto {
+  @ApiProperty() canAdvance!: boolean;
+  @ApiProperty({ type: () => AcademicContentReadinessReasonDto, isArray: true })
+  blockingReasons!: AcademicContentReadinessReasonDto[];
 }
 
 export class AcademicContentListResponseDto {
