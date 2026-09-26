@@ -11,6 +11,7 @@ import {
   assertAcademicContentTermWritable,
 } from '../domain/academic-content-lifecycle.policy';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import { assertExistingTypeDetailReferencesCompatible } from './academic-content-type-detail.repository';
 
 @Injectable()
 export class AcademicContentTargetRepository {
@@ -67,6 +68,24 @@ export class AcademicContentTargetRepository {
             });
             if (!term) throw new NotFoundDomainException('Term not found');
             assertAcademicContentTermWritable(term, new Date());
+            await assertExistingTypeDetailReferencesCompatible(
+              tx,
+              {
+                id: academicContentId,
+                schoolId,
+                academicYearId: current.academicYearId,
+                termId: current.termId,
+                type: current.type,
+              },
+              targets.map((target) => ({
+                scopeType: target.scopeType,
+                subjectId: target.subjectId ?? '',
+                stageId: target.stageId,
+                gradeId: target.gradeId,
+                sectionId: target.sectionId,
+                classroomId: target.classroomId,
+              })),
+            );
             await tx.academicContentTarget.deleteMany({
               where: { schoolId, academicContentId },
             });
