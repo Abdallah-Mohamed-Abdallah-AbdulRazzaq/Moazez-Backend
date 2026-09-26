@@ -20,6 +20,7 @@ import { AcademicContentRepository } from './infrastructure/academic-content.rep
 import { AcademicContentTargetRepository } from './infrastructure/academic-content-target.repository';
 import { AcademicContentTypeDetailRepository } from './infrastructure/academic-content-type-detail.repository';
 import { AcademicContentTypeDetailUseCases } from './application/academic-content-type-detail.use-cases';
+import { GetAcademicContentReadinessUseCase } from './application/academic-content-readiness.use-case';
 import { ACADEMIC_CONTENT_TYPE_DETAIL_UNIT_OF_WORK } from './application/academic-content-type-detail.unit-of-work';
 import { AcademicContentLinksTagsRepository } from './infrastructure/academic-content-links-tags.repository';
 import { AcademicContentRevisionRepository } from './infrastructure/academic-content-revision.repository';
@@ -75,6 +76,7 @@ import {
     AcademicContentLifecycleUseCases,
     ListAcademicContentForManagementUseCase,
     GetAcademicContentForManagementUseCase,
+    GetAcademicContentReadinessUseCase,
     ReplaceAcademicContentTargetsUseCase,
     AcademicContentTypeDetailUseCases,
     ReplaceAcademicContentLinksUseCase,

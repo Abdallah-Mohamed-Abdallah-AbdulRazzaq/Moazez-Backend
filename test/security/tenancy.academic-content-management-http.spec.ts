@@ -9,6 +9,9 @@ import {
   AcademicContentStatus,
   AcademicContentTargetScopeType,
   AcademicContentType,
+  AcademicGuardianNotePriority,
+  AcademicOnlineSessionPlatform,
+  AcademicSubjectResourceCategory,
   FileUploadSessionStatus,
   UserType,
 } from '@prisma/client';
@@ -27,6 +30,8 @@ import {
   GetAcademicContentForManagementUseCase,
   ListAcademicContentForManagementUseCase,
 } from '../../src/modules/academics/academic-content/application/academic-content-management-read.use-cases';
+import { GetAcademicContentReadinessUseCase } from '../../src/modules/academics/academic-content/application/academic-content-readiness.use-case';
+import { AcademicContentTypeDetailUseCases } from '../../src/modules/academics/academic-content/application/academic-content-type-detail.use-cases';
 import { AcademicContentLifecycleUseCases } from '../../src/modules/academics/academic-content/application/academic-content-lifecycle.use-cases';
 import { CreateAcademicContentUseCase } from '../../src/modules/academics/academic-content/application/create-academic-content.use-case';
 import { ReplaceAcademicContentTargetsUseCase } from '../../src/modules/academics/academic-content/application/replace-academic-content-targets.use-case';
@@ -155,6 +160,14 @@ const services = {
   create: { execute: jest.fn() },
   list: { execute: jest.fn() },
   detail: { execute: jest.fn() },
+  readiness: { execute: jest.fn() },
+  typeDetails: {
+    replacePreparation: jest.fn(),
+    replaceWeeklyPlan: jest.fn(),
+    replaceGuardianNote: jest.fn(),
+    replaceSubjectResource: jest.fn(),
+    replaceOnlineSession: jest.fn(),
+  },
   lifecycle: {
     update: jest.fn(),
     archive: jest.fn(),
@@ -193,6 +206,14 @@ describe('ACC-4B management HTTP security and transport', () => {
         {
           provide: GetAcademicContentForManagementUseCase,
           useValue: services.detail,
+        },
+        {
+          provide: GetAcademicContentReadinessUseCase,
+          useValue: services.readiness,
+        },
+        {
+          provide: AcademicContentTypeDetailUseCases,
+          useValue: services.typeDetails,
         },
         {
           provide: AcademicContentLifecycleUseCases,
@@ -313,6 +334,74 @@ describe('ACC-4B management HTTP security and transport', () => {
       links: [],
       tags: [],
     });
+    services.readiness.execute.mockResolvedValue({
+      canAdvance: true,
+      blockingReasons: [],
+    });
+    services.typeDetails.replacePreparation.mockResolvedValue({
+      changed: true,
+      state: {
+        topic: null,
+        objectives: [],
+        learningOutcomes: [],
+        teachingStrategies: [],
+        activities: [],
+        resourceNotes: null,
+        assessmentNotes: null,
+        teacherNotes: null,
+        curriculumId: null,
+        curriculumUnitId: null,
+        curriculumLessonId: null,
+        lessonPlanId: null,
+        lessonPlanItemId: null,
+        timetableEntryId: null,
+      },
+    });
+    services.typeDetails.replaceWeeklyPlan.mockResolvedValue({
+      changed: true,
+      state: {
+        weekStartDate: '2028-09-10',
+        weekEndDate: '2028-09-16',
+        objectives: [],
+        topics: [],
+        expectedHomework: null,
+        upcomingAssessments: null,
+        notes: null,
+        homeworkAssignmentIds: [],
+        gradeAssessmentIds: [],
+      },
+    });
+    services.typeDetails.replaceGuardianNote.mockResolvedValue({
+      changed: true,
+      state: {
+        body: 'Notice',
+        priority: AcademicGuardianNotePriority.NORMAL,
+        requiresAcknowledgement: false,
+      },
+    });
+    services.typeDetails.replaceSubjectResource.mockResolvedValue({
+      changed: true,
+      state: {
+        resourceCategory: AcademicSubjectResourceCategory.WORKSHEET,
+        curriculumId: null,
+        curriculumUnitId: null,
+        curriculumLessonId: null,
+      },
+    });
+    services.typeDetails.replaceOnlineSession.mockResolvedValue({
+      changed: true,
+      state: {
+        platform: AcademicOnlineSessionPlatform.ZOOM,
+        providerName: null,
+        joinUrl: 'https://example.test/meeting',
+        accessCode: null,
+        instructions: null,
+        startAt: '2028-09-10T10:00:00.000Z',
+        endAt: '2028-09-10T11:00:00.000Z',
+        timezone: 'Africa/Cairo',
+        timetableEntryId: null,
+      },
+    });
     services.lifecycle.update.mockResolvedValue(content);
     services.lifecycle.archive.mockResolvedValue({
       ...content,
@@ -401,6 +490,36 @@ describe('ACC-4B management HTTP security and transport', () => {
     route('create', '/', 'academics.academic_content.manage');
     route('list', '/', 'academics.academic_content.view');
     route('detail', ':contentId', 'academics.academic_content.view');
+    route(
+      'readiness',
+      ':contentId/readiness',
+      'academics.academic_content.view',
+    );
+    route(
+      'replacePreparation',
+      ':contentId/details/preparation',
+      'academics.academic_content.manage',
+    );
+    route(
+      'replaceWeeklyPlan',
+      ':contentId/details/weekly-plan',
+      'academics.academic_content.manage',
+    );
+    route(
+      'replaceGuardianNote',
+      ':contentId/details/guardian-note',
+      'academics.academic_content.manage',
+    );
+    route(
+      'replaceSubjectResource',
+      ':contentId/details/subject-resource',
+      'academics.academic_content.manage',
+    );
+    route(
+      'replaceOnlineSession',
+      ':contentId/details/online-session',
+      'academics.academic_content.manage',
+    );
     route('update', ':contentId', 'academics.academic_content.manage');
     route('delete', ':contentId', 'academics.academic_content.manage');
     route('archive', ':contentId/archive', 'academics.academic_content.manage');
@@ -470,6 +589,7 @@ describe('ACC-4B management HTTP security and transport', () => {
         `GET ${base}`,
         `POST ${base}`,
         `GET ${base}/{contentId}`,
+        `GET ${base}/{contentId}/readiness`,
         `PATCH ${base}/{contentId}`,
         `DELETE ${base}/{contentId}`,
         `POST ${base}/{contentId}/archive`,
@@ -477,6 +597,11 @@ describe('ACC-4B management HTTP security and transport', () => {
         `PUT ${base}/{contentId}/targets`,
         `PUT ${base}/{contentId}/links`,
         `PUT ${base}/{contentId}/tags`,
+        `PUT ${base}/{contentId}/details/preparation`,
+        `PUT ${base}/{contentId}/details/weekly-plan`,
+        `PUT ${base}/{contentId}/details/guardian-note`,
+        `PUT ${base}/{contentId}/details/subject-resource`,
+        `PUT ${base}/{contentId}/details/online-session`,
         `GET ${base}/{contentId}/revisions`,
         `GET ${base}/{contentId}/revisions/{revisionId}`,
         `POST ${base}/{contentId}/uploads`,
@@ -497,6 +622,51 @@ describe('ACC-4B management HTTP security and transport', () => {
     expect(schemas).not.toMatch(
       /trustedOrigin|bucket|objectKey|finalBucket|cleanup/,
     );
+    expect(registeredRoutes.join('\n')).not.toMatch(
+      /publish|approve|submit|general-resource|multipart/,
+    );
+    const detailSchema =
+      document.components?.schemas?.AcademicContentDetailResponseDto;
+    expect(JSON.stringify(detailSchema)).toContain('details');
+    expect(JSON.stringify(detailSchema)).toContain('oneOf');
+    for (const [route, requestDto, responseDto] of [
+      [
+        'preparation',
+        'ReplaceAcademicContentPreparationDetailDto',
+        'AcademicContentPreparationDetailResponseDto',
+      ],
+      [
+        'weekly-plan',
+        'ReplaceAcademicContentWeeklyPlanDetailDto',
+        'AcademicContentWeeklyPlanDetailResponseDto',
+      ],
+      [
+        'guardian-note',
+        'ReplaceAcademicContentGuardianNoteDetailDto',
+        'AcademicContentGuardianNoteDetailResponseDto',
+      ],
+      [
+        'subject-resource',
+        'ReplaceAcademicContentSubjectResourceDetailDto',
+        'AcademicContentSubjectResourceDetailResponseDto',
+      ],
+      [
+        'online-session',
+        'ReplaceAcademicContentOnlineSessionDetailDto',
+        'AcademicContentOnlineSessionDetailResponseDto',
+      ],
+    ] as const) {
+      const operation =
+        document.paths[`${base}/{contentId}/details/${route}`].put;
+      expect(JSON.stringify(operation?.requestBody)).toContain(requestDto);
+      expect(JSON.stringify(operation?.responses?.['200'])).toContain(
+        responseDto,
+      );
+      expect(document.components?.schemas?.[responseDto]).toBeDefined();
+    }
+    const readinessSchema =
+      document.components?.schemas?.AcademicContentReadinessResponseDto;
+    expect(JSON.stringify(readinessSchema)).toContain('blockingReasons');
     const revisionParameters =
       document.paths[`${base}/{contentId}/revisions`].get?.parameters ?? [];
     expect(
@@ -638,6 +808,326 @@ describe('ACC-4B management HTTP security and transport', () => {
       .set('x-test-actor', 'settingsOnly')
       .send({})
       .expect(403);
+  });
+
+  it('delegates all five typed PUT routes to ACC-5B and presents only authoring state', async () => {
+    const cases = [
+      [
+        'preparation',
+        'replacePreparation',
+        {
+          objectives: [],
+          learningOutcomes: [],
+          teachingStrategies: [],
+          activities: [],
+        },
+      ],
+      [
+        'weekly-plan',
+        'replaceWeeklyPlan',
+        {
+          weekStartDate: '2028-09-10',
+          weekEndDate: '2028-09-16',
+          objectives: [],
+          topics: [],
+          homeworkAssignmentIds: [],
+          gradeAssessmentIds: [],
+        },
+      ],
+      [
+        'guardian-note',
+        'replaceGuardianNote',
+        {
+          body: 'Notice',
+          priority: AcademicGuardianNotePriority.NORMAL,
+          requiresAcknowledgement: false,
+        },
+      ],
+      [
+        'subject-resource',
+        'replaceSubjectResource',
+        { resourceCategory: AcademicSubjectResourceCategory.WORKSHEET },
+      ],
+      [
+        'online-session',
+        'replaceOnlineSession',
+        {
+          platform: AcademicOnlineSessionPlatform.ZOOM,
+          joinUrl: 'https://example.test/meeting',
+          startAt: '2028-09-10T10:00:00Z',
+          endAt: '2028-09-10T11:00:00Z',
+          timezone: 'Africa/Cairo',
+        },
+      ],
+    ] as const;
+    for (const [route, method, body] of cases) {
+      const response = await request(app.getHttpServer())
+        .put(`${base}/${contentId}/details/${route}`)
+        .send(body)
+        .expect(200);
+      expect(services.typeDetails[method]).toHaveBeenCalledWith(
+        contentId,
+        body,
+      );
+      expect(response.body).not.toHaveProperty('changed');
+      expect(JSON.stringify(response.body)).not.toMatch(
+        /schoolId|createdBy|updatedBy|audit|contentType/,
+      );
+      await request(app.getHttpServer())
+        .put(`${base}/${contentId}/details/${route}`)
+        .send({ ...body, schoolId })
+        .expect(400);
+      await request(app.getHttpServer())
+        .put(`${base}/bad/details/${route}`)
+        .send(body)
+        .expect(400);
+      await request(app.getHttpServer())
+        .put(`${base}/${contentId}/details/${route}`)
+        .set('x-test-actor', 'viewOnly')
+        .send(body)
+        .expect(403);
+      await request(app.getHttpServer())
+        .put(`${base}/${contentId}/details/${route}`)
+        .set('x-test-actor', 'manageOnly')
+        .send(body)
+        .expect(200);
+      await request(app.getHttpServer())
+        .put(`${base}/${contentId}/details/${route}`)
+        .set('x-test-actor', 'organization')
+        .send(body)
+        .expect(200);
+      for (const actor of ['teacher', 'student', 'parent', 'applicant']) {
+        await request(app.getHttpServer())
+          .put(`${base}/${contentId}/details/${route}`)
+          .set('x-test-actor', actor)
+          .send(body)
+          .expect(403);
+      }
+    }
+    await request(app.getHttpServer())
+      .put(`${base}/${contentId}/details/general-resource`)
+      .send({})
+      .expect(404);
+  });
+
+  it('keeps readiness view-only, scoped, and read-only at HTTP', async () => {
+    const response = await request(app.getHttpServer())
+      .get(`${base}/${contentId}/readiness`)
+      .set('x-test-actor', 'viewOnly')
+      .expect(200);
+    expect(response.body).toEqual({ canAdvance: true, blockingReasons: [] });
+    expect(services.readiness.execute).toHaveBeenCalledWith(contentId);
+    await request(app.getHttpServer())
+      .get(`${base}/${contentId}/readiness`)
+      .set('x-test-actor', 'organization')
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`${base}/${contentId}`)
+      .set('x-test-actor', 'viewOnly')
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`${base}/${contentId}/readiness`)
+      .set('x-test-actor', 'manageOnly')
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(`${base}/${contentId}`)
+      .set('x-test-actor', 'manageOnly')
+      .expect(403);
+    for (const actor of ['teacher', 'student', 'parent', 'applicant']) {
+      await request(app.getHttpServer())
+        .get(`${base}/${contentId}/readiness`)
+        .set('x-test-actor', actor)
+        .expect(403);
+    }
+    await request(app.getHttpServer()).get(`${base}/bad/readiness`).expect(400);
+    services.readiness.execute.mockRejectedValueOnce(
+      new NotFoundDomainException('Academic content not found'),
+    );
+    await request(app.getHttpServer())
+      .get(`${base}/${randomUUID()}/readiness`)
+      .expect(404);
+  });
+
+  it('preserves ACC-5B Online Session semantic validation through HTTP', async () => {
+    const unitOfWork = { mutate: jest.fn() };
+    const core = new AcademicContentTypeDetailUseCases(unitOfWork);
+    services.typeDetails.replaceOnlineSession.mockImplementation(
+      (
+        id: string,
+        dto: Parameters<
+          AcademicContentTypeDetailUseCases['replaceOnlineSession']
+        >[1],
+      ) => core.replaceOnlineSession(id, dto),
+    );
+    const valid = {
+      platform: AcademicOnlineSessionPlatform.ZOOM,
+      joinUrl: 'https://example.test/meeting',
+      startAt: '2028-09-10T10:00:00Z',
+      endAt: '2028-09-10T11:00:00Z',
+      timezone: 'Africa/Cairo',
+    };
+    for (const body of [
+      { ...valid, joinUrl: 'http://example.test/meeting' },
+      { ...valid, joinUrl: 'https://user:secret@example.test/meeting' },
+      { ...valid, endAt: valid.startAt },
+      { ...valid, timezone: 'Not/A_Timezone' },
+    ]) {
+      await request(app.getHttpServer())
+        .put(`${base}/${contentId}/details/online-session`)
+        .send(body)
+        .expect(400);
+    }
+    expect(unitOfWork.mutate).not.toHaveBeenCalled();
+  });
+
+  it('presents each current management detail without persistence internals', async () => {
+    const preparation = {
+      id: randomUUID(),
+      schoolId,
+      contentType: AcademicContentType.TEACHER_PREPARATION,
+      topic: 'Fractions',
+      objectives: ['Understand fractions'],
+      learningOutcomes: [],
+      teachingStrategies: [],
+      activities: [],
+      resourceNotes: null,
+      assessmentNotes: null,
+      teacherNotes: null,
+      curriculumId: null,
+      curriculumUnitId: null,
+      curriculumLessonId: null,
+      lessonPlanId: null,
+      lessonPlanItemId: null,
+      timetableEntryId: null,
+    };
+    const weekly = {
+      id: randomUUID(),
+      schoolId,
+      contentType: AcademicContentType.WEEKLY_PLAN,
+      weekStartDate: new Date('2028-09-10T00:00:00Z'),
+      weekEndDate: new Date('2028-09-16T00:00:00Z'),
+      objectives: ['A', 'B'],
+      topics: ['X'],
+      expectedHomework: null,
+      upcomingAssessments: null,
+      notes: null,
+      homeworkReferences: [
+        { id: randomUUID(), homeworkAssignmentId: randomUUID() },
+      ],
+      assessmentReferences: [
+        { id: randomUUID(), gradeAssessmentId: randomUUID() },
+      ],
+    };
+    const note = {
+      id: randomUUID(),
+      schoolId,
+      body: 'Notice',
+      priority: AcademicGuardianNotePriority.NORMAL,
+      requiresAcknowledgement: true,
+    };
+    const resource = {
+      id: randomUUID(),
+      schoolId,
+      resourceCategory: AcademicSubjectResourceCategory.WORKSHEET,
+      curriculumId: null,
+      curriculumUnitId: null,
+      curriculumLessonId: null,
+    };
+    const online = {
+      id: randomUUID(),
+      schoolId,
+      platform: AcademicOnlineSessionPlatform.ZOOM,
+      providerName: null,
+      joinUrl: 'https://example.test/private',
+      accessCode: 'private-code',
+      instructions: null,
+      startAt: new Date('2028-09-10T10:00:00Z'),
+      endAt: new Date('2028-09-10T11:00:00Z'),
+      timezone: 'Africa/Cairo',
+      timetableEntryId: null,
+    };
+    const cases = [
+      [
+        AcademicContentType.TEACHER_PREPARATION,
+        'preparationDetail',
+        preparation,
+        { topic: 'Fractions', objectives: ['Understand fractions'] },
+      ],
+      [
+        AcademicContentType.WEEKLY_PLAN,
+        'weeklyPlanDetail',
+        weekly,
+        {
+          weekStartDate: '2028-09-10',
+          weekEndDate: '2028-09-16',
+          objectives: ['A', 'B'],
+          homeworkAssignmentIds: [
+            weekly.homeworkReferences[0].homeworkAssignmentId,
+          ],
+          gradeAssessmentIds: [
+            weekly.assessmentReferences[0].gradeAssessmentId,
+          ],
+        },
+      ],
+      [
+        AcademicContentType.GUARDIAN_WEEKLY_NOTE,
+        'guardianNoteDetail',
+        note,
+        { body: 'Notice', requiresAcknowledgement: true },
+      ],
+      [
+        AcademicContentType.SUBJECT_RESOURCE,
+        'subjectResourceDetail',
+        resource,
+        { resourceCategory: AcademicSubjectResourceCategory.WORKSHEET },
+      ],
+      [
+        AcademicContentType.ONLINE_SESSION,
+        'onlineSessionDetail',
+        online,
+        {
+          joinUrl: 'https://example.test/private',
+          accessCode: 'private-code',
+          startAt: '2028-09-10T10:00:00.000Z',
+        },
+      ],
+    ] as const;
+    for (const [type, relation, detail, expected] of cases) {
+      services.detail.execute.mockResolvedValueOnce({
+        ...content,
+        type,
+        targets: [],
+        assets: [],
+        links: [],
+        tags: [],
+        [relation]: detail,
+      });
+      const response = await request(app.getHttpServer())
+        .get(`${base}/${contentId}`)
+        .expect(200);
+      const body = response.body as { details: unknown };
+      expect(body.details).toMatchObject(expected);
+      expect(JSON.stringify(body.details)).not.toMatch(
+        /schoolId|contentType|createdBy|updatedBy|homeworkReferences|assessmentReferences|"id"/,
+      );
+    }
+    services.detail.execute.mockResolvedValueOnce({
+      ...content,
+      type: AcademicContentType.TEACHER_PREPARATION,
+      targets: [],
+      assets: [],
+      links: [],
+      tags: [],
+      preparationDetail: null,
+    });
+    const missing = await request(app.getHttpServer())
+      .get(`${base}/${contentId}`)
+      .expect(200);
+    expect((missing.body as { details: unknown }).details).toBeNull();
+    const general = await request(app.getHttpServer())
+      .get(`${base}/${contentId}`)
+      .expect(200);
+    expect((general.body as { details: unknown }).details).toBeNull();
   });
 
   it('lists bounded inventory, gives safe detail, and hides foreign School content', async () => {

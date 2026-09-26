@@ -83,6 +83,67 @@ const ACADEMIC_CONTENT_DETAIL_ARGS =
         select: { id: true, displayValue: true, sortOrder: true },
         orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
       },
+      preparationDetail: {
+        select: {
+          topic: true,
+          objectives: true,
+          learningOutcomes: true,
+          teachingStrategies: true,
+          activities: true,
+          resourceNotes: true,
+          assessmentNotes: true,
+          teacherNotes: true,
+          curriculumId: true,
+          curriculumUnitId: true,
+          curriculumLessonId: true,
+          lessonPlanId: true,
+          lessonPlanItemId: true,
+          timetableEntryId: true,
+        },
+      },
+      weeklyPlanDetail: {
+        select: {
+          weekStartDate: true,
+          weekEndDate: true,
+          objectives: true,
+          topics: true,
+          expectedHomework: true,
+          upcomingAssessments: true,
+          notes: true,
+          homeworkReferences: {
+            select: { homeworkAssignmentId: true },
+            orderBy: { homeworkAssignmentId: 'asc' },
+          },
+          assessmentReferences: {
+            select: { gradeAssessmentId: true },
+            orderBy: { gradeAssessmentId: 'asc' },
+          },
+        },
+      },
+      guardianNoteDetail: {
+        select: { body: true, priority: true, requiresAcknowledgement: true },
+      },
+      subjectResourceDetail: {
+        select: {
+          resourceCategory: true,
+          curriculumId: true,
+          curriculumUnitId: true,
+          curriculumLessonId: true,
+        },
+      },
+      onlineSessionDetail: {
+        select: {
+          platform: true,
+          providerName: true,
+          joinUrl: true,
+          accessCode: true,
+          instructions: true,
+          startAt: true,
+          endAt: true,
+          timezone: true,
+          timetableEntryId: true,
+        },
+      },
     },
   });
 

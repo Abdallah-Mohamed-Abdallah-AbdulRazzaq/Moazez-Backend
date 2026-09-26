@@ -85,11 +85,19 @@ export function normalizeAcademicContentTitle(value: unknown): string {
   if (typeof value !== 'string')
     throw new ValidationDomainException('Academic content title is required');
   const title = value.trim();
-  if (!title || title.length > 180)
+  if (!isAcademicContentTitleValid(title))
     throw new ValidationDomainException(
       'Academic content title must contain 1 to 180 characters',
     );
   return title;
+}
+
+export function isAcademicContentTitleValid(value: unknown): boolean {
+  return (
+    typeof value === 'string' &&
+    value.trim().length > 0 &&
+    value.trim().length <= 180
+  );
 }
 
 export function normalizeAcademicContentDescription(

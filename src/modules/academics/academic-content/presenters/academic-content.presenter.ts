@@ -25,7 +25,177 @@ import {
 import { AcademicContentRevisionDetail } from '../infrastructure/academic-content-revision.repository';
 import { AcademicContentEffectiveFilePolicy } from '../files/domain/academic-content-file-policy';
 import { AcademicContentTargetInput } from '../domain/academic-content-target.policy';
-import { FileUploadSessionStatus } from '@prisma/client';
+import { AcademicContentType, FileUploadSessionStatus } from '@prisma/client';
+import type {
+  GuardianNoteCommand,
+  NormalizedDetail,
+  PreparationCommand,
+  SubjectResourceCommand,
+  WeeklyPlanCommand,
+} from '../domain/academic-content-type-detail.policy';
+import type { AcademicContentReadiness } from '../domain/academic-content-readiness.policy';
+import type {
+  AcademicContentGuardianNoteDetailResponseDto,
+  AcademicContentOnlineSessionDetailResponseDto,
+  AcademicContentPreparationDetailResponseDto,
+  AcademicContentSubjectResourceDetailResponseDto,
+  AcademicContentTypeDetailResponseDto,
+  AcademicContentWeeklyPlanDetailResponseDto,
+} from '../dto/academic-content-type-detail.dto';
+import type { AcademicContentReadinessResponseDto } from '../dto/academic-content-response.dto';
+
+export function presentAcademicContentPreparationDetail(
+  state: Required<PreparationCommand>,
+): AcademicContentPreparationDetailResponseDto {
+  return {
+    topic: state.topic ?? null,
+    objectives: state.objectives,
+    learningOutcomes: state.learningOutcomes,
+    teachingStrategies: state.teachingStrategies,
+    activities: state.activities,
+    resourceNotes: state.resourceNotes ?? null,
+    assessmentNotes: state.assessmentNotes ?? null,
+    teacherNotes: state.teacherNotes ?? null,
+    curriculumId: state.curriculumId ?? null,
+    curriculumUnitId: state.curriculumUnitId ?? null,
+    curriculumLessonId: state.curriculumLessonId ?? null,
+    lessonPlanId: state.lessonPlanId ?? null,
+    lessonPlanItemId: state.lessonPlanItemId ?? null,
+    timetableEntryId: state.timetableEntryId ?? null,
+  };
+}
+
+type WeeklyPlanView = Omit<
+  Required<WeeklyPlanCommand>,
+  'weekStartDate' | 'weekEndDate'
+> & {
+  weekStartDate: string | Date;
+  weekEndDate: string | Date;
+};
+const dateOnly = (value: string | Date) =>
+  value instanceof Date ? value.toISOString().slice(0, 10) : value;
+
+export function presentAcademicContentWeeklyPlanDetail(
+  state: WeeklyPlanView,
+): AcademicContentWeeklyPlanDetailResponseDto {
+  return {
+    weekStartDate: dateOnly(state.weekStartDate),
+    weekEndDate: dateOnly(state.weekEndDate),
+    objectives: state.objectives,
+    topics: state.topics,
+    expectedHomework: state.expectedHomework ?? null,
+    upcomingAssessments: state.upcomingAssessments ?? null,
+    notes: state.notes ?? null,
+    homeworkAssignmentIds: state.homeworkAssignmentIds,
+    gradeAssessmentIds: state.gradeAssessmentIds,
+  };
+}
+
+export function presentAcademicContentGuardianNoteDetail(
+  state: GuardianNoteCommand,
+): AcademicContentGuardianNoteDetailResponseDto {
+  return {
+    body: state.body,
+    priority: state.priority,
+    requiresAcknowledgement: state.requiresAcknowledgement,
+  };
+}
+
+export function presentAcademicContentSubjectResourceDetail(
+  state: Required<SubjectResourceCommand>,
+): AcademicContentSubjectResourceDetailResponseDto {
+  return {
+    resourceCategory: state.resourceCategory,
+    curriculumId: state.curriculumId ?? null,
+    curriculumUnitId: state.curriculumUnitId ?? null,
+    curriculumLessonId: state.curriculumLessonId ?? null,
+  };
+}
+
+type OnlineSessionView = Omit<
+  Extract<NormalizedDetail, { type: 'ONLINE_SESSION' }>['state'],
+  'startAt' | 'endAt'
+> & {
+  startAt: string | Date;
+  endAt: string | Date;
+};
+const instant = (value: string | Date) =>
+  value instanceof Date ? value.toISOString() : value;
+
+export function presentAcademicContentOnlineSessionDetail(
+  state: OnlineSessionView,
+): AcademicContentOnlineSessionDetailResponseDto {
+  return {
+    platform: state.platform,
+    providerName: state.providerName ?? null,
+    joinUrl: state.joinUrl,
+    accessCode: state.accessCode ?? null,
+    instructions: state.instructions ?? null,
+    startAt: instant(state.startAt),
+    endAt: instant(state.endAt),
+    timezone: state.timezone,
+    timetableEntryId: state.timetableEntryId ?? null,
+  };
+}
+
+export function presentAcademicContentCurrentDetails(
+  content: AcademicContentManagementDetail,
+): AcademicContentTypeDetailResponseDto | null {
+  switch (content.type) {
+    case AcademicContentType.TEACHER_PREPARATION:
+      return content.preparationDetail
+        ? presentAcademicContentPreparationDetail(
+            content.preparationDetail as unknown as Required<PreparationCommand>,
+          )
+        : null;
+    case AcademicContentType.WEEKLY_PLAN: {
+      const detail = content.weeklyPlanDetail;
+      return detail
+        ? presentAcademicContentWeeklyPlanDetail({
+            ...detail,
+            objectives: detail.objectives as string[],
+            topics: detail.topics as string[],
+            homeworkAssignmentIds: detail.homeworkReferences.map(
+              (reference) => reference.homeworkAssignmentId,
+            ),
+            gradeAssessmentIds: detail.assessmentReferences.map(
+              (reference) => reference.gradeAssessmentId,
+            ),
+          })
+        : null;
+    }
+    case AcademicContentType.GUARDIAN_WEEKLY_NOTE:
+      return content.guardianNoteDetail
+        ? presentAcademicContentGuardianNoteDetail(content.guardianNoteDetail)
+        : null;
+    case AcademicContentType.SUBJECT_RESOURCE:
+      return content.subjectResourceDetail
+        ? presentAcademicContentSubjectResourceDetail(
+            content.subjectResourceDetail,
+          )
+        : null;
+    case AcademicContentType.ONLINE_SESSION:
+      return content.onlineSessionDetail
+        ? presentAcademicContentOnlineSessionDetail(content.onlineSessionDetail)
+        : null;
+    case AcademicContentType.GENERAL_RESOURCE:
+      return null;
+    default:
+      return null;
+  }
+}
+
+export function presentAcademicContentReadiness(
+  readiness: AcademicContentReadiness,
+): AcademicContentReadinessResponseDto {
+  return {
+    canAdvance: readiness.canAdvance,
+    blockingReasons: readiness.blockingReasons.map(({ code, message }) => ({
+      code,
+      message,
+    })),
+  };
+}
 
 export function presentAcademicContent(
   content: AcademicContentRecord,
@@ -122,6 +292,7 @@ export function presentAcademicContentDetail(
     })),
     links: content.links.map(presentAcademicContentLink),
     tags: content.tags.map(presentAcademicContentTag),
+    details: presentAcademicContentCurrentDetails(content),
   };
 }
 
