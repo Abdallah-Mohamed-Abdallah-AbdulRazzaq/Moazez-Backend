@@ -637,6 +637,31 @@ describe('ACC-4B management HTTP security and transport', () => {
     expect(JSON.stringify(revisionDetailSchema)).not.toContain(
       'typeSpecificSnapshot',
     );
+    const libraryItemSchema =
+      document.components?.schemas?.AcademicContentLibraryItemResponseDto;
+    expect(JSON.stringify(libraryItemSchema)).toContain('summary');
+    expect(JSON.stringify(libraryItemSchema)).toContain('oneOf');
+    expect(JSON.stringify(libraryItemSchema)).toContain('nullable');
+    const libraryListSchema =
+      document.components?.schemas?.AcademicContentListResponseDto;
+    expect(JSON.stringify(libraryListSchema)).toContain(
+      'AcademicContentLibraryItemResponseDto',
+    );
+    const libraryParameters = document.paths[base].get?.parameters ?? [];
+    for (const name of [
+      'resourceCategory',
+      'weeklyDateFrom',
+      'weeklyDateTo',
+      'sessionStartAtFrom',
+      'sessionStartAtTo',
+      'sessionPlatform',
+      'guardianPriority',
+    ])
+      expect(
+        libraryParameters.some(
+          (parameter) => 'name' in parameter && parameter.name === name,
+        ),
+      ).toBe(true);
     for (const [route, requestDto, responseDto] of [
       [
         'preparation',
@@ -1186,6 +1211,13 @@ describe('ACC-4B management HTTP security and transport', () => {
       classroomId: randomUUID(),
       subjectId: randomUUID(),
       teacherUserId: randomUUID(),
+      resourceCategory: AcademicSubjectResourceCategory.WORKSHEET,
+      weeklyDateFrom: '2028-09-10',
+      weeklyDateTo: '2028-09-16',
+      sessionStartAtFrom: '2028-09-10T10:00:00Z',
+      sessionStartAtTo: '2028-09-10T11:00:00Z',
+      sessionPlatform: AcademicOnlineSessionPlatform.ZOOM,
+      guardianPriority: AcademicGuardianNotePriority.URGENT,
       tag: 'x'.repeat(80),
       search: 'y'.repeat(120),
       page: 2,
@@ -1200,6 +1232,39 @@ describe('ACC-4B management HTTP security and transport', () => {
       .expect(200);
   });
 
+  it('presents only the Online Session Library summary from selected fields', async () => {
+    services.list.execute.mockResolvedValueOnce({
+      items: [
+        {
+          ...content,
+          type: AcademicContentType.ONLINE_SESSION,
+          onlineSessionDetail: {
+            platform: AcademicOnlineSessionPlatform.ZOOM,
+            startAt: now,
+            endAt: new Date(now.getTime() + 3_600_000),
+            joinUrl: 'https://provider.example/private',
+            accessCode: 'private-code',
+            instructions: 'private instructions',
+          },
+        },
+      ],
+      page: 1,
+      limit: 50,
+      total: 1,
+    });
+    const response = await request(app.getHttpServer()).get(base).expect(200);
+    const body = response.body as { items: Array<{ summary: unknown }> };
+    expect(body.items[0].summary).toEqual({
+      type: AcademicContentType.ONLINE_SESSION,
+      platform: AcademicOnlineSessionPlatform.ZOOM,
+      startAt: now.toISOString(),
+      endAt: new Date(now.getTime() + 3_600_000).toISOString(),
+    });
+    expect(JSON.stringify(response.body)).not.toMatch(
+      /joinUrl|accessCode|instructions|private-code|schoolId/u,
+    );
+  });
+
   it.each([
     ['academicYearId', 'not-a-uuid'],
     ['termId', 'not-a-uuid'],
@@ -1212,6 +1277,13 @@ describe('ACC-4B management HTTP security and transport', () => {
     ['type', 'NOT_A_TYPE'],
     ['status', 'NOT_A_STATUS'],
     ['audience', 'NOT_AN_AUDIENCE'],
+    ['resourceCategory', 'NOT_A_CATEGORY'],
+    ['weeklyDateFrom', '2028/09/10'],
+    ['weeklyDateTo', 'not-a-date'],
+    ['sessionStartAtFrom', 'not-a-time'],
+    ['sessionStartAtTo', '2028-02-30T10:00:00Z'],
+    ['sessionPlatform', 'NOT_A_PLATFORM'],
+    ['guardianPriority', 'NOT_A_PRIORITY'],
     ['search', 'x'.repeat(121)],
     ['tag', 'x'.repeat(81)],
     ['page', '0'],
@@ -1221,6 +1293,10 @@ describe('ACC-4B management HTTP security and transport', () => {
     ['createdByUserId', randomUUID()],
     ['week', '1'],
     ['date', '2030-01-01'],
+    ['priority', 'URGENT'],
+    ['platform', 'ZOOM'],
+    ['category', 'WORKSHEET'],
+    ['requiresAcknowledgement', 'true'],
     ['unknown', 'x'],
   ])('rejects invalid or unowned Library query %s', async (field, value) => {
     await request(app.getHttpServer())

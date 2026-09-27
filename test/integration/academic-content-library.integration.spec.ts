@@ -4,6 +4,9 @@ import {
   AcademicContentStatus as Status,
   AcademicContentTargetScopeType as Scope,
   AcademicContentType as ContentType,
+  AcademicGuardianNotePriority as GuardianPriority,
+  AcademicOnlineSessionPlatform as SessionPlatform,
+  AcademicSubjectResourceCategory as ResourceCategory,
   UserType,
 } from '@prisma/client';
 import {
@@ -16,6 +19,7 @@ import { PrismaService } from '../../src/infrastructure/database/prisma.service'
 import { ListAcademicContentForManagementUseCase } from '../../src/modules/academics/academic-content/application/academic-content-management-read.use-cases';
 import type { AcademicContentLibraryQuery } from '../../src/modules/academics/academic-content/domain/academic-content-library.query';
 import { AcademicContentRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content.repository';
+import { presentAcademicContentList } from '../../src/modules/academics/academic-content/presenters/academic-content.presenter';
 
 const databaseUrl = process.env.DATABASE_URL;
 const describeDatabase = databaseUrl ? describe : describe.skip;
@@ -816,5 +820,451 @@ describeDatabase('ACC-4D PostgreSQL Academic Content Library', () => {
       (row) => row.id,
     );
     expect(tieOrder).toEqual(tied.sort().reverse());
+  });
+
+  it('hydrates only discriminated lightweight summaries, including null for General and missing detail', async () => {
+    const preparation = await content('acc5e-summary-preparation', {
+      type: ContentType.TEACHER_PREPARATION,
+      audience: Audience.INTERNAL_STAFF,
+    });
+    await prisma.academicContentPreparationDetail.create({
+      data: {
+        schoolId: id.school,
+        academicContentId: preparation.id,
+        topic: 'Fractions',
+        objectives: ['private objective'],
+        teacherNotes: 'private teacher note',
+      },
+    });
+    const weekly = await content('acc5e-summary-weekly', {
+      type: ContentType.WEEKLY_PLAN,
+    });
+    await prisma.academicContentWeeklyPlanDetail.create({
+      data: {
+        schoolId: id.school,
+        academicContentId: weekly.id,
+        weekStartDate: date('2028-09-10'),
+        weekEndDate: date('2028-09-16'),
+        objectives: ['private objective'],
+        topics: ['private topic'],
+        notes: 'private note',
+      },
+    });
+    const guardian = await content('acc5e-summary-guardian', {
+      type: ContentType.GUARDIAN_WEEKLY_NOTE,
+      audience: Audience.GUARDIANS,
+    });
+    await prisma.academicContentGuardianNoteDetail.create({
+      data: {
+        schoolId: id.school,
+        academicContentId: guardian.id,
+        body: 'private guardian body',
+        priority: GuardianPriority.IMPORTANT,
+        requiresAcknowledgement: true,
+      },
+    });
+    const resource = await content('acc5e-summary-resource', {
+      type: ContentType.SUBJECT_RESOURCE,
+      status: Status.ARCHIVED,
+    });
+    await prisma.academicContentSubjectResourceDetail.create({
+      data: {
+        schoolId: id.school,
+        academicContentId: resource.id,
+        resourceCategory: ResourceCategory.WORKSHEET,
+      },
+    });
+    const session = await content('acc5e-summary-session', {
+      type: ContentType.ONLINE_SESSION,
+    });
+    await prisma.academicContentOnlineSessionDetail.create({
+      data: {
+        schoolId: id.school,
+        academicContentId: session.id,
+        platform: SessionPlatform.ZOOM,
+        joinUrl: 'https://provider.example/private-meeting',
+        accessCode: 'private-code',
+        instructions: 'private instructions',
+        startAt: date('2028-09-10T10:00:00Z'),
+        endAt: date('2028-09-10T11:00:00Z'),
+        timezone: 'Africa/Cairo',
+      },
+    });
+    await content('acc5e-summary-general');
+    await content('acc5e-summary-missing', {
+      type: ContentType.TEACHER_PREPARATION,
+      audience: Audience.INTERNAL_STAFF,
+    });
+    const result = presentAcademicContentList(
+      await list({ search: 'acc5e-summary-' }),
+    );
+    const summaries = Object.fromEntries(
+      result.items.map((item) => [item.title, item.summary]),
+    );
+    expect(summaries['acc5e-summary-preparation']).toEqual({
+      type: ContentType.TEACHER_PREPARATION,
+      topic: 'Fractions',
+    });
+    expect(summaries['acc5e-summary-weekly']).toEqual({
+      type: ContentType.WEEKLY_PLAN,
+      weekStartDate: '2028-09-10',
+      weekEndDate: '2028-09-16',
+    });
+    expect(summaries['acc5e-summary-guardian']).toEqual({
+      type: ContentType.GUARDIAN_WEEKLY_NOTE,
+      priority: GuardianPriority.IMPORTANT,
+      requiresAcknowledgement: true,
+    });
+    expect(summaries['acc5e-summary-resource']).toEqual({
+      type: ContentType.SUBJECT_RESOURCE,
+      resourceCategory: ResourceCategory.WORKSHEET,
+    });
+    expect(summaries['acc5e-summary-session']).toEqual({
+      type: ContentType.ONLINE_SESSION,
+      platform: SessionPlatform.ZOOM,
+      startAt: '2028-09-10T10:00:00.000Z',
+      endAt: '2028-09-10T11:00:00.000Z',
+    });
+    expect(summaries['acc5e-summary-general']).toBeNull();
+    expect(summaries['acc5e-summary-missing']).toBeNull();
+    expect(JSON.stringify(result.items)).not.toMatch(
+      /"(?:body|objectives|teacherNotes|notes|joinUrl|accessCode|instructions|curriculumId|homeworkAssignmentIds|gradeAssessmentIds|schoolId|contentType|identityFingerprint|createdByUserId|updatedByUserId|deletedAt)":/u,
+    );
+    expect(Object.keys(summaries['acc5e-summary-session']!)).toEqual([
+      'type',
+      'platform',
+      'startAt',
+      'endAt',
+    ]);
+  });
+
+  it('filters Subject Resources with parent pagination, School scope, and same-target correlation', async () => {
+    const rows: Array<{ id: string; title: string }> = [];
+    for (let index = 0; index < 3; index++) {
+      const row = await content(`acc5e-resource-${index}`, {
+        type: ContentType.SUBJECT_RESOURCE,
+      });
+      rows.push(row);
+      await prisma.academicContentSubjectResourceDetail.create({
+        data: {
+          schoolId: id.school,
+          academicContentId: row.id,
+          resourceCategory: ResourceCategory.WORKSHEET,
+        },
+      });
+      await target(row.id, Scope.CLASSROOM, {
+        classroomId: id.c1,
+        subjectId: id.math,
+        teacherSubjectAllocationId: id.allocation1,
+      });
+      await target(row.id, Scope.SCHOOL);
+      await prisma.academicContent.update({
+        where: { id: row.id },
+        data: { updatedAt: date(`2031-02-0${index + 1}`) },
+      });
+    }
+    const video = await content('acc5e-resource-video', {
+      type: ContentType.SUBJECT_RESOURCE,
+    });
+    await prisma.academicContentSubjectResourceDetail.create({
+      data: {
+        schoolId: id.school,
+        academicContentId: video.id,
+        resourceCategory: ResourceCategory.VIDEO,
+      },
+    });
+    await content('acc5e-resource-general');
+    await content('acc5e-resource-missing', {
+      type: ContentType.SUBJECT_RESOURCE,
+    });
+    const filter = {
+      search: 'acc5e-resource-',
+      academicYearId: id.year,
+      termId: id.term,
+      resourceCategory: ResourceCategory.WORKSHEET,
+      stageId: id.s1,
+      gradeId: id.g1,
+      sectionId: id.x1,
+      classroomId: id.c1,
+      subjectId: id.math,
+      teacherUserId: id.teacher1,
+      limit: 1,
+    };
+    const pages = await Promise.all(
+      [1, 2, 3, 4].map((page) => list({ ...filter, page })),
+    );
+    expect(pages.map((page) => page.total)).toEqual([3, 3, 3, 3]);
+    expect(pages.map((page) => page.items.map((item) => item.id))).toEqual([
+      [rows[2].id],
+      [rows[1].id],
+      [rows[0].id],
+      [],
+    ]);
+    expect(
+      presentAcademicContentList(
+        await list({ ...filter, page: 1, limit: 3 }),
+      ).items.map((item) => item.id),
+    ).toEqual([rows[2].id, rows[1].id, rows[0].id]);
+    expect(
+      titles(
+        await list({
+          search: 'acc5e-resource-',
+          type: ContentType.SUBJECT_RESOURCE,
+          resourceCategory: ResourceCategory.WORKSHEET,
+        }),
+      ),
+    ).toEqual(rows.map((row) => row.title));
+    expect(
+      (
+        await list({
+          search: 'acc5e-resource-',
+          type: ContentType.ONLINE_SESSION,
+          resourceCategory: ResourceCategory.WORKSHEET,
+        })
+      ).total,
+    ).toBe(0);
+    const split = await content('acc5e-resource-split', {
+      type: ContentType.SUBJECT_RESOURCE,
+    });
+    await prisma.academicContentSubjectResourceDetail.create({
+      data: {
+        schoolId: id.school,
+        academicContentId: split.id,
+        resourceCategory: ResourceCategory.WORKSHEET,
+      },
+    });
+    await target(split.id, Scope.CLASSROOM, {
+      classroomId: id.c1,
+      subjectId: id.math,
+    });
+    await target(split.id, Scope.CLASSROOM, {
+      classroomId: id.c2,
+      subjectId: id.science,
+      teacherSubjectAllocationId: id.allocation2,
+    });
+    expect(
+      (
+        await list({
+          search: split.title,
+          resourceCategory: ResourceCategory.WORKSHEET,
+          classroomId: id.c1,
+          subjectId: id.math,
+          teacherUserId: id.teacher2,
+        })
+      ).total,
+    ).toBe(0);
+    await target(split.id, Scope.CLASSROOM, {
+      classroomId: id.c1,
+      subjectId: id.math,
+      teacherSubjectAllocationId: id.allocation1,
+    });
+    expect(
+      titles(
+        await list({
+          search: split.title,
+          resourceCategory: ResourceCategory.WORKSHEET,
+          classroomId: id.c1,
+          subjectId: id.math,
+          teacherUserId: id.teacher1,
+        }),
+      ),
+    ).toEqual([split.title]);
+    const foreign = await content('acc5e-resource-foreign', {
+      schoolId: id.foreignSchool,
+      academicYearId: id.foreignYear,
+      termId: id.foreignTerm,
+      type: ContentType.SUBJECT_RESOURCE,
+    });
+    await prisma.academicContentSubjectResourceDetail.create({
+      data: {
+        schoolId: id.foreignSchool,
+        academicContentId: foreign.id,
+        resourceCategory: ResourceCategory.WORKSHEET,
+      },
+    });
+    expect(
+      (
+        await list({
+          search: foreign.title,
+          resourceCategory: ResourceCategory.WORKSHEET,
+        })
+      ).total,
+    ).toBe(0);
+    await prisma.academicContent.delete({ where: { id: foreign.id } });
+  });
+
+  it('uses inclusive Weekly Plan interval overlap and rejects impossible or inverted dates', async () => {
+    const intervals = [
+      ['before', '2028-09-01', '2028-09-09'],
+      ['left', '2028-09-08', '2028-09-10'],
+      ['inside', '2028-09-12', '2028-09-14'],
+      ['right', '2028-09-20', '2028-09-22'],
+      ['after', '2028-09-21', '2028-09-24'],
+    ] as const;
+    for (const [name, start, end] of intervals) {
+      const row = await content(`acc5e-weekly-${name}`, {
+        type: ContentType.WEEKLY_PLAN,
+      });
+      await prisma.academicContentWeeklyPlanDetail.create({
+        data: {
+          schoolId: id.school,
+          academicContentId: row.id,
+          weekStartDate: date(start),
+          weekEndDate: date(end),
+        },
+      });
+    }
+    await content('acc5e-weekly-general');
+    const query = { search: 'acc5e-weekly-' };
+    expect(
+      titles(
+        await list({
+          ...query,
+          weeklyDateFrom: '2028-09-10',
+          weeklyDateTo: '2028-09-20',
+        }),
+      ),
+    ).toEqual([
+      'acc5e-weekly-inside',
+      'acc5e-weekly-left',
+      'acc5e-weekly-right',
+    ]);
+    expect(
+      titles(await list({ ...query, weeklyDateFrom: '2028-09-10' })),
+    ).toEqual([
+      'acc5e-weekly-after',
+      'acc5e-weekly-inside',
+      'acc5e-weekly-left',
+      'acc5e-weekly-right',
+    ]);
+    expect(
+      titles(await list({ ...query, weeklyDateTo: '2028-09-20' })),
+    ).toEqual([
+      'acc5e-weekly-before',
+      'acc5e-weekly-inside',
+      'acc5e-weekly-left',
+      'acc5e-weekly-right',
+    ]);
+    for (const value of ['2028-02-30', 'not-a-date', '2028/09/10'])
+      expect(() => list({ ...query, weeklyDateFrom: value })).toThrow();
+    expect(() =>
+      list({
+        ...query,
+        weeklyDateFrom: '2028-09-20',
+        weeklyDateTo: '2028-09-10',
+      }),
+    ).toThrow();
+  });
+
+  it('filters Online Sessions by platform and actual start instant without exposing credentials', async () => {
+    const cases = [
+      ['early', SessionPlatform.ZOOM, '2028-09-10T09:00:00Z'],
+      ['middle', SessionPlatform.ZOOM, '2028-09-10T10:00:00Z'],
+      ['late', SessionPlatform.GOOGLE_MEET, '2028-09-10T11:00:00Z'],
+    ] as const;
+    for (const [name, platform, startAt] of cases) {
+      const row = await content(`acc5e-session-${name}`, {
+        type: ContentType.ONLINE_SESSION,
+      });
+      await prisma.academicContentOnlineSessionDetail.create({
+        data: {
+          schoolId: id.school,
+          academicContentId: row.id,
+          platform,
+          joinUrl: `https://example.test/${name}`,
+          accessCode: `private-${name}`,
+          startAt: date(startAt),
+          endAt: new Date(date(startAt).getTime() + 3_600_000),
+          timezone: 'Africa/Cairo',
+        },
+      });
+    }
+    const query = { search: 'acc5e-session-' };
+    expect(
+      titles(await list({ ...query, sessionPlatform: SessionPlatform.ZOOM })),
+    ).toEqual(['acc5e-session-early', 'acc5e-session-middle']);
+    expect(
+      titles(
+        await list({ ...query, sessionStartAtFrom: '2028-09-10T10:00:00Z' }),
+      ),
+    ).toEqual(['acc5e-session-late', 'acc5e-session-middle']);
+    expect(
+      titles(
+        await list({ ...query, sessionStartAtTo: '2028-09-10T10:00:00Z' }),
+      ),
+    ).toEqual(['acc5e-session-early', 'acc5e-session-middle']);
+    expect(
+      titles(
+        await list({
+          ...query,
+          sessionStartAtFrom: '2028-09-10T12:00:00+02:00',
+          sessionStartAtTo: '2028-09-10T11:00:00Z',
+        }),
+      ),
+    ).toEqual(['acc5e-session-late', 'acc5e-session-middle']);
+    const rows = presentAcademicContentList(
+      await list({
+        ...query,
+        sessionPlatform: SessionPlatform.ZOOM,
+        sessionStartAtFrom: '2028-09-10T10:00:00Z',
+        sessionStartAtTo: '2028-09-10T10:00:00Z',
+      }),
+    );
+    expect(rows.items.map((item) => item.title)).toEqual([
+      'acc5e-session-middle',
+    ]);
+    expect(JSON.stringify(rows)).not.toMatch(
+      /joinUrl|accessCode|instructions|private-middle/u,
+    );
+    for (const value of ['not-a-time', '2028-02-30T10:00:00Z'])
+      expect(() => list({ ...query, sessionStartAtFrom: value })).toThrow();
+    expect(() =>
+      list({
+        ...query,
+        sessionStartAtFrom: '2028-09-10T11:00:00Z',
+        sessionStartAtTo: '2028-09-10T10:00:00Z',
+      }),
+    ).toThrow();
+  });
+
+  it('filters Guardian priority exactly and AND-composes incompatible type groups', async () => {
+    for (const priority of [
+      GuardianPriority.NORMAL,
+      GuardianPriority.IMPORTANT,
+      GuardianPriority.URGENT,
+    ]) {
+      const row = await content(`acc5e-guardian-${priority}`, {
+        type: ContentType.GUARDIAN_WEEKLY_NOTE,
+        audience: Audience.GUARDIANS,
+      });
+      await prisma.academicContentGuardianNoteDetail.create({
+        data: {
+          schoolId: id.school,
+          academicContentId: row.id,
+          body: 'private body',
+          priority,
+          requiresAcknowledgement: priority === GuardianPriority.URGENT,
+        },
+      });
+    }
+    for (const priority of [
+      GuardianPriority.NORMAL,
+      GuardianPriority.IMPORTANT,
+      GuardianPriority.URGENT,
+    ])
+      expect(
+        titles(
+          await list({ search: 'acc5e-guardian-', guardianPriority: priority }),
+        ),
+      ).toEqual([`acc5e-guardian-${priority}`]);
+    expect(
+      (
+        await list({
+          search: 'acc5e-guardian-',
+          guardianPriority: GuardianPriority.URGENT,
+          resourceCategory: ResourceCategory.WORKSHEET,
+        })
+      ).total,
+    ).toBe(0);
   });
 });
