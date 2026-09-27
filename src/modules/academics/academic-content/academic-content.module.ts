@@ -37,7 +37,14 @@ import { AcademicContentValidationRepository } from './infrastructure/academic-c
 import { AcademicContentController } from './controller/academic-content.controller';
 import { AcademicContentFilePolicyController } from './controller/academic-content-file-policy.controller';
 import { AcademicContentWorkflowPolicyController } from './controller/academic-content-workflow-policy.controller';
+import { AcademicContentWorkflowController } from './controller/academic-content-workflow.controller';
 import { AcademicContentWorkflowPolicyRepository } from './infrastructure/academic-content-workflow-policy.repository';
+import { AcademicContentWorkflowRepository } from './infrastructure/academic-content-workflow.repository';
+import {
+  ApproveAcademicContentUseCase,
+  RequestAcademicContentChangesUseCase,
+  SubmitAcademicContentUseCase,
+} from './application/academic-content-workflow.use-cases';
 import {
   GetAcademicContentWorkflowPolicyUseCase,
   UpdateAcademicContentWorkflowPolicyUseCase,
@@ -56,10 +63,15 @@ import {
   controllers: [
     AcademicContentFilePolicyController,
     AcademicContentWorkflowPolicyController,
+    AcademicContentWorkflowController,
     AcademicContentController,
   ],
   providers: [
     AcademicContentWorkflowPolicyRepository,
+    AcademicContentWorkflowRepository,
+    SubmitAcademicContentUseCase,
+    ApproveAcademicContentUseCase,
+    RequestAcademicContentChangesUseCase,
     GetAcademicContentWorkflowPolicyUseCase,
     UpdateAcademicContentWorkflowPolicyUseCase,
     AcademicContentFileRepository,

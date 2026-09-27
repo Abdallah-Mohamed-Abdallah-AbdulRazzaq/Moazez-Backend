@@ -49,7 +49,7 @@ describe('ACC-6A pure workflow foundation', () => {
     }
   });
 
-  it('describes future submission and review transitions without enabling runtime authoring', () => {
+  it('describes submission and review transitions with changes-requested authoring', () => {
     expect(isAcademicContentSubmissionSource(AcademicContentStatus.DRAFT)).toBe(
       true,
     );
@@ -73,6 +73,6 @@ describe('ACC-6A pure workflow foundation', () => {
     expect(Object.values(AcademicContentStatus)).not.toContain('UNDER_REVIEW');
     expect(
       isAcademicContentMutable(AcademicContentStatus.CHANGES_REQUESTED),
-    ).toBe(false);
+    ).toBe(true);
   });
 });

@@ -40,6 +40,22 @@ describe('Academic Content readiness policy', () => {
     });
   });
 
+  it('allows readiness after changes are requested and blocks submitted or approved content', () => {
+    expect(
+      evaluateAcademicContentReadiness({
+        ...complete(),
+        status: Status.CHANGES_REQUESTED,
+      }),
+    ).toEqual({
+      canAdvance: true,
+      blockingReasons: [],
+    });
+    for (const status of [Status.SUBMITTED, Status.APPROVED])
+      expect(codes({ ...complete(), status })).toContain(
+        'academic_content.readiness.read_only',
+      );
+  });
+
   it.each([
     [Type.TEACHER_PREPARATION, Audience.INTERNAL_STAFF],
     [Type.WEEKLY_PLAN, Audience.STUDENTS],

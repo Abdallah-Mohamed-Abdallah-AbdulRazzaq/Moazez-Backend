@@ -8,6 +8,7 @@ import { ReplaceAcademicContentTargetsUseCase } from '../application/replace-aca
 import { AcademicContentController } from '../controller/academic-content.controller';
 import { AcademicContentFilePolicyController } from '../controller/academic-content-file-policy.controller';
 import { AcademicContentWorkflowPolicyController } from '../controller/academic-content-workflow-policy.controller';
+import { AcademicContentWorkflowController } from '../controller/academic-content-workflow.controller';
 
 describe('Academic Content foundation', () => {
   it('keeps the V1 content type contract exact', () => {
@@ -60,6 +61,7 @@ describe('Academic Content foundation', () => {
     expect(controllers).toEqual([
       AcademicContentFilePolicyController,
       AcademicContentWorkflowPolicyController,
+      AcademicContentWorkflowController,
       AcademicContentController,
     ]);
     expect(exports).toContain(AcademicContentAudienceResolver);
