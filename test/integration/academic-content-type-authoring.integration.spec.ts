@@ -1863,6 +1863,69 @@ describeDatabase('ACC-5B PostgreSQL type authoring', () => {
     });
   });
 
+  it('does not own a deleted Timetable entry and preserves its historical reference only on an exact no-op', async () => {
+    const entry = await prisma.timetableEntry.create({
+      data: {
+        schoolId: ids.school,
+        academicYearId: ids.year,
+        termId: ids.term,
+        timetableConfigId: ids.timetableConfig,
+        periodId: ids.period,
+        dayOfWeek: 6,
+        gradeId: ids.grade,
+        sectionId: ids.section,
+        classroomId: ids.classroom,
+        subjectId: ids.subject,
+        teacherUserId: ids.user,
+        teacherSubjectAllocationId: ids.allocation,
+      },
+    });
+    const row = await content(AcademicContentType.ONLINE_SESSION);
+    await target(row.id);
+    const detail = normalizeOnlineSession({
+      ...session().state,
+      timetableEntryId: entry.id,
+    });
+    await expect(writer.mutate(scope(row.id, detail))).resolves.toMatchObject({
+      changed: true,
+    });
+    const auditCount = await prisma.auditLog.count({
+      where: { schoolId: ids.school, resourceId: row.id },
+    });
+
+    await expect(
+      prisma.timetableEntry.delete({ where: { id: entry.id } }),
+    ).resolves.toMatchObject({ id: entry.id });
+    await expect(writer.mutate(scope(row.id, detail))).resolves.toMatchObject({
+      changed: false,
+    });
+    expect(
+      (
+        await prisma.academicContentOnlineSessionDetail.findFirstOrThrow({
+          where: { academicContentId: row.id },
+        })
+      ).timetableEntryId,
+    ).toBe(entry.id);
+    expect(
+      await prisma.auditLog.count({
+        where: { schoolId: ids.school, resourceId: row.id },
+      }),
+    ).toBe(auditCount);
+
+    const changed = normalizeOnlineSession({
+      ...detail.state,
+      joinUrl: 'https://example.test/changed-meeting',
+    });
+    await expect(writer.mutate(scope(row.id, changed))).rejects.toMatchObject({
+      code: 'validation.failed',
+    });
+    const other = await content(AcademicContentType.ONLINE_SESSION);
+    await target(other.id);
+    await expect(writer.mutate(scope(other.id, detail))).rejects.toMatchObject({
+      code: 'validation.failed',
+    });
+  });
+
   it('reads each current typed detail, ordered weekly references, and no General Resource detail', async () => {
     const weeklyWithReferences = normalizeWeeklyPlan({
       ...weekly().state,
