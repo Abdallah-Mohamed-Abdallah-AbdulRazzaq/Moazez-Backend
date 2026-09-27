@@ -1,0 +1,79 @@
+import { Injectable } from '@nestjs/common';
+import { ValidationDomainException } from '../../../../common/exceptions/domain-exception';
+import { AcademicContentWorkflowRepository } from '../infrastructure/academic-content-workflow.repository';
+import { academicContentManagementScope } from './academic-content-management.scope';
+
+function requireEmptyBody(body: unknown): void {
+  if (body == null) return;
+  if (
+    !body ||
+    typeof body !== 'object' ||
+    Array.isArray(body) ||
+    Object.keys(body).length
+  )
+    throw new ValidationDomainException(
+      'Unexpected Academic Content workflow fields',
+    );
+}
+
+@Injectable()
+export class SubmitAcademicContentUseCase {
+  constructor(private readonly workflow: AcademicContentWorkflowRepository) {}
+
+  execute(contentId: string, body: unknown = {}) {
+    const scope = academicContentManagementScope(
+      'academics.academic_content.manage',
+    );
+    requireEmptyBody(body);
+    return this.workflow.submit({ ...scope, contentId });
+  }
+}
+
+@Injectable()
+export class ApproveAcademicContentUseCase {
+  constructor(private readonly workflow: AcademicContentWorkflowRepository) {}
+
+  execute(contentId: string, body: unknown = {}) {
+    const scope = academicContentManagementScope(
+      'academics.academic_content.approve',
+    );
+    requireEmptyBody(body);
+    return this.workflow.decide({
+      ...scope,
+      contentId,
+      decision: 'approve',
+      note: null,
+    });
+  }
+}
+
+@Injectable()
+export class RequestAcademicContentChangesUseCase {
+  constructor(private readonly workflow: AcademicContentWorkflowRepository) {}
+
+  execute(contentId: string, body: unknown) {
+    const scope = academicContentManagementScope(
+      'academics.academic_content.approve',
+    );
+    if (
+      !body ||
+      typeof body !== 'object' ||
+      Array.isArray(body) ||
+      Object.keys(body).length !== 1 ||
+      !Object.prototype.hasOwnProperty.call(body, 'note') ||
+      typeof (body as { note?: unknown }).note !== 'string'
+    )
+      throw new ValidationDomainException('A decision note is required');
+    const note = (body as { note: string }).note.trim();
+    if (!note || note.length > 4000)
+      throw new ValidationDomainException(
+        'Decision note must contain 1 to 4000 characters',
+      );
+    return this.workflow.decide({
+      ...scope,
+      contentId,
+      decision: 'request-changes',
+      note,
+    });
+  }
+}

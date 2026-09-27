@@ -46,6 +46,12 @@ import {
 import { AcademicContentController } from '../../src/modules/academics/academic-content/controller/academic-content.controller';
 import { AcademicContentFilePolicyController } from '../../src/modules/academics/academic-content/controller/academic-content-file-policy.controller';
 import { AcademicContentWorkflowPolicyController } from '../../src/modules/academics/academic-content/controller/academic-content-workflow-policy.controller';
+import { AcademicContentWorkflowController } from '../../src/modules/academics/academic-content/controller/academic-content-workflow.controller';
+import {
+  ApproveAcademicContentUseCase,
+  RequestAcademicContentChangesUseCase,
+  SubmitAcademicContentUseCase,
+} from '../../src/modules/academics/academic-content/application/academic-content-workflow.use-cases';
 import {
   GetAcademicContentWorkflowPolicyUseCase,
   UpdateAcademicContentWorkflowPolicyUseCase,
@@ -76,6 +82,7 @@ const permissions = [
   'academics.academic_content.view',
   'academics.academic_content.manage',
   'academics.academic_content.settings.manage',
+  'academics.academic_content.approve',
 ];
 const content = {
   id: contentId,
@@ -193,6 +200,9 @@ const services = {
   updatePolicy: { execute: jest.fn() },
   getWorkflowPolicy: { execute: jest.fn() },
   updateWorkflowPolicy: { execute: jest.fn() },
+  submit: { execute: jest.fn() },
+  approve: { execute: jest.fn() },
+  requestChanges: { execute: jest.fn() },
 };
 
 describe('ACC-4B management HTTP security and transport', () => {
@@ -203,6 +213,7 @@ describe('ACC-4B management HTTP security and transport', () => {
       controllers: [
         AcademicContentFilePolicyController,
         AcademicContentWorkflowPolicyController,
+        AcademicContentWorkflowController,
         AcademicContentController,
       ],
       providers: [
@@ -277,6 +288,12 @@ describe('ACC-4B management HTTP security and transport', () => {
           provide: UpdateAcademicContentWorkflowPolicyUseCase,
           useValue: services.updateWorkflowPolicy,
         },
+        { provide: SubmitAcademicContentUseCase, useValue: services.submit },
+        { provide: ApproveAcademicContentUseCase, useValue: services.approve },
+        {
+          provide: RequestAcademicContentChangesUseCase,
+          useValue: services.requestChanges,
+        },
       ],
     }).compile();
     app = moduleRef.createNestApplication();
@@ -318,7 +335,9 @@ describe('ACC-4B management HTTP security and transport', () => {
                   ? [permissions[1]]
                   : label === 'settingsOnly'
                     ? [permissions[2]]
-                    : permissions,
+                    : label === 'approveOnly'
+                      ? [permissions[3]]
+                      : permissions,
         };
         runWithRequestContext(context, next);
       },
@@ -475,6 +494,29 @@ describe('ACC-4B management HTTP security and transport', () => {
     services.updateWorkflowPolicy.execute.mockResolvedValue({
       preparationApprovalRequired: true,
     });
+    const transition = {
+      contentId,
+      contentStatus: AcademicContentStatus.SUBMITTED,
+      approvalId: randomUUID(),
+      approvalStatus: 'PENDING',
+      revisionId,
+      roundNumber: 1,
+      submittedAt: now,
+      decidedAt: null,
+    };
+    services.submit.execute.mockResolvedValue(transition);
+    services.approve.execute.mockResolvedValue({
+      ...transition,
+      contentStatus: AcademicContentStatus.APPROVED,
+      approvalStatus: 'APPROVED',
+      decidedAt: now,
+    });
+    services.requestChanges.execute.mockResolvedValue({
+      ...transition,
+      contentStatus: AcademicContentStatus.CHANGES_REQUESTED,
+      approvalStatus: 'CHANGES_REQUESTED',
+      decidedAt: now,
+    });
   });
 
   afterAll(async () => {
@@ -498,6 +540,7 @@ describe('ACC-4B management HTTP security and transport', () => {
       AcademicContentController,
       AcademicContentFilePolicyController,
       AcademicContentWorkflowPolicyController,
+      AcademicContentWorkflowController,
     ]) {
       expect(
         Reflect.getMetadata(SCHOOL_MANAGEMENT_ONLY_METADATA, controller),
@@ -611,6 +654,24 @@ describe('ACC-4B management HTTP security and transport', () => {
       'academics.academic_content.settings.manage',
       AcademicContentWorkflowPolicyController,
     );
+    route(
+      'submit',
+      ':contentId/submit',
+      'academics.academic_content.manage',
+      AcademicContentWorkflowController,
+    );
+    route(
+      'approve',
+      ':contentId/approve',
+      'academics.academic_content.approve',
+      AcademicContentWorkflowController,
+    );
+    route(
+      'request',
+      ':contentId/request-changes',
+      'academics.academic_content.approve',
+      AcademicContentWorkflowController,
+    );
   });
 
   it('publishes only the ACC-4B Swagger surface and safe DTOs', () => {
@@ -654,20 +715,21 @@ describe('ACC-4B management HTTP security and transport', () => {
         `PATCH ${base}/settings/file-policy`,
         `GET ${base}/settings/workflow-policy`,
         `PATCH ${base}/settings/workflow-policy`,
+        `POST ${base}/{contentId}/submit`,
+        `POST ${base}/{contentId}/approve`,
+        `POST ${base}/{contentId}/request-changes`,
       ].sort(),
     );
     const accPaths = Object.keys(document.paths).filter((path) =>
       path.startsWith(base),
     );
-    expect(
-      accPaths.some((path) => /publish|approve|multipart/.test(path)),
-    ).toBe(false);
+    expect(accPaths.some((path) => /publish|multipart/.test(path))).toBe(false);
     const schemas = JSON.stringify(document.components?.schemas ?? {});
     expect(schemas).not.toMatch(
       /trustedOrigin|bucket|objectKey|finalBucket|cleanup/,
     );
     expect(registeredRoutes.join('\n')).not.toMatch(
-      /publish|approve|submit|general-resource|multipart/,
+      /publish|general-resource|multipart/,
     );
     const detailSchema =
       document.components?.schemas?.AcademicContentDetailResponseDto;
@@ -743,6 +805,27 @@ describe('ACC-4B management HTTP security and transport', () => {
     const readinessSchema =
       document.components?.schemas?.AcademicContentReadinessResponseDto;
     expect(JSON.stringify(readinessSchema)).toContain('blockingReasons');
+    const transitionSchema =
+      document.components?.schemas?.AcademicContentTransitionResponseDto;
+    const transitionProperties =
+      (
+        transitionSchema as {
+          properties?: Record<string, unknown>;
+        }
+      )?.properties ?? {};
+    expect(Object.keys(transitionProperties).sort()).toEqual([
+      'approvalId',
+      'approvalStatus',
+      'contentId',
+      'contentStatus',
+      'decidedAt',
+      'revisionId',
+      'roundNumber',
+      'submittedAt',
+    ]);
+    expect(JSON.stringify(transitionSchema)).not.toMatch(
+      /schoolId|organizationId|decisionNote|typeSpecificSnapshot/,
+    );
     const revisionParameters =
       document.paths[`${base}/{contentId}/revisions`].get?.parameters ?? [];
     expect(
@@ -933,6 +1016,99 @@ describe('ACC-4B management HTTP security and transport', () => {
       { preparationApprovalRequired: true, publication: true },
     ])
       await request(app.getHttpServer()).patch(path).send(body).expect(400);
+  });
+
+  it('separates submit and review permissions on the three workflow routes', async () => {
+    const submitPath = `${base}/${contentId}/submit`;
+    const approvePath = `${base}/${contentId}/approve`;
+    const changesPath = `${base}/${contentId}/request-changes`;
+    for (const actor of ['viewOnly', 'settingsOnly']) {
+      await request(app.getHttpServer())
+        .post(submitPath)
+        .set('x-test-actor', actor)
+        .send({})
+        .expect(403);
+      await request(app.getHttpServer())
+        .post(approvePath)
+        .set('x-test-actor', actor)
+        .send({})
+        .expect(403);
+      await request(app.getHttpServer())
+        .post(changesPath)
+        .set('x-test-actor', actor)
+        .send({ note: 'Revise' })
+        .expect(403);
+    }
+    await request(app.getHttpServer())
+      .post(submitPath)
+      .set('x-test-actor', 'manageOnly')
+      .send({})
+      .expect(200);
+    await request(app.getHttpServer())
+      .post(approvePath)
+      .set('x-test-actor', 'manageOnly')
+      .send({})
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(changesPath)
+      .set('x-test-actor', 'manageOnly')
+      .send({ note: 'Revise' })
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(submitPath)
+      .set('x-test-actor', 'approveOnly')
+      .send({})
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(approvePath)
+      .set('x-test-actor', 'approveOnly')
+      .send({})
+      .expect(200);
+    await request(app.getHttpServer())
+      .post(approvePath)
+      .set('x-test-actor', 'organization')
+      .send({})
+      .expect(200);
+    await request(app.getHttpServer())
+      .post(changesPath)
+      .set('x-test-actor', 'approveOnly')
+      .send({ note: 'Revise' })
+      .expect(200);
+    expect(services.submit.execute).toHaveBeenCalledWith(contentId, {});
+    expect(services.approve.execute).toHaveBeenCalledWith(contentId, {});
+    expect(services.requestChanges.execute).toHaveBeenCalledWith(contentId, {
+      note: 'Revise',
+    });
+    for (const actor of ['teacher', 'student', 'parent', 'applicant']) {
+      await request(app.getHttpServer())
+        .post(submitPath)
+        .set('x-test-actor', actor)
+        .send({})
+        .expect(403);
+      await request(app.getHttpServer())
+        .post(approvePath)
+        .set('x-test-actor', actor)
+        .send({})
+        .expect(403);
+      await request(app.getHttpServer())
+        .post(changesPath)
+        .set('x-test-actor', actor)
+        .send({ note: 'Revise' })
+        .expect(403);
+    }
+    await request(app.getHttpServer()).post(changesPath).send({}).expect(400);
+    await request(app.getHttpServer())
+      .post(changesPath)
+      .send({ note: 'Revise', schoolId })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post(changesPath)
+      .send({ note: 7 })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post(`${base}/bad/submit`)
+      .send({})
+      .expect(400);
   });
 
   it('delegates all five typed PUT routes to ACC-5B and presents only authoring state', async () => {

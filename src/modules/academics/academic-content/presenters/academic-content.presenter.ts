@@ -30,7 +30,13 @@ import { InternalServerErrorException } from '@nestjs/common';
 import { decodeAcademicContentRevisionSnapshotV2 } from '../domain/academic-content-revision-snapshot';
 import { AcademicContentEffectiveFilePolicy } from '../files/domain/academic-content-file-policy';
 import { AcademicContentTargetInput } from '../domain/academic-content-target.policy';
-import { AcademicContentType, FileUploadSessionStatus } from '@prisma/client';
+import {
+  AcademicContentApprovalStatus,
+  AcademicContentStatus,
+  AcademicContentType,
+  FileUploadSessionStatus,
+} from '@prisma/client';
+import { AcademicContentTransitionResponseDto } from '../dto/academic-content-workflow.dto';
 import type {
   GuardianNoteCommand,
   NormalizedDetail,
@@ -48,6 +54,28 @@ import type {
   AcademicContentWeeklyPlanDetailResponseDto,
 } from '../dto/academic-content-type-detail.dto';
 import type { AcademicContentReadinessResponseDto } from '../dto/academic-content-response.dto';
+
+export function presentAcademicContentTransition(input: {
+  contentId: string;
+  contentStatus: AcademicContentStatus;
+  approvalId: string;
+  approvalStatus: AcademicContentApprovalStatus;
+  revisionId: string;
+  roundNumber: number;
+  submittedAt: Date;
+  decidedAt: Date | null;
+}): AcademicContentTransitionResponseDto {
+  return {
+    contentId: input.contentId,
+    contentStatus: input.contentStatus,
+    approvalId: input.approvalId,
+    approvalStatus: input.approvalStatus,
+    revisionId: input.revisionId,
+    roundNumber: input.roundNumber,
+    submittedAt: input.submittedAt,
+    decidedAt: input.decidedAt,
+  };
+}
 
 export function presentAcademicContentPreparationDetail(
   state: Required<PreparationCommand>,

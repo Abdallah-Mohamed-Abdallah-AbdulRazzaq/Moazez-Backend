@@ -183,154 +183,175 @@ export class AcademicContentRevisionRepository {
   }): Promise<AcademicContentRevisionDetail> {
     return this.prisma.$transaction(
       async (tx) => {
-        const locked = await tx.$queryRaw<Array<{ id: string }>>`
-        SELECT id FROM academic_contents
-        WHERE id = ${input.contentId}::uuid AND school_id = ${input.schoolId}::uuid
-          AND deleted_at IS NULL FOR UPDATE`;
-        if (!locked.length)
-          throw new NotFoundDomainException('Academic content not found');
-        const content = await tx.academicContent.findFirst({
-          where: {
-            id: input.contentId,
-            schoolId: input.schoolId,
-            deletedAt: null,
-          },
-          select: {
-            academicYearId: true,
-            termId: true,
-            type: true,
-            audience: true,
-            title: true,
-            description: true,
-            status: true,
-          },
-        });
-        if (!content)
-          throw new NotFoundDomainException('Academic content not found');
-        const where = {
-          schoolId: input.schoolId,
-          academicContentId: input.contentId,
-        };
-        const targets = await tx.academicContentTarget.findMany({
-          where,
-          orderBy: [{ identityFingerprint: 'asc' }, { id: 'asc' }],
-        });
-        const assets = await tx.academicContentAsset.findMany({
-          where: {
-            ...where,
-            deletedAt: null,
-            file: { is: { deletedAt: null } },
-          },
-          orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-        });
-        const links = await tx.academicContentLink.findMany({
-          where,
-          orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-        });
-        const tags = await tx.academicContentTag.findMany({
-          where,
-          orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-        });
-        const typeSpecificSnapshot = await currentTypeSnapshot(
-          tx,
-          input.schoolId,
-          input.contentId,
-          content.type,
-        );
-        const latest = await tx.academicContentRevision.findFirst({
-          where,
-          select: { revisionNumber: true },
-          orderBy: { revisionNumber: 'desc' },
-        });
-        const { status, ...envelope } = content;
-        const revision = await tx.academicContentRevision.create({
-          data: {
-            ...where,
-            revisionNumber: (latest?.revisionNumber ?? 0) + 1,
-            snapshotContractVersion: SNAPSHOT_CONTRACT_VERSION,
-            typeSpecificSnapshot: typeSpecificSnapshot
-              ? (typeSpecificSnapshot as unknown as Prisma.InputJsonValue)
-              : Prisma.DbNull,
-            ...envelope,
-            sourceStatus: status,
-            capturedByUserId: input.actorId,
-            capturedAt: input.now ?? new Date(),
-          },
-        });
-        if (targets.length)
-          await tx.academicContentRevisionTarget.createMany({
-            data: targets.map((target) => ({
-              schoolId: input.schoolId,
-              revisionId: revision.id,
-              scopeType: target.scopeType,
-              stageId: target.stageId,
-              gradeId: target.gradeId,
-              sectionId: target.sectionId,
-              classroomId: target.classroomId,
-              subjectId: target.subjectId,
-              teacherSubjectAllocationId: target.teacherSubjectAllocationId,
-              identityFingerprint: target.identityFingerprint,
-            })),
-          });
-        if (assets.length)
-          await tx.academicContentRevisionAsset.createMany({
-            data: assets.map((asset) => ({
-              schoolId: input.schoolId,
-              revisionId: revision.id,
-              fileId: asset.fileId,
-              sortOrder: asset.sortOrder,
-            })),
-          });
-        if (links.length)
-          await tx.academicContentRevisionLink.createMany({
-            data: links.map((link) => ({
-              schoolId: input.schoolId,
-              revisionId: revision.id,
-              label: link.label,
-              url: link.url,
-              sortOrder: link.sortOrder,
-            })),
-          });
-        if (tags.length)
-          await tx.academicContentRevisionTag.createMany({
-            data: tags.map((tag) => ({
-              schoolId: input.schoolId,
-              revisionId: revision.id,
-              displayValue: tag.displayValue,
-              normalizedValue: tag.normalizedValue,
-              sortOrder: tag.sortOrder,
-            })),
-          });
-        await tx.auditLog.create({
-          data: {
-            actorId: input.actorId,
-            organizationId: input.organizationId,
-            schoolId: input.schoolId,
-            module: 'academic-content',
-            action: 'academics.academic_content.revision.capture',
-            resourceType: 'academic_content_revision',
-            resourceId: revision.id,
-            outcome: AuditOutcome.SUCCESS,
-            after: {
-              academicContentId: input.contentId,
-              revisionId: revision.id,
-              revisionNumber: revision.revisionNumber,
-              sourceStatus: revision.sourceStatus,
-              snapshotContractVersion: SNAPSHOT_CONTRACT_VERSION,
-              targets: targets.length,
-              assets: assets.length,
-              links: links.length,
-              tags: tags.length,
-            },
-          },
-        });
-        return tx.academicContentRevision.findUniqueOrThrow({
-          where: { id: revision.id },
-          ...REVISION_DETAIL_ARGS,
-        });
+        await this.lockParent(tx, input);
+        return this.captureInTransaction(tx, input);
       },
       { maxWait: 20_000, timeout: 20_000 },
     );
+  }
+
+  private async lockParent(
+    tx: Prisma.TransactionClient,
+    input: { contentId: string; schoolId: string },
+  ): Promise<void> {
+    const locked = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM academic_contents
+        WHERE id = ${input.contentId}::uuid AND school_id = ${input.schoolId}::uuid
+          AND deleted_at IS NULL FOR UPDATE`;
+    if (!locked.length)
+      throw new NotFoundDomainException('Academic content not found');
+  }
+
+  /** Caller must hold the AcademicContent parent row lock in this transaction. */
+  async captureInTransaction(
+    tx: Prisma.TransactionClient,
+    input: {
+      schoolId: string;
+      organizationId: string;
+      actorId: string;
+      contentId: string;
+      now?: Date;
+    },
+  ): Promise<AcademicContentRevisionDetail> {
+    const content = await tx.academicContent.findFirst({
+      where: {
+        id: input.contentId,
+        schoolId: input.schoolId,
+        deletedAt: null,
+      },
+      select: {
+        academicYearId: true,
+        termId: true,
+        type: true,
+        audience: true,
+        title: true,
+        description: true,
+        status: true,
+      },
+    });
+    if (!content)
+      throw new NotFoundDomainException('Academic content not found');
+    const where = {
+      schoolId: input.schoolId,
+      academicContentId: input.contentId,
+    };
+    const targets = await tx.academicContentTarget.findMany({
+      where,
+      orderBy: [{ identityFingerprint: 'asc' }, { id: 'asc' }],
+    });
+    const assets = await tx.academicContentAsset.findMany({
+      where: {
+        ...where,
+        deletedAt: null,
+        file: { is: { deletedAt: null } },
+      },
+      orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+    });
+    const links = await tx.academicContentLink.findMany({
+      where,
+      orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+    });
+    const tags = await tx.academicContentTag.findMany({
+      where,
+      orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+    });
+    const typeSpecificSnapshot = await currentTypeSnapshot(
+      tx,
+      input.schoolId,
+      input.contentId,
+      content.type,
+    );
+    const latest = await tx.academicContentRevision.findFirst({
+      where,
+      select: { revisionNumber: true },
+      orderBy: { revisionNumber: 'desc' },
+    });
+    const { status, ...envelope } = content;
+    const revision = await tx.academicContentRevision.create({
+      data: {
+        ...where,
+        revisionNumber: (latest?.revisionNumber ?? 0) + 1,
+        snapshotContractVersion: SNAPSHOT_CONTRACT_VERSION,
+        typeSpecificSnapshot: typeSpecificSnapshot
+          ? (typeSpecificSnapshot as unknown as Prisma.InputJsonValue)
+          : Prisma.DbNull,
+        ...envelope,
+        sourceStatus: status,
+        capturedByUserId: input.actorId,
+        capturedAt: input.now ?? new Date(),
+      },
+    });
+    if (targets.length)
+      await tx.academicContentRevisionTarget.createMany({
+        data: targets.map((target) => ({
+          schoolId: input.schoolId,
+          revisionId: revision.id,
+          scopeType: target.scopeType,
+          stageId: target.stageId,
+          gradeId: target.gradeId,
+          sectionId: target.sectionId,
+          classroomId: target.classroomId,
+          subjectId: target.subjectId,
+          teacherSubjectAllocationId: target.teacherSubjectAllocationId,
+          identityFingerprint: target.identityFingerprint,
+        })),
+      });
+    if (assets.length)
+      await tx.academicContentRevisionAsset.createMany({
+        data: assets.map((asset) => ({
+          schoolId: input.schoolId,
+          revisionId: revision.id,
+          fileId: asset.fileId,
+          sortOrder: asset.sortOrder,
+        })),
+      });
+    if (links.length)
+      await tx.academicContentRevisionLink.createMany({
+        data: links.map((link) => ({
+          schoolId: input.schoolId,
+          revisionId: revision.id,
+          label: link.label,
+          url: link.url,
+          sortOrder: link.sortOrder,
+        })),
+      });
+    if (tags.length)
+      await tx.academicContentRevisionTag.createMany({
+        data: tags.map((tag) => ({
+          schoolId: input.schoolId,
+          revisionId: revision.id,
+          displayValue: tag.displayValue,
+          normalizedValue: tag.normalizedValue,
+          sortOrder: tag.sortOrder,
+        })),
+      });
+    await tx.auditLog.create({
+      data: {
+        actorId: input.actorId,
+        organizationId: input.organizationId,
+        schoolId: input.schoolId,
+        module: 'academic-content',
+        action: 'academics.academic_content.revision.capture',
+        resourceType: 'academic_content_revision',
+        resourceId: revision.id,
+        outcome: AuditOutcome.SUCCESS,
+        after: {
+          academicContentId: input.contentId,
+          revisionId: revision.id,
+          revisionNumber: revision.revisionNumber,
+          sourceStatus: revision.sourceStatus,
+          snapshotContractVersion: SNAPSHOT_CONTRACT_VERSION,
+          targets: targets.length,
+          assets: assets.length,
+          links: links.length,
+          tags: tags.length,
+        },
+      },
+    });
+    return tx.academicContentRevision.findUniqueOrThrow({
+      where: { id: revision.id },
+      ...REVISION_DETAIL_ARGS,
+    });
   }
 
   async list(input: {

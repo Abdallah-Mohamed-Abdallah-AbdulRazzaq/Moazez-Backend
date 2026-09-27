@@ -54,7 +54,10 @@ export function assertAcademicContentTermWritable(
 export function isAcademicContentMutable(
   status: AcademicContentStatus,
 ): boolean {
-  return status === AcademicContentStatus.DRAFT;
+  return (
+    status === AcademicContentStatus.DRAFT ||
+    status === AcademicContentStatus.CHANGES_REQUESTED
+  );
 }
 
 export function assertAcademicContentMutable(

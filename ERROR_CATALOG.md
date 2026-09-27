@@ -693,6 +693,17 @@ output, credentials, or foreign-tenant identifiers.
 | `dismissal.escalation.invalid_reason`             | 422  | Dismissal request escalation reason is invalid                 |
 | `dismissal.escalation.terminal_request`           | 409  | Terminal dismissal requests cannot be escalated                |
 
+### Academic Content review workflow
+
+| Code | HTTP | Message |
+| ---- | ---- | ------- |
+| `academic_content.approval.type_unsupported` | 409 | Content type cannot be submitted for approval |
+| `academic_content.approval.invalid_status` | 409 | Content cannot make the requested transition in its current status |
+| `academic_content.approval.not_required` | 409 | Approval is not required by the current School policy |
+| `academic_content.approval.not_ready` | 409 | Content readiness blocks submission |
+| `academic_content.approval.pending_missing` | 409 | Current pending approval is unavailable |
+| `academic_content.approval.invalid_revision` | 409 | Current approval revision is unavailable or incompatible |
+
 ### Academic Content internal file lifecycle
 
 These codes are emitted by internal ACC-3C use cases; ACC-3C adds no HTTP routes.

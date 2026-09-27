@@ -46,15 +46,21 @@ describe('ACC-4A envelope and term policy', () => {
     },
   );
 
-  it('permits mutation only in DRAFT and restore only from ARCHIVED', () => {
+  it('permits mutation in DRAFT and CHANGES_REQUESTED, and restore only from ARCHIVED', () => {
     expect(() =>
       assertAcademicContentMutable(AcademicContentStatus.DRAFT),
+    ).not.toThrow();
+    expect(() =>
+      assertAcademicContentMutable(AcademicContentStatus.CHANGES_REQUESTED),
     ).not.toThrow();
     expect(() =>
       assertAcademicContentMutable(AcademicContentStatus.ARCHIVED),
     ).toThrow();
     expect(() =>
       assertAcademicContentMutable(AcademicContentStatus.SUBMITTED),
+    ).toThrow();
+    expect(() =>
+      assertAcademicContentMutable(AcademicContentStatus.APPROVED),
     ).toThrow();
     expect(() =>
       assertAcademicContentArchived(AcademicContentStatus.ARCHIVED),
