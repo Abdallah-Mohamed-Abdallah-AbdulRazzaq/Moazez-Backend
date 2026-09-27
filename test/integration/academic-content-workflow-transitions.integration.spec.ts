@@ -238,10 +238,12 @@ describeDatabase('ACC-6B atomic PostgreSQL workflow transitions', () => {
       await prisma.auditLog.deleteMany({ where });
       await prisma.academicContentRevision.deleteMany({ where });
       await prisma.academicContentTarget.deleteMany({ where });
+      await prisma.academicContentAsset.deleteMany({ where });
       await prisma.academicContentLink.deleteMany({ where });
       await prisma.academicContentTag.deleteMany({ where });
       await prisma.academicContentPreparationDetail.deleteMany({ where });
       await prisma.academicContent.deleteMany({ where });
+      await prisma.file.deleteMany({ where });
       await prisma.academicContentWorkflowPolicy.deleteMany({ where });
       await prisma.subject.deleteMany({ where });
       await prisma.term.deleteMany({ where });
@@ -807,5 +809,78 @@ describeDatabase('ACC-6B atomic PostgreSQL workflow transitions', () => {
       await expect(action()).rejects.toMatchObject({
         code: 'academic_content.status.read_only',
       });
+  });
+
+  it('creates and unlinks assets after changes are requested while revisions retain their snapshots', async () => {
+    const content = await makeContent();
+    const scope = command(content.id);
+    const file = await prisma.file.create({
+      data: {
+        organizationId: ids.organization,
+        schoolId: ids.schoolA,
+        uploaderId: ids.user,
+        bucket: 'acc6b-test',
+        objectKey: randomUUID(),
+        originalName: 'preparation.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1n,
+      },
+    });
+    const addAsset = () =>
+      files.withTransaction(async (tx) => {
+        await tx.lockMutableContent(content.id, ids.schoolA, now);
+        return tx.createAsset({
+          schoolId: ids.schoolA,
+          academicContentId: content.id,
+          fileId: file.id,
+          createdByUserId: ids.user,
+        });
+      });
+
+    await workflow.submit(scope);
+    await expect(addAsset()).rejects.toMatchObject({
+      code: 'academic_content.status.read_only',
+    });
+    await workflow.decide({
+      ...scope,
+      decision: 'request-changes',
+      note: 'Attach supporting material',
+    });
+    const asset = await addAsset();
+    expect(asset.fileId).toBe(file.id);
+    const second = await workflow.submit(scope);
+    expect(
+      await prisma.academicContentRevisionAsset.count({
+        where: { revisionId: second.revisionId, fileId: file.id },
+      }),
+    ).toBe(1);
+    await workflow.decide({
+      ...scope,
+      decision: 'request-changes',
+      note: 'Remove supporting material',
+    });
+    const unlinked = await files.withTransaction(async (tx) => {
+      await tx.lockMutableContent(content.id, ids.schoolA, now);
+      return tx.softDeleteAsset(asset.id, now);
+    });
+    expect(unlinked.deletedAt).toEqual(now);
+    const third = await workflow.submit(scope);
+    expect(
+      await prisma.academicContentRevisionAsset.count({
+        where: { revisionId: second.revisionId, fileId: file.id },
+      }),
+    ).toBe(1);
+    expect(
+      await prisma.academicContentRevisionAsset.count({
+        where: { revisionId: third.revisionId, fileId: file.id },
+      }),
+    ).toBe(0);
+    await expect(addAsset()).rejects.toMatchObject({
+      code: 'academic_content.status.read_only',
+    });
+    await workflow.decide({ ...scope, decision: 'approve', note: null });
+    await expect(addAsset()).rejects.toMatchObject({
+      code: 'academic_content.status.read_only',
+    });
   });
 });
