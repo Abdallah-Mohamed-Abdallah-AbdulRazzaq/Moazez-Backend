@@ -36,6 +36,12 @@ import {
 import { AcademicContentValidationRepository } from './infrastructure/academic-content-validation.repository';
 import { AcademicContentController } from './controller/academic-content.controller';
 import { AcademicContentFilePolicyController } from './controller/academic-content-file-policy.controller';
+import { AcademicContentWorkflowPolicyController } from './controller/academic-content-workflow-policy.controller';
+import { AcademicContentWorkflowPolicyRepository } from './infrastructure/academic-content-workflow-policy.repository';
+import {
+  GetAcademicContentWorkflowPolicyUseCase,
+  UpdateAcademicContentWorkflowPolicyUseCase,
+} from './application/academic-content-workflow-policy.use-cases';
 import {
   GetAcademicContentForManagementUseCase,
   ListAcademicContentForManagementUseCase,
@@ -47,8 +53,15 @@ import {
 
 @Module({
   imports: [StorageModule],
-  controllers: [AcademicContentFilePolicyController, AcademicContentController],
+  controllers: [
+    AcademicContentFilePolicyController,
+    AcademicContentWorkflowPolicyController,
+    AcademicContentController,
+  ],
   providers: [
+    AcademicContentWorkflowPolicyRepository,
+    GetAcademicContentWorkflowPolicyUseCase,
+    UpdateAcademicContentWorkflowPolicyUseCase,
     AcademicContentFileRepository,
     AcademicContentFilePolicyResolver,
     GetAcademicContentFilePolicyUseCase,

@@ -1241,6 +1241,14 @@ enum AcademicContentStatus {
   @@map("academic_content_status")
 }
 
+enum AcademicContentApprovalStatus {
+  PENDING
+  APPROVED
+  CHANGES_REQUESTED
+
+  @@map("academic_content_approval_status")
+}
+
 enum AcademicContentAudienceType {
   INTERNAL_STAFF
   STUDENTS
@@ -1486,6 +1494,8 @@ model School {
   academicContentWeeklyPlanHomeworkReferences   AcademicContentWeeklyPlanHomeworkReference[]
   academicContentWeeklyPlanAssessmentReferences AcademicContentWeeklyPlanAssessmentReference[]
   academicContentFilePolicy                     AcademicContentFilePolicy?
+  academicContentWorkflowPolicy                 AcademicContentWorkflowPolicy?
+  academicContentApprovals                      AcademicContentApproval[]
   academicCalendarEvents                        AcademicCalendarEvent[]
   curricula                                     Curriculum[]
   curriculumUnits                               CurriculumUnit[]
@@ -1678,6 +1688,8 @@ model User {
   filesUploaded                                  File[]                                 @relation("FileUploader")
   fileUploadSessionsCreated                      FileUploadSession[]                    @relation("FileUploadSessionCreator")
   schoolProfilesUpdated                          SchoolProfile[]                        @relation("SchoolProfileUpdatedBy")
+  academicContentApprovalsSubmitted              AcademicContentApproval[]              @relation("AcademicContentApprovalSubmittedBy")
+  academicContentApprovalsDecided                AcademicContentApproval[]              @relation("AcademicContentApprovalDecidedBy")
   dismissalSettingsUpdated                       DismissalSettings[]                    @relation("DismissalSettingsUpdatedBy")
   dismissalStaffAssignments                      DismissalStaffAssignment[]             @relation("DismissalStaffAssignmentStaffUser")
   dismissalStaffAssignmentsCreated               DismissalStaffAssignment[]             @relation("DismissalStaffAssignmentCreatedBy")
@@ -2861,6 +2873,7 @@ model AcademicContent {
   links                 AcademicContentLink[]
   tags                  AcademicContentTag[]
   revisions             AcademicContentRevision[]
+  approvals             AcademicContentApproval[]
   preparationDetail     AcademicContentPreparationDetail?
   weeklyPlanDetail      AcademicContentWeeklyPlanDetail?
   guardianNoteDetail    AcademicContentGuardianNoteDetail?
@@ -3188,8 +3201,10 @@ model AcademicContentRevision {
   assets          AcademicContentRevisionAsset[]
   links           AcademicContentRevisionLink[]
   tags            AcademicContentRevisionTag[]
+  approvals       AcademicContentApproval[]
 
   @@unique([id, schoolId])
+  @@unique([id, schoolId, academicContentId])
   @@unique([schoolId, academicContentId, revisionNumber])
   @@index([schoolId, academicContentId])
   @@index([academicYearId, schoolId])
@@ -3294,6 +3309,48 @@ model AcademicContentFilePolicy {
   school School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
 
   @@map("academic_content_file_policies")
+}
+
+model AcademicContentWorkflowPolicy {
+  id                          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                    String   @unique @map("school_id") @db.Uuid
+  preparationApprovalRequired Boolean  @default(false) @map("preparation_approval_required")
+  createdAt                   DateTime @default(now()) @map("created_at")
+  updatedAt                   DateTime @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+
+  @@map("academic_content_workflow_policies")
+}
+
+model AcademicContentApproval {
+  id                String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String                        @map("school_id") @db.Uuid
+  academicContentId String                        @map("academic_content_id") @db.Uuid
+  revisionId        String                        @map("revision_id") @db.Uuid
+  roundNumber       Int                           @map("round_number")
+  status            AcademicContentApprovalStatus @default(PENDING)
+  submittedByUserId String                        @map("submitted_by_user_id") @db.Uuid
+  submittedAt       DateTime                      @default(now()) @map("submitted_at")
+  decidedByUserId   String?                       @map("decided_by_user_id") @db.Uuid
+  decidedAt         DateTime?                     @map("decided_at")
+  decisionNote      String?                       @map("decision_note") @db.VarChar(4000)
+  createdAt         DateTime                      @default(now()) @map("created_at")
+  updatedAt         DateTime                      @updatedAt @map("updated_at")
+
+  school          School                  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicContent AcademicContent         @relation(fields: [academicContentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  revision        AcademicContentRevision @relation(fields: [revisionId, schoolId, academicContentId], references: [id, schoolId, academicContentId], onDelete: Restrict)
+  submittedBy     User                    @relation("AcademicContentApprovalSubmittedBy", fields: [submittedByUserId], references: [id], onDelete: Restrict)
+  decidedBy       User?                   @relation("AcademicContentApprovalDecidedBy", fields: [decidedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([schoolId, academicContentId, roundNumber])
+  @@unique([schoolId, revisionId])
+  @@index([schoolId, academicContentId])
+  @@index([schoolId, revisionId, academicContentId])
+  @@index([submittedByUserId])
+  @@index([decidedByUserId])
+  @@map("academic_content_approvals")
 }
 
 model AcademicYear {

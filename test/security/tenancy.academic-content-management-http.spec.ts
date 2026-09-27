@@ -45,6 +45,11 @@ import {
 } from '../../src/modules/academics/academic-content/application/academic-content-revision.use-cases';
 import { AcademicContentController } from '../../src/modules/academics/academic-content/controller/academic-content.controller';
 import { AcademicContentFilePolicyController } from '../../src/modules/academics/academic-content/controller/academic-content-file-policy.controller';
+import { AcademicContentWorkflowPolicyController } from '../../src/modules/academics/academic-content/controller/academic-content-workflow-policy.controller';
+import {
+  GetAcademicContentWorkflowPolicyUseCase,
+  UpdateAcademicContentWorkflowPolicyUseCase,
+} from '../../src/modules/academics/academic-content/application/academic-content-workflow-policy.use-cases';
 import {
   GetAcademicContentFilePolicyUseCase,
   UpdateAcademicContentFilePolicyUseCase,
@@ -186,6 +191,8 @@ const services = {
   assetUnlink: { execute: jest.fn() },
   getPolicy: { execute: jest.fn() },
   updatePolicy: { execute: jest.fn() },
+  getWorkflowPolicy: { execute: jest.fn() },
+  updateWorkflowPolicy: { execute: jest.fn() },
 };
 
 describe('ACC-4B management HTTP security and transport', () => {
@@ -195,6 +202,7 @@ describe('ACC-4B management HTTP security and transport', () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [
         AcademicContentFilePolicyController,
+        AcademicContentWorkflowPolicyController,
         AcademicContentController,
       ],
       providers: [
@@ -260,6 +268,14 @@ describe('ACC-4B management HTTP security and transport', () => {
         {
           provide: UpdateAcademicContentFilePolicyUseCase,
           useValue: services.updatePolicy,
+        },
+        {
+          provide: GetAcademicContentWorkflowPolicyUseCase,
+          useValue: services.getWorkflowPolicy,
+        },
+        {
+          provide: UpdateAcademicContentWorkflowPolicyUseCase,
+          useValue: services.updateWorkflowPolicy,
         },
       ],
     }).compile();
@@ -453,6 +469,12 @@ describe('ACC-4B management HTTP security and transport', () => {
     services.assetUnlink.execute.mockResolvedValue({ id: assetId, file });
     services.getPolicy.execute.mockResolvedValue(policy);
     services.updatePolicy.execute.mockResolvedValue(policy);
+    services.getWorkflowPolicy.execute.mockResolvedValue({
+      preparationApprovalRequired: false,
+    });
+    services.updateWorkflowPolicy.execute.mockResolvedValue({
+      preparationApprovalRequired: true,
+    });
   });
 
   afterAll(async () => {
@@ -466,9 +488,16 @@ describe('ACC-4B management HTTP security and transport', () => {
     expect(
       Reflect.getMetadata(PATH_METADATA, AcademicContentFilePolicyController),
     ).toBe('academics/academic-content/settings');
+    expect(
+      Reflect.getMetadata(
+        PATH_METADATA,
+        AcademicContentWorkflowPolicyController,
+      ),
+    ).toBe('academics/academic-content/settings');
     for (const controller of [
       AcademicContentController,
       AcademicContentFilePolicyController,
+      AcademicContentWorkflowPolicyController,
     ]) {
       expect(
         Reflect.getMetadata(SCHOOL_MANAGEMENT_ONLY_METADATA, controller),
@@ -570,6 +599,18 @@ describe('ACC-4B management HTTP security and transport', () => {
       'academics.academic_content.settings.manage',
       AcademicContentFilePolicyController,
     );
+    route(
+      'get',
+      'workflow-policy',
+      'academics.academic_content.view',
+      AcademicContentWorkflowPolicyController,
+    );
+    route(
+      'update',
+      'workflow-policy',
+      'academics.academic_content.settings.manage',
+      AcademicContentWorkflowPolicyController,
+    );
   });
 
   it('publishes only the ACC-4B Swagger surface and safe DTOs', () => {
@@ -611,6 +652,8 @@ describe('ACC-4B management HTTP security and transport', () => {
         `DELETE ${base}/{contentId}/assets/{assetId}`,
         `GET ${base}/settings/file-policy`,
         `PATCH ${base}/settings/file-policy`,
+        `GET ${base}/settings/workflow-policy`,
+        `PATCH ${base}/settings/workflow-policy`,
       ].sort(),
     );
     const accPaths = Object.keys(document.paths).filter((path) =>
@@ -841,6 +884,55 @@ describe('ACC-4B management HTTP security and transport', () => {
       .set('x-test-actor', 'settingsOnly')
       .send({})
       .expect(403);
+  });
+
+  it('guards the workflow policy routes and accepts only a boolean setting', async () => {
+    const path = `${base}/settings/workflow-policy`;
+    const response = await request(app.getHttpServer())
+      .get(path)
+      .set('x-test-actor', 'viewOnly')
+      .expect(200);
+    expect(response.body).toEqual({ preparationApprovalRequired: false });
+    await request(app.getHttpServer())
+      .patch(path)
+      .set('x-test-actor', 'viewOnly')
+      .send({ preparationApprovalRequired: true })
+      .expect(403);
+    await request(app.getHttpServer())
+      .patch(path)
+      .set('x-test-actor', 'manageOnly')
+      .send({ preparationApprovalRequired: true })
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(path)
+      .set('x-test-actor', 'settingsOnly')
+      .expect(403);
+    await request(app.getHttpServer())
+      .patch(path)
+      .set('x-test-actor', 'settingsOnly')
+      .send({ preparationApprovalRequired: true })
+      .expect(200);
+    expect(services.updateWorkflowPolicy.execute).toHaveBeenCalledWith({
+      preparationApprovalRequired: true,
+    });
+    for (const actor of ['teacher', 'student', 'parent', 'applicant']) {
+      await request(app.getHttpServer())
+        .get(path)
+        .set('x-test-actor', actor)
+        .expect(403);
+      await request(app.getHttpServer())
+        .patch(path)
+        .set('x-test-actor', actor)
+        .send({ preparationApprovalRequired: true })
+        .expect(403);
+    }
+    for (const body of [
+      { preparationApprovalRequired: 'true' },
+      { preparationApprovalRequired: 1 },
+      { preparationApprovalRequired: true, schoolId },
+      { preparationApprovalRequired: true, publication: true },
+    ])
+      await request(app.getHttpServer()).patch(path).send(body).expect(400);
   });
 
   it('delegates all five typed PUT routes to ACC-5B and presents only authoring state', async () => {

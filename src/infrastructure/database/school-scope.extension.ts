@@ -78,6 +78,8 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
   'AcademicContentWeeklyPlanHomeworkReference',
   'AcademicContentWeeklyPlanAssessmentReference',
   'AcademicContentFilePolicy',
+  'AcademicContentWorkflowPolicy',
+  'AcademicContentApproval',
   'AcademicYear',
   'Term',
   'Stage',
