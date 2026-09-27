@@ -9,6 +9,9 @@ import {
   AcademicContentStatus,
   AcademicContentTargetScopeType,
   AcademicContentType,
+  AcademicGuardianNotePriority,
+  AcademicOnlineSessionPlatform,
+  AcademicSubjectResourceCategory,
   FileUploadSessionStatus,
 } from '@prisma/client';
 import {
@@ -126,9 +129,77 @@ export class AcademicContentReadinessResponseDto {
   blockingReasons!: AcademicContentReadinessReasonDto[];
 }
 
+export class AcademicContentPreparationLibrarySummaryDto {
+  @ApiProperty({ enum: [AcademicContentType.TEACHER_PREPARATION] })
+  type!: typeof AcademicContentType.TEACHER_PREPARATION;
+  @ApiProperty({ nullable: true }) topic!: string | null;
+}
+
+export class AcademicContentWeeklyPlanLibrarySummaryDto {
+  @ApiProperty({ enum: [AcademicContentType.WEEKLY_PLAN] })
+  type!: typeof AcademicContentType.WEEKLY_PLAN;
+  @ApiProperty({ format: 'date' }) weekStartDate!: string;
+  @ApiProperty({ format: 'date' }) weekEndDate!: string;
+}
+
+export class AcademicContentGuardianNoteLibrarySummaryDto {
+  @ApiProperty({ enum: [AcademicContentType.GUARDIAN_WEEKLY_NOTE] })
+  type!: typeof AcademicContentType.GUARDIAN_WEEKLY_NOTE;
+  @ApiProperty({ enum: AcademicGuardianNotePriority })
+  priority!: AcademicGuardianNotePriority;
+  @ApiProperty() requiresAcknowledgement!: boolean;
+}
+
+export class AcademicContentSubjectResourceLibrarySummaryDto {
+  @ApiProperty({ enum: [AcademicContentType.SUBJECT_RESOURCE] })
+  type!: typeof AcademicContentType.SUBJECT_RESOURCE;
+  @ApiProperty({ enum: AcademicSubjectResourceCategory })
+  resourceCategory!: AcademicSubjectResourceCategory;
+}
+
+export class AcademicContentOnlineSessionLibrarySummaryDto {
+  @ApiProperty({ enum: [AcademicContentType.ONLINE_SESSION] })
+  type!: typeof AcademicContentType.ONLINE_SESSION;
+  @ApiProperty({ enum: AcademicOnlineSessionPlatform })
+  platform!: AcademicOnlineSessionPlatform;
+  @ApiProperty({ format: 'date-time' }) startAt!: string;
+  @ApiProperty({ format: 'date-time' }) endAt!: string;
+}
+
+const librarySummarySchemas = [
+  AcademicContentPreparationLibrarySummaryDto,
+  AcademicContentWeeklyPlanLibrarySummaryDto,
+  AcademicContentGuardianNoteLibrarySummaryDto,
+  AcademicContentSubjectResourceLibrarySummaryDto,
+  AcademicContentOnlineSessionLibrarySummaryDto,
+];
+
+export type AcademicContentLibrarySummaryDto =
+  | AcademicContentPreparationLibrarySummaryDto
+  | AcademicContentWeeklyPlanLibrarySummaryDto
+  | AcademicContentGuardianNoteLibrarySummaryDto
+  | AcademicContentSubjectResourceLibrarySummaryDto
+  | AcademicContentOnlineSessionLibrarySummaryDto;
+
+@ApiExtraModels(...librarySummarySchemas)
+export class AcademicContentLibraryItemResponseDto extends AcademicContentResponseDto {
+  @ApiProperty({
+    nullable: true,
+    oneOf: librarySummarySchemas.map((summary) => ({
+      $ref: getSchemaPath(summary),
+    })),
+    description:
+      'Lightweight current type summary; null until the detail is authored or for GENERAL_RESOURCE.',
+  })
+  summary!: AcademicContentLibrarySummaryDto | null;
+}
+
 export class AcademicContentListResponseDto {
-  @ApiProperty({ type: () => AcademicContentResponseDto, isArray: true })
-  items!: AcademicContentResponseDto[];
+  @ApiProperty({
+    type: () => AcademicContentLibraryItemResponseDto,
+    isArray: true,
+  })
+  items!: AcademicContentLibraryItemResponseDto[];
   @ApiProperty() page!: number;
   @ApiProperty() limit!: number;
   @ApiProperty() total!: number;

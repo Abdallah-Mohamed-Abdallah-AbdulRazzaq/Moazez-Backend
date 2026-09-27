@@ -45,6 +45,34 @@ const ACADEMIC_CONTENT_ARGS =
     },
   });
 
+const ACADEMIC_CONTENT_LIBRARY_ITEM_ARGS =
+  Prisma.validator<Prisma.AcademicContentDefaultArgs>()({
+    select: {
+      id: true,
+      academicYearId: true,
+      termId: true,
+      type: true,
+      audience: true,
+      title: true,
+      description: true,
+      status: true,
+      archivedAt: true,
+      createdAt: true,
+      updatedAt: true,
+      preparationDetail: { select: { topic: true } },
+      weeklyPlanDetail: {
+        select: { weekStartDate: true, weekEndDate: true },
+      },
+      guardianNoteDetail: {
+        select: { priority: true, requiresAcknowledgement: true },
+      },
+      subjectResourceDetail: { select: { resourceCategory: true } },
+      onlineSessionDetail: {
+        select: { platform: true, startAt: true, endAt: true },
+      },
+    },
+  });
+
 const ACADEMIC_CONTENT_DETAIL_ARGS =
   Prisma.validator<Prisma.AcademicContentDefaultArgs>()({
     select: {
@@ -150,6 +178,9 @@ const ACADEMIC_CONTENT_DETAIL_ARGS =
 export type AcademicContentRecord = Prisma.AcademicContentGetPayload<
   typeof ACADEMIC_CONTENT_ARGS
 >;
+export type AcademicContentLibraryItem = Prisma.AcademicContentGetPayload<
+  typeof ACADEMIC_CONTENT_LIBRARY_ITEM_ARGS
+>;
 export type AcademicContentManagementDetail = Prisma.AcademicContentGetPayload<
   typeof ACADEMIC_CONTENT_DETAIL_ARGS
 >;
@@ -220,7 +251,7 @@ export class AcademicContentRepository {
         deletedAt: null,
         id: { in: ids.map((row) => row.id) },
       },
-      ...ACADEMIC_CONTENT_ARGS,
+      ...ACADEMIC_CONTENT_LIBRARY_ITEM_ARGS,
     });
     const byId = new Map(rows.map((row) => [row.id, row]));
     const items = ids.flatMap(({ id }) => {
@@ -355,6 +386,61 @@ export class AcademicContentRepository {
       clauses.push(
         Prisma.sql`c.audience = ${query.audience}::academic_content_audience_type`,
       );
+
+    if (query.resourceCategory)
+      clauses.push(Prisma.sql`c.type = 'SUBJECT_RESOURCE'::academic_content_type AND EXISTS (
+        SELECT 1 FROM academic_content_subject_resource_details resource_detail
+        WHERE resource_detail.academic_content_id = c.id
+          AND resource_detail.school_id = c.school_id
+          AND resource_detail.resource_category = ${query.resourceCategory}::academic_subject_resource_category)`);
+    if (query.weeklyDateFrom || query.weeklyDateTo) {
+      const weekly: Prisma.Sql[] = [
+        Prisma.sql`weekly_detail.academic_content_id = c.id`,
+        Prisma.sql`weekly_detail.school_id = c.school_id`,
+      ];
+      if (query.weeklyDateFrom)
+        weekly.push(
+          Prisma.sql`weekly_detail.week_end_date >= ${query.weeklyDateFrom}::date`,
+        );
+      if (query.weeklyDateTo)
+        weekly.push(
+          Prisma.sql`weekly_detail.week_start_date <= ${query.weeklyDateTo}::date`,
+        );
+      clauses.push(Prisma.sql`c.type = 'WEEKLY_PLAN'::academic_content_type AND EXISTS (
+        SELECT 1 FROM academic_content_weekly_plan_details weekly_detail
+        WHERE ${Prisma.join(weekly, ' AND ')})`);
+    }
+    if (
+      query.sessionPlatform ||
+      query.sessionStartAtFrom ||
+      query.sessionStartAtTo
+    ) {
+      const session: Prisma.Sql[] = [
+        Prisma.sql`session_detail.academic_content_id = c.id`,
+        Prisma.sql`session_detail.school_id = c.school_id`,
+      ];
+      if (query.sessionPlatform)
+        session.push(
+          Prisma.sql`session_detail.platform = ${query.sessionPlatform}::academic_online_session_platform`,
+        );
+      if (query.sessionStartAtFrom)
+        session.push(
+          Prisma.sql`session_detail.start_at >= (${query.sessionStartAtFrom}::timestamptz AT TIME ZONE 'UTC')`,
+        );
+      if (query.sessionStartAtTo)
+        session.push(
+          Prisma.sql`session_detail.start_at <= (${query.sessionStartAtTo}::timestamptz AT TIME ZONE 'UTC')`,
+        );
+      clauses.push(Prisma.sql`c.type = 'ONLINE_SESSION'::academic_content_type AND EXISTS (
+        SELECT 1 FROM academic_content_online_session_details session_detail
+        WHERE ${Prisma.join(session, ' AND ')})`);
+    }
+    if (query.guardianPriority)
+      clauses.push(Prisma.sql`c.type = 'GUARDIAN_WEEKLY_NOTE'::academic_content_type AND EXISTS (
+        SELECT 1 FROM academic_content_guardian_note_details guardian_detail
+        WHERE guardian_detail.academic_content_id = c.id
+          AND guardian_detail.school_id = c.school_id
+          AND guardian_detail.priority = ${query.guardianPriority}::academic_guardian_note_priority)`);
 
     const search = query.search?.normalize('NFKC').trim();
     if (search)

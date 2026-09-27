@@ -2,6 +2,9 @@ import type {
   AcademicContentAudienceType,
   AcademicContentStatus,
   AcademicContentType,
+  AcademicGuardianNotePriority,
+  AcademicOnlineSessionPlatform,
+  AcademicSubjectResourceCategory,
 } from '@prisma/client';
 
 export type AcademicContentLibraryQuery = {
@@ -16,6 +19,13 @@ export type AcademicContentLibraryQuery = {
   classroomId?: string;
   subjectId?: string;
   teacherUserId?: string;
+  resourceCategory?: AcademicSubjectResourceCategory;
+  weeklyDateFrom?: string;
+  weeklyDateTo?: string;
+  sessionStartAtFrom?: string;
+  sessionStartAtTo?: string;
+  sessionPlatform?: AcademicOnlineSessionPlatform;
+  guardianPriority?: AcademicGuardianNotePriority;
   tag?: string;
   search?: string;
   page?: number;

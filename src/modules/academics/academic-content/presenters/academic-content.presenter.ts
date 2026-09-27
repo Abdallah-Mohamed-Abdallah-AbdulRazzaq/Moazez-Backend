@@ -1,10 +1,13 @@
 import {
   AcademicContentRecord,
   AcademicContentManagementDetail,
+  AcademicContentLibraryItem,
 } from '../infrastructure/academic-content.repository';
 import {
   AcademicContentDetailResponseDto,
   AcademicContentListResponseDto,
+  AcademicContentLibraryItemResponseDto,
+  AcademicContentLibrarySummaryDto,
   AcademicContentResponseDto,
   AcademicContentTargetResponseDto,
   AcademicContentTargetsResponseDto,
@@ -200,7 +203,20 @@ export function presentAcademicContentReadiness(
 }
 
 export function presentAcademicContent(
-  content: AcademicContentRecord,
+  content: Pick<
+    AcademicContentRecord,
+    | 'id'
+    | 'academicYearId'
+    | 'termId'
+    | 'type'
+    | 'audience'
+    | 'title'
+    | 'description'
+    | 'status'
+    | 'archivedAt'
+    | 'createdAt'
+    | 'updatedAt'
+  >,
 ): AcademicContentResponseDto {
   return {
     id: content.id,
@@ -390,17 +406,68 @@ export function presentAcademicContentRevisionDetail(
 }
 
 export function presentAcademicContentList(input: {
-  items: AcademicContentRecord[];
+  items: AcademicContentLibraryItem[];
   page: number;
   limit: number;
   total: number;
 }): AcademicContentListResponseDto {
   return {
-    items: input.items.map(presentAcademicContent),
+    items: input.items.map(presentAcademicContentLibraryItem),
     page: input.page,
     limit: input.limit,
     total: input.total,
   };
+}
+
+function presentAcademicContentLibraryItem(
+  content: AcademicContentLibraryItem,
+): AcademicContentLibraryItemResponseDto {
+  let summary: AcademicContentLibrarySummaryDto | null = null;
+  switch (content.type) {
+    case AcademicContentType.TEACHER_PREPARATION:
+      if (content.preparationDetail)
+        summary = {
+          type: AcademicContentType.TEACHER_PREPARATION,
+          topic: content.preparationDetail.topic,
+        };
+      break;
+    case AcademicContentType.WEEKLY_PLAN:
+      if (content.weeklyPlanDetail)
+        summary = {
+          type: AcademicContentType.WEEKLY_PLAN,
+          weekStartDate: dateOnly(content.weeklyPlanDetail.weekStartDate),
+          weekEndDate: dateOnly(content.weeklyPlanDetail.weekEndDate),
+        };
+      break;
+    case AcademicContentType.GUARDIAN_WEEKLY_NOTE:
+      if (content.guardianNoteDetail)
+        summary = {
+          type: AcademicContentType.GUARDIAN_WEEKLY_NOTE,
+          priority: content.guardianNoteDetail.priority,
+          requiresAcknowledgement:
+            content.guardianNoteDetail.requiresAcknowledgement,
+        };
+      break;
+    case AcademicContentType.SUBJECT_RESOURCE:
+      if (content.subjectResourceDetail)
+        summary = {
+          type: AcademicContentType.SUBJECT_RESOURCE,
+          resourceCategory: content.subjectResourceDetail.resourceCategory,
+        };
+      break;
+    case AcademicContentType.ONLINE_SESSION:
+      if (content.onlineSessionDetail)
+        summary = {
+          type: AcademicContentType.ONLINE_SESSION,
+          platform: content.onlineSessionDetail.platform,
+          startAt: content.onlineSessionDetail.startAt.toISOString(),
+          endAt: content.onlineSessionDetail.endAt.toISOString(),
+        };
+      break;
+    case AcademicContentType.GENERAL_RESOURCE:
+      break;
+  }
+  return { ...presentAcademicContent(content), summary };
 }
 
 export function presentAcademicContentUploadIntent(input: {

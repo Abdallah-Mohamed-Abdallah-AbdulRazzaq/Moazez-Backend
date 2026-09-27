@@ -4,6 +4,7 @@ import {
   IsArray,
   IsEnum,
   IsInt,
+  IsISO8601,
   IsOptional,
   IsString,
   IsUUID,
@@ -18,6 +19,9 @@ import {
   AcademicContentStatus,
   AcademicContentTargetScopeType,
   AcademicContentType,
+  AcademicGuardianNotePriority,
+  AcademicOnlineSessionPlatform,
+  AcademicSubjectResourceCategory,
 } from '@prisma/client';
 
 export class CreateAcademicContentDto {
@@ -140,6 +144,41 @@ export class ListAcademicContentQueryDto extends AcademicContentPaginationQueryD
   @IsOptional()
   @IsUUID()
   teacherUserId?: string;
+
+  @ApiPropertyOptional({ enum: AcademicSubjectResourceCategory })
+  @IsOptional()
+  @IsEnum(AcademicSubjectResourceCategory)
+  resourceCategory?: AcademicSubjectResourceCategory;
+
+  @ApiPropertyOptional({ format: 'date' })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/u)
+  weeklyDateFrom?: string;
+
+  @ApiPropertyOptional({ format: 'date' })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/u)
+  weeklyDateTo?: string;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  @IsOptional()
+  @IsISO8601({ strict: true, strictSeparator: true })
+  sessionStartAtFrom?: string;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  @IsOptional()
+  @IsISO8601({ strict: true, strictSeparator: true })
+  sessionStartAtTo?: string;
+
+  @ApiPropertyOptional({ enum: AcademicOnlineSessionPlatform })
+  @IsOptional()
+  @IsEnum(AcademicOnlineSessionPlatform)
+  sessionPlatform?: AcademicOnlineSessionPlatform;
+
+  @ApiPropertyOptional({ enum: AcademicGuardianNotePriority })
+  @IsOptional()
+  @IsEnum(AcademicGuardianNotePriority)
+  guardianPriority?: AcademicGuardianNotePriority;
 
   @ApiPropertyOptional({ maxLength: 80 })
   @IsOptional()
