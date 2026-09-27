@@ -425,11 +425,11 @@ export class AcademicContentRepository {
         );
       if (query.sessionStartAtFrom)
         session.push(
-          Prisma.sql`session_detail.start_at >= ${query.sessionStartAtFrom}::timestamptz`,
+          Prisma.sql`session_detail.start_at >= (${query.sessionStartAtFrom}::timestamptz AT TIME ZONE 'UTC')`,
         );
       if (query.sessionStartAtTo)
         session.push(
-          Prisma.sql`session_detail.start_at <= ${query.sessionStartAtTo}::timestamptz`,
+          Prisma.sql`session_detail.start_at <= (${query.sessionStartAtTo}::timestamptz AT TIME ZONE 'UTC')`,
         );
       clauses.push(Prisma.sql`c.type = 'ONLINE_SESSION'::academic_content_type AND EXISTS (
         SELECT 1 FROM academic_content_online_session_details session_detail

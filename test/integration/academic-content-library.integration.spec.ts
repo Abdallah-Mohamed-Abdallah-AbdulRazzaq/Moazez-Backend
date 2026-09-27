@@ -40,7 +40,7 @@ describeDatabase('ACC-4D PostgreSQL Academic Content Library', () => {
   const suffix = randomUUID().slice(0, 8);
   const date = (value: string) => new Date(value);
 
-  function list(query: AcademicContentLibraryQuery = {}) {
+  function list(query: AcademicContentLibraryQuery = {}, reader = listUseCase) {
     return runWithRequestContext(createRequestContext(), () => {
       setActor({ id: id.manager, userType: UserType.SCHOOL_USER });
       setActiveMembership({
@@ -50,7 +50,7 @@ describeDatabase('ACC-4D PostgreSQL Academic Content Library', () => {
         roleId: randomUUID(),
         permissions: ['academics.academic_content.view'],
       });
-      return listUseCase.execute(query);
+      return reader.execute(query);
     });
   }
 
@@ -1225,6 +1225,83 @@ describeDatabase('ACC-4D PostgreSQL Academic Content Library', () => {
         sessionStartAtTo: '2028-09-10T10:00:00Z',
       }),
     ).toThrow();
+  });
+
+  it('compares Online Session start instants in UTC under a non-UTC PostgreSQL session', async () => {
+    const title = 'acc5e-session-tz-boundary';
+    const row = await content(title, { type: ContentType.ONLINE_SESSION });
+    await prisma.academicContentOnlineSessionDetail.create({
+      data: {
+        schoolId: id.school,
+        academicContentId: row.id,
+        platform: SessionPlatform.ZOOM,
+        joinUrl: 'https://example.test/timezone-boundary',
+        startAt: date('2028-09-10T10:00:00Z'),
+        endAt: date('2028-09-10T11:00:00Z'),
+        timezone: 'Africa/Cairo',
+      },
+    });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SET LOCAL TIME ZONE 'Africa/Cairo'`;
+      const timezone = await tx.$queryRaw<Array<{ zone: string }>>`
+        SELECT current_setting('TimeZone') AS zone`;
+      expect(timezone[0]?.zone).toBe('Africa/Cairo');
+      const reader = new ListAcademicContentForManagementUseCase(
+        new AcademicContentRepository(tx as unknown as PrismaService),
+      );
+      const query = { search: title };
+      const expected = [title];
+
+      expect(
+        titles(
+          await list(
+            { ...query, sessionStartAtFrom: '2028-09-10T10:00:00Z' },
+            reader,
+          ),
+        ),
+      ).toEqual(expected);
+      expect(
+        titles(
+          await list(
+            { ...query, sessionStartAtFrom: '2028-09-10T12:00:00+02:00' },
+            reader,
+          ),
+        ),
+      ).toEqual(expected);
+      expect(
+        titles(
+          await list(
+            { ...query, sessionStartAtFrom: '2028-09-10T10:00:00.001Z' },
+            reader,
+          ),
+        ),
+      ).toEqual([]);
+      expect(
+        titles(
+          await list(
+            { ...query, sessionStartAtTo: '2028-09-10T10:00:00Z' },
+            reader,
+          ),
+        ),
+      ).toEqual(expected);
+      expect(
+        titles(
+          await list(
+            { ...query, sessionStartAtTo: '2028-09-10T12:00:00+02:00' },
+            reader,
+          ),
+        ),
+      ).toEqual(expected);
+      expect(
+        titles(
+          await list(
+            { ...query, sessionStartAtTo: '2028-09-10T09:59:59.999Z' },
+            reader,
+          ),
+        ),
+      ).toEqual([]);
+    });
   });
 
   it('filters Guardian priority exactly and AND-composes incompatible type groups', async () => {
