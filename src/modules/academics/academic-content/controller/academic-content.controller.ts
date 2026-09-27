@@ -387,6 +387,7 @@ export class AcademicContentController {
   }
 
   @Get(':contentId/revisions/:revisionId')
+  @Header('Cache-Control', 'no-store, private, max-age=0')
   @RequiredPermissions('academics.academic_content.view')
   @ApiOperation({ summary: 'Read an immutable Academic Content revision' })
   @ApiParam({ name: 'contentId', format: 'uuid' })

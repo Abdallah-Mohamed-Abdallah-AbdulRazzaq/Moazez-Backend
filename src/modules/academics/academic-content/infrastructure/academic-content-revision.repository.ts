@@ -1,9 +1,154 @@
 import { Injectable } from '@nestjs/common';
-import { AuditOutcome, Prisma } from '@prisma/client';
+import { AcademicContentType, AuditOutcome, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
+import {
+  AcademicContentRevisionSnapshotV2,
+  decodeAcademicContentRevisionSnapshotV2,
+} from '../domain/academic-content-revision-snapshot';
 
-export const SNAPSHOT_CONTRACT_VERSION = 1;
+export const SNAPSHOT_CONTRACT_VERSION = 2;
+
+/** Called only after the AcademicContent parent row is locked in capture(). */
+async function currentTypeSnapshot(
+  tx: Prisma.TransactionClient,
+  schoolId: string,
+  contentId: string,
+  type: AcademicContentType,
+): Promise<AcademicContentRevisionSnapshotV2 | null> {
+  const where = { schoolId, academicContentId: contentId };
+  switch (type) {
+    case AcademicContentType.TEACHER_PREPARATION: {
+      const state = await tx.academicContentPreparationDetail.findFirst({
+        where,
+        select: {
+          topic: true,
+          objectives: true,
+          learningOutcomes: true,
+          teachingStrategies: true,
+          activities: true,
+          resourceNotes: true,
+          assessmentNotes: true,
+          teacherNotes: true,
+          curriculumId: true,
+          curriculumUnitId: true,
+          curriculumLessonId: true,
+          lessonPlanId: true,
+          lessonPlanItemId: true,
+          timetableEntryId: true,
+        },
+      });
+      return state
+        ? decodeAcademicContentRevisionSnapshotV2({ type, state }, type)
+        : null;
+    }
+    case AcademicContentType.WEEKLY_PLAN: {
+      const state = await tx.academicContentWeeklyPlanDetail.findFirst({
+        where,
+        select: {
+          weekStartDate: true,
+          weekEndDate: true,
+          objectives: true,
+          topics: true,
+          expectedHomework: true,
+          upcomingAssessments: true,
+          notes: true,
+          homeworkReferences: {
+            select: { homeworkAssignmentId: true },
+            orderBy: { homeworkAssignmentId: 'asc' },
+          },
+          assessmentReferences: {
+            select: { gradeAssessmentId: true },
+            orderBy: { gradeAssessmentId: 'asc' },
+          },
+        },
+      });
+      return state
+        ? decodeAcademicContentRevisionSnapshotV2(
+            {
+              type,
+              state: {
+                weekStartDate: state.weekStartDate.toISOString().slice(0, 10),
+                weekEndDate: state.weekEndDate.toISOString().slice(0, 10),
+                objectives: state.objectives,
+                topics: state.topics,
+                expectedHomework: state.expectedHomework,
+                upcomingAssessments: state.upcomingAssessments,
+                notes: state.notes,
+                homeworkAssignmentIds: state.homeworkReferences.map(
+                  (item) => item.homeworkAssignmentId,
+                ),
+                gradeAssessmentIds: state.assessmentReferences.map(
+                  (item) => item.gradeAssessmentId,
+                ),
+              },
+            },
+            type,
+          )
+        : null;
+    }
+    case AcademicContentType.GUARDIAN_WEEKLY_NOTE: {
+      const state = await tx.academicContentGuardianNoteDetail.findFirst({
+        where,
+        select: { body: true, priority: true, requiresAcknowledgement: true },
+      });
+      return state
+        ? decodeAcademicContentRevisionSnapshotV2({ type, state }, type)
+        : null;
+    }
+    case AcademicContentType.SUBJECT_RESOURCE: {
+      const state = await tx.academicContentSubjectResourceDetail.findFirst({
+        where,
+        select: {
+          resourceCategory: true,
+          curriculumId: true,
+          curriculumUnitId: true,
+          curriculumLessonId: true,
+        },
+      });
+      return state
+        ? decodeAcademicContentRevisionSnapshotV2({ type, state }, type)
+        : null;
+    }
+    case AcademicContentType.ONLINE_SESSION: {
+      const state = await tx.academicContentOnlineSessionDetail.findFirst({
+        where,
+        select: {
+          platform: true,
+          providerName: true,
+          joinUrl: true,
+          accessCode: true,
+          instructions: true,
+          startAt: true,
+          endAt: true,
+          timezone: true,
+          timetableEntryId: true,
+        },
+      });
+      return state
+        ? decodeAcademicContentRevisionSnapshotV2(
+            {
+              type,
+              state: {
+                platform: state.platform,
+                providerName: state.providerName,
+                joinUrl: state.joinUrl,
+                accessCode: state.accessCode,
+                instructions: state.instructions,
+                startAt: state.startAt.toISOString(),
+                endAt: state.endAt.toISOString(),
+                timezone: state.timezone,
+                timetableEntryId: state.timetableEntryId,
+              },
+            },
+            type,
+          )
+        : null;
+    }
+    case AcademicContentType.GENERAL_RESOURCE:
+      return null;
+  }
+}
 
 const REVISION_DETAIL_ARGS =
   Prisma.validator<Prisma.AcademicContentRevisionDefaultArgs>()({
@@ -86,6 +231,12 @@ export class AcademicContentRevisionRepository {
           where,
           orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
         });
+        const typeSpecificSnapshot = await currentTypeSnapshot(
+          tx,
+          input.schoolId,
+          input.contentId,
+          content.type,
+        );
         const latest = await tx.academicContentRevision.findFirst({
           where,
           select: { revisionNumber: true },
@@ -97,6 +248,9 @@ export class AcademicContentRevisionRepository {
             ...where,
             revisionNumber: (latest?.revisionNumber ?? 0) + 1,
             snapshotContractVersion: SNAPSHOT_CONTRACT_VERSION,
+            typeSpecificSnapshot: typeSpecificSnapshot
+              ? (typeSpecificSnapshot as unknown as Prisma.InputJsonValue)
+              : Prisma.DbNull,
             ...envelope,
             sourceStatus: status,
             capturedByUserId: input.actorId,

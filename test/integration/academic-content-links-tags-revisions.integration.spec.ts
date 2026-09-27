@@ -386,10 +386,12 @@ describeDatabase('ACC-4C PostgreSQL snapshot and retention boundary', () => {
     const first = await capture.execute(trusted(content.id), controlledNow);
     expect(first).toMatchObject({
       revisionNumber: 1,
-      snapshotContractVersion: 1,
+      snapshotContractVersion: 2,
       title: 'Resource',
     });
     expect(first.targets).toHaveLength(1);
+    expect(first.typeSpecificSnapshot).toBeNull();
+    expect(presentAcademicContentRevisionDetail(first).details).toBeNull();
     expect(first.assets[0]).toMatchObject({ fileId: file.id, sortOrder: 7 });
     expect(first.links.map((item) => item.url)).toEqual(
       linkInput.map((item) => item.url),
@@ -405,6 +407,12 @@ describeDatabase('ACC-4C PostgreSQL snapshot and retention boundary', () => {
     expect(concurrent.map((item) => item.revisionNumber).sort()).toEqual([
       2, 3,
     ]);
+    expect(concurrent.map((item) => item.snapshotContractVersion)).toEqual([
+      2, 2,
+    ]);
+    expect(concurrent.every((item) => item.typeSpecificSnapshot === null)).toBe(
+      true,
+    );
     expect(
       await prisma.academicContentRevision.count({
         where: { schoolId: ids.school, academicContentId: content.id },
@@ -585,6 +593,93 @@ describeDatabase('ACC-4C PostgreSQL snapshot and retention boundary', () => {
         })
       ).fileId,
     ).toBe(file.id);
+  });
+
+  it('preserves a real V1 revision envelope and children without a typed detail', async () => {
+    const content = await createContent('Legacy revision');
+    const file = await prisma.file.create({
+      data: {
+        organizationId: ids.organization,
+        schoolId: ids.school,
+        uploaderId: ids.user,
+        bucket: 'legacy-test',
+        objectKey: `legacy/${randomUUID()}`,
+        originalName: 'legacy.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 123n,
+        visibility: FileVisibility.PRIVATE,
+      },
+    });
+    const legacy = await prisma.academicContentRevision.create({
+      data: {
+        schoolId: ids.school,
+        academicContentId: content.id,
+        revisionNumber: 1,
+        snapshotContractVersion: 1,
+        academicYearId: ids.year,
+        termId: ids.term,
+        type: ContentType.GENERAL_RESOURCE,
+        audience: Audience.STUDENTS,
+        title: 'Legacy revision',
+        description: 'Historical description',
+        sourceStatus: Status.DRAFT,
+        capturedByUserId: ids.user,
+      },
+    });
+    await prisma.academicContentRevisionTarget.create({
+      data: {
+        schoolId: ids.school,
+        revisionId: legacy.id,
+        scopeType: TargetScope.SCHOOL,
+        identityFingerprint: 'legacy-school',
+      },
+    });
+    await prisma.academicContentRevisionAsset.create({
+      data: {
+        schoolId: ids.school,
+        revisionId: legacy.id,
+        fileId: file.id,
+        sortOrder: 0,
+      },
+    });
+    await prisma.academicContentRevisionLink.create({
+      data: {
+        schoolId: ids.school,
+        revisionId: legacy.id,
+        label: 'Historical link',
+        url: 'https://example.test/legacy',
+        sortOrder: 0,
+      },
+    });
+    await prisma.academicContentRevisionTag.create({
+      data: {
+        schoolId: ids.school,
+        revisionId: legacy.id,
+        displayValue: 'History',
+        normalizedValue: 'history',
+        sortOrder: 0,
+      },
+    });
+    const result = presentAcademicContentRevisionDetail(
+      await asActor(() => detail.execute(content.id, legacy.id)),
+    );
+    expect(result).toMatchObject({
+      snapshotContractVersion: 1,
+      title: 'Legacy revision',
+      description: 'Historical description',
+      details: null,
+      targets: [{ scopeType: TargetScope.SCHOOL }],
+      assets: [
+        { fileId: file.id, originalName: 'legacy.pdf', sizeBytes: '123' },
+      ],
+      links: [{ label: 'Historical link', url: 'https://example.test/legacy' }],
+      tags: [{ value: 'History' }],
+    });
+    expect(
+      await prisma.academicContentRevision.findUniqueOrThrow({
+        where: { id: legacy.id },
+      }),
+    ).toEqual(legacy);
   });
 
   it('serializes archive with link and tag replacement and denies post-archive mutation', async () => {
