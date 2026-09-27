@@ -7,6 +7,7 @@ import { AcademicContentAudienceResolver } from '../application/academic-content
 import { ReplaceAcademicContentTargetsUseCase } from '../application/replace-academic-content-targets.use-case';
 import { AcademicContentController } from '../controller/academic-content.controller';
 import { AcademicContentFilePolicyController } from '../controller/academic-content-file-policy.controller';
+import { AcademicContentWorkflowPolicyController } from '../controller/academic-content-workflow-policy.controller';
 
 describe('Academic Content foundation', () => {
   it('keeps the V1 content type contract exact', () => {
@@ -58,6 +59,7 @@ describe('Academic Content foundation', () => {
     expect(providers).toContain(ReplaceAcademicContentTargetsUseCase);
     expect(controllers).toEqual([
       AcademicContentFilePolicyController,
+      AcademicContentWorkflowPolicyController,
       AcademicContentController,
     ]);
     expect(exports).toContain(AcademicContentAudienceResolver);

@@ -294,6 +294,23 @@ preserving that lifecycle; ACC-5B must validate its School and context before
 use. The revision snapshot column is nullable, and current V1 capture remains
 at contract version 1 with a null type-specific snapshot.
 
+## ACC-6A approval history invariants
+
+`20260927122703_academic_content_workflow_approval_foundation` adds the
+workflow-policy and approval tables, the separate approval status enum, same-School
+foreign keys, and a compound revision/content candidate key through Prisma.
+Prisma cannot express the following PostgreSQL objects. They prevent impossible
+approval history and are covered by the ACC-6A PostgreSQL integration suite.
+
+| Object | Invariant |
+| --- | --- |
+| `acc_approval_round_positive_check` | An approval round starts at 1. |
+| `acc_approval_decision_state_check` | Pending has no decision metadata; approved has a deciding actor and time; changes requested also has a nonblank note. |
+| `acc_approval_one_pending_per_content_idx` | At most one pending review per School/content pair; completed rounds remain unique by round and revision. |
+
+The migration has no backfill, trigger, or approval operation. Its generated
+foreign keys use `ON DELETE RESTRICT` for School, Content, Revision, and users.
+
 ## Reviewed PostgreSQL-specific SQL that must not be copied
 
 - The 16 raw enum additions are historical transition mechanics. The final
