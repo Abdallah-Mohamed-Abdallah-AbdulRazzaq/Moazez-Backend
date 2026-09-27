@@ -1487,6 +1487,7 @@ model School {
   academicContentRevisionLinks                  AcademicContentRevisionLink[]
   academicContentRevisionTags                   AcademicContentRevisionTag[]
   academicContentPreparationDetails             AcademicContentPreparationDetail[]
+  academicContentPreparationTemplates           AcademicContentPreparationTemplate[]
   academicContentWeeklyPlanDetails              AcademicContentWeeklyPlanDetail[]
   academicContentGuardianNoteDetails            AcademicContentGuardianNoteDetail[]
   academicContentSubjectResourceDetails         AcademicContentSubjectResourceDetail[]
@@ -1712,6 +1713,8 @@ model User {
   teacherProfiles                                TeacherProfile[]
   academicContentsCreated                        AcademicContent[]                      @relation("AcademicContentCreatedBy")
   academicContentsUpdated                        AcademicContent[]                      @relation("AcademicContentUpdatedBy")
+  academicContentPreparationTemplatesCreated     AcademicContentPreparationTemplate[]   @relation("AcademicContentPreparationTemplateCreatedBy")
+  academicContentPreparationTemplatesUpdated     AcademicContentPreparationTemplate[]   @relation("AcademicContentPreparationTemplateUpdatedBy")
   academicContentTargetsCreated                  AcademicContentTarget[]                @relation("AcademicContentTargetCreatedBy")
   academicContentAssetsCreated                   AcademicContentAsset[]                 @relation("AcademicContentAssetCreatedBy")
   academicContentLinksCreated                    AcademicContentLink[]                  @relation("AcademicContentLinkCreatedBy")
@@ -2935,6 +2938,44 @@ model AcademicContentPreparationDetail {
   @@map("academic_content_preparation_details")
 }
 
+model AcademicContentPreparationTemplate {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId           String    @map("school_id") @db.Uuid
+  name               String    @db.VarChar(180)
+  normalizedName     String    @map("normalized_name") @db.VarChar(180)
+  description        String?   @db.VarChar(1000)
+  stageId            String?   @map("stage_id") @db.Uuid
+  subjectId          String?   @map("subject_id") @db.Uuid
+  topic              String?   @db.VarChar(500)
+  objectives         Json      @default("[]")
+  learningOutcomes   Json      @default("[]") @map("learning_outcomes")
+  teachingStrategies Json      @default("[]") @map("teaching_strategies")
+  activities         Json      @default("[]")
+  resourceNotes      String?   @map("resource_notes") @db.VarChar(4000)
+  assessmentNotes    String?   @map("assessment_notes") @db.VarChar(4000)
+  teacherNotes       String?   @map("teacher_notes") @db.VarChar(4000)
+  createdByUserId    String    @map("created_by_user_id") @db.Uuid
+  updatedByUserId    String?   @map("updated_by_user_id") @db.Uuid
+  deletedAt          DateTime? @map("deleted_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  stage     Stage?   @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  subject   Subject? @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  createdBy User     @relation("AcademicContentPreparationTemplateCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy User?    @relation("AcademicContentPreparationTemplateUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([schoolId, stageId])
+  @@index([schoolId, subjectId])
+  @@index([createdByUserId])
+  @@index([updatedByUserId])
+  @@index([deletedAt])
+  @@map("academic_content_preparation_templates")
+}
+
 model AcademicContentWeeklyPlanDetail {
   id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   schoolId            String              @map("school_id") @db.Uuid
@@ -3482,20 +3523,21 @@ model Stage {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school                             School                              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  grades                             Grade[]
-  attendancePolicies                 AttendancePolicy[]
-  attendanceSessions                 AttendanceSession[]
-  gradeAssessments                   GradeAssessment[]
-  academicCalendarEvents             AcademicCalendarEvent[]
-  reinforcementTaskTargets           ReinforcementTaskTarget[]
-  heroMissions                       HeroMission[]
-  communicationConversations         CommunicationConversation[]
-  communicationAnnouncementAudiences CommunicationAnnouncementAudience[]
-  dismissalStaffAssignments          DismissalStaffAssignment[]
-  studentCredentialBatches           StudentCredentialBatch[]
-  timetableConfigs                   TimetableConfig[]
-  academicContentTargets             AcademicContentTarget[]
+  school                              School                               @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  grades                              Grade[]
+  attendancePolicies                  AttendancePolicy[]
+  attendanceSessions                  AttendanceSession[]
+  gradeAssessments                    GradeAssessment[]
+  academicCalendarEvents              AcademicCalendarEvent[]
+  reinforcementTaskTargets            ReinforcementTaskTarget[]
+  heroMissions                        HeroMission[]
+  communicationConversations          CommunicationConversation[]
+  communicationAnnouncementAudiences  CommunicationAnnouncementAudience[]
+  dismissalStaffAssignments           DismissalStaffAssignment[]
+  studentCredentialBatches            StudentCredentialBatch[]
+  timetableConfigs                    TimetableConfig[]
+  academicContentTargets              AcademicContentTarget[]
+  academicContentPreparationTemplates AcademicContentPreparationTemplate[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, nameAr])
@@ -3644,19 +3686,20 @@ model Subject {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school                     School                      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  subjectAllocations         SubjectAllocation[]
-  teacherSubjectAllocations  TeacherSubjectAllocation[]
-  lessonPlans                LessonPlan[]
-  placementTests             PlacementTest[]
-  gradeAssessments           GradeAssessment[]
-  homeworkAssignments        HomeworkAssignment[]
-  curricula                  Curriculum[]
-  reinforcementTasks         ReinforcementTask[]
-  heroMissions               HeroMission[]
-  communicationConversations CommunicationConversation[]
-  timetableEntries           TimetableEntry[]
-  academicContentTargets     AcademicContentTarget[]
+  school                              School                               @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  subjectAllocations                  SubjectAllocation[]
+  teacherSubjectAllocations           TeacherSubjectAllocation[]
+  lessonPlans                         LessonPlan[]
+  placementTests                      PlacementTest[]
+  gradeAssessments                    GradeAssessment[]
+  homeworkAssignments                 HomeworkAssignment[]
+  curricula                           Curriculum[]
+  reinforcementTasks                  ReinforcementTask[]
+  heroMissions                        HeroMission[]
+  communicationConversations          CommunicationConversation[]
+  timetableEntries                    TimetableEntry[]
+  academicContentTargets              AcademicContentTarget[]
+  academicContentPreparationTemplates AcademicContentPreparationTemplate[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, code])

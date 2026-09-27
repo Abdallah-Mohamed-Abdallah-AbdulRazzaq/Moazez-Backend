@@ -73,6 +73,15 @@ describe('schoolScope communication registration', () => {
   it('registers AcademicContent for school scope and soft-delete filtering', () => {
     expect(SCHOOL_SCOPED_MODELS.has('AcademicContent')).toBe(true);
     expect(SOFT_DELETE_MODELS.has('AcademicContent')).toBe(true);
+    expect(SCHOOL_SCOPED_MODELS.has('AcademicContentPreparationTemplate')).toBe(
+      true,
+    );
+    expect(SOFT_DELETE_MODELS.has('AcademicContentPreparationTemplate')).toBe(
+      true,
+    );
+    expect(
+      EXCLUDED_FROM_SCHOOL_SCOPE.has('AcademicContentPreparationTemplate'),
+    ).toBe(false);
     expect(EXCLUDED_FROM_SCHOOL_SCOPE.has('AcademicContent')).toBe(false);
   });
 

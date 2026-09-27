@@ -35,6 +35,9 @@ import {
 } from './application/academic-content-revision.use-cases';
 import { AcademicContentValidationRepository } from './infrastructure/academic-content-validation.repository';
 import { AcademicContentController } from './controller/academic-content.controller';
+import { AcademicContentPreparationTemplateController } from './controller/academic-content-preparation-template.controller';
+import { AcademicContentPreparationTemplateUseCases } from './application/academic-content-preparation-template.use-cases';
+import { AcademicContentPreparationTemplateRepository } from './infrastructure/academic-content-preparation-template.repository';
 import { AcademicContentFilePolicyController } from './controller/academic-content-file-policy.controller';
 import { AcademicContentWorkflowPolicyController } from './controller/academic-content-workflow-policy.controller';
 import { AcademicContentWorkflowController } from './controller/academic-content-workflow.controller';
@@ -69,9 +72,12 @@ import {
     AcademicContentFilePolicyController,
     AcademicContentWorkflowPolicyController,
     AcademicContentWorkflowController,
+    AcademicContentPreparationTemplateController,
     AcademicContentController,
   ],
   providers: [
+    AcademicContentPreparationTemplateRepository,
+    AcademicContentPreparationTemplateUseCases,
     AcademicContentWorkflowPolicyRepository,
     AcademicContentWorkflowRepository,
     AcademicContentReviewRepository,
