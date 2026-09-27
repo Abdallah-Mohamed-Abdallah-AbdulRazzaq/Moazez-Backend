@@ -53,6 +53,10 @@ import {
   SubmitAcademicContentUseCase,
 } from '../../src/modules/academics/academic-content/application/academic-content-workflow.use-cases';
 import {
+  ListAcademicContentApprovalHistoryUseCase,
+  ListAcademicContentReviewQueueUseCase,
+} from '../../src/modules/academics/academic-content/application/academic-content-review.use-cases';
+import {
   GetAcademicContentWorkflowPolicyUseCase,
   UpdateAcademicContentWorkflowPolicyUseCase,
 } from '../../src/modules/academics/academic-content/application/academic-content-workflow-policy.use-cases';
@@ -203,6 +207,8 @@ const services = {
   submit: { execute: jest.fn() },
   approve: { execute: jest.fn() },
   requestChanges: { execute: jest.fn() },
+  reviewQueue: { execute: jest.fn() },
+  approvalHistory: { execute: jest.fn() },
 };
 
 describe('ACC-4B management HTTP security and transport', () => {
@@ -290,6 +296,14 @@ describe('ACC-4B management HTTP security and transport', () => {
         },
         { provide: SubmitAcademicContentUseCase, useValue: services.submit },
         { provide: ApproveAcademicContentUseCase, useValue: services.approve },
+        {
+          provide: ListAcademicContentReviewQueueUseCase,
+          useValue: services.reviewQueue,
+        },
+        {
+          provide: ListAcademicContentApprovalHistoryUseCase,
+          useValue: services.approvalHistory,
+        },
         {
           provide: RequestAcademicContentChangesUseCase,
           useValue: services.requestChanges,
@@ -517,6 +531,47 @@ describe('ACC-4B management HTTP security and transport', () => {
       approvalStatus: 'CHANGES_REQUESTED',
       decidedAt: now,
     });
+    services.reviewQueue.execute.mockResolvedValue({
+      items: [
+        {
+          contentId,
+          title: 'Submitted Preparation',
+          academicYearId: content.academicYearId,
+          termId: content.termId,
+          approvalId: transition.approvalId,
+          submittedRevisionId: revisionId,
+          roundNumber: 1,
+          submittedAt: now,
+          submittedByUserId: actorId,
+          targets: [target],
+          typeSpecificSnapshot: { teacherNotes: 'private' },
+          schoolId,
+        },
+      ],
+      page: 1,
+      limit: 50,
+      total: 1,
+    });
+    services.approvalHistory.execute.mockResolvedValue({
+      items: [
+        {
+          id: transition.approvalId,
+          revisionId,
+          roundNumber: 1,
+          status: 'CHANGES_REQUESTED',
+          submittedByUserId: actorId,
+          submittedAt: now,
+          decidedByUserId: actorId,
+          decidedAt: now,
+          decisionNote: 'Revise the examples',
+          schoolId,
+          createdAt: now,
+        },
+      ],
+      page: 1,
+      limit: 50,
+      total: 1,
+    });
   });
 
   afterAll(async () => {
@@ -672,6 +727,18 @@ describe('ACC-4B management HTTP security and transport', () => {
       'academics.academic_content.approve',
       AcademicContentWorkflowController,
     );
+    route(
+      'reviewQueue',
+      'review-queue',
+      'academics.academic_content.approve',
+      AcademicContentWorkflowController,
+    );
+    route(
+      'approvals',
+      ':contentId/approvals',
+      'academics.academic_content.view',
+      AcademicContentWorkflowController,
+    );
   });
 
   it('publishes only the ACC-4B Swagger surface and safe DTOs', () => {
@@ -718,6 +785,8 @@ describe('ACC-4B management HTTP security and transport', () => {
         `POST ${base}/{contentId}/submit`,
         `POST ${base}/{contentId}/approve`,
         `POST ${base}/{contentId}/request-changes`,
+        `GET ${base}/review-queue`,
+        `GET ${base}/{contentId}/approvals`,
       ].sort(),
     );
     const accPaths = Object.keys(document.paths).filter((path) =>
@@ -834,6 +903,164 @@ describe('ACC-4B management HTTP security and transport', () => {
         .map((parameter) => parameter.name)
         .sort(),
     ).toEqual(['contentId', 'limit', 'page']);
+    const reviewParameters =
+      document.paths[`${base}/review-queue`].get?.parameters ?? [];
+    expect(
+      reviewParameters
+        .filter((p) => 'name' in p)
+        .map((p) => p.name)
+        .sort(),
+    ).toEqual([
+      'academicYearId',
+      'classroomId',
+      'gradeId',
+      'limit',
+      'page',
+      'search',
+      'sectionId',
+      'stageId',
+      'subjectId',
+      'teacherUserId',
+      'termId',
+    ]);
+    const historyParameters =
+      document.paths[`${base}/{contentId}/approvals`].get?.parameters ?? [];
+    expect(
+      historyParameters
+        .filter((p) => 'name' in p)
+        .map((p) => p.name)
+        .sort(),
+    ).toEqual(['contentId', 'limit', 'page']);
+    const queueSchema = document.components?.schemas
+      ?.AcademicContentReviewQueueItemDto as {
+      properties?: Record<string, unknown>;
+    };
+    expect(Object.keys(queueSchema.properties ?? {}).sort()).toEqual([
+      'academicYearId',
+      'approvalId',
+      'contentId',
+      'roundNumber',
+      'submittedAt',
+      'submittedByUserId',
+      'submittedRevisionId',
+      'targets',
+      'termId',
+      'title',
+    ]);
+    const historySchema = document.components?.schemas
+      ?.AcademicContentApprovalHistoryItemDto as {
+      properties?: Record<string, unknown>;
+    };
+    expect(Object.keys(historySchema.properties ?? {}).sort()).toEqual([
+      'approvalId',
+      'decidedAt',
+      'decidedByUserId',
+      'decisionNote',
+      'revisionId',
+      'roundNumber',
+      'status',
+      'submittedAt',
+      'submittedByUserId',
+    ]);
+  });
+
+  it('routes review-queue statically and presents safe submitted and history rows', async () => {
+    const queue = await request(app.getHttpServer())
+      .get(`${base}/review-queue`)
+      .expect(200);
+    expect(services.reviewQueue.execute).toHaveBeenCalledWith({});
+    expect(services.detail.execute).not.toHaveBeenCalled();
+    expect(queue.headers['cache-control']).toBe('no-store, private, max-age=0');
+    const queueBody = queue.body as { items: Array<Record<string, unknown>> };
+    expect(typeof queueBody.items[0].approvalId).toBe('string');
+    expect(queueBody.items[0]).toEqual({
+      contentId,
+      title: 'Submitted Preparation',
+      academicYearId: content.academicYearId,
+      termId: content.termId,
+      approvalId: queueBody.items[0].approvalId,
+      submittedRevisionId: revisionId,
+      roundNumber: 1,
+      submittedAt: now.toISOString(),
+      submittedByUserId: actorId,
+      targets: [
+        {
+          scopeType: target.scopeType,
+          stageId: null,
+          gradeId: null,
+          sectionId: null,
+          classroomId: null,
+          subjectId: null,
+          teacherSubjectAllocationId: null,
+        },
+      ],
+    });
+    const history = await request(app.getHttpServer())
+      .get(`${base}/${contentId}/approvals`)
+      .expect(200);
+    expect(history.headers['cache-control']).toBe(
+      'no-store, private, max-age=0',
+    );
+    const historyBody = history.body as {
+      items: Array<Record<string, unknown>>;
+    };
+    expect(typeof historyBody.items[0].approvalId).toBe('string');
+    expect(historyBody.items[0]).toEqual({
+      approvalId: historyBody.items[0].approvalId,
+      revisionId,
+      roundNumber: 1,
+      status: 'CHANGES_REQUESTED',
+      submittedByUserId: actorId,
+      submittedAt: now.toISOString(),
+      decidedByUserId: actorId,
+      decidedAt: now.toISOString(),
+      decisionNote: 'Revise the examples',
+    });
+    expect(historyBody.items[0]).not.toHaveProperty('schoolId');
+  });
+
+  it('separates review permissions and rejects app actors and unowned query fields', async () => {
+    for (const [actor, queueStatus, historyStatus] of [
+      ['viewOnly', 403, 200],
+      ['manageOnly', 403, 403],
+      ['approveOnly', 200, 403],
+      ['settingsOnly', 403, 403],
+      ['organization', 200, 200],
+      ['teacher', 403, 403],
+      ['student', 403, 403],
+      ['parent', 403, 403],
+      ['applicant', 403, 403],
+    ] as const) {
+      await request(app.getHttpServer())
+        .get(`${base}/review-queue`)
+        .set('x-test-actor', actor)
+        .expect(queueStatus);
+      await request(app.getHttpServer())
+        .get(`${base}/${contentId}/approvals`)
+        .set('x-test-actor', actor)
+        .expect(historyStatus);
+    }
+    await request(app.getHttpServer())
+      .get(`${base}/review-queue?status=SUBMITTED`)
+      .expect(400);
+    await request(app.getHttpServer())
+      .get(`${base}/${contentId}/approvals?schoolId=${schoolId}`)
+      .expect(400);
+    await request(app.getHttpServer())
+      .get(`${base}/review-queue?page=1.5`)
+      .expect(400);
+    await request(app.getHttpServer())
+      .get(`${base}/review-queue?limit=101`)
+      .expect(400);
+    await request(app.getHttpServer())
+      .get(`${base}/${contentId}/approvals?limit=0`)
+      .expect(400);
+    services.approvalHistory.execute.mockRejectedValueOnce(
+      new NotFoundDomainException('Academic content not found'),
+    );
+    await request(app.getHttpServer())
+      .get(`${base}/${contentId}/approvals`)
+      .expect(404);
   });
 
   it('allows School and Organization managers and presents a safe draft', async () => {

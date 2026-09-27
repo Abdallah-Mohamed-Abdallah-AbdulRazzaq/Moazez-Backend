@@ -23,6 +23,11 @@ import type {
   AcademicContentLibraryResolvedScope,
 } from '../domain/academic-content-library.query';
 import { normalizeAcademicContentTagValue } from '../domain/academic-content-links-tags.policy';
+import {
+  academicContentSubjectApplicability,
+  academicContentTargetScopePredicate,
+  resolveAcademicContentScope,
+} from './academic-content-library-scope.query';
 
 const ACADEMIC_CONTENT_ARGS =
   Prisma.validator<Prisma.AcademicContentDefaultArgs>()({
@@ -230,7 +235,11 @@ export class AcademicContentRepository {
     limit: number,
     query: AcademicContentLibraryQuery = {},
   ) {
-    const scope = await this.resolveLibraryScope(schoolId, query);
+    const scope = await resolveAcademicContentScope(
+      this.prisma,
+      schoolId,
+      query,
+    );
     if (scope === null) return { items: [], page, limit, total: 0 };
     const predicate = this.libraryPredicate(schoolId, query, scope);
     const offset = (page - 1) * limit;
@@ -259,106 +268,6 @@ export class AcademicContentRepository {
       return row ? [row] : [];
     });
     return { items, page, limit, total: Number(totals[0]?.total ?? 0) };
-  }
-
-  private async resolveLibraryScope(
-    schoolId: string,
-    query: AcademicContentLibraryQuery,
-  ): Promise<AcademicContentLibraryResolvedScope | null | undefined> {
-    if (query.classroomId) {
-      const row = await this.prisma.classroom.findFirst({
-        where: { id: query.classroomId, schoolId, deletedAt: null },
-        select: {
-          section: {
-            select: {
-              id: true,
-              deletedAt: true,
-              grade: {
-                select: {
-                  id: true,
-                  deletedAt: true,
-                  stage: { select: { id: true, deletedAt: true } },
-                },
-              },
-            },
-          },
-        },
-      });
-      const section = row?.section;
-      const grade = section?.grade;
-      const stage = grade?.stage;
-      if (
-        !section ||
-        section.deletedAt ||
-        !grade ||
-        grade.deletedAt ||
-        !stage ||
-        stage.deletedAt ||
-        (query.sectionId && query.sectionId !== section.id) ||
-        (query.gradeId && query.gradeId !== grade.id) ||
-        (query.stageId && query.stageId !== stage.id)
-      )
-        return null;
-      return {
-        kind: 'CLASSROOM',
-        stageId: stage.id,
-        gradeId: grade.id,
-        sectionId: section.id,
-        classroomId: query.classroomId,
-      };
-    }
-    if (query.sectionId) {
-      const row = await this.prisma.section.findFirst({
-        where: { id: query.sectionId, schoolId, deletedAt: null },
-        select: {
-          grade: {
-            select: {
-              id: true,
-              deletedAt: true,
-              stage: { select: { id: true, deletedAt: true } },
-            },
-          },
-        },
-      });
-      const grade = row?.grade;
-      const stage = grade?.stage;
-      if (
-        !grade ||
-        grade.deletedAt ||
-        !stage ||
-        stage.deletedAt ||
-        (query.gradeId && query.gradeId !== grade.id) ||
-        (query.stageId && query.stageId !== stage.id)
-      )
-        return null;
-      return {
-        kind: 'SECTION',
-        stageId: stage.id,
-        gradeId: grade.id,
-        sectionId: query.sectionId,
-      };
-    }
-    if (query.gradeId) {
-      const row = await this.prisma.grade.findFirst({
-        where: { id: query.gradeId, schoolId, deletedAt: null },
-        select: { stage: { select: { id: true, deletedAt: true } } },
-      });
-      if (
-        !row ||
-        row.stage.deletedAt ||
-        (query.stageId && query.stageId !== row.stage.id)
-      )
-        return null;
-      return { kind: 'GRADE', stageId: row.stage.id, gradeId: query.gradeId };
-    }
-    if (query.stageId) {
-      const row = await this.prisma.stage.findFirst({
-        where: { id: query.stageId, schoolId, deletedAt: null },
-        select: { id: true },
-      });
-      return row ? { kind: 'STAGE', stageId: row.id } : null;
-    }
-    return undefined;
   }
 
   private libraryPredicate(
@@ -467,23 +376,7 @@ export class AcademicContentRepository {
         Prisma.sql`t.school_id = c.school_id`,
       ];
       if (scope) {
-        const anchors: Prisma.Sql[] = [Prisma.sql`t.scope_type = 'SCHOOL'`];
-        anchors.push(
-          Prisma.sql`(t.scope_type = 'STAGE' AND t.stage_id = ${scope.stageId}::uuid)`,
-        );
-        if (scope.gradeId)
-          anchors.push(
-            Prisma.sql`(t.scope_type = 'GRADE' AND t.grade_id = ${scope.gradeId}::uuid)`,
-          );
-        if (scope.sectionId)
-          anchors.push(
-            Prisma.sql`(t.scope_type = 'SECTION' AND t.section_id = ${scope.sectionId}::uuid)`,
-          );
-        if (scope.classroomId)
-          anchors.push(
-            Prisma.sql`(t.scope_type = 'CLASSROOM' AND t.classroom_id = ${scope.classroomId}::uuid)`,
-          );
-        target.push(Prisma.sql`(${Prisma.join(anchors, ' OR ')})`);
+        target.push(academicContentTargetScopePredicate(scope));
       }
       if (query.subjectId)
         target.push(Prisma.sql`t.subject_id = ${query.subjectId}::uuid`);
@@ -495,58 +388,13 @@ export class AcademicContentRepository {
             AND teacher_allocation.teacher_user_id = ${query.teacherUserId}::uuid)`);
       if (scope || query.subjectId)
         target.push(
-          Prisma.sql`(t.subject_id IS NULL OR ${this.librarySubjectApplicability(scope)})`,
+          Prisma.sql`(t.subject_id IS NULL OR ${academicContentSubjectApplicability(scope, Prisma.sql`c.academic_year_id`, Prisma.sql`c.term_id`)})`,
         );
       clauses.push(Prisma.sql`EXISTS (
         SELECT 1 FROM academic_content_targets t
         WHERE ${Prisma.join(target, ' AND ')})`);
     }
     return Prisma.sql`${Prisma.join(clauses, ' AND ')}`;
-  }
-
-  private librarySubjectApplicability(
-    scope: AcademicContentLibraryResolvedScope | undefined,
-  ): Prisma.Sql {
-    let gradeScope: Prisma.Sql;
-    if (scope?.gradeId)
-      gradeScope = Prisma.sql`sa.grade_id = ${scope.gradeId}::uuid`;
-    else if (scope)
-      gradeScope = Prisma.sql`g.stage_id = ${scope.stageId}::uuid`;
-    else
-      gradeScope = Prisma.sql`(
-      t.scope_type = 'SCHOOL' OR
-      (t.scope_type = 'STAGE' AND t.stage_id = g.stage_id) OR
-      (t.scope_type = 'GRADE' AND t.grade_id = g.id) OR
-      (t.scope_type = 'SECTION' AND EXISTS (
-        SELECT 1 FROM sections target_section
-        WHERE target_section.id = t.section_id
-          AND target_section.school_id = c.school_id
-          AND target_section.deleted_at IS NULL
-          AND target_section.grade_id = g.id)) OR
-      (t.scope_type = 'CLASSROOM' AND EXISTS (
-        SELECT 1 FROM classrooms target_classroom
-        JOIN sections target_section
-          ON target_section.id = target_classroom.section_id
-          AND target_section.school_id = c.school_id
-          AND target_section.deleted_at IS NULL
-        WHERE target_classroom.id = t.classroom_id
-          AND target_classroom.school_id = c.school_id
-          AND target_classroom.deleted_at IS NULL
-          AND target_section.grade_id = g.id))
-    )`;
-    return Prisma.sql`EXISTS (
-      SELECT 1 FROM subject_allocations sa
-      JOIN grades g ON g.id = sa.grade_id
-        AND g.school_id = c.school_id AND g.deleted_at IS NULL
-      JOIN stages stage ON stage.id = g.stage_id
-        AND stage.school_id = c.school_id AND stage.deleted_at IS NULL
-      WHERE sa.school_id = c.school_id
-        AND sa.academic_year_id = c.academic_year_id
-        AND sa.term_id = c.term_id
-        AND sa.subject_id = t.subject_id
-        AND sa.weekly_hours > 0
-        AND sa.deleted_at IS NULL
-        AND ${gradeScope})`;
   }
 
   findManagementDetail(id: string, schoolId: string) {

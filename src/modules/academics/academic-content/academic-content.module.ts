@@ -40,6 +40,11 @@ import { AcademicContentWorkflowPolicyController } from './controller/academic-c
 import { AcademicContentWorkflowController } from './controller/academic-content-workflow.controller';
 import { AcademicContentWorkflowPolicyRepository } from './infrastructure/academic-content-workflow-policy.repository';
 import { AcademicContentWorkflowRepository } from './infrastructure/academic-content-workflow.repository';
+import { AcademicContentReviewRepository } from './infrastructure/academic-content-review.repository';
+import {
+  ListAcademicContentApprovalHistoryUseCase,
+  ListAcademicContentReviewQueueUseCase,
+} from './application/academic-content-review.use-cases';
 import {
   ApproveAcademicContentUseCase,
   RequestAcademicContentChangesUseCase,
@@ -69,6 +74,9 @@ import {
   providers: [
     AcademicContentWorkflowPolicyRepository,
     AcademicContentWorkflowRepository,
+    AcademicContentReviewRepository,
+    ListAcademicContentReviewQueueUseCase,
+    ListAcademicContentApprovalHistoryUseCase,
     SubmitAcademicContentUseCase,
     ApproveAcademicContentUseCase,
     RequestAcademicContentChangesUseCase,
