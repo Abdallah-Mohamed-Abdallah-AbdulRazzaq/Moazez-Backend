@@ -311,6 +311,21 @@ approval history and are covered by the ACC-6A PostgreSQL integration suite.
 The migration has no backfill, trigger, or approval operation. Its generated
 foreign keys use `ON DELETE RESTRICT` for School, Content, Revision, and users.
 
+## ACC-6D Preparation template integrity
+
+The owning migration is `20260927202842_academic_content_preparation_templates`.
+Prisma cannot represent the active-row predicate or JSONB array checks.
+`test/integration/academic-content-preparation-templates.integration.spec.ts`
+directly protects these objects against PostgreSQL.
+
+| Object | Purpose and predicate | Direct protecting test |
+| --- | --- | --- |
+| `acc_preparation_templates_active_name_key` | Unique `(school_id, normalized_name)` where `deleted_at IS NULL`; deleted names remain reusable. | Duplicate active insert, reuse after delete, and cross-School insert. |
+| `acc_preparation_template_objectives_array_check` | `jsonb_typeof(objectives) = 'array'`. | Reject JSON object in objectives. |
+| `acc_preparation_template_outcomes_array_check` | `jsonb_typeof(learning_outcomes) = 'array'`. | Reject JSON object in learning outcomes. |
+| `acc_preparation_template_strategies_array_check` | `jsonb_typeof(teaching_strategies) = 'array'`. | Reject JSON object in teaching strategies. |
+| `acc_preparation_template_activities_array_check` | `jsonb_typeof(activities) = 'array'`. | Reject JSON object in activities. |
+
 ## Reviewed PostgreSQL-specific SQL that must not be copied
 
 - The 16 raw enum additions are historical transition mechanics. The final

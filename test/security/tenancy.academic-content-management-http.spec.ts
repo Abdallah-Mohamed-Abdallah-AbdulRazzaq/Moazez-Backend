@@ -44,6 +44,8 @@ import {
   ListAcademicContentRevisionsUseCase,
 } from '../../src/modules/academics/academic-content/application/academic-content-revision.use-cases';
 import { AcademicContentController } from '../../src/modules/academics/academic-content/controller/academic-content.controller';
+import { AcademicContentPreparationTemplateController } from '../../src/modules/academics/academic-content/controller/academic-content-preparation-template.controller';
+import { AcademicContentPreparationTemplateUseCases } from '../../src/modules/academics/academic-content/application/academic-content-preparation-template.use-cases';
 import { AcademicContentFilePolicyController } from '../../src/modules/academics/academic-content/controller/academic-content-file-policy.controller';
 import { AcademicContentWorkflowPolicyController } from '../../src/modules/academics/academic-content/controller/academic-content-workflow-policy.controller';
 import { AcademicContentWorkflowController } from '../../src/modules/academics/academic-content/controller/academic-content-workflow.controller';
@@ -209,6 +211,13 @@ const services = {
   requestChanges: { execute: jest.fn() },
   reviewQueue: { execute: jest.fn() },
   approvalHistory: { execute: jest.fn() },
+  templates: {
+    list: jest.fn(),
+    detail: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+    delete: jest.fn(),
+  },
 };
 
 describe('ACC-4B management HTTP security and transport', () => {
@@ -220,9 +229,14 @@ describe('ACC-4B management HTTP security and transport', () => {
         AcademicContentFilePolicyController,
         AcademicContentWorkflowPolicyController,
         AcademicContentWorkflowController,
+        AcademicContentPreparationTemplateController,
         AcademicContentController,
       ],
       providers: [
+        {
+          provide: AcademicContentPreparationTemplateUseCases,
+          useValue: services.templates,
+        },
         { provide: APP_GUARD, useClass: PermissionsGuard },
         { provide: CreateAcademicContentUseCase, useValue: services.create },
         {
@@ -370,6 +384,25 @@ describe('ACC-4B management HTTP security and transport', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    services.templates.list.mockResolvedValue({
+      items: [],
+      page: 1,
+      limit: 50,
+      total: 0,
+    });
+    services.templates.detail.mockResolvedValue({
+      id: contentId,
+      name: 'Preset',
+    });
+    services.templates.create.mockResolvedValue({
+      id: contentId,
+      name: 'Preset',
+    });
+    services.templates.update.mockResolvedValue({
+      id: contentId,
+      name: 'Preset',
+    });
+    services.templates.delete.mockResolvedValue({ ok: true });
     services.create.execute.mockResolvedValue(content);
     services.list.execute.mockResolvedValue({
       items: [content],
@@ -741,7 +774,65 @@ describe('ACC-4B management HTTP security and transport', () => {
     );
   });
 
-  it('publishes only the ACC-4B Swagger surface and safe DTOs', () => {
+  it('keeps Preparation template routes on the management boundary and separate permissions', async () => {
+    const url = `${base}/templates/preparation`;
+    await request(app.getHttpServer())
+      .get(url)
+      .set('x-test-actor', 'viewOnly')
+      .expect(200)
+      .expect('Cache-Control', 'no-store, private, max-age=0');
+    await request(app.getHttpServer())
+      .get(url)
+      .set('x-test-actor', 'organization')
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`${url}/${contentId}`)
+      .set('x-test-actor', 'viewOnly')
+      .expect(200);
+    await request(app.getHttpServer())
+      .post(url)
+      .set('x-test-actor', 'viewOnly')
+      .send({ name: 'Preset' })
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(url)
+      .set('x-test-actor', 'settingsOnly')
+      .send({ name: 'Preset' })
+      .expect(201);
+    await request(app.getHttpServer())
+      .patch(`${url}/${contentId}`)
+      .set('x-test-actor', 'settingsOnly')
+      .send({ name: 'Preset 2' })
+      .expect(200);
+    await request(app.getHttpServer())
+      .delete(`${url}/${contentId}`)
+      .set('x-test-actor', 'settingsOnly')
+      .expect(200);
+    for (const actor of ['settingsOnly', 'manageOnly', 'approveOnly'])
+      await request(app.getHttpServer())
+        .get(url)
+        .set('x-test-actor', actor)
+        .expect(403);
+    for (const actor of [
+      'manageOnly',
+      'approveOnly',
+      'teacher',
+      'student',
+      'parent',
+      'applicant',
+    ])
+      await request(app.getHttpServer())
+        .post(url)
+        .set('x-test-actor', actor)
+        .send({ name: 'Preset' })
+        .expect(403);
+    await request(app.getHttpServer())
+      .post(url)
+      .send({ name: 'Preset', departmentId: contentId })
+      .expect(400);
+  });
+
+  it('publishes the exact Academic Content management Swagger surface and safe DTOs', () => {
     const document = SwaggerModule.createDocument(
       app,
       new DocumentBuilder().build(),
@@ -786,8 +877,33 @@ describe('ACC-4B management HTTP security and transport', () => {
         `POST ${base}/{contentId}/approve`,
         `POST ${base}/{contentId}/request-changes`,
         `GET ${base}/review-queue`,
+        `GET ${base}/templates/preparation`,
+        `GET ${base}/templates/preparation/{templateId}`,
+        `POST ${base}/templates/preparation`,
+        `PATCH ${base}/templates/preparation/{templateId}`,
+        `DELETE ${base}/templates/preparation/{templateId}`,
         `GET ${base}/{contentId}/approvals`,
       ].sort(),
+    );
+    const templatePath = `${base}/templates/preparation`;
+    expect(
+      (document.paths[templatePath].get?.parameters ?? [])
+        .filter((p) => 'name' in p)
+        .map((p) => p.name)
+        .sort(),
+    ).toEqual(['limit', 'page', 'search', 'stageId', 'subjectId']);
+    expect(
+      JSON.stringify(document.paths[templatePath].post?.requestBody),
+    ).toContain('CreateAcademicContentPreparationTemplateDto');
+    const templateSchemas = JSON.stringify(
+      Object.fromEntries(
+        Object.entries(document.components?.schemas ?? {}).filter(([name]) =>
+          name.includes('PreparationTemplate'),
+        ),
+      ),
+    );
+    expect(templateSchemas).not.toMatch(
+      /normalizedName|schoolId|deletedAt|curriculumId|lessonPlanId|timetableEntryId|departmentId/,
     );
     const accPaths = Object.keys(document.paths).filter((path) =>
       path.startsWith(base),

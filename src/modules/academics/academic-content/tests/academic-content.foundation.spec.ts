@@ -9,6 +9,9 @@ import { AcademicContentController } from '../controller/academic-content.contro
 import { AcademicContentFilePolicyController } from '../controller/academic-content-file-policy.controller';
 import { AcademicContentWorkflowPolicyController } from '../controller/academic-content-workflow-policy.controller';
 import { AcademicContentWorkflowController } from '../controller/academic-content-workflow.controller';
+import { AcademicContentPreparationTemplateController } from '../controller/academic-content-preparation-template.controller';
+import { AcademicContentPreparationTemplateUseCases } from '../application/academic-content-preparation-template.use-cases';
+import { AcademicContentPreparationTemplateRepository } from '../infrastructure/academic-content-preparation-template.repository';
 
 describe('Academic Content foundation', () => {
   it('keeps the V1 content type contract exact', () => {
@@ -58,10 +61,13 @@ describe('Academic Content foundation', () => {
     expect(providers).toContain(AcademicContentRepository);
     expect(providers).toContain(AcademicContentAudienceResolver);
     expect(providers).toContain(ReplaceAcademicContentTargetsUseCase);
+    expect(providers).toContain(AcademicContentPreparationTemplateRepository);
+    expect(providers).toContain(AcademicContentPreparationTemplateUseCases);
     expect(controllers).toEqual([
       AcademicContentFilePolicyController,
       AcademicContentWorkflowPolicyController,
       AcademicContentWorkflowController,
+      AcademicContentPreparationTemplateController,
       AcademicContentController,
     ]);
     expect(exports).toContain(AcademicContentAudienceResolver);

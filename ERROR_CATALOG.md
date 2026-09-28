@@ -704,6 +704,14 @@ output, credentials, or foreign-tenant identifiers.
 | `academic_content.approval.pending_missing` | 409 | Current pending approval is unavailable |
 | `academic_content.approval.invalid_revision` | 409 | Current approval revision is unavailable or incompatible |
 
+### Academic Content Preparation templates
+
+| Code | HTTP | Message |
+| ---- | ---- | ------- |
+| `academic_content.preparation_template.not_found` | 404 | Preparation template not found |
+| `academic_content.preparation_template.scope_not_found` | 404 | Preparation template scope unavailable |
+| `academic_content.preparation_template.duplicate_name` | 409 | Preparation template name already exists |
+
 ### Academic Content internal file lifecycle
 
 These codes are emitted by internal ACC-3C use cases; ACC-3C adds no HTTP routes.
