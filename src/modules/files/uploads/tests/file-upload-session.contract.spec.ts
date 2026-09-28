@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { rootCertificates } from 'node:tls';
 import { ConfigService } from '@nestjs/config';
+import { APPROVED_PRODUCTION_APPLICATION_ORIGINS } from '../../../../bootstrap/application-cors.policy';
 import { MediaRuntimeStartupGuard } from '../application/media-runtime-startup.guard';
 import { validateEnv } from '../../../../config/env.validation';
 
@@ -144,8 +145,7 @@ describe('learning media upload foundation contract', () => {
       validateEnv({
         ...base,
         NODE_ENV: 'production',
-        APP_CORS_ORIGINS:
-          'https://schools.moazez.cloud,https://admin.moazez.cloud',
+        APP_CORS_ORIGINS: APPROVED_PRODUCTION_APPLICATION_ORIGINS.join(','),
       }),
     ).toThrow(/STORAGE_CORS_ORIGINS is required/u);
     expect(() =>
@@ -161,8 +161,7 @@ describe('learning media upload foundation contract', () => {
       validateEnv({
         ...base,
         NODE_ENV: 'production',
-        APP_CORS_ORIGINS:
-          'https://schools.moazez.cloud,https://admin.moazez.cloud',
+        APP_CORS_ORIGINS: APPROVED_PRODUCTION_APPLICATION_ORIGINS.join(','),
         STORAGE_CORS_ORIGINS: 'https://app.example.test',
       }).STORAGE_CORS_ORIGINS,
     ).toEqual(['https://app.example.test']);
