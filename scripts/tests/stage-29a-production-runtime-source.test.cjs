@@ -191,7 +191,8 @@ const PRODUCTION_CONTRACT = Object.freeze({
     'moazez-maintenance-scheduler@moazez-production.iam.gserviceaccount.com',
   node_environment: 'production',
   trusted_proxy_mode: 'none',
-  cors_origins: 'https://schools.moazez.cloud,https://admin.moazez.cloud',
+  cors_origins:
+    'https://schools.moazez.cloud,https://admin.moazez.cloud,https://student.moazez.cloud',
   image_pattern: PRODUCTION_IMAGE_PATTERN,
   storage_private_bucket: 'moazez-production-91001421934-private',
   storage_published_bucket: 'moazez-production-91001421934-published',
