@@ -259,7 +259,12 @@ export class AcademicContentPreparationTemplateRepository {
           if (JSON.stringify(before) === JSON.stringify(after))
             return presentTemplate(current);
           const row = await tx.academicContentPreparationTemplate.update({
-            where: { id },
+            where: {
+              id_schoolId: {
+                id,
+                schoolId: scope.schoolId,
+              },
+            },
             data: { ...after, updatedByUserId: scope.actorId },
           });
           await this.audit(tx, scope, id, 'update', before, after);
@@ -285,7 +290,12 @@ export class AcademicContentPreparationTemplateRepository {
           );
           if (!current) throw notFound();
           await tx.academicContentPreparationTemplate.update({
-            where: { id },
+            where: {
+              id_schoolId: {
+                id,
+                schoolId: scope.schoolId,
+              },
+            },
             data: { deletedAt: new Date(), updatedByUserId: scope.actorId },
           });
           await this.audit(
