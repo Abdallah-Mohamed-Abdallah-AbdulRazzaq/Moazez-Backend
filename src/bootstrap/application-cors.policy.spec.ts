@@ -3,6 +3,7 @@ import {
   APPROVED_PRODUCTION_APPLICATION_ORIGINS,
   APPROVED_STAGING_APPLICATION_ORIGINS,
   configureApplicationCorsOrigins,
+  createApplicationCorsOptions,
   isApplicationOriginAllowed,
   parseApplicationCorsOrigins,
 } from './application-cors.policy';
@@ -10,7 +11,16 @@ import {
 describe('application CORS policy', () => {
   afterEach(() => configureApplicationCorsOrigins([]));
 
-  it('accepts the exact production set in either order', () => {
+  it('accepts the exact production set', () => {
+    expect(
+      parseApplicationCorsOrigins(
+        'production',
+        'https://schools.moazez.cloud,https://admin.moazez.cloud,https://student.moazez.cloud',
+      ),
+    ).toEqual(APPROVED_PRODUCTION_APPLICATION_ORIGINS);
+  });
+
+  it('accepts the exact production set in another order', () => {
     expect(
       parseApplicationCorsOrigins(
         'production',
@@ -28,15 +38,31 @@ describe('application CORS policy', () => {
     ).toEqual(APPROVED_STAGING_APPLICATION_ORIGINS);
   });
 
+  it('does not add the production Student origin to staging', () => {
+    expect(() =>
+      parseApplicationCorsOrigins(
+        'staging',
+        `${APPROVED_STAGING_APPLICATION_ORIGINS.join(',')},https://student.moazez.cloud`,
+      ),
+    ).toThrow(/approved staging origin set/u);
+  });
+
   it.each([
     ['production', undefined],
     ['staging', undefined],
     ['production', 'https://schools.moazez.cloud'],
+    ['production', 'https://schools.moazez.cloud,https://admin.moazez.cloud'],
+    ['production', 'https://schools.moazez.cloud,https://student.moazez.cloud'],
     [
       'production',
-      'https://schools.moazez.cloud,https://admin.moazez.cloud,https://extra.moazez.cloud',
+      'https://schools.moazez.cloud,https://admin.moazez.cloud,https://student.moazez.cloud,https://extra.moazez.cloud',
     ],
-    ['production', 'https://schools.moazez.cloud,https://schools.moazez.cloud'],
+    [
+      'production',
+      'https://schools.moazez.cloud,https://admin.moazez.cloud,https://student.moazez.cloud,https://student.moazez.cloud',
+    ],
+    ['production', '*'],
+    ['production', 'null'],
     [
       'production',
       'https://staging-schools.moazez.cloud,https://staging-admin.moazez.cloud',
@@ -100,5 +126,23 @@ describe('application CORS policy', () => {
     expect(allowed).toHaveBeenCalledWith(null, true);
     expect(denied).toHaveBeenCalledWith(null, false);
     expect(noOrigin).toHaveBeenCalledWith(null, true);
+  });
+
+  it('allows the production Student origin through the shared HTTP delegate', () => {
+    const options = createApplicationCorsOptions(
+      parseApplicationCorsOrigins(
+        'production',
+        APPROVED_PRODUCTION_APPLICATION_ORIGINS.join(','),
+      ),
+    );
+    const allowed = jest.fn();
+    const denied = jest.fn();
+
+    expect(options.origin).toBe(applicationCorsOriginDelegate);
+    applicationCorsOriginDelegate('https://student.moazez.cloud', allowed);
+    applicationCorsOriginDelegate('https://extra.moazez.cloud', denied);
+
+    expect(allowed).toHaveBeenCalledWith(null, true);
+    expect(denied).toHaveBeenCalledWith(null, false);
   });
 });

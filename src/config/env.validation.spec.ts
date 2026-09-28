@@ -347,9 +347,10 @@ describe('bootstrap environment validation', () => {
   it.each([
     '*',
     'null',
-    'https://schools.moazez.cloud/path,https://admin.moazez.cloud',
-    'https://schools.moazez.cloud,https://schools.moazez.cloud',
-    'https://schools.moazez.cloud,https://admin.moazez.cloud,https://extra.moazez.cloud',
+    'https://schools.moazez.cloud,https://admin.moazez.cloud',
+    'https://schools.moazez.cloud/path,https://admin.moazez.cloud,https://student.moazez.cloud',
+    'https://schools.moazez.cloud,https://admin.moazez.cloud,https://student.moazez.cloud,https://student.moazez.cloud',
+    'https://schools.moazez.cloud,https://admin.moazez.cloud,https://student.moazez.cloud,https://extra.moazez.cloud',
   ])('rejects invalid production application origins: %s', (origins) => {
     expect(() =>
       validateEnv(productionEnv({ APP_CORS_ORIGINS: origins })),
