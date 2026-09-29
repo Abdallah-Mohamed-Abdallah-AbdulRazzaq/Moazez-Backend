@@ -6,11 +6,29 @@ a plan, apply Terraform, alter DNS, or mutate either environment.
 
 ## Existing edge identity
 
-The shared module continues to use one environment hostname set, global IP,
-Cloud Armor policy, URL map, managed certificate, certificate map, HTTPS proxy,
-and forwarding rule. The normal API serverless NEG remains service-level and
-untagged. The candidate capability creates no hostname, DNS record, IP,
-certificate, proxy, forwarding rule, or parallel ingress architecture.
+The shared module retains the API/Admin/Schools hostname set and its managed
+certificate, plus one global IP, Cloud Armor policy, URL map, certificate map,
+HTTPS proxy, and forwarding rule. The normal API serverless NEG remains
+service-level and untagged. The candidate capability creates no hostname, DNS
+record, IP, certificate, proxy, forwarding rule, or parallel ingress
+architecture.
+
+## Production Student Web route and TLS
+
+Production adds `student.moazez.cloud` on the existing global IP, Cloud Armor
+policy, URL map, HTTPS proxy, forwarding rule, and certificate map. The
+`moazez-production-student-neg` and
+`moazez-production-student-backend` target
+`moazez-production-student-web` and use the shared Cloud Armor policy. The
+Student backend does not receive the API-specific trusted client-IP header.
+
+The existing `moazez-production-edge-cert` remains dedicated to exactly
+`api.moazez.cloud`, `admin.moazez.cloud`, and `schools.moazez.cloud`.
+The separate `moazez-production-student-cert` has only
+`student.moazez.cloud` and its own entry in the existing certificate map.
+Nullable module inputs keep Student hostname, route, NEG, backend, certificate,
+and map entry absent in staging. This source change does not mutate DNS or
+Production infrastructure.
 
 ## Optional governed candidate route
 

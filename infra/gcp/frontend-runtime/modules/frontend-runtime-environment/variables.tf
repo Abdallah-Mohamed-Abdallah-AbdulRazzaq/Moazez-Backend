@@ -58,6 +58,16 @@ variable "school_dashboard_runtime_service_account_id" {
   }
 }
 
+variable "student_web_runtime_service_account_id" {
+  description = "Student Web runtime service-account ID."
+  type        = string
+
+  validation {
+    condition     = var.student_web_runtime_service_account_id == "moazez-student-web-runtime"
+    error_message = "student_web_runtime_service_account_id must be moazez-student-web-runtime."
+  }
+}
+
 variable "platform_admin_service_name" {
   description = "Production Platform Admin Cloud Run service name."
   type        = string
@@ -75,6 +85,16 @@ variable "school_dashboard_service_name" {
   validation {
     condition     = var.school_dashboard_service_name == "moazez-production-school-dashboard"
     error_message = "school_dashboard_service_name must be moazez-production-school-dashboard."
+  }
+}
+
+variable "student_web_service_name" {
+  description = "Production Student Web Cloud Run service name."
+  type        = string
+
+  validation {
+    condition     = var.student_web_service_name == "moazez-production-student-web"
+    error_message = "student_web_service_name must be moazez-production-student-web."
   }
 }
 
@@ -101,5 +121,18 @@ variable "school_dashboard_image" {
       var.school_dashboard_image,
     ))
     error_message = "school_dashboard_image must be the approved Production package pinned by a lowercase sha256 digest."
+  }
+}
+
+variable "student_web_image" {
+  description = "Immutable Production Student Web image digest."
+  type        = string
+
+  validation {
+    condition = can(regex(
+      "^me-central2-docker[.]pkg[.]dev/moazez-production/moazez-production-containers/moazez-student-web@sha256:[a-f0-9]{64}$",
+      var.student_web_image,
+    ))
+    error_message = "student_web_image must be the approved Production package pinned by a lowercase sha256 digest."
   }
 }

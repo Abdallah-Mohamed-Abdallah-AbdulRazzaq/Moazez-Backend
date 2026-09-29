@@ -59,6 +59,8 @@ const PLATFORM_ADMIN_IMAGE_PATTERN =
   '^me-central2-docker[.]pkg[.]dev/moazez-production/moazez-production-containers/moazez-platform-admin@sha256:[a-f0-9]{64}$';
 const SCHOOL_DASHBOARD_IMAGE_PATTERN =
   '^me-central2-docker[.]pkg[.]dev/moazez-production/moazez-production-containers/moazez-school-dashboard@sha256:[a-f0-9]{64}$';
+const STUDENT_WEB_IMAGE_PATTERN =
+  '^me-central2-docker[.]pkg[.]dev/moazez-production/moazez-production-containers/moazez-student-web@sha256:[a-f0-9]{64}$';
 
 const AUTHORIZED_STAGE30C1_PATHS = Object.freeze(
   [
@@ -89,6 +91,10 @@ const AUTHORIZED_STAGE30C1_PATHS = Object.freeze(
     `${EDGE_ROOT}/providers.tf`,
     `${EDGE_ROOT}/variables.tf`,
     `${EDGE_ROOT}/versions.tf`,
+    'infra/gcp/edge/README.md',
+    `${EDGE_MODULE}/main.tf`,
+    `${EDGE_MODULE}/outputs.tf`,
+    `${EDGE_MODULE}/variables.tf`,
     HISTORICAL_STAGE29_REMEDIATION_PATH,
     PLAN_CI_PATH,
     TEST_PATH,
@@ -346,7 +352,9 @@ function assertStage30C1CandidateScope(candidateFiles) {
     normalized.includes(TEST_PATH) ||
     normalized.some((file) => file.startsWith(`${ARTIFACT_DOMAIN}/`)) ||
     normalized.some((file) => file.startsWith(`${RUNTIME_DOMAIN}/`)) ||
-    normalized.some((file) => file.startsWith(`${EDGE_ROOT}/`));
+    normalized.some((file) => file.startsWith(`${EDGE_ROOT}/`)) ||
+    normalized.some((file) => file.startsWith(`${EDGE_MODULE}/`)) ||
+    normalized.includes('infra/gcp/edge/README.md');
   if (!active) return false;
   assert.deepEqual(
     normalized.filter((file) => !AUTHORIZED_STAGE30C1_PATHS.includes(file)),
@@ -371,7 +379,7 @@ function isDay2D1ReleaseOrchestrationPath(file) {
 }
 
 test('Stage 30C1 domains have exactly the governed source structure and ignore policy', () => {
-  assert.equal(AUTHORIZED_STAGE30C1_PATHS.length, 30);
+  assert.equal(AUTHORIZED_STAGE30C1_PATHS.length, 34);
   assert.deepEqual(filesInDirectory(ARTIFACT_ROOT), TERRAFORM_ROOT_FILES);
   assert.deepEqual(filesInDirectory(ARTIFACT_MODULE), MODULE_FILES);
   assert.deepEqual(filesInDirectory(RUNTIME_ROOT), RUNTIME_ROOT_FILES);
@@ -407,6 +415,9 @@ test('Artifact identity root locks the exact Production backend and provider', (
     'moazez-platform-admin-main',
     '1335686453',
     'moazez-school-dashboard-main',
+    '1391516333',
+    'moazez-student-app-main',
+    'Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Student-App',
     'moazez-ui-artifact-builder',
     'me-central2',
     'moazez-production-containers',
@@ -415,18 +426,24 @@ test('Artifact identity root locks the exact Production backend and provider', (
   }
 });
 
-test('Artifact identity references the existing pool and owns exactly two independent frontend providers', () => {
+test('Artifact identity references the existing pool and owns exactly three independent frontend providers', () => {
   const main = normalizedHclSource(`${ARTIFACT_MODULE}/main.tf`);
   assert.deepEqual(resourceAddresses(main), [
     'google_artifact_registry_repository_iam_member.artifact_writer',
     'google_iam_workload_identity_pool_provider.platform_admin',
     'google_iam_workload_identity_pool_provider.school_dashboard',
+    'google_iam_workload_identity_pool_provider.student',
     'google_service_account.artifact_builder',
     'google_service_account_iam_member.platform_admin_workload_identity_user',
     'google_service_account_iam_member.school_dashboard_workload_identity_user',
+    'google_service_account_iam_member.student_workload_identity_user',
   ]);
   assert.doesNotMatch(main, /resource\s+"google_iam_workload_identity_pool"/u);
-  for (const providerName of ['platform_admin', 'school_dashboard']) {
+  for (const providerName of [
+    'platform_admin',
+    'school_dashboard',
+    'student',
+  ]) {
     const provider = resourceBlock(
       main,
       'google_iam_workload_identity_pool_provider',
@@ -443,7 +460,7 @@ test('Artifact identity references the existing pool and owns exactly two indepe
         /issuer_uri\s*=\s*"https:\/\/token[.]actions[.]githubusercontent[.]com"/gu,
       ) ?? []
     ).length,
-    2,
+    3,
   );
   for (const mapping of [
     '"google.subject"                = "assertion.sub"',
@@ -453,7 +470,7 @@ test('Artifact identity references the existing pool and owns exactly two indepe
     '"attribute.repository_owner_id" = "assertion.repository_owner_id"',
     '"attribute.ref"                 = "assertion.ref"',
   ]) {
-    assert.equal(main.split(mapping).length - 1, 2, mapping);
+    assert.equal(main.split(mapping).length - 1, 3, mapping);
   }
   assert.match(
     main,
@@ -463,6 +480,10 @@ test('Artifact identity references the existing pool and owns exactly two indepe
     main,
     /school_dashboard_attribute_condition\s*=\s*format\([\s\S]*?var[.]school_dashboard_repository_id,[\s\S]*?var[.]github_owner_id,[\s\S]*?var[.]github_allowed_ref,/u,
   );
+  assert.match(
+    main,
+    /student_attribute_condition\s*=\s*format\([\s\S]*?var[.]student_repository_id,[\s\S]*?var[.]github_owner_id,[\s\S]*?var[.]github_allowed_ref,/u,
+  );
   assert.doesNotMatch(main, /\|\||pull_request|repository\s*==|[*]/u);
 });
 
@@ -471,6 +492,7 @@ test('Frontend WIF provider display names are exact literals within the 32-chara
   for (const [providerName, expectedName, expectedLength] of [
     ['platform_admin', 'MOAZEZ Platform Admin main', 26],
     ['school_dashboard', 'MOAZEZ School Dashboard main', 28],
+    ['student', 'MOAZEZ Student App main', 23],
   ]) {
     const provider = resourceBlock(
       main,
@@ -490,7 +512,7 @@ test('Frontend WIF provider display names are exact literals within the 32-chara
   }
 });
 
-test('Artifact builder is protected and has only two exact WIF grants plus repository writer', () => {
+test('Artifact builder is protected and has only three exact WIF grants plus repository writer', () => {
   const main = normalizedHclSource(`${ARTIFACT_MODULE}/main.tf`);
   const builder = resourceBlock(
     main,
@@ -519,6 +541,7 @@ test('Artifact builder is protected and has only two exact WIF grants plus repos
       'school_dashboard',
       'school_dashboard_repository_id',
     ],
+    ['student_workload_identity_user', 'student', 'student_repository_id'],
   ];
   for (const [name, provider, repositoryId] of grants) {
     const grant = resourceBlock(
@@ -602,6 +625,7 @@ test('Artifact identity denies broad roles, keys, secrets, runtime actAs, and un
       'builder_service_account_email',
       'platform_admin_wif_provider_name',
       'school_dashboard_wif_provider_name',
+      'student_wif_provider_name',
     ].sort(),
   );
   assert.deepEqual(
@@ -610,6 +634,7 @@ test('Artifact identity denies broad roles, keys, secrets, runtime actAs, and un
       'builder_service_account_email',
       'platform_admin_wif_provider_name',
       'school_dashboard_wif_provider_name',
+      'student_wif_provider_name',
     ].sort(),
   );
 });
@@ -628,8 +653,11 @@ test('Artifact identity is fail-closed to the exact Production tuple and Backend
     'moazez-github-production',
     'moazez-platform-admin-main',
     'moazez-school-dashboard-main',
+    'moazez-student-app-main',
     '1335685284',
     '1335686453',
+    '1391516333',
+    'Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Student-App',
     '127324203',
     'refs/heads/main',
     'moazez-ui-artifact-builder',
@@ -645,16 +673,100 @@ test('Artifact identity is fail-closed to the exact Production tuple and Backend
   );
 });
 
-test('Frontend runtime root has only two required immutable Production image inputs', () => {
+test('Student WIF uses the exact repository-ID condition and shared builder principal', () => {
+  const root = normalizedHclSource(`${ARTIFACT_ROOT}/main.tf`);
+  const main = normalizedHclSource(`${ARTIFACT_MODULE}/main.tf`);
+  const variables = normalizedHclSource(`${ARTIFACT_MODULE}/variables.tf`);
+  for (const [name, value] of [
+    [
+      'student_repository',
+      'Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Student-App',
+    ],
+    ['student_repository_id', '1391516333'],
+    ['student_wif_provider_id', 'moazez-student-app-main'],
+  ]) {
+    assert.equal(assignmentExpression(root, name), JSON.stringify(value));
+    assert.equal(
+      assignmentExpression(variableBlock(variables, name), 'condition'),
+      `var.${name} == ${JSON.stringify(value)}`,
+    );
+    assert.equal(
+      assignmentExpression(
+        extractBlock(
+          main,
+          /^\s*production_contract\s*=\s*\{/mu,
+          'Production contract',
+        ),
+        name,
+      ),
+      JSON.stringify(value),
+    );
+    assert.equal(
+      assignmentExpression(
+        extractBlock(
+          main,
+          /^\s*current_contract\s*=\s*\{/mu,
+          'Current contract',
+        ),
+        name,
+      ),
+      `var.${name}`,
+    );
+  }
+  const provider = resourceBlock(
+    main,
+    'google_iam_workload_identity_pool_provider',
+    'student',
+  );
+  assert.equal(
+    assignmentExpression(provider, 'workload_identity_pool_provider_id'),
+    'var.student_wif_provider_id',
+  );
+  assert.equal(
+    assignmentExpression(provider, 'attribute_condition'),
+    'local.student_attribute_condition',
+  );
+  assert.match(
+    provider,
+    /issuer_uri\s*=\s*"https:\/\/token[.]actions[.]githubusercontent[.]com"/u,
+  );
+  assert.match(provider, /condition\s*=\s*local[.]governed_contract/u);
+  const condition = assignmentExpression(main, 'student_attribute_condition');
+  assert.equal(condition, 'format(');
+  assert.match(
+    main,
+    /student_attribute_condition\s*=\s*format\(\s*"assertion[.]repository_id == \\"%s\\" && assertion[.]repository_owner_id == \\"%s\\" && assertion[.]ref == \\"%s\\""/u,
+  );
+  assert.equal(
+    (main.match(/^resource\s+"google_service_account"\s+/gmu) ?? []).length,
+    1,
+  );
+  assert.equal(
+    (
+      main.match(
+        /^resource\s+"google_artifact_registry_repository_iam_member"\s+/gmu,
+      ) ?? []
+    ).length,
+    1,
+  );
+  assert.doesNotMatch(
+    main,
+    /^resource\s+"google_iam_workload_identity_pool"\s+/mu,
+  );
+});
+
+test('Frontend runtime root has only three required immutable Production image inputs', () => {
   assertRootContract(RUNTIME_ROOT, 'frontend-runtime/production', true);
   const variables = normalizedHclSource(`${RUNTIME_ROOT}/variables.tf`);
   assert.deepEqual(variableNames(variables), [
     'platform_admin_image',
     'school_dashboard_image',
+    'student_web_image',
   ]);
   const expectations = [
     ['platform_admin_image', PLATFORM_ADMIN_IMAGE_PATTERN],
     ['school_dashboard_image', SCHOOL_DASHBOARD_IMAGE_PATTERN],
+    ['student_web_image', STUDENT_WEB_IMAGE_PATTERN],
   ];
   for (const [name, pattern] of expectations) {
     const block = variableBlock(variables, name);
@@ -675,6 +787,10 @@ test('Frontend image patterns accept only exact lowercase digest references', ()
       new RegExp(SCHOOL_DASHBOARD_IMAGE_PATTERN, 'u'),
       `me-central2-docker.pkg.dev/moazez-production/moazez-production-containers/moazez-school-dashboard@sha256:${validDigest}`,
     ],
+    [
+      new RegExp(STUDENT_WEB_IMAGE_PATTERN, 'u'),
+      `me-central2-docker.pkg.dev/moazez-production/moazez-production-containers/moazez-student-web@sha256:${validDigest}`,
+    ],
   ];
   for (const [pattern, valid] of cases) {
     assert.equal(pattern.test(valid), true);
@@ -689,7 +805,7 @@ test('Frontend image patterns accept only exact lowercase digest references', ()
       valid.replace(/a$/u, 'A'),
       valid.slice(0, -1),
       valid.replace(
-        /moazez-(?:platform-admin|school-dashboard)/u,
+        /moazez-(?:platform-admin|school-dashboard|student-web)/u,
         'wrong-package',
       ),
     ]) {
@@ -710,8 +826,10 @@ test('Frontend runtime is closed to exact Production identities, services, and d
     'moazez-iac-deployer@moazez-production.iam.gserviceaccount.com',
     'moazez-platform-admin-runtime',
     'moazez-school-ui-runtime',
+    'moazez-student-web-runtime',
     'moazez-production-platform-admin',
     'moazez-production-school-dashboard',
+    'moazez-production-student-web',
   ]) {
     assert.ok(rootMain.includes(`"${value}"`), value);
     assert.ok(moduleMain.includes(`"${value}"`), value);
@@ -723,10 +841,13 @@ test('Frontend runtime is closed to exact Production identities, services, and d
   assert.deepEqual(resourceAddresses(moduleMain), [
     'google_cloud_run_v2_service.platform_admin',
     'google_cloud_run_v2_service.school_dashboard',
+    'google_cloud_run_v2_service.student_web',
     'google_service_account.platform_admin_runtime',
     'google_service_account.school_dashboard_runtime',
+    'google_service_account.student_web_runtime',
     'google_service_account_iam_member.platform_admin_iac_deployer_act_as',
     'google_service_account_iam_member.school_dashboard_iac_deployer_act_as',
+    'google_service_account_iam_member.student_web_iac_deployer_act_as',
   ]);
 });
 
@@ -742,6 +863,11 @@ test('Frontend runtime identities are protected and deployer actAs is resource-l
       'school_dashboard_runtime',
       'var.school_dashboard_runtime_service_account_id',
       'Moazez School Dashboard Runtime',
+    ],
+    [
+      'student_web_runtime',
+      'var.student_web_runtime_service_account_id',
+      'Moazez Student Web Runtime',
     ],
   ]) {
     const serviceAccount = resourceBlock(main, 'google_service_account', name);
@@ -762,6 +888,7 @@ test('Frontend runtime identities are protected and deployer actAs is resource-l
   for (const [name, serviceAccount] of [
     ['platform_admin_iac_deployer_act_as', 'platform_admin_runtime'],
     ['school_dashboard_iac_deployer_act_as', 'school_dashboard_runtime'],
+    ['student_web_iac_deployer_act_as', 'student_web_runtime'],
   ]) {
     const grant = resourceBlock(
       main,
@@ -784,7 +911,7 @@ test('Frontend runtime identities are protected and deployer actAs is resource-l
   assert.doesNotMatch(main, /google_project_iam/u);
   assert.equal(
     (main.match(/roles\/iam[.]serviceAccountUser/gu) ?? []).length,
-    2,
+    3,
   );
   assert.doesNotMatch(
     main,
@@ -833,7 +960,7 @@ function assertFrontendService(main, options) {
   assert.equal(assignmentExpression(lifecycle, 'prevent_destroy'), 'true');
 }
 
-test('Both frontend Cloud Run services have exact Dark runtime settings and actAs dependencies', () => {
+test('All three frontend Cloud Run services have exact Dark runtime settings and actAs dependencies', () => {
   const main = normalizedHclSource(`${RUNTIME_MODULE}/main.tf`);
   assertFrontendService(main, {
     resourceName: 'platform_admin',
@@ -848,6 +975,13 @@ test('Both frontend Cloud Run services have exact Dark runtime settings and actA
     identity: 'google_service_account.school_dashboard_runtime.email',
     image: 'var.school_dashboard_image',
     dependency: 'school_dashboard_iac_deployer_act_as',
+  });
+  assertFrontendService(main, {
+    resourceName: 'student_web',
+    serviceName: 'var.student_web_service_name',
+    identity: 'google_service_account.student_web_runtime.email',
+    image: 'var.student_web_image',
+    dependency: 'student_web_iac_deployer_act_as',
   });
   assert.doesNotMatch(main, /min_instance_count/u);
 });
@@ -878,7 +1012,7 @@ test('Frontend runtime creates no public IAM, secret, data credential, VPC, or N
   );
 });
 
-test('Frontend runtime exposes only the six safe service and identity outputs', () => {
+test('Frontend runtime exposes only the nine safe service and identity outputs', () => {
   const expected = [
     'platform_admin_runtime_service_account_email',
     'school_dashboard_runtime_service_account_email',
@@ -886,6 +1020,9 @@ test('Frontend runtime exposes only the six safe service and identity outputs', 
     'platform_admin_service_uri',
     'school_dashboard_service_name',
     'school_dashboard_service_uri',
+    'student_web_runtime_service_account_email',
+    'student_web_service_name',
+    'student_web_service_uri',
   ].sort();
   assert.deepEqual(
     outputNames(normalizedHclSource(`${RUNTIME_ROOT}/outputs.tf`)).sort(),
@@ -894,6 +1031,65 @@ test('Frontend runtime exposes only the six safe service and identity outputs', 
   assert.deepEqual(
     outputNames(normalizedHclSource(`${RUNTIME_MODULE}/outputs.tf`)).sort(),
     expected,
+  );
+});
+
+test('Student runtime inputs and governed tuple bind the exact service and immutable package', () => {
+  const root = normalizedHclSource(`${RUNTIME_ROOT}/main.tf`);
+  const main = normalizedHclSource(`${RUNTIME_MODULE}/main.tf`);
+  const variables = normalizedHclSource(`${RUNTIME_MODULE}/variables.tf`);
+  for (const [name, value] of [
+    ['student_web_runtime_service_account_id', 'moazez-student-web-runtime'],
+    ['student_web_service_name', 'moazez-production-student-web'],
+  ]) {
+    assert.equal(assignmentExpression(root, name), JSON.stringify(value));
+    assert.equal(
+      assignmentExpression(variableBlock(variables, name), 'condition'),
+      `var.${name} == ${JSON.stringify(value)}`,
+    );
+    assert.equal(
+      assignmentExpression(
+        extractBlock(
+          main,
+          /^\s*current_contract\s*=\s*\{/mu,
+          'Current contract',
+        ),
+        name,
+      ),
+      `var.${name}`,
+    );
+    assert.equal(
+      assignmentExpression(
+        extractBlock(
+          main,
+          /^\s*production_contract\s*=\s*\{/mu,
+          'Production contract',
+        ),
+        name,
+      ),
+      JSON.stringify(value),
+    );
+  }
+  assert.equal(
+    assignmentExpression(root, 'student_web_image'),
+    'var.student_web_image',
+  );
+  assert.deepEqual(
+    validationPatterns(variableBlock(variables, 'student_web_image')),
+    [STUDENT_WEB_IMAGE_PATTERN],
+  );
+  assert.match(main, /student_web_image_matches\s*=\s*can\(regex\(/u);
+  assert.match(
+    resourceBlock(main, 'google_cloud_run_v2_service', 'student_web'),
+    /condition\s*=\s*local[.]student_web_image_matches/u,
+  );
+  assert.doesNotMatch(
+    extractBlock(
+      main,
+      /^\s*production_contract\s*=\s*\{/mu,
+      'Production contract',
+    ),
+    /student_web_image/u,
   );
 });
 
@@ -913,9 +1109,11 @@ test('Production Edge root is the exact governed shared-module caller', () => {
     ['api_hostname', '"api.moazez.cloud"'],
     ['platform_admin_hostname', '"admin.moazez.cloud"'],
     ['school_dashboard_hostname', '"schools.moazez.cloud"'],
+    ['student_hostname', '"student.moazez.cloud"'],
     ['api_service_name', '"moazez-production-api"'],
     ['platform_admin_service_name', '"moazez-production-platform-admin"'],
     ['school_dashboard_service_name', '"moazez-production-school-dashboard"'],
+    ['student_service_name', '"moazez-production-student-web"'],
   ]) {
     assert.equal(assignmentExpression(main, assignment[0]), assignment[1]);
   }
@@ -1094,10 +1292,7 @@ test('Production Edge defaults disabled and supports only governed explicit Cand
     moduleVariables,
     'candidate_smoke_route_enabled',
   );
-  assert.equal(
-    assignmentExpression(moduleCandidateSmokeRoute, 'type'),
-    'bool',
-  );
+  assert.equal(assignmentExpression(moduleCandidateSmokeRoute, 'type'), 'bool');
   assert.equal(
     assignmentExpression(moduleCandidateSmokeRoute, 'default'),
     'null',
@@ -1229,15 +1424,17 @@ test('Production Edge defaults disabled and supports only governed explicit Cand
         /^resource\s+"google_certificate_manager_certificate"/gmu,
       ) ?? []
     ).length,
-    1,
+    2,
   );
   assert.doesNotMatch(moduleMain, /resource\s+"google_dns_/u);
   assert.deepEqual(
     resourceAddresses(moduleMain),
     [
       'google_certificate_manager_certificate.edge',
+      'google_certificate_manager_certificate.student',
       'google_certificate_manager_certificate_map.edge',
       'google_certificate_manager_certificate_map_entry.host',
+      'google_certificate_manager_certificate_map_entry.student',
       'google_compute_backend_service.api_candidate',
       'google_compute_backend_service.service',
       'google_compute_global_address.edge',
@@ -1252,9 +1449,289 @@ test('Production Edge defaults disabled and supports only governed explicit Cand
   );
 });
 
+test('Student Edge is Production-only and reuses the governed backend and route', () => {
+  const main = normalizedHclSource(`${EDGE_MODULE}/main.tf`);
+  const variables = normalizedHclSource(`${EDGE_MODULE}/variables.tf`);
+  const production = normalizedHclSource(`${EDGE_ROOT}/main.tf`);
+  const nonprod = normalizedHclSource(`${EDGE_NONPROD_ROOT}/main.tf`);
+  const outputs = normalizedHclSource(`${EDGE_MODULE}/outputs.tf`);
+  const rootOutputs = normalizedHclSource(`${EDGE_ROOT}/outputs.tf`);
+  for (const name of ['student_hostname', 'student_service_name']) {
+    const input = variableBlock(variables, name);
+    assert.equal(assignmentExpression(input, 'type'), 'string');
+    assert.equal(assignmentExpression(input, 'default'), 'null');
+    assert.equal(assignmentExpression(input, 'nullable'), 'true');
+    assert.doesNotMatch(nonprod, new RegExp(`^\\s*${name}\\s*=`, 'mu'));
+  }
+  assert.equal(
+    assignmentExpression(production, 'student_hostname'),
+    '"student.moazez.cloud"',
+  );
+  assert.equal(
+    assignmentExpression(production, 'student_service_name'),
+    '"moazez-production-student-web"',
+  );
+  assert.doesNotMatch(
+    nonprod,
+    /student[.]moazez[.]cloud|staging-student|student_service_name/u,
+  );
+  for (const expected of [
+    /student_inputs_are_null\s*=\s*\(\s*var[.]student_hostname\s*==\s*null\s*&&\s*var[.]student_service_name\s*==\s*null/u,
+    /student_inputs_are_exact\s*=\s*\(\s*var[.]student_hostname\s*==\s*"student[.]moazez[.]cloud"\s*&&\s*var[.]student_service_name\s*==\s*"moazez-production-student-web"/u,
+    /student_contract_valid\s*=\s*\(\s*var[.]environment\s*==\s*"production"\s*\?\s*local[.]student_inputs_are_exact\s*:\s*local[.]student_inputs_are_null/u,
+    /student_edge_enabled\s*=\s*\(\s*var[.]environment\s*==\s*"production"\s*&&\s*local[.]student_inputs_are_exact/u,
+  ])
+    assert.match(main, expected);
+  const urlMap = resourceBlock(main, 'google_compute_url_map', 'edge');
+  assert.match(urlMap, /condition\s*=\s*local[.]student_contract_valid/u);
+  const hostnames = extractBlock(
+    main,
+    /^\s*hostnames\s*=\s*\{/mu,
+    'existing hostnames',
+  );
+  assert.deepEqual(
+    [...hostnames.matchAll(/^\s*(api|admin|schools)\s*=\s*var[.]\w+/gmu)].map(
+      (match) => match[1],
+    ),
+    ['api', 'admin', 'schools'],
+  );
+  assert.doesNotMatch(hostnames, /student/u);
+  assert.match(
+    main,
+    /cloud_run_services\s*=\s*merge\(\{[\s\S]*?student_edge_enabled\s*\?\s*\{\s*student\s*=\s*var[.]student_service_name\s*\}\s*:\s*\{\}/u,
+  );
+  const neg = resourceBlock(
+    main,
+    'google_compute_region_network_endpoint_group',
+    'service',
+  );
+  const backend = resourceBlock(
+    main,
+    'google_compute_backend_service',
+    'service',
+  );
+  assert.equal(
+    assignmentExpression(neg, 'for_each'),
+    'local.cloud_run_services',
+  );
+  assert.equal(
+    assignmentExpression(neg, 'name'),
+    '"${local.name_prefix}-${each.key}-neg"',
+  );
+  assert.equal(
+    assignmentExpression(backend, 'for_each'),
+    'local.cloud_run_services',
+  );
+  assert.equal(
+    assignmentExpression(backend, 'name'),
+    '"${local.name_prefix}-${each.key}-backend"',
+  );
+  assert.equal(assignmentExpression(backend, 'protocol'), '"HTTP"');
+  assert.equal(
+    assignmentExpression(backend, 'load_balancing_scheme'),
+    '"EXTERNAL_MANAGED"',
+  );
+  assert.equal(
+    assignmentExpression(backend, 'security_policy'),
+    'google_compute_security_policy.edge.self_link',
+  );
+  assert.match(
+    backend,
+    /custom_request_headers\s*=\s*each[.]key\s*==\s*"api"\s*\?[\s\S]*?\]\s*:\s*\[\]/u,
+  );
+  for (const [hostname, matcher] of [
+    ['api_hostname', 'api'],
+    ['platform_admin_hostname', 'admin'],
+    ['school_dashboard_hostname', 'schools'],
+  ]) {
+    assert.match(
+      urlMap,
+      new RegExp(
+        `hosts\\s*=\\s*\\[var[.]${hostname}\\]\\s*path_matcher\\s*=\\s*"${matcher}"`,
+        'u',
+      ),
+    );
+    assert.match(
+      urlMap,
+      new RegExp(
+        `name\\s*=\\s*"${matcher}"\\s*default_service\\s*=\\s*google_compute_backend_service[.]service\\["${matcher}"\\][.]id`,
+        'u',
+      ),
+    );
+  }
+  assert.match(
+    urlMap,
+    /dynamic\s+"host_rule"\s*\{\s*for_each\s*=\s*local[.]student_edge_enabled\s*\?\s*\[var[.]student_hostname\]\s*:\s*\[\]/u,
+  );
+  assert.match(
+    urlMap,
+    /hosts\s*=\s*\[host_rule[.]value\]\s*path_matcher\s*=\s*"student"/u,
+  );
+  assert.match(
+    urlMap,
+    /dynamic\s+"path_matcher"\s*\{\s*for_each\s*=\s*local[.]student_edge_enabled\s*\?\s*\["student"\]\s*:\s*\[\]/u,
+  );
+  assert.match(
+    urlMap,
+    /default_service\s*=\s*google_compute_backend_service[.]service\["student"\][.]id/u,
+  );
+  assert.equal(
+    assignmentExpression(main, 'name_prefix'),
+    '"moazez-${var.environment}"',
+  );
+  assert.equal(assignmentExpression(production, 'environment'), '"production"');
+  for (const name of ['serverless_neg_names', 'backend_service_names']) {
+    assert.match(outputs, new RegExp(`^output "${name}"`, 'mu'));
+    assert.match(rootOutputs, new RegExp(`^output "${name}"`, 'mu'));
+  }
+});
+
+test('Student TLS uses a separate conditional certificate and existing map', () => {
+  const main = normalizedHclSource(`${EDGE_MODULE}/main.tf`);
+  const outputs = normalizedHclSource(`${EDGE_MODULE}/outputs.tf`);
+  const rootOutputs = normalizedHclSource(`${EDGE_ROOT}/outputs.tf`);
+  const edgeCertificate = resourceBlock(
+    main,
+    'google_certificate_manager_certificate',
+    'edge',
+  );
+  assert.equal(
+    assignmentExpression(edgeCertificate, 'name'),
+    '"${local.name_prefix}-edge-cert"',
+  );
+  assert.equal(
+    assignmentExpression(edgeCertificate, 'domains'),
+    'values(local.hostnames)',
+  );
+  const studentCertificate = resourceBlock(
+    main,
+    'google_certificate_manager_certificate',
+    'student',
+  );
+  assert.equal(
+    assignmentExpression(studentCertificate, 'count'),
+    'local.student_edge_enabled ? 1 : 0',
+  );
+  assert.equal(
+    assignmentExpression(studentCertificate, 'name'),
+    '"${local.name_prefix}-student-cert"',
+  );
+  assert.equal(
+    assignmentExpression(studentCertificate, 'location'),
+    '"global"',
+  );
+  assert.equal(
+    assignmentExpression(studentCertificate, 'domains'),
+    '[var.student_hostname]',
+  );
+  assert.match(
+    studentCertificate,
+    /google_project_service[.]certificate_manager/u,
+  );
+  const oldEntry = resourceBlock(
+    main,
+    'google_certificate_manager_certificate_map_entry',
+    'host',
+  );
+  assert.equal(assignmentExpression(oldEntry, 'for_each'), 'local.hostnames');
+  assert.equal(
+    assignmentExpression(oldEntry, 'certificates'),
+    '[google_certificate_manager_certificate.edge.id]',
+  );
+  const studentEntry = resourceBlock(
+    main,
+    'google_certificate_manager_certificate_map_entry',
+    'student',
+  );
+  assert.equal(
+    assignmentExpression(studentEntry, 'count'),
+    'local.student_edge_enabled ? 1 : 0',
+  );
+  assert.equal(
+    assignmentExpression(studentEntry, 'map'),
+    'google_certificate_manager_certificate_map.edge.name',
+  );
+  assert.equal(
+    assignmentExpression(studentEntry, 'hostname'),
+    'var.student_hostname',
+  );
+  assert.equal(
+    assignmentExpression(studentEntry, 'certificates'),
+    '[google_certificate_manager_certificate.student[0].id]',
+  );
+  const proxy = resourceBlock(
+    main,
+    'google_compute_target_https_proxy',
+    'edge',
+  );
+  assert.match(
+    proxy,
+    /google_certificate_manager_certificate_map_entry[.]host/u,
+  );
+  assert.match(
+    proxy,
+    /google_certificate_manager_certificate_map_entry[.]student/u,
+  );
+  for (const type of [
+    'google_compute_global_address',
+    'google_compute_security_policy',
+    'google_compute_url_map',
+    'google_compute_target_https_proxy',
+    'google_compute_global_forwarding_rule',
+    'google_certificate_manager_certificate_map',
+  ]) {
+    assert.equal(
+      (main.match(new RegExp(`^resource "${type}"`, 'gmu')) ?? []).length,
+      1,
+      type,
+    );
+  }
+  assert.equal(
+    (
+      main.match(/^resource "google_certificate_manager_certificate"\s+/gmu) ??
+      []
+    ).length,
+    2,
+  );
+  assert.equal(
+    assignmentExpression(
+      extractBlock(
+        outputs,
+        /^output "certificate_name"\s*\{/mu,
+        'old certificate output',
+      ),
+      'value',
+    ),
+    'google_certificate_manager_certificate.edge.name',
+  );
+  assert.equal(
+    assignmentExpression(
+      extractBlock(
+        outputs,
+        /^output "student_certificate_name"\s*\{/mu,
+        'student certificate output',
+      ),
+      'value',
+    ),
+    'local.student_edge_enabled ? google_certificate_manager_certificate.student[0].name : null',
+  );
+  assert.equal(
+    assignmentExpression(
+      extractBlock(
+        rootOutputs,
+        /^output "student_certificate_name"\s*\{/mu,
+        'root student certificate output',
+      ),
+      'value',
+    ),
+    'module.edge_environment.student_certificate_name',
+  );
+});
+
 test('READMEs preserve source-only, build-time, and Dark pre-DNS boundaries', () => {
   const artifactReadme = normalizedSource(`${ARTIFACT_DOMAIN}/README.md`);
   const runtimeReadme = normalizedSource(`${RUNTIME_DOMAIN}/README.md`);
+  const edgeReadme = normalizedSource('infra/gcp/edge/README.md');
   for (const required of [
     'source-only',
     'moazez-github-production',
@@ -1262,6 +1739,8 @@ test('READMEs preserve source-only, build-time, and Dark pre-DNS boundaries', ()
     'moazez-ui-artifact-builder',
     'repository-ID-scoped',
     'frontend-artifact-identity/production',
+    'moazez-student-app-main',
+    '1391516333',
   ]) {
     assert.ok(artifactReadme.includes(required), required);
   }
@@ -1272,9 +1751,19 @@ test('READMEs preserve source-only, build-time, and Dark pre-DNS boundaries', ()
     'Dark boundary',
     'invoker_iam_disabled=true',
     'creates no public IAM',
+    'moazez-student-web',
+    'three protected runtime identities',
   ]) {
     assert.ok(runtimeReadme.includes(required), required);
   }
+  for (const required of [
+    'moazez-production-student-cert',
+    'student.moazez.cloud',
+    'moazez-production-edge-cert',
+    'existing certificate map',
+    'absent in staging',
+  ])
+    assert.ok(edgeReadme.includes(required), required);
 });
 
 test('Stage 30C1 TAP has exactly one canonical pull-request ownership assignment', () => {
@@ -1334,6 +1823,13 @@ test('Candidate scope activation accepts each domain and rejects mixed or later-
     true,
   );
   assert.equal(assertStage30C1CandidateScope([`${EDGE_ROOT}/main.tf`]), true);
+  for (const file of [
+    'infra/gcp/edge/README.md',
+    `${EDGE_MODULE}/main.tf`,
+    `${EDGE_MODULE}/outputs.tf`,
+    `${EDGE_MODULE}/variables.tf`,
+  ])
+    assert.equal(assertStage30C1CandidateScope([file]), true);
   assert.equal(
     assertStage30C1CandidateScope([`${EDGE_ROOT}/variables.tf`]),
     true,

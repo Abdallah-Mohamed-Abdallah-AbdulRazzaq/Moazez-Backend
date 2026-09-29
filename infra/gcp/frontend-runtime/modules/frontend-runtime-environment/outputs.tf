@@ -27,3 +27,18 @@ output "school_dashboard_service_uri" {
   description = "Provider-assigned URI of the School Dashboard Cloud Run service."
   value       = google_cloud_run_v2_service.school_dashboard.uri
 }
+
+output "student_web_runtime_service_account_email" {
+  description = "Email of the Student Web runtime identity."
+  value       = google_service_account.student_web_runtime.email
+}
+
+output "student_web_service_name" {
+  description = "Name of the Student Web Cloud Run service."
+  value       = google_cloud_run_v2_service.student_web.name
+}
+
+output "student_web_service_uri" {
+  description = "Provider-assigned URI of the Student Web Cloud Run service."
+  value       = google_cloud_run_v2_service.student_web.uri
+}

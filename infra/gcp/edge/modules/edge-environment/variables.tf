@@ -33,6 +33,13 @@ variable "school_dashboard_hostname" {
   type        = string
 }
 
+variable "student_hostname" {
+  description = "Production-only Student Web hostname; null in staging."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
 variable "api_service_name" {
   description = "Existing Cloud Run API service name."
   type        = string
@@ -46,6 +53,13 @@ variable "platform_admin_service_name" {
 variable "school_dashboard_service_name" {
   description = "Existing Cloud Run School Dashboard service name."
   type        = string
+}
+
+variable "student_service_name" {
+  description = "Production-only Student Web Cloud Run service; null in staging."
+  type        = string
+  default     = null
+  nullable    = true
 }
 
 variable "candidate_edge_enabled" {

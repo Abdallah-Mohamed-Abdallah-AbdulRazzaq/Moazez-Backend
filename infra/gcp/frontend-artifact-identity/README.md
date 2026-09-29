@@ -1,9 +1,9 @@
 # Production frontend artifact identity Terraform source
 
 This isolated Terraform domain prepares the Production build identity used by
-the Platform Admin and School Dashboard repositories. It is source-only: local
-validation must not initialize the real backend, run a plan or apply, mutate
-Google Cloud IAM, build a frontend image, or push an artifact.
+the Platform Admin, School Dashboard, and Student App repositories. It is
+source-only: local validation must not initialize the real backend, run a plan
+or apply, mutate Google Cloud IAM, build a frontend image, or push an artifact.
 
 ## Ownership boundary
 
@@ -18,11 +18,17 @@ It owns exactly:
   owner ID `127324203`, and `refs/heads/main`;
 - `moazez-school-dashboard-main`, restricted to repository ID `1335686453`,
   owner ID `127324203`, and `refs/heads/main`;
+- `moazez-student-app-main`, restricted to repository ID `1391516333`,
+  owner ID `127324203`, and `refs/heads/main`;
 - `moazez-ui-artifact-builder@moazez-production.iam.gserviceaccount.com`;
-- two repository-ID-scoped `roles/iam.workloadIdentityUser` memberships on
+- three repository-ID-scoped `roles/iam.workloadIdentityUser` memberships on
   that builder;
 - one `roles/artifactregistry.writer` membership on only
   `moazez-production-containers` in `me-central2`.
+
+These are three providers, one shared builder, and one Artifact Registry writer
+binding. No service-account keys, runtime identity grants, or secrets are
+created here. Student Web has no staging WIF provider.
 
 The builder receives no Cloud Run, Terraform state, Secret Manager, database,
 Redis, storage bucket, project-wide, runtime `actAs`, or service-account key

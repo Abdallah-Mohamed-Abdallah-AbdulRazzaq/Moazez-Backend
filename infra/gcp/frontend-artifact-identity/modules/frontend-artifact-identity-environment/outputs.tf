@@ -12,3 +12,8 @@ output "school_dashboard_wif_provider_name" {
   description = "Full name of the School Dashboard GitHub OIDC provider."
   value       = google_iam_workload_identity_pool_provider.school_dashboard.name
 }
+
+output "student_wif_provider_name" {
+  description = "Full name of the Student App GitHub OIDC provider."
+  value       = google_iam_workload_identity_pool_provider.student.name
+}
