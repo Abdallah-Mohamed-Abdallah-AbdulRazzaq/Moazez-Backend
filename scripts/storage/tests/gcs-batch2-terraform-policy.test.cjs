@@ -83,14 +83,38 @@ test('bucket safety contract is exact and contains no lifecycle or retention rul
 });
 
 test('CORS is explicit and separated by environment', () => {
-  for (const origin of [
-    'https://staging-schools.moazez.cloud',
-    'https://staging-admin.moazez.cloud',
-    'https://schools.moazez.cloud',
-    'https://admin.moazez.cloud',
-  ]) {
-    assert.match(moduleMain, new RegExp(escapeRegex(origin), 'u'));
+  const expectedOrigins = {
+    nonprod: [
+      'https://staging-schools.moazez.cloud',
+      'https://staging-admin.moazez.cloud',
+    ],
+    production: [
+      'https://schools.moazez.cloud',
+      'https://admin.moazez.cloud',
+      'https://student.moazez.cloud',
+    ],
+  };
+  for (const [environment, expected] of Object.entries(expectedOrigins)) {
+    const environmentBlock = moduleMain.match(
+      new RegExp(`\\b${environment}\\s*=\\s*\\{([^{}]*)\\}`, 'u'),
+    );
+    assert.ok(environmentBlock, `${environment} contract is missing`);
+    const corsOrigins = environmentBlock[1].match(
+      /cors_origins\s*=\s*\[([^\]]*)\]/u,
+    );
+    assert.ok(corsOrigins, `${environment} CORS origins are missing`);
+    assert.deepEqual(
+      [...corsOrigins[1].matchAll(/"([^"]+)"/gu)].map((match) => match[1]),
+      expected,
+    );
   }
+  const bucket = extractResourceBlock(
+    moduleMain,
+    'google_storage_bucket',
+    'application',
+  );
+  assert.equal([...bucket.matchAll(/\bcors\s*\{/gu)].length, 1);
+  assert.match(bucket, /origin\s*=\s*local\.selected\.cors_origins/u);
   assert.match(
     moduleMain,
     /method\s*=\s*\[\s*"GET",\s*"HEAD",\s*"PUT",\s*\]/su,
@@ -247,10 +271,6 @@ function walk(directory) {
     const target = path.join(directory, entry.name);
     return entry.isDirectory() ? walk(target) : [target];
   });
-}
-
-function escapeRegex(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
 function extractResourceBlock(source, type, name) {

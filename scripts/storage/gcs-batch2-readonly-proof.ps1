@@ -24,7 +24,8 @@ $Locked = @{
     published = 'moazez-production-91001421934-published'
     origins = @(
       'https://schools.moazez.cloud',
-      'https://admin.moazez.cloud'
+      'https://admin.moazez.cloud',
+      'https://student.moazez.cloud'
     )
   }
 }
