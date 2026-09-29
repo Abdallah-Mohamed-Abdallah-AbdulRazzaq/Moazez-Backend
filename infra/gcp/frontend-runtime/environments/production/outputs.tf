@@ -27,3 +27,18 @@ output "school_dashboard_service_uri" {
   description = "Provider-assigned URI of the internal Production School Dashboard service."
   value       = module.frontend_runtime_environment.school_dashboard_service_uri
 }
+
+output "student_web_runtime_service_account_email" {
+  description = "Email of the Production Student Web runtime identity."
+  value       = module.frontend_runtime_environment.student_web_runtime_service_account_email
+}
+
+output "student_web_service_name" {
+  description = "Name of the internal Production Student Web service."
+  value       = module.frontend_runtime_environment.student_web_service_name
+}
+
+output "student_web_service_uri" {
+  description = "Provider-assigned URI of the internal Production Student Web service."
+  value       = module.frontend_runtime_environment.student_web_service_uri
+}

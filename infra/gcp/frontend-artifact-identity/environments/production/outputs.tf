@@ -12,3 +12,8 @@ output "school_dashboard_wif_provider_name" {
   description = "Full name of the School Dashboard GitHub OIDC provider."
   value       = module.frontend_artifact_identity_environment.school_dashboard_wif_provider_name
 }
+
+output "student_wif_provider_name" {
+  description = "Full name of the Student App GitHub OIDC provider."
+  value       = module.frontend_artifact_identity_environment.student_wif_provider_name
+}

@@ -23,3 +23,16 @@ variable "school_dashboard_image" {
     error_message = "school_dashboard_image must be the approved Production package pinned by a lowercase sha256 digest."
   }
 }
+
+variable "student_web_image" {
+  description = "Immutable Production Student Web image digest."
+  type        = string
+
+  validation {
+    condition = can(regex(
+      "^me-central2-docker[.]pkg[.]dev/moazez-production/moazez-production-containers/moazez-student-web@sha256:[a-f0-9]{64}$",
+      var.student_web_image,
+    ))
+    error_message = "student_web_image must be the approved Production package pinned by a lowercase sha256 digest."
+  }
+}

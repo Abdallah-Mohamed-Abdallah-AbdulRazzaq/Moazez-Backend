@@ -34,6 +34,11 @@ output "certificate_name" {
   value       = google_certificate_manager_certificate.edge.name
 }
 
+output "student_certificate_name" {
+  description = "Dedicated Production Student Web certificate name, or null in staging."
+  value       = local.student_edge_enabled ? google_certificate_manager_certificate.student[0].name : null
+}
+
 output "certificate_map_name" {
   description = "Certificate Manager map name."
   value       = google_certificate_manager_certificate_map.edge.name

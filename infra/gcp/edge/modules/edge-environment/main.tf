@@ -32,17 +32,35 @@ locals {
     local.candidate_smoke_route_contract_valid
   )
 
+  student_inputs_are_null = (
+    var.student_hostname == null &&
+    var.student_service_name == null
+  )
+  student_inputs_are_exact = (
+    var.student_hostname == "student.moazez.cloud" &&
+    var.student_service_name == "moazez-production-student-web"
+  )
+  student_contract_valid = (
+    var.environment == "production"
+    ? local.student_inputs_are_exact
+    : local.student_inputs_are_null
+  )
+  student_edge_enabled = (
+    var.environment == "production" &&
+    local.student_inputs_are_exact
+  )
+
   hostnames = {
     api     = var.api_hostname
     admin   = var.platform_admin_hostname
     schools = var.school_dashboard_hostname
   }
 
-  cloud_run_services = {
+  cloud_run_services = merge({
     api     = var.api_service_name
     admin   = var.platform_admin_service_name
     schools = var.school_dashboard_service_name
-  }
+  }, local.student_edge_enabled ? { student = var.student_service_name } : {})
 }
 
 resource "google_project_service" "certificate_manager" {
@@ -177,6 +195,15 @@ resource "google_compute_url_map" "edge" {
     path_matcher = "schools"
   }
 
+  dynamic "host_rule" {
+    for_each = local.student_edge_enabled ? [var.student_hostname] : []
+
+    content {
+      hosts        = [host_rule.value]
+      path_matcher = "student"
+    }
+  }
+
   path_matcher {
     name            = "api"
     default_service = google_compute_backend_service.service["api"].id
@@ -207,10 +234,24 @@ resource "google_compute_url_map" "edge" {
     default_service = google_compute_backend_service.service["schools"].id
   }
 
+  dynamic "path_matcher" {
+    for_each = local.student_edge_enabled ? ["student"] : []
+
+    content {
+      name            = path_matcher.value
+      default_service = google_compute_backend_service.service["student"].id
+    }
+  }
+
   lifecycle {
     precondition {
       condition     = local.candidate_edge_contract_valid
       error_message = "Candidate Edge resources are limited to governed environments, require candidate_api_tag when enabled, and require a null tag when disabled. The Candidate smoke route cannot be enabled without Candidate Edge resources."
+    }
+
+    precondition {
+      condition     = local.student_contract_valid
+      error_message = "Student Edge requires the exact governed hostname and service in Production and null Student inputs in staging."
     }
   }
 }
@@ -223,6 +264,22 @@ resource "google_certificate_manager_certificate" "edge" {
 
   managed {
     domains = values(local.hostnames)
+  }
+
+  depends_on = [
+    google_project_service.certificate_manager
+  ]
+}
+
+resource "google_certificate_manager_certificate" "student" {
+  count       = local.student_edge_enabled ? 1 : 0
+  project     = var.project_id
+  location    = "global"
+  name        = "${local.name_prefix}-student-cert"
+  description = "MOAZEZ Production Student Web Google-managed certificate using load balancer authorization."
+
+  managed {
+    domains = [var.student_hostname]
   }
 
   depends_on = [
@@ -250,6 +307,16 @@ resource "google_certificate_manager_certificate_map_entry" "host" {
   hostname     = each.value
 }
 
+resource "google_certificate_manager_certificate_map_entry" "student" {
+  count = local.student_edge_enabled ? 1 : 0
+
+  project      = var.project_id
+  name         = "${local.name_prefix}-student-cert-entry"
+  map          = google_certificate_manager_certificate_map.edge.name
+  certificates = [google_certificate_manager_certificate.student[0].id]
+  hostname     = var.student_hostname
+}
+
 resource "google_compute_target_https_proxy" "edge" {
   project = var.project_id
   name    = "${local.name_prefix}-edge-https-proxy"
@@ -258,7 +325,8 @@ resource "google_compute_target_https_proxy" "edge" {
   certificate_map = "//certificatemanager.googleapis.com/${google_certificate_manager_certificate_map.edge.id}"
 
   depends_on = [
-    google_certificate_manager_certificate_map_entry.host
+    google_certificate_manager_certificate_map_entry.host,
+    google_certificate_manager_certificate_map_entry.student
   ]
 }
 
