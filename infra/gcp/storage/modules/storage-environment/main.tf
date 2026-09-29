@@ -16,6 +16,7 @@ locals {
       cors_origins = [
         "https://schools.moazez.cloud",
         "https://admin.moazez.cloud",
+        "https://student.moazez.cloud",
       ]
     }
   }

@@ -24,6 +24,7 @@ const LOCKED_ENVIRONMENTS = Object.freeze({
     origins: Object.freeze([
       'https://schools.moazez.cloud',
       'https://admin.moazez.cloud',
+      'https://student.moazez.cloud',
     ]),
   }),
 });

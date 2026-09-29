@@ -48,7 +48,11 @@ test('locked projects, buckets, signer identities, and origins are exact', () =>
       publishedBucket: 'moazez-production-91001421934-published',
       signerServiceAccount:
         'moazez-gcs-signer@moazez-production.iam.gserviceaccount.com',
-      origins: ['https://schools.moazez.cloud', 'https://admin.moazez.cloud'],
+      origins: [
+        'https://schools.moazez.cloud',
+        'https://admin.moazez.cloud',
+        'https://student.moazez.cloud',
+      ],
     },
   });
 });
