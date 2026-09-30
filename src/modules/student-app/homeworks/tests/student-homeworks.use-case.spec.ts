@@ -6,6 +6,7 @@ import {
   UserType,
 } from '@prisma/client';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
+import { StorageService } from '../../../../infrastructure/storage/storage.service';
 import { StudentAppAccessService } from '../../access/student-app-access.service';
 import { StudentAppRequiredStudentException } from '../../shared/student-app-errors';
 import type {
@@ -14,6 +15,7 @@ import type {
 } from '../../shared/student-app.types';
 import {
   GetStudentHomeworkUseCase,
+  GetStudentHomeworkAttachmentDownloadUrlUseCase,
   GetStudentHomeworkSubmissionUseCase,
   CreateStudentHomeworkSubmissionAttachmentUseCase,
   ListStudentHomeworkSubmissionAttachmentsUseCase,
@@ -26,6 +28,83 @@ import {
 import { StudentHomeworksReadAdapter } from '../infrastructure/student-homeworks-read.adapter';
 
 describe('Student Homeworks use-cases', () => {
+  it('authorizes the exact attachment before creating a five-minute download capability', async () => {
+    const { downloadUseCase, accessService, readAdapter, storageService } =
+      createUseCasesWithValidAccess();
+    readAdapter.findHomeworkAttachmentForDownload.mockResolvedValue({
+      bucket: 'private',
+      objectKey: 'homework/attachment.pdf',
+      originalName: 'Assignment.pdf',
+    });
+    storageService.createDownloadUrl.mockResolvedValue({
+      url: 'https://storage.example.test/signed-download',
+      expiresAt: new Date('2026-09-30T12:05:00.000Z'),
+    });
+
+    await expect(
+      downloadUseCase.execute('homework-1', 'attachment-1'),
+    ).resolves.toBe('https://storage.example.test/signed-download');
+    expect(readAdapter.findHomeworkAttachmentForDownload.mock.calls).toEqual([
+      [
+        {
+          context: contextFixture(),
+          homeworkId: 'homework-1',
+          attachmentId: 'attachment-1',
+        },
+      ],
+    ]);
+    expect(
+      accessService.getCurrentStudentWithEnrollment.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      readAdapter.findHomeworkAttachmentForDownload.mock.invocationCallOrder[0],
+    );
+    expect(
+      readAdapter.findHomeworkAttachmentForDownload.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      storageService.createDownloadUrl.mock.invocationCallOrder[0],
+    );
+    expect(storageService.createDownloadUrl).toHaveBeenCalledWith({
+      bucket: 'private',
+      objectKey: 'homework/attachment.pdf',
+      expiresInSeconds: 300,
+      disposition: 'attachment',
+      downloadFileName: 'Assignment.pdf',
+    });
+  });
+
+  it('returns a non-enumerating 404 without signing when the attachment relation is inaccessible', async () => {
+    const { downloadUseCase, readAdapter, storageService } =
+      createUseCasesWithValidAccess();
+    readAdapter.findHomeworkAttachmentForDownload.mockResolvedValue(null);
+
+    await expect(
+      downloadUseCase.execute('homework-1', 'attachment-1'),
+    ).rejects.toMatchObject({
+      code: 'not_found',
+      httpStatus: 404,
+      details: undefined,
+    });
+    expect(storageService.createDownloadUrl).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid Student context before attachment lookup or signing', async () => {
+    const { downloadUseCase, accessService, readAdapter, storageService } =
+      createUseCases();
+    accessService.getCurrentStudentWithEnrollment.mockRejectedValue(
+      new StudentAppRequiredStudentException({ reason: 'actor_not_student' }),
+    );
+
+    await expect(
+      downloadUseCase.execute('homework-1', 'attachment-1'),
+    ).rejects.toMatchObject({
+      code: 'student_app.actor.required_student',
+    });
+    expect(
+      readAdapter.findHomeworkAttachmentForDownload.mock.calls,
+    ).toHaveLength(0);
+    expect(storageService.createDownloadUrl).not.toHaveBeenCalled();
+  });
+
   it('rejects non-student actors through StudentAppAccessService', async () => {
     const { listUseCase, accessService, readAdapter } = createUseCases();
     accessService.getCurrentStudentWithEnrollment.mockRejectedValue(
@@ -205,6 +284,13 @@ describe('Student Homeworks use-cases', () => {
 function createUseCases(): {
   listUseCase: ListStudentHomeworksUseCase;
   getUseCase: GetStudentHomeworkUseCase;
+  downloadUseCase: GetStudentHomeworkAttachmentDownloadUrlUseCase;
+  storageService: {
+    createDownloadUrl: jest.Mock<
+      ReturnType<StorageService['createDownloadUrl']>,
+      Parameters<StorageService['createDownloadUrl']>
+    >;
+  };
   accessService: jest.Mocked<StudentAppAccessService>;
   readAdapter: jest.Mocked<StudentHomeworksReadAdapter>;
   getSubmissionCoreUseCase: { execute: jest.Mock };
@@ -228,7 +314,9 @@ function createUseCases(): {
   const readAdapter = {
     listHomeworks: jest.fn(),
     findHomework: jest.fn(),
+    findHomeworkAttachmentForDownload: jest.fn(),
   } as unknown as jest.Mocked<StudentHomeworksReadAdapter>;
+  const storageService = { createDownloadUrl: jest.fn() };
   const getSubmissionCoreUseCase = { execute: jest.fn() };
   const saveSubmissionCoreUseCase = { execute: jest.fn() };
   const submitSubmissionCoreUseCase = { execute: jest.fn() };
@@ -240,6 +328,12 @@ function createUseCases(): {
   return {
     listUseCase: new ListStudentHomeworksUseCase(accessService, readAdapter),
     getUseCase: new GetStudentHomeworkUseCase(accessService, readAdapter),
+    downloadUseCase: new GetStudentHomeworkAttachmentDownloadUrlUseCase(
+      accessService,
+      readAdapter,
+      storageService as unknown as StorageService,
+    ),
+    storageService,
     getSubmissionUseCase: new GetStudentHomeworkSubmissionUseCase(
       accessService,
       getSubmissionCoreUseCase as any,

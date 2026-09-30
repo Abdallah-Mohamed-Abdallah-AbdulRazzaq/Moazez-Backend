@@ -2,12 +2,89 @@ import {
   HomeworkAssignmentMode,
   HomeworkAssignmentStatus,
   HomeworkTargetStatus,
+  type Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import type { StudentAppContext } from '../../shared/student-app.types';
 import { StudentHomeworksReadAdapter } from '../infrastructure/student-homeworks-read.adapter';
 
 describe('StudentHomeworksReadAdapter', () => {
+  it('reads download storage fields only through the exact Student homework attachment relation', async () => {
+    const { adapter, attachmentMocks, platformBypass } = createAdapter();
+    const file = {
+      bucket: 'private',
+      objectKey: 'homework/assignment.pdf',
+      originalName: 'Assignment.pdf',
+    };
+    attachmentMocks.findFirst.mockResolvedValue({ file });
+
+    await expect(
+      adapter.findHomeworkAttachmentForDownload({
+        context: contextFixture(),
+        homeworkId: 'homework-1',
+        attachmentId: 'attachment-1',
+      }),
+    ).resolves.toEqual(file);
+
+    expect(attachmentMocks.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'attachment-1',
+        homeworkAssignmentId: 'homework-1',
+        deletedAt: null,
+        homeworkAssignment: {
+          is: {
+            deletedAt: null,
+            academicYearId: 'year-1',
+            classroomId: 'classroom-1',
+            termId: 'term-1',
+            status: {
+              in: [
+                HomeworkAssignmentStatus.PUBLISHED,
+                HomeworkAssignmentStatus.CLOSED,
+              ],
+            },
+            targets: {
+              some: {
+                studentId: 'student-1',
+                enrollmentId: 'enrollment-1',
+                homeworkAssignmentId: 'homework-1',
+              },
+            },
+          },
+        },
+        file: {
+          is: {
+            schoolId: 'school-1',
+            deletedAt: null,
+            studentCredentialSecretArtifacts: { none: {} },
+          },
+        },
+      },
+      select: {
+        file: { select: { bucket: true, objectKey: true, originalName: true } },
+      },
+    });
+    expect(platformBypass).not.toHaveBeenCalled();
+  });
+
+  it('returns null for an absent authorized relation and omits term filtering only when no current term applies', async () => {
+    const { adapter, attachmentMocks } = createAdapter();
+    attachmentMocks.findFirst.mockResolvedValue(null);
+
+    await expect(
+      adapter.findHomeworkAttachmentForDownload({
+        context: { ...contextFixture(), termId: null },
+        homeworkId: 'homework-1',
+        attachmentId: 'attachment-1',
+      }),
+    ).resolves.toBeNull();
+    const calls = attachmentMocks.findFirst.mock.calls as [
+      Prisma.HomeworkAssignmentAttachmentFindFirstArgs,
+    ][];
+    const [query] = calls[0];
+    expect(query.where?.homeworkAssignment?.is).not.toHaveProperty('termId');
+  });
+
   it('lists only current student target rows and visible assignment statuses', async () => {
     const { adapter, targetMocks } = createAdapter();
     targetMocks.findMany.mockResolvedValue([]);
@@ -149,16 +226,19 @@ function createAdapter(): {
   adapter: StudentHomeworksReadAdapter;
   targetMocks: ReturnType<typeof modelMocks>;
   assignmentMocks: ReturnType<typeof modelMocks>;
+  attachmentMocks: ReturnType<typeof modelMocks>;
   platformBypass: jest.Mock;
 } {
   const targetMocks = modelMocks();
   const assignmentMocks = modelMocks();
+  const attachmentMocks = modelMocks();
   const platformBypass = jest.fn();
   const prisma = {
     platformBypass,
     scoped: {
       homeworkTarget: targetMocks,
       homeworkAssignment: assignmentMocks,
+      homeworkAssignmentAttachment: attachmentMocks,
     },
   } as unknown as PrismaService;
 
@@ -166,6 +246,7 @@ function createAdapter(): {
     adapter: new StudentHomeworksReadAdapter(prisma),
     targetMocks,
     assignmentMocks,
+    attachmentMocks,
     platformBypass,
   };
 }

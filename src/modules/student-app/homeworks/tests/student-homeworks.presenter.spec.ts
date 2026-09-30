@@ -8,10 +8,71 @@ import {
   deriveStudentHomeworkStatus,
   StudentHomeworksPresenter,
 } from '../presenters/student-homeworks.presenter';
+import type { StudentHomeworkTargetReadModel } from '../infrastructure/student-homeworks-read.adapter';
 
 const PRESENTATION_NOW = new Date('2026-09-10T10:00:00.000Z');
 
 describe('StudentHomeworksPresenter', () => {
+  it('adds the server-known attachment download path while excluding storage capabilities and secrets', () => {
+    const homeworkId = '11111111-1111-1111-1111-111111111111';
+    const attachmentId = '22222222-2222-2222-2222-222222222222';
+    const target = homeworkTargetFixture();
+    Object.assign(target.homeworkAssignment, {
+      id: homeworkId,
+      attachments: [
+        {
+          id: attachmentId,
+          homeworkAssignmentId: homeworkId,
+          fileId: 'file-1',
+          title: 'Assignment',
+          description: 'Read this',
+          sortOrder: 2,
+          file: {
+            originalName: 'assignment.pdf',
+            mimeType: 'application/pdf',
+            sizeBytes: 42n,
+            bucket: 'private-secret',
+            objectKey: 'internal-secret',
+            signedUrl: 'https://storage.example.test/secret',
+            credentials: 'credential-secret',
+          },
+        },
+      ],
+    });
+
+    const detail = StudentHomeworksPresenter.presentDetail(
+      target as unknown as StudentHomeworkTargetReadModel,
+    );
+    expect(detail.homework.attachments).toEqual([
+      {
+        attachmentId,
+        homeworkId,
+        fileId: 'file-1',
+        downloadPath: `/api/v1/student/homeworks/${homeworkId}/attachments/${attachmentId}/download`,
+        title: 'Assignment',
+        description: 'Read this',
+        sortOrder: 2,
+        file: {
+          filename: 'assignment.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: '42',
+        },
+      },
+    ]);
+    const serialized = JSON.stringify(detail);
+    for (const forbidden of [
+      'bucket',
+      'objectKey',
+      'signedUrl',
+      'credentials',
+      'private-secret',
+      'internal-secret',
+      'storage.example.test',
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  });
+
   beforeEach(() => {
     jest.useFakeTimers();
     jest.setSystemTime(PRESENTATION_NOW);

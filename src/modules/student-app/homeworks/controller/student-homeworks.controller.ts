@@ -10,6 +10,7 @@ import {
   Post,
   Put,
   Query,
+  Redirect,
   Delete,
 } from '@nestjs/common';
 import {
@@ -20,10 +21,12 @@ import {
   ApiParam,
   ApiQuery,
   ApiTags,
+  ApiTemporaryRedirectResponse,
 } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import {
   GetStudentHomeworkUseCase,
+  GetStudentHomeworkAttachmentDownloadUrlUseCase,
   GetStudentHomeworkSubmissionUseCase,
   ListStudentHomeworkSubmissionAnswersUseCase,
   SaveStudentHomeworkSubmissionAnswerUseCase,
@@ -70,6 +73,7 @@ export class StudentHomeworksController {
   constructor(
     private readonly listStudentHomeworksUseCase: ListStudentHomeworksUseCase,
     private readonly getStudentHomeworkUseCase: GetStudentHomeworkUseCase,
+    private readonly getStudentHomeworkAttachmentDownloadUrlUseCase: GetStudentHomeworkAttachmentDownloadUrlUseCase,
     private readonly getStudentHomeworkSubmissionUseCase: GetStudentHomeworkSubmissionUseCase,
     private readonly saveStudentHomeworkSubmissionUseCase: SaveStudentHomeworkSubmissionUseCase,
     private readonly submitStudentHomeworkSubmissionUseCase: SubmitStudentHomeworkSubmissionUseCase,
@@ -109,6 +113,27 @@ export class StudentHomeworksController {
     @Param('homeworkId', new ParseUUIDPipe()) homeworkId: string,
   ): Promise<StudentHomeworkResponseDto> {
     return this.getStudentHomeworkUseCase.execute(homeworkId);
+  }
+
+  @Get(':homeworkId/attachments/:attachmentId/download')
+  @Redirect(undefined, 307)
+  @ApiOperation({ summary: 'Download an assigned homework attachment' })
+  @ApiParam({ name: 'homeworkId' })
+  @ApiParam({ name: 'attachmentId' })
+  @ApiTemporaryRedirectResponse({
+    description: 'Redirect to a short-lived signed download URL',
+  })
+  @RequiredPermissions('homework.assignments.view', 'files.downloads.view')
+  async downloadAttachment(
+    @Param('homeworkId', new ParseUUIDPipe()) homeworkId: string,
+    @Param('attachmentId', new ParseUUIDPipe()) attachmentId: string,
+  ): Promise<{ url: string }> {
+    const url =
+      await this.getStudentHomeworkAttachmentDownloadUrlUseCase.execute(
+        homeworkId,
+        attachmentId,
+      );
+    return { url };
   }
 
   @Get(':homeworkId/submission')

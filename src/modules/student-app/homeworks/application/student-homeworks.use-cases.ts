@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
+import { StorageService } from '../../../../infrastructure/storage/storage.service';
 import {
   GetHomeworkSubmissionUseCase as CoreGetHomeworkSubmissionUseCase,
   SaveHomeworkSubmissionDraftUseCase,
@@ -91,6 +92,40 @@ export class GetStudentHomeworkUseCase {
     }
 
     return StudentHomeworksPresenter.presentDetail(homework);
+  }
+}
+
+@Injectable()
+export class GetStudentHomeworkAttachmentDownloadUrlUseCase {
+  constructor(
+    private readonly accessService: StudentAppAccessService,
+    private readonly readAdapter: StudentHomeworksReadAdapter,
+    private readonly storageService: StorageService,
+  ) {}
+
+  async execute(homeworkId: string, attachmentId: string): Promise<string> {
+    const { context } =
+      await this.accessService.getCurrentStudentWithEnrollment();
+    const file = await this.readAdapter.findHomeworkAttachmentForDownload({
+      context,
+      homeworkId,
+      attachmentId,
+    });
+
+    if (!file) {
+      throw new NotFoundDomainException(
+        'Student App homework attachment not found',
+      );
+    }
+
+    const capability = await this.storageService.createDownloadUrl({
+      bucket: file.bucket,
+      objectKey: file.objectKey,
+      expiresInSeconds: 5 * 60,
+      disposition: 'attachment',
+      downloadFileName: file.originalName,
+    });
+    return capability.url;
   }
 }
 

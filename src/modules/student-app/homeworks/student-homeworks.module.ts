@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
+import { StorageModule } from '../../../infrastructure/storage/storage.module';
 import { HomeworkModule } from '../../homework/homework.module';
 import { StudentAppAccessService } from '../access/student-app-access.service';
 import { StudentAppStudentReadAdapter } from '../access/student-app-student-read.adapter';
 import {
   GetStudentHomeworkUseCase,
+  GetStudentHomeworkAttachmentDownloadUrlUseCase,
   GetStudentHomeworkSubmissionUseCase,
   ListStudentHomeworkSubmissionAnswersUseCase,
   SaveStudentHomeworkSubmissionAnswerUseCase,
@@ -21,7 +23,7 @@ import { StudentHomeworksController } from './controller/student-homeworks.contr
 import { StudentHomeworksReadAdapter } from './infrastructure/student-homeworks-read.adapter';
 
 @Module({
-  imports: [HomeworkModule],
+  imports: [HomeworkModule, StorageModule],
   controllers: [StudentHomeworksController],
   providers: [
     StudentAppAccessService,
@@ -29,6 +31,7 @@ import { StudentHomeworksReadAdapter } from './infrastructure/student-homeworks-
     StudentHomeworksReadAdapter,
     ListStudentHomeworksUseCase,
     GetStudentHomeworkUseCase,
+    GetStudentHomeworkAttachmentDownloadUrlUseCase,
     GetStudentHomeworkSubmissionUseCase,
     ListStudentHomeworkSubmissionAnswersUseCase,
     SaveStudentHomeworkSubmissionAnswersUseCase,
