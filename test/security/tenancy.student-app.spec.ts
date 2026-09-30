@@ -68,6 +68,8 @@ import {
   setActor,
 } from '../../src/common/context/request-context';
 import { AppModule } from '../../src/app.module';
+import { StorageService } from '../../src/infrastructure/storage/storage.service';
+import { FilesRepository } from '../../src/modules/files/uploads/infrastructure/files.repository';
 import { REQUIRED_PERMISSIONS_METADATA } from '../../src/common/decorators/required-permissions.decorator';
 import { StudentAppAccessService } from '../../src/modules/student-app/access/student-app-access.service';
 import { StudentAppStudentReadAdapter } from '../../src/modules/student-app/access/student-app-student-read.adapter';
@@ -423,6 +425,11 @@ const STUDENT_APP_READ_PERMISSION_CASES: StudentAppReadPermissionCase[] = [
   },
   {
     controller: StudentHomeworksController,
+    method: 'downloadAttachment',
+    permissions: ['homework.assignments.view', 'files.downloads.view'],
+  },
+  {
+    controller: StudentHomeworksController,
     method: 'getSubmission',
     permissions: ['homework.submissions.view'],
   },
@@ -675,7 +682,7 @@ const STUDENT_APP_ROUTE_PERMISSION_CASES: StudentAppRoutePermissionCase[] = [
 
 describe('Student App read-only route permission metadata (security)', () => {
   it('declares the STU-PERM-1B read-only permission inventory', () => {
-    expect(STUDENT_APP_READ_PERMISSION_CASES).toHaveLength(64);
+    expect(STUDENT_APP_READ_PERMISSION_CASES).toHaveLength(65);
 
     for (const entry of STUDENT_APP_READ_PERMISSION_CASES) {
       const handler = (entry.controller.prototype as Record<string, unknown>)[
@@ -749,7 +756,7 @@ describe('Student App read-only route permission metadata (security)', () => {
   });
 
   it('declares the final STU-PERM route permission inventory for every Student App handler', () => {
-    expect(STUDENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(97);
+    expect(STUDENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(98);
 
     const expectedByHandler = new Map<string, StudentAppRoutePermissionCase>();
     for (const entry of STUDENT_APP_ROUTE_PERMISSION_CASES) {
@@ -1503,6 +1510,9 @@ describe('Student App Home/Profile routes (security)', () => {
       await prisma.reinforcementTask.deleteMany({
         where: { id: { in: createdTaskIds } },
       });
+      await prisma.homeworkAssignmentAttachment.deleteMany({
+        where: { homeworkAssignmentId: { in: createdHomeworkAssignmentIds } },
+      });
       await prisma.file.deleteMany({
         where: { id: { in: createdFileIds } },
       });
@@ -1704,6 +1714,7 @@ describe('Student App Home/Profile routes (security)', () => {
         'student/announcements',
         'student/calendar/events',
         'student/lessons/today?date=2026-09-14',
+        `student/homeworks/${placeholderId}/attachments/${placeholderId}/download`,
         'student/homeworks',
         `student/homeworks/${placeholderId}/submission`,
         'student/rewards',
@@ -3845,6 +3856,200 @@ describe('Student App Home/Profile routes (security)', () => {
     }
   });
 
+  it('redirects assigned Students for visible homework attachments and preserves safe detail and generic Files denial', async () => {
+    const { accessToken } = await login(linkedStudentEmail);
+    const homeworkId = await createStudentHomeworkFixture();
+    const { attachmentId, fileId } =
+      await createStudentHomeworkAttachmentFixture(homeworkId);
+    const downloadPath = `${GLOBAL_PREFIX}/student/homeworks/${homeworkId}/attachments/${attachmentId}/download`;
+    const signing = jest
+      .spyOn(app.get(StorageService), 'createDownloadUrl')
+      .mockResolvedValue({
+        url: 'https://storage.example.test/homework-download',
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      });
+    const fileLookup = jest.spyOn(
+      app.get(FilesRepository),
+      'findScopedFileById',
+    );
+
+    try {
+      for (const status of [
+        HomeworkAssignmentStatus.PUBLISHED,
+        HomeworkAssignmentStatus.CLOSED,
+      ]) {
+        await prisma.homeworkAssignment.update({
+          where: { id: homeworkId },
+          data: { status },
+        });
+        const response = await request(app.getHttpServer())
+          .get(downloadPath)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .expect(307);
+        expect(response.headers.location).toBe(
+          'https://storage.example.test/homework-download',
+        );
+      }
+      expect(signing).toHaveBeenCalledWith({
+        bucket: `${testSuffix}-homework-bucket`,
+        objectKey: `${testSuffix}/homework-${homeworkId}.pdf`,
+        expiresInSeconds: 300,
+        disposition: 'attachment',
+        downloadFileName: 'homework.pdf',
+      });
+      const detail = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/student/homeworks/${homeworkId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+      expect(detail.body.homework.attachments).toEqual([
+        expect.objectContaining({
+          attachmentId,
+          homeworkId,
+          fileId,
+          downloadPath,
+        }),
+      ]);
+      assertNoForbiddenStudentAppFields(detail.body);
+      for (const forbidden of [
+        'bucket',
+        'objectKey',
+        'signedUrl',
+        'storage.example.test',
+        `${testSuffix}-homework-bucket`,
+      ]) {
+        expect(JSON.stringify(detail.body)).not.toContain(forbidden);
+      }
+      expect(fileLookup).not.toHaveBeenCalled();
+      signing.mockClear();
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/files/${fileId}/download`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      expect(fileLookup).not.toHaveBeenCalled();
+      expect(signing).not.toHaveBeenCalled();
+    } finally {
+      signing.mockRestore();
+      fileLookup.mockRestore();
+    }
+  });
+
+  it.each([
+    'same-school other Student',
+    'cross-school Student',
+    'attachment from another homework',
+    'random attachment',
+    'random homework',
+    'deleted attachment',
+    'deleted File',
+    'File from another school',
+    'deleted homework',
+    'draft homework',
+    'target from another enrollment',
+  ])('returns the same safe 404 without signing for %s', async (denial) => {
+    const homeworkId = await createStudentHomeworkFixture();
+    const attachment = await createStudentHomeworkAttachmentFixture(homeworkId);
+    let requestedHomeworkId = homeworkId;
+    let requestedAttachmentId = attachment.attachmentId;
+    let email = linkedStudentEmail;
+    switch (denial) {
+      case 'same-school other Student':
+        email = sameSchoolOtherStudentEmail;
+        break;
+      case 'cross-school Student':
+        email = tenantBLinkedStudentEmail;
+        break;
+      case 'attachment from another homework':
+        requestedAttachmentId = (
+          await createStudentHomeworkAttachmentFixture(
+            await createStudentHomeworkFixture(),
+          )
+        ).attachmentId;
+        break;
+      case 'random attachment':
+        requestedAttachmentId = '11111111-1111-4111-8111-111111111111';
+        break;
+      case 'random homework':
+        requestedHomeworkId = '11111111-1111-4111-8111-111111111111';
+        break;
+      case 'deleted attachment':
+        await prisma.homeworkAssignmentAttachment.update({
+          where: { id: attachment.attachmentId },
+          data: { deletedAt: new Date() },
+        });
+        break;
+      case 'deleted File':
+        await prisma.file.update({
+          where: { id: attachment.fileId },
+          data: { deletedAt: new Date() },
+        });
+        break;
+      case 'File from another school':
+        await prisma.file.update({
+          where: { id: attachment.fileId },
+          data: { schoolId: createdSchoolIds.find((id) => id !== schoolId)! },
+        });
+        break;
+      case 'deleted homework':
+        await prisma.homeworkAssignment.update({
+          where: { id: homeworkId },
+          data: { deletedAt: new Date() },
+        });
+        break;
+      case 'draft homework':
+        await prisma.homeworkAssignment.update({
+          where: { id: homeworkId },
+          data: { status: HomeworkAssignmentStatus.DRAFT },
+        });
+        break;
+      case 'target from another enrollment':
+        await prisma.homeworkTarget.updateMany({
+          where: { homeworkAssignmentId: homeworkId },
+          data: { enrollmentId: sameSchoolOtherEnrollmentId },
+        });
+        break;
+    }
+    const { accessToken } = await login(email);
+    const signing = jest.spyOn(app.get(StorageService), 'createDownloadUrl');
+    try {
+      const response = await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/student/homeworks/${requestedHomeworkId}/attachments/${requestedAttachmentId}/download`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+      expect(response.body.error).toMatchObject({
+        code: 'not_found',
+        message: 'Student App homework attachment not found',
+      });
+      expect(response.body.error.details).toBeUndefined();
+      expect(signing).not.toHaveBeenCalled();
+    } finally {
+      signing.mockRestore();
+    }
+  });
+
+  it('validates both attachment download route identifiers as UUIDs', async () => {
+    const { accessToken } = await login(linkedStudentEmail);
+    const id = '11111111-1111-4111-8111-111111111111';
+    const signing = jest.spyOn(app.get(StorageService), 'createDownloadUrl');
+    try {
+      for (const [homeworkId, attachmentId] of [
+        ['invalid', id],
+        [id, 'invalid'],
+      ]) {
+        await request(app.getHttpServer())
+          .get(
+            `${GLOBAL_PREFIX}/student/homeworks/${homeworkId}/attachments/${attachmentId}/download`,
+          )
+          .set('Authorization', `Bearer ${accessToken}`)
+          .expect(400);
+      }
+      expect(signing).not.toHaveBeenCalled();
+    } finally {
+      signing.mockRestore();
+    }
+  });
+
   it('allows a linked student to save and submit own homework text only', async () => {
     const { accessToken } = await login(linkedStudentEmail);
     const homeworkId = await createStudentHomeworkFixture();
@@ -3951,6 +4156,36 @@ describe('Student App Home/Profile routes (security)', () => {
         .expect(404);
     }
   });
+
+  async function createStudentHomeworkAttachmentFixture(
+    homeworkId: string,
+  ): Promise<{ attachmentId: string; fileId: string }> {
+    const file = await prisma.file.create({
+      data: {
+        schoolId,
+        organizationId,
+        uploaderId: teacherUserId,
+        bucket: `${testSuffix}-homework-bucket`,
+        objectKey: `${testSuffix}/homework-${homeworkId}.pdf`,
+        originalName: 'homework.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 42n,
+        visibility: FileVisibility.PRIVATE,
+      },
+      select: { id: true },
+    });
+    createdFileIds.push(file.id);
+    const attachment = await prisma.homeworkAssignmentAttachment.create({
+      data: {
+        schoolId,
+        homeworkAssignmentId: homeworkId,
+        fileId: file.id,
+        createdByUserId: teacherUserId,
+      },
+      select: { id: true },
+    });
+    return { attachmentId: attachment.id, fileId: file.id };
+  }
 
   async function createStudentHomeworkFixture(): Promise<string> {
     const homework = await prisma.homeworkAssignment.create({

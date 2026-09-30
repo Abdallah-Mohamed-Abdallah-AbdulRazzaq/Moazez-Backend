@@ -318,6 +318,51 @@ export class StudentHomeworksReadAdapter {
       ...STUDENT_HOMEWORK_TARGET_ARGS,
     });
   }
+
+  async findHomeworkAttachmentForDownload(params: {
+    context: StudentAppContext;
+    homeworkId: string;
+    attachmentId: string;
+  }): Promise<{
+    bucket: string;
+    objectKey: string;
+    originalName: string;
+  } | null> {
+    const attachment =
+      await this.scopedPrisma.homeworkAssignmentAttachment.findFirst({
+        where: {
+          id: params.attachmentId,
+          homeworkAssignmentId: params.homeworkId,
+          deletedAt: null,
+          homeworkAssignment: {
+            is: {
+              ...visibleAssignmentWhere(params.context),
+              targets: {
+                some: {
+                  studentId: params.context.studentId,
+                  enrollmentId: params.context.enrollmentId,
+                  homeworkAssignmentId: params.homeworkId,
+                },
+              },
+            },
+          },
+          file: {
+            is: {
+              schoolId: params.context.schoolId,
+              deletedAt: null,
+              studentCredentialSecretArtifacts: { none: {} },
+            },
+          },
+        },
+        select: {
+          file: {
+            select: { bucket: true, objectKey: true, originalName: true },
+          },
+        },
+      });
+
+    return attachment?.file ?? null;
+  }
 }
 
 function buildTargetWhere(params: {
