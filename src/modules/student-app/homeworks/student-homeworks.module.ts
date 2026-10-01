@@ -21,6 +21,7 @@ import {
 } from './application/student-homeworks.use-cases';
 import { StudentHomeworksController } from './controller/student-homeworks.controller';
 import { StudentHomeworksReadAdapter } from './infrastructure/student-homeworks-read.adapter';
+import { GetStudentHomeworkAttachmentContentUseCase } from './application/get-student-homework-attachment-content.use-case';
 
 @Module({
   imports: [HomeworkModule, StorageModule],
@@ -32,6 +33,7 @@ import { StudentHomeworksReadAdapter } from './infrastructure/student-homeworks-
     ListStudentHomeworksUseCase,
     GetStudentHomeworkUseCase,
     GetStudentHomeworkAttachmentDownloadUrlUseCase,
+    GetStudentHomeworkAttachmentContentUseCase,
     GetStudentHomeworkSubmissionUseCase,
     ListStudentHomeworkSubmissionAnswersUseCase,
     SaveStudentHomeworkSubmissionAnswersUseCase,

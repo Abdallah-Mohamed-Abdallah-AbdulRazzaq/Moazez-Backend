@@ -49,6 +49,7 @@ describe('StudentHomeworksPresenter', () => {
         homeworkId,
         fileId: 'file-1',
         downloadPath: `/api/v1/student/homeworks/${homeworkId}/attachments/${attachmentId}/download`,
+        downloadContentPath: `/api/v1/student/homeworks/${homeworkId}/attachments/${attachmentId}/download/content`,
         title: 'Assignment',
         description: 'Read this',
         sortOrder: 2,

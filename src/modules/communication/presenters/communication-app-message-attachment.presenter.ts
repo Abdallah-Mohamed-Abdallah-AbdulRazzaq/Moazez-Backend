@@ -33,6 +33,8 @@ export interface CommunicationAppAttachmentCamelResponse {
   downloadPath: string;
   authorizedDownloadPath?: string;
   previewPath?: string;
+  authorizedDownloadContentPath?: string;
+  previewContentPath?: string;
 }
 
 export interface CommunicationAppAttachmentDualResponse
@@ -48,6 +50,8 @@ export interface CommunicationAppAttachmentDualResponse
   download_path: string;
   authorized_download_path?: string;
   preview_path?: string;
+  authorized_download_content_path?: string;
+  preview_content_path?: string;
 }
 
 export type CommunicationAppAttachmentResponse =
@@ -115,6 +119,10 @@ export function presentCommunicationAppMessageAttachment(
   if (authorizedPath) {
     camel.authorizedDownloadPath = authorizedPath.downloadPath;
     camel.previewPath = authorizedPath.previewPath;
+    if (params.authorizedRoute?.surface === 'student') {
+      camel.authorizedDownloadContentPath = `${authorizedPath.downloadPath}/content`;
+      camel.previewContentPath = `${authorizedPath.previewPath}/content`;
+    }
   }
 
   if (params.aliasStyle === 'camel') {
@@ -136,6 +144,14 @@ export function presentCommunicationAppMessageAttachment(
       ? { authorized_download_path: camel.authorizedDownloadPath }
       : {}),
     ...(camel.previewPath ? { preview_path: camel.previewPath } : {}),
+    ...(camel.authorizedDownloadContentPath
+      ? {
+          authorized_download_content_path: camel.authorizedDownloadContentPath,
+        }
+      : {}),
+    ...(camel.previewContentPath
+      ? { preview_content_path: camel.previewContentPath }
+      : {}),
   };
 }
 

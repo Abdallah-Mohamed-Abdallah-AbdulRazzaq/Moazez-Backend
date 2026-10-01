@@ -327,6 +327,8 @@ export class StudentHomeworksReadAdapter {
     bucket: string;
     objectKey: string;
     originalName: string;
+    mimeType: string;
+    sizeBytes: bigint;
   } | null> {
     const attachment =
       await this.scopedPrisma.homeworkAssignmentAttachment.findFirst({
@@ -356,7 +358,13 @@ export class StudentHomeworksReadAdapter {
         },
         select: {
           file: {
-            select: { bucket: true, objectKey: true, originalName: true },
+            select: {
+              bucket: true,
+              objectKey: true,
+              originalName: true,
+              mimeType: true,
+              sizeBytes: true,
+            },
           },
         },
       });

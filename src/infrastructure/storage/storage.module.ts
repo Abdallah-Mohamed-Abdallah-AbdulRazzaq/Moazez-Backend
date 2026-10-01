@@ -8,6 +8,7 @@ import {
 } from './object-storage.port';
 import { SignedUrlService } from './signed-url.service';
 import { StorageService } from './storage.service';
+import { PrivateMediaContentService } from './private-media-content.service';
 
 export function createObjectStoragePort(
   configService: ConfigService,
@@ -29,7 +30,8 @@ export function createObjectStoragePort(
     },
     SignedUrlService,
     StorageService,
+    PrivateMediaContentService,
   ],
-  exports: [StorageService],
+  exports: [StorageService, PrivateMediaContentService],
 })
 export class StorageModule {}

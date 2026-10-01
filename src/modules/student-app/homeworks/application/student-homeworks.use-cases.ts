@@ -104,6 +104,18 @@ export class GetStudentHomeworkAttachmentDownloadUrlUseCase {
   ) {}
 
   async execute(homeworkId: string, attachmentId: string): Promise<string> {
+    const file = await this.resolveFile(homeworkId, attachmentId);
+    const capability = await this.storageService.createDownloadUrl({
+      bucket: file.bucket,
+      objectKey: file.objectKey,
+      expiresInSeconds: 5 * 60,
+      disposition: 'attachment',
+      downloadFileName: file.originalName,
+    });
+    return capability.url;
+  }
+
+  async resolveFile(homeworkId: string, attachmentId: string) {
     const { context } =
       await this.accessService.getCurrentStudentWithEnrollment();
     const file = await this.readAdapter.findHomeworkAttachmentForDownload({
@@ -118,14 +130,7 @@ export class GetStudentHomeworkAttachmentDownloadUrlUseCase {
       );
     }
 
-    const capability = await this.storageService.createDownloadUrl({
-      bucket: file.bucket,
-      objectKey: file.objectKey,
-      expiresInSeconds: 5 * 60,
-      disposition: 'attachment',
-      downloadFileName: file.originalName,
-    });
-    return capability.url;
+    return file;
   }
 }
 

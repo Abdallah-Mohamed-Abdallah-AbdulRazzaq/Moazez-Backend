@@ -69,6 +69,8 @@ import {
 } from '../../src/common/context/request-context';
 import { AppModule } from '../../src/app.module';
 import { StorageService } from '../../src/infrastructure/storage/storage.service';
+import { Readable } from 'node:stream';
+import { ObjectStorageError } from '../../src/infrastructure/storage/object-storage.errors';
 import { FilesRepository } from '../../src/modules/files/uploads/infrastructure/files.repository';
 import { REQUIRED_PERMISSIONS_METADATA } from '../../src/common/decorators/required-permissions.decorator';
 import { StudentAppAccessService } from '../../src/modules/student-app/access/student-app-access.service';
@@ -354,6 +356,16 @@ const STUDENT_APP_READ_PERMISSION_CASES: StudentAppReadPermissionCase[] = [
     permissions: ['files.downloads.view'],
   },
   {
+    controller: StudentMessagesController,
+    method: 'downloadAttachmentContent',
+    permissions: ['files.downloads.view'],
+  },
+  {
+    controller: StudentMessagesController,
+    method: 'previewAttachmentContent',
+    permissions: ['files.downloads.view'],
+  },
+  {
     controller: StudentNotificationsController,
     method: 'listNotifications',
     permissions: ['communication.notifications.view'],
@@ -426,6 +438,11 @@ const STUDENT_APP_READ_PERMISSION_CASES: StudentAppReadPermissionCase[] = [
   {
     controller: StudentHomeworksController,
     method: 'downloadAttachment',
+    permissions: ['homework.assignments.view', 'files.downloads.view'],
+  },
+  {
+    controller: StudentHomeworksController,
+    method: 'downloadAttachmentContent',
     permissions: ['homework.assignments.view', 'files.downloads.view'],
   },
   {
@@ -682,7 +699,7 @@ const STUDENT_APP_ROUTE_PERMISSION_CASES: StudentAppRoutePermissionCase[] = [
 
 describe('Student App read-only route permission metadata (security)', () => {
   it('declares the STU-PERM-1B read-only permission inventory', () => {
-    expect(STUDENT_APP_READ_PERMISSION_CASES).toHaveLength(65);
+    expect(STUDENT_APP_READ_PERMISSION_CASES).toHaveLength(68);
 
     for (const entry of STUDENT_APP_READ_PERMISSION_CASES) {
       const handler = (entry.controller.prototype as Record<string, unknown>)[
@@ -756,7 +773,7 @@ describe('Student App read-only route permission metadata (security)', () => {
   });
 
   it('declares the final STU-PERM route permission inventory for every Student App handler', () => {
-    expect(STUDENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(98);
+    expect(STUDENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(101);
 
     const expectedByHandler = new Map<string, StudentAppRoutePermissionCase>();
     for (const entry of STUDENT_APP_ROUTE_PERMISSION_CASES) {
@@ -1470,6 +1487,9 @@ describe('Student App Home/Profile routes (security)', () => {
       });
       await prisma.communicationConversationParticipant.deleteMany({
         where: { id: { in: createdConversationParticipantIds } },
+      });
+      await prisma.communicationMessageAttachment.deleteMany({
+        where: { conversationId: { in: createdConversationIds } },
       });
       await prisma.communicationMessage.deleteMany({
         where: { conversationId: { in: createdConversationIds } },
@@ -3856,6 +3876,260 @@ describe('Student App Home/Profile routes (security)', () => {
     }
   });
 
+  it('delivers own message content and preview with safe headers, full-object Range behavior, and preserved redirects', async () => {
+    const { accessToken } = await login(linkedStudentEmail);
+    const { messageId, attachmentId, fileId } =
+      await createStudentMessageAttachmentFixture();
+    const base = `${GLOBAL_PREFIX}/student/messages/conversations/${ownConversationId}/messages/${messageId}/attachments/${attachmentId}`;
+    const storage = app.get(StorageService);
+    const signing = jest
+      .spyOn(storage, 'createDownloadUrl')
+      .mockResolvedValue({
+        url: 'https://storage.example.test/native-message',
+        expiresAt: new Date(),
+      });
+    const stat = jest
+      .spyOn(storage, 'statObject')
+      .mockResolvedValue({
+        size: 42,
+        etag: 'test',
+        contentType: 'provider/type',
+        metadata: {},
+        lastModified: null,
+        generation: null,
+        version: null,
+      });
+    const read = jest
+      .spyOn(storage, 'getObject')
+      .mockImplementation(async () => Readable.from([Buffer.alloc(42, 65)]));
+    const fileLookup = jest.spyOn(
+      app.get(FilesRepository),
+      'findScopedFileById',
+    );
+    try {
+      for (const [mode, disposition] of [
+        ['download', 'attachment'],
+        ['preview', 'inline'],
+      ]) {
+        const response = await request(app.getHttpServer())
+          .get(`${base}/${mode}/content`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .set('Range', 'bytes=0-3')
+          .expect(200);
+        expect(response.body).toEqual(Buffer.alloc(42, 65));
+        expect(response.headers['content-type']).toBe('application/pdf');
+        expect(response.headers['content-length']).toBe('42');
+        expect(response.headers['content-disposition']).toMatch(
+          new RegExp(`^${disposition};`),
+        );
+        expect(response.headers['content-disposition']).toContain(
+          'filename="message.pdf"',
+        );
+        expect(response.headers['cache-control']).toBe(
+          'no-store, private, max-age=0',
+        );
+        expect(response.headers['x-content-type-options']).toBe('nosniff');
+        expect(response.headers['content-range']).toBeUndefined();
+        expect(response.headers['accept-ranges']).toBeUndefined();
+        expect(response.headers.location).toBeUndefined();
+      }
+      expect(signing).not.toHaveBeenCalled();
+      expect(fileLookup).not.toHaveBeenCalled();
+      const list = await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/student/messages/conversations/${ownConversationId}/messages`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+      assertPrivateMediaNoLeak(list.body);
+      expect(JSON.stringify(list.body)).toContain(`${base}/download/content`);
+      expect(JSON.stringify(list.body)).toContain(`${base}/preview/content`);
+      for (const mode of ['download', 'preview']) {
+        const response = await request(app.getHttpServer())
+          .get(`${base}/${mode}`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .expect(307);
+        expect(response.headers.location).toBe(
+          'https://storage.example.test/native-message',
+        );
+      }
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/files/${fileId}/download`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      expect(fileLookup).not.toHaveBeenCalled();
+    } finally {
+      signing.mockRestore();
+      stat.mockRestore();
+      read.mockRestore();
+      fileLookup.mockRestore();
+    }
+  });
+
+  it.each([
+    'same-school non-participant',
+    'cross-school Student',
+    'other Student conversation',
+    'wrong message relation',
+    'random attachment',
+    'deleted attachment',
+    'hidden message',
+    'deleted message',
+    'deleted File',
+    'File from another school',
+  ])('denies message content without storage access for %s', async (denial) => {
+    const fixture = await createStudentMessageAttachmentFixture();
+    let email = linkedStudentEmail;
+    let conversationId = ownConversationId;
+    let messageId = fixture.messageId;
+    let attachmentId = fixture.attachmentId;
+    switch (denial) {
+      case 'same-school non-participant':
+        email = sameSchoolOtherStudentEmail;
+        break;
+      case 'cross-school Student':
+        email = tenantBLinkedStudentEmail;
+        break;
+      case 'other Student conversation':
+        conversationId = sameSchoolOtherConversationId;
+        break;
+      case 'wrong message relation':
+        messageId = (await createStudentMessageAttachmentFixture()).messageId;
+        break;
+      case 'random attachment':
+        attachmentId = '11111111-1111-4111-8111-111111111111';
+        break;
+      case 'deleted attachment':
+        await prisma.communicationMessageAttachment.update({
+          where: { id: attachmentId },
+          data: { deletedAt: new Date() },
+        });
+        break;
+      case 'hidden message':
+        await prisma.communicationMessage.update({
+          where: { id: messageId },
+          data: {
+            status: CommunicationMessageStatus.HIDDEN,
+            hiddenAt: new Date(),
+          },
+        });
+        break;
+      case 'deleted message':
+        await prisma.communicationMessage.update({
+          where: { id: messageId },
+          data: {
+            status: CommunicationMessageStatus.DELETED,
+            deletedAt: new Date(),
+          },
+        });
+        break;
+      case 'deleted File':
+        await prisma.file.update({
+          where: { id: fixture.fileId },
+          data: { deletedAt: new Date() },
+        });
+        break;
+      case 'File from another school':
+        await prisma.file.update({
+          where: { id: fixture.fileId },
+          data: { schoolId: createdSchoolIds.find((id) => id !== schoolId)! },
+        });
+        break;
+    }
+    const { accessToken } = await login(email);
+    const storage = app.get(StorageService);
+    const stat = jest.spyOn(storage, 'statObject');
+    const read = jest.spyOn(storage, 'getObject');
+    const signing = jest.spyOn(storage, 'createDownloadUrl');
+    try {
+      for (const mode of ['download', 'preview']) {
+        const response = await request(app.getHttpServer())
+          .get(
+            `${GLOBAL_PREFIX}/student/messages/conversations/${conversationId}/messages/${messageId}/attachments/${attachmentId}/${mode}/content`,
+          )
+          .set('Authorization', `Bearer ${accessToken}`)
+          .expect(404);
+        expect(response.body.error.code).toBe('not_found');
+        assertPrivateMediaNoLeak(response.body);
+      }
+      expect(stat).not.toHaveBeenCalled();
+      expect(read).not.toHaveBeenCalled();
+      expect(signing).not.toHaveBeenCalled();
+    } finally {
+      stat.mockRestore();
+      read.mockRestore();
+      signing.mockRestore();
+    }
+  });
+
+  it.each(['missing', 'size mismatch', 'provider unavailable'])(
+    'returns safe content errors for %s in both features',
+    async (failure) => {
+      const message = await createStudentMessageAttachmentFixture();
+      const homeworkId = await createStudentHomeworkFixture();
+      const homework = await createStudentHomeworkAttachmentFixture(homeworkId);
+      const { accessToken } = await login(linkedStudentEmail);
+      const storage = app.get(StorageService);
+      const stat = jest.spyOn(storage, 'statObject');
+      if (failure === 'missing')
+        stat.mockRejectedValue(new ObjectStorageError('not_found'));
+      if (failure === 'size mismatch')
+        stat.mockResolvedValue({
+          size: 41,
+          etag: 'test',
+          contentType: 'application/pdf',
+          metadata: {},
+          lastModified: null,
+          generation: null,
+          version: null,
+        });
+      if (failure === 'provider unavailable')
+        stat.mockRejectedValue(
+          new Error(
+            'credentials bucket objectKey storage.googleapis.com/provider-private-path',
+          ),
+        );
+      const read = jest.spyOn(storage, 'getObject');
+      const signing = jest.spyOn(storage, 'createDownloadUrl');
+      try {
+        for (const [path, feature] of [
+          [
+            `student/messages/conversations/${ownConversationId}/messages/${message.messageId}/attachments/${message.attachmentId}/download/content`,
+            'message',
+          ],
+          [
+            `student/homeworks/${homeworkId}/attachments/${homework.attachmentId}/download/content`,
+            'homework',
+          ],
+        ]) {
+          const response = await request(app.getHttpServer())
+            .get(`${GLOBAL_PREFIX}/${path}`)
+            .set('Authorization', `Bearer ${accessToken}`)
+            .expect(failure === 'provider unavailable' ? 503 : 404);
+          expect(response.body.error).toMatchObject(
+            failure === 'provider unavailable'
+              ? {
+                  code: 'service_unavailable',
+                  message: 'Service temporarily unavailable',
+                }
+              : {
+                  code: 'not_found',
+                  message: `Student App ${feature} attachment not found`,
+                },
+          );
+          expect(response.body.error.details).toBeUndefined();
+          assertPrivateMediaNoLeak(response.body);
+        }
+        expect(read).not.toHaveBeenCalled();
+        expect(signing).not.toHaveBeenCalled();
+      } finally {
+        stat.mockRestore();
+        read.mockRestore();
+        signing.mockRestore();
+      }
+    },
+  );
+
   it('redirects assigned Students for visible homework attachments and preserves safe detail and generic Files denial', async () => {
     const { accessToken } = await login(linkedStudentEmail);
     const homeworkId = await createStudentHomeworkFixture();
@@ -3872,6 +4146,20 @@ describe('Student App Home/Profile routes (security)', () => {
       app.get(FilesRepository),
       'findScopedFileById',
     );
+    const stat = jest
+      .spyOn(app.get(StorageService), 'statObject')
+      .mockResolvedValue({
+        size: 42,
+        etag: 'test',
+        contentType: 'provider/type',
+        metadata: {},
+        lastModified: null,
+        generation: null,
+        version: null,
+      });
+    const read = jest
+      .spyOn(app.get(StorageService), 'getObject')
+      .mockImplementation(async () => Readable.from([Buffer.alloc(42, 65)]));
 
     try {
       for (const status of [
@@ -3889,6 +4177,21 @@ describe('Student App Home/Profile routes (security)', () => {
         expect(response.headers.location).toBe(
           'https://storage.example.test/homework-download',
         );
+        const signedCalls = signing.mock.calls.length;
+        const content = await request(app.getHttpServer())
+          .get(`${downloadPath}/content`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .expect(200);
+        expect(content.body).toEqual(Buffer.alloc(42, 65));
+        expect(content.headers['content-type']).toBe('application/pdf');
+        expect(content.headers['content-length']).toBe('42');
+        expect(content.headers['content-disposition']).toMatch(/^attachment;/u);
+        expect(content.headers['cache-control']).toBe(
+          'no-store, private, max-age=0',
+        );
+        expect(content.headers['x-content-type-options']).toBe('nosniff');
+        expect(content.headers.location).toBeUndefined();
+        expect(signing.mock.calls.length).toBe(signedCalls);
       }
       expect(signing).toHaveBeenCalledWith({
         bucket: `${testSuffix}-homework-bucket`,
@@ -3907,6 +4210,7 @@ describe('Student App Home/Profile routes (security)', () => {
           homeworkId,
           fileId,
           downloadPath,
+          downloadContentPath: `${downloadPath}/content`,
         }),
       ]);
       assertNoForbiddenStudentAppFields(detail.body);
@@ -3930,6 +4234,8 @@ describe('Student App Home/Profile routes (security)', () => {
     } finally {
       signing.mockRestore();
       fileLookup.mockRestore();
+      stat.mockRestore();
+      read.mockRestore();
     }
   });
 
@@ -4011,17 +4317,20 @@ describe('Student App Home/Profile routes (security)', () => {
     const { accessToken } = await login(email);
     const signing = jest.spyOn(app.get(StorageService), 'createDownloadUrl');
     try {
-      const response = await request(app.getHttpServer())
-        .get(
-          `${GLOBAL_PREFIX}/student/homeworks/${requestedHomeworkId}/attachments/${requestedAttachmentId}/download`,
-        )
-        .set('Authorization', `Bearer ${accessToken}`)
-        .expect(404);
-      expect(response.body.error).toMatchObject({
-        code: 'not_found',
-        message: 'Student App homework attachment not found',
-      });
-      expect(response.body.error.details).toBeUndefined();
+      for (const suffix of ['', '/content']) {
+        const response = await request(app.getHttpServer())
+          .get(
+            `${GLOBAL_PREFIX}/student/homeworks/${requestedHomeworkId}/attachments/${requestedAttachmentId}/download${suffix}`,
+          )
+          .set('Authorization', `Bearer ${accessToken}`)
+          .expect(404);
+        expect(response.body.error).toMatchObject({
+          code: 'not_found',
+          message: 'Student App homework attachment not found',
+        });
+        expect(response.body.error.details).toBeUndefined();
+        assertPrivateMediaNoLeak(response.body);
+      }
       expect(signing).not.toHaveBeenCalled();
     } finally {
       signing.mockRestore();
@@ -4033,20 +4342,41 @@ describe('Student App Home/Profile routes (security)', () => {
     const id = '11111111-1111-4111-8111-111111111111';
     const signing = jest.spyOn(app.get(StorageService), 'createDownloadUrl');
     try {
-      for (const [homeworkId, attachmentId] of [
-        ['invalid', id],
-        [id, 'invalid'],
-      ]) {
-        await request(app.getHttpServer())
-          .get(
-            `${GLOBAL_PREFIX}/student/homeworks/${homeworkId}/attachments/${attachmentId}/download`,
-          )
-          .set('Authorization', `Bearer ${accessToken}`)
-          .expect(400);
+      for (const suffix of ['', '/content']) {
+        for (const [homeworkId, attachmentId] of [
+          ['invalid', id],
+          [id, 'invalid'],
+        ]) {
+          await request(app.getHttpServer())
+            .get(
+              `${GLOBAL_PREFIX}/student/homeworks/${homeworkId}/attachments/${attachmentId}/download${suffix}`,
+            )
+            .set('Authorization', `Bearer ${accessToken}`)
+            .expect(400);
+        }
       }
       expect(signing).not.toHaveBeenCalled();
     } finally {
       signing.mockRestore();
+    }
+  });
+
+  it('validates all message content route identifiers as UUIDs', async () => {
+    const { accessToken } = await login(linkedStudentEmail);
+    const id = '11111111-1111-4111-8111-111111111111';
+    for (const mode of ['download', 'preview']) {
+      for (const [conversationId, messageId, attachmentId] of [
+        ['invalid', id, id],
+        [id, 'invalid', id],
+        [id, id, 'invalid'],
+      ]) {
+        await request(app.getHttpServer())
+          .get(
+            `${GLOBAL_PREFIX}/student/messages/conversations/${conversationId}/messages/${messageId}/attachments/${attachmentId}/${mode}/content`,
+          )
+          .set('Authorization', `Bearer ${accessToken}`)
+          .expect(400);
+      }
     }
   });
 
@@ -4156,6 +4486,71 @@ describe('Student App Home/Profile routes (security)', () => {
         .expect(404);
     }
   });
+
+  function assertPrivateMediaNoLeak(payload: unknown): void {
+    const serialized = JSON.stringify(payload);
+    for (const forbidden of [
+      'bucket',
+      'objectKey',
+      'storageKey',
+      'signedUrl',
+      'storage.googleapis.com',
+      'credentials',
+      'provider-private-path',
+      'storage.example.test',
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  }
+
+  async function createStudentMessageAttachmentFixture(): Promise<{
+    messageId: string;
+    attachmentId: string;
+    fileId: string;
+  }> {
+    const message = await prisma.communicationMessage.create({
+      data: {
+        schoolId,
+        conversationId: ownConversationId,
+        senderUserId: teacherUserId,
+        kind: CommunicationMessageKind.FILE,
+        status: CommunicationMessageStatus.SENT,
+        body: 'Private media fixture',
+      },
+      select: { id: true },
+    });
+    createdMessageIds.push(message.id);
+    const file = await prisma.file.create({
+      data: {
+        schoolId,
+        organizationId,
+        uploaderId: teacherUserId,
+        bucket: `${testSuffix}-message-bucket`,
+        objectKey: `${testSuffix}/message-${message.id}.pdf`,
+        originalName: 'message.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 42n,
+        visibility: FileVisibility.PRIVATE,
+      },
+      select: { id: true },
+    });
+    createdFileIds.push(file.id);
+    const attachment = await prisma.communicationMessageAttachment.create({
+      data: {
+        schoolId,
+        conversationId: ownConversationId,
+        messageId: message.id,
+        fileId: file.id,
+        uploadedById: teacherUserId,
+      },
+      select: { id: true },
+    });
+    return {
+      messageId: message.id,
+      attachmentId: attachment.id,
+      fileId: file.id,
+    };
+  }
 
   async function createStudentHomeworkAttachmentFixture(
     homeworkId: string,

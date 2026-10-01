@@ -130,6 +130,14 @@ describe('StudentMessagesPresenter', () => {
           '/api/v1/student/messages/conversations/conversation-1/messages/message-with-attachment/attachments/attachment-1/preview',
         preview_path:
           '/api/v1/student/messages/conversations/conversation-1/messages/message-with-attachment/attachments/attachment-1/preview',
+        authorizedDownloadContentPath:
+          '/api/v1/student/messages/conversations/conversation-1/messages/message-with-attachment/attachments/attachment-1/download/content',
+        authorized_download_content_path:
+          '/api/v1/student/messages/conversations/conversation-1/messages/message-with-attachment/attachments/attachment-1/download/content',
+        previewContentPath:
+          '/api/v1/student/messages/conversations/conversation-1/messages/message-with-attachment/attachments/attachment-1/preview/content',
+        preview_content_path:
+          '/api/v1/student/messages/conversations/conversation-1/messages/message-with-attachment/attachments/attachment-1/preview/content',
       }),
     ]);
     expect(result.messages[0].attachmentsCount).toBe(1);

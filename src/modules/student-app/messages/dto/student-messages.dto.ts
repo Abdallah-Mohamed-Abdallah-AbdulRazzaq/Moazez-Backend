@@ -325,6 +325,10 @@ export class StudentMessageAttachmentDto {
   authorized_download_path?: string;
   previewPath?: string;
   preview_path?: string;
+  authorizedDownloadContentPath?: string;
+  authorized_download_content_path?: string;
+  previewContentPath?: string;
+  preview_content_path?: string;
 }
 
 export class StudentConversationLastMessageDto {

@@ -202,6 +202,7 @@ function presentSafeAttachment(
     homeworkId: attachment.homeworkAssignmentId,
     fileId: attachment.fileId,
     downloadPath: `/api/v1/student/homeworks/${attachment.homeworkAssignmentId}/attachments/${attachment.id}/download`,
+    downloadContentPath: `/api/v1/student/homeworks/${attachment.homeworkAssignmentId}/attachments/${attachment.id}/download/content`,
     title: attachment.title ?? attachment.file.originalName,
     description: attachment.description ?? null,
     sortOrder: attachment.sortOrder,

@@ -7,6 +7,7 @@ import {
   Post,
   Query,
   Redirect,
+  Res,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -16,6 +17,9 @@ import {
   ApiTemporaryRedirectResponse,
 } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
+import type { Response } from 'express';
+import { streamPrivateMediaContent } from '../../../../infrastructure/storage/private-media-content.response';
+import { GetStudentMessageAttachmentContentUseCase } from '../application/get-student-message-attachment-content.use-case';
 import { GetStudentMessageAttachmentDownloadUrlUseCase } from '../application/get-student-message-attachment-download-url.use-case';
 import {
   GetStudentMessageInfoUseCase,
@@ -66,7 +70,52 @@ export class StudentMessagesController {
     private readonly getStudentMessageAttachmentDownloadUrlUseCase: GetStudentMessageAttachmentDownloadUrlUseCase,
     private readonly listStudentMessageContactsUseCase: ListStudentMessageContactsUseCase,
     private readonly createStudentMessageConversationUseCase: CreateStudentMessageConversationUseCase,
+    private readonly getStudentMessageAttachmentContentUseCase: GetStudentMessageAttachmentContentUseCase,
   ) {}
+
+  @Get(
+    'conversations/:conversationId/messages/:messageId/attachments/:attachmentId/download/content',
+  )
+  @ApiOkResponse({ description: 'Returns the authorized attachment bytes.' })
+  @RequiredPermissions('files.downloads.view')
+  async downloadAttachmentContent(
+    @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
+    @Param('messageId', new ParseUUIDPipe()) messageId: string,
+    @Param('attachmentId', new ParseUUIDPipe()) attachmentId: string,
+    @Res() response: Response,
+  ): Promise<void> {
+    const content =
+      await this.getStudentMessageAttachmentContentUseCase.execute({
+        conversationId,
+        messageId,
+        attachmentId,
+        mode: 'download',
+      });
+    await streamPrivateMediaContent(content, response, 'attachment');
+  }
+
+  @Get(
+    'conversations/:conversationId/messages/:messageId/attachments/:attachmentId/preview/content',
+  )
+  @ApiOkResponse({
+    description: 'Returns the authorized attachment bytes inline.',
+  })
+  @RequiredPermissions('files.downloads.view')
+  async previewAttachmentContent(
+    @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
+    @Param('messageId', new ParseUUIDPipe()) messageId: string,
+    @Param('attachmentId', new ParseUUIDPipe()) attachmentId: string,
+    @Res() response: Response,
+  ): Promise<void> {
+    const content =
+      await this.getStudentMessageAttachmentContentUseCase.execute({
+        conversationId,
+        messageId,
+        attachmentId,
+        mode: 'preview',
+      });
+    await streamPrivateMediaContent(content, response, 'inline');
+  }
 
   @Get('contacts')
   @ApiOkResponse({ type: StudentMessageContactsResponseDto })

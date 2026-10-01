@@ -11,6 +11,7 @@ import {
   Put,
   Query,
   Redirect,
+  Res,
   Delete,
 } from '@nestjs/common';
 import {
@@ -24,6 +25,9 @@ import {
   ApiTemporaryRedirectResponse,
 } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
+import type { Response } from 'express';
+import { streamPrivateMediaContent } from '../../../../infrastructure/storage/private-media-content.response';
+import { GetStudentHomeworkAttachmentContentUseCase } from '../application/get-student-homework-attachment-content.use-case';
 import {
   GetStudentHomeworkUseCase,
   GetStudentHomeworkAttachmentDownloadUrlUseCase,
@@ -85,6 +89,7 @@ export class StudentHomeworksController {
     private readonly updateStudentHomeworkSubmissionAttachmentUseCase: UpdateStudentHomeworkSubmissionAttachmentUseCase,
     private readonly reorderStudentHomeworkSubmissionAttachmentUseCase: ReorderStudentHomeworkSubmissionAttachmentUseCase,
     private readonly deleteStudentHomeworkSubmissionAttachmentUseCase: DeleteStudentHomeworkSubmissionAttachmentUseCase,
+    private readonly getStudentHomeworkAttachmentContentUseCase: GetStudentHomeworkAttachmentContentUseCase,
   ) {}
 
   @Get()
@@ -134,6 +139,23 @@ export class StudentHomeworksController {
         attachmentId,
       );
     return { url };
+  }
+
+  @Get(':homeworkId/attachments/:attachmentId/download/content')
+  @ApiOperation({ summary: 'Read an assigned homework attachment' })
+  @ApiOkResponse({ description: 'Returns the authorized attachment bytes.' })
+  @RequiredPermissions('homework.assignments.view', 'files.downloads.view')
+  async downloadAttachmentContent(
+    @Param('homeworkId', new ParseUUIDPipe()) homeworkId: string,
+    @Param('attachmentId', new ParseUUIDPipe()) attachmentId: string,
+    @Res() response: Response,
+  ): Promise<void> {
+    const content =
+      await this.getStudentHomeworkAttachmentContentUseCase.execute(
+        homeworkId,
+        attachmentId,
+      );
+    await streamPrivateMediaContent(content, response, 'attachment');
   }
 
   @Get(':homeworkId/submission')
