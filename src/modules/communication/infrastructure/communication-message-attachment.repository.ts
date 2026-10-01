@@ -105,6 +105,7 @@ const COMMUNICATION_ATTACHMENT_DOWNLOAD_ARGS =
           objectKey: true,
           originalName: true,
           mimeType: true,
+          sizeBytes: true,
           visibility: true,
           deletedAt: true,
         },

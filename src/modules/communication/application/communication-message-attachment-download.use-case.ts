@@ -22,6 +22,23 @@ export class GetCommunicationMessageAttachmentDownloadUrlUseCase {
     attachmentId: string;
     mode: CommunicationAttachmentAccessMode;
   }): Promise<string> {
+    const file = await this.resolveFile(input);
+    const capability = await this.storageService.createDownloadUrl({
+      bucket: file.bucket,
+      objectKey: file.objectKey,
+      expiresInSeconds: 5 * 60,
+      disposition: 'attachment',
+      downloadFileName: file.originalName,
+    });
+    return capability.url;
+  }
+
+  async resolveFile(input: {
+    conversationId: string;
+    messageId: string;
+    attachmentId: string;
+    mode: CommunicationAttachmentAccessMode;
+  }): Promise<CommunicationMessageAttachmentDownloadRecord['file']> {
     const attachment =
       await this.repository.findCurrentSchoolMessageAttachmentForDownload({
         conversationId: input.conversationId,
@@ -31,14 +48,7 @@ export class GetCommunicationMessageAttachmentDownloadUrlUseCase {
 
     assertAttachmentIsDownloadable(attachment, input);
 
-    const capability = await this.storageService.createDownloadUrl({
-      bucket: attachment.file.bucket,
-      objectKey: attachment.file.objectKey,
-      expiresInSeconds: 5 * 60,
-      disposition: 'attachment',
-      downloadFileName: attachment.file.originalName,
-    });
-    return capability.url;
+    return attachment.file;
   }
 }
 

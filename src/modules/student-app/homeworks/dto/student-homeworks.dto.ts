@@ -168,6 +168,7 @@ export class StudentHomeworkAttachmentDto {
   homeworkId!: string;
   fileId!: string;
   downloadPath!: string;
+  downloadContentPath!: string;
   title!: string | null;
   description!: string | null;
   sortOrder!: number;

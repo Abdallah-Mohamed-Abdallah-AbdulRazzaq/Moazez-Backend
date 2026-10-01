@@ -15,6 +15,8 @@ describe('StudentHomeworksReadAdapter', () => {
       bucket: 'private',
       objectKey: 'homework/assignment.pdf',
       originalName: 'Assignment.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 42n,
     };
     attachmentMocks.findFirst.mockResolvedValue({ file });
 
@@ -61,7 +63,15 @@ describe('StudentHomeworksReadAdapter', () => {
         },
       },
       select: {
-        file: { select: { bucket: true, objectKey: true, originalName: true } },
+        file: {
+          select: {
+            bucket: true,
+            objectKey: true,
+            originalName: true,
+            mimeType: true,
+            sizeBytes: true,
+          },
+        },
       },
     });
     expect(platformBypass).not.toHaveBeenCalled();
