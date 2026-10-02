@@ -3,11 +3,16 @@ import {
   AcademicContentApprovalStatus,
   AcademicContentStatus,
 } from '@prisma/client';
-import { IsString } from 'class-validator';
+import { IsString, MaxLength } from 'class-validator';
+
+export class AcademicContentEmptyWorkflowBodyDto {
+  [key: string]: never;
+}
 
 export class AcademicContentRequestChangesDto {
   @ApiProperty({ type: String, maxLength: 4000 })
   @IsString()
+  @MaxLength(4000)
   note!: string;
 }
 

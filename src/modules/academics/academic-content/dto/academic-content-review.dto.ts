@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import {
   AcademicContentApprovalStatus,
   AcademicContentTargetScopeType,
@@ -51,6 +51,7 @@ export class AcademicContentReviewQueueQueryDto extends AcademicContentPaginatio
   @ApiPropertyOptional({ maxLength: 120 })
   @IsOptional()
   @IsString()
+  @MaxLength(120)
   search?: string;
 }
 

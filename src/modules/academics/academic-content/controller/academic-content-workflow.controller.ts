@@ -36,6 +36,7 @@ import {
   AcademicContentReviewQueueResponseDto,
 } from '../dto/academic-content-review.dto';
 import {
+  AcademicContentEmptyWorkflowBodyDto,
   AcademicContentRequestChangesDto,
   AcademicContentTransitionResponseDto,
 } from '../dto/academic-content-workflow.dto';
@@ -92,10 +93,14 @@ export class AcademicContentWorkflowController {
   @ApiOperation({
     summary: 'Submit or resubmit Teacher Preparation for review',
   })
+  @ApiBody({
+    required: false,
+    schema: { type: 'object', properties: {}, additionalProperties: false },
+  })
   @ApiOkResponse({ type: AcademicContentTransitionResponseDto })
   submit(
     @Param('contentId', ParseUUIDPipe) contentId: string,
-    @Body() body: unknown,
+    @Body() body: AcademicContentEmptyWorkflowBodyDto,
   ): Promise<AcademicContentTransitionResponseDto> {
     return this.submitContent
       .execute(contentId, body)
@@ -106,10 +111,14 @@ export class AcademicContentWorkflowController {
   @HttpCode(HttpStatus.OK)
   @RequiredPermissions('academics.academic_content.approve')
   @ApiOperation({ summary: 'Approve the current Teacher Preparation revision' })
+  @ApiBody({
+    required: false,
+    schema: { type: 'object', properties: {}, additionalProperties: false },
+  })
   @ApiOkResponse({ type: AcademicContentTransitionResponseDto })
   approve(
     @Param('contentId', ParseUUIDPipe) contentId: string,
-    @Body() body: unknown,
+    @Body() body: AcademicContentEmptyWorkflowBodyDto,
   ): Promise<AcademicContentTransitionResponseDto> {
     return this.approveContent
       .execute(contentId, body)

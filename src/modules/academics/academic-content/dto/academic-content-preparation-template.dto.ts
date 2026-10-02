@@ -1,12 +1,14 @@
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import {
+  ArrayMaxSize,
   IsArray,
   IsInt,
   IsOptional,
   IsString,
   IsUUID,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 
@@ -24,6 +26,7 @@ export class ListAcademicContentPreparationTemplatesQueryDto {
   @ApiPropertyOptional({ maxLength: 120 })
   @IsOptional()
   @IsString()
+  @MaxLength(120)
   search?: string;
 
   @ApiPropertyOptional({ default: 1, minimum: 1 })
@@ -45,11 +48,13 @@ export class ListAcademicContentPreparationTemplatesQueryDto {
 export class CreateAcademicContentPreparationTemplateDto {
   @ApiProperty({ maxLength: 180 })
   @IsString()
+  @MaxLength(180)
   name!: string;
 
   @ApiPropertyOptional({ nullable: true, maxLength: 1000 })
   @IsOptional()
   @IsString()
+  @MaxLength(1000)
   description?: string | null;
 
   @ApiPropertyOptional({ nullable: true, format: 'uuid' })
@@ -65,45 +70,57 @@ export class CreateAcademicContentPreparationTemplateDto {
   @ApiPropertyOptional({ nullable: true, maxLength: 500 })
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   topic?: string | null;
 
   @ApiPropertyOptional({ type: [String], maxItems: 50 })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(50)
   @IsString({ each: true })
+  @MaxLength(500, { each: true })
   objectives?: string[];
 
   @ApiPropertyOptional({ type: [String], maxItems: 50 })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(50)
   @IsString({ each: true })
+  @MaxLength(500, { each: true })
   learningOutcomes?: string[];
 
   @ApiPropertyOptional({ type: [String], maxItems: 50 })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(50)
   @IsString({ each: true })
+  @MaxLength(500, { each: true })
   teachingStrategies?: string[];
 
   @ApiPropertyOptional({ type: [String], maxItems: 50 })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(50)
   @IsString({ each: true })
+  @MaxLength(500, { each: true })
   activities?: string[];
 
   @ApiPropertyOptional({ nullable: true, maxLength: 4000 })
   @IsOptional()
   @IsString()
+  @MaxLength(4000)
   resourceNotes?: string | null;
 
   @ApiPropertyOptional({ nullable: true, maxLength: 4000 })
   @IsOptional()
   @IsString()
+  @MaxLength(4000)
   assessmentNotes?: string | null;
 
   @ApiPropertyOptional({ nullable: true, maxLength: 4000 })
   @IsOptional()
   @IsString()
+  @MaxLength(4000)
   teacherNotes?: string | null;
 }
 
