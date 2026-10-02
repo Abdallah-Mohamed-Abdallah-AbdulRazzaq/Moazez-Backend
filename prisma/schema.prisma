@@ -1249,6 +1249,22 @@ enum AcademicContentApprovalStatus {
   @@map("academic_content_approval_status")
 }
 
+enum AcademicContentPublicationStatus {
+  SCHEDULED
+  PUBLISHED
+  EXPIRED
+  CANCELLED
+
+  @@map("academic_content_publication_status")
+}
+
+enum AcademicContentAudienceRecipientKind {
+  STUDENT
+  GUARDIAN
+
+  @@map("academic_content_audience_recipient_kind")
+}
+
 enum AcademicContentAudienceType {
   INTERNAL_STAFF
   STUDENTS
@@ -1497,6 +1513,9 @@ model School {
   academicContentFilePolicy                     AcademicContentFilePolicy?
   academicContentWorkflowPolicy                 AcademicContentWorkflowPolicy?
   academicContentApprovals                      AcademicContentApproval[]
+  academicContentPublications                   AcademicContentPublication[]
+  academicContentAudienceRecipients             AcademicContentAudienceRecipient[]
+  academicContentAudienceRecipientTargets       AcademicContentAudienceRecipientTarget[]
   academicCalendarEvents                        AcademicCalendarEvent[]
   curricula                                     Curriculum[]
   curriculumUnits                               CurriculumUnit[]
@@ -1720,6 +1739,8 @@ model User {
   academicContentLinksCreated                    AcademicContentLink[]                  @relation("AcademicContentLinkCreatedBy")
   academicContentTagsCreated                     AcademicContentTag[]                   @relation("AcademicContentTagCreatedBy")
   academicContentRevisionsCaptured               AcademicContentRevision[]              @relation("AcademicContentRevisionCapturedBy")
+  academicContentPublicationsCreated             AcademicContentPublication[]           @relation("AcademicContentPublicationCreatedBy")
+  academicContentPublicationsCancelled           AcademicContentPublication[]           @relation("AcademicContentPublicationCancelledBy")
   curriculaCreated                               Curriculum[]                           @relation("CurriculumCreatedBy")
   curriculaUpdated                               Curriculum[]                           @relation("CurriculumUpdatedBy")
   lessonContentItemsCreated                      LessonContentItem[]                    @relation("LessonContentItemCreatedBy")
@@ -2877,6 +2898,7 @@ model AcademicContent {
   tags                  AcademicContentTag[]
   revisions             AcademicContentRevision[]
   approvals             AcademicContentApproval[]
+  publications          AcademicContentPublication[]
   preparationDetail     AcademicContentPreparationDetail?
   weeklyPlanDetail      AcademicContentWeeklyPlanDetail?
   guardianNoteDetail    AcademicContentGuardianNoteDetail?
@@ -3243,6 +3265,7 @@ model AcademicContentRevision {
   links           AcademicContentRevisionLink[]
   tags            AcademicContentRevisionTag[]
   approvals       AcademicContentApproval[]
+  publications    AcademicContentPublication[]
 
   @@unique([id, schoolId])
   @@unique([id, schoolId, academicContentId])
@@ -3271,9 +3294,102 @@ model AcademicContentRevisionTarget {
   school   School                  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   revision AcademicContentRevision @relation(fields: [revisionId, schoolId], references: [id, schoolId], onDelete: Restrict)
 
+  recipientTargets AcademicContentAudienceRecipientTarget[]
+
+  @@unique([id, schoolId, revisionId])
   @@unique([schoolId, revisionId, identityFingerprint])
   @@index([schoolId, revisionId])
   @@map("academic_content_revision_targets")
+}
+
+model AcademicContentPublication {
+  id                            String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                      String                           @map("school_id") @db.Uuid
+  academicContentId             String                           @map("academic_content_id") @db.Uuid
+  revisionId                    String                           @map("revision_id") @db.Uuid
+  clientRequestId               String                           @map("client_request_id") @db.Uuid
+  requestFingerprint            String                           @map("request_fingerprint") @db.VarChar(64)
+  sourceContentStatus           AcademicContentStatus            @map("source_content_status")
+  status                        AcademicContentPublicationStatus
+  publishAt                     DateTime                         @map("publish_at")
+  visibleFrom                   DateTime                         @map("visible_from")
+  visibleUntil                  DateTime?                        @map("visible_until")
+  publishedAt                   DateTime?                        @map("published_at")
+  expiredAt                     DateTime?                        @map("expired_at")
+  cancelledAt                   DateTime?                        @map("cancelled_at")
+  cancelledByUserId             String?                          @map("cancelled_by_user_id") @db.Uuid
+  createdByUserId               String                           @map("created_by_user_id") @db.Uuid
+  studentRecipientCount         Int                              @default(0) @map("student_recipient_count")
+  guardianRecipientContextCount Int                              @default(0) @map("guardian_recipient_context_count")
+  createdAt                     DateTime                         @default(now()) @map("created_at")
+  updatedAt                     DateTime                         @updatedAt @map("updated_at")
+
+  school          School                             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicContent AcademicContent                    @relation(fields: [academicContentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  revision        AcademicContentRevision            @relation(fields: [revisionId, schoolId, academicContentId], references: [id, schoolId, academicContentId], onDelete: Restrict)
+  createdBy       User                               @relation("AcademicContentPublicationCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  cancelledBy     User?                              @relation("AcademicContentPublicationCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: Restrict)
+  recipients      AcademicContentAudienceRecipient[]
+
+  @@unique([id, schoolId, revisionId])
+  @@unique([schoolId, clientRequestId])
+  @@index([schoolId, academicContentId])
+  @@index([revisionId, schoolId, academicContentId])
+  @@index([createdByUserId])
+  @@index([cancelledByUserId])
+  @@map("academic_content_publications")
+}
+
+model AcademicContentAudienceRecipient {
+  id                              String                               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                        String                               @map("school_id") @db.Uuid
+  publicationId                   String                               @map("publication_id") @db.Uuid
+  revisionId                      String                               @map("revision_id") @db.Uuid
+  recipientKind                   AcademicContentAudienceRecipientKind @map("recipient_kind")
+  identityFingerprint             String                               @map("identity_fingerprint") @db.VarChar(64)
+  studentId                       String                               @map("student_id") @db.Uuid
+  enrollmentId                    String                               @map("enrollment_id") @db.Uuid
+  classroomId                     String                               @map("classroom_id") @db.Uuid
+  guardianId                      String?                              @map("guardian_id") @db.Uuid
+  // Publication-time account context; account lifecycle must not rewrite this snapshot.
+  recipientUserId                 String?                              @map("recipient_user_id") @db.Uuid
+  guardianCanReceiveNotifications Boolean?                             @map("guardian_can_receive_notifications")
+  createdAt                       DateTime                             @default(now()) @map("created_at")
+
+  school      School                                   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  publication AcademicContentPublication               @relation(fields: [publicationId, schoolId, revisionId], references: [id, schoolId, revisionId], onDelete: Restrict)
+  student     Student                                  @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  enrollment  Enrollment                               @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom   Classroom                                @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  guardian    Guardian?                                @relation(fields: [guardianId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  targets     AcademicContentAudienceRecipientTarget[]
+
+  @@unique([id, schoolId, revisionId])
+  @@unique([schoolId, publicationId, identityFingerprint])
+  @@index([publicationId, schoolId, revisionId])
+  @@index([studentId, schoolId])
+  @@index([enrollmentId, schoolId])
+  @@index([classroomId, schoolId])
+  @@index([guardianId, schoolId])
+  @@map("academic_content_audience_recipients")
+}
+
+model AcademicContentAudienceRecipientTarget {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId         String   @map("school_id") @db.Uuid
+  recipientId      String   @map("recipient_id") @db.Uuid
+  revisionId       String   @map("revision_id") @db.Uuid
+  revisionTargetId String   @map("revision_target_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  school         School                           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  recipient      AcademicContentAudienceRecipient @relation(fields: [recipientId, schoolId, revisionId], references: [id, schoolId, revisionId], onDelete: Restrict)
+  revisionTarget AcademicContentRevisionTarget    @relation(fields: [revisionTargetId, schoolId, revisionId], references: [id, schoolId, revisionId], onDelete: Restrict)
+
+  @@unique([schoolId, recipientId, revisionTargetId])
+  @@index([recipientId, schoolId, revisionId])
+  @@index([revisionTargetId, schoolId, revisionId])
+  @@map("academic_content_audience_recipient_targets")
 }
 
 model AcademicContentRevisionAsset {
@@ -3652,6 +3768,7 @@ model Classroom {
   studentBulkRegistrationBatches     StudentBulkRegistrationBatch[]
   studentCredentialBatches           StudentCredentialBatch[]
   academicContentTargets             AcademicContentTarget[]
+  academicContentAudienceRecipients  AcademicContentAudienceRecipient[]
   attendancePolicies                 AttendancePolicy[]
   attendanceSessions                 AttendanceSession[]
   gradeAssessments                   GradeAssessment[]
@@ -4449,6 +4566,8 @@ model Student {
   homeworkTargets                    HomeworkTarget[]
   homeworkSubmissions                HomeworkSubmission[]
 
+  academicContentAudienceRecipients AcademicContentAudienceRecipient[]
+
   @@unique([id, schoolId])
   @@unique([applicationId, schoolId])
   @@index([schoolId])
@@ -4488,6 +4607,8 @@ model Guardian {
   students                           StudentGuardian[]
   dismissalRequests                  DismissalRequest[]
   communicationAnnouncementAudiences CommunicationAnnouncementAudience[]
+
+  academicContentAudienceRecipients AcademicContentAudienceRecipient[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -4557,6 +4678,8 @@ model Enrollment {
   homeworkSubmissions        HomeworkSubmission[]
   bulkRegistrationRows       StudentBulkRegistrationRow[]
   credentialRows             StudentCredentialRow[]       @relation("StudentCredentialRowEnrollment")
+
+  academicContentAudienceRecipients AcademicContentAudienceRecipient[]
 
   @@unique([id, schoolId])
   @@index([schoolId])

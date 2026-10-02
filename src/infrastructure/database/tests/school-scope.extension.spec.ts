@@ -5,6 +5,18 @@ import {
 } from '../school-scope.extension';
 
 describe('schoolScope communication registration', () => {
+  it.each([
+    'AcademicContentPublication',
+    'AcademicContentAudienceRecipient',
+    'AcademicContentAudienceRecipientTarget',
+  ])(
+    'registers %s for School scope without exclusion or soft deletion',
+    (model) => {
+      expect(SCHOOL_SCOPED_MODELS.has(model)).toBe(true);
+      expect(EXCLUDED_FROM_SCHOOL_SCOPE.has(model)).toBe(false);
+      expect(SOFT_DELETE_MODELS.has(model)).toBe(false);
+    },
+  );
   it('registers TeacherProfile for school scope enforcement', () => {
     expect(SCHOOL_SCOPED_MODELS.has('TeacherProfile')).toBe(true);
   });
