@@ -24,6 +24,15 @@ import { GetAcademicContentReadinessUseCase } from './application/academic-conte
 import { ACADEMIC_CONTENT_TYPE_DETAIL_UNIT_OF_WORK } from './application/academic-content-type-detail.unit-of-work';
 import { AcademicContentLinksTagsRepository } from './infrastructure/academic-content-links-tags.repository';
 import { AcademicContentRevisionRepository } from './infrastructure/academic-content-revision.repository';
+import { AcademicContentPublicationRepository } from './infrastructure/academic-content-publication.repository';
+import {
+  ScheduleAcademicContentPublicationUseCase,
+  UnscheduleAcademicContentPublicationUseCase,
+  GetAcademicContentPublicationReadinessUseCase,
+  ListAcademicContentPublicationHistoryUseCase,
+  GetAcademicContentPublicationUseCase,
+  GetAcademicContentAudiencePreviewUseCase,
+} from './application/academic-content-publication.use-cases';
 import {
   ReplaceAcademicContentLinksUseCase,
   ReplaceAcademicContentTagsUseCase,
@@ -76,6 +85,13 @@ import {
     AcademicContentController,
   ],
   providers: [
+    AcademicContentPublicationRepository,
+    ScheduleAcademicContentPublicationUseCase,
+    UnscheduleAcademicContentPublicationUseCase,
+    GetAcademicContentPublicationReadinessUseCase,
+    ListAcademicContentPublicationHistoryUseCase,
+    GetAcademicContentPublicationUseCase,
+    GetAcademicContentAudiencePreviewUseCase,
     AcademicContentPreparationTemplateRepository,
     AcademicContentPreparationTemplateUseCases,
     AcademicContentWorkflowPolicyRepository,

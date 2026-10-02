@@ -6,6 +6,7 @@ import {
   AcademicContentType as Type,
 } from '@prisma/client';
 import {
+  academicContentPublicationRequestFingerprint,
   academicContentPublicationRevisionStrategy,
   academicContentRecipientIdentity,
   AcademicContentPublicationReadinessInput,
@@ -18,6 +19,61 @@ import {
 
 const now = new Date('2026-10-02T12:00:00.000Z');
 const date = (value: string) => new Date(value);
+
+describe('ACC-7B logical publication request fingerprint', () => {
+  const contentId = '12345678-1234-4234-8234-123456789abc';
+  const fingerprint = (input = {}) =>
+    academicContentPublicationRequestFingerprint(contentId, input);
+  it('has no execution clock or effective timing dependency', () => {
+    jest.useFakeTimers();
+    try {
+      jest.setSystemTime(new Date('2026-10-02T12:00:00Z'));
+      const first = fingerprint();
+      jest.setSystemTime(new Date('2026-10-03T18:00:00Z'));
+      expect(fingerprint()).toBe(first);
+      expect(first).toMatch(/^[0-9a-f]{64}$/);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+  it('canonicalizes UUID case and equivalent explicit timezone instants', () => {
+    expect(fingerprint({ publishAt: date('2026-10-02T15:00:00+03:00') })).toBe(
+      academicContentPublicationRequestFingerprint(contentId.toUpperCase(), {
+        publishAt: date('2026-10-02T12:00:00Z'),
+      }),
+    );
+  });
+  it.each([
+    { publishAt: now },
+    { visibleFrom: now },
+    { visibleUntil: now },
+    { visibleUntil: null },
+  ])('distinguishes explicit timing/presence from omitted: %j', (input) => {
+    expect(fingerprint(input)).not.toBe(fingerprint());
+  });
+  it.each(['publishAt', 'visibleFrom', 'visibleUntil'])(
+    'distinguishes changed %s values',
+    (key) => {
+      expect(fingerprint({ [key]: now })).not.toBe(
+        fingerprint({ [key]: new Date(now.getTime() + 1) }),
+      );
+    },
+  );
+  it('includes content identity', () => {
+    expect(fingerprint()).not.toBe(
+      academicContentPublicationRequestFingerprint(
+        '12345678-1234-4234-8234-123456789abd',
+        {},
+      ),
+    );
+  });
+  it.each(['publishAt', 'visibleFrom', 'visibleUntil'])(
+    'rejects invalid %s before hashing',
+    (key) => {
+      expect(() => fingerprint({ [key]: new Date(NaN) })).toThrow();
+    },
+  );
+});
 const term = {
   startDate: date('2026-10-01'),
   endDate: date('2026-10-31'),
