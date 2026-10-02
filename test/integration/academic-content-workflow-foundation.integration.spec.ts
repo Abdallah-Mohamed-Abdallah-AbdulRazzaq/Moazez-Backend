@@ -303,7 +303,7 @@ describeDatabase('ACC-6A PostgreSQL workflow foundation', () => {
     ).toBe(0);
   });
 
-  it('rolls policy creation back when the audit cannot commit', async () => {
+  it('rolls policy creation and existing-row updates back when the audit cannot commit', async () => {
     const schoolId = ids.schoolB;
     await expect(
       repository.updatePolicy({
@@ -324,6 +324,38 @@ describeDatabase('ACC-6A PostgreSQL workflow foundation', () => {
         },
       }),
     ).toBe(0);
+    await repository.updatePolicy({
+      schoolId,
+      organizationId: ids.organization,
+      actorId: ids.user,
+      preparationApprovalRequired: true,
+    });
+    const before = await prisma.academicContentWorkflowPolicy.findUniqueOrThrow(
+      {
+        where: { schoolId },
+      },
+    );
+    await expect(
+      repository.updatePolicy({
+        schoolId,
+        organizationId: randomUUID(),
+        actorId: ids.user,
+        preparationApprovalRequired: false,
+      }),
+    ).rejects.toThrow();
+    expect(
+      await prisma.academicContentWorkflowPolicy.findUniqueOrThrow({
+        where: { schoolId },
+      }),
+    ).toEqual(before);
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          schoolId,
+          action: 'academics.academic_content.workflow_policy.update',
+        },
+      }),
+    ).toBe(1);
   });
 
   it('enforces approval round, pairing, tenant, pending, and decision constraints', async () => {

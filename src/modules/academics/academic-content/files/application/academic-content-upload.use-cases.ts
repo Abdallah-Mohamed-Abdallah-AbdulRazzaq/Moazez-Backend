@@ -198,7 +198,7 @@ export class CompleteAcademicContentUploadUseCase {
         throw conflict('upload_not_completable');
       if (session.expiresAt <= new Date()) {
         const now = new Date();
-        await tx.updateUpload(session.id, {
+        await tx.updateUpload(session, {
           status: FileUploadSessionStatus.EXPIRED,
           finalCleanupEligibleAt: academicContentFinalCleanupDeadline(
             now,
@@ -209,7 +209,7 @@ export class CompleteAcademicContentUploadUseCase {
       }
       if (session.status === FileUploadSessionStatus.CREATED)
         throw conflict('upload_not_completable');
-      await tx.updateUpload(session.id, {
+      await tx.updateUpload(session, {
         status: FileUploadSessionStatus.VERIFYING,
       });
       return { kind: 'claimed' as const, session };
@@ -273,7 +273,7 @@ export class CompleteAcademicContentUploadUseCase {
           fileId: file.id,
           createdByUserId: session.createdByUserId,
         });
-        await tx.updateUpload(session.id, {
+        await tx.updateUpload(session, {
           status: FileUploadSessionStatus.READY,
           fileId: file.id,
           completedAt,
@@ -337,7 +337,7 @@ export class CancelAcademicContentUploadUseCase {
       )
         throw conflict('upload_not_cancellable');
       const now = new Date();
-      return tx.updateUpload(session.id, {
+      return tx.updateUpload(session, {
         status: FileUploadSessionStatus.CANCELLED,
         cancelledAt: now,
         finalCleanupEligibleAt: academicContentFinalCleanupDeadline(
@@ -382,7 +382,11 @@ export class UnlinkAcademicContentAssetUseCase {
         }))
       )
         throw new NotFoundDomainException('Academic asset not found');
-      const asset = await tx.softDeleteAsset(command.assetId, new Date());
+      const asset = await tx.softDeleteAsset(
+        command.assetId,
+        scope.schoolId,
+        new Date(),
+      );
       const remaining = await tx.countAcademicContentFileReferences(
         asset.fileId,
         scope.schoolId,

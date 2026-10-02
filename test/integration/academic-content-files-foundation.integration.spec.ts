@@ -14,6 +14,7 @@ import {
   setActor,
 } from '../../src/common/context/request-context';
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
+import { AcademicContentFileRepository } from '../../src/modules/academics/academic-content/files/infrastructure/academic-content-file.repository';
 
 describe('ACC-3A purpose-safe Files database foundation', () => {
   const prisma = new PrismaService();
@@ -268,6 +269,76 @@ describe('ACC-3A purpose-safe Files database foundation', () => {
       expiresAt: new Date(createdAt.getTime() + 60 * 60 * 1000),
     };
   }
+
+  it('rejects foreign-School upload and asset writes and non-ACC upload writes at the final predicate', async () => {
+    const repository = new AcademicContentFileRepository(prisma);
+    const upload = await prisma.fileUploadSession.create({
+      data: accSession(1024n),
+    });
+    const file = await prisma.file.create({
+      data: {
+        organizationId: ids.orga,
+        schoolId: ids.schoola,
+        uploaderId: ids.usera,
+        bucket: 'acc3a-test',
+        objectKey: `acc6f/${tag}/${randomUUID()}`,
+        originalName: 'resource.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024n,
+      },
+    });
+    const asset = await prisma.academicContentAsset.create({
+      data: {
+        schoolId: ids.schoola,
+        academicContentId: ids.contenta,
+        fileId: file.id,
+        createdByUserId: ids.usera,
+        sortOrder: 0,
+      },
+    });
+    const deletedAt = new Date();
+    const changes = {
+      status: FileUploadSessionStatus.CANCELLED,
+      cancelledAt: deletedAt,
+      finalCleanupEligibleAt: deletedAt,
+    };
+    await expect(
+      repository.withTransaction((tx) =>
+        tx.updateUpload({ id: upload.id, schoolId: ids.schoolb }, changes),
+      ),
+    ).rejects.toMatchObject({ code: 'P2025' });
+    await expect(
+      repository.withTransaction((tx) =>
+        tx.softDeleteAsset(asset.id, ids.schoolb, deletedAt),
+      ),
+    ).rejects.toMatchObject({ code: 'P2025' });
+    expect(
+      await prisma.fileUploadSession.findUniqueOrThrow({
+        where: { id: upload.id },
+      }),
+    ).toEqual(upload);
+    expect(
+      await prisma.academicContentAsset.findUniqueOrThrow({
+        where: { id: asset.id },
+      }),
+    ).toEqual(asset);
+    const otherPurpose = await prisma.fileUploadSession.create({
+      data: lessonSession(),
+    });
+    await expect(
+      repository.withTransaction((tx) =>
+        tx.updateUpload(otherPurpose, { finalCleanupClaimedAt: null }),
+      ),
+    ).rejects.toMatchObject({ code: 'P2025' });
+    await expect(
+      repository.withTransaction((tx) => tx.updateUpload(upload, changes)),
+    ).resolves.toMatchObject({ finalCleanupEligibleAt: deletedAt });
+    await expect(
+      repository.withTransaction((tx) =>
+        tx.softDeleteAsset(asset.id, ids.schoola, deletedAt),
+      ),
+    ).resolves.toMatchObject({ deletedAt });
+  });
 
   it('binds ACC purpose context, supports large direct-final upload metadata, and caps at 10 GiB', async () => {
     await expect(

@@ -89,7 +89,7 @@ export class AcademicContentCleanupWorker implements OnModuleInit {
           session.finalCleanupClaimedAt >= staleBefore)
       )
         return null;
-      await tx.updateUpload(session.id, { finalCleanupClaimedAt: now });
+      await tx.updateUpload(session, { finalCleanupClaimedAt: now });
       return { bucket: session.finalBucket, objectKey: session.finalObjectKey };
     });
     if (!claim) {
@@ -121,7 +121,7 @@ export class AcademicContentCleanupWorker implements OnModuleInit {
           FileUploadSessionStatus.EXPIRED,
         ]).has(session.status)
       ) {
-        await tx.updateUpload(uploadId, { finalObjectDeletedAt: new Date() });
+        await tx.updateUpload(session, { finalObjectDeletedAt: new Date() });
       }
     });
   }
@@ -159,7 +159,7 @@ export class AcademicContentCleanupWorker implements OnModuleInit {
         if (stillActive > 0)
           throw new Error('academic_content_cleanup_asset_race');
         await tx.softDeleteFile(session.fileId, session.schoolId, new Date());
-        await tx.updateUpload(uploadId, {
+        await tx.updateUpload(session, {
           status: FileUploadSessionStatus.PURGED,
           finalCleanupClaimedAt: now,
           finalObjectDeletedAt: new Date(),

@@ -688,7 +688,7 @@ async function persist(
     const data = { ...detail.state };
     if (row)
       await tx.academicContentPreparationDetail.update({
-        where: { id: row.id },
+        where: { id_schoolId: { id: row.id, schoolId: content.schoolId } },
         data,
       });
     else
@@ -714,7 +714,7 @@ async function persist(
     };
     const saved = row
       ? await tx.academicContentWeeklyPlanDetail.update({
-          where: { id: row.id },
+          where: { id_schoolId: { id: row.id, schoolId: content.schoolId } },
           data,
         })
       : await tx.academicContentWeeklyPlanDetail.create({
@@ -759,7 +759,7 @@ async function persist(
     });
     if (row)
       await tx.academicContentGuardianNoteDetail.update({
-        where: { id: row.id },
+        where: { id_schoolId: { id: row.id, schoolId: content.schoolId } },
         data: detail.state,
       });
     else
@@ -773,7 +773,7 @@ async function persist(
     });
     if (row)
       await tx.academicContentSubjectResourceDetail.update({
-        where: { id: row.id },
+        where: { id_schoolId: { id: row.id, schoolId: content.schoolId } },
         data: detail.state,
       });
     else
@@ -793,7 +793,7 @@ async function persist(
     };
     if (row)
       await tx.academicContentOnlineSessionDetail.update({
-        where: { id: row.id },
+        where: { id_schoolId: { id: row.id, schoolId: content.schoolId } },
         data,
       });
     else
@@ -862,7 +862,9 @@ export class AcademicContentTypeDetailRepository implements AcademicContentTypeD
             await validateReferences(tx, content, term, targets, input.detail);
             await persist(tx, content, input.detail, before);
             await tx.academicContent.update({
-              where: { id: content.id },
+              where: {
+                id_schoolId: { id: content.id, schoolId: input.schoolId },
+              },
               data: {
                 updatedByUserId: input.actorId,
                 updatedAt: new Date(

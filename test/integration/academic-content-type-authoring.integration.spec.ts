@@ -1127,6 +1127,46 @@ describeDatabase('ACC-5B PostgreSQL type authoring', () => {
   });
 
   it.each(details.map((factory) => [factory().type, factory] as const))(
+    'includes School identity in %s detail and parent update selectors',
+    async (type, factory) => {
+      const updates: string[] = [];
+      const client = prisma.$extends({
+        query: {
+          $allModels: {
+            async update({ model, args, query }) {
+              expect(args.where).toMatchObject({
+                id_schoolId: {
+                  id: expect.any(String) as unknown,
+                  schoolId: ids.school,
+                },
+              });
+              updates.push(model);
+              return query(args);
+            },
+          },
+        },
+      }) as unknown as PrismaService;
+      const scopedWriter = new AcademicContentTypeDetailRepository(client);
+      const row = await content(type);
+      await scopedWriter.mutate(scope(row.id, factory()));
+      const [, changed] = revisionStates(type);
+      await scopedWriter.mutate(scope(row.id, changed));
+      expect(updates).toEqual([
+        'AcademicContent',
+        {
+          TEACHER_PREPARATION: 'AcademicContentPreparationDetail',
+          WEEKLY_PLAN: 'AcademicContentWeeklyPlanDetail',
+          GUARDIAN_WEEKLY_NOTE: 'AcademicContentGuardianNoteDetail',
+          SUBJECT_RESOURCE: 'AcademicContentSubjectResourceDetail',
+          ONLINE_SESSION: 'AcademicContentOnlineSessionDetail',
+          GENERAL_RESOURCE: '',
+        }[type],
+        'AcademicContent',
+      ]);
+    },
+  );
+
+  it.each(details.map((factory) => [factory().type, factory] as const))(
     '%s upserts, touches parent, audits once, and makes repeat a no-op',
     async (_type, factory) => {
       const detail = factory();

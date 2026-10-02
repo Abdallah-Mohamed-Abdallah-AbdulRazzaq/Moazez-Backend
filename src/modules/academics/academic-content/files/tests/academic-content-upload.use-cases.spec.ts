@@ -393,7 +393,7 @@ describe('ACC completion and cancellation', () => {
     const readyUpdate = (
       tx.updateUpload.mock.calls as unknown as Array<
         [
-          string,
+          { id: string; schoolId: string },
           {
             status: string;
             verifiedMimeType: string;
@@ -475,7 +475,10 @@ describe('ACC completion and cancellation', () => {
     ).resolves.toBeDefined();
     const cancelUpdate = (
       tx.updateUpload.mock.calls as unknown as Array<
-        [string, { status: string; finalCleanupEligibleAt: Date }]
+        [
+          { id: string; schoolId: string },
+          { status: string; finalCleanupEligibleAt: Date },
+        ]
       >
     )[0][1];
     expect(cancelUpdate.status).toBe(FileUploadSessionStatus.CANCELLED);
@@ -499,10 +502,13 @@ describe('ACC completion and cancellation', () => {
     await expect(
       withManager(() => complete.execute({ contentId, uploadId })),
     ).rejects.toMatchObject({ code: 'academic_content.file.upload_expired' });
-    expect(tx.updateUpload).toHaveBeenCalledWith(uploadId, {
-      status: FileUploadSessionStatus.EXPIRED,
-      finalCleanupEligibleAt: capabilityExpiresAt,
-    });
+    expect(tx.updateUpload).toHaveBeenCalledWith(
+      expect.objectContaining({ id: uploadId, schoolId }),
+      {
+        status: FileUploadSessionStatus.EXPIRED,
+        finalCleanupEligibleAt: capabilityExpiresAt,
+      },
+    );
     expect(verifier.verify).not.toHaveBeenCalled();
   });
 
