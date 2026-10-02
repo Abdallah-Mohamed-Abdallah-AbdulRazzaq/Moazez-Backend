@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import {
+  INestApplication,
+  RequestMethod,
+  ValidationPipe,
+} from '@nestjs/common';
 import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
@@ -624,11 +628,18 @@ describe('ACC-4B management HTTP security and transport', () => {
         AcademicContentWorkflowPolicyController,
       ),
     ).toBe('academics/academic-content/settings');
+    expect(
+      Reflect.getMetadata(
+        PATH_METADATA,
+        AcademicContentPreparationTemplateController,
+      ),
+    ).toBe('academics/academic-content/templates/preparation');
     for (const controller of [
       AcademicContentController,
       AcademicContentFilePolicyController,
       AcademicContentWorkflowPolicyController,
       AcademicContentWorkflowController,
+      AcademicContentPreparationTemplateController,
     ]) {
       expect(
         Reflect.getMetadata(SCHOOL_MANAGEMENT_ONLY_METADATA, controller),
@@ -772,6 +783,46 @@ describe('ACC-4B management HTTP security and transport', () => {
       'academics.academic_content.view',
       AcademicContentWorkflowController,
     );
+    for (const [method, path, permission, httpMethod] of [
+      ['list', '/', 'academics.academic_content.view', RequestMethod.GET],
+      [
+        'detail',
+        ':templateId',
+        'academics.academic_content.view',
+        RequestMethod.GET,
+      ],
+      [
+        'create',
+        '/',
+        'academics.academic_content.settings.manage',
+        RequestMethod.POST,
+      ],
+      [
+        'update',
+        ':templateId',
+        'academics.academic_content.settings.manage',
+        RequestMethod.PATCH,
+      ],
+      [
+        'delete',
+        ':templateId',
+        'academics.academic_content.settings.manage',
+        RequestMethod.DELETE,
+      ],
+    ] as const) {
+      route(
+        method,
+        path,
+        permission,
+        AcademicContentPreparationTemplateController,
+      );
+      expect(
+        Reflect.getMetadata(
+          METHOD_METADATA,
+          AcademicContentPreparationTemplateController.prototype[method],
+        ),
+      ).toBe(httpMethod);
+    }
   });
 
   it('keeps Preparation template routes on the management boundary and separate permissions', async () => {
@@ -830,6 +881,93 @@ describe('ACC-4B management HTTP security and transport', () => {
       .post(url)
       .send({ name: 'Preset', departmentId: contentId })
       .expect(400);
+    expect(services.detail.execute).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [120, 200],
+    [121, 400],
+  ])(
+    'bounds Preparation template search at %i characters',
+    async (length, status) => {
+      const search = 's'.repeat(length);
+      await request(app.getHttpServer())
+        .get(`${base}/templates/preparation`)
+        .set('x-test-actor', 'viewOnly')
+        .query({ search })
+        .expect(status);
+      if (status === 200)
+        expect(services.templates.list).toHaveBeenCalledWith({ search });
+      else expect(services.templates.list).not.toHaveBeenCalled();
+      expect(services.detail.execute).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['name', 'name', 'n'.repeat(181)],
+    ['description', 'description', 'd'.repeat(1001)],
+    ['topic', 'topic', 't'.repeat(501)],
+    ['objectives count', 'objectives', Array<string>(51).fill('Objective')],
+    [
+      'learningOutcomes count',
+      'learningOutcomes',
+      Array<string>(51).fill('Outcome'),
+    ],
+    [
+      'teachingStrategies count',
+      'teachingStrategies',
+      Array<string>(51).fill('Strategy'),
+    ],
+    ['activities count', 'activities', Array<string>(51).fill('Activity')],
+    ['objectives item', 'objectives', ['o'.repeat(501)]],
+    ['learningOutcomes item', 'learningOutcomes', ['o'.repeat(501)]],
+    ['teachingStrategies item', 'teachingStrategies', ['s'.repeat(501)]],
+    ['activities item', 'activities', ['a'.repeat(501)]],
+    ['resourceNotes', 'resourceNotes', 'r'.repeat(4001)],
+    ['assessmentNotes', 'assessmentNotes', 'a'.repeat(4001)],
+    ['teacherNotes', 'teacherNotes', 't'.repeat(4001)],
+  ])(
+    'rejects oversized template %s before create or update',
+    async (_label, field, value) => {
+      for (const method of ['post', 'patch'] as const) {
+        const path = `${base}/templates/preparation${method === 'patch' ? `/${contentId}` : ''}`;
+        await request(app.getHttpServer())
+          [method](path)
+          .set('x-test-actor', 'settingsOnly')
+          .send({ name: 'Preset', [field]: value })
+          .expect(400);
+      }
+      expect(services.templates.create).not.toHaveBeenCalled();
+      expect(services.templates.update).not.toHaveBeenCalled();
+    },
+  );
+
+  it('accepts template boundary values and a partial update without a name', async () => {
+    const body = {
+      name: 'n'.repeat(180),
+      description: 'd'.repeat(1000),
+      topic: 't'.repeat(500),
+      objectives: Array<string>(50).fill('Objective'),
+      learningOutcomes: ['o'.repeat(500)],
+      teachingStrategies: ['s'.repeat(500)],
+      activities: ['a'.repeat(500)],
+      resourceNotes: 'r'.repeat(4000),
+      assessmentNotes: 'a'.repeat(4000),
+      teacherNotes: 't'.repeat(4000),
+    };
+    await request(app.getHttpServer())
+      .post(`${base}/templates/preparation`)
+      .set('x-test-actor', 'settingsOnly')
+      .send(body)
+      .expect(201);
+    expect(services.templates.create).toHaveBeenCalledWith(body);
+    const patch = { topic: null, teacherNotes: 't'.repeat(4000) };
+    await request(app.getHttpServer())
+      .patch(`${base}/templates/preparation/${contentId}`)
+      .set('x-test-actor', 'settingsOnly')
+      .send(patch)
+      .expect(200);
+    expect(services.templates.update).toHaveBeenCalledWith(contentId, patch);
   });
 
   it('publishes the exact Academic Content management Swagger surface and safe DTOs', () => {
@@ -845,6 +983,7 @@ describe('ACC-4B management HTTP security and transport', () => {
           .map((method) => `${method.toUpperCase()} ${path}`),
       )
       .sort();
+    expect(registeredRoutes).toHaveLength(36);
     expect(registeredRoutes).toEqual(
       [
         `GET ${base}`,
@@ -885,6 +1024,22 @@ describe('ACC-4B management HTTP security and transport', () => {
         `GET ${base}/{contentId}/approvals`,
       ].sort(),
     );
+    for (const action of ['submit', 'approve']) {
+      expect(
+        document.paths[`${base}/{contentId}/${action}`].post?.requestBody,
+      ).toEqual({
+        required: false,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {},
+              additionalProperties: false,
+            },
+          },
+        },
+      });
+    }
     const templatePath = `${base}/templates/preparation`;
     expect(
       (document.paths[templatePath].get?.parameters ?? [])
@@ -1179,6 +1334,22 @@ describe('ACC-4B management HTTP security and transport', () => {
       .expect(404);
   });
 
+  it.each([
+    [120, 200],
+    [121, 400],
+  ])('bounds review queue search at %i characters', async (length, status) => {
+    const search = 's'.repeat(length);
+    await request(app.getHttpServer())
+      .get(`${base}/review-queue`)
+      .set('x-test-actor', 'approveOnly')
+      .query({ search })
+      .expect(status);
+    if (status === 200)
+      expect(services.reviewQueue.execute).toHaveBeenCalledWith({ search });
+    else expect(services.reviewQueue.execute).not.toHaveBeenCalled();
+    expect(services.detail.execute).not.toHaveBeenCalled();
+  });
+
   it('allows School and Organization managers and presents a safe draft', async () => {
     const dto = {
       academicYearId: content.academicYearId,
@@ -1359,6 +1530,7 @@ describe('ACC-4B management HTTP security and transport', () => {
       { preparationApprovalRequired: true, publication: true },
     ])
       await request(app.getHttpServer()).patch(path).send(body).expect(400);
+    expect(services.detail.execute).not.toHaveBeenCalled();
   });
 
   it('separates submit and review permissions on the three workflow routes', async () => {
@@ -1453,6 +1625,140 @@ describe('ACC-4B management HTTP security and transport', () => {
       .send({})
       .expect(400);
   });
+
+  it.each([
+    ['submit', 'manageOnly', services.submit.execute],
+    ['approve', 'approveOnly', services.approve.execute],
+  ] as const)(
+    'accepts an empty object or omitted %s body',
+    async (action, actor, execute) => {
+      const path = `${base}/${contentId}/${action}`;
+      await request(app.getHttpServer())
+        .post(path)
+        .set('x-test-actor', actor)
+        .send({})
+        .expect(200);
+      await request(app.getHttpServer())
+        .post(path)
+        .set('x-test-actor', actor)
+        .expect(200);
+      expect(execute).toHaveBeenCalledTimes(2);
+      expect(execute).toHaveBeenNthCalledWith(1, contentId, {});
+      expect(execute).toHaveBeenNthCalledWith(2, contentId, {});
+    },
+  );
+
+  it.each([
+    ['schoolId', schoolId],
+    ['note', 'Injected note'],
+    ['publication', true],
+  ])(
+    'rejects injected %s on submit and approve before the use case',
+    async (field, value) => {
+      for (const [action, actor] of [
+        ['submit', 'manageOnly'],
+        ['approve', 'approveOnly'],
+      ]) {
+        await request(app.getHttpServer())
+          .post(`${base}/${contentId}/${action}`)
+          .set('x-test-actor', actor)
+          .send({ [field]: value })
+          .expect(400);
+      }
+      expect(services.submit.execute).not.toHaveBeenCalled();
+      expect(services.approve.execute).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['missing', {}],
+    ['non-string', { note: 7 }],
+    ['unknown field', { note: 'Revise', schoolId }],
+    ['oversized', { note: 'n'.repeat(4001) }],
+  ])(
+    'rejects a %s request-changes note before the use case',
+    async (_label, body) => {
+      await request(app.getHttpServer())
+        .post(`${base}/${contentId}/request-changes`)
+        .set('x-test-actor', 'approveOnly')
+        .send(body)
+        .expect(400);
+      expect(services.requestChanges.execute).not.toHaveBeenCalled();
+    },
+  );
+
+  it('accepts a request-changes note at the 4000-character transport bound', async () => {
+    const body = { note: 'n'.repeat(4000) };
+    await request(app.getHttpServer())
+      .post(`${base}/${contentId}/request-changes`)
+      .set('x-test-actor', 'approveOnly')
+      .send(body)
+      .expect(200);
+    expect(services.requestChanges.execute).toHaveBeenCalledWith(
+      contentId,
+      body,
+    );
+  });
+
+  it.each([
+    [
+      'submit',
+      'post',
+      `${base}/not-a-uuid/submit`,
+      {},
+      services.submit.execute,
+    ],
+    [
+      'approve',
+      'post',
+      `${base}/not-a-uuid/approve`,
+      {},
+      services.approve.execute,
+    ],
+    [
+      'request-changes',
+      'post',
+      `${base}/not-a-uuid/request-changes`,
+      { note: 'Revise' },
+      services.requestChanges.execute,
+    ],
+    [
+      'approvals',
+      'get',
+      `${base}/not-a-uuid/approvals`,
+      undefined,
+      services.approvalHistory.execute,
+    ],
+    [
+      'template detail',
+      'get',
+      `${base}/templates/preparation/not-a-uuid`,
+      undefined,
+      services.templates.detail,
+    ],
+    [
+      'template update',
+      'patch',
+      `${base}/templates/preparation/not-a-uuid`,
+      { name: 'Preset' },
+      services.templates.update,
+    ],
+    [
+      'template delete',
+      'delete',
+      `${base}/templates/preparation/not-a-uuid`,
+      undefined,
+      services.templates.delete,
+    ],
+  ] as const)(
+    'rejects malformed %s IDs before the use case',
+    async (_label, method, path, body, execute) => {
+      const call = request(app.getHttpServer())[method](path);
+      if (body) call.send(body);
+      await call.expect(400);
+      expect(execute).not.toHaveBeenCalled();
+    },
+  );
 
   it('delegates all five typed PUT routes to ACC-5B and presents only authoring state', async () => {
     const cases = [
