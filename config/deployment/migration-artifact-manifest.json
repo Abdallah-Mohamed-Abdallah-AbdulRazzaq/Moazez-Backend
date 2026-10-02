@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "prismaSchema": {
     "path": "prisma/schema.prisma",
-    "sha256": "0b6de6ed0b2e67d0ad8e1394378b0b6db6c24e40dc77adeb8fedfffbac94cfc0"
+    "sha256": "b391f77009e4d817f8e4b17a998767192d5a63b7c01b71695779feeca21fcb64"
   },
   "prismaConfig": {
     "path": "prisma.config.ts",
@@ -28,7 +28,8 @@
     "20260926002741_academic_content_links_tags_revisions",
     "20260926175931_academic_content_type_specific_authoring_foundation",
     "20260927122703_academic_content_workflow_approval_foundation",
-    "20260927202842_academic_content_preparation_templates"
+    "20260927202842_academic_content_preparation_templates",
+    "20261002162000_academic_content_publication_foundation"
   ],
   "migrations": [
     {
@@ -130,7 +131,12 @@
       "directory": "20260927202842_academic_content_preparation_templates",
       "path": "prisma/migrations/20260927202842_academic_content_preparation_templates/migration.sql",
       "sha256": "505c6b34729de92a245115cc534d1ff3d6e3c10e2422620e3a02a4f4c95cd97d"
+    },
+    {
+      "directory": "20261002162000_academic_content_publication_foundation",
+      "path": "prisma/migrations/20261002162000_academic_content_publication_foundation/migration.sql",
+      "sha256": "1a92eb757c3f0db5f88be874f25d757568dfad62a2ea35b770369cf9ae671d99"
     }
   ],
-  "aggregateMigrationChainSha256": "521a199f2a1e1c65a4e5654189212fc1cc28678a6fd157f1b41bea219e6f147c"
+  "aggregateMigrationChainSha256": "84ea8e7c9ed321abccd2da3e01688af6c2b44c28d7e40e990edf322cee607365"
 }

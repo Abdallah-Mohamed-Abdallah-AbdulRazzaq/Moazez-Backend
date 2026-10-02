@@ -377,3 +377,28 @@ The canonical baseline must contain exactly the schema-generated from-empty SQL
 plus the 27 objects identified above. Fresh replay verification must inspect
 `pg_indexes` and `pg_constraint` by name, in addition to running Prisma status,
 seed, build, and database-backed tests.
+
+## ACC-7A Publication persistence integrity
+
+The owning migration is `20261002162000_academic_content_publication_foundation`.
+Prisma cannot represent partial unique indexes or CHECK predicates. Every object
+below is directly protected by
+`test/integration/academic-content-publication-foundation.integration.spec.ts`.
+There is no backfill, trigger, publication command, or dynamic clock CHECK.
+
+| Object | Invariant | Direct PostgreSQL coverage |
+| --- | --- | --- |
+| `acc_publication_one_active_per_content_idx` | At most one SCHEDULED/PUBLISHED row per School/content; CANCELLED/EXPIRED history is retained. | Scheduled/published duplicate rejection, historical rows, independent content, competing insertions. |
+| `acc_publication_timing_check` | Visibility starts at/after publication; a nonnull end is strictly after visibility start. | Reject earlier start and equal/earlier end; accept equal/later start and null/later end. |
+| `acc_publication_source_status_check` | Source content status is DRAFT or APPROVED. | Accept both sources and reject each of the seven other statuses. |
+| `acc_publication_lifecycle_check` | Status determines required/forbidden lifecycle timestamps; missed-window expiry and withdrawal retain optional publishedAt. | All 32 status/timestamp presence combinations, including expiry/cancellation with and without publishedAt. |
+| `acc_publication_counts_nonnegative_check` | Both recipient counts are nonnegative. | Reject each negative count; accept zero and positive counts. |
+| `acc_publication_request_fingerprint_check` | Request fingerprint is 64 lowercase hexadecimal characters. | Reject empty, short, nonhex, uppercase; accept valid SHA-256 shape. |
+| `acc_audience_recipient_identity_fingerprint_check` | Recipient fingerprint is 64 lowercase hexadecimal characters. | Reject empty, short, nonhex, uppercase; persist canonical server-generated fingerprints. |
+| `acc_audience_recipient_shape_check` | Student context has no guardian; guardian context requires one. | Accept both shapes with nullable account IDs; reject opposite guardian shapes; accept false notification preference. |
+
+Prisma represents the exact-content Publication→Revision compound foreign key
+and both same-revision RecipientTarget foreign keys, including the minimal
+RevisionTarget candidate key. The same suite directly tests cross-School and
+wrong-content/revision rejection, tenant request and recipient uniqueness,
+target attribution uniqueness, and historical actor/account behavior.
