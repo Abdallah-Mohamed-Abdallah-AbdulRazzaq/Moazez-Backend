@@ -117,7 +117,7 @@ describe('ACC cleanup worker', () => {
     const purgedUpdate = (
       tx.updateUpload.mock.calls as unknown as Array<
         [
-          string,
+          { id: string; schoolId: string },
           {
             status: string;
             finalCleanupClaimedAt: Date;
@@ -143,12 +143,13 @@ describe('ACC cleanup worker', () => {
     await worker.cleanUpload(uploadId, now);
     expect(storage.deleteObjectAndConfirmAbsent).toHaveBeenCalledTimes(1);
     expect(tx.softDeleteFile).not.toHaveBeenCalled();
-    expect(tx.updateUpload).toHaveBeenCalledWith(uploadId, {
-      finalCleanupClaimedAt: now,
-    });
+    expect(tx.updateUpload).toHaveBeenCalledWith(
+      expect.objectContaining({ id: uploadId, schoolId }),
+      { finalCleanupClaimedAt: now },
+    );
     const evidenceUpdate = (
       tx.updateUpload.mock.calls as unknown as Array<
-        [string, { finalObjectDeletedAt?: Date }]
+        [{ id: string; schoolId: string }, { finalObjectDeletedAt?: Date }]
       >
     )[1][1];
     expect(evidenceUpdate.finalObjectDeletedAt).toBeInstanceOf(Date);

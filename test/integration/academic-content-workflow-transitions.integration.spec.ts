@@ -257,6 +257,84 @@ describeDatabase('ACC-6B atomic PostgreSQL workflow transitions', () => {
     await prisma.$disconnect();
   });
 
+  it('includes School identity in every workflow and draft lifecycle update', async () => {
+    const updates: Array<{ model: string; id: string }> = [];
+    const client = prisma.$extends({
+      query: {
+        $allModels: {
+          async update({ model, args, query }) {
+            if (
+              model === 'AcademicContent' ||
+              model === 'AcademicContentApproval'
+            ) {
+              if (model === 'AcademicContent') {
+                expect(args.where).toMatchObject({
+                  id_schoolId: {
+                    id: expect.any(String) as unknown,
+                    schoolId: ids.schoolA,
+                  },
+                });
+                const where = args.where as {
+                  id_schoolId: { id: string; schoolId: string };
+                };
+                updates.push({ model, id: where.id_schoolId.id });
+              } else {
+                expect(args.where).toMatchObject({
+                  id: expect.any(String) as unknown,
+                  schoolId: ids.schoolA,
+                });
+                updates.push({ model, id: args.where.id as string });
+              }
+            }
+            return query(args);
+          },
+        },
+      },
+    }) as unknown as PrismaService;
+    const scopedWorkflow = new AcademicContentWorkflowRepository(
+      client,
+      new AcademicContentRevisionRepository(client),
+    );
+    const scopedMetadata = new AcademicContentRepository(client);
+    const draft = await makeContent();
+    for (const action of ['update', 'archive', 'restore', 'delete'] as const) {
+      await scopedMetadata.mutate({
+        ...command(draft.id),
+        id: draft.id,
+        action,
+        ...(action === 'update' ? { changes: { title: 'Scoped update' } } : {}),
+      });
+    }
+    const content = await makeContent();
+    const first = await scopedWorkflow.submit(command(content.id));
+    await scopedWorkflow.decide({
+      ...command(content.id),
+      decision: 'request-changes',
+      note: 'Revise topic',
+    });
+    const second = await scopedWorkflow.submit(command(content.id));
+    await scopedWorkflow.decide({
+      ...command(content.id),
+      decision: 'approve',
+      note: null,
+    });
+    expect(updates).toEqual([
+      ...Array.from({ length: 4 }, () => ({
+        model: 'AcademicContent',
+        id: draft.id,
+      })),
+      { model: 'AcademicContent', id: content.id },
+      { model: 'AcademicContentApproval', id: first.approvalId },
+      { model: 'AcademicContent', id: content.id },
+      { model: 'AcademicContent', id: content.id },
+      { model: 'AcademicContentApproval', id: second.approvalId },
+      { model: 'AcademicContent', id: content.id },
+    ]);
+    expect((await state(content.id)).content.status).toBe(
+      AcademicContentStatus.APPROVED,
+    );
+  });
+
   it('submits, requests changes, edits, resubmits and approves immutable V2 rounds', async () => {
     const content = await makeContent();
     const first = await workflow.submit(command(content.id));
@@ -861,7 +939,7 @@ describeDatabase('ACC-6B atomic PostgreSQL workflow transitions', () => {
     });
     const unlinked = await files.withTransaction(async (tx) => {
       await tx.lockMutableContent(content.id, ids.schoolA, now);
-      return tx.softDeleteAsset(asset.id, now);
+      return tx.softDeleteAsset(asset.id, ids.schoolA, now);
     });
     expect(unlinked.deletedAt).toEqual(now);
     const third = await workflow.submit(scope);

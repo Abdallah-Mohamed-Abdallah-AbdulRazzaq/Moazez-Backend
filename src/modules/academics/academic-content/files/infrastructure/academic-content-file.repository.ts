@@ -47,8 +47,11 @@ export class AcademicContentFileRepository {
       lockUpload: (owner: AcademicUploadIdentity) => this.lock(tx, owner),
       lockUploadById: (uploadId: string) => this.lockById(tx, uploadId),
       readyLink: (session: FileUploadSession) => this.readyLink(tx, session),
-      updateUpload: (uploadId, data) =>
-        tx.fileUploadSession.update({ where: { id: uploadId }, data }),
+      updateUpload: ({ id, schoolId }, data) =>
+        tx.fileUploadSession.update({
+          where: { id, schoolId, purpose: FileUploadPurpose.ACADEMIC_CONTENT },
+          data,
+        }),
       lockMutableContent: async (contentId, schoolId, now) => {
         const rows = await tx.$queryRaw<Array<{ id: string }>>`
           SELECT id FROM academic_contents
@@ -138,9 +141,9 @@ export class AcademicContentFileRepository {
             AND deleted_at IS NULL FOR UPDATE`;
         return rows.length > 0;
       },
-      softDeleteAsset: (assetId, deletedAt) =>
+      softDeleteAsset: (assetId, schoolId, deletedAt) =>
         tx.academicContentAsset.update({
-          where: { id: assetId },
+          where: { id: assetId, schoolId },
           data: { deletedAt },
         }),
       countAcademicContentFileReferences: async (fileId, schoolId) => {

@@ -167,7 +167,9 @@ export class AcademicContentWorkflowRepository {
           },
         });
         await tx.academicContent.update({
-          where: { id: input.contentId },
+          where: {
+            id_schoolId: { id: input.contentId, schoolId: input.schoolId },
+          },
           data: {
             status: AcademicContentStatus.SUBMITTED,
             updatedByUserId: input.actorId,
@@ -279,7 +281,7 @@ export class AcademicContentWorkflowRepository {
           : AcademicContentStatus.CHANGES_REQUESTED;
         const decidedAt = input.now ?? new Date();
         await tx.academicContentApproval.update({
-          where: { id: approval.id },
+          where: { id: approval.id, schoolId: input.schoolId },
           data: {
             status: approvalStatus,
             decidedByUserId: input.actorId,
@@ -288,7 +290,9 @@ export class AcademicContentWorkflowRepository {
           },
         });
         await tx.academicContent.update({
-          where: { id: input.contentId },
+          where: {
+            id_schoolId: { id: input.contentId, schoolId: input.schoolId },
+          },
           data: { status: contentStatus, updatedByUserId: input.actorId },
         });
         await tx.auditLog.create({

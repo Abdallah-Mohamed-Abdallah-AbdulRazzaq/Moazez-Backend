@@ -516,7 +516,7 @@ export class AcademicContentRepository {
         ...(input.action === 'delete' ? { deletedAt: input.now } : {}),
       };
       const updated = await tx.academicContent.update({
-        where: { id: input.id },
+        where: { id_schoolId: { id: input.id, schoolId: input.schoolId } },
         data,
         ...ACADEMIC_CONTENT_ARGS,
       });
