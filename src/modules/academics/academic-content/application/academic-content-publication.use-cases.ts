@@ -1,4 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { AcademicContentPublicationStatus } from '@prisma/client';
+import { AcademicContentPublicationQueueService } from './academic-content-publication-queue.service';
+import { AcademicContentPublicationLifecycleRepository } from '../infrastructure/academic-content-publication-lifecycle.repository';
 import {
   AcademicContentPublicationCommand,
   assertAcademicContentPublicationCommand,
@@ -13,15 +16,81 @@ import { academicContentManagementScope } from './academic-content-management.sc
 
 @Injectable()
 export class ScheduleAcademicContentPublicationUseCase {
+  private readonly logger = new Logger(
+    ScheduleAcademicContentPublicationUseCase.name,
+  );
   constructor(
     private readonly publications: AcademicContentPublicationRepository,
+    private readonly queue: AcademicContentPublicationQueueService,
   ) {}
   execute(contentId: string, command: AcademicContentPublicationCommand) {
     const scope = academicContentManagementScope(
       'academics.academic_content.publish',
     );
     assertAcademicContentPublicationCommand(contentId, command);
-    return this.publications.schedule({ ...scope, contentId, command });
+    return this.schedule(scope, contentId, command);
+  }
+  private async schedule(
+    scope: ReturnType<typeof academicContentManagementScope>,
+    contentId: string,
+    command: AcademicContentPublicationCommand,
+  ) {
+    const result = await this.publications.schedule({
+      ...scope,
+      contentId,
+      command,
+    });
+    if (result.status === AcademicContentPublicationStatus.SCHEDULED) {
+      await this.queue.ensureAfterCommit('publish', {
+        schoolId: scope.schoolId,
+        contentId,
+        publicationId: result.publicationId,
+      });
+      this.logger.log({
+        event: 'academic_content.publication.scheduled',
+        schoolId: scope.schoolId,
+        contentId,
+        publicationId: result.publicationId,
+      });
+    }
+    return result;
+  }
+}
+
+@Injectable()
+export class CancelAcademicContentPublicationUseCase {
+  private readonly logger = new Logger(
+    CancelAcademicContentPublicationUseCase.name,
+  );
+  constructor(
+    private readonly publications: AcademicContentPublicationLifecycleRepository,
+  ) {}
+  execute(contentId: string, publicationId: string) {
+    const scope = academicContentManagementScope(
+      'academics.academic_content.publish',
+    );
+    assertAcademicContentPublicationUuid(contentId);
+    assertAcademicContentPublicationUuid(publicationId);
+    return this.cancel(scope, contentId, publicationId);
+  }
+  private async cancel(
+    scope: ReturnType<typeof academicContentManagementScope>,
+    contentId: string,
+    publicationId: string,
+  ) {
+    const result = await this.publications.cancel({
+      ...scope,
+      contentId,
+      publicationId,
+      now: new Date(),
+    });
+    this.logger.log({
+      event: 'academic_content.publication.cancelled',
+      schoolId: scope.schoolId,
+      contentId,
+      publicationId,
+    });
+    return result;
   }
 }
 

@@ -129,7 +129,7 @@ test('central CI executes G03 through the exact-candidate regression matrix', ()
   );
 });
 
-test('the seven legacy queues and ACC cleanup form the eight-consumer inventory', () => {
+test('the existing queues and publication form the nine-consumer inventory', () => {
   const manifest = read('src/modules/health/operational-probe.manifests.ts');
   const coreModule = read(
     'src/runtime/core-worker/core-worker-consumers.module.ts',
@@ -149,9 +149,17 @@ test('the seven legacy queues and ACC cleanup form the eight-consumer inventory'
     'dismissal-request-expiry',
     'learning-media-cleanup',
     'settings-branding-logo-cleanup',
+    'academic-content-publication',
   ];
-  for (const queue of queues.slice(1))
+  for (const queue of queues.slice(1, -1))
     assert.match(manifest, new RegExp(queue, 'u'));
+  assert.match(
+    read(
+      'src/modules/academics/academic-content/domain/academic-content-publication-runtime.constants.ts',
+    ),
+    /academic-content-publication/u,
+  );
+  assert.match(manifest, /ACADEMIC_CONTENT_PUBLICATION_QUEUE/u);
   assert.match(accConstants, /academic-content-cleanup/u);
   assert.match(manifest, /ACADEMIC_CONTENT_CLEANUP_QUEUE/u);
   const providerBlock =
@@ -159,12 +167,12 @@ test('the seven legacy queues and ACC cleanup form the eight-consumer inventory'
       coreModule,
     )?.[1];
   assert.ok(providerBlock);
-  assert.equal((providerBlock.match(/Worker|Service/gu) || []).length, 7);
+  assert.equal((providerBlock.match(/Worker|Service/gu) || []).length, 8);
   assert.match(mediaModule, /LearningMediaCleanupService/u);
-  assert.equal(queues.length, 8);
+  assert.equal(queues.length, 9);
 });
 
-test('Maintenance Scheduler owns exactly eight current repeat definitions', () => {
+test('Maintenance Scheduler owns exactly nine current repeat definitions', () => {
   const schedules = read(
     'src/runtime/maintenance-scheduler/maintenance-schedules.module.ts',
   );
@@ -173,10 +181,10 @@ test('Maintenance Scheduler owns exactly eight current repeat definitions', () =
   );
   const manifest = read('src/modules/health/operational-probe.manifests.ts');
 
-  assert.match(runtimeContract, /owns exactly eight registrations/u);
-  assert.match(runtimeContract, /toHaveBeenCalledTimes\(8\)/u);
-  assert.equal((schedules.match(/Schedule,/gu) || []).length, 8);
-  assert.equal((manifest.match(/queueName:/gu) || []).length, 8);
+  assert.match(runtimeContract, /owns exactly nine registrations/u);
+  assert.match(runtimeContract, /toHaveBeenCalledTimes\(9\)/u);
+  assert.equal((schedules.match(/Schedule,/gu) || []).length, 9);
+  assert.equal((manifest.match(/queueName:/gu) || []).length, 9);
   for (const jobName of [
     'communication.announcement.notifications.reconcile',
     'communication.notification.push.reconcile',
@@ -243,6 +251,7 @@ test('poison jobs receive stable handling without becoming persisted truth', () 
     'src/modules/files/uploads/application/learning-media-cleanup.service.ts',
     'src/modules/settings/branding/infrastructure/branding-logo-cleanup.worker.ts',
     'src/modules/academics/academic-content/files/infrastructure/academic-content-cleanup.worker.ts',
+    'src/modules/academics/academic-content/infrastructure/academic-content-publication.worker.ts',
   ]
     .map(read)
     .join('\n');
@@ -250,6 +259,8 @@ test('poison jobs receive stable handling without becoming persisted truth', () 
   assert.match(sources, /learning_media_cleanup_job_invalid/u);
   assert.match(sources, /academic_content_cleanup_job_unknown/u);
   assert.match(sources, /academic_content_cleanup_job_invalid/u);
+  assert.match(sources, /academic_content_publication_job_invalid/u);
+  assert.match(sources, /academic_content_publication_job_unknown/u);
   assert.doesNotMatch(sources, /failedJob\.data|copy.*payload/iu);
 });
 
@@ -291,11 +302,11 @@ test('real harness uses immutable local images, empty replacement, and exact cle
   );
   assert.match(integration, /redisCopies: 0/u);
   assert.match(wrapper, /'migrate', 'deploy'/u);
-  assert.match(integration, /productionModelSourceCount: 8/u);
-  assert.match(integration, /productionReconcilerCount: 8/u);
+  assert.match(integration, /productionModelSourceCount: 9/u);
+  assert.match(integration, /productionReconcilerCount: 9/u);
   assert.match(integration, /productionStoragePathCount: 4/u);
-  assert.match(integration, /productionWorkerDispatchCount: 8/u);
-  assert.match(integration, /expect\(harness\.processors\.size\)\.toBe\(8\)/u);
+  assert.match(integration, /productionWorkerDispatchCount: 9/u);
+  assert.match(integration, /expect\(harness\.processors\.size\)\.toBe\(9\)/u);
   assert.match(integration, /AcademicContentFileRepository/u);
   assert.match(integration, /AcademicContentCleanupWorker/u);
   assert.match(
@@ -311,7 +322,7 @@ test('real harness uses immutable local images, empty replacement, and exact cle
   assert.match(integration, /academic_content_cleanup_job_unknown/u);
   assert.match(integration, /academic_content_cleanup_job_invalid/u);
   assert.match(integration, /poisonRejectedCount/u);
-  assert.match(integration, /actualUniqueScheduleRegistrations: 8/u);
+  assert.match(integration, /actualUniqueScheduleRegistrations: 9/u);
   assert.match(
     integration,
     /expect\(dispatch\.pushKnownSuccessReplayCount\)\.toBe\(0\)/u,

@@ -140,6 +140,8 @@ try {
       '--runInBand',
       '--runTestsByPath',
       'test/integration/prd3-g03-critical-queue-recovery.integration.spec.ts',
+      'test/integration/academic-content-publication-runtime.integration.spec.ts',
+      'test/integration/bullmq-shutdown-lifecycle.integration.spec.ts',
       'test/integration/academic-content-upload-lifecycle.integration.spec.ts',
     ],
     {
@@ -152,6 +154,7 @@ try {
         ...process.env,
         NODE_ENV: 'test',
         DATABASE_URL: databaseUrl,
+        TEST_QUEUE_REDIS_URL: `redis://127.0.0.1:${resources.queue.port}`,
         RUN_PRD3_G03_RECOVERY_INTEGRATION: '1',
         RUN_ACC_3C_LIFECYCLE_INTEGRATION: '1',
         PRD3_G03_RUN_ID: RUN_ID,

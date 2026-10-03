@@ -27,7 +27,7 @@ describe('runtime application-context wiring', () => {
     }
   });
 
-  it('initializes Core Worker with exactly six consumers and no repeats', async () => {
+  it('initializes Core Worker with exactly eight consumers and no repeats', async () => {
     setDatabaseRuntimeEnvironment('core-worker');
     const { CoreWorkerRuntimeModule } = jest.requireActual<
       typeof import('./core-worker/core-worker-runtime.module')
@@ -49,6 +49,7 @@ describe('runtime application-context wiring', () => {
     await module.init();
     expect(queue.workerQueues.sort()).toEqual([
       'academic-content-cleanup',
+      'academic-content-publication',
       'communication-notification-push',
       'communication-notifications',
       'dismissal-request-expiry',
@@ -100,7 +101,7 @@ describe('runtime application-context wiring', () => {
 
     await module.init();
     expect(queue.workerQueues).toEqual([]);
-    expect(queue.repeatRegistrations).toHaveLength(8);
+    expect(queue.repeatRegistrations).toHaveLength(9);
     await module.close();
   });
 });

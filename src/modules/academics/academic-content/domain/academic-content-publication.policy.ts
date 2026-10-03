@@ -256,6 +256,9 @@ export function isAcademicContentPublicationVisible(
   );
 }
 
+export const isAcademicContentPublicationVisibleAt =
+  isAcademicContentPublicationVisible;
+
 export type AcademicContentPublicationReadinessInput = {
   type: ContentType;
   audience: Audience;

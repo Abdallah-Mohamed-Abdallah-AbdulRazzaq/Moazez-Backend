@@ -1,3 +1,4 @@
+import { AcademicContentPublicationReconciliationSchedule } from './maintenance-scheduler/academic-content-publication-reconciliation.schedule';
 import {
   HTTP_CODE_METADATA,
   MODULE_METADATA,
@@ -35,6 +36,7 @@ import {
 
 const CONSUMER_PROVIDER_NAMES = [
   'AcademicContentCleanupWorker',
+  'AcademicContentPublicationWorker',
   'CommunicationNotificationGenerationWorker',
   'CommunicationNotificationPushWorker',
   'SchoolEmailDeliveryWorker',
@@ -46,6 +48,7 @@ const CONSUMER_PROVIDER_NAMES = [
 
 const SCHEDULE_PROVIDER_NAMES = [
   AcademicContentCleanupSchedule.name,
+  AcademicContentPublicationReconciliationSchedule.name,
   DismissalExpirySchedule.name,
   LearningMediaCleanupSchedule.name,
   BrandingLogoReconciliationSchedule.name,
@@ -118,7 +121,7 @@ describe('runtime role module graphs', () => {
     );
   });
 
-  it('owns exactly the seven Core consumers without HTTP or local Socket.IO', () => {
+  it('owns exactly the eight Core consumers without HTTP or local Socket.IO', () => {
     setDatabaseRuntimeEnvironment('core-worker');
     const { CoreWorkerRuntimeModule } = jest.requireActual<
       typeof import('./core-worker/core-worker-runtime.module')
@@ -127,6 +130,7 @@ describe('runtime role module graphs', () => {
 
     expect(CORE_WORKER_CONSUMER_PROVIDERS.map(providerName).sort()).toEqual([
       'AcademicContentCleanupWorker',
+      'AcademicContentPublicationWorker',
       'BrandingLogoCleanupWorker',
       'CommunicationNotificationGenerationWorker',
       'CommunicationNotificationPushWorker',
@@ -134,9 +138,9 @@ describe('runtime role module graphs', () => {
       'ImportValidationWorker',
       'SchoolEmailDeliveryWorker',
     ]);
-    expect(CORE_WORKER_ASSIGNED_CONSUMERS).toHaveLength(7);
+    expect(CORE_WORKER_ASSIGNED_CONSUMERS).toHaveLength(8);
     expect(intersection(graph.providers, CONSUMER_PROVIDER_NAMES)).toHaveLength(
-      7,
+      8,
     );
     expect(intersection(graph.providers, SCHEDULE_PROVIDER_NAMES)).toEqual([]);
     expect(graph.controllers).toEqual([]);
@@ -165,7 +169,7 @@ describe('runtime role module graphs', () => {
     expect(graph.providers).not.toContain('TemporaryDiskProbe');
   });
 
-  it('owns exactly eight registrations and no consumer, controller, Gateway, or storage provider', async () => {
+  it('owns exactly nine registrations and no consumer, controller, Gateway, or storage provider', async () => {
     for (const field of DATABASE_RUNTIME_ENVIRONMENT_FIELDS) {
       delete process.env[field];
     }
@@ -175,6 +179,9 @@ describe('runtime role module graphs', () => {
     const graph = inspectModuleGraph(MaintenanceSchedulerRuntimeModule);
     const registerRepeatJob = jest.fn().mockResolvedValue(undefined);
 
+    await new AcademicContentPublicationReconciliationSchedule({
+      registerRepeatJob,
+    } as never).onModuleInit();
     await new AcademicContentCleanupSchedule({
       registerRepeatJob,
     } as never).onModuleInit();
@@ -208,7 +215,7 @@ describe('runtime role module graphs', () => {
     expect(graph.controllers).toEqual([]);
     expect(graph.providers).not.toContain(RealtimeGateway.name);
     expect(graph.providers).not.toContain(StorageService.name);
-    expect(registerRepeatJob).toHaveBeenCalledTimes(8);
+    expect(registerRepeatJob).toHaveBeenCalledTimes(9);
     const registrations = registerRepeatJob.mock.calls as unknown as Array<
       [
         string,

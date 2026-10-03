@@ -101,13 +101,13 @@ test('runtime role ownership retains Phase 2 isolation with the current ACC inve
   );
   assert.match(
     contract,
-    /CORE_WORKER_ASSIGNED_CONSUMERS\)\.toHaveLength\(7\)/u,
+    /CORE_WORKER_ASSIGNED_CONSUMERS\)\.toHaveLength\(8\)/u,
   );
   assert.match(
     contract,
     /MEDIA_WORKER_ASSIGNED_CONSUMERS\)\.toEqual\(\['learning-media-cleanup'\]\)/u,
   );
-  assert.match(contract, /registerRepeatJob\)\.toHaveBeenCalledTimes\(8\)/u);
+  assert.match(contract, /registerRepeatJob\)\.toHaveBeenCalledTimes\(9\)/u);
 });
 
 test('real evidence harness locks two instances, budgets, outages, and cleanup', () => {
@@ -143,7 +143,9 @@ test('real evidence harness locks two instances, budgets, outages, and cleanup',
       wrapper.indexOf('const testRun = spawnSync'),
   );
   assert.doesNotMatch(wrapper, /--forceExit/u);
-  assert.match(integration, /EXPECTED_QUEUE_STEADY_MAXIMUM = 36/u);
+  assert.match(integration, /EXPECTED_QUEUE_STEADY_MAXIMUM = 40/u);
+  assert.match(integration, /CORE_QUEUE_NAMES = CORE_WORKER_ASSIGNED_CONSUMERS/u);
+  assert.match(integration, /expect\(CORE_QUEUE_NAMES\)\.toHaveLength\(8\)/u);
   assert.match(integration, /EXPECTED_REALTIME_STEADY_MAXIMUM = 14/u);
   assert.match(integration, /QUEUE_GOVERNED_MAXIMUM = 40/u);
   assert.match(integration, /REALTIME_GOVERNED_MAXIMUM = 30/u);
