@@ -8,6 +8,7 @@ import {
   AcademicContentType as Type,
   StudentEnrollmentStatus as EnrollmentStatus,
   UserType,
+  Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
 import { AcademicContentAudienceRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-audience.repository';
@@ -52,6 +53,30 @@ describeDatabase(
         client,
         revisionResolver(client),
       );
+    async function collectRevisionAudience(
+      resolver: AcademicContentRevisionAudienceResolver,
+      tx: Prisma.TransactionClient,
+      identity: Parameters<
+        AcademicContentRevisionAudienceResolver['resolveBatches']
+      >[1],
+    ) {
+      const students: import('../../src/modules/academics/academic-content/infrastructure/academic-content-revision-audience.resolver').AcademicContentRevisionStudentContext[] =
+        [];
+      const guardians: import('../../src/modules/academics/academic-content/infrastructure/academic-content-revision-audience.resolver').AcademicContentRevisionGuardianContext[] =
+        [];
+      for await (const batch of resolver.resolveBatches(tx, identity)) {
+        students.push(...batch.students);
+        guardians.push(...batch.guardians);
+      }
+      // Compare business contexts independently of the infrastructure page order.
+      guardians.sort(
+        (a, b) =>
+          a.guardianId.localeCompare(b.guardianId) ||
+          a.studentId.localeCompare(b.studentId) ||
+          a.enrollmentId.localeCompare(b.enrollmentId),
+      );
+      return { students, guardians };
+    }
     const now = new Date('2026-10-03T12:00:00Z');
     const schools: string[] = [],
       users: string[] = [];
@@ -284,7 +309,7 @@ describeDatabase(
     }
     const resolve = (f: Fixture, p: Publication, client = prisma) =>
       client.$transaction((tx) =>
-        revisionResolver(client).resolve(tx, {
+        collectRevisionAudience(revisionResolver(client), tx, {
           schoolId: f.schoolId,
           contentId: f.content.id,
           revisionId: p.revisionId,
@@ -384,6 +409,171 @@ describeDatabase(
       } finally {
         await Promise.all([prisma.$disconnect(), second.$disconnect()]);
       }
+    });
+
+    it('streams a bulk 505-Enrollment audience with 1010 Guardian contexts using bounded page queries and writes', async () => {
+      const f = await fixture(Audience.STUDENTS_AND_GUARDIANS, [Scope.SCHOOL]);
+      const studentIds = Array.from({ length: 505 }, () => randomUUID());
+      const enrollmentIds = studentIds.map(() => randomUUID());
+      const guardianIds = studentIds.map(() => randomUUID());
+      const sharedGuardianId = randomUUID();
+      await prisma.student.createMany({
+        data: studentIds.map((id) => ({
+          id,
+          schoolId: f.schoolId,
+          organizationId,
+          firstName: 'Bulk',
+          lastName: id,
+        })),
+      });
+      await prisma.enrollment.createMany({
+        data: studentIds.map((studentId, i) => ({
+          id: enrollmentIds[i],
+          schoolId: f.schoolId,
+          studentId,
+          academicYearId: f.academicYearId,
+          termId: f.termId,
+          classroomId: f.classroomId,
+          enrolledAt: now,
+        })),
+      });
+      await prisma.guardian.createMany({
+        data: [...guardianIds, sharedGuardianId].map((id) => ({
+          id,
+          schoolId: f.schoolId,
+          organizationId,
+          firstName: 'Bulk',
+          lastName: id,
+          phone: 'test-phone',
+          relation: 'parent',
+          canReceiveNotifications: false,
+        })),
+      });
+      await prisma.studentGuardian.createMany({
+        data: studentIds.flatMap((studentId, i) =>
+          [guardianIds[i], sharedGuardianId].map((guardianId) => ({
+            schoolId: f.schoolId,
+            studentId,
+            guardianId,
+          })),
+        ),
+      });
+      const p = await schedule(f);
+      const enrollmentPages: number[] = [],
+        guardianPages: number[] = [],
+        recipientWrites: number[] = [],
+        targetWrites: number[] = [];
+      const observed = prisma.$extends({
+        query: {
+          enrollment: {
+            async findMany({ args, query }) {
+              expect(args.take).toBe(500);
+              expect(args.orderBy).toEqual({ id: 'asc' });
+              expect(args.where?.schoolId).toBe(f.schoolId);
+              if (enrollmentPages.length)
+                expect(recipientWrites.reduce((a, b) => a + b, 0)).toBe(1500);
+              const rows = await query(args);
+              enrollmentPages.push(rows.length);
+              return rows;
+            },
+          },
+          studentGuardian: {
+            async findMany({ args, query }) {
+              expect(args.take).toBe(500);
+              expect(args.orderBy).toEqual({ id: 'asc' });
+              expect(args.where?.schoolId).toBe(f.schoolId);
+              const rows = await query(args);
+              guardianPages.push(rows.length);
+              return rows;
+            },
+          },
+          academicContentAudienceRecipient: {
+            createMany({ args, query }) {
+              const rows = Array.isArray(args.data) ? args.data : [args.data];
+              expect(rows.length).toBeGreaterThan(0);
+              expect(rows.length).toBeLessThanOrEqual(500);
+              expect(
+                rows.every(
+                  (row) =>
+                    row.schoolId === f.schoolId &&
+                    row.publicationId === p.publicationId &&
+                    row.revisionId === p.revisionId,
+                ),
+              ).toBe(true);
+              recipientWrites.push(rows.length);
+              return query(args);
+            },
+          },
+          academicContentAudienceRecipientTarget: {
+            createMany({ args, query }) {
+              const rows = Array.isArray(args.data) ? args.data : [args.data];
+              expect(rows.length).toBeGreaterThan(0);
+              expect(rows.length).toBeLessThanOrEqual(500);
+              expect(
+                rows.every(
+                  (row) =>
+                    row.schoolId === f.schoolId &&
+                    row.revisionId === p.revisionId,
+                ),
+              ).toBe(true);
+              targetWrites.push(rows.length);
+              return query(args);
+            },
+          },
+        },
+      }) as unknown as PrismaService;
+      expect(await execute(f, p, observed)).toMatchObject({
+        outcome: 'PUBLISHED',
+        studentRecipientCount: 505,
+        guardianRecipientContextCount: 1010,
+      });
+      expect(enrollmentPages).toEqual([500, 5]);
+      expect(guardianPages).toEqual([500, 500, 0, 10]);
+      expect(recipientWrites).toEqual([500, 500, 500, 5, 10]);
+      expect(targetWrites).toEqual(recipientWrites);
+      expect(enrollmentPages.length + guardianPages.length).toBe(6);
+      const saved = await state(f, p);
+      expect(saved.content.status).toBe('PUBLISHED');
+      expect(saved.publication.status).toBe('PUBLISHED');
+      expect(saved.recipients).toHaveLength(1515);
+      expect(
+        new Set(saved.recipients.map((row) => row.identityFingerprint)).size,
+      ).toBe(1515);
+      expect(
+        new Set(
+          saved.recipients
+            .filter((row) => row.recipientKind === Kind.STUDENT)
+            .map((row) => row.enrollmentId),
+        ),
+      ).toEqual(new Set(enrollmentIds));
+      expect(
+        saved.recipients.filter((row) => row.recipientKind === Kind.GUARDIAN),
+      ).toHaveLength(1010);
+      expect(
+        new Set(
+          saved.recipients
+            .filter((row) => row.recipientKind === Kind.GUARDIAN)
+            .map(
+              (row) => `${row.guardianId}/${row.studentId}/${row.enrollmentId}`,
+            ),
+        ),
+      ).toEqual(
+        new Set(
+          studentIds.flatMap((studentId, i) =>
+            [guardianIds[i], sharedGuardianId].map(
+              (guardianId) => `${guardianId}/${studentId}/${enrollmentIds[i]}`,
+            ),
+          ),
+        ),
+      );
+      expect(
+        saved.recipients.every(
+          (row) =>
+            row.targets.length === 1 &&
+            row.targets[0].revisionId === p.revisionId,
+        ),
+      ).toBe(true);
+      expect(saved.audits).toHaveLength(1);
     });
 
     it.each([
@@ -776,6 +966,13 @@ describeDatabase(
           data: { userId: null },
         });
       });
+      const current = await new AcademicContentAudienceResolver(
+        new AcademicContentAudienceRepository(prisma),
+      ).resolve(f.content.id, f.schoolId);
+      expect(current.students).toEqual([]);
+      expect(current.guardians).toEqual([]);
+      expect(original.recipients).toHaveLength(4);
+      expect((await state(f, p)).recipients).toEqual(original.recipients);
       const guarded = prisma.$extends({
         query: {
           enrollment: {
@@ -1001,7 +1198,7 @@ describeDatabase(
         q = await schedule(other);
       await expect(
         prisma.$transaction((tx) =>
-          revisionResolver().resolve(tx, {
+          collectRevisionAudience(revisionResolver(), tx, {
             schoolId: f.schoolId,
             contentId: f.content.id,
             revisionId: q.revisionId,
@@ -1072,7 +1269,7 @@ describeDatabase(
       ).rejects.toMatchObject({ code: 'not_found' });
       await expect(
         prisma.$transaction((tx) =>
-          revisionResolver().resolve(tx, {
+          collectRevisionAudience(revisionResolver(), tx, {
             schoolId: f.schoolId,
             contentId: f.content.id,
             revisionId: q.revisionId,

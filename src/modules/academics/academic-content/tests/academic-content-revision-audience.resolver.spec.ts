@@ -4,8 +4,16 @@ import {
   AcademicContentType as Type,
   Prisma,
 } from '@prisma/client';
-import { AcademicContentRevisionAudienceResolver } from '../infrastructure/academic-content-revision-audience.resolver';
-import { AcademicContentAudienceRepository } from '../infrastructure/academic-content-audience.repository';
+import {
+  AcademicContentRevisionAudience,
+  AcademicContentRevisionGuardianContext,
+  AcademicContentRevisionAudienceResolver,
+} from '../infrastructure/academic-content-revision-audience.resolver';
+import {
+  AcademicContentAudienceRepository,
+  ACADEMIC_CONTENT_PUBLICATION_AUDIENCE_PAGE_SIZE,
+} from '../infrastructure/academic-content-audience.repository';
+import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import {
   AcademicAudienceEnrollment,
   AcademicAudienceTarget,
@@ -164,15 +172,18 @@ describe('Revision V2 audience resolver', () => {
       termId: 'frozen-term',
       type,
       audience,
-      targets: [{ ...target(Scope.CLASSROOM), subjectId: 'subject' }],
+      targets: [
+        { ...target(Scope.CLASSROOM), subjectId: 'subject' },
+      ] as AcademicAudienceTarget[],
     };
     const reads = {
-      eligibleEnrollments: jest.fn().mockResolvedValue([enrollment()]),
+      eligibleEnrollmentsPage: jest.fn().mockResolvedValue([enrollment()]),
       taughtGradeSubjects: jest
         .fn()
         .mockResolvedValue([{ gradeId: 'grade', subjectId: 'subject' }]),
-      guardianLinks: jest.fn().mockResolvedValue([
+      guardianLinksPage: jest.fn().mockResolvedValue([
         {
+          id: 'link-1',
           studentId: 'student-e1',
           guardianId: 'guardian',
           guardian: { userId: null, canReceiveNotifications: false },
@@ -203,8 +214,20 @@ describe('Revision V2 audience resolver', () => {
       tx,
       resolver,
       identity,
-      resolve: () =>
-        resolver.resolve(tx as unknown as Prisma.TransactionClient, identity),
+      resolve: async () => {
+        const result: AcademicContentRevisionAudience = {
+          students: [],
+          guardians: [],
+        };
+        for await (const batch of resolver.resolveBatches(
+          tx as unknown as Prisma.TransactionClient,
+          identity,
+        )) {
+          result.students.push(...batch.students);
+          result.guardians.push(...batch.guardians);
+        }
+        return result;
+      },
     };
   }
   it.each([
@@ -226,10 +249,11 @@ describe('Revision V2 audience resolver', () => {
           },
         }),
       );
-      expect(f.reads.eligibleEnrollments).toHaveBeenCalledWith(
+      expect(f.reads.eligibleEnrollmentsPage).toHaveBeenCalledWith(
         'school',
         'frozen-year',
         'frozen-term',
+        undefined,
         f.tx,
       );
       expect(f.reads.taughtGradeSubjects).toHaveBeenCalledWith(
@@ -256,9 +280,10 @@ describe('Revision V2 audience resolver', () => {
           matchedRevisionTargetIds: ['frozen-target'],
         });
       if (mode !== Audience.STUDENTS) {
-        expect(f.reads.guardianLinks).toHaveBeenCalledWith(
+        expect(f.reads.guardianLinksPage).toHaveBeenCalledWith(
           'school',
           ['student-e1'],
+          undefined,
           f.tx,
         );
         expect(resolved.guardians[0]).toMatchObject({
@@ -267,6 +292,8 @@ describe('Revision V2 audience resolver', () => {
           guardianCanReceiveNotifications: false,
           matchedRevisionTargetIds: ['frozen-target'],
         });
+      } else {
+        expect(f.reads.guardianLinksPage).not.toHaveBeenCalled();
       }
     },
   );
@@ -276,7 +303,7 @@ describe('Revision V2 audience resolver', () => {
     await expect(f.resolve()).rejects.toMatchObject({
       code: 'not_found',
     });
-    expect(f.reads.eligibleEnrollments).not.toHaveBeenCalled();
+    expect(f.reads.eligibleEnrollmentsPage).not.toHaveBeenCalled();
   });
   it('fails closed before any relationship reads when the exact V2 revision has no frozen targets', async () => {
     const f = fixture();
@@ -285,9 +312,9 @@ describe('Revision V2 audience resolver', () => {
       code: 'academic_content.publication.snapshot_conflict',
       httpStatus: 409,
     });
-    expect(f.reads.eligibleEnrollments).not.toHaveBeenCalled();
+    expect(f.reads.eligibleEnrollmentsPage).not.toHaveBeenCalled();
     expect(f.reads.taughtGradeSubjects).not.toHaveBeenCalled();
-    expect(f.reads.guardianLinks).not.toHaveBeenCalled();
+    expect(f.reads.guardianLinksPage).not.toHaveBeenCalled();
   });
   it.each([
     [Audience.INTERNAL_STAFF, Type.TEACHER_PREPARATION],
@@ -299,7 +326,181 @@ describe('Revision V2 audience resolver', () => {
       await expect(f.resolve()).rejects.toMatchObject({
         code: 'academic_content.publication.audience_unavailable',
       });
-      expect(f.reads.eligibleEnrollments).not.toHaveBeenCalled();
+      expect(f.reads.eligibleEnrollmentsPage).not.toHaveBeenCalled();
     },
   );
+
+  it('advances Enrollment cursors and qualifies subjects set-wise for each page', async () => {
+    const f = fixture(Audience.STUDENTS);
+    f.revision.targets = [
+      { ...target(Scope.SCHOOL, 'z'), subjectId: 'subject' },
+      target(Scope.SCHOOL, 'a'),
+    ];
+    const first = Array.from({ length: 500 }, (_, i) =>
+      enrollment(`e${String(i).padStart(4, '0')}`),
+    );
+    const last = Array.from({ length: 5 }, (_, i) => {
+      const row = enrollment(`e${i + 500}`);
+      row.classroom.section.gradeId = 'other-grade';
+      return row;
+    });
+    f.reads.eligibleEnrollmentsPage
+      .mockReset()
+      .mockResolvedValueOnce(first)
+      .mockResolvedValueOnce(last);
+    f.reads.taughtGradeSubjects
+      .mockReset()
+      .mockResolvedValueOnce([{ gradeId: 'grade', subjectId: 'subject' }])
+      .mockResolvedValueOnce([]);
+    const result = await f.resolve();
+    expect(result.students).toHaveLength(505);
+    expect(result.students[0].matchedRevisionTargetIds).toEqual(['a', 'z']);
+    expect(result.students[504].matchedRevisionTargetIds).toEqual(['a']);
+    expect(
+      f.reads.eligibleEnrollmentsPage.mock.calls.map(
+        (args: unknown[]) => args[3],
+      ),
+    ).toEqual([undefined, first[499].id]);
+    expect(f.reads.taughtGradeSubjects).toHaveBeenNthCalledWith(
+      2,
+      'school',
+      'frozen-year',
+      'frozen-term',
+      ['other-grade'],
+      ['subject'],
+      f.tx,
+    );
+    expect(f.tx.academicContentRevision.findFirst).toHaveBeenCalledTimes(1);
+    expect(f.tx.academicContentTarget.findMany).not.toHaveBeenCalled();
+    expect(f.reads.guardianLinksPage).not.toHaveBeenCalled();
+  });
+
+  it('bounds Guardian link expansion even with multiple Enrollment contexts per Student', async () => {
+    const f = fixture(Audience.GUARDIANS);
+    f.revision.targets = [
+      target(Scope.SCHOOL, 'z'),
+      target(Scope.CLASSROOM, 'a'),
+    ];
+    const child = enrollment('e1');
+    f.reads.eligibleEnrollmentsPage.mockResolvedValue([
+      child,
+      { ...child, id: 'e2' },
+    ]);
+    const links = Array.from({ length: 501 }, (_, i) => ({
+      id: `link-${i}`,
+      studentId: child.studentId,
+      guardianId: `guardian-${i}`,
+      guardian: {
+        userId: null,
+        canReceiveNotifications: i % 2 === 0 ? false : null,
+      },
+    }));
+    f.reads.guardianLinksPage
+      .mockReset()
+      .mockResolvedValueOnce(links.slice(0, 500))
+      .mockResolvedValueOnce(links.slice(500));
+    const sizes: number[] = [];
+    const contexts: AcademicContentRevisionGuardianContext[] = [];
+    for await (const batch of f.resolver.resolveBatches(
+      f.tx as unknown as Prisma.TransactionClient,
+      f.identity,
+    )) {
+      expect(batch.students).toEqual([]);
+      sizes.push(batch.guardians.length);
+      contexts.push(...batch.guardians);
+    }
+    expect(sizes).toEqual([500, 500, 2]);
+    expect(contexts).toHaveLength(1002);
+    expect(
+      new Set(
+        contexts.map((row) =>
+          JSON.stringify([row.guardianId, row.studentId, row.enrollmentId]),
+        ),
+      ).size,
+    ).toBe(1002);
+    expect(
+      contexts.every(
+        (row) =>
+          row.matchedRevisionTargetIds.join(',') === 'a,z' &&
+          row.recipientUserId === null,
+      ),
+    ).toBe(true);
+    expect(
+      new Set(contexts.map((row) => row.guardianCanReceiveNotifications)),
+    ).toEqual(new Set([false, null]));
+    expect(
+      f.reads.guardianLinksPage.mock.calls.map((args: unknown[]) => args[2]),
+    ).toEqual([undefined, links[499].id]);
+  });
+
+  it('uses fixed page limits and primary-key cursors on the explicit transaction only', async () => {
+    const enrollmentRead = jest
+      .fn<Promise<[]>, [unknown]>()
+      .mockResolvedValue([]);
+    const guardianRead = jest
+      .fn<Promise<[]>, [unknown]>()
+      .mockResolvedValue([]);
+    const tx = {
+      enrollment: { findMany: enrollmentRead },
+      studentGuardian: { findMany: guardianRead },
+    } as unknown as Prisma.TransactionClient;
+    const reads = new AcademicContentAudienceRepository({} as PrismaService);
+    await reads.eligibleEnrollmentsPage(
+      'school',
+      'year',
+      'term',
+      'enrollment-cursor',
+      tx,
+    );
+    await reads.guardianLinksPage('school', ['student'], 'guardian-cursor', tx);
+    for (const read of [enrollmentRead, guardianRead]) {
+      expect(read).toHaveBeenCalledWith(
+        expect.objectContaining({
+          take: ACADEMIC_CONTENT_PUBLICATION_AUDIENCE_PAGE_SIZE,
+          orderBy: { id: 'asc' },
+          skip: 1,
+        }),
+      );
+    }
+    expect(enrollmentRead).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cursor: { id: 'enrollment-cursor' },
+        where: {
+          schoolId: 'school',
+          academicYearId: 'year',
+          termId: 'term',
+          status: 'ACTIVE',
+          deletedAt: null,
+          student: { schoolId: 'school', status: 'ACTIVE', deletedAt: null },
+          classroom: {
+            schoolId: 'school',
+            deletedAt: null,
+            section: {
+              schoolId: 'school',
+              deletedAt: null,
+              grade: {
+                schoolId: 'school',
+                deletedAt: null,
+                stage: { schoolId: 'school', deletedAt: null },
+              },
+            },
+          },
+        },
+      }),
+    );
+    expect(guardianRead).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cursor: { id: 'guardian-cursor' },
+        where: {
+          schoolId: 'school',
+          studentId: { in: ['student'] },
+          student: { schoolId: 'school', status: 'ACTIVE', deletedAt: null },
+          guardian: { schoolId: 'school', deletedAt: null },
+        },
+      }),
+    );
+    expect(guardianRead.mock.calls[0][0]).toMatchObject({
+      select: { id: true },
+    });
+  });
 });

@@ -27,6 +27,8 @@ export type EligibleAcademicEnrollment = Prisma.EnrollmentGetPayload<
   typeof ELIGIBLE_ENROLLMENT_ARGS
 >;
 
+export const ACADEMIC_CONTENT_PUBLICATION_AUDIENCE_PAGE_SIZE = 500;
+
 @Injectable()
 export class AcademicContentAudienceRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -91,6 +93,67 @@ export class AcademicContentAudienceRepository {
       },
       orderBy: { id: 'asc' },
       ...ELIGIBLE_ENROLLMENT_ARGS,
+    });
+  }
+
+  eligibleEnrollmentsPage(
+    schoolId: string,
+    academicYearId: string,
+    termId: string,
+    afterId: string | undefined,
+    client: Prisma.TransactionClient,
+  ): Promise<EligibleAcademicEnrollment[]> {
+    return client.enrollment.findMany({
+      where: {
+        schoolId,
+        academicYearId,
+        termId,
+        status: StudentEnrollmentStatus.ACTIVE,
+        deletedAt: null,
+        student: { schoolId, status: StudentStatus.ACTIVE, deletedAt: null },
+        classroom: {
+          schoolId,
+          deletedAt: null,
+          section: {
+            schoolId,
+            deletedAt: null,
+            grade: {
+              schoolId,
+              deletedAt: null,
+              stage: { schoolId, deletedAt: null },
+            },
+          },
+        },
+      },
+      ...(afterId ? { cursor: { id: afterId }, skip: 1 } : {}),
+      orderBy: { id: 'asc' },
+      take: ACADEMIC_CONTENT_PUBLICATION_AUDIENCE_PAGE_SIZE,
+      ...ELIGIBLE_ENROLLMENT_ARGS,
+    });
+  }
+
+  guardianLinksPage(
+    schoolId: string,
+    studentIds: string[],
+    afterId: string | undefined,
+    client: Prisma.TransactionClient,
+  ) {
+    return client.studentGuardian.findMany({
+      where: {
+        schoolId,
+        studentId: { in: studentIds },
+        student: { schoolId, deletedAt: null, status: StudentStatus.ACTIVE },
+        guardian: { schoolId, deletedAt: null },
+      },
+      select: {
+        id: true,
+        studentId: true,
+        guardianId: true,
+        guardian: { select: { userId: true, canReceiveNotifications: true } },
+      },
+      ...(afterId ? { cursor: { id: afterId }, skip: 1 } : {}),
+      orderBy: { id: 'asc' },
+      take: ACADEMIC_CONTENT_PUBLICATION_AUDIENCE_PAGE_SIZE,
     });
   }
 

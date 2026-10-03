@@ -206,98 +206,102 @@ export class AcademicContentPublicationSnapshotRepository {
       contentId: input.contentId,
       revisionId: publication.revisionId,
     };
-    const resolved = await this.audience.resolve(tx, identity);
-    const recipients: Prisma.AcademicContentAudienceRecipientCreateManyInput[] =
-      [];
-    const targets: Prisma.AcademicContentAudienceRecipientTargetCreateManyInput[] =
-      [];
     const common = {
       schoolId: input.schoolId,
       publicationId: input.publicationId,
       revisionId: publication.revisionId,
     };
-    for (const student of resolved.students) {
-      const id = randomUUID();
-      recipients.push({
-        ...common,
-        id,
-        recipientKind: Kind.STUDENT,
-        identityFingerprint: academicContentRecipientIdentity({
+    let studentRecipientCount = 0;
+    let guardianRecipientContextCount = 0;
+    for await (const batch of this.audience.resolveBatches(tx, identity)) {
+      const recipients: Prisma.AcademicContentAudienceRecipientCreateManyInput[] =
+        [];
+      const attribution: Array<{ recipientId: string; targetIds: string[] }> =
+        [];
+      if (
+        batch.students.length + batch.guardians.length >
+        ACADEMIC_CONTENT_SNAPSHOT_BATCH_SIZE
+      )
+        conflict();
+      for (const student of batch.students) {
+        const id = randomUUID();
+        recipients.push({
+          ...common,
+          id,
           recipientKind: Kind.STUDENT,
+          identityFingerprint: academicContentRecipientIdentity({
+            recipientKind: Kind.STUDENT,
+            enrollmentId: student.enrollmentId,
+          }).identityFingerprint,
+          studentId: student.studentId,
           enrollmentId: student.enrollmentId,
-        }).identityFingerprint,
-        studentId: student.studentId,
-        enrollmentId: student.enrollmentId,
-        classroomId: student.classroomId,
-        guardianId: null,
-        recipientUserId: student.recipientUserId,
-        guardianCanReceiveNotifications: null,
-      });
-      for (const revisionTargetId of student.matchedRevisionTargetIds)
-        targets.push({
-          schoolId: input.schoolId,
-          recipientId: id,
-          revisionId: publication.revisionId,
-          revisionTargetId,
+          classroomId: student.classroomId,
+          guardianId: null,
+          recipientUserId: student.recipientUserId,
+          guardianCanReceiveNotifications: null,
         });
-    }
-    for (const guardian of resolved.guardians) {
-      const id = randomUUID();
-      recipients.push({
-        ...common,
-        id,
-        recipientKind: Kind.GUARDIAN,
-        identityFingerprint: academicContentRecipientIdentity({
+        attribution.push({
+          recipientId: id,
+          targetIds: student.matchedRevisionTargetIds,
+        });
+      }
+      for (const guardian of batch.guardians) {
+        const id = randomUUID();
+        recipients.push({
+          ...common,
+          id,
           recipientKind: Kind.GUARDIAN,
-          guardianId: guardian.guardianId,
+          identityFingerprint: academicContentRecipientIdentity({
+            recipientKind: Kind.GUARDIAN,
+            guardianId: guardian.guardianId,
+            studentId: guardian.studentId,
+            enrollmentId: guardian.enrollmentId,
+          }).identityFingerprint,
           studentId: guardian.studentId,
           enrollmentId: guardian.enrollmentId,
-        }).identityFingerprint,
-        studentId: guardian.studentId,
-        enrollmentId: guardian.enrollmentId,
-        classroomId: guardian.classroomId,
-        guardianId: guardian.guardianId,
-        recipientUserId: guardian.recipientUserId,
-        guardianCanReceiveNotifications:
-          guardian.guardianCanReceiveNotifications,
-      });
-      for (const revisionTargetId of guardian.matchedRevisionTargetIds)
-        targets.push({
-          schoolId: input.schoolId,
-          recipientId: id,
-          revisionId: publication.revisionId,
-          revisionTargetId,
+          classroomId: guardian.classroomId,
+          guardianId: guardian.guardianId,
+          recipientUserId: guardian.recipientUserId,
+          guardianCanReceiveNotifications:
+            guardian.guardianCanReceiveNotifications,
         });
-    }
-    for (
-      let offset = 0;
-      offset < recipients.length;
-      offset += ACADEMIC_CONTENT_SNAPSHOT_BATCH_SIZE
-    ) {
-      const data = recipients.slice(
-        offset,
-        offset + ACADEMIC_CONTENT_SNAPSHOT_BATCH_SIZE,
-      );
+        attribution.push({
+          recipientId: id,
+          targetIds: guardian.matchedRevisionTargetIds,
+        });
+      }
+      if (!recipients.length) continue;
       const inserted = await tx.academicContentAudienceRecipient.createMany({
-        data,
+        data: recipients,
       });
-      if (inserted.count !== data.length) conflict();
+      if (inserted.count !== recipients.length) conflict();
+      let targets: Prisma.AcademicContentAudienceRecipientTargetCreateManyInput[] =
+        [];
+      const flushTargets = async () => {
+        if (!targets.length) return;
+        const inserted =
+          await tx.academicContentAudienceRecipientTarget.createMany({
+            data: targets,
+          });
+        if (inserted.count !== targets.length) conflict();
+        targets = [];
+      };
+      for (const row of attribution) {
+        for (const revisionTargetId of row.targetIds) {
+          targets.push({
+            schoolId: input.schoolId,
+            recipientId: row.recipientId,
+            revisionId: publication.revisionId,
+            revisionTargetId,
+          });
+          if (targets.length === ACADEMIC_CONTENT_SNAPSHOT_BATCH_SIZE)
+            await flushTargets();
+        }
+      }
+      await flushTargets();
+      studentRecipientCount += batch.students.length;
+      guardianRecipientContextCount += batch.guardians.length;
     }
-    for (
-      let offset = 0;
-      offset < targets.length;
-      offset += ACADEMIC_CONTENT_SNAPSHOT_BATCH_SIZE
-    ) {
-      const data = targets.slice(
-        offset,
-        offset + ACADEMIC_CONTENT_SNAPSHOT_BATCH_SIZE,
-      );
-      const inserted =
-        await tx.academicContentAudienceRecipientTarget.createMany({ data });
-      if (inserted.count !== data.length) conflict();
-    }
-    const studentRecipientCount = resolved.students.length,
-      guardianRecipientContextCount = resolved.guardians.length;
     const changed = await tx.academicContentPublication.updateMany({
       where: {
         id: input.publicationId,
