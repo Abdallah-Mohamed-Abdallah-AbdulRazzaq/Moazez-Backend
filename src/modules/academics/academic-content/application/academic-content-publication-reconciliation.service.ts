@@ -34,15 +34,19 @@ export class AcademicContentPublicationReconciliationService {
             : await this.publications.listDueExpiry(now, cursor);
         for (const row of rows) {
           summary.scanned++;
-          const outcome = await this.queue.ensure(
-            job,
-            {
-              schoolId: row.schoolId,
-              contentId: row.academicContentId,
-              publicationId: row.id,
-            },
-            now,
-          );
+          const identity = {
+            schoolId: row.schoolId,
+            contentId: row.academicContentId,
+            publicationId: row.id,
+          };
+          const outcome = await this.queue.ensure(job, identity, now);
+          if (outcome === 'created' || outcome === 'replaced')
+            this.logger.log({
+              event: 'academic_content.publication.job_recovered',
+              job,
+              ...identity,
+              outcome,
+            });
           if (outcome === 'replacement_contended')
             summary.replacementContended++;
           else if (outcome === 'not_required') summary.notRequired++;

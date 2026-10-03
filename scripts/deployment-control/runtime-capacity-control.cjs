@@ -95,7 +95,8 @@ const WORKER_ALLOWED_PATHS = Object.freeze([
 const REDIS_CONNECTION_OWNERSHIP = Object.freeze({
   apiQueue: 2,
   apiRealtime: 3,
-  coreQueue: 9,
+  // Bounded command + readiness + shared Worker base + eight blocking Workers.
+  coreQueue: 11,
   coreRealtime: 1,
   mediaQueue: 4,
   maintenanceQueue: 2,

@@ -49,13 +49,6 @@ export class AcademicContentPublicationQueueService {
         removeOnFail: false,
       },
     );
-    if (outcome === 'created' || outcome === 'replaced')
-      this.logger.log({
-        event: 'academic_content.publication.job_recovered',
-        job,
-        outcome,
-        ...identity,
-      });
     return outcome;
   }
 

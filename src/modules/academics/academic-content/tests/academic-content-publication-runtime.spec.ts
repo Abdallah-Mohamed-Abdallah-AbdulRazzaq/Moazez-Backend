@@ -1,4 +1,5 @@
 import type { JobsOptions } from 'bullmq';
+import { Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import {
   AcademicContentPublicationStatus as Status,
@@ -57,6 +58,7 @@ describe('ACC-7D publication runtime contracts', () => {
     repository.find.mockResolvedValue(row);
     bullmq.ensureJobFromPersistedTruth.mockResolvedValue('created');
   });
+  afterEach(() => jest.restoreAllMocks());
 
   it('uses exact deterministic identity, bounded retries, and persisted publish delay', async () => {
     await producer.ensure('publish', identity, now);
@@ -146,6 +148,83 @@ describe('ACC-7D publication runtime contracts', () => {
       return action();
     });
   }
+  it('logs a fresh schedule with normal created work as scheduled, without a recovery event', async () => {
+    const log = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+    const scheduled = { ...row, publicationId: identity.publicationId };
+    const useCase = new ScheduleAcademicContentPublicationUseCase(
+      { schedule: jest.fn().mockResolvedValue(scheduled) } as never,
+      producer,
+    );
+    await expect(
+      asActor(
+        UserType.SCHOOL_USER,
+        ['academics.academic_content.publish'],
+        () =>
+          useCase.execute(identity.contentId, {
+            clientRequestId: randomUUID(),
+          }),
+      ),
+    ).resolves.toBe(scheduled);
+    expect(bullmq.ensureJobFromPersistedTruth).toHaveBeenCalledTimes(1);
+    expect(log.mock.calls).toEqual([
+      [{ event: 'academic_content.publication.scheduled', ...identity }],
+    ]);
+  });
+  describe.each(['publish', 'expire'] as const)(
+    '%s recovery observability',
+    (job) => {
+      it.each([
+        'created',
+        'replaced',
+        'preserved',
+        'not_required',
+        'replacement_contended',
+      ] as const)(
+        'emits the correct bounded events for %s',
+        async (outcome) => {
+          const log = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+          repository.listDuePublish.mockResolvedValue(
+            job === 'publish' ? [row] : [],
+          );
+          repository.listDueExpiry.mockResolvedValue(
+            job === 'expire' ? [row] : [],
+          );
+          const ensure = jest.fn().mockResolvedValue(outcome);
+          const service = new AcademicContentPublicationReconciliationService(
+            repository as never,
+            { ensure } as never,
+          );
+          const summary = await service.reconcile(now);
+          expect(ensure).toHaveBeenCalledWith(job, identity, now);
+          const recoveryEvents =
+            outcome === 'created' || outcome === 'replaced'
+              ? [
+                  [
+                    {
+                      event: 'academic_content.publication.job_recovered',
+                      job,
+                      ...identity,
+                      outcome,
+                    },
+                  ],
+                ]
+              : [];
+          expect(log.mock.calls).toEqual([
+            ...recoveryEvents,
+            [{ event: 'academic_content.publication.reconciled', ...summary }],
+          ]);
+          expect(summary.scanned).toBe(1);
+          const summaryKey =
+            outcome === 'not_required'
+              ? 'notRequired'
+              : outcome === 'replacement_contended'
+                ? 'replacementContended'
+                : outcome;
+          expect(summary[summaryKey]).toBe(1);
+        },
+      );
+    },
+  );
   it('waits for schedule commit before producer, returns committed result, and retries same intent', async () => {
     let commit!: (result: object) => void;
     const scheduled = { ...row, publicationId: identity.publicationId };

@@ -27,7 +27,8 @@ import { RealtimeStateStoreService } from '../../src/infrastructure/realtime/rea
 import type { RealtimeTypingService } from '../../src/infrastructure/realtime/realtime-typing.service';
 import type { RealtimeSocket } from '../../src/infrastructure/realtime/realtime.types';
 
-const QUEUE_GOVERNED_MAXIMUM = 40;
+const QUEUE_GOVERNED_MAXIMUM = 44;
+const QUEUE_RECOVERY_OPERATIONS_RESERVE = 4;
 const REALTIME_GOVERNED_MAXIMUM = 30;
 const EXPECTED_QUEUE_STEADY_MAXIMUM = 40;
 const EXPECTED_REALTIME_STEADY_MAXIMUM = 14;
@@ -62,6 +63,9 @@ describe('PRD3-G02 split Redis topology and same-process recovery', () => {
         throw new Error('prd3_g02_fixture_contract_missing');
       }
       expect(CORE_QUEUE_NAMES).toHaveLength(8);
+      expect(QUEUE_GOVERNED_MAXIMUM - EXPECTED_QUEUE_STEADY_MAXIMUM).toBe(
+        QUEUE_RECOVERY_OPERATIONS_RESERVE,
+      );
 
       const topology = createProductionShapedTopology(
         queueRedisUrl,
@@ -121,6 +125,10 @@ describe('PRD3-G02 split Redis topology and same-process recovery', () => {
             (await realtimeSampler.readApplicationConnections()) ===
             EXPECTED_REALTIME_STEADY_MAXIMUM,
         );
+
+        const observedQueueSteady =
+          await queueSampler.readApplicationConnections();
+        expect(observedQueueSteady).toBe(EXPECTED_QUEUE_STEADY_MAXIMUM);
 
         apiOneClient = await topology.connectApiClient(0);
         apiTwoClient = await topology.connectApiClient(1);
@@ -549,6 +557,12 @@ describe('PRD3-G02 split Redis topology and same-process recovery', () => {
         );
         await delay(300);
 
+        const observedQueueRecoveredSteady =
+          await queueSampler.readApplicationConnections();
+        expect(observedQueueRecoveredSteady).toBe(
+          EXPECTED_QUEUE_STEADY_MAXIMUM,
+        );
+
         const measured = {
           queueMaximum: maximumApplicationConnections(queueSamples),
           realtimeMaximum: maximumApplicationConnections(realtimeSamples),
@@ -562,6 +576,9 @@ describe('PRD3-G02 split Redis topology and same-process recovery', () => {
           ),
         };
         expect(measured.queueMaximum).toBeLessThanOrEqual(
+          QUEUE_GOVERNED_MAXIMUM,
+        );
+        expect(measured.queueRecoveryMaximum).toBeLessThanOrEqual(
           QUEUE_GOVERNED_MAXIMUM,
         );
         expect(measured.realtimeMaximum).toBeLessThanOrEqual(
@@ -604,6 +621,10 @@ describe('PRD3-G02 split Redis topology and same-process recovery', () => {
             schedulerInstances: 1,
           },
           queueExpectedSteadyMaximum: EXPECTED_QUEUE_STEADY_MAXIMUM,
+          queueGovernedMaximum: QUEUE_GOVERNED_MAXIMUM,
+          queueRecoveryOperationsReserve: QUEUE_RECOVERY_OPERATIONS_RESERVE,
+          observedQueueSteady,
+          observedQueueRecoveredSteady,
           realtimeExpectedSteadyMaximum: EXPECTED_REALTIME_STEADY_MAXIMUM,
           ...measured,
           finalQueueApplicationConnections,
