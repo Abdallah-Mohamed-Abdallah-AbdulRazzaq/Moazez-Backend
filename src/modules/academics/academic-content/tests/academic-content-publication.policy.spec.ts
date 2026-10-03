@@ -24,6 +24,29 @@ describe('ACC-7B logical publication request fingerprint', () => {
   const contentId = '12345678-1234-4234-8234-123456789abc';
   const fingerprint = (input = {}) =>
     academicContentPublicationRequestFingerprint(contentId, input);
+  it.each([
+    {
+      input: {},
+      expected:
+        '4a05df84fd278b1df3fff92d3e98350747f81d1eab95cb5376417c83e79a3ba1',
+    },
+    {
+      input: { publishAt: now, visibleFrom: now, visibleUntil: null },
+      expected:
+        'c39e5214dff3a0c3dbd5dcf6799c16ba0befbc9f058ab9d71ead5742fd07c44c',
+    },
+    {
+      input: {
+        publishAt: now,
+        visibleFrom: date('2026-10-02T13:00:00Z'),
+        visibleUntil: date('2026-10-03T12:00:00Z'),
+      },
+      expected:
+        '819a3a6b694a62c1b8428b5af5a16b949a7ef28c6e35974b441bf02105d48eae',
+    },
+  ])('preserves known request fingerprint bytes %#', ({ input, expected }) => {
+    expect(fingerprint(input)).toBe(expected);
+  });
   it('has no execution clock or effective timing dependency', () => {
     jest.useFakeTimers();
     try {

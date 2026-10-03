@@ -65,8 +65,9 @@ export class AcademicContentAudienceRepository {
     schoolId: string,
     academicYearId: string,
     termId: string,
+    client: Prisma.TransactionClient = this.prisma,
   ): Promise<EligibleAcademicEnrollment[]> {
-    return this.prisma.enrollment.findMany({
+    return client.enrollment.findMany({
       where: {
         schoolId,
         academicYearId,
@@ -99,8 +100,9 @@ export class AcademicContentAudienceRepository {
     termId: string,
     gradeIds: string[],
     subjectIds: string[],
+    client: Prisma.TransactionClient = this.prisma,
   ) {
-    return this.prisma.subjectAllocation.findMany({
+    return client.subjectAllocation.findMany({
       where: {
         schoolId,
         academicYearId,
@@ -114,8 +116,12 @@ export class AcademicContentAudienceRepository {
     });
   }
 
-  guardianLinks(schoolId: string, studentIds: string[]) {
-    return this.prisma.studentGuardian.findMany({
+  guardianLinks(
+    schoolId: string,
+    studentIds: string[],
+    client: Prisma.TransactionClient = this.prisma,
+  ) {
+    return client.studentGuardian.findMany({
       where: {
         schoolId,
         studentId: { in: studentIds },
