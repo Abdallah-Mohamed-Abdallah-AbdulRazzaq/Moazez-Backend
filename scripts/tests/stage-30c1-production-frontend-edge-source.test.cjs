@@ -363,6 +363,40 @@ function assertStage30C1CandidateScope(candidateFiles) {
   return true;
 }
 
+function assertCommittedStage30C1CandidateScope(candidateFiles) {
+  // Connection-envelope math has its own capacity contracts. It does not
+  // activate frontend release orchestration or reopen historical Stage 30C1.
+  const capacityContractPaths = new Set([
+    'scripts/deployment-control/runtime-capacity-control.cjs',
+    'scripts/deployment-control/tests/runtime-capacity-control.test.cjs',
+  ]);
+  const day2D1Active = candidateFiles.some(
+    (file) =>
+      (file.startsWith('scripts/deployment-control/') &&
+        !capacityContractPaths.has(file)) ||
+      file.includes('/tests/candidate-route.tftest.hcl'),
+  );
+  if (day2D1Active) {
+    assert.deepEqual(
+      candidateFiles.filter((file) => !isDay2D1ReleaseOrchestrationPath(file)),
+      [],
+    );
+    return false;
+  }
+  // A maintenance edit to this verifier alone is not a frontend source change.
+  const sourceFiles = candidateFiles.filter((file) => file !== TEST_PATH);
+  const stage30C1Active = sourceFiles.some(
+    (file) =>
+      file.startsWith(`${ARTIFACT_DOMAIN}/`) ||
+      file.startsWith(`${RUNTIME_DOMAIN}/`) ||
+      file.startsWith(`${EDGE_ROOT}/`) ||
+      file.startsWith(`${EDGE_MODULE}/`) ||
+      file === 'infra/gcp/edge/README.md',
+  );
+  if (!stage30C1Active) return false;
+  return assertStage30C1CandidateScope(candidateFiles);
+}
+
 function isDay2D1ReleaseOrchestrationPath(file) {
   return (
     file.startsWith('infra/gcp/backend-runtime/') ||
@@ -1782,20 +1816,32 @@ test('Stage 30C1 TAP has exactly one canonical pull-request ownership assignment
 });
 
 test('Committed Stage 30C1 scope remains bounded or delegates to Day-2 D1 orchestration', () => {
-  const candidateFiles = candidateFilesFromCommittedRange();
-  const day2D1Active = candidateFiles.some(
-    (file) =>
-      file.startsWith('scripts/deployment-control/') ||
-      file.includes('/tests/candidate-route.tftest.hcl'),
-  );
-  if (day2D1Active) {
-    assert.deepEqual(
-      candidateFiles.filter((file) => !isDay2D1ReleaseOrchestrationPath(file)),
-      [],
+  assertCommittedStage30C1CandidateScope(candidateFilesFromCommittedRange());
+});
+
+test('capacity contract maintenance does not activate frontend scope and source changes remain bounded', () => {
+  const capacityMaintenance = [
+    'scripts/deployment-control/runtime-capacity-control.cjs',
+    'scripts/deployment-control/tests/runtime-capacity-control.test.cjs',
+    RUNTIME_CAPACITY_GOVERNANCE_PATH,
+    'src/modules/academics/academic-content/example.ts',
+    TEST_PATH,
+  ];
+  assert.equal(assertCommittedStage30C1CandidateScope(capacityMaintenance), false);
+  for (const sourcePath of [
+    `${ARTIFACT_MODULE}/main.tf`,
+    `${RUNTIME_ROOT}/variables.tf`,
+    `${EDGE_MODULE}/main.tf`,
+    'infra/gcp/edge/README.md',
+    'scripts/deployment-control/runtime-release-control.cjs',
+    `${EDGE_ROOT}/tests/candidate-route.tftest.hcl`,
+  ]) {
+    assert.throws(
+      () => assertCommittedStage30C1CandidateScope([...capacityMaintenance, sourcePath]),
+      { code: 'ERR_ASSERTION' },
     );
-    return;
   }
-  assertStage30C1CandidateScope(candidateFiles);
+  assert.equal(assertCommittedStage30C1CandidateScope(AUTHORIZED_STAGE30C1_PATHS), true);
 });
 
 test('Candidate scope activation accepts each domain and rejects mixed or later-stage source', () => {
