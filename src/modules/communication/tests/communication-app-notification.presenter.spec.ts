@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_SOURCE_TYPE } from '../domain/communication-notification-domain';
 import {
   CommunicationNotificationDeliveryChannel,
   CommunicationNotificationDeliveryStatus,
@@ -18,6 +20,90 @@ import {
 } from '../presenters/communication-app-notification.presenter';
 
 describe('communication app notification presenter', () => {
+  it('builds allowlisted Academic Content navigation with safe identities and distinct child context', () => {
+    const publicationId = randomUUID();
+    const academicContentId = randomUUID();
+    const studentId = randomUUID();
+    const row = notificationListRecord({
+      sourceModule: CommunicationNotificationSourceModule.ACADEMICS,
+      sourceType: COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_SOURCE_TYPE,
+      sourceId: publicationId,
+      type: CommunicationNotificationType.ACADEMIC_CONTENT_PUBLISHED,
+    });
+    const present = (
+      metadata: unknown,
+      overrides: Partial<CommunicationNotificationListRecord> = {},
+    ) =>
+      presentCommunicationAppNotificationDetail({
+        notification: {
+          ...row,
+          ...overrides,
+          metadata: metadata as CommunicationNotificationListRecord['metadata'],
+        },
+        options: { aliasStyle: 'dual' },
+      }).notification;
+    for (const studentIds of [[studentId], [studentId, studentId]]) {
+      const output = present({
+        academicContentId,
+        publicationId,
+        studentIds,
+        joinUrl: 'secret-join',
+        accessCode: 'secret-code',
+        bucket: 'secret-bucket',
+        objectKey: 'secret-object',
+        fileUrl: 'secret-file',
+        phone: 'secret-phone',
+        email: 'secret-email',
+        nationalId: 'secret-national',
+        deviceToken: 'secret-token',
+      });
+      expect(output.deepLink).toEqual({
+        type: 'academic_content',
+        academicContentId,
+        publicationId,
+        studentId,
+      });
+      expect(output.deep_link).toEqual(output.deepLink);
+      expect(JSON.stringify(output)).not.toContain('secret-');
+      expect(output).not.toHaveProperty('metadata');
+    }
+    for (const studentIds of [
+      [],
+      undefined,
+      [studentId, randomUUID()],
+      [studentId, 'malformed'],
+      ['', null, 'malformed'],
+    ])
+      expect(present({ academicContentId, studentIds }).deepLink).toEqual({
+        type: 'academic_content',
+        academicContentId,
+        publicationId,
+        studentId: null,
+      });
+    for (const metadata of [
+      null,
+      [],
+      'old',
+      {},
+      { academicContentId: 'invalid' },
+      { academicContentId, publicationId: randomUUID() },
+      { academicContentId, publicationId: null },
+    ])
+      expect(present(metadata).deepLink).toBeNull();
+    expect(
+      present({ academicContentId }, { sourceId: 'invalid' }).deepLink,
+    ).toBeNull();
+    expect(
+      present({ academicContentId }, { sourceType: 'wrong' }).deepLink,
+    ).toBeNull();
+    expect(
+      present(
+        { academicContentId },
+        { sourceModule: CommunicationNotificationSourceModule.COMMUNICATION },
+      ).deepLink,
+    ).toBeNull();
+  });
+
   it('presents dual-alias app list cards with summary and safe announcement deep links', () => {
     const presented = presentCommunicationAppNotificationList({
       result: {
@@ -206,7 +292,10 @@ describe('communication app notification presenter', () => {
         unreadCount: 1,
       },
     ]);
-    expect(camel.groups?.[0]).not.toHaveProperty('unread_count');
+    const camelGroups = camel.groups as unknown as
+      | Record<string, unknown>[]
+      | undefined;
+    expect(camelGroups?.[0]).not.toHaveProperty('unread_count');
     expect(withoutGroups).not.toHaveProperty('groups');
     expect(JSON.stringify(dual.groups)).not.toContain('recipientUserId');
     expect(JSON.stringify(dual.groups)).not.toContain('schoolId');

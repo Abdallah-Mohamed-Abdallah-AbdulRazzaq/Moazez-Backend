@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/unbound-method -- Jest assertions intentionally inspect detached mock methods without invoking them. */
 import { CommunicationNotificationPreferenceCategory } from '@prisma/client';
 import { CommunicationNotificationPreferenceService } from '../application/communication-notification-preference.service';
 import {
@@ -50,6 +51,18 @@ describe('CommunicationNotificationPreferenceService', () => {
           category: 'attendance',
           label: 'Attendance',
           description: 'Notifications for attendance incidents.',
+          inAppEnabled: true,
+          in_app_enabled: true,
+          pushEnabled: true,
+          push_enabled: true,
+          canChange: true,
+          can_change: true,
+        },
+        {
+          category: 'academic_content',
+          label: 'Academic Content',
+          description:
+            'Notifications for published and updated academic content.',
           inAppEnabled: true,
           in_app_enabled: true,
           pushEnabled: true,
@@ -136,6 +149,15 @@ describe('CommunicationNotificationPreferenceService', () => {
           category: 'attendance',
           label: 'Attendance',
           description: 'Notifications for attendance incidents.',
+          inAppEnabled: true,
+          pushEnabled: true,
+          canChange: true,
+        },
+        {
+          category: 'academic_content',
+          label: 'Academic Content',
+          description:
+            'Notifications for published and updated academic content.',
           inAppEnabled: true,
           pushEnabled: true,
           canChange: true,
@@ -227,13 +249,13 @@ describe('CommunicationNotificationPreferenceService', () => {
         category: CommunicationNotificationPreferenceCategory.ANNOUNCEMENT,
       }),
     ).resolves.toEqual(['user-1']);
-    expect(repository.listCurrentSchoolDisabledUserIdsForCategory).toHaveBeenCalledWith(
-      {
-        schoolId: SCHOOL_ID,
-        userIds: ['user-1', 'user-2'],
-        category: CommunicationNotificationPreferenceCategory.ANNOUNCEMENT,
-      },
-    );
+    expect(
+      repository.listCurrentSchoolDisabledUserIdsForCategory,
+    ).toHaveBeenCalledWith({
+      schoolId: SCHOOL_ID,
+      userIds: ['user-1', 'user-2'],
+      category: CommunicationNotificationPreferenceCategory.ANNOUNCEMENT,
+    });
 
     await expect(
       service.filterPushEnabledRecipientUserIds({

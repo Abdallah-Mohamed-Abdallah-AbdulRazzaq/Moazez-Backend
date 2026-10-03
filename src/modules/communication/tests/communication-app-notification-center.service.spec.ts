@@ -1,11 +1,17 @@
+/* eslint-disable @typescript-eslint/unbound-method -- Jest assertions intentionally inspect detached mock methods without invoking them. */
+import { COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_TYPES } from '../domain/communication-notification-domain';
 import {
   CommunicationNotificationPriority,
   CommunicationNotificationSourceModule,
   CommunicationNotificationStatus,
   CommunicationNotificationType,
 } from '@prisma/client';
-import { CommunicationAppNotificationCenterService } from '../application/communication-app-notification-center.service';
 import {
+  CommunicationAppNotificationListQuery,
+  CommunicationAppNotificationCenterService,
+} from '../application/communication-app-notification-center.service';
+import {
+  CommunicationNotificationListFilters,
   CommunicationNotificationDetailRecord,
   CommunicationNotificationListRecord,
   CommunicationNotificationRepository,
@@ -16,6 +22,100 @@ const OTHER_USER_ID = 'other-user-1';
 const NOTIFICATION_ID = 'notification-1';
 
 describe('CommunicationAppNotificationCenterService', () => {
+  it('maps academic_content to all four types, intersects exact type, and groups counts safely', async () => {
+    const rows = [
+      ...COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_TYPES,
+      CommunicationNotificationType.MESSAGE_RECEIVED,
+      CommunicationNotificationType.ANNOUNCEMENT_PUBLISHED,
+    ].map((type, index) =>
+      notificationListRecord({
+        id: `row-${index}`,
+        type,
+        sourceModule:
+          index < 4
+            ? CommunicationNotificationSourceModule.ACADEMICS
+            : CommunicationNotificationSourceModule.COMMUNICATION,
+        status:
+          index === 1
+            ? CommunicationNotificationStatus.READ
+            : CommunicationNotificationStatus.UNREAD,
+      }),
+    );
+    const repository = repositoryMock({
+      listCurrentSchoolNotifications: jest
+        .fn()
+        .mockImplementation(
+          ({ filters }: { filters: CommunicationNotificationListFilters }) => {
+            const items = rows.filter((row) =>
+              filters.type
+                ? row.type === filters.type
+                : !filters.types || filters.types.includes(row.type),
+            );
+            return Promise.resolve({
+              items,
+              total: items.length,
+              limit: 20,
+              page: 1,
+            });
+          },
+        ),
+    });
+    const service = new CommunicationAppNotificationCenterService(repository);
+    const result = await service.listForActor({
+      recipientUserId: ACTOR_ID,
+      query: { category: 'academic_content', groupBy: 'category' },
+      aliasStyle: 'dual',
+    });
+    expect(result.notifications.map((row) => row.type)).toEqual(
+      COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_TYPES.map((type) =>
+        type.toLowerCase(),
+      ),
+    );
+    expect(
+      jest.mocked(repository.listCurrentSchoolNotifications).mock.calls[0][0]
+        .filters,
+    ).toEqual({
+      recipientUserId: ACTOR_ID,
+      types: COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_TYPES,
+    });
+    expect(result.groups).toEqual([
+      {
+        key: 'academic_content',
+        label: 'Academic Content',
+        count: 4,
+        unreadCount: 3,
+        unread_count: 3,
+      },
+    ]);
+    const exact = await service.listForActor({
+      recipientUserId: ACTOR_ID,
+      query: {
+        category: 'academic_content',
+        type: 'academic_content_updated',
+        groupBy: 'sourceModule',
+      },
+      aliasStyle: 'camel',
+    });
+    expect(exact.notifications).toHaveLength(1);
+    expect(exact.groups).toEqual([
+      { key: 'academics', label: 'Academics', count: 1, unreadCount: 0 },
+    ]);
+    expect(
+      jest.mocked(repository.listCurrentSchoolNotifications).mock.calls[1][0]
+        .filters,
+    ).toEqual({
+      recipientUserId: ACTOR_ID,
+      type: CommunicationNotificationType.ACADEMIC_CONTENT_UPDATED,
+    });
+    await expect(
+      service.listForActor({
+        recipientUserId: ACTOR_ID,
+        query: { category: 'academic_content', type: 'message_received' },
+        aliasStyle: 'camel',
+      }),
+    ).rejects.toMatchObject({ httpStatus: 422 });
+  });
+
   it('lists only the current actor notifications and ignores recipient override attempts', async () => {
     const repository = repositoryMock();
 
@@ -29,7 +129,7 @@ describe('CommunicationAppNotificationCenterService', () => {
         type: 'message_received',
         sourceModule: 'communication',
         recipientUserId: OTHER_USER_ID,
-      } as any,
+      } as CommunicationAppNotificationListQuery,
       aliasStyle: 'dual',
     });
 
@@ -60,7 +160,7 @@ describe('CommunicationAppNotificationCenterService', () => {
         priority: CommunicationNotificationPriority.NORMAL,
         type: CommunicationNotificationType.MESSAGE_RECEIVED,
         sourceModule: CommunicationNotificationSourceModule.COMMUNICATION,
-      }),
+      }) as unknown,
     });
     expect(repository.countCurrentSchoolNotifications).toHaveBeenCalledWith({
       filters: {
@@ -124,10 +224,11 @@ describe('CommunicationAppNotificationCenterService', () => {
         createdToExclusive: new Date('2026-06-22T00:00:00.000Z'),
         limit: 2,
         page: 2,
-      }),
+      }) as unknown,
     });
     expect(
-      repository.listCurrentSchoolNotifications.mock.calls[0][0].filters,
+      jest.mocked(repository.listCurrentSchoolNotifications).mock.calls[0][0]
+        .filters,
     ).not.toHaveProperty('createdTo');
     expect(result.pagination).toEqual({ page: 2, limit: 2, total: 25 });
     expect(result.groups).toEqual([
@@ -171,7 +272,7 @@ describe('CommunicationAppNotificationCenterService', () => {
         filters: expect.objectContaining({
           recipientUserId: ACTOR_ID,
           type: CommunicationNotificationType.MESSAGE_RECEIVED,
-        }),
+        }) as unknown,
       },
     );
     expect(repository.listCurrentSchoolNotifications).toHaveBeenNthCalledWith(
@@ -180,7 +281,7 @@ describe('CommunicationAppNotificationCenterService', () => {
         filters: expect.objectContaining({
           recipientUserId: ACTOR_ID,
           type: CommunicationNotificationType.ANNOUNCEMENT_PUBLISHED,
-        }),
+        }) as unknown,
       },
     );
   });
@@ -200,7 +301,7 @@ describe('CommunicationAppNotificationCenterService', () => {
       filters: expect.objectContaining({
         recipientUserId: ACTOR_ID,
         status: CommunicationNotificationStatus.UNREAD,
-      }),
+      }) as unknown,
     });
   });
 

@@ -116,6 +116,7 @@ describe('schoolScope communication registration', () => {
   it('registers ACC-6A policy and approval history as School scoped without soft deletion', () => {
     for (const model of [
       'AcademicContentWorkflowPolicy',
+      'AcademicContentNotificationPolicy',
       'AcademicContentApproval',
     ]) {
       expect(SCHOOL_SCOPED_MODELS.has(model)).toBe(true);

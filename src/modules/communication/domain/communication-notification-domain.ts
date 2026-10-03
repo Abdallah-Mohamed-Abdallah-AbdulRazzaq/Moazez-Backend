@@ -1,3 +1,4 @@
+import { CommunicationNotificationType } from '@prisma/client';
 import { HttpStatus } from '@nestjs/common';
 import { DomainException } from '../../../common/exceptions/domain-exception';
 
@@ -15,6 +16,7 @@ export type CommunicationNotificationPriorityValue =
 export type CommunicationNotificationSourceModuleValue =
   | 'COMMUNICATION'
   | 'ANNOUNCEMENTS'
+  | 'ACADEMICS'
   | 'ATTENDANCE'
   | 'GRADES'
   | 'BEHAVIOR'
@@ -26,6 +28,10 @@ export type CommunicationNotificationSourceModuleValue =
 
 export type CommunicationNotificationTypeValue =
   | 'ANNOUNCEMENT_PUBLISHED'
+  | 'ACADEMIC_CONTENT_PUBLISHED'
+  | 'ACADEMIC_CONTENT_UPDATED'
+  | 'ACADEMIC_CONTENT_CANCELLED'
+  | 'ONLINE_SESSION_REMINDER'
   | 'MESSAGE_RECEIVED'
   | 'MESSAGE_MENTION'
   | 'ATTENDANCE_ABSENCE'
@@ -89,6 +95,7 @@ const NOTIFICATION_SOURCE_MODULE_MAP: Record<
 > = {
   communication: 'COMMUNICATION',
   announcements: 'ANNOUNCEMENTS',
+  academics: 'ACADEMICS',
   attendance: 'ATTENDANCE',
   grades: 'GRADES',
   behavior: 'BEHAVIOR',
@@ -99,31 +106,37 @@ const NOTIFICATION_SOURCE_MODULE_MAP: Record<
   system: 'SYSTEM',
 };
 
-const NOTIFICATION_TYPE_MAP: Record<string, CommunicationNotificationTypeValue> =
-  {
-    announcement_published: 'ANNOUNCEMENT_PUBLISHED',
-    message_received: 'MESSAGE_RECEIVED',
-    message_mention: 'MESSAGE_MENTION',
-    attendance_absence: 'ATTENDANCE_ABSENCE',
-    attendance_late: 'ATTENDANCE_LATE',
-    attendance_early_leave: 'ATTENDANCE_EARLY_LEAVE',
-    grade_posted: 'GRADE_POSTED',
-    behavior_record_created: 'BEHAVIOR_RECORD_CREATED',
-    reinforcement_reward_granted: 'REINFORCEMENT_REWARD_GRANTED',
-    dismissal_request_created: 'DISMISSAL_REQUEST_CREATED',
-    dismissal_request_cancelled: 'DISMISSAL_REQUEST_CANCELLED',
-    dismissal_request_called: 'DISMISSAL_REQUEST_CALLED',
-    dismissal_request_ready: 'DISMISSAL_REQUEST_READY',
-    dismissal_request_handed_over: 'DISMISSAL_REQUEST_HANDED_OVER',
-    dismissal_request_expired: 'DISMISSAL_REQUEST_EXPIRED',
-    request_created: 'DISMISSAL_REQUEST_CREATED',
-    request_cancelled: 'DISMISSAL_REQUEST_CANCELLED',
-    request_called: 'DISMISSAL_REQUEST_CALLED',
-    request_ready: 'DISMISSAL_REQUEST_READY',
-    request_handed_over: 'DISMISSAL_REQUEST_HANDED_OVER',
-    request_expired: 'DISMISSAL_REQUEST_EXPIRED',
-    system_alert: 'SYSTEM_ALERT',
-  };
+const NOTIFICATION_TYPE_MAP: Record<
+  string,
+  CommunicationNotificationTypeValue
+> = {
+  announcement_published: 'ANNOUNCEMENT_PUBLISHED',
+  academic_content_published: 'ACADEMIC_CONTENT_PUBLISHED',
+  academic_content_updated: 'ACADEMIC_CONTENT_UPDATED',
+  academic_content_cancelled: 'ACADEMIC_CONTENT_CANCELLED',
+  online_session_reminder: 'ONLINE_SESSION_REMINDER',
+  message_received: 'MESSAGE_RECEIVED',
+  message_mention: 'MESSAGE_MENTION',
+  attendance_absence: 'ATTENDANCE_ABSENCE',
+  attendance_late: 'ATTENDANCE_LATE',
+  attendance_early_leave: 'ATTENDANCE_EARLY_LEAVE',
+  grade_posted: 'GRADE_POSTED',
+  behavior_record_created: 'BEHAVIOR_RECORD_CREATED',
+  reinforcement_reward_granted: 'REINFORCEMENT_REWARD_GRANTED',
+  dismissal_request_created: 'DISMISSAL_REQUEST_CREATED',
+  dismissal_request_cancelled: 'DISMISSAL_REQUEST_CANCELLED',
+  dismissal_request_called: 'DISMISSAL_REQUEST_CALLED',
+  dismissal_request_ready: 'DISMISSAL_REQUEST_READY',
+  dismissal_request_handed_over: 'DISMISSAL_REQUEST_HANDED_OVER',
+  dismissal_request_expired: 'DISMISSAL_REQUEST_EXPIRED',
+  request_created: 'DISMISSAL_REQUEST_CREATED',
+  request_cancelled: 'DISMISSAL_REQUEST_CANCELLED',
+  request_called: 'DISMISSAL_REQUEST_CALLED',
+  request_ready: 'DISMISSAL_REQUEST_READY',
+  request_handed_over: 'DISMISSAL_REQUEST_HANDED_OVER',
+  request_expired: 'DISMISSAL_REQUEST_EXPIRED',
+  system_alert: 'SYSTEM_ALERT',
+};
 
 const NOTIFICATION_DELIVERY_CHANNEL_MAP: Record<
   string,
@@ -331,3 +344,14 @@ function normalizeNotificationEnum<T extends string>(
 
   return mapped;
 }
+
+export const COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_SOURCE_TYPE =
+  'academic_content_publication';
+
+export const COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_TYPES: readonly CommunicationNotificationType[] =
+  [
+    CommunicationNotificationType.ACADEMIC_CONTENT_PUBLISHED,
+    CommunicationNotificationType.ACADEMIC_CONTENT_UPDATED,
+    CommunicationNotificationType.ACADEMIC_CONTENT_CANCELLED,
+    CommunicationNotificationType.ONLINE_SESSION_REMINDER,
+  ];

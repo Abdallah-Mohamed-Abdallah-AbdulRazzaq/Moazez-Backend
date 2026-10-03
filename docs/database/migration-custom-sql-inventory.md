@@ -402,3 +402,22 @@ and both same-revision RecipientTarget foreign keys, including the minimal
 RevisionTarget candidate key. The same suite directly tests cross-School and
 wrong-content/revision rejection, tenant request and recipient uniqueness,
 target attribution uniqueness, and historical actor/account behavior.
+
+## ACC-8A Notification contract and School policy
+
+The owning migration is `20261003165648_academic_content_notification_contract_policy`. Prisma represents the
+three Communication enum additions, policy table, School uniqueness and FK.
+Prisma scalar-list SQL omits `NOT NULL` and cannot represent array CHECK
+predicates; the finalized migration hardens `online_session_reminder_offsets_minutes`
+to `INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[]` before first application.
+There is no data backfill or helper function. Duplicate rejection and ascending
+normalization remain application/domain responsibilities.
+
+| Object | Invariant | Direct protecting test |
+| --- | --- | --- |
+| `acc_notification_policy_offsets_cardinality_check` | At most five offsets; empty is valid. | `test/integration/academic-content-notification-policy.integration.spec.ts`: accept empty/five and reject six offsets. |
+| `acc_notification_policy_offsets_bounds_check` | Every offset is nonnull and between 5 and 10080 inclusive. | Same suite: reject lower/upper violations and null elements; accept both bounds. |
+| `online_session_reminder_offsets_minutes` NOT NULL/default | Nonnull integer array with empty default. | Same suite: catalog nullability/type/default, direct null rejection and default insert. |
+
+The same suite protects catalog enum vocabulary, policy uniqueness, restrictive
+School FK, tenancy, transactional audits, no-op behavior and concurrent retries.
