@@ -11,6 +11,7 @@ import {
 } from '../domain/academic-content-publication-runtime.constants';
 import { AcademicContentPublicationSnapshotRepository } from './academic-content-publication-snapshot.repository';
 import { AcademicContentPublicationLifecycleRepository } from './academic-content-publication-lifecycle.repository';
+import { AcademicContentPublicationNotificationService } from '../application/academic-content-publication-notification.service';
 
 @Injectable()
 export class AcademicContentPublicationWorker implements OnModuleInit {
@@ -21,6 +22,7 @@ export class AcademicContentPublicationWorker implements OnModuleInit {
     private readonly lifecycle: AcademicContentPublicationLifecycleRepository,
     private readonly queue: AcademicContentPublicationQueueService,
     private readonly reconciliation: AcademicContentPublicationReconciliationService,
+    private readonly notifications: AcademicContentPublicationNotificationService,
   ) {}
 
   onModuleInit(): void {
@@ -61,6 +63,7 @@ export class AcademicContentPublicationWorker implements OnModuleInit {
           result.outcome === 'PUBLISHED' ||
           result.outcome === 'ALREADY_PUBLISHED'
         ) {
+          await this.notifications.ensureAfterPublicationCommit(data, now);
           await this.queue.ensureAfterCommit('expire', data, now);
           this.logger.log({
             event: 'academic_content.publication.completed',

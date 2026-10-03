@@ -8,6 +8,66 @@ import {
 
 export const COMMUNICATION_NOTIFICATION_QUEUE_NAME =
   'communication-notifications';
+export const COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATIONS_GENERATE_JOB_NAME =
+  'communication.academic-content.notifications.generate';
+export const COMMUNICATION_PREPARED_NOTIFICATION_BATCH_MAX_USERS = 500;
+
+export interface CommunicationAcademicContentNotificationGenerationJobData {
+  schoolId: string;
+  organizationId: string;
+  contentId: string;
+  publicationId: string;
+  actorUserId: string | null;
+  actorUserType: UserType | null;
+}
+
+export interface CommunicationPreparedAcademicContentRecipient {
+  recipientUserId: string;
+  metadata: {
+    academicContentId: string;
+    publicationId: string;
+    revisionId: string;
+    contentType: string;
+    eventType: 'academic_content_published';
+    publishedAt: string;
+    studentIds: string[];
+    childContextCount: number;
+  };
+}
+
+export interface CommunicationPreparedAcademicContentBatch extends CommunicationAcademicContentNotificationGenerationJobData {
+  recipients: CommunicationPreparedAcademicContentRecipient[];
+  title: string;
+  body: string;
+  expiresAt: Date | null;
+  now: Date;
+}
+
+export function buildAcademicContentNotificationGenerationJobId(input: {
+  schoolId: string;
+  publicationId: string;
+}): string {
+  return `communication-academic-content-notifications-${input.schoolId}-${input.publicationId}`;
+}
+
+export function isAcademicContentNotificationGenerationJobData(
+  data: unknown,
+): data is CommunicationAcademicContentNotificationGenerationJobData {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+  const row = data as Record<string, unknown>;
+  const uuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return (
+    Object.keys(row).length === 6 &&
+    ['schoolId', 'organizationId', 'contentId', 'publicationId'].every(
+      (key) => typeof row[key] === 'string' && uuid.test(row[key]),
+    ) &&
+    ((row.actorUserId === null && row.actorUserType === null) ||
+      (typeof row.actorUserId === 'string' &&
+        uuid.test(row.actorUserId) &&
+        Object.values(UserType).includes(row.actorUserType as UserType)))
+  );
+}
 export const COMMUNICATION_ANNOUNCEMENT_NOTIFICATIONS_GENERATE_JOB_NAME =
   'communication.announcement.notifications.generate';
 export const COMMUNICATION_ANNOUNCEMENT_NOTIFICATION_SOURCE_TYPE =

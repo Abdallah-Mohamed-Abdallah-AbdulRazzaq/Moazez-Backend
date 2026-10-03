@@ -188,8 +188,11 @@ export function presentCommunicationAppNotification(
   };
 }
 
-function buildDeepLink(
-  notification: AppNotificationRecord,
+export function buildDeepLink(
+  notification: Pick<
+    AppNotificationRecord,
+    'sourceType' | 'sourceId' | 'metadata'
+  > & { sourceModule: string; type: string },
 ): CommunicationAppNotificationDeepLink | null {
   if (
     notification.sourceModule === 'ACADEMICS' &&

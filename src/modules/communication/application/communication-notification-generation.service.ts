@@ -18,6 +18,8 @@ import {
   CommunicationMessageNotificationGenerationResult,
   deduplicateRecipientUserIds,
   mapAnnouncementPriorityToNotificationPriority,
+  CommunicationPreparedAcademicContentBatch,
+  COMMUNICATION_PREPARED_NOTIFICATION_BATCH_MAX_USERS,
 } from '../domain/communication-notification-generation-domain';
 import { CommunicationNotificationGenerationRepository } from '../infrastructure/communication-notification-generation.repository';
 import { CommunicationRealtimeEventsService } from './communication-realtime-events.service';
@@ -36,6 +38,56 @@ export class CommunicationNotificationGenerationService {
     private readonly communicationNotificationPreferenceService: CommunicationNotificationPreferenceService,
     private readonly communicationNotificationPushQueueService?: CommunicationNotificationPushQueueService,
   ) {}
+
+  async generateForAcademicContentPublicationBatch(
+    input: CommunicationPreparedAcademicContentBatch,
+  ) {
+    if (
+      input.recipients.length >
+        COMMUNICATION_PREPARED_NOTIFICATION_BATCH_MAX_USERS ||
+      new Set(input.recipients.map((row) => row.recipientUserId)).size !==
+        input.recipients.length
+    )
+      throw new Error('communication_prepared_notification_batch_invalid');
+    const recipientUserIds = input.recipients.map((row) => row.recipientUserId);
+    const enabled = new Set(
+      await this.communicationNotificationPreferenceService.filterInAppEnabledRecipientUserIds(
+        {
+          schoolId: input.schoolId,
+          recipientUserIds,
+          category:
+            CommunicationNotificationPreferenceCategory.ACADEMIC_CONTENT,
+        },
+      ),
+    );
+    const pushEnabledRecipientUserIds =
+      await this.communicationNotificationPreferenceService.filterPushEnabledRecipientUserIds(
+        {
+          schoolId: input.schoolId,
+          recipientUserIds: [...enabled],
+          category:
+            CommunicationNotificationPreferenceCategory.ACADEMIC_CONTENT,
+        },
+      );
+    const { createdNotifications, pushDeliveries, ...result } =
+      await this.communicationNotificationGenerationRepository.createMissingAcademicContentPublishedNotifications(
+        {
+          ...input,
+          recipients: input.recipients.filter((row) =>
+            enabled.has(row.recipientUserId),
+          ),
+          pushEnabledRecipientUserIds,
+        },
+      );
+    for (const notification of createdNotifications) {
+      this.communicationRealtimeEventsService.publishNotificationCreated(
+        input.schoolId,
+        notification,
+      );
+    }
+    await this.enqueuePushDeliveriesSafely({ ...input, pushDeliveries });
+    return result;
+  }
 
   async generateForPublishedAnnouncement(
     input: CommunicationAnnouncementNotificationGenerationJobData,
@@ -89,31 +141,34 @@ export class CommunicationNotificationGenerationService {
         },
       );
 
-    const { createdNotifications, pushDeliveries = [], ...result } =
-      await this.communicationNotificationGenerationRepository.createMissingAnnouncementPublishedNotifications(
-        {
-          schoolId: input.schoolId,
+    const {
+      createdNotifications,
+      pushDeliveries = [],
+      ...result
+    } = await this.communicationNotificationGenerationRepository.createMissingAnnouncementPublishedNotifications(
+      {
+        schoolId: input.schoolId,
+        announcementId: announcement.id,
+        recipientUserIds: preferenceEnabledRecipientUserIds,
+        pushEnabledRecipientUserIds,
+        actorUserId:
+          announcement.publishedById ??
+          announcement.createdById ??
+          input.actorUserId,
+        title: announcement.title,
+        body: buildAnnouncementNotificationPreview(announcement.body),
+        priority: mapAnnouncementPriorityToNotificationPriority(
+          announcement.priority,
+        ),
+        expiresAt: announcement.expiresAt,
+        metadata: buildAnnouncementNotificationMetadata({
           announcementId: announcement.id,
-          recipientUserIds: preferenceEnabledRecipientUserIds,
-          pushEnabledRecipientUserIds,
-          actorUserId:
-            announcement.publishedById ??
-            announcement.createdById ??
-            input.actorUserId,
-          title: announcement.title,
-          body: buildAnnouncementNotificationPreview(announcement.body),
-          priority: mapAnnouncementPriorityToNotificationPriority(
-            announcement.priority,
-          ),
-          expiresAt: announcement.expiresAt,
-          metadata: buildAnnouncementNotificationMetadata({
-            announcementId: announcement.id,
-            audienceType: announcement.audienceType,
-            publishedAt: announcement.publishedAt,
-          }),
-          now: new Date(),
-        },
-      );
+          audienceType: announcement.audienceType,
+          publishedAt: announcement.publishedAt,
+        }),
+        now: new Date(),
+      },
+    );
 
     for (const notification of createdNotifications) {
       this.communicationRealtimeEventsService.publishNotificationCreated(
@@ -197,30 +252,33 @@ export class CommunicationNotificationGenerationService {
         },
       );
 
-    const { createdNotifications, pushDeliveries = [], ...result } =
-      await this.communicationNotificationGenerationRepository.createMissingMessageNotifications(
-        {
-          schoolId: input.schoolId,
-          messageId: message.id,
+    const {
+      createdNotifications,
+      pushDeliveries = [],
+      ...result
+    } = await this.communicationNotificationGenerationRepository.createMissingMessageNotifications(
+      {
+        schoolId: input.schoolId,
+        messageId: message.id,
+        conversationId: message.conversationId,
+        recipientUserIds: preferenceEnabledRecipientUserIds,
+        pushEnabledRecipientUserIds,
+        actorUserId: message.senderUserId ?? input.actorUserId,
+        title: 'New message',
+        body: buildMessageNotificationPreview({
+          kind: message.kind,
+          body: message.body,
+        }),
+        type: CommunicationNotificationType.MESSAGE_RECEIVED,
+        priority: CommunicationNotificationPriority.NORMAL,
+        metadata: buildMessageNotificationMetadata({
           conversationId: message.conversationId,
-          recipientUserIds: preferenceEnabledRecipientUserIds,
-          pushEnabledRecipientUserIds,
-          actorUserId: message.senderUserId ?? input.actorUserId,
-          title: 'New message',
-          body: buildMessageNotificationPreview({
-            kind: message.kind,
-            body: message.body,
-          }),
-          type: CommunicationNotificationType.MESSAGE_RECEIVED,
-          priority: CommunicationNotificationPriority.NORMAL,
-          metadata: buildMessageNotificationMetadata({
-            conversationId: message.conversationId,
-            messageId: message.id,
-            sentAt: message.sentAt,
-          }),
-          now: new Date(),
-        },
-      );
+          messageId: message.id,
+          sentAt: message.sentAt,
+        }),
+        now: new Date(),
+      },
+    );
 
     for (const notification of createdNotifications) {
       this.communicationRealtimeEventsService.publishNotificationCreated(
@@ -257,16 +315,14 @@ export class CommunicationNotificationGenerationService {
     await Promise.all(
       input.pushDeliveries.map(async (delivery) => {
         try {
-          await pushQueueService.enqueueNotificationPushDelivery(
-            {
-              schoolId: input.schoolId,
-              organizationId: input.organizationId,
-              notificationId: delivery.notificationId,
-              deliveryId: delivery.id,
-              actorUserId: input.actorUserId,
-              actorUserType: input.actorUserType,
-            },
-          );
+          await pushQueueService.enqueueNotificationPushDelivery({
+            schoolId: input.schoolId,
+            organizationId: input.organizationId,
+            notificationId: delivery.notificationId,
+            deliveryId: delivery.id,
+            actorUserId: input.actorUserId,
+            actorUserType: input.actorUserType,
+          });
         } catch (error) {
           this.logger.warn(
             `Communication push delivery enqueue failed for delivery ${delivery.id}: ${formatPushEnqueueError(error)}`,

@@ -110,6 +110,7 @@ describeDatabase(
         lifecycle(client),
         producer,
         reconciliation,
+        { ensureAfterPublicationCommit: jest.fn() } as never,
       );
       return { producer, reconciliation, worker };
     }
@@ -1099,6 +1100,7 @@ describeDatabase(
             lifecycle(client),
             r.producer,
             r.reconciliation,
+            { ensureAfterPublicationCommit: jest.fn() } as never,
           ).onModuleInit();
           await r.producer.ensure('publish', jobIdentity(f, p));
           await waitForSignal(entered.promise);

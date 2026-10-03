@@ -9,6 +9,7 @@ import {
   COMMUNICATION_MESSAGE_NOTIFICATION_SOURCE_TYPE,
   COMMUNICATION_ANNOUNCEMENT_NOTIFICATION_SOURCE_TYPE,
 } from '../domain/communication-notification-generation-domain';
+import { buildDeepLink as buildAppNotificationDeepLink } from '../presenters/communication-app-notification.presenter';
 
 export interface CommunicationNotificationPushPayloadRecord {
   id: string;
@@ -73,7 +74,8 @@ function buildDismissalPushData(
   notification: CommunicationNotificationPushPayloadRecord,
 ): Record<string, string> | null {
   if (
-    notification.sourceModule !== CommunicationNotificationSourceModule.DISMISSAL
+    notification.sourceModule !==
+    CommunicationNotificationSourceModule.DISMISSAL
   ) {
     return null;
   }
@@ -109,8 +111,23 @@ function buildDeepLink(
   notification: CommunicationNotificationPushPayloadRecord,
 ): Record<string, string> | null {
   if (
-    notification.type === CommunicationNotificationType.ANNOUNCEMENT_PUBLISHED &&
-    notification.sourceType === COMMUNICATION_ANNOUNCEMENT_NOTIFICATION_SOURCE_TYPE &&
+    notification.sourceModule ===
+    CommunicationNotificationSourceModule.ACADEMICS
+  ) {
+    const link = buildAppNotificationDeepLink(notification);
+    if (link?.type !== 'academic_content') return null;
+    return {
+      deepLinkType: link.type,
+      academicContentId: link.academicContentId,
+      publicationId: link.publicationId,
+      ...(link.studentId ? { studentId: link.studentId } : {}),
+    };
+  }
+  if (
+    notification.type ===
+      CommunicationNotificationType.ANNOUNCEMENT_PUBLISHED &&
+    notification.sourceType ===
+      COMMUNICATION_ANNOUNCEMENT_NOTIFICATION_SOURCE_TYPE &&
     notification.sourceId
   ) {
     return {

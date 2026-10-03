@@ -346,6 +346,7 @@ describe('ACC-7D publication runtime contracts', () => {
         lifecycle as never,
         queue as never,
         reconciliation as never,
+        { ensureAfterPublicationCommit: jest.fn() } as never,
       ),
     };
   }

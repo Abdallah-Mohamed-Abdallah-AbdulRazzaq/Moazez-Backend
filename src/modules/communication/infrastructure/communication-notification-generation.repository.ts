@@ -29,7 +29,10 @@ import {
   COMMUNICATION_PUSH_NOTIFICATION_PROVIDER,
   CommunicationGeneratedPushDeliveryRecord,
   deduplicateRecipientUserIds,
+  CommunicationPreparedAcademicContentBatch,
+  COMMUNICATION_PREPARED_NOTIFICATION_BATCH_MAX_USERS,
 } from '../domain/communication-notification-generation-domain';
+import { COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_SOURCE_TYPE } from '../domain/communication-notification-domain';
 
 const COMMUNICATION_ANNOUNCEMENT_FOR_NOTIFICATION_GENERATION_ARGS =
   Prisma.validator<Prisma.CommunicationAnnouncementDefaultArgs>()({
@@ -212,6 +215,146 @@ interface AudienceTargetIds {
 @Injectable()
 export class CommunicationNotificationGenerationRepository {
   constructor(private readonly prisma: PrismaService) {}
+
+  async createMissingAcademicContentPublishedNotifications(
+    input: CommunicationPreparedAcademicContentBatch & {
+      pushEnabledRecipientUserIds: string[];
+    },
+  ): Promise<CommunicationAnnouncementNotificationCreateResult> {
+    if (
+      input.recipients.length >
+        COMMUNICATION_PREPARED_NOTIFICATION_BATCH_MAX_USERS ||
+      new Set(input.recipients.map((row) => row.recipientUserId)).size !==
+        input.recipients.length
+    )
+      throw new Error('communication_prepared_notification_batch_invalid');
+    if (!input.recipients.length)
+      return {
+        recipientCount: 0,
+        createdNotificationCount: 0,
+        existingNotificationCount: 0,
+        createdDeliveryCount: 0,
+        existingDeliveryCount: 0,
+        createdNotifications: [],
+        pushDeliveries: [],
+      };
+    return this.scopedPrisma.$transaction(async (tx) => {
+      const lockKey = `communication:academics-notifications:${input.schoolId}:${input.publicationId}`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+      const keyForUser = (userId: string) =>
+        `acc:published:${input.publicationId}:${userId}`;
+      const expectedByKey = new Map(
+        input.recipients.map((row) => [
+          keyForUser(row.recipientUserId),
+          row.recipientUserId,
+        ]),
+      );
+      const existing = await tx.communicationNotification.findMany({
+        where: {
+          schoolId: input.schoolId,
+          idempotencyKey: { in: [...expectedByKey.keys()] },
+        },
+        select: { ...GENERATED_NOTIFICATION_SELECT, idempotencyKey: true },
+      });
+      for (const notification of existing) {
+        if (
+          notification.recipientUserId !==
+            expectedByKey.get(notification.idempotencyKey!) ||
+          notification.sourceModule !==
+            CommunicationNotificationSourceModule.ACADEMICS ||
+          notification.sourceType !==
+            COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_SOURCE_TYPE ||
+          notification.sourceId !== input.publicationId ||
+          notification.type !==
+            CommunicationNotificationType.ACADEMIC_CONTENT_PUBLISHED
+        )
+          throw new Error('communication_notification_idempotency_collision');
+      }
+      const existingKeys = new Set(existing.map((row) => row.idempotencyKey));
+      const missing = input.recipients.filter(
+        (row) => !existingKeys.has(keyForUser(row.recipientUserId)),
+      );
+      const createdNotifications = missing.length
+        ? await tx.communicationNotification.createManyAndReturn({
+            data: missing.map((row) => ({
+              schoolId: input.schoolId,
+              recipientUserId: row.recipientUserId,
+              actorUserId: input.actorUserId,
+              sourceModule: CommunicationNotificationSourceModule.ACADEMICS,
+              sourceType:
+                COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_SOURCE_TYPE,
+              sourceId: input.publicationId,
+              type: CommunicationNotificationType.ACADEMIC_CONTENT_PUBLISHED,
+              title: input.title,
+              body: input.body,
+              priority: CommunicationNotificationPriority.NORMAL,
+              status: CommunicationNotificationStatus.UNREAD,
+              expiresAt: input.expiresAt,
+              idempotencyKey: keyForUser(row.recipientUserId),
+              metadata: {
+                academicContentId: row.metadata.academicContentId,
+                publicationId: row.metadata.publicationId,
+                revisionId: row.metadata.revisionId,
+                contentType: row.metadata.contentType,
+                eventType: 'academic_content_published',
+                publishedAt: row.metadata.publishedAt,
+                studentIds: row.metadata.studentIds,
+                childContextCount: row.metadata.childContextCount,
+              },
+            })),
+            select: GENERATED_NOTIFICATION_SELECT,
+          })
+        : [];
+      const notifications = [...existing, ...createdNotifications];
+      const notificationIds = notifications.map((row) => row.id);
+      const existingDeliveries =
+        await tx.communicationNotificationDelivery.findMany({
+          where: {
+            schoolId: input.schoolId,
+            notificationId: { in: notificationIds },
+            channel: CommunicationNotificationDeliveryChannel.IN_APP,
+          },
+          select: { notificationId: true },
+        });
+      const withDelivery = new Set(
+        existingDeliveries.map((row) => row.notificationId),
+      );
+      const missingDeliveries = notificationIds.filter(
+        (id) => !withDelivery.has(id),
+      );
+      if (missingDeliveries.length)
+        await tx.communicationNotificationDelivery.createMany({
+          data: missingDeliveries.map((notificationId) => ({
+            schoolId: input.schoolId,
+            notificationId,
+            channel: CommunicationNotificationDeliveryChannel.IN_APP,
+            status: CommunicationNotificationDeliveryStatus.DELIVERED,
+            provider: COMMUNICATION_IN_APP_NOTIFICATION_PROVIDER,
+            attemptedAt: input.now,
+            deliveredAt: input.now,
+          })),
+        });
+      const pushDeliveries = await this.ensurePushDeliveriesInTransaction(tx, {
+        schoolId: input.schoolId,
+        now: input.now,
+        notificationIds,
+        pushEnabledRecipientUserIds: input.pushEnabledRecipientUserIds,
+        notificationRecipientPairs: notifications.map((row) => ({
+          notificationId: row.id,
+          recipientUserId: row.recipientUserId,
+        })),
+      });
+      return {
+        recipientCount: input.recipients.length,
+        createdNotificationCount: createdNotifications.length,
+        existingNotificationCount: existing.length,
+        createdDeliveryCount: missingDeliveries.length,
+        existingDeliveryCount: existingDeliveries.length,
+        createdNotifications,
+        pushDeliveries,
+      };
+    });
+  }
 
   private get scopedPrisma(): PrismaService {
     return this.prisma.scoped as unknown as PrismaService;
