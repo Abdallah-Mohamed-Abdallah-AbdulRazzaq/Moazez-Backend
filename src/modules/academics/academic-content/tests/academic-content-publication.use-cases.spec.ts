@@ -38,7 +38,9 @@ describe('ACC-7B publication application boundary', () => {
     resolve: jest.fn().mockResolvedValue({ students: [], guardians: [] }),
   };
   const typed = repository as unknown as AcademicContentPublicationRepository;
-  const schedule = new ScheduleAcademicContentPublicationUseCase(typed),
+  const schedule = new ScheduleAcademicContentPublicationUseCase(typed, {
+      ensureAfterCommit: jest.fn(),
+    } as never),
     unschedule = new UnscheduleAcademicContentPublicationUseCase(typed);
   const readiness = new GetAcademicContentPublicationReadinessUseCase(typed),
     history = new ListAcademicContentPublicationHistoryUseCase(typed);

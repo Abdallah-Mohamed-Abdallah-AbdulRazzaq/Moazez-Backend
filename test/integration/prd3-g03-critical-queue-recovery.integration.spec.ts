@@ -1,3 +1,17 @@
+import { AcademicContentPublicationWorker } from '../../src/modules/academics/academic-content/infrastructure/academic-content-publication.worker';
+import { AcademicContentPublicationRuntimeRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-publication-runtime.repository';
+import { AcademicContentPublicationLifecycleRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-publication-lifecycle.repository';
+import { AcademicContentPublicationSnapshotRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-publication-snapshot.repository';
+import { AcademicContentRevisionAudienceResolver } from '../../src/modules/academics/academic-content/infrastructure/academic-content-revision-audience.resolver';
+import { AcademicContentAudienceRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-audience.repository';
+import { AcademicContentPublicationQueueService } from '../../src/modules/academics/academic-content/application/academic-content-publication-queue.service';
+import { AcademicContentPublicationReconciliationService } from '../../src/modules/academics/academic-content/application/academic-content-publication-reconciliation.service';
+import { AcademicContentPublicationRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-publication.repository';
+import { AcademicContentRevisionRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-revision.repository';
+import {
+  ACADEMIC_CONTENT_PUBLICATION_QUEUE,
+  academicContentPublicationJobId,
+} from '../../src/modules/academics/academic-content/domain/academic-content-publication-runtime.constants';
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
@@ -127,6 +141,8 @@ const describeEvidence = enabled ? describe : describe.skip;
 
 interface ProductionFixture {
   now: Date;
+  publicationContentId: string;
+  publicationId: string;
   organizationId: string;
   activeSchoolId: string;
   actorUserId: string;
@@ -176,7 +192,7 @@ describeEvidence('PRD3-G03 production-model recovery evidence', () => {
       '/g03_fixture?schema=public',
     ].join('');
     const prisma = new PrismaService({
-      datasources: { db: { url: databaseUrl } },
+      datasourceUrl: databaseUrl,
     });
     const queue = new BullmqService({
       get: jest.fn((key: string) => {
@@ -226,7 +242,7 @@ describeEvidence('PRD3-G03 production-model recovery evidence', () => {
           },
         );
       }
-      expect(queue.getDesiredRepeatRegistrations()).toHaveLength(8);
+      expect(queue.getDesiredRepeatRegistrations()).toHaveLength(9);
 
       const firstRecovery = await reconstructProductionWork(
         components,
@@ -240,6 +256,7 @@ describeEvidence('PRD3-G03 production-model recovery evidence', () => {
         emailTerminalized: 1,
         learningMedia: 1,
         academicContent: 1,
+        publication: 1,
       });
       const bulkExecutionJobId = studentBulkRegistrationExecutionJobId(
         fixture.bulkExecutionBatchId,
@@ -249,8 +266,9 @@ describeEvidence('PRD3-G03 production-model recovery evidence', () => {
         FILES_IMPORT_QUEUE_NAME,
         (job) => {
           if (job.id === bulkExecutionJobId) {
-            throw new Error('synthetic_execution_exhausted');
+            return Promise.reject(new Error('synthetic_execution_exhausted'));
           }
+          return Promise.resolve();
         },
       );
       try {
@@ -319,7 +337,7 @@ describeEvidence('PRD3-G03 production-model recovery evidence', () => {
       redisAdmin(['CONFIG', 'SET', 'requirepass', ''], true);
       redisAdmin(['CLIENT', 'KILL', 'TYPE', 'normal', 'SKIPME', 'yes']);
       await waitFor(
-        () => queue.getRepeatRegistrations().length === 8,
+        () => queue.getRepeatRegistrations().length === 9,
         30_000,
         'repeat_inventory_restore_timeout',
       );
@@ -336,6 +354,7 @@ describeEvidence('PRD3-G03 production-model recovery evidence', () => {
         emailTerminalized: 0,
         learningMedia: 1,
         academicContent: 1,
+        publication: 1,
       });
       const reconstructed = await assertReconstructedJobs(queue, fixture);
       expect(reconstructed).toEqual({
@@ -347,6 +366,7 @@ describeEvidence('PRD3-G03 production-model recovery evidence', () => {
         dismissal: 1,
         learningMedia: 1,
         academicContent: 1,
+        publication: 1,
         branding: 1,
       });
 
@@ -363,6 +383,7 @@ describeEvidence('PRD3-G03 production-model recovery evidence', () => {
         'learning_media_cleanup_job_unknown',
         'branding_logo_cleanup_job_unknown',
         'academic_content_cleanup_job_unknown',
+        'academic_content_publication_job_unknown',
       ]);
       expect(dispatch.academicInvalidJobCode).toBe(
         'academic_content_cleanup_job_invalid',
@@ -406,11 +427,11 @@ describeEvidence('PRD3-G03 production-model recovery evidence', () => {
 
       const evidence = {
         emptyRedisDbSize: 0,
-        productionModelSourceCount: 8,
-        productionReconcilerCount: 8,
-        productionWorkerDispatchCount: 8,
+        productionModelSourceCount: 9,
+        productionReconcilerCount: 9,
+        productionWorkerDispatchCount: 9,
         reconstructedJobsByQueue: reconstructed,
-        actualUniqueScheduleRegistrations: 8,
+        actualUniqueScheduleRegistrations: 9,
         poisonRejectedCount: dispatch.poisonResults.length,
         ineligibleTerminalOutcomes: ineligibleBeforeReplacement,
         finalModels,
@@ -597,6 +618,26 @@ function createProductionComponents(
     academicContentRepository,
     storage,
   );
+  const publicationDiscovery = new AcademicContentPublicationRuntimeRepository(
+    prisma,
+  );
+  const publicationQueue = new AcademicContentPublicationQueueService(
+    queue,
+    publicationDiscovery,
+  );
+  const publicationReconciliation =
+    new AcademicContentPublicationReconciliationService(
+      publicationDiscovery,
+      publicationQueue,
+    );
+  const publicationSnapshots = new AcademicContentPublicationSnapshotRepository(
+    prisma,
+    new AcademicContentRevisionAudienceResolver(
+      new AcademicContentAudienceRepository(prisma),
+    ),
+  );
+  const publicationLifecycle =
+    new AcademicContentPublicationLifecycleRepository(prisma);
   const brandingRepository = new BrandingRepository(prisma);
   const brandingQueue = new BrandingLogoCleanupQueueService(queue, storage);
   const brandingProcess = new ProcessBrandingLogoCleanupUseCase(
@@ -628,6 +669,10 @@ function createProductionComponents(
     learningMedia,
     academicContentRepository,
     academicContentCleanup,
+    publicationQueue,
+    publicationReconciliation,
+    publicationSnapshots,
+    publicationLifecycle,
     brandingQueue,
     brandingProcess,
   };
@@ -647,6 +692,7 @@ async function reconstructProductionWork(
   const learningMedia = await components.learningMedia.discoverAndEnqueue(now);
   const academicContent =
     await components.academicContentCleanup.discoverAndEnqueue(now);
+  const publication = await components.publicationReconciliation.reconcile(now);
   await components.brandingProcess.reconcile();
   return {
     generation,
@@ -656,6 +702,7 @@ async function reconstructProductionWork(
     emailTerminalized: email.terminalized + email.outcomeUnknown,
     learningMedia,
     academicContent,
+    publication: publication.scanned,
   };
 }
 
@@ -743,7 +790,28 @@ async function exerciseProductionWorkerDispatch(
     ...components.brandingQueue,
     getReadiness: jest.fn().mockResolvedValue({ counts: {} }),
   } as unknown as BrandingLogoCleanupQueueService).onModuleInit();
-  expect(harness.processors.size).toBe(8);
+  new AcademicContentPublicationWorker(
+    bullmq,
+    components.publicationSnapshots,
+    components.publicationLifecycle,
+    components.publicationQueue,
+    components.publicationReconciliation,
+  ).onModuleInit();
+  expect(harness.processors.size).toBe(9);
+  await harness.processor(ACADEMIC_CONTENT_PUBLICATION_QUEUE)({
+    name: 'publish',
+    data: {
+      schoolId: fixture.activeSchoolId,
+      contentId: fixture.publicationContentId,
+      publicationId: fixture.publicationId,
+    },
+  });
+  expect(
+    await components.prisma.academicContentPublication.findUniqueOrThrow({
+      where: { id: fixture.publicationId },
+      select: { status: true },
+    }),
+  ).toEqual({ status: 'PUBLISHED' });
 
   const base = {
     schoolId: fixture.activeSchoolId,
@@ -921,6 +989,7 @@ async function exerciseProductionWorkerDispatch(
     LEARNING_MEDIA_CLEANUP_QUEUE,
     BRANDING_LOGO_CLEANUP_QUEUE,
     ACADEMIC_CONTENT_CLEANUP_QUEUE,
+    ACADEMIC_CONTENT_PUBLICATION_QUEUE,
   ]) {
     try {
       await harness.processor(queueName)({
@@ -1580,7 +1649,55 @@ async function seedProductionModels(
     },
   });
 
+  const publicationTerm = await prisma.term.create({
+    data: {
+      schoolId: activeSchoolId,
+      academicYearId: academicYear.id,
+      nameAr: 'فصل',
+      nameEn: 'Publication term',
+      startDate: new Date(now.getTime() - 86400000),
+      endDate: new Date(now.getTime() + 86400000 * 2),
+      isActive: true,
+    },
+  });
+  const publicationContent = await prisma.academicContent.create({
+    data: {
+      schoolId: activeSchoolId,
+      academicYearId: academicYear.id,
+      termId: publicationTerm.id,
+      type: 'GENERAL_RESOURCE',
+      audience: 'STUDENTS',
+      title: 'G03 Publication',
+      description: 'Synthetic resource',
+      createdByUserId: actorUserId,
+    },
+  });
+  await prisma.academicContentTarget.create({
+    data: {
+      schoolId: activeSchoolId,
+      academicContentId: publicationContent.id,
+      scopeType: 'SCHOOL',
+      identityFingerprint: randomUUID().replace(/-/g, ''),
+      createdByUserId: actorUserId,
+    },
+  });
+  const publication = await new AcademicContentPublicationRepository(
+    prisma,
+    new AcademicContentRevisionRepository(prisma),
+  ).schedule({
+    schoolId: activeSchoolId,
+    contentId: publicationContent.id,
+    organizationId,
+    actorId: actorUserId,
+    now,
+    command: {
+      clientRequestId: randomUUID(),
+      visibleUntil: new Date(now.getTime() + 86400000),
+    },
+  });
   return {
+    publicationContentId: publicationContent.id,
+    publicationId: publication.publicationId,
     now: new Date(),
     organizationId,
     activeSchoolId,
@@ -1924,6 +2041,17 @@ async function assertReconstructedJobs(
     ),
   );
   return {
+    publication: Number(
+      Boolean(
+        await queue.getQueue(ACADEMIC_CONTENT_PUBLICATION_QUEUE).getJob(
+          academicContentPublicationJobId('publish', {
+            schoolId: fixture.activeSchoolId,
+            contentId: fixture.publicationContentId,
+            publicationId: fixture.publicationId,
+          }),
+        ),
+      ),
+    ),
     communication: Number(
       Boolean(
         await queue

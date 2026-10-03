@@ -1,3 +1,9 @@
+import {
+  ACADEMIC_CONTENT_PUBLICATION_QUEUE,
+  ACADEMIC_CONTENT_PUBLICATION_RECONCILE_JOB,
+  ACADEMIC_CONTENT_PUBLICATION_RECONCILE_JOB_ID,
+  ACADEMIC_CONTENT_PUBLICATION_RECONCILE_INTERVAL_MS,
+} from '../academics/academic-content/domain/academic-content-publication-runtime.constants';
 import type { BullmqRepeatRegistration } from '../../infrastructure/queue/bullmq.service';
 import {
   ACADEMIC_CONTENT_CLEANUP_INTERVAL_MS,
@@ -86,6 +92,7 @@ export const CURRENT_OPERATIONAL_ROLE_POLICY: OperationalRolePolicy =
   });
 
 export const CORE_WORKER_ASSIGNED_CONSUMERS = Object.freeze([
+  ACADEMIC_CONTENT_PUBLICATION_QUEUE,
   ACADEMIC_CONTENT_CLEANUP_QUEUE,
   'communication-notifications',
   'communication-notification-push',
@@ -100,6 +107,12 @@ export const MEDIA_WORKER_ASSIGNED_CONSUMERS = Object.freeze([
 ]);
 
 export const MAINTENANCE_SCHEDULE_REGISTRATIONS = Object.freeze([
+  Object.freeze({
+    queueName: ACADEMIC_CONTENT_PUBLICATION_QUEUE,
+    jobName: ACADEMIC_CONTENT_PUBLICATION_RECONCILE_JOB,
+    jobId: ACADEMIC_CONTENT_PUBLICATION_RECONCILE_JOB_ID,
+    every: ACADEMIC_CONTENT_PUBLICATION_RECONCILE_INTERVAL_MS,
+  }),
   Object.freeze({
     queueName: ACADEMIC_CONTENT_CLEANUP_QUEUE,
     jobName: ACADEMIC_CONTENT_DISCOVERY_JOB,

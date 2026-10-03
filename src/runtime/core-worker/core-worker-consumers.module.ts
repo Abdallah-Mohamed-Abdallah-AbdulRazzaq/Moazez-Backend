@@ -1,3 +1,11 @@
+import { AcademicContentPublicationWorker } from '../../modules/academics/academic-content/infrastructure/academic-content-publication.worker';
+import { AcademicContentPublicationRuntimeRepository } from '../../modules/academics/academic-content/infrastructure/academic-content-publication-runtime.repository';
+import { AcademicContentPublicationLifecycleRepository } from '../../modules/academics/academic-content/infrastructure/academic-content-publication-lifecycle.repository';
+import { AcademicContentPublicationSnapshotRepository } from '../../modules/academics/academic-content/infrastructure/academic-content-publication-snapshot.repository';
+import { AcademicContentRevisionAudienceResolver } from '../../modules/academics/academic-content/infrastructure/academic-content-revision-audience.resolver';
+import { AcademicContentAudienceRepository } from '../../modules/academics/academic-content/infrastructure/academic-content-audience.repository';
+import { AcademicContentPublicationQueueService } from '../../modules/academics/academic-content/application/academic-content-publication-queue.service';
+import { AcademicContentPublicationReconciliationService } from '../../modules/academics/academic-content/application/academic-content-publication-reconciliation.service';
 import { Module, type Provider } from '@nestjs/common';
 import { AcademicContentCleanupWorker } from '../../modules/academics/academic-content/files/infrastructure/academic-content-cleanup.worker';
 import { AcademicContentFileRepository } from '../../modules/academics/academic-content/files/infrastructure/academic-content-file.repository';
@@ -68,6 +76,7 @@ import { StudentCredentialBatchReconciliationService } from '../../modules/stude
 import { StudentCredentialSecretArtifactCleanupService } from '../../modules/students/credentials/application/student-credential-secret-artifact-cleanup.service';
 
 export const CORE_WORKER_CONSUMER_PROVIDERS = Object.freeze([
+  AcademicContentPublicationWorker,
   AcademicContentCleanupWorker,
   CommunicationNotificationGenerationWorker,
   CommunicationNotificationPushWorker,
@@ -78,6 +87,14 @@ export const CORE_WORKER_CONSUMER_PROVIDERS = Object.freeze([
 ] satisfies Provider[]);
 
 const CORE_WORKER_SUPPORT_PROVIDERS: Provider[] = [
+  AcademicContentPublicationRuntimeRepository,
+  AcademicContentPublicationLifecycleRepository,
+  AcademicContentPublicationSnapshotRepository,
+  AcademicContentRevisionAudienceResolver,
+  AcademicContentAudienceRepository,
+  AcademicContentPublicationQueueService,
+  AcademicContentPublicationReconciliationService,
+
   AcademicContentFileRepository,
   AppDeviceTokenCrypto,
   AppDeviceTokenRepository,

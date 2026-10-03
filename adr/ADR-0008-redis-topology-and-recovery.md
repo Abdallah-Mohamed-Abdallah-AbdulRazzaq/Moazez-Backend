@@ -11,6 +11,20 @@ Accepted
 - Timezone: Africa/Cairo
 - Accepted owner questions: PRD0-Q012 and PRD0-Q013
 
+### ACC-7D governance amendment — 2026-10-03
+
+ACC-7D review reconciled this ADR with the current exact runtime topology:
+eight Core Worker consumers per instance and nine Maintenance Scheduler
+repeat registrations. The Owner approved preserving the fixed four-connection
+recovery/operations reserve (Africa/Cairo, 2026-10-03). Current Queue Redis
+governance is steady=40, reserve=4, governed maximum=44.
+
+This is a governance ceiling adjustment for the current topology; 44 is not
+actual steady consumption. The original Phase 3 proof used six Core consumers,
+steady=36, reserve=4, maximum=40. That dated evidence remains historical.
+The recovery/operations reserve is not steady-state deployment or rollout
+capacity. No runtime topology or cloud capacity change is authorized here.
+
 ## Context
 
 The API, Core Worker, Media Worker, and Maintenance Scheduler share queue
@@ -97,9 +111,9 @@ ownership only.
 | Runtime               | Queue Redis ownership                                             | Realtime Redis ownership                         |
 | --------------------- | ----------------------------------------------------------------- | ------------------------------------------------ |
 | API                   | producer command plus readiness; zero consumers and repeats       | Socket.IO publisher/subscriber plus state client |
-| Core Worker           | bounded command, readiness, Worker base, and six blocking Workers | one worker-safe emitter                          |
+| Core Worker           | bounded command, readiness, Worker base, and eight blocking Workers | one worker-safe emitter                          |
 | Media Worker          | bounded command, readiness, Worker base, and one blocking Worker  | none                                             |
-| Maintenance Scheduler | bounded command plus readiness and three repeats                  | none                                             |
+| Maintenance Scheduler | bounded command plus readiness and nine repeats                  | none                                             |
 
 ### Governed connection budgets
 
@@ -108,12 +122,17 @@ Queue Redis:
 | Allocation                      | Calculation | Connections |
 | ------------------------------- | ----------: | ----------: |
 | API                             |     `4 x 2` |           8 |
-| Core Worker                     |     `2 x 9` |          18 |
+| Core Worker                     |    `2 x 11` |          22 |
 | Media Worker                    |     `2 x 4` |           8 |
 | Maintenance Scheduler           |     `1 x 2` |           2 |
-| Expected steady maximum         |         sum |          36 |
+| Expected steady maximum         |         sum |          40 |
 | Recovery and operations reserve |       fixed |           4 |
-| Governed maximum                |    `36 + 4` |          40 |
+| Governed maximum                |    `40 + 4` |          44 |
+
+Each Core Worker instance owns one bounded command connection, one readiness
+connection, one shared Worker base connection, and eight blocking Worker
+connections: `1 + 1 + 1 + 8 = 11`. The current G02 topology therefore uses
+`8 + 22 + 8 + 2 = 40` steady application connections.
 
 Realtime Redis:
 
@@ -145,14 +164,19 @@ require a new owner decision and evidence.
 
 PRD3-G02 uses two fresh Redis containers resolved from one already-present
 immutable image ID. The production-shaped direct service topology contains
-four API instances, two Core Workers with six consumers each, two Media
+four API instances, two Core Workers with eight consumers each, two Media
 Workers with one consumer each, and one Maintenance Scheduler. It proves
 independent stop/start recovery, two-API fan-out, shared presence and typing,
 strict fallback rejection, no failed-producer replay, exact connection maxima,
 zero final clients, and exact labeled cleanup.
 
-The evidence is recorded in
+The original six-consumer Phase 3 evidence is recorded in
 `docs/production-readiness/phase-3/05-redis-topology-and-recovery-evidence.md`.
+Current ACC-7D evidence must prove exact steady consumption of 40, recovery
+and overall maxima at most 44, and zero final application connections. Before
+ACC-7D deployment, DevOps must verify that the actual Queue Redis service/provider
+supports the 44-connection governed application ceiling plus provider/system
+requirements; this backend governance decision does not perform that check.
 This ADR does not claim managed Redis, Terraform, Cloud SQL, or any cloud
 resource exists.
 

@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config';
+import { CORE_WORKER_ASSIGNED_CONSUMERS } from '../../src/modules/health/operational-probe.manifests';
 import { UserType } from '@prisma/client';
 import IORedis from 'ioredis';
 import { spawnSync } from 'node:child_process';
@@ -26,14 +27,13 @@ import { RealtimeStateStoreService } from '../../src/infrastructure/realtime/rea
 import type { RealtimeTypingService } from '../../src/infrastructure/realtime/realtime-typing.service';
 import type { RealtimeSocket } from '../../src/infrastructure/realtime/realtime.types';
 
-const QUEUE_GOVERNED_MAXIMUM = 40;
+const QUEUE_GOVERNED_MAXIMUM = 44;
+const QUEUE_RECOVERY_OPERATIONS_RESERVE = 4;
 const REALTIME_GOVERNED_MAXIMUM = 30;
-const EXPECTED_QUEUE_STEADY_MAXIMUM = 36;
+const EXPECTED_QUEUE_STEADY_MAXIMUM = 40;
 const EXPECTED_REALTIME_STEADY_MAXIMUM = 14;
 const REDIS_SAMPLER_CLOSE_TIMEOUT_MS = 400;
-const CORE_QUEUE_NAMES = Object.freeze(
-  Array.from({ length: 6 }, (_, index) => `prd3-g02-core-${index}`),
-);
+const CORE_QUEUE_NAMES = CORE_WORKER_ASSIGNED_CONSUMERS;
 const MEDIA_QUEUE_NAME = 'prd3-g02-media';
 const SCHEDULER_QUEUE_NAME = 'prd3-g02-maintenance';
 const TEST_JOB_NAME = 'prd3-g02-evidence-job';
@@ -62,8 +62,12 @@ describe('PRD3-G02 split Redis topology and same-process recovery', () => {
       ) {
         throw new Error('prd3_g02_fixture_contract_missing');
       }
+      expect(CORE_QUEUE_NAMES).toHaveLength(8);
+      expect(QUEUE_GOVERNED_MAXIMUM - EXPECTED_QUEUE_STEADY_MAXIMUM).toBe(
+        QUEUE_RECOVERY_OPERATIONS_RESERVE,
+      );
 
-      const topology = await createProductionShapedTopology(
+      const topology = createProductionShapedTopology(
         queueRedisUrl,
         realtimeRedisUrl,
       );
@@ -121,6 +125,10 @@ describe('PRD3-G02 split Redis topology and same-process recovery', () => {
             (await realtimeSampler.readApplicationConnections()) ===
             EXPECTED_REALTIME_STEADY_MAXIMUM,
         );
+
+        const observedQueueSteady =
+          await queueSampler.readApplicationConnections();
+        expect(observedQueueSteady).toBe(EXPECTED_QUEUE_STEADY_MAXIMUM);
 
         apiOneClient = await topology.connectApiClient(0);
         apiTwoClient = await topology.connectApiClient(1);
@@ -549,6 +557,12 @@ describe('PRD3-G02 split Redis topology and same-process recovery', () => {
         );
         await delay(300);
 
+        const observedQueueRecoveredSteady =
+          await queueSampler.readApplicationConnections();
+        expect(observedQueueRecoveredSteady).toBe(
+          EXPECTED_QUEUE_STEADY_MAXIMUM,
+        );
+
         const measured = {
           queueMaximum: maximumApplicationConnections(queueSamples),
           realtimeMaximum: maximumApplicationConnections(realtimeSamples),
@@ -562,6 +576,9 @@ describe('PRD3-G02 split Redis topology and same-process recovery', () => {
           ),
         };
         expect(measured.queueMaximum).toBeLessThanOrEqual(
+          QUEUE_GOVERNED_MAXIMUM,
+        );
+        expect(measured.queueRecoveryMaximum).toBeLessThanOrEqual(
           QUEUE_GOVERNED_MAXIMUM,
         );
         expect(measured.realtimeMaximum).toBeLessThanOrEqual(
@@ -598,12 +615,16 @@ describe('PRD3-G02 split Redis topology and same-process recovery', () => {
           topology: {
             apiInstances: 4,
             coreWorkerInstances: 2,
-            coreWorkersPerInstance: 6,
+            coreWorkersPerInstance: 8,
             mediaWorkerInstances: 2,
             mediaWorkersPerInstance: 1,
             schedulerInstances: 1,
           },
           queueExpectedSteadyMaximum: EXPECTED_QUEUE_STEADY_MAXIMUM,
+          queueGovernedMaximum: QUEUE_GOVERNED_MAXIMUM,
+          queueRecoveryOperationsReserve: QUEUE_RECOVERY_OPERATIONS_RESERVE,
+          observedQueueSteady,
+          observedQueueRecoveredSteady,
           realtimeExpectedSteadyMaximum: EXPECTED_REALTIME_STEADY_MAXIMUM,
           ...measured,
           finalQueueApplicationConnections,
@@ -713,6 +734,9 @@ class RedisConnectionSampler {
       throw new Error('redis_administrative_inspection_unavailable');
     }
     const clientList = await this.admin.client('LIST');
+    if (typeof clientList !== 'string') {
+      throw new Error('redis_administrative_inspection_invalid');
+    }
     const clients = clientList
       .split('\n')
       .filter((line) => line.trim().length > 0);
@@ -749,6 +773,9 @@ class RedisConnectionSampler {
   private async sampleOnce(): Promise<void> {
     try {
       const clientList = await this.admin.client('LIST');
+      if (typeof clientList !== 'string') {
+        throw new Error('redis_administrative_inspection_invalid');
+      }
       const clients = clientList.split('\n').filter((line) => line.trim());
       const administrativeConnections = clients.filter((line) =>
         line.includes('name=prd3-g02-administrative-inspection'),
@@ -767,19 +794,23 @@ class RedisConnectionSampler {
 type SamplerRedisCloseSettlement = 'fulfilled' | 'rejected' | 'timed_out';
 type SamplerRedisTerminalSettlement = 'ended' | 'timed_out';
 
+function samplerRedisHasEnded(redis: IORedis): boolean {
+  return redis.status === 'end';
+}
+
 async function closeSamplerRedisClient(redis: IORedis): Promise<void> {
-  if (redis.status === 'end') return;
+  if (samplerRedisHasEnded(redis)) return;
 
   const terminal = observeSamplerRedisEnd(redis);
   const closeResult = await settleSamplerRedisClose(
     Promise.resolve().then(() => redis.quit()),
   );
-  if (closeResult !== 'fulfilled' && redis.status !== 'end') {
+  if (closeResult !== 'fulfilled' && !samplerRedisHasEnded(redis)) {
     redis.disconnect();
   }
 
   const terminalResult = await terminal;
-  if (terminalResult === 'timed_out' && redis.status !== 'end') {
+  if (terminalResult === 'timed_out' && !samplerRedisHasEnded(redis)) {
     const forcedTerminal = observeSamplerRedisEnd(redis);
     redis.disconnect();
     await forcedTerminal;
@@ -793,12 +824,12 @@ function observeSamplerRedisEnd(
 
   return new Promise((resolve) => {
     let settled = false;
-    let timer: NodeJS.Timeout | undefined;
+    const timerState: { timer?: NodeJS.Timeout } = {};
     const settle = (result: SamplerRedisTerminalSettlement): void => {
       if (settled) return;
       settled = true;
       redis.off('end', onEnd);
-      if (timer) clearTimeout(timer);
+      if (timerState.timer) clearTimeout(timerState.timer);
       resolve(result);
     };
     const onEnd = (): void => settle('ended');
@@ -809,11 +840,11 @@ function observeSamplerRedisEnd(
       return;
     }
 
-    timer = setTimeout(
+    timerState.timer = setTimeout(
       () => settle('timed_out'),
       REDIS_SAMPLER_CLOSE_TIMEOUT_MS,
     );
-    timer.unref();
+    timerState.timer.unref();
   });
 }
 
@@ -843,7 +874,7 @@ async function settleSamplerRedisClose(
   }
 }
 
-async function createProductionShapedTopology(
+function createProductionShapedTopology(
   queueRedisUrl: string,
   realtimeRedisUrl: string,
 ) {
@@ -892,19 +923,23 @@ async function createProductionShapedTopology(
   };
   for (const service of coreBullmq) {
     for (const queueName of CORE_QUEUE_NAMES) {
-      service.createWorker(queueName, async (job) => countJob(job));
+      service.createWorker(queueName, (job) => {
+        countJob(job);
+        return Promise.resolve();
+      });
     }
   }
   for (const service of mediaBullmq) {
-    service.createWorker(MEDIA_QUEUE_NAME, async (job) => countJob(job));
+    service.createWorker(MEDIA_QUEUE_NAME, (job) => {
+      countJob(job);
+      return Promise.resolve();
+    });
   }
 
-  const stateStores = Array.from(
-    { length: 4 },
-    () =>
-      enforceStrictRealtimeFallbackPolicy(
-        new RealtimeStateStoreService(realtimeConfig),
-      ),
+  const stateStores = Array.from({ length: 4 }, () =>
+    enforceStrictRealtimeFallbackPolicy(
+      new RealtimeStateStoreService(realtimeConfig),
+    ),
   );
   const apiServers = Array.from({ length: 4 }, () => createServer());
   const socketServers = apiServers.map(
@@ -1123,6 +1158,12 @@ function rejectedSocketDouble(): {
   };
 }
 
+function rawSocketDataText(data: WebSocket.RawData): string {
+  if (Array.isArray(data)) return Buffer.concat(data).toString();
+  if (data instanceof ArrayBuffer) return Buffer.from(data).toString();
+  return data.toString();
+}
+
 class RawSocketIoClient {
   private readonly events = new Map<string, unknown[]>();
   private readonly waiters = new Map<string, Array<(value: unknown) => void>>();
@@ -1130,7 +1171,7 @@ class RawSocketIoClient {
   private closed = false;
 
   private constructor(private readonly socket: WebSocket) {
-    socket.on('message', (data) => this.handleMessage(data.toString()));
+    socket.on('message', (data) => this.handleMessage(rawSocketDataText(data)));
     socket.on('close', () => {
       this.closed = true;
       for (const resolve of this.closeWaiters.splice(0)) resolve();
@@ -1149,10 +1190,11 @@ class RawSocketIoClient {
       );
       socket.once('error', reject);
       socket.on('message', (data) => {
-        if (data.toString().startsWith('0')) {
+        const message = rawSocketDataText(data);
+        if (message.startsWith('0')) {
           socket.send(`40${REALTIME_NAMESPACE},`);
         }
-        if (data.toString().startsWith(`40${REALTIME_NAMESPACE},`)) {
+        if (message.startsWith(`40${REALTIME_NAMESPACE},`)) {
           clearTimeout(timeout);
           resolve(client);
         }
@@ -1227,7 +1269,7 @@ function finiteRedis(redisUrl: string): IORedis {
 }
 
 async function waitForRedisContainer(container: string): Promise<void> {
-  await waitFor(async () => {
+  await waitFor(() => {
     const result = spawnSync(
       'docker',
       ['exec', container, 'redis-cli', '--raw', 'PING'],
@@ -1334,7 +1376,9 @@ function listen(server: HttpServer): Promise<number> {
 }
 
 function closeSocketServer(server: Server): Promise<void> {
-  return new Promise((resolve) => server.close(() => resolve()));
+  return new Promise((resolve) => {
+    void server.close(() => resolve());
+  });
 }
 
 function closeHttpServer(server: HttpServer): Promise<void> {

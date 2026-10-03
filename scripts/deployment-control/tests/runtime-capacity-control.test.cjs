@@ -245,17 +245,24 @@ test('staging and production permanent baselines remain isolated', () => {
 });
 
 test('steady DB and separate Redis envelopes match governed examples', () => {
+  const g02Topology = capacity.baselineCapacitySpec('staging');
+  g02Topology.workers.coreManualInstanceCount = 2;
+  g02Topology.workers.mediaManualInstanceCount = 2;
+  assert.equal(
+    capacity.calculateSteadyStateEnvelopes(g02Topology).queueRedis,
+    40,
+  );
   assert.deepEqual(
     capacity.calculateSteadyStateEnvelopes(
       capacity.baselineCapacitySpec('staging'),
     ),
-    { database: 29, queueRedis: 23, realtimeRedis: 13 },
+    { database: 29, queueRedis: 25, realtimeRedis: 13 },
   );
   assert.deepEqual(
     capacity.calculateSteadyStateEnvelopes(
       capacity.baselineCapacitySpec('production'),
     ),
-    { database: 59, queueRedis: 35, realtimeRedis: 31 },
+    { database: 59, queueRedis: 37, realtimeRedis: 31 },
   );
   const testCandidate = capacity.baselineCapacitySpec('production');
   testCandidate.api.serviceMaxInstances = 40;
@@ -282,7 +289,7 @@ test('production baseline 10 is not newly approvable against historical realtime
     const evidence = writeEvidence(
       root,
       'capacity-budget.json',
-      capacityEvidenceDocument(59, 35, 30, { environment: 'production' }),
+      capacityEvidenceDocument(59, 37, 30, { environment: 'production' }),
     );
     assertCapacityError('CAPACITY_EVIDENCE_INSUFFICIENT', () =>
       capacity.evaluateStandaloneCapacityChange({
@@ -316,7 +323,7 @@ test('tagged zero-traffic candidate is accounted independently in all envelopes'
   assert.deepEqual(overlap.queueRedis, {
     servingApiEnvelope: 80,
     taggedCandidateEnvelope: 20,
-    totalRuntimeOverlap: 115,
+    totalRuntimeOverlap: 117,
   });
   assert.deepEqual(overlap.realtimeRedis, {
     servingApiEnvelope: 120,
@@ -352,7 +359,7 @@ test('candidate overlap requires complete revision capacity and governed evidenc
     const evidence = writeEvidence(
       root,
       'candidate-capacity-budget.json',
-      capacityEvidenceDocument(39, 27, 19),
+      capacityEvidenceDocument(39, 29, 19),
     );
     const result = capacity.evaluateCandidateOverlapEvidence(
       overlap,
@@ -1092,7 +1099,7 @@ test('capacity execution rejects tampered envelopes, budgets, and Saved Plan pat
     increaseInput.capacityEvidence = writeEvidence(
       root,
       'capacity-budget.json',
-      capacityEvidenceDocument(24, 21, 10),
+      capacityEvidenceDocument(24, 23, 10),
     );
     const tamperedBudget = capacity.buildCapacityExecution(increaseInput);
     tamperedBudget.capacityEvaluation.realtimeRedis.effectiveApprovalBudget = 9;

@@ -130,12 +130,21 @@ Steady state uses:
 
 ```text
 DB = API service max × API DB limit + Core count × 6 + Media count × 3
-Queue Redis = API service max × 2 + Core count × 9 + Media count × 4 + 2
+Queue Redis = API service max × 2 + Core count × 11 + Media count × 4 + 2
 Realtime Redis = API service max × 3 + Core count
 ```
 
-This yields Staging `DB=29`, `Queue=23`, `Realtime=13`, and Production normal
-`DB=59`, `Queue=35`, `Realtime=31`. The historical proven Production Realtime
+Each Core instance owns command, readiness, and shared Worker base connections
+plus eight blocking Worker connections. The 2026-10-03 ACC-7D amendment to
+ADR-0008 records the Owner-approved G02 topology budget: four API instances,
+two Core instances, two Media instances, and one Scheduler use 40 steady
+Queue Redis connections, with a fixed four-connection recovery/operations
+reserve and a governed maximum of 44. The reserve is not steady deployment or
+rollout capacity; the ceiling does not authorize a live capacity change.
+
+This yields Staging `DB=29`, `Queue=25`, `Realtime=13`, and Production normal
+`DB=59`, `Queue=37`, `Realtime=31`. These source profile calculations are
+distinct from the G02 verification topology. The historical proven Production Realtime
 Redis budget is `30`; therefore a newly requested Production profile at
 service maximum `10` requires new governed Redis evidence. Preservation of an
 already-live setting is not a new capacity approval.
@@ -150,7 +159,7 @@ total DB overlap = serving DB + candidate DB + Core count × 6 + Media count × 
 
 serving Queue = serving service max × 2
 candidate Queue = candidate revision max × 2
-total Queue overlap = serving Queue + candidate Queue + Core × 9 + Media × 4 + 2
+total Queue overlap = serving Queue + candidate Queue + Core × 11 + Media × 4 + 2
 
 serving Realtime = serving service max × 3
 candidate Realtime = candidate revision max × 3

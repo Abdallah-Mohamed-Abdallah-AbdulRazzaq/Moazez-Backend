@@ -3337,6 +3337,8 @@ model AcademicContentPublication {
   @@index([revisionId, schoolId, academicContentId])
   @@index([createdByUserId])
   @@index([cancelledByUserId])
+  @@index([status, publishAt, id])
+  @@index([status, visibleUntil, id])
   @@map("academic_content_publications")
 }
 

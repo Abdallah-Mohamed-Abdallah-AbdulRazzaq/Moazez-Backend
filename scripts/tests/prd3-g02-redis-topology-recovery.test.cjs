@@ -101,13 +101,13 @@ test('runtime role ownership retains Phase 2 isolation with the current ACC inve
   );
   assert.match(
     contract,
-    /CORE_WORKER_ASSIGNED_CONSUMERS\)\.toHaveLength\(7\)/u,
+    /CORE_WORKER_ASSIGNED_CONSUMERS\)\.toHaveLength\(8\)/u,
   );
   assert.match(
     contract,
     /MEDIA_WORKER_ASSIGNED_CONSUMERS\)\.toEqual\(\['learning-media-cleanup'\]\)/u,
   );
-  assert.match(contract, /registerRepeatJob\)\.toHaveBeenCalledTimes\(8\)/u);
+  assert.match(contract, /registerRepeatJob\)\.toHaveBeenCalledTimes\(9\)/u);
 });
 
 test('real evidence harness locks two instances, budgets, outages, and cleanup', () => {
@@ -143,9 +143,24 @@ test('real evidence harness locks two instances, budgets, outages, and cleanup',
       wrapper.indexOf('const testRun = spawnSync'),
   );
   assert.doesNotMatch(wrapper, /--forceExit/u);
-  assert.match(integration, /EXPECTED_QUEUE_STEADY_MAXIMUM = 36/u);
+  assert.match(integration, /EXPECTED_QUEUE_STEADY_MAXIMUM = 40/u);
+  assert.match(integration, /CORE_QUEUE_NAMES = CORE_WORKER_ASSIGNED_CONSUMERS/u);
+  assert.match(integration, /expect\(CORE_QUEUE_NAMES\)\.toHaveLength\(8\)/u);
   assert.match(integration, /EXPECTED_REALTIME_STEADY_MAXIMUM = 14/u);
-  assert.match(integration, /QUEUE_GOVERNED_MAXIMUM = 40/u);
+  assert.match(integration, /QUEUE_GOVERNED_MAXIMUM = 44/u);
+  assert.match(integration, /QUEUE_RECOVERY_OPERATIONS_RESERVE = 4/u);
+  assert.match(
+    integration,
+    /expect\(observedQueueSteady\)\.toBe\(EXPECTED_QUEUE_STEADY_MAXIMUM\)/u,
+  );
+  assert.match(
+    integration,
+    /expect\(observedQueueRecoveredSteady\)\.toBe\(\s*EXPECTED_QUEUE_STEADY_MAXIMUM/u,
+  );
+  assert.match(
+    integration,
+    /expect\(measured\.queueRecoveryMaximum\)\.toBeLessThanOrEqual\(\s*QUEUE_GOVERNED_MAXIMUM/u,
+  );
   assert.match(integration, /REALTIME_GOVERNED_MAXIMUM = 30/u);
   assert.match(integration, /fallbackSuccessCount/u);
   assert.match(integration, /NODE_ENV:\s*'test'/u);
@@ -255,6 +270,17 @@ test('accepted ADR and governance records carry exact owner authority', () => {
   assert.match(adr, /## Status\s+Accepted/u);
   assert.match(adr, /Owner: Abdallah/u);
   assert.match(adr, /2026-08-06T05:56:00\+03:00/u);
+  assert.match(adr, /ACC-7D governance amendment — 2026-10-03/u);
+  assert.match(adr, /steady=40, reserve=4, governed maximum=44/u);
+  assert.match(adr, /eight blocking Workers/u);
+  assert.match(adr, /\| Core Worker\s+\|\s+`2 x 11`\s+\|\s+22\s+\|/u);
+  assert.match(adr, /\| Expected steady maximum\s+\|\s+sum\s+\|\s+40\s+\|/u);
+  assert.match(adr, /\| Recovery and operations reserve\s+\|\s+fixed\s+\|\s+4\s+\|/u);
+  assert.match(adr, /\| Governed maximum\s+\|\s+`40 \+ 4`\s+\|\s+44\s+\|/u);
+  assert.match(
+    read('docs/governance/runtime-capacity-governance.md'),
+    /Core count × 11/u,
+  );
   assert.match(register, /PRD0-Q012 \| APPROVED/u);
   assert.match(register, /PRD0-Q013 \| APPROVED/u);
   assert.match(matrix, /\| PRD3-G02 \|[^\n]+\| COMPLETE \|/u);

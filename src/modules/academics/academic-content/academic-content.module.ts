@@ -1,3 +1,8 @@
+import { QueueModule } from '../../../infrastructure/queue/queue.module';
+import { AcademicContentPublicationQueueService } from './application/academic-content-publication-queue.service';
+import { AcademicContentPublicationRuntimeRepository } from './infrastructure/academic-content-publication-runtime.repository';
+import { AcademicContentPublicationLifecycleRepository } from './infrastructure/academic-content-publication-lifecycle.repository';
+import { CancelAcademicContentPublicationUseCase } from './application/academic-content-publication.use-cases';
 import { Module } from '@nestjs/common';
 import { StorageModule } from '../../../infrastructure/storage/storage.module';
 import { AcademicContentFilePolicyResolver } from './files/application/academic-content-file-policy.resolver';
@@ -78,7 +83,7 @@ import {
 } from './files/application/academic-content-file-policy.use-cases';
 
 @Module({
-  imports: [StorageModule],
+  imports: [StorageModule, QueueModule],
   controllers: [
     AcademicContentFilePolicyController,
     AcademicContentWorkflowPolicyController,
@@ -87,6 +92,10 @@ import {
     AcademicContentController,
   ],
   providers: [
+    AcademicContentPublicationQueueService,
+    AcademicContentPublicationRuntimeRepository,
+    AcademicContentPublicationLifecycleRepository,
+    CancelAcademicContentPublicationUseCase,
     AcademicContentRevisionAudienceResolver,
     AcademicContentPublicationSnapshotRepository,
     AcademicContentPublicationRepository,
@@ -146,6 +155,7 @@ import {
     AcademicContentAudienceResolver,
   ],
   exports: [
+    CancelAcademicContentPublicationUseCase,
     CreateAcademicContentUploadUseCase,
     CompleteAcademicContentUploadUseCase,
     CancelAcademicContentUploadUseCase,
