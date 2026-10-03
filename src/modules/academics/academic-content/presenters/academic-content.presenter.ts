@@ -324,8 +324,14 @@ export function presentAcademicContentTags(
 export function presentAcademicContentDetail(
   content: AcademicContentManagementDetail,
 ): AcademicContentDetailResponseDto {
+  const latestPublication = content.publications[0];
   return {
     ...presentAcademicContent(content),
+    latestPublicationId: latestPublication?.id ?? null,
+    publicationStatus: latestPublication?.status ?? null,
+    publishAt: latestPublication?.publishAt.toISOString() ?? null,
+    visibleFrom: latestPublication?.visibleFrom.toISOString() ?? null,
+    visibleUntil: latestPublication?.visibleUntil?.toISOString() ?? null,
     targets: content.targets.map(presentAcademicContentTarget),
     assets: content.assets.map((asset) => ({
       assetId: asset.id,

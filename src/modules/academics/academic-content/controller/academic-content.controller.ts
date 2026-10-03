@@ -29,6 +29,30 @@ import {
   ListAcademicContentForManagementUseCase,
 } from '../application/academic-content-management-read.use-cases';
 import { GetAcademicContentReadinessUseCase } from '../application/academic-content-readiness.use-case';
+import {
+  CancelAcademicContentPublicationUseCase,
+  GetAcademicContentAudiencePreviewUseCase,
+  GetAcademicContentPublicationReadinessUseCase,
+  GetAcademicContentPublicationUseCase,
+  ListAcademicContentPublicationHistoryUseCase,
+  ScheduleAcademicContentPublicationUseCase,
+  UnscheduleAcademicContentPublicationUseCase,
+} from '../application/academic-content-publication.use-cases';
+import {
+  AcademicContentAudiencePreviewResponseDto,
+  AcademicContentEmptyPublicationBodyDto,
+  AcademicContentPublicationHistoryQueryDto,
+  AcademicContentPublicationHistoryResponseDto,
+  AcademicContentPublicationReadinessResponseDto,
+  AcademicContentPublicationResponseDto,
+  CreateAcademicContentPublicationDto,
+} from '../dto/academic-content-publication.dto';
+import {
+  presentAcademicContentAudiencePreview,
+  presentAcademicContentPublication,
+  presentAcademicContentPublicationList,
+  presentAcademicContentPublicationReadiness,
+} from '../presenters/academic-content-publication.presenter';
 import { AcademicContentTypeDetailUseCases } from '../application/academic-content-type-detail.use-cases';
 import type {
   GuardianNoteCommand,
@@ -137,6 +161,13 @@ export class AcademicContentController {
     private readonly completeUpload: CompleteAcademicContentUploadUseCase,
     private readonly cancelUpload: CancelAcademicContentUploadUseCase,
     private readonly unlinkAsset: UnlinkAcademicContentAssetUseCase,
+    private readonly getPublicationReadiness: GetAcademicContentPublicationReadinessUseCase,
+    private readonly getAudiencePreview: GetAcademicContentAudiencePreviewUseCase,
+    private readonly schedulePublication: ScheduleAcademicContentPublicationUseCase,
+    private readonly listPublications: ListAcademicContentPublicationHistoryUseCase,
+    private readonly getPublication: GetAcademicContentPublicationUseCase,
+    private readonly unschedulePublication: UnscheduleAcademicContentPublicationUseCase,
+    private readonly cancelPublication: CancelAcademicContentPublicationUseCase,
   ) {}
 
   @Post()
@@ -188,6 +219,141 @@ export class AcademicContentController {
   ): Promise<AcademicContentReadinessResponseDto> {
     return presentAcademicContentReadiness(
       await this.getReadiness.execute(contentId),
+    );
+  }
+
+  @Get(':contentId/publication-readiness')
+  @Header('Cache-Control', 'no-store, private, max-age=0')
+  @RequiredPermissions('academics.academic_content.view')
+  @ApiOperation({ summary: 'Evaluate Academic Content publication readiness' })
+  @ApiParam({ name: 'contentId', format: 'uuid' })
+  @ApiOkResponse({ type: AcademicContentPublicationReadinessResponseDto })
+  async publicationReadiness(
+    @Param('contentId', new ParseUUIDPipe()) contentId: string,
+  ): Promise<AcademicContentPublicationReadinessResponseDto> {
+    return presentAcademicContentPublicationReadiness(
+      await this.getPublicationReadiness.execute(contentId),
+    );
+  }
+
+  @Get(':contentId/audience-preview')
+  @Header('Cache-Control', 'no-store, private, max-age=0')
+  @RequiredPermissions('academics.academic_content.view')
+  @ApiOperation({ summary: 'Preview current Academic Content audience counts' })
+  @ApiParam({ name: 'contentId', format: 'uuid' })
+  @ApiOkResponse({ type: AcademicContentAudiencePreviewResponseDto })
+  async audiencePreview(
+    @Param('contentId', new ParseUUIDPipe()) contentId: string,
+  ): Promise<AcademicContentAudiencePreviewResponseDto> {
+    return presentAcademicContentAudiencePreview(
+      await this.getAudiencePreview.execute(contentId),
+    );
+  }
+
+  @Post(':contentId/publications')
+  @RequiredPermissions('academics.academic_content.publish')
+  @ApiOperation({ summary: 'Schedule an Academic Content publication intent' })
+  @ApiParam({ name: 'contentId', format: 'uuid' })
+  @ApiBody({ type: CreateAcademicContentPublicationDto })
+  @ApiCreatedResponse({ type: AcademicContentPublicationResponseDto })
+  async createPublication(
+    @Param('contentId', new ParseUUIDPipe()) contentId: string,
+    @Body() dto: CreateAcademicContentPublicationDto,
+  ): Promise<AcademicContentPublicationResponseDto> {
+    return presentAcademicContentPublication(
+      await this.schedulePublication.execute(contentId, {
+        clientRequestId: dto.clientRequestId,
+        ...(dto.publishAt === undefined
+          ? {}
+          : { publishAt: new Date(dto.publishAt) }),
+        ...(dto.visibleFrom === undefined
+          ? {}
+          : { visibleFrom: new Date(dto.visibleFrom) }),
+        ...(dto.visibleUntil === undefined
+          ? {}
+          : {
+              visibleUntil:
+                dto.visibleUntil === null ? null : new Date(dto.visibleUntil),
+            }),
+      }),
+    );
+  }
+
+  @Get(':contentId/publications')
+  @Header('Cache-Control', 'no-store, private, max-age=0')
+  @RequiredPermissions('academics.academic_content.view')
+  @ApiOperation({ summary: 'List safe Academic Content publication history' })
+  @ApiParam({ name: 'contentId', format: 'uuid' })
+  @ApiOkResponse({ type: AcademicContentPublicationHistoryResponseDto })
+  async publicationHistory(
+    @Param('contentId', new ParseUUIDPipe()) contentId: string,
+    @Query() query: AcademicContentPublicationHistoryQueryDto,
+  ): Promise<AcademicContentPublicationHistoryResponseDto> {
+    return presentAcademicContentPublicationList(
+      await this.listPublications.execute(contentId, query),
+    );
+  }
+
+  @Get(':contentId/publications/:publicationId')
+  @Header('Cache-Control', 'no-store, private, max-age=0')
+  @RequiredPermissions('academics.academic_content.view')
+  @ApiOperation({ summary: 'Get safe Academic Content publication detail' })
+  @ApiParam({ name: 'contentId', format: 'uuid' })
+  @ApiParam({ name: 'publicationId', format: 'uuid' })
+  @ApiOkResponse({ type: AcademicContentPublicationResponseDto })
+  async publicationDetail(
+    @Param('contentId', new ParseUUIDPipe()) contentId: string,
+    @Param('publicationId', new ParseUUIDPipe()) publicationId: string,
+  ): Promise<AcademicContentPublicationResponseDto> {
+    return presentAcademicContentPublication(
+      await this.getPublication.execute(contentId, publicationId),
+    );
+  }
+
+  @Post(':contentId/publications/:publicationId/unschedule')
+  @HttpCode(HttpStatus.OK)
+  @RequiredPermissions('academics.academic_content.publish')
+  @ApiOperation({
+    summary: 'Unschedule an Academic Content publication intent',
+  })
+  @ApiParam({ name: 'contentId', format: 'uuid' })
+  @ApiParam({ name: 'publicationId', format: 'uuid' })
+  @ApiBody({
+    required: false,
+    schema: { type: 'object', properties: {}, additionalProperties: false },
+  })
+  @ApiOkResponse({ type: AcademicContentPublicationResponseDto })
+  async unschedule(
+    @Param('contentId', new ParseUUIDPipe()) contentId: string,
+    @Param('publicationId', new ParseUUIDPipe()) publicationId: string,
+    @Body() body: AcademicContentEmptyPublicationBodyDto,
+  ): Promise<AcademicContentPublicationResponseDto> {
+    // The empty DTO participates in global whitelist validation.
+    void body;
+    return presentAcademicContentPublication(
+      await this.unschedulePublication.execute(contentId, publicationId),
+    );
+  }
+
+  @Post(':contentId/publications/:publicationId/cancel')
+  @HttpCode(HttpStatus.OK)
+  @RequiredPermissions('academics.academic_content.publish')
+  @ApiOperation({ summary: 'Cancel a published Academic Content publication' })
+  @ApiParam({ name: 'contentId', format: 'uuid' })
+  @ApiParam({ name: 'publicationId', format: 'uuid' })
+  @ApiBody({
+    required: false,
+    schema: { type: 'object', properties: {}, additionalProperties: false },
+  })
+  @ApiOkResponse({ type: AcademicContentPublicationResponseDto })
+  async cancel(
+    @Param('contentId', new ParseUUIDPipe()) contentId: string,
+    @Param('publicationId', new ParseUUIDPipe()) publicationId: string,
+    @Body() body: AcademicContentEmptyPublicationBodyDto,
+  ): Promise<AcademicContentPublicationResponseDto> {
+    void body;
+    return presentAcademicContentPublication(
+      await this.cancelPublication.execute(contentId, publicationId),
     );
   }
 

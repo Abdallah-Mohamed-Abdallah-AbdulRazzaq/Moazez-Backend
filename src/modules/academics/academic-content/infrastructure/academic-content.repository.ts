@@ -82,6 +82,17 @@ const ACADEMIC_CONTENT_DETAIL_ARGS =
   Prisma.validator<Prisma.AcademicContentDefaultArgs>()({
     select: {
       ...ACADEMIC_CONTENT_ARGS.select,
+      publications: {
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 1,
+        select: {
+          id: true,
+          status: true,
+          publishAt: true,
+          visibleFrom: true,
+          visibleUntil: true,
+        },
+      },
       targets: {
         select: {
           id: true,
