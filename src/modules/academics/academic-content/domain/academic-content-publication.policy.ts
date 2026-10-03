@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import * as crypto from 'node:crypto';
 import {
   AcademicContentAudienceRecipientKind as RecipientKind,
   AcademicContentAudienceType as Audience,
@@ -66,7 +66,10 @@ export function academicContentRecipientIdentity(
       : `guardian:${canonicalUuid(input.guardianId)}:${canonicalUuid(input.studentId)}:${enrollmentId}`;
   return {
     identity,
-    identityFingerprint: createHash('sha256').update(identity).digest('hex'),
+    identityFingerprint: crypto
+      .createHash('sha256')
+      .update(identity)
+      .digest('hex'),
   };
 }
 
@@ -124,7 +127,8 @@ export function academicContentPublicationRequestFingerprint(
       );
     return ['EXPLICIT_ISO', value.toISOString()];
   };
-  return createHash('sha256')
+  return crypto
+    .createHash('sha256')
     .update(
       JSON.stringify({
         contractVersion: 1,

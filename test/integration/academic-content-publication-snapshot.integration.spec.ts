@@ -12,7 +12,7 @@ import {
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
 import { AcademicContentAudienceRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-audience.repository';
 import { AcademicContentAudienceResolver } from '../../src/modules/academics/academic-content/application/academic-content-audience.resolver';
-import { AcademicContentRevisionAudienceResolver } from '../../src/modules/academics/academic-content/application/academic-content-revision-audience.resolver';
+import { AcademicContentRevisionAudienceResolver } from '../../src/modules/academics/academic-content/infrastructure/academic-content-revision-audience.resolver';
 import { AcademicContentPublicationSnapshotRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-publication-snapshot.repository';
 import { AcademicContentPublicationRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-publication.repository';
 import { AcademicContentRevisionRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-revision.repository';
@@ -809,9 +809,43 @@ describeDatabase(
           ),
       ).toBe(true);
     });
+    it('fails closed without any snapshot or lifecycle mutation when frozen Revision Targets are missing', async () => {
+      const f = await fixture();
+      const child = await addStudent(f);
+      await addGuardian(f, [child]);
+      const p = await schedule(f);
+      await prisma.academicContentRevisionTarget.deleteMany({
+        where: { schoolId: f.schoolId, revisionId: p.revisionId },
+      });
+      const original = await state(f, p);
+      await expect(execute(f, p)).rejects.toMatchObject({
+        code: 'academic_content.publication.snapshot_conflict',
+      });
+      const saved = await state(f, p);
+      expect(saved).toEqual(original);
+      expect(saved.content.status).toBe('SCHEDULED');
+      expect(saved.publication).toMatchObject({
+        status: 'SCHEDULED',
+        publishedAt: null,
+        studentRecipientCount: 0,
+        guardianRecipientContextCount: 0,
+      });
+      expect(saved.recipients).toEqual([]);
+      expect(saved.audits).toEqual([]);
+      expect(
+        await prisma.academicContentAudienceRecipientTarget.count({
+          where: { schoolId: f.schoolId, revisionId: p.revisionId },
+        }),
+      ).toBe(0);
+    });
     it('publishes a valid zero-audience snapshot with zero counts, zero joins and one audit', async () => {
       const f = await fixture();
       const p = await schedule(f);
+      expect(
+        await prisma.academicContentRevisionTarget.count({
+          where: { schoolId: f.schoolId, revisionId: p.revisionId },
+        }),
+      ).toBeGreaterThan(0);
       expect(await execute(f, p)).toMatchObject({
         outcome: 'PUBLISHED',
         studentRecipientCount: 0,

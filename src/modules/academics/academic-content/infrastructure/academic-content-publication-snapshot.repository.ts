@@ -14,7 +14,7 @@ import {
   ValidationDomainException,
 } from '../../../../common/exceptions/domain-exception';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
-import { AcademicContentRevisionAudienceResolver } from '../application/academic-content-revision-audience.resolver';
+import { AcademicContentRevisionAudienceResolver } from './academic-content-revision-audience.resolver';
 import {
   academicContentRecipientIdentity,
   assertAcademicContentPublicationUuid,

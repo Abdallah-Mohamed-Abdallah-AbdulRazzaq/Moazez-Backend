@@ -4,7 +4,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
-import { AcademicContentRevisionAudienceResolver } from '../application/academic-content-revision-audience.resolver';
+import { AcademicContentRevisionAudienceResolver } from '../infrastructure/academic-content-revision-audience.resolver';
 import { AcademicContentPublicationSnapshotRepository } from '../infrastructure/academic-content-publication-snapshot.repository';
 import { academicContentRecipientIdentity } from '../domain/academic-content-publication.policy';
 

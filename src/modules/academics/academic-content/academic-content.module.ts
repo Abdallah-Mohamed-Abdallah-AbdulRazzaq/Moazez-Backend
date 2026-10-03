@@ -26,7 +26,7 @@ import { AcademicContentLinksTagsRepository } from './infrastructure/academic-co
 import { AcademicContentRevisionRepository } from './infrastructure/academic-content-revision.repository';
 import { AcademicContentPublicationRepository } from './infrastructure/academic-content-publication.repository';
 import { AcademicContentPublicationSnapshotRepository } from './infrastructure/academic-content-publication-snapshot.repository';
-import { AcademicContentRevisionAudienceResolver } from './application/academic-content-revision-audience.resolver';
+import { AcademicContentRevisionAudienceResolver } from './infrastructure/academic-content-revision-audience.resolver';
 import {
   ScheduleAcademicContentPublicationUseCase,
   UnscheduleAcademicContentPublicationUseCase,

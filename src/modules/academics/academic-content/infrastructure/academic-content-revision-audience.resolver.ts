@@ -13,7 +13,7 @@ import {
   matchAcademicAudienceGuardians,
 } from '../domain/academic-content-audience-matcher';
 import { isAcademicContentExternallyPublishable } from '../domain/academic-content-publication.policy';
-import { AcademicContentAudienceRepository } from '../infrastructure/academic-content-audience.repository';
+import { AcademicContentAudienceRepository } from './academic-content-audience.repository';
 
 export type AcademicContentRevisionAudienceIdentity = {
   schoolId: string;
@@ -86,7 +86,12 @@ export class AcademicContentRevisionAudienceResolver {
         message: 'Publication audience is unavailable',
         httpStatus: HttpStatus.CONFLICT,
       });
-    if (!revision.targets.length) return { students: [], guardians: [] };
+    if (!revision.targets.length)
+      throw new DomainException({
+        code: 'academic_content.publication.snapshot_conflict',
+        message: 'Publication revision has no frozen targets',
+        httpStatus: HttpStatus.CONFLICT,
+      });
     const enrollments = await this.reads.eligibleEnrollments(
       input.schoolId,
       revision.academicYearId,

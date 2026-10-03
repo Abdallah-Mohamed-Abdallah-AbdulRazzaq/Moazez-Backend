@@ -4,7 +4,7 @@ import {
   AcademicContentType as Type,
   Prisma,
 } from '@prisma/client';
-import { AcademicContentRevisionAudienceResolver } from '../application/academic-content-revision-audience.resolver';
+import { AcademicContentRevisionAudienceResolver } from '../infrastructure/academic-content-revision-audience.resolver';
 import { AcademicContentAudienceRepository } from '../infrastructure/academic-content-audience.repository';
 import {
   AcademicAudienceEnrollment,
@@ -277,6 +277,17 @@ describe('Revision V2 audience resolver', () => {
       code: 'not_found',
     });
     expect(f.reads.eligibleEnrollments).not.toHaveBeenCalled();
+  });
+  it('fails closed before any relationship reads when the exact V2 revision has no frozen targets', async () => {
+    const f = fixture();
+    f.revision.targets = [];
+    await expect(f.resolve()).rejects.toMatchObject({
+      code: 'academic_content.publication.snapshot_conflict',
+      httpStatus: 409,
+    });
+    expect(f.reads.eligibleEnrollments).not.toHaveBeenCalled();
+    expect(f.reads.taughtGradeSubjects).not.toHaveBeenCalled();
+    expect(f.reads.guardianLinks).not.toHaveBeenCalled();
   });
   it.each([
     [Audience.INTERNAL_STAFF, Type.TEACHER_PREPARATION],
