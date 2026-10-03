@@ -7,6 +7,7 @@ import {
 import {
   AcademicContentAudienceType,
   AcademicContentStatus,
+  AcademicContentPublicationStatus,
   AcademicContentTargetScopeType,
   AcademicContentType,
   AcademicGuardianNotePriority,
@@ -41,7 +42,7 @@ export class AcademicContentResponseDto {
   @ApiProperty() title!: string;
   @ApiProperty({ nullable: true }) description!: string | null;
   @ApiProperty({
-    enum: [AcademicContentStatus.DRAFT, AcademicContentStatus.ARCHIVED],
+    enum: AcademicContentStatus,
   })
   status!: AcademicContentStatus;
   @ApiProperty({ format: 'date-time', nullable: true })
@@ -99,6 +100,16 @@ export class AcademicContentTagsResponseDto {
 
 @ApiExtraModels(...detailSchemas)
 export class AcademicContentDetailResponseDto extends AcademicContentResponseDto {
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
+  latestPublicationId!: string | null;
+  @ApiProperty({ enum: AcademicContentPublicationStatus, nullable: true })
+  publicationStatus!: AcademicContentPublicationStatus | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  publishAt!: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  visibleFrom!: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  visibleUntil!: string | null;
   @ApiProperty({ type: () => AcademicContentTargetResponseDto, isArray: true })
   targets!: AcademicContentTargetResponseDto[];
   @ApiProperty({ type: () => AcademicContentAssetResponseDto, isArray: true })

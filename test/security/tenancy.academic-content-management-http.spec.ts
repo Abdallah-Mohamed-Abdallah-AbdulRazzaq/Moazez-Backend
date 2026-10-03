@@ -11,6 +11,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import {
   AcademicContentAudienceType,
   AcademicContentStatus,
+  AcademicContentPublicationStatus,
   AcademicContentTargetScopeType,
   AcademicContentType,
   AcademicGuardianNotePriority,
@@ -28,7 +29,19 @@ import {
 import { REQUIRED_PERMISSIONS_METADATA } from '../../src/common/decorators/required-permissions.decorator';
 import { SCHOOL_MANAGEMENT_ONLY_METADATA } from '../../src/common/decorators/school-management-only.decorator';
 import { GlobalExceptionFilter } from '../../src/common/exceptions/global-exception.filter';
-import { NotFoundDomainException } from '../../src/common/exceptions/domain-exception';
+import {
+  DomainException,
+  NotFoundDomainException,
+} from '../../src/common/exceptions/domain-exception';
+import {
+  CancelAcademicContentPublicationUseCase,
+  GetAcademicContentAudiencePreviewUseCase,
+  GetAcademicContentPublicationReadinessUseCase,
+  GetAcademicContentPublicationUseCase,
+  ListAcademicContentPublicationHistoryUseCase,
+  ScheduleAcademicContentPublicationUseCase,
+  UnscheduleAcademicContentPublicationUseCase,
+} from '../../src/modules/academics/academic-content/application/academic-content-publication.use-cases';
 import { PermissionsGuard } from '../../src/common/guards/permissions.guard';
 import {
   GetAcademicContentForManagementUseCase,
@@ -86,6 +99,7 @@ const uploadId = randomUUID();
 const assetId = randomUUID();
 const fileId = randomUUID();
 const revisionId = randomUUID();
+const publicationId = randomUUID();
 const now = new Date('2030-09-15T12:00:00.000Z');
 const secret = 'https://provider.example/upload?secret=capability';
 const permissions = [
@@ -93,6 +107,7 @@ const permissions = [
   'academics.academic_content.manage',
   'academics.academic_content.settings.manage',
   'academics.academic_content.approve',
+  'academics.academic_content.publish',
 ];
 const content = {
   id: contentId,
@@ -180,6 +195,13 @@ const revision = {
 };
 
 const services = {
+  publicationReadiness: { execute: jest.fn() },
+  audiencePreview: { execute: jest.fn() },
+  createPublication: { execute: jest.fn() },
+  publicationHistory: { execute: jest.fn() },
+  publicationDetail: { execute: jest.fn() },
+  unschedule: { execute: jest.fn() },
+  cancel: { execute: jest.fn() },
   create: { execute: jest.fn() },
   list: { execute: jest.fn() },
   detail: { execute: jest.fn() },
@@ -224,7 +246,99 @@ const services = {
   },
 };
 
-describe('ACC-4B management HTTP security and transport', () => {
+const publication = {
+  publicationId,
+  revisionId,
+  status: AcademicContentPublicationStatus.SCHEDULED,
+  sourceContentStatus: AcademicContentStatus.DRAFT,
+  publishAt: now,
+  visibleFrom: now,
+  visibleUntil: null,
+  publishedAt: null,
+  expiredAt: null,
+  cancelledAt: null,
+  studentRecipientCount: 2,
+  guardianRecipientContextCount: 3,
+  createdByUserId: actorId,
+  createdAt: now,
+  schoolId,
+  academicContentId: contentId,
+  clientRequestId: randomUUID(),
+  requestFingerprint: 'internal-request-fingerprint',
+  updatedAt: now,
+  cancelledByUserId: actorId,
+  recipients: [{ studentId: randomUUID(), identityFingerprint: 'recipient' }],
+  typeSpecificSnapshot: { bucket: 'private', objectKey: 'private' },
+};
+const publicationKeys = [
+  'publicationId',
+  'revisionId',
+  'status',
+  'sourceContentStatus',
+  'publishAt',
+  'visibleFrom',
+  'visibleUntil',
+  'publishedAt',
+  'expiredAt',
+  'cancelledAt',
+  'studentRecipientCount',
+  'guardianRecipientContextCount',
+  'createdByUserId',
+  'createdAt',
+].sort();
+const publicationRoutes = [
+  {
+    handler: 'publicationReadiness',
+    method: 'get',
+    suffix: 'publication-readiness',
+    permission: 'view',
+    status: 200,
+  },
+  {
+    handler: 'audiencePreview',
+    method: 'get',
+    suffix: 'audience-preview',
+    permission: 'view',
+    status: 200,
+  },
+  {
+    handler: 'createPublication',
+    method: 'post',
+    suffix: 'publications',
+    permission: 'publish',
+    status: 201,
+  },
+  {
+    handler: 'publicationHistory',
+    method: 'get',
+    suffix: 'publications',
+    permission: 'view',
+    status: 200,
+  },
+  {
+    handler: 'publicationDetail',
+    method: 'get',
+    suffix: `publications/${publicationId}`,
+    permission: 'view',
+    status: 200,
+  },
+  {
+    handler: 'unschedule',
+    method: 'post',
+    suffix: `publications/${publicationId}/unschedule`,
+    permission: 'publish',
+    status: 200,
+  },
+  {
+    handler: 'cancel',
+    method: 'post',
+    suffix: `publications/${publicationId}/cancel`,
+    permission: 'publish',
+    status: 200,
+  },
+] as const;
+
+describe('Academic Content management HTTP security and transport', () => {
   let app: INestApplication<App>;
 
   beforeAll(async () => {
@@ -237,6 +351,34 @@ describe('ACC-4B management HTTP security and transport', () => {
         AcademicContentController,
       ],
       providers: [
+        {
+          provide: GetAcademicContentPublicationReadinessUseCase,
+          useValue: services.publicationReadiness,
+        },
+        {
+          provide: GetAcademicContentAudiencePreviewUseCase,
+          useValue: services.audiencePreview,
+        },
+        {
+          provide: ScheduleAcademicContentPublicationUseCase,
+          useValue: services.createPublication,
+        },
+        {
+          provide: ListAcademicContentPublicationHistoryUseCase,
+          useValue: services.publicationHistory,
+        },
+        {
+          provide: GetAcademicContentPublicationUseCase,
+          useValue: services.publicationDetail,
+        },
+        {
+          provide: UnscheduleAcademicContentPublicationUseCase,
+          useValue: services.unschedule,
+        },
+        {
+          provide: CancelAcademicContentPublicationUseCase,
+          useValue: services.cancel,
+        },
         {
           provide: AcademicContentPreparationTemplateUseCases,
           useValue: services.templates,
@@ -351,7 +493,9 @@ describe('ACC-4B management HTTP security and transport', () => {
                     ? UserType.PARENT
                     : label === 'applicant'
                       ? UserType.APPLICANT
-                      : UserType.SCHOOL_USER,
+                      : label === 'service'
+                        ? UserType.SERVICE_ACCOUNT
+                        : UserType.SCHOOL_USER,
         };
         context.activeMembership = {
           membershipId: randomUUID(),
@@ -369,7 +513,9 @@ describe('ACC-4B management HTTP security and transport', () => {
                     ? [permissions[2]]
                     : label === 'approveOnly'
                       ? [permissions[3]]
-                      : permissions,
+                      : label === 'publishOnly'
+                        ? [permissions[4]]
+                        : permissions,
         };
         runWithRequestContext(context, next);
       },
@@ -388,6 +534,39 @@ describe('ACC-4B management HTTP security and transport', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    services.publicationReadiness.execute.mockResolvedValue({
+      canPublish: true,
+      canSchedule: true,
+      blockingReasons: [],
+      schoolId,
+    });
+    services.audiencePreview.execute.mockResolvedValue({
+      asOf: now,
+      students: 2,
+      guardianContexts: 3,
+      guardianUsersWithAccounts: 1,
+      guardianNotificationOptOutContexts: 1,
+      recipients: [{ studentId: randomUUID() }],
+    });
+    services.createPublication.execute.mockResolvedValue(publication);
+    services.publicationHistory.execute.mockResolvedValue({
+      items: [publication],
+      page: 1,
+      limit: 20,
+      total: 1,
+    });
+    services.publicationDetail.execute.mockResolvedValue(publication);
+    services.unschedule.execute.mockResolvedValue({
+      ...publication,
+      status: AcademicContentPublicationStatus.CANCELLED,
+      cancelledAt: now,
+    });
+    services.cancel.execute.mockResolvedValue({
+      ...publication,
+      status: AcademicContentPublicationStatus.CANCELLED,
+      publishedAt: now,
+      cancelledAt: now,
+    });
     services.templates.list.mockResolvedValue({
       items: [],
       page: 1,
@@ -420,6 +599,7 @@ describe('ACC-4B management HTTP security and transport', () => {
       assets: [{ id: assetId, fileId, sortOrder: 0, createdAt: now, file }],
       links: [],
       tags: [],
+      publications: [],
     });
     services.readiness.execute.mockResolvedValue({
       canAdvance: true,
@@ -613,6 +793,618 @@ describe('ACC-4B management HTTP security and transport', () => {
 
   afterAll(async () => {
     await app?.close();
+  });
+
+  describe('ACC-7E publication management HTTP', () => {
+    it.each(publicationRoutes)(
+      'registers exact method, path and permission for $handler',
+      (route) => {
+        const handler = AcademicContentController.prototype[route.handler];
+        expect(Reflect.getMetadata(PATH_METADATA, handler)).toBe(
+          `:contentId/${route.suffix.replace(publicationId, ':publicationId')}`,
+        );
+        expect(Reflect.getMetadata(METHOD_METADATA, handler)).toBe(
+          route.method === 'get' ? RequestMethod.GET : RequestMethod.POST,
+        );
+        expect(
+          Reflect.getMetadata(REQUIRED_PERMISSIONS_METADATA, handler),
+        ).toEqual([`academics.academic_content.${route.permission}`]);
+        expect(
+          Reflect.getMetadata(
+            SCHOOL_MANAGEMENT_ONLY_METADATA,
+            AcademicContentController,
+          ),
+        ).toBe(true);
+      },
+    );
+
+    it.each(publicationRoutes)(
+      'separates every permission profile on $handler',
+      async (route) => {
+        for (const actor of [
+          'viewOnly',
+          'publishOnly',
+          'manageOnly',
+          'approveOnly',
+          'settingsOnly',
+          'missing',
+        ]) {
+          services[route.handler].execute.mockClear();
+          const allowed = actor === `${route.permission}Only`;
+          await request(app.getHttpServer())
+            [route.method](`${base}/${contentId}/${route.suffix}`)
+            .set('x-test-actor', actor)
+            .send(
+              route.handler === 'createPublication'
+                ? { clientRequestId: randomUUID() }
+                : {},
+            )
+            .expect(allowed ? route.status : 403);
+          expect(services[route.handler].execute).toHaveBeenCalledTimes(
+            allowed ? 1 : 0,
+          );
+        }
+      },
+    );
+
+    it.each(publicationRoutes)(
+      'allows School and Organization managers on $handler',
+      async (route) => {
+        for (const actor of ['school', 'organization']) {
+          await request(app.getHttpServer())
+            [route.method](`${base}/${contentId}/${route.suffix}`)
+            .set('x-test-actor', actor)
+            .send(
+              route.handler === 'createPublication'
+                ? { clientRequestId: randomUUID() }
+                : {},
+            )
+            .expect(route.status);
+        }
+      },
+    );
+
+    it.each(publicationRoutes)(
+      'rejects every application actor even with permission on $handler',
+      async (route) => {
+        for (const actor of [
+          'teacher',
+          'student',
+          'parent',
+          'applicant',
+          'service',
+        ]) {
+          await request(app.getHttpServer())
+            [route.method](`${base}/${contentId}/${route.suffix}`)
+            .set('x-test-actor', actor)
+            .send(
+              route.handler === 'createPublication'
+                ? { clientRequestId: randomUUID() }
+                : {},
+            )
+            .expect(403);
+        }
+        expect(services[route.handler].execute).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(publicationRoutes)(
+      'rejects malformed route UUIDs before $handler',
+      async (route) => {
+        const paths = [`${base}/bad/${route.suffix}`];
+        if (route.suffix.includes(publicationId))
+          paths.push(
+            `${base}/${contentId}/${route.suffix.replace(publicationId, 'bad')}`,
+          );
+        for (const path of paths) {
+          await request(app.getHttpServer())
+            [route.method](path)
+            .send(
+              route.handler === 'createPublication'
+                ? { clientRequestId: randomUUID() }
+                : {},
+            )
+            .expect(400);
+        }
+        expect(services[route.handler].execute).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(publicationRoutes)(
+      'maps owned lookup failure to a non-disclosing 404 on $handler',
+      async (route) => {
+        const foreignContent = randomUUID();
+        const foreignPublication = randomUUID();
+        const paths = [`${base}/${foreignContent}/${route.suffix}`];
+        if (route.suffix.includes(publicationId))
+          paths.push(
+            `${base}/${contentId}/${route.suffix.replace(publicationId, foreignPublication)}`,
+          );
+        for (const path of paths) {
+          services[route.handler].execute.mockRejectedValueOnce(
+            new NotFoundDomainException('Academic content not found'),
+          );
+          const response = await request(app.getHttpServer())
+            [route.method](path)
+            .send(
+              route.handler === 'createPublication'
+                ? { clientRequestId: randomUUID() }
+                : {},
+            )
+            .expect(404);
+          expect(JSON.stringify(response.body)).not.toMatch(
+            new RegExp(
+              `${schoolId}|${revisionId}|${foreignContent}|${foreignPublication}|requestFingerprint`,
+            ),
+          );
+        }
+      },
+    );
+
+    it('preserves omitted versus explicit null timing and delegates Dates only', async () => {
+      const requestId = randomUUID();
+      const result = await request(app.getHttpServer())
+        .post(`${base}/${contentId}/publications`)
+        .send({ clientRequestId: requestId })
+        .expect(201);
+      expect(services.createPublication.execute).toHaveBeenLastCalledWith(
+        contentId,
+        { clientRequestId: requestId },
+      );
+      expect(Object.keys(result.body as object).sort()).toEqual(
+        publicationKeys,
+      );
+      expect((result.body as { status: string }).status).toBe('SCHEDULED');
+      const nullId = randomUUID();
+      await request(app.getHttpServer())
+        .post(`${base}/${contentId}/publications`)
+        .send({ clientRequestId: nullId, visibleUntil: null })
+        .expect(201);
+      expect(services.createPublication.execute).toHaveBeenLastCalledWith(
+        contentId,
+        { clientRequestId: nullId, visibleUntil: null },
+      );
+      const explicitId = randomUUID();
+      await request(app.getHttpServer())
+        .post(`${base}/${contentId}/publications`)
+        .send({
+          clientRequestId: explicitId,
+          publishAt: now.toISOString(),
+          visibleFrom: '2030-09-15T14:00:00+02:00',
+          visibleUntil: '2030-09-16T12:00:00Z',
+        })
+        .expect(201);
+      expect(services.createPublication.execute).toHaveBeenLastCalledWith(
+        contentId,
+        {
+          clientRequestId: explicitId,
+          publishAt: now,
+          visibleFrom: now,
+          visibleUntil: new Date('2030-09-16T12:00:00Z'),
+        },
+      );
+    });
+
+    it('rejects malformed publication bodies before calling schedule', async () => {
+      const valid = { clientRequestId: randomUUID() };
+      const bodies: unknown[] = [
+        {},
+        { clientRequestId: 'bad' },
+        { clientRequestId: null },
+      ];
+      for (const field of ['publishAt', 'visibleFrom', 'visibleUntil']) {
+        for (const value of [
+          42,
+          '',
+          'arbitrary',
+          '2030-02-30T12:00:00Z',
+          '2030-09-15',
+          '2030-09-15T12:00:00',
+          '2030-09-15 12:00:00Z',
+        ])
+          bodies.push({ ...valid, [field]: value });
+      }
+      bodies.push(
+        { ...valid, publishAt: null },
+        { ...valid, visibleFrom: null },
+      );
+      for (const field of [
+        'unknown',
+        'schoolId',
+        'organizationId',
+        'contentId',
+        'publicationId',
+        'revisionId',
+        'status',
+        'createdByUserId',
+        'requestFingerprint',
+        'studentRecipientCount',
+        'guardianRecipientContextCount',
+        'now',
+      ])
+        bodies.push({ ...valid, [field]: 'injected' });
+      for (const body of bodies)
+        await request(app.getHttpServer())
+          .post(`${base}/${contentId}/publications`)
+          .send(body as object)
+          .expect(400);
+      expect(services.createPublication.execute).not.toHaveBeenCalled();
+    });
+
+    it.each(['unschedule', 'cancel'] as const)(
+      'requires an empty %s action body',
+      async (action) => {
+        const path = `${base}/${contentId}/publications/${publicationId}/${action}`;
+        await request(app.getHttpServer()).post(path).expect(200);
+        await request(app.getHttpServer()).post(path).send({}).expect(200);
+        expect(services[action].execute).toHaveBeenCalledTimes(2);
+        expect(services[action].execute).toHaveBeenLastCalledWith(
+          contentId,
+          publicationId,
+        );
+        services[action].execute.mockClear();
+        for (const field of [
+          'schoolId',
+          'now',
+          'status',
+          'reason',
+          'unknown',
+        ]) {
+          await request(app.getHttpServer())
+            .post(path)
+            .send({ [field]: 'injected' })
+            .expect(400);
+        }
+        expect(services[action].execute).not.toHaveBeenCalled();
+      },
+    );
+
+    it('accepts only publication pagination with default 20 and maximum 100', async () => {
+      const path = `${base}/${contentId}/publications`;
+      await request(app.getHttpServer()).get(path).expect(200);
+      expect(services.publicationHistory.execute).toHaveBeenLastCalledWith(
+        contentId,
+        { page: 1, limit: 20 },
+      );
+      await request(app.getHttpServer())
+        .get(`${path}?page=2&limit=100`)
+        .expect(200);
+      expect(services.publicationHistory.execute).toHaveBeenLastCalledWith(
+        contentId,
+        { page: 2, limit: 100 },
+      );
+      services.publicationHistory.execute.mockClear();
+      for (const query of [
+        'page=0',
+        'page=-1',
+        'page=1.5',
+        'limit=0',
+        'limit=-1',
+        'limit=101',
+        'limit=abc',
+        'schoolId=x',
+        'status=PUBLISHED',
+        'createdByUserId=x',
+        'search=x',
+        'academicYearId=x',
+        'unknown=x',
+      ]) {
+        await request(app.getHttpServer()).get(`${path}?${query}`).expect(400);
+      }
+      expect(services.publicationHistory.execute).not.toHaveBeenCalled();
+    });
+
+    it('keeps publication readiness separate from authoring and preview aggregate only', async () => {
+      services.readiness.execute.mockResolvedValueOnce({
+        canAdvance: false,
+        blockingReasons: [
+          { code: 'authoring.empty', message: 'Author the content' },
+        ],
+      });
+      const authoring = await request(app.getHttpServer())
+        .get(`${base}/${contentId}/readiness`)
+        .expect(200);
+      expect(authoring.body).toEqual({
+        canAdvance: false,
+        blockingReasons: [
+          { code: 'authoring.empty', message: 'Author the content' },
+        ],
+      });
+      expect(services.publicationReadiness.execute).not.toHaveBeenCalled();
+      services.publicationReadiness.execute.mockResolvedValueOnce({
+        canPublish: false,
+        canSchedule: true,
+        blockingReasons: ['publication.term_not_started'],
+        canAdvance: false,
+      });
+      const readiness = await request(app.getHttpServer())
+        .get(`${base}/${contentId}/publication-readiness`)
+        .expect(200);
+      expect(readiness.body).toEqual({
+        canPublish: false,
+        canSchedule: true,
+        blockingReasons: ['publication.term_not_started'],
+      });
+      const preview = await request(app.getHttpServer())
+        .get(`${base}/${contentId}/audience-preview`)
+        .expect(200);
+      expect(preview.body).toEqual({
+        asOf: now.toISOString(),
+        students: 2,
+        guardianContexts: 3,
+        guardianUsersWithAccounts: 1,
+        guardianNotificationOptOutContexts: 1,
+      });
+      expect(services.audiencePreview.execute).toHaveBeenCalledWith(contentId);
+      expect(readiness.headers['cache-control']).toBe(
+        'no-store, private, max-age=0',
+      );
+      expect(preview.headers['cache-control']).toBe(
+        'no-store, private, max-age=0',
+      );
+    });
+
+    it('presents history and detail using the canonical allowlist, ISO timestamps and nulls', async () => {
+      const history = await request(app.getHttpServer())
+        .get(`${base}/${contentId}/publications`)
+        .expect(200);
+      expect(history.headers['cache-control']).toBe(
+        'no-store, private, max-age=0',
+      );
+      expect(Object.keys(history.body as object).sort()).toEqual([
+        'items',
+        'limit',
+        'page',
+        'total',
+      ]);
+      const item = (history.body as { items: Record<string, unknown>[] })
+        .items[0];
+      expect(Object.keys(item).sort()).toEqual(publicationKeys);
+      expect(item).toMatchObject({
+        publishAt: now.toISOString(),
+        visibleFrom: now.toISOString(),
+        visibleUntil: null,
+        publishedAt: null,
+        expiredAt: null,
+        cancelledAt: null,
+        createdAt: now.toISOString(),
+      });
+      const timed = {
+        ...publication,
+        visibleUntil: new Date('2030-09-17T12:00:00Z'),
+        publishedAt: new Date('2030-09-15T12:01:00Z'),
+        expiredAt: new Date('2030-09-17T12:00:00Z'),
+        cancelledAt: new Date('2030-09-18T12:00:00Z'),
+      };
+      services.publicationDetail.execute.mockResolvedValueOnce(timed);
+      const detail = await request(app.getHttpServer())
+        .get(`${base}/${contentId}/publications/${publicationId}`)
+        .expect(200);
+      expect(detail.headers['cache-control']).toBe(
+        'no-store, private, max-age=0',
+      );
+      expect(Object.keys(detail.body as object).sort()).toEqual(
+        publicationKeys,
+      );
+      expect(detail.body).toMatchObject({
+        visibleUntil: timed.visibleUntil.toISOString(),
+        publishedAt: timed.publishedAt.toISOString(),
+        expiredAt: timed.expiredAt.toISOString(),
+        cancelledAt: timed.cancelledAt.toISOString(),
+      });
+      for (const action of ['unschedule', 'cancel'] as const) {
+        const response = await request(app.getHttpServer())
+          .post(`${base}/${contentId}/publications/${publicationId}/${action}`)
+          .send({})
+          .expect(200);
+        expect(Object.keys(response.body as object).sort()).toEqual(
+          publicationKeys,
+        );
+        expect(response.body).toMatchObject({
+          status: 'CANCELLED',
+          cancelledAt: now.toISOString(),
+        });
+      }
+    });
+
+    it('preserves domain lifecycle and idempotency conflict mapping', async () => {
+      for (const route of publicationRoutes.filter(
+        (route) => route.permission === 'publish',
+      )) {
+        services[route.handler].execute.mockRejectedValueOnce(
+          new DomainException({
+            code: 'academic_content.publication.conflict',
+            message: 'Publication intent conflicts',
+            httpStatus: 409,
+          }),
+        );
+        await request(app.getHttpServer())
+          .post(`${base}/${contentId}/${route.suffix}`)
+          .send(
+            route.handler === 'createPublication'
+              ? { clientRequestId: randomUUID() }
+              : {},
+          )
+          .expect(409);
+      }
+    });
+
+    it('presents a stable nullable latest attempt summary without embedded history', async () => {
+      const empty = await request(app.getHttpServer())
+        .get(`${base}/${contentId}`)
+        .expect(200);
+      expect(empty.body).toMatchObject({
+        latestPublicationId: null,
+        publicationStatus: null,
+        publishAt: null,
+        visibleFrom: null,
+        visibleUntil: null,
+      });
+      for (const status of [
+        AcademicContentPublicationStatus.SCHEDULED,
+        AcademicContentPublicationStatus.CANCELLED,
+        AcademicContentPublicationStatus.EXPIRED,
+      ]) {
+        services.detail.execute.mockResolvedValueOnce({
+          ...content,
+          targets: [],
+          assets: [],
+          links: [],
+          tags: [],
+          publications: [
+            { ...publication, id: publicationId, status, visibleUntil: now },
+            { ...publication, id: randomUUID() },
+          ],
+        });
+        const response = await request(app.getHttpServer())
+          .get(`${base}/${contentId}`)
+          .expect(200);
+        expect(response.headers['cache-control']).toBe(
+          'no-store, private, max-age=0',
+        );
+        expect(response.body).toMatchObject({
+          latestPublicationId: publicationId,
+          publicationStatus: status,
+          publishAt: now.toISOString(),
+          visibleFrom: now.toISOString(),
+          visibleUntil: now.toISOString(),
+        });
+        expect(JSON.stringify(response.body)).not.toMatch(
+          /publications|requestFingerprint|clientRequestId|recipients|schoolId|cancelledByUserId/,
+        );
+      }
+    });
+
+    it.each(['SCHEDULED', 'PUBLISHED', 'EXPIRED', 'CANCELLED'])(
+      'preserves Library transport for %s',
+      async (status) => {
+        await request(app.getHttpServer())
+          .get(`${base}?status=${status}`)
+          .expect(200);
+        expect(services.list.execute).toHaveBeenCalledWith(
+          expect.objectContaining({ status }),
+        );
+      },
+    );
+
+    it('documents only the publication contract and the full content lifecycle', () => {
+      const document = SwaggerModule.createDocument(
+        app,
+        new DocumentBuilder().build(),
+      );
+      const schemas = document.components!.schemas!;
+      const schema = (name: string) => {
+        const value = schemas[name];
+        if (!value || '$ref' in value)
+          throw new Error(`Missing schema ${name}`);
+        return value;
+      };
+      const create = schema('CreateAcademicContentPublicationDto');
+      expect(Object.keys(create.properties!).sort()).toEqual([
+        'clientRequestId',
+        'publishAt',
+        'visibleFrom',
+        'visibleUntil',
+      ]);
+      expect(create.required).toEqual(['clientRequestId']);
+      expect(create.properties!.visibleUntil).toMatchObject({
+        type: 'string',
+        format: 'date-time',
+        nullable: true,
+      });
+      expect(create.properties!.clientRequestId).toMatchObject({
+        format: 'uuid',
+      });
+      expect(
+        schema('AcademicContentPublicationResponseDto').properties,
+      ).toBeDefined();
+      expect(
+        Object.keys(
+          schema('AcademicContentPublicationResponseDto').properties!,
+        ).sort(),
+      ).toEqual(publicationKeys);
+      expect(
+        Object.keys(
+          schema('AcademicContentPublicationReadinessResponseDto').properties!,
+        ).sort(),
+      ).toEqual(['blockingReasons', 'canPublish', 'canSchedule']);
+      expect(
+        Object.keys(
+          schema('AcademicContentAudiencePreviewResponseDto').properties!,
+        ).sort(),
+      ).toEqual([
+        'asOf',
+        'guardianContexts',
+        'guardianNotificationOptOutContexts',
+        'guardianUsersWithAccounts',
+        'students',
+      ]);
+      expect(
+        Object.keys(
+          schema('AcademicContentPublicationHistoryResponseDto').properties!,
+        ).sort(),
+      ).toEqual(['items', 'limit', 'page', 'total']);
+      const safeSchemas = [
+        'AcademicContentPublicationResponseDto',
+        'AcademicContentPublicationReadinessResponseDto',
+        'AcademicContentAudiencePreviewResponseDto',
+        'AcademicContentPublicationHistoryResponseDto',
+      ].map(schema);
+      expect(JSON.stringify(safeSchemas)).not.toMatch(
+        /requestFingerprint|clientRequestId|schoolId|academicContentId|cancelledByUserId|recipients|identityFingerprint|bucket|objectKey|typeSpecificSnapshot/,
+      );
+      expect(
+        schema('AcademicContentResponseDto').properties!.status,
+      ).toMatchObject({ enum: Object.values(AcademicContentStatus) });
+      expect(Object.values(AcademicContentStatus)).toEqual([
+        'DRAFT',
+        'SUBMITTED',
+        'CHANGES_REQUESTED',
+        'APPROVED',
+        'SCHEDULED',
+        'PUBLISHED',
+        'EXPIRED',
+        'ARCHIVED',
+        'CANCELLED',
+      ]);
+      for (const action of ['unschedule', 'cancel']) {
+        expect(
+          document.paths[
+            `${base}/{contentId}/publications/{publicationId}/${action}`
+          ].post!.requestBody,
+        ).toEqual({
+          required: false,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {},
+                additionalProperties: false,
+              },
+            },
+          },
+        });
+      }
+      const parameters =
+        document.paths[`${base}/{contentId}/publications`].get!.parameters!;
+      expect(
+        parameters
+          .filter((p) => 'in' in p && p.in === 'query')
+          .map((p) => ('name' in p ? p.name : ''))
+          .sort(),
+      ).toEqual(['limit', 'page']);
+      expect(
+        parameters.find((p) => 'name' in p && p.name === 'limit'),
+      ).toMatchObject({ schema: { default: 20, minimum: 1, maximum: 100 } });
+      expect(
+        parameters.find((p) => 'name' in p && p.name === 'page'),
+      ).toMatchObject({ schema: { default: 1, minimum: 1 } });
+      expect(
+        Object.keys(document.paths)
+          .filter((path) => path.startsWith(base))
+          .join('\n'),
+      ).not.toMatch(/publications.*\/(recipients|audience|recipient-targets)/);
+    });
   });
 
   it('registers exact guarded management routes and permission ownership', () => {
@@ -983,13 +1775,20 @@ describe('ACC-4B management HTTP security and transport', () => {
           .map((method) => `${method.toUpperCase()} ${path}`),
       )
       .sort();
-    expect(registeredRoutes).toHaveLength(36);
+    expect(registeredRoutes).toHaveLength(43);
     expect(registeredRoutes).toEqual(
       [
         `GET ${base}`,
         `POST ${base}`,
         `GET ${base}/{contentId}`,
         `GET ${base}/{contentId}/readiness`,
+        `GET ${base}/{contentId}/publication-readiness`,
+        `GET ${base}/{contentId}/audience-preview`,
+        `POST ${base}/{contentId}/publications`,
+        `GET ${base}/{contentId}/publications`,
+        `GET ${base}/{contentId}/publications/{publicationId}`,
+        `POST ${base}/{contentId}/publications/{publicationId}/unschedule`,
+        `POST ${base}/{contentId}/publications/{publicationId}/cancel`,
         `PATCH ${base}/{contentId}`,
         `DELETE ${base}/{contentId}`,
         `POST ${base}/{contentId}/archive`,
@@ -2050,6 +2849,7 @@ describe('ACC-4B management HTTP security and transport', () => {
         assets: [],
         links: [],
         tags: [],
+        publications: [],
         [relation]: detail,
       });
       const response = await request(app.getHttpServer())
@@ -2069,6 +2869,7 @@ describe('ACC-4B management HTTP security and transport', () => {
       links: [],
       tags: [],
       preparationDetail: null,
+      publications: [],
     });
     const missing = await request(app.getHttpServer())
       .get(`${base}/${contentId}`)

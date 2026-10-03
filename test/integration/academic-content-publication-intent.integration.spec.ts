@@ -13,6 +13,7 @@ import {
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
 import { AcademicContentPublicationRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-publication.repository';
 import { AcademicContentRevisionRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-revision.repository';
+import { AcademicContentRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content.repository';
 import { AcademicContentPublicationCommand } from '../../src/modules/academics/academic-content/domain/academic-content-publication.policy';
 
 const url = process.env.DATABASE_URL;
@@ -66,6 +67,49 @@ describeDatabase(
       },
       repo = repository,
     ) => repo.schedule({ ...mutation(contentId), command });
+    it('selects only the latest historical publication attempt through the owned management parent', async () => {
+      const management = new AcademicContentRepository(prisma);
+      const content = await makeContent();
+      const empty = await management.findManagementDetail(
+        content.id,
+        ids.schoolA,
+      );
+      expect(empty!.publications).toEqual([]);
+      const first = await schedule(content.id);
+      await repository.unschedule({
+        ...mutation(content.id),
+        publicationId: first.publicationId,
+      });
+      const second = await schedule(content.id);
+      await repository.unschedule({
+        ...mutation(content.id),
+        publicationId: second.publicationId,
+      });
+      await prisma.academicContentPublication.updateMany({
+        where: { schoolId: ids.schoolA, academicContentId: content.id },
+        data: { createdAt: now },
+      });
+      const detail = await management.findManagementDetail(
+        content.id,
+        ids.schoolA,
+      );
+      expect(detail!.publications).toHaveLength(1);
+      expect(detail!.publications[0].id).toBe(
+        [first.publicationId, second.publicationId].sort().reverse()[0],
+      );
+      expect(detail!.publications[0].status).toBe(PublicationStatus.CANCELLED);
+      expect(Object.keys(detail!.publications[0]).sort()).toEqual([
+        'id',
+        'publishAt',
+        'status',
+        'visibleFrom',
+        'visibleUntil',
+      ]);
+      expect(
+        await management.findManagementDetail(content.id, ids.schoolB),
+      ).toBeNull();
+    });
+
     const readiness = (contentId: string) =>
       repository.readiness({ ...identity(contentId), now });
 
