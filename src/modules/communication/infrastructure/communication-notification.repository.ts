@@ -86,6 +86,7 @@ export interface CommunicationNotificationListFilters {
   status?: CommunicationNotificationStatus;
   priority?: CommunicationNotificationPriority;
   type?: CommunicationNotificationType;
+  types?: CommunicationNotificationType[];
   sourceModule?: CommunicationNotificationSourceModule;
   sourceType?: string;
   sourceId?: string;
@@ -310,7 +311,11 @@ export class CommunicationNotificationRepository {
         : {}),
       ...(filters.status ? { status: filters.status } : {}),
       ...(filters.priority ? { priority: filters.priority } : {}),
-      ...(filters.type ? { type: filters.type } : {}),
+      ...(filters.type
+        ? { type: filters.type }
+        : filters.types
+          ? { type: { in: filters.types } }
+          : {}),
       ...(filters.sourceModule ? { sourceModule: filters.sourceModule } : {}),
       ...(filters.sourceType ? { sourceType: filters.sourceType } : {}),
       ...(filters.sourceId ? { sourceId: filters.sourceId } : {}),

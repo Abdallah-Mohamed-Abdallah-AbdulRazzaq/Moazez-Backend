@@ -6,6 +6,7 @@ export const COMMUNICATION_NOTIFICATION_PREFERENCE_CATEGORIES = [
   'message_received',
   'announcement',
   'attendance',
+  'academic_content',
 ] as const;
 
 export type CommunicationNotificationPreferenceCategoryPublic =
@@ -15,9 +16,12 @@ const NOTIFICATION_PREFERENCE_CATEGORY_MAP: Record<
   string,
   CommunicationNotificationPreferenceCategory
 > = {
-  message_received: CommunicationNotificationPreferenceCategory.MESSAGE_RECEIVED,
+  message_received:
+    CommunicationNotificationPreferenceCategory.MESSAGE_RECEIVED,
   announcement: CommunicationNotificationPreferenceCategory.ANNOUNCEMENT,
   attendance: CommunicationNotificationPreferenceCategory.ATTENDANCE,
+  academic_content:
+    CommunicationNotificationPreferenceCategory.ACADEMIC_CONTENT,
 };
 
 export class CommunicationNotificationPreferenceInvalidException extends DomainException {
@@ -56,6 +60,8 @@ export function presentCommunicationNotificationPreferenceCategory(
       return 'announcement';
     case CommunicationNotificationPreferenceCategory.ATTENDANCE:
       return 'attendance';
+    case CommunicationNotificationPreferenceCategory.ACADEMIC_CONTENT:
+      return 'academic_content';
   }
 }
 
@@ -71,11 +77,7 @@ export function resolvePreferenceBoolean(input: {
     return undefined;
   }
 
-  if (
-    hasCamel &&
-    hasSnake &&
-    input.camelValue !== input.snakeValue
-  ) {
+  if (hasCamel && hasSnake && input.camelValue !== input.snakeValue) {
     throw new CommunicationNotificationPreferenceInvalidException(
       'Notification preference aliases must not conflict',
       { field: input.fieldName },

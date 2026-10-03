@@ -34,6 +34,11 @@ const PREFERENCE_METADATA: PreferenceMetadata[] = [
     label: 'Attendance',
     description: 'Notifications for attendance incidents.',
   },
+  {
+    category: CommunicationNotificationPreferenceCategory.ACADEMIC_CONTENT,
+    label: 'Academic Content',
+    description: 'Notifications for published and updated academic content.',
+  },
 ];
 
 export function buildDefaultedCommunicationNotificationPreferences(

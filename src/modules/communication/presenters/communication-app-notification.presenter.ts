@@ -1,3 +1,4 @@
+import { isUUID } from 'class-validator';
 import {
   CommunicationNotificationDetailRecord,
   CommunicationNotificationListRecord,
@@ -6,6 +7,8 @@ import {
 } from '../infrastructure/communication-notification.repository';
 import { COMMUNICATION_MESSAGE_NOTIFICATION_SOURCE_TYPE } from '../domain/communication-notification-generation-domain';
 
+import { COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_SOURCE_TYPE } from '../domain/communication-notification-domain';
+
 type AppNotificationRecord =
   | CommunicationNotificationListRecord
   | CommunicationNotificationDetailRecord;
@@ -13,6 +16,12 @@ type AppNotificationRecord =
 export type CommunicationAppNotificationAliasStyle = 'dual' | 'camel';
 
 export type CommunicationAppNotificationDeepLink =
+  | {
+      type: 'academic_content';
+      academicContentId: string;
+      publicationId: string;
+      studentId: string | null;
+    }
   | {
       type: 'announcement';
       announcementId: string;
@@ -182,6 +191,38 @@ export function presentCommunicationAppNotification(
 function buildDeepLink(
   notification: AppNotificationRecord,
 ): CommunicationAppNotificationDeepLink | null {
+  if (
+    notification.sourceModule === 'ACADEMICS' &&
+    notification.sourceType ===
+      COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_SOURCE_TYPE
+  ) {
+    const metadata = asRecord(notification.metadata);
+    const publicationId = readUuid(notification.sourceId);
+    const academicContentId = readUuid(metadata?.academicContentId);
+    if (
+      !publicationId ||
+      !academicContentId ||
+      (metadata?.publicationId !== undefined &&
+        readUuid(metadata.publicationId) !== publicationId)
+    )
+      return null;
+    const studentIds = Array.isArray(metadata?.studentIds)
+      ? [
+          ...new Set(
+            metadata.studentIds
+              .map(readString)
+              .filter((id): id is string => id !== null),
+          ),
+        ]
+      : [];
+    return {
+      type: 'academic_content',
+      academicContentId,
+      publicationId,
+      studentId: studentIds.length === 1 ? readUuid(studentIds[0]) : null,
+    };
+  }
+
   if (notification.type === 'ANNOUNCEMENT_PUBLISHED' && notification.sourceId) {
     return {
       type: 'announcement',
@@ -228,4 +269,9 @@ function readString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function readUuid(value: unknown): string | null {
+  const id = readString(value);
+  return id && isUUID(id) ? id : null;
 }

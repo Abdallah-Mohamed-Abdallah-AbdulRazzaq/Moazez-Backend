@@ -27,6 +27,7 @@ export const COMMUNICATION_NOTIFICATION_PRIORITIES = [
 export const COMMUNICATION_NOTIFICATION_SOURCE_MODULES = [
   'communication',
   'announcements',
+  'academics',
   'attendance',
   'grades',
   'behavior',
@@ -37,6 +38,11 @@ export const COMMUNICATION_NOTIFICATION_SOURCE_MODULES = [
 ] as const;
 
 export const COMMUNICATION_NOTIFICATION_TYPES = [
+  'academic_content_published',
+  'academic_content_updated',
+  'academic_content_cancelled',
+  'online_session_reminder',
+
   'announcement_published',
   'message_received',
   'message_mention',
@@ -49,6 +55,7 @@ export const COMMUNICATION_NOTIFICATION_TYPES = [
 ] as const;
 
 export const COMMUNICATION_APP_NOTIFICATION_CATEGORIES = [
+  'academic_content',
   'message_received',
   'announcement',
   'announcement_published',

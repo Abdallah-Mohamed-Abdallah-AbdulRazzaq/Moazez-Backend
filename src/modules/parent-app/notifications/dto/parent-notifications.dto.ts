@@ -79,6 +79,9 @@ export class ParentNotificationDeepLinkDto {
   announcementId?: string;
   conversationId?: string;
   messageId?: string;
+  academicContentId?: string;
+  publicationId?: string;
+  studentId?: string | null;
 }
 
 export class ParentNotificationDto {

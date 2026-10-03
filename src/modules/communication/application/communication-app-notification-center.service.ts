@@ -7,6 +7,7 @@ import {
 } from '@prisma/client';
 import { NotFoundDomainException } from '../../../common/exceptions/domain-exception';
 import {
+  COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_TYPES,
   assertCanArchiveNotification,
   assertCanMarkNotificationRead,
   CommunicationNotificationInvalidException,
@@ -205,10 +206,10 @@ export class CommunicationAppNotificationCenterService {
           query.type,
         ) as CommunicationNotificationType)
       : undefined;
-    const categoryType = query?.category
+    const categoryTypes = query?.category
       ? normalizeAppNotificationCategory(query.category)
       : undefined;
-    if (type && categoryType && type !== categoryType) {
+    if (type && categoryTypes && !categoryTypes.includes(type)) {
       throw new CommunicationNotificationInvalidException(
         'Notification category and type filters conflict',
         {
@@ -255,7 +256,13 @@ export class CommunicationAppNotificationCenterService {
               ) as CommunicationNotificationPriority,
             }
           : {}),
-        ...(categoryType ? { type: categoryType } : type ? { type } : {}),
+        ...(type
+          ? { type }
+          : categoryTypes?.length === 1
+            ? { type: categoryTypes[0] }
+            : categoryTypes
+              ? { types: categoryTypes }
+              : {}),
         ...(query?.sourceModule
           ? {
               sourceModule: normalizeCommunicationNotificationSourceModule(
@@ -338,16 +345,18 @@ function normalizeUnreadOnly(value: unknown): boolean {
 
 function normalizeAppNotificationCategory(
   value: string,
-): CommunicationNotificationType {
+): CommunicationNotificationType[] {
   const normalized = value.trim().toLowerCase();
+  if (normalized === 'academic_content')
+    return [...COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_TYPES];
   if (normalized === 'message_received') {
-    return CommunicationNotificationType.MESSAGE_RECEIVED;
+    return [CommunicationNotificationType.MESSAGE_RECEIVED];
   }
   if (
     normalized === 'announcement' ||
     normalized === 'announcement_published'
   ) {
-    return CommunicationNotificationType.ANNOUNCEMENT_PUBLISHED;
+    return [CommunicationNotificationType.ANNOUNCEMENT_PUBLISHED];
   }
 
   throw new CommunicationNotificationInvalidException(
@@ -428,6 +437,8 @@ function categoryGroupForType(type: CommunicationNotificationType): {
   key: string;
   label: string;
 } {
+  if (COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_TYPES.includes(type))
+    return { key: 'academic_content', label: 'Academic Content' };
   switch (type) {
     case CommunicationNotificationType.MESSAGE_RECEIVED:
       return { key: 'message_received', label: 'Messages' };

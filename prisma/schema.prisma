@@ -1115,6 +1115,7 @@ enum CommunicationNotificationSourceModule {
   STUDENTS
   DISMISSAL
   SYSTEM
+  ACADEMICS
 
   @@map("communication_notification_source_module")
 }
@@ -1136,6 +1137,10 @@ enum CommunicationNotificationType {
   DISMISSAL_REQUEST_HANDED_OVER
   DISMISSAL_REQUEST_EXPIRED
   SYSTEM_ALERT
+  ACADEMIC_CONTENT_PUBLISHED
+  ACADEMIC_CONTENT_UPDATED
+  ACADEMIC_CONTENT_CANCELLED
+  ONLINE_SESSION_REMINDER
 
   @@map("communication_notification_type")
 }
@@ -1144,6 +1149,7 @@ enum CommunicationNotificationPreferenceCategory {
   MESSAGE_RECEIVED
   ANNOUNCEMENT
   ATTENDANCE
+  ACADEMIC_CONTENT
 
   @@map("communication_notification_preference_category")
 }
@@ -1511,6 +1517,7 @@ model School {
   academicContentWeeklyPlanHomeworkReferences   AcademicContentWeeklyPlanHomeworkReference[]
   academicContentWeeklyPlanAssessmentReferences AcademicContentWeeklyPlanAssessmentReference[]
   academicContentFilePolicy                     AcademicContentFilePolicy?
+  academicContentNotificationPolicy             AcademicContentNotificationPolicy?
   academicContentWorkflowPolicy                 AcademicContentWorkflowPolicy?
   academicContentApprovals                      AcademicContentApproval[]
   academicContentPublications                   AcademicContentPublication[]
@@ -3468,6 +3475,28 @@ model AcademicContentFilePolicy {
   school School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
 
   @@map("academic_content_file_policies")
+}
+
+model AcademicContentNotificationPolicy {
+  id                                     String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                               String   @unique @map("school_id") @db.Uuid
+  notificationsEnabled                   Boolean  @default(true) @map("notifications_enabled")
+  studentNotificationsEnabled            Boolean  @default(true) @map("student_notifications_enabled")
+  guardianNotificationsEnabled           Boolean  @default(true) @map("guardian_notifications_enabled")
+  weeklyPlanNotificationsEnabled         Boolean  @default(true) @map("weekly_plan_notifications_enabled")
+  guardianWeeklyNoteNotificationsEnabled Boolean  @default(true) @map("guardian_weekly_note_notifications_enabled")
+  subjectResourceNotificationsEnabled    Boolean  @default(true) @map("subject_resource_notifications_enabled")
+  onlineSessionNotificationsEnabled      Boolean  @default(true) @map("online_session_notifications_enabled")
+  generalResourceNotificationsEnabled    Boolean  @default(true) @map("general_resource_notifications_enabled")
+  significantUpdateNotificationsEnabled  Boolean  @default(true) @map("significant_update_notifications_enabled")
+  cancellationNotificationsEnabled       Boolean  @default(true) @map("cancellation_notifications_enabled")
+  onlineSessionRemindersEnabled          Boolean  @default(false) @map("online_session_reminders_enabled")
+  onlineSessionReminderOffsetsMinutes    Int[]    @default([]) @map("online_session_reminder_offsets_minutes")
+  createdAt                              DateTime @default(now()) @map("created_at")
+  updatedAt                              DateTime @updatedAt @map("updated_at")
+  school                                 School   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+
+  @@map("academic_content_notification_policies")
 }
 
 model AcademicContentWorkflowPolicy {

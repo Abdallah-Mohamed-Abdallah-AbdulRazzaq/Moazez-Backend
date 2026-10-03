@@ -64,6 +64,15 @@ import { AcademicContentController } from '../../src/modules/academics/academic-
 import { AcademicContentPreparationTemplateController } from '../../src/modules/academics/academic-content/controller/academic-content-preparation-template.controller';
 import { AcademicContentPreparationTemplateUseCases } from '../../src/modules/academics/academic-content/application/academic-content-preparation-template.use-cases';
 import { AcademicContentFilePolicyController } from '../../src/modules/academics/academic-content/controller/academic-content-file-policy.controller';
+import { AcademicContentNotificationPolicyController } from '../../src/modules/academics/academic-content/controller/academic-content-notification-policy.controller';
+import {
+  GetAcademicContentNotificationPolicyUseCase,
+  UpdateAcademicContentNotificationPolicyUseCase,
+} from '../../src/modules/academics/academic-content/application/academic-content-notification-policy.use-cases';
+import {
+  effectiveAcademicContentNotificationPolicy,
+  normalizeAcademicContentNotificationPolicyPatch,
+} from '../../src/modules/academics/academic-content/domain/academic-content-notification.policy';
 import { AcademicContentWorkflowPolicyController } from '../../src/modules/academics/academic-content/controller/academic-content-workflow-policy.controller';
 import { AcademicContentWorkflowController } from '../../src/modules/academics/academic-content/controller/academic-content-workflow.controller';
 import {
@@ -230,6 +239,8 @@ const services = {
   assetUnlink: { execute: jest.fn() },
   getPolicy: { execute: jest.fn() },
   updatePolicy: { execute: jest.fn() },
+  getNotificationPolicy: { execute: jest.fn() },
+  updateNotificationPolicy: { execute: jest.fn() },
   getWorkflowPolicy: { execute: jest.fn() },
   updateWorkflowPolicy: { execute: jest.fn() },
   submit: { execute: jest.fn() },
@@ -346,6 +357,7 @@ describe('Academic Content management HTTP security and transport', () => {
       controllers: [
         AcademicContentFilePolicyController,
         AcademicContentWorkflowPolicyController,
+        AcademicContentNotificationPolicyController,
         AcademicContentWorkflowController,
         AcademicContentPreparationTemplateController,
         AcademicContentController,
@@ -453,6 +465,14 @@ describe('Academic Content management HTTP security and transport', () => {
         {
           provide: UpdateAcademicContentWorkflowPolicyUseCase,
           useValue: services.updateWorkflowPolicy,
+        },
+        {
+          provide: GetAcademicContentNotificationPolicyUseCase,
+          useValue: services.getNotificationPolicy,
+        },
+        {
+          provide: UpdateAcademicContentNotificationPolicyUseCase,
+          useValue: services.updateNotificationPolicy,
         },
         { provide: SubmitAcademicContentUseCase, useValue: services.submit },
         { provide: ApproveAcademicContentUseCase, useValue: services.approve },
@@ -719,6 +739,17 @@ describe('Academic Content management HTTP security and transport', () => {
     services.assetUnlink.execute.mockResolvedValue({ id: assetId, file });
     services.getPolicy.execute.mockResolvedValue(policy);
     services.updatePolicy.execute.mockResolvedValue(policy);
+    services.getNotificationPolicy.execute.mockResolvedValue(
+      effectiveAcademicContentNotificationPolicy(),
+    );
+    services.updateNotificationPolicy.execute.mockImplementation(
+      (patch: unknown) =>
+        Promise.resolve(
+          effectiveAcademicContentNotificationPolicy(
+            normalizeAcademicContentNotificationPolicyPatch(patch),
+          ),
+        ),
+    );
     services.getWorkflowPolicy.execute.mockResolvedValue({
       preparationApprovalRequired: false,
     });
@@ -1430,6 +1461,7 @@ describe('Academic Content management HTTP security and transport', () => {
       AcademicContentController,
       AcademicContentFilePolicyController,
       AcademicContentWorkflowPolicyController,
+      AcademicContentNotificationPolicyController,
       AcademicContentWorkflowController,
       AcademicContentPreparationTemplateController,
     ]) {
@@ -1544,6 +1576,18 @@ describe('Academic Content management HTTP security and transport', () => {
       'workflow-policy',
       'academics.academic_content.settings.manage',
       AcademicContentWorkflowPolicyController,
+    );
+    route(
+      'get',
+      'notification-policy',
+      'academics.academic_content.view',
+      AcademicContentNotificationPolicyController,
+    );
+    route(
+      'update',
+      'notification-policy',
+      'academics.academic_content.settings.manage',
+      AcademicContentNotificationPolicyController,
     );
     route(
       'submit',
@@ -1775,7 +1819,7 @@ describe('Academic Content management HTTP security and transport', () => {
           .map((method) => `${method.toUpperCase()} ${path}`),
       )
       .sort();
-    expect(registeredRoutes).toHaveLength(43);
+    expect(registeredRoutes).toHaveLength(45);
     expect(registeredRoutes).toEqual(
       [
         `GET ${base}`,
@@ -1809,6 +1853,8 @@ describe('Academic Content management HTTP security and transport', () => {
         `DELETE ${base}/{contentId}/assets/{assetId}`,
         `GET ${base}/settings/file-policy`,
         `PATCH ${base}/settings/file-policy`,
+        `GET ${base}/settings/notification-policy`,
+        `PATCH ${base}/settings/notification-policy`,
         `GET ${base}/settings/workflow-policy`,
         `PATCH ${base}/settings/workflow-policy`,
         `POST ${base}/{contentId}/submit`,
@@ -2280,6 +2326,110 @@ describe('Academic Content management HTTP security and transport', () => {
       .set('x-test-actor', 'settingsOnly')
       .send({})
       .expect(403);
+  });
+
+  it('guards static notification policy routes, strict DTOs and safe Swagger fields', async () => {
+    const path = `${base}/settings/notification-policy`;
+    const response = await request(app.getHttpServer())
+      .get(path)
+      .set('x-test-actor', 'viewOnly')
+      .expect(200);
+    expect(response.body).toEqual(effectiveAcademicContentNotificationPolicy());
+    await request(app.getHttpServer())
+      .get(path)
+      .set('x-test-actor', 'settingsOnly')
+      .expect(403);
+    for (const actor of [
+      'viewOnly',
+      'manageOnly',
+      'publishOnly',
+      'approveOnly',
+    ])
+      await request(app.getHttpServer())
+        .patch(path)
+        .set('x-test-actor', actor)
+        .send({ notificationsEnabled: false })
+        .expect(403);
+    await request(app.getHttpServer())
+      .patch(path)
+      .set('x-test-actor', 'settingsOnly')
+      .send({
+        notificationsEnabled: false,
+        onlineSessionReminderOffsetsMinutes: [1440, 5, 60],
+      })
+      .expect(200);
+    expect(services.updateNotificationPolicy.execute).toHaveBeenCalledWith({
+      notificationsEnabled: false,
+      onlineSessionReminderOffsetsMinutes: [1440, 5, 60],
+    });
+    for (const actor of [
+      'teacher',
+      'student',
+      'parent',
+      'applicant',
+      'service',
+    ]) {
+      await request(app.getHttpServer())
+        .get(path)
+        .set('x-test-actor', actor)
+        .expect(403);
+      await request(app.getHttpServer())
+        .patch(path)
+        .set('x-test-actor', actor)
+        .send({ notificationsEnabled: false })
+        .expect(403);
+    }
+    for (const body of [
+      { notificationsEnabled: null },
+      { notificationsEnabled: 'false' },
+      { notificationsEnabled: 0 },
+      { notificationsEnabled: false, schoolId },
+      { notificationsEnabled: false, id: actorId },
+      { onlineSessionReminderOffsetsMinutes: null },
+      { onlineSessionReminderOffsetsMinutes: [60, 60] },
+      { onlineSessionReminderOffsetsMinutes: [4] },
+      { onlineSessionReminderOffsetsMinutes: [10081] },
+      { onlineSessionReminderOffsetsMinutes: [60.5] },
+      { onlineSessionReminderOffsetsMinutes: ['60'] },
+      { onlineSessionReminderOffsetsMinutes: [5, 6, 7, 8, 9, 10] },
+    ])
+      await request(app.getHttpServer())
+        .patch(path)
+        .set('x-test-actor', 'settingsOnly')
+        .send(body)
+        .expect(400);
+    await request(app.getHttpServer())
+      .patch(path)
+      .set('x-test-actor', 'settingsOnly')
+      .send({})
+      .expect(400);
+    expect(services.detail.execute).not.toHaveBeenCalled();
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().build(),
+    );
+    const schemas = document.components!.schemas!;
+    for (const name of [
+      'AcademicContentNotificationPolicyResponseDto',
+      'UpdateAcademicContentNotificationPolicyDto',
+    ]) {
+      const schema = schemas[name] as {
+        properties: Record<string, unknown>;
+        required?: string[];
+      };
+      expect(Object.keys(schema.properties).sort()).toEqual(
+        Object.keys(effectiveAcademicContentNotificationPolicy()).sort(),
+      );
+      expect(
+        schema.properties.onlineSessionReminderOffsetsMinutes,
+      ).toMatchObject({
+        type: 'array',
+        maxItems: 5,
+        uniqueItems: true,
+        items: { type: 'integer', minimum: 5, maximum: 10080 },
+      });
+      if (name.startsWith('Update')) expect(schema.required ?? []).toEqual([]);
+    }
   });
 
   it('guards the workflow policy routes and accepts only a boolean setting', async () => {

@@ -7,6 +7,12 @@ import { AcademicContentAudienceResolver } from '../application/academic-content
 import { ReplaceAcademicContentTargetsUseCase } from '../application/replace-academic-content-targets.use-case';
 import { AcademicContentController } from '../controller/academic-content.controller';
 import { AcademicContentFilePolicyController } from '../controller/academic-content-file-policy.controller';
+import { AcademicContentNotificationPolicyController } from '../controller/academic-content-notification-policy.controller';
+import { AcademicContentNotificationPolicyRepository } from '../infrastructure/academic-content-notification-policy.repository';
+import {
+  GetAcademicContentNotificationPolicyUseCase,
+  UpdateAcademicContentNotificationPolicyUseCase,
+} from '../application/academic-content-notification-policy.use-cases';
 import { AcademicContentWorkflowPolicyController } from '../controller/academic-content-workflow-policy.controller';
 import { AcademicContentWorkflowController } from '../controller/academic-content-workflow.controller';
 import { AcademicContentPreparationTemplateController } from '../controller/academic-content-preparation-template.controller';
@@ -59,6 +65,9 @@ describe('Academic Content foundation', () => {
 
     expect(academicsImports).toContain(AcademicContentModule);
     expect(providers).toContain(AcademicContentRepository);
+    expect(providers).toContain(AcademicContentNotificationPolicyRepository);
+    expect(providers).toContain(GetAcademicContentNotificationPolicyUseCase);
+    expect(providers).toContain(UpdateAcademicContentNotificationPolicyUseCase);
     expect(providers).toContain(AcademicContentAudienceResolver);
     expect(providers).toContain(ReplaceAcademicContentTargetsUseCase);
     expect(providers).toContain(AcademicContentPreparationTemplateRepository);
@@ -66,6 +75,7 @@ describe('Academic Content foundation', () => {
     expect(controllers).toEqual([
       AcademicContentFilePolicyController,
       AcademicContentWorkflowPolicyController,
+      AcademicContentNotificationPolicyController,
       AcademicContentWorkflowController,
       AcademicContentPreparationTemplateController,
       AcademicContentController,

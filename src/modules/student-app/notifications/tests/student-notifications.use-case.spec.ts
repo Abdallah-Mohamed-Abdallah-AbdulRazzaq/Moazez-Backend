@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/unbound-method -- Jest assertions intentionally inspect detached mock methods without invoking them. */
+import { CommunicationNotificationPreferenceCategory } from '@prisma/client';
+import { CommunicationNotificationPreferenceRepository } from '../../../communication/infrastructure/communication-notification-preference.repository';
 import { ArgumentMetadata, ValidationPipe } from '@nestjs/common';
 import { AppDeviceTokenSurface } from '@prisma/client';
 import { AppDeviceTokenService } from '../../../app-device-tokens/application/app-device-token.service';
@@ -97,6 +100,70 @@ describe('Student notifications use cases', () => {
       notificationId: 'notification-1',
       aliasStyle: 'dual',
     });
+  });
+
+  it('exposes and patches academic_content through the existing shared preference use cases', async () => {
+    const created = createUseCasesWithValidAccess();
+    const repository = {
+      listCurrentSchoolUserPreferences: jest.fn().mockResolvedValue([]),
+      upsertCurrentSchoolUserPreferences: jest.fn().mockResolvedValue([
+        {
+          category:
+            CommunicationNotificationPreferenceCategory.ACADEMIC_CONTENT,
+          inAppEnabled: false,
+          pushEnabled: false,
+        },
+      ]),
+    };
+    const service = new CommunicationNotificationPreferenceService(
+      repository as unknown as CommunicationNotificationPreferenceRepository,
+    );
+    created.preferenceService.getPreferencesForActor.mockImplementation(
+      (params) => service.getPreferencesForActor(params),
+    );
+    created.preferenceService.updatePreferencesForActor.mockImplementation(
+      (params) => service.updatePreferencesForActor(params),
+    );
+    const defaults = await created.getPreferencesUseCase.execute();
+    expect(defaults.preferences.map((item) => item.category)).toEqual([
+      'message_received',
+      'announcement',
+      'attendance',
+      'academic_content',
+    ]);
+    expect(defaults.preferences[3]).toMatchObject({
+      category: 'academic_content',
+      inAppEnabled: true,
+      pushEnabled: true,
+    });
+    const updated = await created.updatePreferencesUseCase.execute({
+      preferences: [
+        {
+          category: 'academic_content',
+          inAppEnabled: false,
+          pushEnabled: false,
+        },
+      ],
+    });
+    expect(updated.preferences[3]).toMatchObject({
+      category: 'academic_content',
+      inAppEnabled: false,
+      pushEnabled: false,
+    });
+    expect(repository.upsertCurrentSchoolUserPreferences).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'student-user-1',
+        schoolId: 'school-1',
+        preferences: [
+          {
+            category:
+              CommunicationNotificationPreferenceCategory.ACADEMIC_CONTENT,
+            inAppEnabled: false,
+            pushEnabled: false,
+          },
+        ],
+      }),
+    );
   });
 
   it('delegates preferences get/update for the current student only', async () => {
@@ -382,7 +449,9 @@ function createUseCasesWithValidAccess(): ReturnType<typeof createUseCases> {
   const created = createUseCases();
   created.accessService.getCurrentStudentWithEnrollment.mockResolvedValue({
     context: contextFixture(),
-  } as any);
+  } as Awaited<
+    ReturnType<StudentAppAccessService['getCurrentStudentWithEnrollment']>
+  >);
   return created;
 }
 
