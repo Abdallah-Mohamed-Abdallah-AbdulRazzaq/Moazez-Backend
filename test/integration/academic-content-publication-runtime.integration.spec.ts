@@ -94,7 +94,7 @@ describeDatabase(
         publicationId: p.publicationId,
         now: instant,
       });
-    function runtime(queue: BullmqService) {
+    function runtime(queue: BullmqService, client = prisma) {
       const producer = new AcademicContentPublicationQueueService(
         queue,
         discovery,
@@ -106,8 +106,8 @@ describeDatabase(
         );
       const worker = new AcademicContentPublicationWorker(
         queue,
-        snapshotRepo(),
-        lifecycle(),
+        snapshotRepo(client),
+        lifecycle(client),
         producer,
         reconciliation,
       );
@@ -923,6 +923,144 @@ describeDatabase(
       (process.env.PRD3_G03_QUEUE_PORT
         ? `redis://127.0.0.1:${process.env.PRD3_G03_QUEUE_PORT}`
         : undefined);
+    (redisUrl ? it : it.skip)(
+      'serializes duplicate publish workers across two PostgreSQL connections with one snapshot and one expiry job',
+      async () => {
+        const queue = new BullmqService(
+          new ConfigService({ NODE_ENV: 'test', QUEUE_REDIS_URL: redisUrl }),
+        );
+        const entered = deferred(),
+          release = deferred();
+        let paused = false;
+        const locks: string[] = [];
+        let publicationWrites = 0;
+        let contentWrites = 0;
+        const holder = prisma.$extends({
+          query: {
+            $queryRaw({ args, query }) {
+              locks.push('strings' in args ? args.strings.join('') : '');
+              return query(args);
+            },
+            academicContentRevision: {
+              async findFirst({ args, query }) {
+                const row = await query(args);
+                if (!paused) {
+                  paused = true;
+                  entered.resolve();
+                  await release.promise;
+                }
+                return row;
+              },
+            },
+            academicContentPublication: {
+              updateMany({ args, query }) {
+                publicationWrites++;
+                return query(args);
+              },
+            },
+            academicContent: {
+              updateMany({ args, query }) {
+                contentWrites++;
+                return query(args);
+              },
+            },
+          },
+        }) as unknown as PrismaService;
+        const contenderClient = second.$extends({
+          query: {
+            academicContentPublication: {
+              updateMany({ args, query }) {
+                publicationWrites++;
+                return query(args);
+              },
+            },
+            academicContent: {
+              updateMany({ args, query }) {
+                contentWrites++;
+                return query(args);
+              },
+            },
+          },
+        }) as unknown as PrismaService;
+        try {
+          const f = await fixture();
+          const a = await addStudent(f),
+            b = await addStudent(f);
+          await addGuardian(f, [a, b], false);
+          const p = await schedule(f, {
+            clientRequestId: randomUUID(),
+            visibleUntil: expiryTime,
+          });
+          const firstWorker = runtime(queue, holder),
+            secondWorker = runtime(queue, contenderClient);
+          const first = firstWorker.worker.process(
+            'publish',
+            jobIdentity(f, p),
+            now,
+          );
+          await waitForSignal(entered.promise);
+          const contender = secondWorker.worker.process(
+            'publish',
+            jobIdentity(f, p),
+            now,
+          );
+          const outcomes = Promise.allSettled([first, contender]);
+          try {
+            await waitForParentLock();
+          } finally {
+            release.resolve();
+          }
+          expect((await outcomes).map((row) => row.status)).toEqual([
+            'fulfilled',
+            'fulfilled',
+          ]);
+          expect(publicationWrites).toBe(1);
+          expect(contentWrites).toBe(1);
+          expect(locks[0]).toContain('academic_contents');
+          expect(locks[1]).toContain('academic_content_publications');
+          const saved = await state(f, p);
+          expect(saved.content.status).toBe('PUBLISHED');
+          expect(saved.publication).toMatchObject({
+            status: 'PUBLISHED',
+            publishedAt: now,
+            studentRecipientCount: 2,
+            guardianRecipientContextCount: 2,
+          });
+          expect(saved.recipients).toHaveLength(4);
+          expect(
+            saved.recipients.every((row) => row.targets.length === 1),
+          ).toBe(true);
+          expect(
+            new Set(saved.recipients.map((row) => row.identityFingerprint))
+              .size,
+          ).toBe(4);
+          expect(
+            saved.audits.filter((row) => row.action.endsWith('.publish')),
+          ).toHaveLength(1);
+          expect(await execute(f, p, second)).toMatchObject({
+            outcome: 'ALREADY_PUBLISHED',
+            publishedAt: now,
+          });
+          expect(await state(f, p)).toEqual(saved);
+          const expiryId = academicContentPublicationJobId(
+            'expire',
+            jobIdentity(f, p),
+          );
+          const expiryJob = await queue
+            .getQueue(ACADEMIC_CONTENT_PUBLICATION_QUEUE)
+            .getJob(expiryId);
+          expect(expiryJob).toBeDefined();
+          expect(await expiryJob!.getState()).toBe('delayed');
+          const jobs = await queue
+            .getQueue(ACADEMIC_CONTENT_PUBLICATION_QUEUE)
+            .getJobs(['delayed', 'waiting', 'active']);
+          expect(jobs.filter((job) => job.id === expiryId)).toHaveLength(1);
+        } finally {
+          release.resolve();
+          await queue.onModuleDestroy();
+        }
+      },
+    );
     (redisUrl ? it : it.skip)(
       'runs the publication consumer with exact readiness and drains its active transaction',
       async () => {

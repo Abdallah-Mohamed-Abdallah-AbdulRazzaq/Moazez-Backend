@@ -30,6 +30,17 @@ describe('publication snapshot bounded persistence', () => {
       guardianId: randomUUID(),
       guardianCanReceiveNotifications: false,
     }));
+    const publication = {
+      id: input.publicationId,
+      revisionId,
+      status: 'SCHEDULED',
+      publishedAt: null as Date | null,
+      publishAt: input.now,
+      visibleFrom: input.now,
+      visibleUntil: null as Date | null,
+      studentRecipientCount: 0,
+      guardianRecipientContextCount: 0,
+    };
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([{ id: input.contentId }]),
       academicContent: {
@@ -40,20 +51,11 @@ describe('publication snapshot bounded persistence', () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       academicContentPublication: {
-        findFirstOrThrow: jest.fn().mockResolvedValue({
-          id: input.publicationId,
-          revisionId,
-          status: 'SCHEDULED',
-          publishedAt: null,
-          publishAt: input.now,
-          visibleFrom: input.now,
-          visibleUntil: null,
-          studentRecipientCount: 0,
-          guardianRecipientContextCount: 0,
-        }),
+        findFirstOrThrow: jest.fn().mockResolvedValue(publication),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       academicContentAudienceRecipient: {
+        groupBy: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
         createMany: jest.fn(
           ({
@@ -73,9 +75,29 @@ describe('publication snapshot bounded persistence', () => {
         ),
       },
       auditLog: { create: jest.fn().mockResolvedValue({}) },
+      academicContentRevision: { count: jest.fn().mockResolvedValue(1) },
     };
     const audience = {
-      resolve: jest.fn().mockResolvedValue({ students, guardians }),
+      resolveBatches: jest.fn(async function* () {
+        yield await Promise.resolve({
+          students: students.slice(0, 500),
+          guardians: [],
+        });
+        expect(
+          tx.academicContentAudienceRecipient.createMany,
+        ).toHaveBeenCalledTimes(1);
+        expect(
+          tx.academicContentAudienceRecipientTarget.createMany,
+        ).toHaveBeenCalledTimes(2);
+        yield { students: students.slice(500, 1000), guardians: [] };
+        expect(
+          tx.academicContentAudienceRecipient.createMany,
+        ).toHaveBeenCalledTimes(2);
+        expect(
+          tx.academicContentAudienceRecipientTarget.createMany,
+        ).toHaveBeenCalledTimes(4);
+        yield { students: students.slice(1000), guardians };
+      }),
     };
     const prisma = {
       $transaction: jest.fn((callback: (client: unknown) => Promise<unknown>) =>
@@ -96,6 +118,7 @@ describe('publication snapshot bounded persistence', () => {
       audience,
       prisma,
       repo,
+      publication,
     };
   }
   it('persists 1003 contexts and 2006 joins in batches of at most 500 without duplicate skipping', async () => {
@@ -139,7 +162,7 @@ describe('publication snapshot bounded persistence', () => {
             f.targetIds.includes(row.revisionTargetId),
         ),
     ).toBe(true);
-    expect(f.audience.resolve).toHaveBeenCalledWith(f.tx, {
+    expect(f.audience.resolveBatches).toHaveBeenCalledWith(f.tx, {
       schoolId: f.input.schoolId,
       contentId: f.input.contentId,
       revisionId: f.revisionId,
@@ -226,7 +249,7 @@ describe('publication snapshot bounded persistence', () => {
       code: 'academic_content.publication.snapshot_conflict',
     });
     expect(exhausted.prisma.$transaction).toHaveBeenCalledTimes(3);
-    expect(exhausted.audience.resolve).not.toHaveBeenCalled();
+    expect(exhausted.audience.resolveBatches).not.toHaveBeenCalled();
   });
   it('propagates a nonserialization failure without retry', async () => {
     const f = fixture();
@@ -235,6 +258,86 @@ describe('publication snapshot bounded persistence', () => {
       'injected',
     );
     expect(f.prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+  it('restarts streamed discovery after serialization failure during persistence', async () => {
+    const f = fixture();
+    const starts: string[] = [];
+    f.audience.resolveBatches.mockImplementation(async function* () {
+      starts.push(f.students[0].enrollmentId);
+      yield await Promise.resolve({
+        students: f.students.slice(0, 500),
+        guardians: [],
+      });
+      yield { students: f.students.slice(500, 1000), guardians: [] };
+      yield { students: f.students.slice(1000), guardians: f.guardians };
+    });
+    f.tx.academicContentAudienceRecipientTarget.createMany.mockRejectedValueOnce(
+      serializationFailure(),
+    );
+    await expect(
+      f.repo.publishScheduledPublication(f.input),
+    ).resolves.toMatchObject({
+      studentRecipientCount: 1001,
+      guardianRecipientContextCount: 2,
+    });
+    expect(starts).toEqual([
+      f.students[0].enrollmentId,
+      f.students[0].enrollmentId,
+    ]);
+    expect(f.prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(f.tx.auditLog.create).toHaveBeenCalledTimes(1);
+  });
+  it.each([
+    'CANCELLED',
+    'EXPIRED',
+    'NOT_DUE',
+    'MISSED_VISIBILITY_WINDOW',
+    'ALREADY_PUBLISHED',
+  ])(
+    'returns %s before audience discovery or snapshot writes',
+    async (outcome) => {
+      const f = fixture();
+      const row = { ...f.publication };
+      if (outcome === 'CANCELLED' || outcome === 'EXPIRED')
+        row.status = outcome;
+      if (outcome === 'NOT_DUE')
+        row.publishAt = new Date(f.input.now.getTime() + 1000);
+      if (outcome === 'MISSED_VISIBILITY_WINDOW')
+        Object.assign(row, { visibleUntil: f.input.now });
+      if (outcome === 'ALREADY_PUBLISHED') {
+        Object.assign(row, { status: 'PUBLISHED', publishedAt: f.input.now });
+        f.tx.academicContent.findFirstOrThrow.mockResolvedValue({
+          status: 'PUBLISHED',
+          school: { organizationId: randomUUID() },
+        });
+      }
+      f.tx.academicContentPublication.findFirstOrThrow.mockResolvedValue(row);
+      await expect(
+        f.repo.publishScheduledPublication(f.input),
+      ).resolves.toMatchObject({
+        outcome:
+          outcome === 'CANCELLED' || outcome === 'EXPIRED'
+            ? 'TERMINAL_NOOP'
+            : outcome,
+      });
+      expect(f.audience.resolveBatches).not.toHaveBeenCalled();
+      expect(
+        f.tx.academicContentAudienceRecipient.createMany,
+      ).not.toHaveBeenCalled();
+      expect(f.tx.auditLog.create).not.toHaveBeenCalled();
+    },
+  );
+  it('keeps publish audit output free of recipient identities and arrays', async () => {
+    const f = fixture();
+    await f.repo.publishScheduledPublication(f.input);
+    const serialized = JSON.stringify(f.tx.auditLog.create.mock.calls);
+    expect(serialized).not.toMatch(
+      /recipients|identityFingerprint|recipientUserId|studentId|guardianId|enrollmentId|bucket|objectKey|joinUrl/,
+    );
+    for (const row of f.students) {
+      expect(serialized).not.toContain(row.studentId);
+      expect(serialized).not.toContain(row.enrollmentId);
+    }
   });
   it('retries raw PostgreSQL serialization errors from the parent lock', async () => {
     const f = fixture();
