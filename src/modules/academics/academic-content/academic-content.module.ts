@@ -25,6 +25,8 @@ import { ACADEMIC_CONTENT_TYPE_DETAIL_UNIT_OF_WORK } from './application/academi
 import { AcademicContentLinksTagsRepository } from './infrastructure/academic-content-links-tags.repository';
 import { AcademicContentRevisionRepository } from './infrastructure/academic-content-revision.repository';
 import { AcademicContentPublicationRepository } from './infrastructure/academic-content-publication.repository';
+import { AcademicContentPublicationSnapshotRepository } from './infrastructure/academic-content-publication-snapshot.repository';
+import { AcademicContentRevisionAudienceResolver } from './application/academic-content-revision-audience.resolver';
 import {
   ScheduleAcademicContentPublicationUseCase,
   UnscheduleAcademicContentPublicationUseCase,
@@ -85,6 +87,8 @@ import {
     AcademicContentController,
   ],
   providers: [
+    AcademicContentRevisionAudienceResolver,
+    AcademicContentPublicationSnapshotRepository,
     AcademicContentPublicationRepository,
     ScheduleAcademicContentPublicationUseCase,
     UnscheduleAcademicContentPublicationUseCase,

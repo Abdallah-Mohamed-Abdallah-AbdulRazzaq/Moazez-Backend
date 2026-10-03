@@ -1,14 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import {
-  AcademicContentAudienceType as Audience,
-  AcademicContentTargetScopeType as Scope,
-} from '@prisma/client';
+import { AcademicContentAudienceType as Audience } from '@prisma/client';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 import { assertAcademicContentAudience } from '../domain/academic-content-audience.policy';
+import { AcademicContentAudienceRepository } from '../infrastructure/academic-content-audience.repository';
 import {
-  AcademicContentAudienceRepository,
-  EligibleAcademicEnrollment,
-} from '../infrastructure/academic-content-audience.repository';
+  academicAudienceSubjectRequirements,
+  matchAcademicAudienceStudents,
+  matchAcademicAudienceGuardians,
+} from '../domain/academic-content-audience-matcher';
 
 export interface AcademicContentStudentAudience {
   studentId: string;
@@ -57,18 +56,10 @@ export class AcademicContentAudienceResolver {
     );
     if (!enrollments.length) return { students: [], guardians: [] };
 
-    const subjectIds = [
-      ...new Set(
-        targets.flatMap((target) =>
-          target.subjectId ? [target.subjectId] : [],
-        ),
-      ),
-    ];
-    const gradeIds = [
-      ...new Set(
-        enrollments.map((enrollment) => enrollment.classroom.section.gradeId),
-      ),
-    ];
+    const { subjectIds, gradeIds } = academicAudienceSubjectRequirements(
+      targets,
+      enrollments,
+    );
     const taught = subjectIds.length
       ? await this.reads.taughtGradeSubjects(
           schoolId,
@@ -78,36 +69,10 @@ export class AcademicContentAudienceResolver {
           subjectIds,
         )
       : [];
-    const taughtKeys = new Set(
-      taught.map((row) => JSON.stringify([row.gradeId, row.subjectId])),
-    );
-    const eligibleStudents: AcademicContentStudentAudience[] = [];
-    for (const enrollment of enrollments) {
-      const matchedTargetIds = targets
-        .filter(
-          (target) =>
-            this.matches(target, enrollment) &&
-            (!target.subjectId ||
-              taughtKeys.has(
-                JSON.stringify([
-                  enrollment.classroom.section.gradeId,
-                  target.subjectId,
-                ]),
-              )),
-        )
-        .map((target) => target.id)
-        .sort();
-      if (!matchedTargetIds.length) continue;
-      eligibleStudents.push({
-        studentId: enrollment.studentId,
-        enrollmentId: enrollment.id,
-        studentUserId: enrollment.student.userId,
-        classroomId: enrollment.classroomId,
-        matchedTargetIds,
-      });
-    }
-    eligibleStudents.sort((a, b) =>
-      a.enrollmentId.localeCompare(b.enrollmentId),
+    const eligibleStudents = matchAcademicAudienceStudents(
+      targets,
+      enrollments,
+      taught,
     );
     if (content.audience === Audience.STUDENTS)
       return { students: eligibleStudents, guardians: [] };
@@ -117,36 +82,18 @@ export class AcademicContentAudienceResolver {
           ...new Set(eligibleStudents.map((row) => row.studentId)),
         ])
       : [];
-    const studentsById = new Map<string, AcademicContentStudentAudience[]>();
-    for (const student of eligibleStudents) {
-      const existing = studentsById.get(student.studentId) ?? [];
-      existing.push(student);
-      studentsById.set(student.studentId, existing);
-    }
-    const guardians = new Map<string, AcademicContentGuardianAudience>();
-    for (const link of links) {
-      for (const student of studentsById.get(link.studentId) ?? []) {
-        const key = JSON.stringify([
-          link.guardianId,
-          student.studentId,
-          student.enrollmentId,
-        ]);
-        guardians.set(key, {
-          guardianId: link.guardianId,
-          recipientUserId: link.guardian.userId,
-          studentId: student.studentId,
-          enrollmentId: student.enrollmentId,
-          canReceiveNotifications: link.guardian.canReceiveNotifications,
-          matchedTargetIds: student.matchedTargetIds,
-        });
-      }
-    }
-    const guardianContexts = [...guardians.values()].sort(
-      (a, b) =>
-        a.guardianId.localeCompare(b.guardianId) ||
-        a.studentId.localeCompare(b.studentId) ||
-        a.enrollmentId.localeCompare(b.enrollmentId),
-    );
+    // Keep the ACC-2 public Guardian shape; richer internal contexts also carry Classroom.
+    const guardianContexts = matchAcademicAudienceGuardians(
+      eligibleStudents,
+      links,
+    ).map((row) => ({
+      guardianId: row.guardianId,
+      recipientUserId: row.recipientUserId,
+      studentId: row.studentId,
+      enrollmentId: row.enrollmentId,
+      canReceiveNotifications: row.canReceiveNotifications,
+      matchedTargetIds: row.matchedTargetIds,
+    }));
     return {
       students:
         content.audience === Audience.STUDENTS_AND_GUARDIANS
@@ -154,29 +101,5 @@ export class AcademicContentAudienceResolver {
           : [],
       guardians: guardianContexts,
     };
-  }
-
-  private matches(
-    target: {
-      scopeType: Scope;
-      stageId: string | null;
-      gradeId: string | null;
-      sectionId: string | null;
-      classroomId: string | null;
-    },
-    enrollment: EligibleAcademicEnrollment,
-  ): boolean {
-    switch (target.scopeType) {
-      case Scope.SCHOOL:
-        return true;
-      case Scope.STAGE:
-        return target.stageId === enrollment.classroom.section.grade.stageId;
-      case Scope.GRADE:
-        return target.gradeId === enrollment.classroom.section.gradeId;
-      case Scope.SECTION:
-        return target.sectionId === enrollment.classroom.sectionId;
-      case Scope.CLASSROOM:
-        return target.classroomId === enrollment.classroomId;
-    }
   }
 }
