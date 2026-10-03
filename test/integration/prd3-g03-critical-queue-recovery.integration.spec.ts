@@ -1,3 +1,6 @@
+import { AcademicContentPublicationNotificationService } from '../../src/modules/academics/academic-content/application/academic-content-publication-notification.service';
+import { AcademicContentPublicationNotificationRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-publication-notification.repository';
+import { CommunicationNotificationQueueService } from '../../src/modules/communication/application/communication-notification-queue.service';
 import { AcademicContentPublicationWorker } from '../../src/modules/academics/academic-content/infrastructure/academic-content-publication.worker';
 import { AcademicContentPublicationRuntimeRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-publication-runtime.repository';
 import { AcademicContentPublicationLifecycleRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-publication-lifecycle.repository';
@@ -106,6 +109,8 @@ import {
   BRANDING_LOGO_CLEANUP_QUEUE,
 } from '../../src/modules/settings/branding/domain/branding-logo.constants';
 import {
+  COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATIONS_GENERATE_JOB_NAME,
+  buildAcademicContentNotificationGenerationJobId,
   COMMUNICATION_ANNOUNCEMENT_NOTIFICATIONS_GENERATE_JOB_NAME,
   COMMUNICATION_ANNOUNCEMENT_NOTIFICATIONS_RECONCILE_JOB_NAME,
   COMMUNICATION_NOTIFICATION_QUEUE_NAME,
@@ -479,10 +484,17 @@ function createProductionComponents(
     generationPreferenceService,
     new CommunicationNotificationPushQueueService(queue),
   );
+  const publicationNotifications =
+    new AcademicContentPublicationNotificationService(
+      new AcademicContentPublicationNotificationRepository(prisma),
+      generationService,
+      new CommunicationNotificationQueueService(queue),
+    );
   const generationReconciliation =
     new CommunicationNotificationReconciliationService(
       generationRepository,
       queue,
+      publicationNotifications,
     );
   const pushRepository = new CommunicationNotificationPushRepository(prisma);
   const deviceTokens = new AppDeviceTokenRepository(prisma);
@@ -651,6 +663,7 @@ function createProductionComponents(
     prisma,
     generationRepository,
     generationService,
+    publicationNotifications,
     generationRealtimePublisher,
     generationReconciliation,
     pushReconciliation,
@@ -754,6 +767,7 @@ async function exerciseProductionWorkerDispatch(
     bullmq,
     components.generationService,
     components.generationReconciliation,
+    components.publicationNotifications,
   ).onModuleInit();
   new CommunicationNotificationPushWorker(
     bullmq,
@@ -796,6 +810,7 @@ async function exerciseProductionWorkerDispatch(
     components.publicationLifecycle,
     components.publicationQueue,
     components.publicationReconciliation,
+    components.publicationNotifications,
   ).onModuleInit();
   expect(harness.processors.size).toBe(9);
   await harness.processor(ACADEMIC_CONTENT_PUBLICATION_QUEUE)({
@@ -812,6 +827,31 @@ async function exerciseProductionWorkerDispatch(
       select: { status: true },
     }),
   ).toEqual({ status: 'PUBLISHED' });
+
+  const academicGenerationJob = await components.queue
+    .getQueue(COMMUNICATION_NOTIFICATION_QUEUE_NAME)
+    .getJob(
+      buildAcademicContentNotificationGenerationJobId({
+        schoolId: fixture.activeSchoolId,
+        publicationId: fixture.publicationId,
+      }),
+    );
+  if (!academicGenerationJob)
+    throw new Error('academic_generation_job_missing');
+  expect(academicGenerationJob.name).toBe(
+    COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATIONS_GENERATE_JOB_NAME,
+  );
+  expect(requireJobData(academicGenerationJob)).toMatchObject({
+    schoolId: fixture.activeSchoolId,
+    organizationId: fixture.organizationId,
+    contentId: fixture.publicationContentId,
+    publicationId: fixture.publicationId,
+  });
+  await harness.processor(COMMUNICATION_NOTIFICATION_QUEUE_NAME)({
+    id: academicGenerationJob.id ?? 'academic-generation',
+    name: academicGenerationJob.name,
+    data: requireJobData(academicGenerationJob),
+  });
 
   const base = {
     schoolId: fixture.activeSchoolId,

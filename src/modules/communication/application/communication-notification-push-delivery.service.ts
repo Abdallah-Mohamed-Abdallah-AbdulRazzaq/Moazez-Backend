@@ -86,11 +86,27 @@ export class CommunicationNotificationPushDeliveryService {
       });
     }
 
+    const appSurface = resolveDeliveryTokenSurface(delivery.notification);
+    if (appSurface === null) {
+      await this.pushRepository.updateDeliveryStatus({
+        schoolId: delivery.schoolId,
+        deliveryId: delivery.id,
+        status: CommunicationNotificationDeliveryStatus.SKIPPED,
+        attemptedAt: now,
+        errorCode: 'push/academic-content-recipient-type-ineligible',
+        errorMessage: 'Academic content recipient type is ineligible',
+        metadata: { skippedReason: 'recipient_type_ineligible' },
+      });
+      return skippedResult(
+        delivery.id,
+        'push/academic-content-recipient-type-ineligible',
+      );
+    }
     const activeDeviceTokens =
       await this.appDeviceTokenRepository.listActiveCurrentSchoolUserTokens({
         schoolId: delivery.schoolId,
         userId: delivery.notification.recipientUserId,
-        appSurface: resolveDeliveryTokenSurface(delivery.notification),
+        appSurface,
       });
 
     await this.pushRepository.ensurePendingAttempts({
@@ -475,7 +491,17 @@ function isInvalidOrUnregisteredTokenError(errorCode: string): boolean {
 
 function resolveDeliveryTokenSurface(
   notification: CommunicationPushDeliveryForProcessing['notification'],
-): AppDeviceTokenSurface | undefined {
+): AppDeviceTokenSurface | undefined | null {
+  if (
+    notification.sourceModule ===
+    CommunicationNotificationSourceModule.ACADEMICS
+  ) {
+    if (notification.recipientUser.userType === UserType.STUDENT)
+      return AppDeviceTokenSurface.STUDENT;
+    if (notification.recipientUser.userType === UserType.PARENT)
+      return AppDeviceTokenSurface.PARENT;
+    return null;
+  }
   if (
     notification.sourceModule !==
     CommunicationNotificationSourceModule.DISMISSAL

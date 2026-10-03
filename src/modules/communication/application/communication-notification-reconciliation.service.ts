@@ -7,6 +7,7 @@ import {
   COMMUNICATION_NOTIFICATION_RECOVERY_WINDOW_MS,
 } from '../domain/communication-notification-generation-domain';
 import { CommunicationNotificationGenerationRepository } from '../infrastructure/communication-notification-generation.repository';
+import { AcademicContentPublicationNotificationService } from '../../academics/academic-content/application/academic-content-publication-notification.service';
 
 const ANNOUNCEMENT_RECOVERY_PAGE_SIZE = 100;
 
@@ -15,6 +16,7 @@ export class CommunicationNotificationReconciliationService {
   constructor(
     private readonly repository: CommunicationNotificationGenerationRepository,
     private readonly queue: BullmqService,
+    private readonly academicContent: AcademicContentPublicationNotificationService,
   ) {}
 
   async reconcile(now = new Date()): Promise<number> {
@@ -59,6 +61,6 @@ export class CommunicationNotificationReconciliationService {
       cursor = page.next ?? undefined;
     } while (cursor);
 
-    return restored;
+    return restored + (await this.academicContent.recover(now));
   }
 }

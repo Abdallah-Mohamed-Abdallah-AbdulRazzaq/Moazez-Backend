@@ -418,16 +418,19 @@ test('R2/R3 actorless recovery and type-safe primary generation are enforced', (
   assert.match(generationContract, /actorUserType: UserType \| null;/u);
   assert.match(
     generationWorker,
-    /createWorker<\s*CommunicationAnnouncementNotificationGenerationJobData,\s*void\s*>/u,
+    /createWorker<\s*\| CommunicationAnnouncementNotificationGenerationJobData\s*\| CommunicationAcademicContentNotificationGenerationJobData,\s*void\s*>/u,
   );
   assert.doesNotMatch(
     generationWorker,
     /CommunicationNotificationGenerationWorkerJobData|as unknown as CommunicationAnnouncementNotificationGenerationJobData/u,
   );
+  assert.match(generationWorker, /generateForPublishedAnnouncement\(data\)/u);
+  assert.match(generationWorker, /const data = job\.data;/u);
   assert.match(
     generationWorker,
-    /generateForPublishedAnnouncement\(job\.data\)/u,
+    /if \(!isAcademicContentNotificationGenerationJobData\(job\.data\)\)/u,
   );
+  assert.match(generationWorker, /this\.academicContent\.generate\(data\)/u);
   assert.match(generationService, /actorUserId: string \| null;/u);
   assert.doesNotMatch(generationService, /if \(!input\.actorUserId\) return;/u);
   assert.match(
@@ -436,7 +439,7 @@ test('R2/R3 actorless recovery and type-safe primary generation are enforced', (
   );
   assert.match(
     generationWorker,
-    /if \(job\.data\.actorUserId && job\.data\.actorUserType\)/u,
+    /if \(data\.actorUserId && data\.actorUserType\)/u,
   );
   assert.doesNotMatch(generationWorker, /UserType\.SERVICE_ACCOUNT/u);
   assert.match(

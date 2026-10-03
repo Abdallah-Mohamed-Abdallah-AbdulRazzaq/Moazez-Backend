@@ -1,5 +1,6 @@
+import { CommunicationNotificationGenerationService } from '../modules/communication/application/communication-notification-generation.service';
+import { ImportJobRecord } from '../modules/files/imports/domain/import-job.types';
 import {
-  CommunicationNotificationDeliveryStatus,
   DismissalRequestStatus,
   ImportJobStatus,
   SchoolEmailDeliveryRecipientStatus,
@@ -25,7 +26,10 @@ import { DismissalRealtimeEventsService } from '../modules/dismissal/realtime/di
 import { ImportValidationReconciliationService } from '../modules/files/imports/application/import-validation-reconciliation.service';
 import { ProcessImportValidationUseCase } from '../modules/files/imports/application/process-import-validation.use-case';
 import { readImportJobRecovery } from '../modules/files/imports/domain/import-job.report';
-import { ImportJobsRepository } from '../modules/files/imports/infrastructure/import-jobs.repository';
+import {
+  ImportJobsRepository,
+  ImportJobRecoveryCandidate,
+} from '../modules/files/imports/infrastructure/import-jobs.repository';
 import { BullmqService } from '../infrastructure/queue/bullmq.service';
 import { PrismaService } from '../infrastructure/database/prisma.service';
 import { StorageService } from '../infrastructure/storage/storage.service';
@@ -117,11 +121,12 @@ describe('critical queue persisted-truth reconciliation', () => {
           ],
           next: null,
         }),
-    } as unknown as CommunicationNotificationGenerationRepository;
+    };
     const queue = queueMock();
     const service = new CommunicationNotificationReconciliationService(
-      repository,
-      queue,
+      repository as unknown as CommunicationNotificationGenerationRepository,
+      queue as unknown as BullmqService,
+      { recover: jest.fn().mockResolvedValue(0) } as never,
     );
 
     await expect(service.reconcile(NOW)).resolves.toBe(1);
@@ -162,18 +167,22 @@ describe('critical queue persisted-truth reconciliation', () => {
       createdAt: NOW,
     };
     const repository = {
-      listPushRecoveryCandidates: jest.fn((input) =>
-        Promise.resolve(input.expired ? [] : [candidate]),
+      listPushRecoveryCandidates: jest.fn(
+        (
+          input: Parameters<
+            CommunicationNotificationPushRepository['listPushRecoveryCandidates']
+          >[0],
+        ) => Promise.resolve(input.expired ? [] : [candidate]),
       ),
-    } as unknown as CommunicationNotificationPushRepository;
+    };
     const delivery = {
       expireRecoveryWindow: jest.fn(),
-    } as unknown as CommunicationNotificationPushDeliveryService;
+    };
     const queue = queueMock();
     const service = new CommunicationNotificationPushReconciliationService(
-      repository,
-      delivery,
-      queue,
+      repository as unknown as CommunicationNotificationPushRepository,
+      delivery as unknown as CommunicationNotificationPushDeliveryService,
+      queue as unknown as BullmqService,
     );
 
     await expect(service.reconcile(NOW)).resolves.toEqual({
@@ -201,7 +210,8 @@ describe('critical queue persisted-truth reconciliation', () => {
     },
   ])(
     'reconstructs eligible Push work with $label',
-    async ({ label: _label, ...actor }) => {
+    async ({ actorUserId, actorUserType }) => {
+      const actor = { actorUserId, actorUserType };
       const candidate = {
         id: 'delivery-actorless',
         notificationId: 'notification-actorless',
@@ -212,18 +222,22 @@ describe('critical queue persisted-truth reconciliation', () => {
         createdAt: NOW,
       };
       const repository = {
-        listPushRecoveryCandidates: jest.fn((input) =>
-          Promise.resolve(input.expired ? [] : [candidate]),
+        listPushRecoveryCandidates: jest.fn(
+          (
+            input: Parameters<
+              CommunicationNotificationPushRepository['listPushRecoveryCandidates']
+            >[0],
+          ) => Promise.resolve(input.expired ? [] : [candidate]),
         ),
-      } as unknown as CommunicationNotificationPushRepository;
+      };
       const delivery = {
         expireRecoveryWindow: jest.fn(),
-      } as unknown as CommunicationNotificationPushDeliveryService;
+      };
       const queue = queueMock();
       const service = new CommunicationNotificationPushReconciliationService(
-        repository,
-        delivery,
-        queue,
+        repository as unknown as CommunicationNotificationPushRepository,
+        delivery as unknown as CommunicationNotificationPushDeliveryService,
+        queue as unknown as BullmqService,
       );
 
       await expect(service.reconcile(NOW)).resolves.toEqual({
@@ -252,23 +266,30 @@ describe('critical queue persisted-truth reconciliation', () => {
     },
   ])(
     'Push Worker omits actor for $label and retains tenant scope',
-    async ({ label: _label, ...actor }) => {
-      let processor: ((job: any) => Promise<void>) | undefined;
+    async ({ actorUserId, actorUserType }) => {
+      const actor = { actorUserId, actorUserType };
+      let processor: ((job: unknown) => Promise<void>) | undefined;
       const bullmq = {
-        createWorker: jest.fn((_queueName, registeredProcessor) => {
-          processor = registeredProcessor;
-          return { on: jest.fn() };
-        }),
-      } as unknown as BullmqService;
+        createWorker: jest.fn(
+          (
+            _queueName: string,
+            registeredProcessor: (job: unknown) => Promise<void>,
+          ) => {
+            processor = registeredProcessor;
+            return { on: jest.fn() };
+          },
+        ),
+      };
       const observedContexts: Array<ReturnType<typeof getRequestContext>> = [];
       const delivery = {
-        processDelivery: jest.fn().mockImplementation(async () => {
+        processDelivery: jest.fn().mockImplementation(() => {
           observedContexts.push(getRequestContext());
+          return Promise.resolve();
         }),
-      } as unknown as CommunicationNotificationPushDeliveryService;
+      };
       new CommunicationNotificationPushWorker(
-        bullmq,
-        delivery,
+        bullmq as unknown as BullmqService,
+        delivery as unknown as CommunicationNotificationPushDeliveryService,
         {} as CommunicationNotificationPushReconciliationService,
       ).onModuleInit();
 
@@ -300,25 +321,30 @@ describe('critical queue persisted-truth reconciliation', () => {
   );
 
   it('Generation Worker omits actor when persisted actor fields are absent', async () => {
-    let processor: ((job: any) => Promise<void>) | undefined;
+    let processor: ((job: unknown) => Promise<void>) | undefined;
     const bullmq = {
-      createWorker: jest.fn((_queueName, registeredProcessor) => {
-        processor = registeredProcessor;
-        return { on: jest.fn() };
-      }),
-    } as unknown as BullmqService;
+      createWorker: jest.fn(
+        (
+          _queueName: string,
+          registeredProcessor: (job: unknown) => Promise<void>,
+        ) => {
+          processor = registeredProcessor;
+          return { on: jest.fn() };
+        },
+      ),
+    };
     const observedContexts: Array<ReturnType<typeof getRequestContext>> = [];
     const generation = {
-      generateForPublishedAnnouncement: jest
-        .fn()
-        .mockImplementation(async () => {
-          observedContexts.push(getRequestContext());
-        }),
+      generateForPublishedAnnouncement: jest.fn().mockImplementation(() => {
+        observedContexts.push(getRequestContext());
+        return Promise.resolve();
+      }),
     };
     new CommunicationNotificationGenerationWorker(
-      bullmq,
-      generation as any,
+      bullmq as unknown as BullmqService,
+      generation as unknown as CommunicationNotificationGenerationService,
       {} as CommunicationNotificationReconciliationService,
+      {} as never,
     ).onModuleInit();
 
     await processor?.({
@@ -358,18 +384,22 @@ describe('critical queue persisted-truth reconciliation', () => {
       createdAt: NOW,
     };
     const repository = {
-      listPushRecoveryCandidates: jest.fn((input) =>
-        Promise.resolve(input.expired ? [] : [candidate]),
+      listPushRecoveryCandidates: jest.fn(
+        (
+          input: Parameters<
+            CommunicationNotificationPushRepository['listPushRecoveryCandidates']
+          >[0],
+        ) => Promise.resolve(input.expired ? [] : [candidate]),
       ),
-    } as unknown as CommunicationNotificationPushRepository;
+    };
     const delivery = {
       terminalizeRecovery: jest.fn().mockResolvedValue(undefined),
-    } as unknown as CommunicationNotificationPushDeliveryService;
+    };
     const queue = queueMock();
     const service = new CommunicationNotificationPushReconciliationService(
-      repository,
-      delivery,
-      queue,
+      repository as unknown as CommunicationNotificationPushRepository,
+      delivery as unknown as CommunicationNotificationPushDeliveryService,
+      queue as unknown as BullmqService,
     );
 
     await expect(service.reconcile(NOW)).resolves.toEqual({
@@ -392,11 +422,11 @@ describe('critical queue persisted-truth reconciliation', () => {
       listRecoveryCandidates: jest.fn().mockResolvedValue([]),
       markRecipientFailed: jest.fn().mockResolvedValue(undefined),
       refreshBatchStatus: jest.fn().mockResolvedValue(undefined),
-    } as unknown as EmailDeliveryRepository;
+    };
     const queue = queueMock();
     const service = new SchoolEmailDeliveryReconciliationService(
-      repository,
-      queue,
+      repository as unknown as EmailDeliveryRepository,
+      queue as unknown as BullmqService,
     );
 
     await expect(service.reconcile(NOW)).resolves.toEqual({
@@ -420,18 +450,24 @@ describe('critical queue persisted-truth reconciliation', () => {
     let expiredReads = 0;
     const repository = {
       listStaleSendingRecoveryCandidates: jest.fn().mockResolvedValue([]),
-      listRecoveryCandidates: jest.fn((input) => {
-        if (!input.expired) return Promise.resolve([]);
-        expiredReads += 1;
-        return Promise.resolve(expiredReads === 1 ? [expiredCandidate] : []);
-      }),
+      listRecoveryCandidates: jest.fn(
+        (
+          input: Parameters<
+            EmailDeliveryRepository['listRecoveryCandidates']
+          >[0],
+        ) => {
+          if (!input.expired) return Promise.resolve([]);
+          expiredReads += 1;
+          return Promise.resolve(expiredReads === 1 ? [expiredCandidate] : []);
+        },
+      ),
       markRecipientFailed: jest.fn().mockResolvedValue(undefined),
       refreshBatchStatus: jest.fn().mockResolvedValue(undefined),
-    } as unknown as EmailDeliveryRepository;
+    };
     const queue = queueMock();
     const service = new SchoolEmailDeliveryReconciliationService(
-      repository,
-      queue,
+      repository as unknown as EmailDeliveryRepository,
+      queue as unknown as BullmqService,
     );
 
     await expect(service.reconcile(NOW)).resolves.toEqual({
@@ -460,15 +496,16 @@ describe('critical queue persisted-truth reconciliation', () => {
         .mockResolvedValueOnce([stale])
         .mockResolvedValueOnce([]),
       listRecoveryCandidates: jest.fn().mockResolvedValue([]),
-      markRecipientFailed: jest.fn().mockImplementation(async () => {
+      markRecipientFailed: jest.fn().mockImplementation(() => {
         observedActors.push(getRequestContext()?.actor);
+        return Promise.resolve();
       }),
       refreshBatchStatus: jest.fn().mockResolvedValue(undefined),
-    } as unknown as EmailDeliveryRepository;
+    };
     const queue = queueMock();
     const service = new SchoolEmailDeliveryReconciliationService(
-      repository,
-      queue,
+      repository as unknown as EmailDeliveryRepository,
+      queue as unknown as BullmqService,
     );
 
     await service.reconcile(NOW);
@@ -491,11 +528,11 @@ describe('critical queue persisted-truth reconciliation', () => {
         .mockResolvedValueOnce([candidate])
         .mockResolvedValueOnce([]),
       updateImportJob: jest.fn().mockResolvedValue(candidate),
-    } as unknown as ImportJobsRepository;
+    };
     const queue = queueMock();
     const service = new ImportValidationReconciliationService(
-      repository,
-      queue,
+      repository as unknown as ImportJobsRepository,
+      queue as unknown as BullmqService,
     );
 
     await service.reconcile(NOW);
@@ -508,7 +545,7 @@ describe('critical queue persisted-truth reconciliation', () => {
             classification: 'terminal',
             code: 'import_terminal_recovery_window_expired',
           },
-        }),
+        }) as unknown,
       }),
     );
     expect(queue.ensureJobFromPersistedTruth).not.toHaveBeenCalled();
@@ -525,11 +562,11 @@ describe('critical queue persisted-truth reconciliation', () => {
         .mockResolvedValueOnce([candidate])
         .mockResolvedValueOnce([]),
       updateImportJob: jest.fn(),
-    } as unknown as ImportJobsRepository;
+    };
     const queue = queueMock();
     const service = new ImportValidationReconciliationService(
-      repository,
-      queue,
+      repository as unknown as ImportJobsRepository,
+      queue as unknown as BullmqService,
     );
 
     await service.reconcile(NOW);
@@ -555,11 +592,11 @@ describe('critical queue persisted-truth reconciliation', () => {
         .mockResolvedValueOnce([candidate])
         .mockResolvedValueOnce([]),
       updateImportJob: jest.fn().mockResolvedValue(candidate),
-    } as unknown as ImportJobsRepository;
+    };
     const queue = queueMock();
     const service = new ImportValidationReconciliationService(
-      repository,
-      queue,
+      repository as unknown as ImportJobsRepository,
+      queue as unknown as BullmqService,
     );
 
     await service.reconcile(NOW);
@@ -571,7 +608,7 @@ describe('critical queue persisted-truth reconciliation', () => {
             classification: 'terminal',
             code: 'import_terminal_source_ineligible',
           },
-        }),
+        }) as unknown,
       }),
     );
     expect(queue.ensureJobFromPersistedTruth).not.toHaveBeenCalled();
@@ -588,15 +625,16 @@ describe('import validation retry and terminal policy', () => {
         .mockRejectedValue(
           new Error('provider endpoint contained sensitive detail'),
         ),
-    } as unknown as StorageService;
-    const service = new ProcessImportValidationUseCase(repository, storage);
+    };
+    const service = new ProcessImportValidationUseCase(
+      repository as unknown as ImportJobsRepository,
+      storage as unknown as StorageService,
+    );
 
     await expect(service.execute(record.id)).rejects.toThrow(
       'import_validation_retryable_failure',
     );
-    const update = (repository.updateImportJob as jest.Mock).mock.calls.at(
-      -1,
-    )[0];
+    const update = repository.updateImportJob.mock.calls.at(-1)![0];
     expect(readImportJobRecovery(update.reportJson)).toEqual({
       classification: 'retryable',
       code: 'import_recovery_storage_unavailable',
@@ -611,13 +649,14 @@ describe('import validation retry and terminal policy', () => {
       statObject: jest
         .fn()
         .mockRejectedValue(new ObjectStorageError('not_found')),
-    } as unknown as StorageService;
-    const service = new ProcessImportValidationUseCase(repository, storage);
+    };
+    const service = new ProcessImportValidationUseCase(
+      repository as unknown as ImportJobsRepository,
+      storage as unknown as StorageService,
+    );
 
     await expect(service.execute(record.id)).resolves.toBeUndefined();
-    const update = (repository.updateImportJob as jest.Mock).mock.calls.at(
-      -1,
-    )[0];
+    const update = repository.updateImportJob.mock.calls.at(-1)![0];
     expect(readImportJobRecovery(update.reportJson)).toEqual({
       classification: 'terminal',
       code: 'import_terminal_object_missing',
@@ -638,11 +677,14 @@ describe('dismissal expiry partial-failure isolation', () => {
         .fn()
         .mockRejectedValueOnce(new Error('database detail'))
         .mockResolvedValueOnce(expired('request-2')),
-    } as unknown as DismissalRequestsExpiryRepository;
+    };
     const realtime = {
       publishStatusChanged: jest.fn().mockResolvedValue(undefined),
-    } as unknown as DismissalRealtimeEventsService;
-    const service = new ExpireDismissalRequestsUseCase(repository, realtime);
+    };
+    const service = new ExpireDismissalRequestsUseCase(
+      repository as unknown as DismissalRequestsExpiryRepository,
+      realtime as unknown as DismissalRealtimeEventsService,
+    );
 
     await expect(service.runOnce({ now: NOW })).rejects.toThrow(
       'dismissal_expiry_batch_mutation_failed',
@@ -655,11 +697,14 @@ describe('dismissal expiry partial-failure isolation', () => {
     const repository = {
       listExpiredCandidates: jest.fn().mockResolvedValue([candidates[0]]),
       expireCandidate: jest.fn().mockResolvedValue(expired('request-1')),
-    } as unknown as DismissalRequestsExpiryRepository;
+    };
     const realtime = {
       publishStatusChanged: jest.fn().mockRejectedValue(new Error('offline')),
-    } as unknown as DismissalRealtimeEventsService;
-    const service = new ExpireDismissalRequestsUseCase(repository, realtime);
+    };
+    const service = new ExpireDismissalRequestsUseCase(
+      repository as unknown as DismissalRequestsExpiryRepository,
+      realtime as unknown as DismissalRealtimeEventsService,
+    );
 
     await expect(service.runOnce({ now: NOW })).resolves.toMatchObject({
       expiredCount: 1,
@@ -671,11 +716,14 @@ describe('dismissal expiry partial-failure isolation', () => {
     const repository = {
       listExpiredCandidates: jest.fn().mockResolvedValue([candidates[0]]),
       expireCandidate: jest.fn().mockResolvedValue(null),
-    } as unknown as DismissalRequestsExpiryRepository;
+    };
     const realtime = {
       publishStatusChanged: jest.fn(),
-    } as unknown as DismissalRealtimeEventsService;
-    const service = new ExpireDismissalRequestsUseCase(repository, realtime);
+    };
+    const service = new ExpireDismissalRequestsUseCase(
+      repository as unknown as DismissalRequestsExpiryRepository,
+      realtime as unknown as DismissalRealtimeEventsService,
+    );
 
     await expect(service.runOnce({ now: NOW })).resolves.toMatchObject({
       expiredCount: 0,
@@ -685,10 +733,10 @@ describe('dismissal expiry partial-failure isolation', () => {
   });
 });
 
-function queueMock(): BullmqService & Record<string, jest.Mock> {
+function queueMock() {
   return {
     ensureJobFromPersistedTruth: jest.fn().mockResolvedValue('created'),
-  } as unknown as BullmqService & Record<string, jest.Mock>;
+  };
 }
 
 function recoveryAnnouncementRow(overrides: Record<string, unknown>) {
@@ -717,7 +765,9 @@ function emailCandidate(status: SchoolEmailDeliveryRecipientStatus) {
   };
 }
 
-function importRecord(overrides?: Record<string, unknown>): any {
+function importRecord(
+  overrides?: Record<string, unknown>,
+): ImportJobRecoveryCandidate {
   return {
     id: 'import-1',
     schoolId: 'school-1',
@@ -744,9 +794,7 @@ function importRecord(overrides?: Record<string, unknown>): any {
   };
 }
 
-function importRepositoryMock(
-  record: any,
-): ImportJobsRepository & Record<string, jest.Mock> {
+function importRepositoryMock(record: ImportJobRecord) {
   return {
     findImportJobById: jest.fn().mockResolvedValue(record),
     claimImportJobProcessing: jest.fn().mockResolvedValue({
@@ -754,9 +802,15 @@ function importRepositoryMock(
       status: ImportJobStatus.PROCESSING,
     }),
     updateImportJob: jest
-      .fn()
-      .mockImplementation((input) => Promise.resolve({ ...record, ...input })),
-  } as unknown as ImportJobsRepository & Record<string, jest.Mock>;
+      .fn<
+        Promise<ImportJobRecord>,
+        [Parameters<ImportJobsRepository['updateImportJob']>[0]]
+      >()
+      .mockImplementation(
+        (input: Parameters<ImportJobsRepository['updateImportJob']>[0]) =>
+          Promise.resolve({ ...record, ...input }),
+      ),
+  };
 }
 
 function dismissalCandidate(id: string) {
