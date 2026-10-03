@@ -90,6 +90,79 @@ function validInstant(value: Date): boolean {
   return value instanceof Date && Number.isFinite(value.getTime());
 }
 
+export type AcademicContentPublicationCommand = {
+  clientRequestId: string;
+  publishAt?: Date;
+  visibleFrom?: Date;
+  visibleUntil?: Date | null;
+};
+
+export function assertAcademicContentPublicationUuid(value: string): void {
+  if (
+    typeof value !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    )
+  )
+    throw new ValidationDomainException('Publication identity requires a UUID');
+}
+
+/** Logical intent, before defaults: execution time and request identity are excluded. */
+export function academicContentPublicationRequestFingerprint(
+  contentId: string,
+  input: Pick<
+    AcademicContentPublicationCommand,
+    'publishAt' | 'visibleFrom' | 'visibleUntil'
+  >,
+): string {
+  assertAcademicContentPublicationUuid(contentId);
+  const instant = (value: Date | undefined) => {
+    if (value === undefined) return ['OMITTED'];
+    if (!validInstant(value))
+      throw new ValidationDomainException(
+        'Publication timing requires valid dates',
+      );
+    return ['EXPLICIT_ISO', value.toISOString()];
+  };
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        contractVersion: 1,
+        academicContentId: contentId.toLowerCase(),
+        publishAt: instant(input.publishAt),
+        visibleFrom: instant(input.visibleFrom),
+        visibleUntil:
+          input.visibleUntil === null ? ['NULL'] : instant(input.visibleUntil),
+      }),
+    )
+    .digest('hex');
+}
+
+export function assertAcademicContentPublicationCommand(
+  contentId: string,
+  input: AcademicContentPublicationCommand,
+): void {
+  if (
+    !input ||
+    typeof input !== 'object' ||
+    Array.isArray(input) ||
+    Object.keys(input).some(
+      (key) =>
+        ![
+          'clientRequestId',
+          'publishAt',
+          'visibleFrom',
+          'visibleUntil',
+        ].includes(key),
+    )
+  )
+    throw new ValidationDomainException(
+      'Publication command contains unsupported fields',
+    );
+  assertAcademicContentPublicationUuid(input.clientRequestId);
+  academicContentPublicationRequestFingerprint(contentId, input);
+}
+
 function validTerm(term: AcademicContentTermDates): boolean {
   return (
     validInstant(term.startDate) &&
