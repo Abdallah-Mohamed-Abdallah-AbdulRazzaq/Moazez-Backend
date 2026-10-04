@@ -2,7 +2,10 @@ import { QueueModule } from '../../../infrastructure/queue/queue.module';
 import { AcademicContentPublicationQueueService } from './application/academic-content-publication-queue.service';
 import { AcademicContentPublicationRuntimeRepository } from './infrastructure/academic-content-publication-runtime.repository';
 import { AcademicContentPublicationLifecycleRepository } from './infrastructure/academic-content-publication-lifecycle.repository';
-import { CancelAcademicContentPublicationUseCase } from './application/academic-content-publication.use-cases';
+import {
+  CancelAcademicContentPublicationUseCase,
+  StartAcademicContentRevisionUseCase,
+} from './application/academic-content-publication.use-cases';
 import { Module } from '@nestjs/common';
 import { StorageModule } from '../../../infrastructure/storage/storage.module';
 import { AcademicContentFilePolicyResolver } from './files/application/academic-content-file-policy.resolver';
@@ -103,6 +106,7 @@ import {
     AcademicContentPublicationRuntimeRepository,
     AcademicContentPublicationLifecycleRepository,
     CancelAcademicContentPublicationUseCase,
+    StartAcademicContentRevisionUseCase,
     AcademicContentRevisionAudienceResolver,
     AcademicContentPublicationSnapshotRepository,
     AcademicContentPublicationRepository,
@@ -166,6 +170,7 @@ import {
   ],
   exports: [
     CancelAcademicContentPublicationUseCase,
+    StartAcademicContentRevisionUseCase,
     CreateAcademicContentUploadUseCase,
     CompleteAcademicContentUploadUseCase,
     CancelAcademicContentUploadUseCase,

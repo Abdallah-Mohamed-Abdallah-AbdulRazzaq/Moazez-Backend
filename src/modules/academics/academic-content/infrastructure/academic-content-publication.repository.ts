@@ -1,6 +1,8 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import {
   AcademicContentApprovalStatus as ApprovalStatus,
+  AcademicContentChangeSignificance,
+  AcademicContentPublicationCancellationReason as Reason,
   AcademicContentPublicationStatus as PublicationStatus,
   AcademicContentStatus as ContentStatus,
   AcademicContentType as ContentType,
@@ -26,6 +28,10 @@ import { evaluateAcademicContentReadiness } from '../domain/academic-content-rea
 import { decodeAcademicContentRevisionSnapshotV2 } from '../domain/academic-content-revision-snapshot';
 import { ACADEMIC_CONTENT_PLATFORM_HARD_MAX_FILE_SIZE_BYTES } from '../files/domain/academic-content-file.constants';
 import { resolveAcademicContentFileType } from '../files/domain/academic-content-file.registry';
+import {
+  classifyAcademicContentRevisionChange,
+  REVISION_SEMANTIC_SELECT,
+} from '../domain/academic-content-revision-change.policy';
 import { AcademicContentRevisionRepository } from './academic-content-revision.repository';
 
 type PublicationIdentity = { schoolId: string; contentId: string };
@@ -384,6 +390,60 @@ export class AcademicContentPublicationRepository {
               );
             return safePublication(existing);
           }
+          const predecessors = await tx.academicContentPublication.findMany({
+            where: {
+              schoolId: input.schoolId,
+              academicContentId: input.contentId,
+              status: PublicationStatus.CANCELLED,
+              cancellationReason: Reason.REVISION_STARTED,
+              successors: { none: {} },
+            },
+            select: { id: true, revisionId: true, publishedAt: true },
+            take: 2,
+          });
+          if (
+            predecessors.length > 1 ||
+            (predecessors.length === 1 && !predecessors[0].publishedAt)
+          )
+            conflict(
+              'lineage_conflict',
+              'Publication revision lineage is inconsistent',
+            );
+          const predecessor = predecessors[0];
+          // An unscheduled successor retains its one-successor edge. Do not reclassify that consumed update as an initial publication.
+          if (
+            !predecessor &&
+            (await tx.academicContentPublication.findFirst({
+              where: {
+                schoolId: input.schoolId,
+                academicContentId: input.contentId,
+                status: PublicationStatus.CANCELLED,
+                cancellationReason: Reason.UNSCHEDULED,
+                supersedesPublicationId: { not: null },
+                publishedAt: null,
+              },
+              select: { id: true },
+            }))
+          )
+            conflict(
+              'lineage_conflict',
+              'Publication revision lineage is inconsistent',
+            );
+          if (predecessor) {
+            const locked = await tx.$queryRaw<Array<{ id: string }>>`
+              SELECT id FROM academic_content_publications WHERE id = ${predecessor.id}::uuid
+                AND school_id = ${input.schoolId}::uuid AND academic_content_id = ${input.contentId}::uuid
+                AND status = 'CANCELLED' AND cancellation_reason = 'REVISION_STARTED' AND published_at IS NOT NULL FOR UPDATE`;
+            if (locked.length !== 1)
+              conflict(
+                'lineage_conflict',
+                'Publication revision lineage is inconsistent',
+              );
+          }
+          if (!predecessor && input.command.notifyMinorUpdate === true)
+            throw new ValidationDomainException(
+              'Minor update override requires a successor publication',
+            );
           const source = await this.source(tx, input, now);
           if (
             !source.term ||
@@ -415,6 +475,42 @@ export class AcademicContentPublicationRepository {
           const revision =
             source.revision ??
             (await this.revisions.captureInTransaction(tx, { ...input, now }));
+          let changeSignificance: AcademicContentChangeSignificance | null =
+            null;
+          if (predecessor) {
+            const immutableWhere = {
+              schoolId: input.schoolId,
+              academicContentId: input.contentId,
+              snapshotContractVersion: 2,
+            };
+            const oldRevision = await tx.academicContentRevision.findFirst({
+              where: { ...immutableWhere, id: predecessor.revisionId },
+              select: REVISION_SEMANTIC_SELECT,
+            });
+            const newRevision = await tx.academicContentRevision.findFirst({
+              where: { ...immutableWhere, id: revision.id },
+              select: REVISION_SEMANTIC_SELECT,
+            });
+            if (!oldRevision || !newRevision)
+              conflict(
+                'lineage_conflict',
+                'Publication revision lineage is inconsistent',
+              );
+            changeSignificance = classifyAcademicContentRevisionChange(
+              oldRevision,
+              newRevision,
+            );
+            if (!changeSignificance)
+              conflict(
+                'identical_revision',
+                'Successor revision has no semantic changes',
+              );
+            if (newRevision.revisionNumber <= oldRevision.revisionNumber)
+              conflict(
+                'lineage_conflict',
+                'Successor revision must follow its predecessor',
+              );
+          }
           const publication = await tx.academicContentPublication.create({
             data: {
               schoolId: input.schoolId,
@@ -422,6 +518,9 @@ export class AcademicContentPublicationRepository {
               revisionId: revision.id,
               clientRequestId: input.command.clientRequestId,
               requestFingerprint: fingerprint,
+              supersedesPublicationId: predecessor?.id ?? null,
+              changeSignificance,
+              notifyMinorUpdate: input.command.notifyMinorUpdate ?? false,
               sourceContentStatus: source.content.status,
               status: PublicationStatus.SCHEDULED,
               ...timing,
@@ -452,6 +551,15 @@ export class AcademicContentPublicationRepository {
             studentRecipientCount: 0,
             guardianRecipientContextCount: 0,
           });
+          if (predecessor)
+            await this.audit(tx, input, publication.id, 'update_classified', {
+              oldPublicationId: predecessor.id,
+              oldRevisionId: predecessor.revisionId,
+              newPublicationId: publication.id,
+              newRevisionId: revision.id,
+              significance: changeSignificance!,
+              notifyMinorUpdate: input.command.notifyMinorUpdate ?? false,
+            });
           return safePublication(publication);
         },
         { maxWait: 20_000, timeout: 20_000 },
@@ -520,6 +628,7 @@ export class AcademicContentPublicationRepository {
             status: PublicationStatus.CANCELLED,
             cancelledAt: now,
             cancelledByUserId: input.actorId,
+            cancellationReason: Reason.UNSCHEDULED,
           },
         });
         const restored = await tx.academicContent.updateMany({
@@ -542,6 +651,7 @@ export class AcademicContentPublicationRepository {
           revisionId: publication.revisionId,
           fromPublicationStatus: PublicationStatus.SCHEDULED,
           toPublicationStatus: PublicationStatus.CANCELLED,
+          cancellationReason: Reason.UNSCHEDULED,
           restoredContentStatus: publication.sourceContentStatus,
           cancelledAt: now.toISOString(),
         });
@@ -559,7 +669,7 @@ export class AcademicContentPublicationRepository {
     tx: Prisma.TransactionClient,
     input: PublicationMutation,
     publicationId: string,
-    action: 'schedule' | 'unschedule',
+    action: 'schedule' | 'unschedule' | 'update_classified',
     after: Prisma.InputJsonObject,
   ) {
     return tx.auditLog.create({

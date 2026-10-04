@@ -421,3 +421,21 @@ normalization remain application/domain responsibilities.
 
 The same suite protects catalog enum vocabulary, policy uniqueness, restrictive
 School FK, tenancy, transactional audits, no-op behavior and concurrent retries.
+
+## ACC-8C published revision updates (`20261004002712_academic_content_published_revision_updates`)
+
+The Prisma-generated delta adds the two enums, four publication columns, tenant/content
+composite self FK, and unique predecessor guard. Four PostgreSQL CHECKs supplement it:
+
+- `acc_publication_cancellation_reason_check`: reasons exist exactly on CANCELLED rows.
+- `acc_publication_cancellation_kind_check`: UNSCHEDULED has no publishedAt;
+  WITHDRAWN/REVISION_STARTED retain publishedAt.
+- `acc_publication_update_linkage_check`: initial rows have null lineage/significance
+  and false override; successors have non-null significance.
+- `acc_publication_no_self_supersede_check`: a publication cannot replace itself.
+
+Prisma cannot model these predicates or compatibility DML. Before the checks, historical
+CANCELLED rows are deterministically backfilled: null publishedAt => UNSCHEDULED;
+non-null publishedAt => WITHDRAWN. No old row is assigned REVISION_STARTED. No revision,
+audience, or Communication history is rewritten. Fresh replay, catalog assertions,
+raw rejection tests, and a 23-to-24 historical fixture rehearse this migration.

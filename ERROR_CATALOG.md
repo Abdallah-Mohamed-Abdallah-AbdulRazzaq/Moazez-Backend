@@ -704,6 +704,16 @@ output, credentials, or foreign-tenant identifiers.
 | `academic_content.approval.pending_missing` | 409 | Current pending approval is unavailable |
 | `academic_content.approval.invalid_revision` | 409 | Current approval revision is unavailable or incompatible |
 
+### Academic Content publication revision updates
+
+| Code | HTTP | Message |
+| ---- | ---- | ------- |
+| `academic_content.publication.identical_revision` | 409 | Successor revision has no semantic changes |
+| `academic_content.publication.lineage_conflict` | 409 | Publication revision lineage is inconsistent / successor revision must follow its predecessor |
+
+These conflicts carry no snapshots, URLs, meeting secrets, file metadata, or recipient PII.
+Revision start remains an internal use case; the revise HTTP route is deferred to ACC-8E.
+
 ### Academic Content Preparation templates
 
 | Code | HTTP | Message |

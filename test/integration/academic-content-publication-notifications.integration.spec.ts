@@ -864,6 +864,8 @@ describeDatabase(
             publishedAt: status === PublicationStatus.SCHEDULED ? null : now,
             expiredAt: status === PublicationStatus.EXPIRED ? now : null,
             cancelledAt: status === PublicationStatus.CANCELLED ? now : null,
+            cancellationReason:
+              status === PublicationStatus.CANCELLED ? 'WITHDRAWN' : null,
           },
         });
         expect(
