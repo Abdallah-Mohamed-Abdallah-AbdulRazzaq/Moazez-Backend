@@ -201,6 +201,12 @@ export type AcademicContentManagementDetail = Prisma.AcademicContentGetPayload<
   typeof ACADEMIC_CONTENT_DETAIL_ARGS
 >;
 
+/** Trusted allocation reader scope, supplied by an actor-specific application layer. */
+export type AcademicContentAllocationReader = {
+  teacherUserId: string;
+  allocationId?: string;
+};
+
 export type CreateAcademicContentInput = {
   schoolId: string;
   academicYearId: string;
@@ -240,19 +246,31 @@ export class AcademicContentRepository {
     });
   }
 
-  async listForManagement(
+  listForManagement(
     schoolId: string,
     page: number,
     limit: number,
     query: AcademicContentLibraryQuery = {},
   ) {
+    return this.listLibrary(schoolId, page, limit, query);
+  }
+
+  async listLibrary(
+    schoolId: string,
+    page: number,
+    limit: number,
+    query: AcademicContentLibraryQuery = {},
+    reader?: AcademicContentAllocationReader,
+  ) {
+    // A trusted reader always overrides any caller-supplied teacher filter.
+    if (reader) query = { ...query, teacherUserId: reader.teacherUserId };
     const scope = await resolveAcademicContentScope(
       this.prisma,
       schoolId,
       query,
     );
     if (scope === null) return { items: [], page, limit, total: 0 };
-    const predicate = this.libraryPredicate(schoolId, query, scope);
+    const predicate = this.libraryPredicate(schoolId, query, scope, reader);
     const offset = (page - 1) * limit;
     const [ids, totals] = await Promise.all([
       this.prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
@@ -270,6 +288,7 @@ export class AcademicContentRepository {
         schoolId,
         deletedAt: null,
         id: { in: ids.map((row) => row.id) },
+        ...(reader ? this.allocationReaderWhere(schoolId, reader) : {}),
       },
       ...ACADEMIC_CONTENT_LIBRARY_ITEM_ARGS,
     });
@@ -285,6 +304,7 @@ export class AcademicContentRepository {
     schoolId: string,
     query: AcademicContentLibraryQuery,
     scope: AcademicContentLibraryResolvedScope | undefined,
+    reader?: AcademicContentAllocationReader,
   ): Prisma.Sql {
     const clauses: Prisma.Sql[] = [
       Prisma.sql`c.school_id = ${schoolId}::uuid`,
@@ -391,6 +411,10 @@ export class AcademicContentRepository {
       }
       if (query.subjectId)
         target.push(Prisma.sql`t.subject_id = ${query.subjectId}::uuid`);
+      if (reader?.allocationId)
+        target.push(
+          Prisma.sql`t.teacher_subject_allocation_id = ${reader.allocationId}::uuid`,
+        );
       if (query.teacherUserId)
         target.push(Prisma.sql`EXISTS (
           SELECT 1 FROM teacher_subject_allocations teacher_allocation
@@ -406,6 +430,60 @@ export class AcademicContentRepository {
         WHERE ${Prisma.join(target, ' AND ')})`);
     }
     return Prisma.sql`${Prisma.join(clauses, ' AND ')}`;
+  }
+
+  private allocationReaderWhere(
+    schoolId: string,
+    reader: AcademicContentAllocationReader,
+  ): Prisma.AcademicContentWhereInput {
+    return {
+      targets: {
+        some: {
+          schoolId,
+          teacherSubjectAllocationId: reader.allocationId,
+          teacherSubjectAllocation: {
+            is: { schoolId, teacherUserId: reader.teacherUserId },
+          },
+        },
+      },
+    };
+  }
+
+  findAllocationReaderDetail(
+    id: string,
+    schoolId: string,
+    reader: AcademicContentAllocationReader,
+  ) {
+    return this.prisma.academicContent.findFirst({
+      where: {
+        id,
+        schoolId,
+        deletedAt: null,
+        ...this.allocationReaderWhere(schoolId, reader),
+      },
+      select: {
+        ...ACADEMIC_CONTENT_DETAIL_ARGS.select,
+        term: {
+          select: {
+            schoolId: true,
+            academicYearId: true,
+            deletedAt: true,
+            startDate: true,
+            endDate: true,
+            isActive: true,
+          },
+        },
+        targets: {
+          ...ACADEMIC_CONTENT_DETAIL_ARGS.select.targets,
+          select: {
+            ...ACADEMIC_CONTENT_DETAIL_ARGS.select.targets.select,
+            teacherSubjectAllocation: {
+              select: { schoolId: true, teacherUserId: true },
+            },
+          },
+        },
+      },
+    });
   }
 
   findManagementDetail(id: string, schoolId: string) {

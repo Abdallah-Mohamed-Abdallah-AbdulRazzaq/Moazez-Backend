@@ -1,5 +1,6 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { METHOD_METADATA } from '@nestjs/common/constants';
+import { TeacherAcademicContentController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content.controller';
 import { Test, TestingModule } from '@nestjs/testing';
 import { readFileSync } from 'node:fs';
 import {
@@ -93,6 +94,9 @@ const TEACHER_PERM_1A_CATALOG_ADDITIONS = [
 ] as const;
 
 const FINAL_TEACHER_PERMISSIONS = [
+  'academics.academic_content.view',
+  'academics.academic_content.manage',
+  'academics.academic_content.publish',
   'app.device_tokens.manage',
   'academics.calendar.view',
   'academics.curriculum.view',
@@ -220,6 +224,7 @@ type TeacherAppDeferredCase = {
 };
 
 const TEACHER_APP_CONTROLLER_CLASSES = [
+  TeacherAcademicContentController,
   TeacherHomeController,
   TeacherMyClassesController,
   TeacherClassroomController,
@@ -832,6 +837,21 @@ const TEACHER_APP_1E_COMMUNICATION_ACTION_PERMISSION_CASES: TeacherAppPermission
 const TEACHER_APP_DEFERRED_ACTION_CASES: TeacherAppDeferredCase[] = [];
 
 const TEACHER_APP_DECORATED_PERMISSION_CASES: TeacherAppPermissionCase[] = [
+  {
+    controller: TeacherAcademicContentController,
+    method: 'capabilities',
+    permissions: ['academics.academic_content.view'],
+  },
+  {
+    controller: TeacherAcademicContentController,
+    method: 'list',
+    permissions: ['academics.academic_content.view'],
+  },
+  {
+    controller: TeacherAcademicContentController,
+    method: 'detail',
+    permissions: ['academics.academic_content.view'],
+  },
   ...TEACHER_APP_READ_PERMISSION_CASES,
   ...TEACHER_APP_1C_ACTION_PERMISSION_CASES,
   ...TEACHER_APP_1D_HOMEWORK_ACTION_PERMISSION_CASES,
@@ -943,8 +963,8 @@ describe('Teacher App route permission metadata (security)', () => {
           .map((method) => `${controller.name}.${method}`),
     ).sort();
 
-    expect(discoveredRouteHandlers).toHaveLength(112);
-    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(112);
+    expect(discoveredRouteHandlers).toHaveLength(115);
+    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(115);
     expect(TEACHER_APP_DEFERRED_ACTION_CASES).toHaveLength(0);
     expect(discoveredRouteHandlers).toEqual(
       Array.from(expectedKnownHandlers).sort(),
@@ -1034,7 +1054,7 @@ describe('Teacher role seed integrity (security)', () => {
     expect(catalogCodeSet.has('teachers.records.view')).toBe(true);
     expect(catalogCodeSet.has('teachers.records.manage')).toBe(true);
 
-    expect(teacherPermissions).toHaveLength(54);
+    expect(teacherPermissions).toHaveLength(57);
     expect(new Set(teacherPermissions).size).toBe(teacherPermissions.length);
     expect(teacherPermissions).toEqual(Array.from(FINAL_TEACHER_PERMISSIONS));
     expect(teacherPermissions).not.toContain('dashboard.todos.view');
@@ -1912,7 +1932,7 @@ describe('Teacher App tenancy isolation (security)', () => {
         organizationId: organizationAId,
       }),
     );
-    expect(permissions).toHaveLength(54);
+    expect(permissions).toHaveLength(57);
     expect(new Set(permissions).size).toBe(permissions.length);
     expect(sortedStrings(permissions)).toEqual(
       sortedStrings(FINAL_TEACHER_PERMISSIONS),

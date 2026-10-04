@@ -126,8 +126,18 @@ import { ListTeacherStudentXpHistoryUseCase } from './xp/application/list-teache
 import { TeacherXpController } from './xp/controller/teacher-xp.controller';
 import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapter';
 
+import { AcademicContentModule } from '../academics/academic-content/academic-content.module';
+import { TeacherAcademicContentController } from './academic-content/controller/teacher-academic-content.controller';
+import { TeacherAcademicContentReadAdapter } from './academic-content/infrastructure/teacher-academic-content-read.adapter';
+import {
+  ListTeacherAcademicContentUseCase,
+  GetTeacherAcademicContentUseCase,
+  GetTeacherAcademicContentCapabilitiesUseCase,
+} from './academic-content/application/teacher-academic-content-read.use-cases';
+
 @Module({
   imports: [
+    AcademicContentModule,
     AppCalendarReadModelModule,
     LessonContentPlaybackModule,
     AppDeviceTokensModule,
@@ -140,6 +150,7 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     TeacherHomeworksModule,
   ],
   controllers: [
+    TeacherAcademicContentController,
     TeacherHomeController,
     TeacherMyClassesController,
     TeacherClassroomController,
@@ -160,6 +171,10 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     TeacherLessonPreparationController,
   ],
   providers: [
+    TeacherAcademicContentReadAdapter,
+    ListTeacherAcademicContentUseCase,
+    GetTeacherAcademicContentUseCase,
+    GetTeacherAcademicContentCapabilitiesUseCase,
     TeacherAppAccessService,
     TeacherAppAllocationReadAdapter,
     TeacherAppCompositionReadAdapter,

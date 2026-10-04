@@ -171,6 +171,9 @@ import {
     AcademicContentAudienceResolver,
   ],
   exports: [
+    AcademicContentRepository,
+    AcademicContentWorkflowPolicyRepository,
+    AcademicContentFilePolicyResolver,
     CancelAcademicContentPublicationUseCase,
     StartAcademicContentRevisionUseCase,
     CreateAcademicContentUploadUseCase,

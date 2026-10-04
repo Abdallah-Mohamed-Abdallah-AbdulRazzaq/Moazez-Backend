@@ -100,12 +100,25 @@ describe('Academic Content authorization reference data', () => {
       );
     }
 
-    for (const roleKey of ['teacher', 'parent', 'student', 'dismissal_staff']) {
+    for (const roleKey of ['parent', 'student', 'dismissal_staff']) {
       const role = SYSTEM_ROLES.find(({ key }) => key === roleKey);
       for (const permission of ACADEMIC_CONTENT_PERMISSION_CODES) {
         expect(role?.permissions).not.toContain(permission);
       }
     }
+  });
+
+  it('grants Teacher only view, manage and publish', () => {
+    const role = SYSTEM_ROLES.find(({ key }) => key === 'teacher');
+    expect(
+      role?.permissions.filter((code) =>
+        code.startsWith('academics.academic_content'),
+      ),
+    ).toEqual([
+      'academics.academic_content.view',
+      'academics.academic_content.manage',
+      'academics.academic_content.publish',
+    ]);
   });
 
   it('converges permissions and system-role grants idempotently', async () => {
