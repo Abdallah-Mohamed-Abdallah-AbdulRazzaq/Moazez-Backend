@@ -62,7 +62,7 @@ describe('CommunicationNotificationPreferenceService', () => {
           category: 'academic_content',
           label: 'Academic Content',
           description:
-            'Notifications for published and updated academic content.',
+            'Notifications for academic content publications, updates, cancellations, and online session reminders.',
           inAppEnabled: true,
           in_app_enabled: true,
           pushEnabled: true,
@@ -157,7 +157,7 @@ describe('CommunicationNotificationPreferenceService', () => {
           category: 'academic_content',
           label: 'Academic Content',
           description:
-            'Notifications for published and updated academic content.',
+            'Notifications for academic content publications, updates, cancellations, and online session reminders.',
           inAppEnabled: true,
           pushEnabled: true,
           canChange: true,

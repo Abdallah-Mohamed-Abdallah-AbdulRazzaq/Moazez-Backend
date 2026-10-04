@@ -12,6 +12,8 @@ import {
   AcademicContentAudienceType,
   AcademicContentStatus,
   AcademicContentPublicationStatus,
+  AcademicContentPublicationCancellationReason,
+  AcademicContentChangeSignificance,
   AcademicContentTargetScopeType,
   AcademicContentType,
   AcademicGuardianNotePriority,
@@ -40,6 +42,7 @@ import {
   GetAcademicContentPublicationUseCase,
   ListAcademicContentPublicationHistoryUseCase,
   ScheduleAcademicContentPublicationUseCase,
+  StartAcademicContentRevisionUseCase,
   UnscheduleAcademicContentPublicationUseCase,
 } from '../../src/modules/academics/academic-content/application/academic-content-publication.use-cases';
 import { PermissionsGuard } from '../../src/common/guards/permissions.guard';
@@ -211,6 +214,7 @@ const services = {
   publicationDetail: { execute: jest.fn() },
   unschedule: { execute: jest.fn() },
   cancel: { execute: jest.fn() },
+  revise: { execute: jest.fn() },
   create: { execute: jest.fn() },
   list: { execute: jest.fn() },
   detail: { execute: jest.fn() },
@@ -268,6 +272,10 @@ const publication = {
   publishedAt: null,
   expiredAt: null,
   cancelledAt: null,
+  cancellationReason: null,
+  supersedesPublicationId: null,
+  changeSignificance: null,
+  notifyMinorUpdate: false,
   studentRecipientCount: 2,
   guardianRecipientContextCount: 3,
   createdByUserId: actorId,
@@ -296,8 +304,19 @@ const publicationKeys = [
   'guardianRecipientContextCount',
   'createdByUserId',
   'createdAt',
+  'cancellationReason',
+  'supersedesPublicationId',
+  'changeSignificance',
+  'notifyMinorUpdate',
 ].sort();
 const publicationRoutes = [
+  {
+    handler: 'revise',
+    method: 'post',
+    suffix: `publications/${publicationId}/revise`,
+    permission: 'manage+publish',
+    status: 200,
+  },
   {
     handler: 'publicationReadiness',
     method: 'get',
@@ -390,6 +409,10 @@ describe('Academic Content management HTTP security and transport', () => {
         {
           provide: CancelAcademicContentPublicationUseCase,
           useValue: services.cancel,
+        },
+        {
+          provide: StartAcademicContentRevisionUseCase,
+          useValue: services.revise,
         },
         {
           provide: AcademicContentPreparationTemplateUseCases,
@@ -503,7 +526,7 @@ describe('Academic Content management HTTP security and transport', () => {
         context.actor = {
           id: actorId,
           userType:
-            label === 'organization'
+            label === 'organization' || label === 'organizationManageAndPublish'
               ? UserType.ORGANIZATION_USER
               : label === 'teacher'
                 ? UserType.TEACHER
@@ -523,19 +546,22 @@ describe('Academic Content management HTTP security and transport', () => {
           organizationId,
           roleId: randomUUID(),
           permissions:
-            label === 'missing'
-              ? []
-              : label === 'viewOnly'
-                ? [permissions[0]]
-                : label === 'manageOnly'
-                  ? [permissions[1]]
-                  : label === 'settingsOnly'
-                    ? [permissions[2]]
-                    : label === 'approveOnly'
-                      ? [permissions[3]]
-                      : label === 'publishOnly'
-                        ? [permissions[4]]
-                        : permissions,
+            label === 'schoolManageAndPublish' ||
+            label === 'organizationManageAndPublish'
+              ? [permissions[1], permissions[4]]
+              : label === 'missing'
+                ? []
+                : label === 'viewOnly'
+                  ? [permissions[0]]
+                  : label === 'manageOnly'
+                    ? [permissions[1]]
+                    : label === 'settingsOnly'
+                      ? [permissions[2]]
+                      : label === 'approveOnly'
+                        ? [permissions[3]]
+                        : label === 'publishOnly'
+                          ? [permissions[4]]
+                          : permissions,
         };
         runWithRequestContext(context, next);
       },
@@ -580,12 +606,30 @@ describe('Academic Content management HTTP security and transport', () => {
       ...publication,
       status: AcademicContentPublicationStatus.CANCELLED,
       cancelledAt: now,
+      cancellationReason:
+        AcademicContentPublicationCancellationReason.UNSCHEDULED,
     });
     services.cancel.execute.mockResolvedValue({
       ...publication,
       status: AcademicContentPublicationStatus.CANCELLED,
       publishedAt: now,
       cancelledAt: now,
+      cancellationReason:
+        AcademicContentPublicationCancellationReason.WITHDRAWN,
+    });
+    services.revise.execute.mockResolvedValue({
+      contentId,
+      oldPublicationId: publicationId,
+      oldRevisionId: revisionId,
+      cancellationReason:
+        AcademicContentPublicationCancellationReason.REVISION_STARTED,
+      restoredContentStatus: AcademicContentStatus.DRAFT,
+      cancelledAt: now,
+      schoolId,
+      organizationId,
+      cancelledByUserId: actorId,
+      requestFingerprint: 'private',
+      joinUrl: secret,
     });
     services.templates.list.mockResolvedValue({
       items: [],
@@ -839,7 +883,11 @@ describe('Academic Content management HTTP security and transport', () => {
         );
         expect(
           Reflect.getMetadata(REQUIRED_PERMISSIONS_METADATA, handler),
-        ).toEqual([`academics.academic_content.${route.permission}`]);
+        ).toEqual(
+          route.permission
+            .split('+')
+            .map((permission) => `academics.academic_content.${permission}`),
+        );
         expect(
           Reflect.getMetadata(
             SCHOOL_MANAGEMENT_ONLY_METADATA,
@@ -972,6 +1020,76 @@ describe('Academic Content management HTTP security and transport', () => {
       },
     );
 
+    it('presents only the six revision-start fields with an ISO date', async () => {
+      for (const actor of [
+        'schoolManageAndPublish',
+        'organizationManageAndPublish',
+      ]) {
+        const response = await request(app.getHttpServer())
+          .post(`${base}/${contentId}/publications/${publicationId}/revise`)
+          .set('x-test-actor', actor)
+          .send({})
+          .expect(200);
+        expect(response.body).toEqual({
+          contentId,
+          oldPublicationId: publicationId,
+          oldRevisionId: revisionId,
+          cancellationReason: 'REVISION_STARTED',
+          restoredContentStatus: 'DRAFT',
+          cancelledAt: now.toISOString(),
+        });
+      }
+      expect(services.revise.execute).toHaveBeenCalledWith(
+        contentId,
+        publicationId,
+      );
+      expect(services.cancel.execute).not.toHaveBeenCalled();
+    });
+
+    it.each(['MINOR', 'SIGNIFICANT'] as const)(
+      'presents persisted %s successor lineage on create, detail and history',
+      async (changeSignificance) => {
+        const supersedesPublicationId = randomUUID();
+        const successor = {
+          ...publication,
+          supersedesPublicationId,
+          changeSignificance,
+          notifyMinorUpdate: changeSignificance === 'MINOR',
+        };
+        services.createPublication.execute.mockResolvedValueOnce(successor);
+        services.publicationDetail.execute.mockResolvedValueOnce(successor);
+        services.publicationHistory.execute.mockResolvedValueOnce({
+          items: [successor],
+          page: 1,
+          limit: 20,
+          total: 1,
+        });
+        const created = await request(app.getHttpServer())
+          .post(`${base}/${contentId}/publications`)
+          .send({ clientRequestId: randomUUID() })
+          .expect(201);
+        const detail = await request(app.getHttpServer())
+          .get(`${base}/${contentId}/publications/${publicationId}`)
+          .expect(200);
+        const history = await request(app.getHttpServer())
+          .get(`${base}/${contentId}/publications`)
+          .expect(200);
+        for (const item of [
+          created.body,
+          detail.body,
+          (history.body as { items: object[] }).items[0],
+        ]) {
+          expect(Object.keys(item as object).sort()).toEqual(publicationKeys);
+          expect(item).toMatchObject({
+            cancellationReason: null,
+            supersedesPublicationId,
+            changeSignificance,
+            notifyMinorUpdate: successor.notifyMinorUpdate,
+          });
+        }
+      },
+    );
+
     it('preserves omitted versus explicit null timing and delegates Dates only', async () => {
       const requestId = randomUUID();
       const result = await request(app.getHttpServer())
@@ -1062,7 +1180,7 @@ describe('Academic Content management HTTP security and transport', () => {
       expect(services.createPublication.execute).not.toHaveBeenCalled();
     });
 
-    it.each(['unschedule', 'cancel'] as const)(
+    it.each(['unschedule', 'cancel', 'revise'] as const)(
       'requires an empty %s action body',
       async (action) => {
         const path = `${base}/${contentId}/publications/${publicationId}/${action}`;
@@ -1076,9 +1194,16 @@ describe('Academic Content management HTTP security and transport', () => {
         services[action].execute.mockClear();
         for (const field of [
           'schoolId',
+          'organizationId',
+          'contentId',
+          'publicationId',
+          'actorId',
           'now',
           'status',
           'reason',
+          'cancellationReason',
+          'supersedesPublicationId',
+          'notifyMinorUpdate',
           'unknown',
         ]) {
           await request(app.getHttpServer())
@@ -1199,6 +1324,10 @@ describe('Academic Content management HTTP security and transport', () => {
         expiredAt: null,
         cancelledAt: null,
         createdAt: now.toISOString(),
+        cancellationReason: null,
+        supersedesPublicationId: null,
+        changeSignificance: null,
+        notifyMinorUpdate: false,
       });
       const timed = {
         ...publication,
@@ -1234,13 +1363,15 @@ describe('Academic Content management HTTP security and transport', () => {
         expect(response.body).toMatchObject({
           status: 'CANCELLED',
           cancelledAt: now.toISOString(),
+          cancellationReason:
+            action === 'unschedule' ? 'UNSCHEDULED' : 'WITHDRAWN',
         });
       }
     });
 
     it('preserves domain lifecycle and idempotency conflict mapping', async () => {
-      for (const route of publicationRoutes.filter(
-        (route) => route.permission === 'publish',
+      for (const route of publicationRoutes.filter((route) =>
+        route.permission.includes('publish'),
       )) {
         services[route.handler].execute.mockRejectedValueOnce(
           new DomainException({
@@ -1359,6 +1490,83 @@ describe('Academic Content management HTTP security and transport', () => {
           schema('AcademicContentPublicationResponseDto').properties!,
         ).sort(),
       ).toEqual(publicationKeys);
+      const publicationSchema = schema('AcademicContentPublicationResponseDto');
+      expect(publicationSchema.properties!.cancellationReason).toEqual({
+        type: 'string',
+        nullable: true,
+        enum: Object.values(AcademicContentPublicationCancellationReason),
+      });
+      expect(publicationSchema.properties!.changeSignificance).toEqual({
+        type: 'string',
+        nullable: true,
+        enum: Object.values(AcademicContentChangeSignificance),
+      });
+      expect(publicationSchema.properties!.supersedesPublicationId).toEqual({
+        type: 'string',
+        format: 'uuid',
+        nullable: true,
+      });
+      expect(publicationSchema.properties!.notifyMinorUpdate).toEqual({
+        type: 'boolean',
+      });
+      const reviseSchema = schema(
+        'AcademicContentPublicationRevisionStartResponseDto',
+      );
+      expect(Object.keys(reviseSchema.properties!).sort()).toEqual([
+        'cancellationReason',
+        'cancelledAt',
+        'contentId',
+        'oldPublicationId',
+        'oldRevisionId',
+        'restoredContentStatus',
+      ]);
+      expect(reviseSchema.required!.sort()).toEqual(
+        Object.keys(reviseSchema.properties!).sort(),
+      );
+      for (const field of ['contentId', 'oldPublicationId', 'oldRevisionId'])
+        expect(reviseSchema.properties![field]).toEqual({
+          type: 'string',
+          format: 'uuid',
+        });
+      expect(reviseSchema.properties!.cancelledAt).toEqual({
+        type: 'string',
+        format: 'date-time',
+      });
+      expect(reviseSchema.properties!.cancellationReason).toEqual({
+        type: 'string',
+        enum: Object.values(AcademicContentPublicationCancellationReason),
+      });
+      expect(reviseSchema.properties!.restoredContentStatus).toEqual({
+        type: 'string',
+        enum: Object.values(AcademicContentStatus),
+      });
+      const reviseOperation =
+        document.paths[
+          `${base}/{contentId}/publications/{publicationId}/revise`
+        ].post!;
+      expect(reviseOperation.responses['200']).toMatchObject({
+        content: {
+          'application/json': {
+            schema: {
+              $ref: '#/components/schemas/AcademicContentPublicationRevisionStartResponseDto',
+            },
+          },
+        },
+      });
+      expect(reviseOperation.parameters).toEqual([
+        {
+          name: 'contentId',
+          required: true,
+          in: 'path',
+          schema: { type: 'string', format: 'uuid' },
+        },
+        {
+          name: 'publicationId',
+          required: true,
+          in: 'path',
+          schema: { type: 'string', format: 'uuid' },
+        },
+      ]);
       expect(
         Object.keys(
           schema('AcademicContentPublicationReadinessResponseDto').properties!,
@@ -1403,7 +1611,7 @@ describe('Academic Content management HTTP security and transport', () => {
         'ARCHIVED',
         'CANCELLED',
       ]);
-      for (const action of ['unschedule', 'cancel']) {
+      for (const action of ['unschedule', 'cancel', 'revise']) {
         expect(
           document.paths[
             `${base}/{contentId}/publications/{publicationId}/${action}`
@@ -1824,7 +2032,7 @@ describe('Academic Content management HTTP security and transport', () => {
           .map((method) => `${method.toUpperCase()} ${path}`),
       )
       .sort();
-    expect(registeredRoutes).toHaveLength(45);
+    expect(registeredRoutes).toHaveLength(46);
     expect(registeredRoutes).toEqual(
       [
         `GET ${base}`,
@@ -1838,6 +2046,7 @@ describe('Academic Content management HTTP security and transport', () => {
         `GET ${base}/{contentId}/publications/{publicationId}`,
         `POST ${base}/{contentId}/publications/{publicationId}/unschedule`,
         `POST ${base}/{contentId}/publications/{publicationId}/cancel`,
+        `POST ${base}/{contentId}/publications/{publicationId}/revise`,
         `PATCH ${base}/{contentId}`,
         `DELETE ${base}/{contentId}`,
         `POST ${base}/{contentId}/archive`,

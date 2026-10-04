@@ -5660,8 +5660,26 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     };
   }
 
+  it('allows online session preference copy while rejecting nested authentication session fields', () => {
+    assertNoForbiddenParentAppFields({
+      description:
+        'Notifications for academic content publications, updates, cancellations, and online session reminders.',
+    });
+    for (const key of [
+      'session',
+      'sessions',
+      'authSessionId',
+      'sessionToken',
+    ]) {
+      expect(() =>
+        assertNoForbiddenParentAppFields({ nested: { [key]: 'private' } }),
+      ).toThrow();
+    }
+  });
+
   function assertNoForbiddenParentAppFields(body: unknown): void {
     const serialized = JSON.stringify(body);
+    expect(serialized).not.toMatch(/"[^"\\]*session[^"\\]*"\s*:/iu);
     for (const forbidden of [
       'schoolId',
       'organizationId',
@@ -5683,7 +5701,6 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       'internalNote',
       'password',
       'passwordHash',
-      'session',
       'refreshToken',
       'bucket',
       'objectKey',
