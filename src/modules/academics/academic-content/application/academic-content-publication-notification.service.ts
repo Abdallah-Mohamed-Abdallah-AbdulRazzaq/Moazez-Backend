@@ -12,6 +12,7 @@ import {
   ACADEMIC_CONTENT_NOTIFICATION_RECIPIENT_PAGE_SIZE,
   ACADEMIC_CONTENT_NOTIFICATION_RECOVERY_PAGE_SIZE,
   publishedNotificationContextAllows,
+  academicContentPublicationNotificationEvent,
   publishedNotificationPolicyAllows,
 } from '../domain/academic-content-publication-notification.policy';
 import { AcademicContentPublicationJobData } from '../domain/academic-content-publication-runtime.constants';
@@ -38,7 +39,8 @@ export class AcademicContentPublicationNotificationService {
   ): Promise<void> {
     try {
       const source = await this.repository.findSource(identity, now);
-      if (!source) return;
+      if (!source || !academicContentPublicationNotificationEvent(source))
+        return;
       await this.queue.ensureAcademicContentPublishedNotifications(
         publicationNotificationJobData(source),
       );
@@ -73,10 +75,21 @@ export class AcademicContentPublicationNotificationService {
         skippedReason: 'source_not_eligible',
       };
     }
+    const eventType = academicContentPublicationNotificationEvent(source);
+    if (!eventType)
+      return {
+        recipientCount: 0,
+        createdNotificationCount: 0,
+        skippedReason: 'no_notification_event',
+      };
     const policy = effectiveAcademicContentNotificationPolicy(
       await this.repository.findPolicy(source.schoolId),
     );
-    if (!publishedNotificationPolicyAllows(source.revision.type, policy)) {
+    if (
+      !publishedNotificationPolicyAllows(source.revision.type, policy) ||
+      (eventType === 'academic_content_updated' &&
+        !policy.significantUpdateNotificationsEnabled)
+    ) {
       this.signal('skipped', input, {
         reason: 'school_or_type_policy_disabled',
       });
@@ -149,7 +162,7 @@ export class AcademicContentPublicationNotificationService {
                 publicationId: source.id,
                 revisionId: source.revisionId,
                 contentType: source.revision.type.toLowerCase(),
-                eventType: 'academic_content_published',
+                eventType,
                 publishedAt: source.publishedAt!.toISOString(),
                 studentIds,
                 childContextCount: students.contextCount,
@@ -160,7 +173,11 @@ export class AcademicContentPublicationNotificationService {
       const result =
         await this.generation.generateForAcademicContentPublicationBatch({
           ...publicationNotificationJobData(source),
-          title: 'New academic content',
+          eventType,
+          title:
+            eventType === 'academic_content_updated'
+              ? 'Academic content updated'
+              : 'New academic content',
           body: source.revision.title.trim(),
           expiresAt: source.visibleUntil,
           recipients,
@@ -186,6 +203,7 @@ export class AcademicContentPublicationNotificationService {
     while (true) {
       const page = await this.repository.listRecoveryCandidates(now, after);
       for (const source of page) {
+        if (!academicContentPublicationNotificationEvent(source)) continue;
         const result =
           await this.queue.ensureAcademicContentPublishedNotifications(
             publicationNotificationJobData(source),

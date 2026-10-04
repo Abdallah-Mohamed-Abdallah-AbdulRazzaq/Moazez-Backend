@@ -35,6 +35,17 @@ import { AcademicContentPublicationSnapshotRepository } from '../../src/modules/
 import { AcademicContentPublicationRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-publication.repository';
 import { AcademicContentRevisionRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-revision.repository';
 import { AcademicContentPublicationCommand } from '../../src/modules/academics/academic-content/domain/academic-content-publication.policy';
+import { AcademicContentPublicationNotificationRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-publication-notification.repository';
+import { AcademicContentPublicationNotificationService } from '../../src/modules/academics/academic-content/application/academic-content-publication-notification.service';
+import { CommunicationNotificationGenerationService } from '../../src/modules/communication/application/communication-notification-generation.service';
+import { CommunicationNotificationGenerationRepository } from '../../src/modules/communication/infrastructure/communication-notification-generation.repository';
+import { CommunicationNotificationPreferenceService } from '../../src/modules/communication/application/communication-notification-preference.service';
+import { CommunicationNotificationPreferenceRepository } from '../../src/modules/communication/infrastructure/communication-notification-preference.repository';
+import { CommunicationNotificationQueueService } from '../../src/modules/communication/application/communication-notification-queue.service';
+import {
+  buildAcademicContentNotificationGenerationJobId,
+  COMMUNICATION_NOTIFICATION_QUEUE_NAME,
+} from '../../src/modules/communication/domain/communication-notification-generation-domain';
 
 const url = process.env.DATABASE_URL;
 const describeDatabase = url ? describe : describe.skip;
@@ -421,6 +432,10 @@ describeDatabase(
     afterAll(async () => {
       try {
         const where = { schoolId: { in: schools } };
+        await prisma.communicationNotificationDelivery.deleteMany({ where });
+        await prisma.communicationNotification.deleteMany({ where });
+        await prisma.communicationNotificationPreference.deleteMany({ where });
+        await prisma.academicContentNotificationPolicy.deleteMany({ where });
         await prisma.academicContentAudienceRecipientTarget.deleteMany({
           where,
         });
@@ -433,6 +448,10 @@ describeDatabase(
         await prisma.academicContentRevisionTag.deleteMany({ where });
         await prisma.academicContentRevision.deleteMany({ where });
         await prisma.academicContentTarget.deleteMany({ where });
+        await prisma.academicContentAsset.deleteMany({ where });
+        await prisma.academicContentLink.deleteMany({ where });
+        await prisma.academicContentTag.deleteMany({ where });
+        await prisma.file.deleteMany({ where });
         await prisma.academicContent.deleteMany({ where });
         await prisma.auditLog.deleteMany({ where });
         await prisma.studentGuardian.deleteMany({ where });
@@ -454,6 +473,899 @@ describeDatabase(
         await Promise.all([prisma.$disconnect(), second.$disconnect()]);
       }
     });
+
+    const revise = (f: Fixture, p: Publication, client = prisma) =>
+      lifecycle(client).startRevision({
+        ...mutation(f),
+        publicationId: p.publicationId,
+      });
+    const frozenRevision = (f: Fixture, p: Publication) =>
+      prisma.academicContentRevision.findFirstOrThrow({
+        where: {
+          schoolId: f.schoolId,
+          academicContentId: f.content.id,
+          id: p.revisionId,
+        },
+        include: {
+          targets: { orderBy: { id: 'asc' } },
+          assets: { orderBy: { id: 'asc' } },
+          links: { orderBy: { id: 'asc' } },
+          tags: { orderBy: { id: 'asc' } },
+        },
+      });
+    const scopedNotifications = <T>(f: Fixture, work: () => Promise<T>) =>
+      runWithRequestContext(createRequestContext(), () => {
+        setActiveMembership({
+          membershipId: 'queue:test',
+          schoolId: f.schoolId,
+          organizationId,
+          roleId: 'queue:test',
+          permissions: [],
+        });
+        return work();
+      });
+    function notificationAdapter(
+      queue?: CommunicationNotificationQueueService,
+      client = prisma,
+    ) {
+      const realtime = jest.fn(),
+        push = jest.fn().mockResolvedValue(undefined);
+      const ensure = jest.fn().mockResolvedValue('created');
+      const service = new AcademicContentPublicationNotificationService(
+        new AcademicContentPublicationNotificationRepository(client),
+        new CommunicationNotificationGenerationService(
+          new CommunicationNotificationGenerationRepository(client),
+          { publishNotificationCreated: realtime } as never,
+          new CommunicationNotificationPreferenceService(
+            new CommunicationNotificationPreferenceRepository(client),
+          ),
+          { enqueueNotificationPushDelivery: push } as never,
+        ),
+        queue ??
+          ({ ensureAcademicContentPublishedNotifications: ensure } as never),
+      );
+      return { service, realtime, push, ensure };
+    }
+    const notificationInput = (f: Fixture, p: Publication) => ({
+      ...jobIdentity(f, p),
+      organizationId,
+      actorUserId: actorId,
+      actorUserType: UserType.SCHOOL_USER,
+    });
+    const savedNotifications = (f: Fixture, p: Publication) =>
+      prisma.communicationNotification.findMany({
+        where: { schoolId: f.schoolId, sourceId: p.publicationId },
+        orderBy: { recipientUserId: 'asc' },
+        include: { deliveries: { orderBy: { id: 'asc' } } },
+      });
+    const editTitle = (f: Fixture) =>
+      prisma.academicContent.updateMany({
+        where: {
+          id: f.content.id,
+          schoolId: f.schoolId,
+          status: ContentStatus.DRAFT,
+        },
+        data: { title: 'Revised resource', updatedByUserId: actorId },
+      });
+
+    it('ACC-8C preserves Revision V2 relations, old audience and notification history across revise/edit/schedule/publish', async () => {
+      const f = await fixture();
+      const oldOnly = await addStudent(f, true),
+        both = await addStudent(f, true);
+      await prisma.academicContentLink.create({
+        data: {
+          schoolId: f.schoolId,
+          academicContentId: f.content.id,
+          url: 'https://example.test/resource',
+          label: 'Resource',
+          sortOrder: 0,
+          createdByUserId: actorId,
+        },
+      });
+      await prisma.academicContentTag.create({
+        data: {
+          schoolId: f.schoolId,
+          academicContentId: f.content.id,
+          displayValue: 'Resource',
+          normalizedValue: 'resource',
+          sortOrder: 0,
+          createdByUserId: actorId,
+        },
+      });
+      const file = await prisma.file.create({
+        data: {
+          schoolId: f.schoolId,
+          organizationId,
+          uploaderId: actorId,
+          originalName: 'valid.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 12n,
+          bucket: 'private-test',
+          objectKey: randomUUID(),
+        },
+      });
+      await prisma.academicContentAsset.create({
+        data: {
+          schoolId: f.schoolId,
+          academicContentId: f.content.id,
+          fileId: file.id,
+          sortOrder: 0,
+          createdByUserId: actorId,
+        },
+      });
+      const old = await schedule(f);
+      await execute(f, old);
+      const adapter = notificationAdapter();
+      await scopedNotifications(f, () =>
+        adapter.service.generate(notificationInput(f, old), now),
+      );
+      const oldRevision = await frozenRevision(f, old),
+        oldState = await state(f, old),
+        oldNotifications = await savedNotifications(f, old);
+      await revise(f, old);
+      await editTitle(f);
+      const newRoom = await prisma.classroom.create({
+        data: {
+          schoolId: f.schoolId,
+          sectionId: f.sectionId,
+          nameAr: 'New room',
+          nameEn: 'New room',
+        },
+      });
+      await prisma.academicContentTarget.update({
+        where: { id: f.targets[0].id },
+        data: {
+          classroomId: newRoom.id,
+          identityFingerprint: randomUUID().replace(/-/g, ''),
+        },
+      });
+      await prisma.enrollment.update({
+        where: { id: both.enrollment.id },
+        data: { classroomId: newRoom.id },
+      });
+      const newOnly = await addStudent(f, true);
+      await prisma.enrollment.update({
+        where: { id: newOnly.enrollment.id },
+        data: { classroomId: newRoom.id },
+      });
+      const next = await schedule(f, {
+        clientRequestId: randomUUID(),
+        notifyMinorUpdate: true,
+      });
+      expect((await state(f, next)).publication).toMatchObject({
+        supersedesPublicationId: old.publicationId,
+        changeSignificance: 'SIGNIFICANT',
+        notifyMinorUpdate: true,
+      });
+      expect(next.revisionId).not.toBe(old.revisionId);
+      expect((await frozenRevision(f, next)).revisionNumber).toBe(
+        oldRevision.revisionNumber + 1,
+      );
+      await execute(f, next);
+      const newSnapshot = (await state(f, next)).recipients;
+      // The resolver must not consult current enrollment/authoring on worker retries.
+      await prisma.enrollment.updateMany({
+        where: { schoolId: f.schoolId },
+        data: { status: 'WITHDRAWN' },
+      });
+      adapter.realtime.mockClear();
+      await scopedNotifications(f, () =>
+        Promise.all([
+          adapter.service.generate(notificationInput(f, next), now),
+          notificationAdapter(undefined, second).service.generate(
+            notificationInput(f, next),
+            now,
+          ),
+        ]),
+      );
+      await scopedNotifications(f, () =>
+        adapter.service.generate(notificationInput(f, next), now),
+      );
+      const updated = await savedNotifications(f, next);
+      expect(updated.map((row) => row.recipientUserId).sort()).toEqual(
+        [both.student.userId, newOnly.student.userId].sort(),
+      );
+      expect(
+        updated.some((row) => row.recipientUserId === oldOnly.student.userId),
+      ).toBe(false);
+      for (const row of updated) {
+        expect(row).toMatchObject({
+          type: 'ACADEMIC_CONTENT_UPDATED',
+          sourceModule: 'ACADEMICS',
+          sourceType: 'academic_content_publication',
+          sourceId: next.publicationId,
+          title: 'Academic content updated',
+          body: 'Revised resource',
+          idempotencyKey: `acc:updated:${next.publicationId}:${row.recipientUserId}`,
+        });
+        expect(
+          row.deliveries.filter((delivery) => delivery.channel === 'IN_APP'),
+        ).toHaveLength(1);
+        expect(
+          row.deliveries.filter((delivery) => delivery.channel === 'PUSH'),
+        ).toHaveLength(1);
+        expect(Object.keys(row.metadata as object).sort()).toEqual(
+          [
+            'academicContentId',
+            'publicationId',
+            'revisionId',
+            'contentType',
+            'eventType',
+            'publishedAt',
+            'studentIds',
+            'childContextCount',
+          ].sort(),
+        );
+        expect(row.metadata).toMatchObject({
+          eventType: 'academic_content_updated',
+          publicationId: next.publicationId,
+          revisionId: next.revisionId,
+        });
+      }
+      expect(await frozenRevision(f, old)).toEqual(oldRevision);
+      expect((await state(f, old)).recipients).toEqual(oldState.recipients);
+      expect((await state(f, next)).recipients).toEqual(newSnapshot);
+      expect(await savedNotifications(f, old)).toEqual(oldNotifications);
+      expect((await state(f, old)).publication).toMatchObject({
+        status: 'CANCELLED',
+        cancellationReason: 'REVISION_STARTED',
+        publishedAt: oldState.publication.publishedAt,
+      });
+      const classification = (await state(f, next)).audits.filter((audit) =>
+        audit.action.endsWith('.update_classified'),
+      );
+      expect(classification).toHaveLength(1);
+      expect(classification[0].after).toEqual({
+        oldPublicationId: old.publicationId,
+        oldRevisionId: old.revisionId,
+        newPublicationId: next.publicationId,
+        newRevisionId: next.revisionId,
+        significance: 'SIGNIFICANT',
+        notifyMinorUpdate: true,
+      });
+    });
+
+    it('ACC-8C rejects identical draft capture and rolls its revision/audit back; preserves historical omitted-field retry', async () => {
+      const f = await fixture(),
+        command = { clientRequestId: randomUUID() };
+      const old = await schedule(f, command);
+      await execute(f, old);
+      await revise(f, old);
+      const before = await prisma.academicContentRevision.count({
+        where: { schoolId: f.schoolId },
+      });
+      const audits = await prisma.auditLog.count({
+        where: { schoolId: f.schoolId },
+      });
+      await expect(schedule(f)).rejects.toMatchObject({
+        code: 'academic_content.publication.identical_revision',
+      });
+      expect(
+        await prisma.academicContentRevision.count({
+          where: { schoolId: f.schoolId },
+        }),
+      ).toBe(before);
+      expect(
+        await prisma.auditLog.count({ where: { schoolId: f.schoolId } }),
+      ).toBe(audits);
+      expect(await schedule(f, command)).toMatchObject({
+        publicationId: old.publicationId,
+      });
+      await expect(
+        schedule(f, { ...command, notifyMinorUpdate: false }),
+      ).rejects.toMatchObject({
+        code: 'academic_content.publication.idempotency_conflict',
+      });
+      expect((await state(f, old)).content.status).toBe('DRAFT');
+    });
+
+    it('ACC-8C identical approved successor rejection preserves the pre-existing approved Revision V2', async () => {
+      const f = await fixture(),
+        old = await schedule(f);
+      await execute(f, old);
+      await revise(f, old);
+      const approved = await new AcademicContentRevisionRepository(
+        prisma,
+      ).capture(mutation(f));
+      await prisma.academicContentApproval.create({
+        data: {
+          schoolId: f.schoolId,
+          academicContentId: f.content.id,
+          revisionId: approved.id,
+          roundNumber: 1,
+          status: 'APPROVED',
+          submittedByUserId: actorId,
+          submittedAt: now,
+          decidedByUserId: actorId,
+          decidedAt: now,
+        },
+      });
+      await prisma.academicContent.update({
+        where: { id: f.content.id },
+        data: { status: ContentStatus.APPROVED },
+      });
+      await expect(schedule(f)).rejects.toMatchObject({
+        code: 'academic_content.publication.identical_revision',
+      });
+      expect(
+        await frozenRevision(f, { ...old, revisionId: approved.id }),
+      ).toMatchObject({ id: approved.id });
+    });
+
+    it('ACC-8C uses the exact new approved Revision V2 for a changed successor', async () => {
+      const f = await fixture(),
+        old = await schedule(f);
+      await execute(f, old);
+      await revise(f, old);
+      await editTitle(f);
+      const approved = await new AcademicContentRevisionRepository(
+        prisma,
+      ).capture(mutation(f));
+      await prisma.academicContentApproval.create({
+        data: {
+          schoolId: f.schoolId,
+          academicContentId: f.content.id,
+          revisionId: approved.id,
+          roundNumber: 1,
+          status: 'APPROVED',
+          submittedByUserId: actorId,
+          submittedAt: now,
+          decidedByUserId: actorId,
+          decidedAt: now,
+        },
+      });
+      await prisma.academicContent.update({
+        where: { id: f.content.id },
+        data: {
+          status: ContentStatus.APPROVED,
+          title: 'Mutable title must not replace approval',
+        },
+      });
+      const next = await schedule(f);
+      expect(next.revisionId).toBe(approved.id);
+      expect((await state(f, next)).publication).toMatchObject({
+        supersedesPublicationId: old.publicationId,
+        changeSignificance: 'MINOR',
+        sourceContentStatus: 'APPROVED',
+      });
+      expect(
+        await prisma.academicContentRevision.count({
+          where: { schoolId: f.schoolId },
+        }),
+      ).toBe(2);
+      await execute(f, next);
+      expect((await frozenRevision(f, next)).title).toBe('Revised resource');
+    });
+
+    it('ACC-8C fails closed after an unscheduled successor consumes the lineage; preserves its historical retry', async () => {
+      const f = await fixture(),
+        old = await schedule(f);
+      await execute(f, old);
+      await revise(f, old);
+      await editTitle(f);
+      const command = { clientRequestId: randomUUID() };
+      const next = await schedule(f, command);
+      await intentRepo().unschedule({
+        ...mutation(f),
+        publicationId: next.publicationId,
+      });
+      const before = await state(f, next);
+      const revisions = await prisma.academicContentRevision.count({
+        where: { schoolId: f.schoolId },
+      });
+      const audits = await prisma.auditLog.count({
+        where: { schoolId: f.schoolId },
+      });
+      expect(before.content.status).toBe('DRAFT');
+      expect(before.publication).toMatchObject({
+        status: 'CANCELLED',
+        cancellationReason: 'UNSCHEDULED',
+        supersedesPublicationId: old.publicationId,
+      });
+      await expect(schedule(f)).rejects.toMatchObject({
+        code: 'academic_content.publication.lineage_conflict',
+        httpStatus: 409,
+      });
+      expect(await schedule(f, command)).toMatchObject({
+        publicationId: next.publicationId,
+        status: 'CANCELLED',
+      });
+      expect(await state(f, next)).toEqual(before);
+      expect(
+        await prisma.academicContentRevision.count({
+          where: { schoolId: f.schoolId },
+        }),
+      ).toBe(revisions);
+      expect(
+        await prisma.auditLog.count({ where: { schoolId: f.schoolId } }),
+      ).toBe(audits);
+      expect(
+        await prisma.academicContentPublication.count({
+          where: { schoolId: f.schoolId },
+        }),
+      ).toBe(2);
+    });
+
+    it('ACC-8C rejects ambiguous unresolved lineage before capture or audit', async () => {
+      const f = await fixture(),
+        old = await schedule(f);
+      await execute(f, old);
+      await revise(f, old);
+      await editTitle(f);
+      const saved = (await state(f, old)).publication;
+      await prisma.academicContentPublication.create({
+        data: { ...saved, id: randomUUID(), clientRequestId: randomUUID() },
+      });
+      const revisions = await prisma.academicContentRevision.count({
+        where: { schoolId: f.schoolId },
+      });
+      const audits = await prisma.auditLog.count({
+        where: { schoolId: f.schoolId },
+      });
+      await expect(schedule(f)).rejects.toMatchObject({
+        code: 'academic_content.publication.lineage_conflict',
+        httpStatus: 409,
+        message: 'Publication revision lineage is inconsistent',
+      });
+      expect(
+        await prisma.academicContentRevision.count({
+          where: { schoolId: f.schoolId },
+        }),
+      ).toBe(revisions);
+      expect(
+        await prisma.auditLog.count({ where: { schoolId: f.schoolId } }),
+      ).toBe(audits);
+    });
+
+    it.each(['revision_start', 'update_classified'] as const)(
+      'ACC-8C rolls back %s audit failure atomically',
+      async (action) => {
+        const f = await fixture(),
+          old = await schedule(f);
+        await execute(f, old);
+        if (action === 'update_classified') {
+          await revise(f, old);
+          await editTitle(f);
+        }
+        const before = await state(f, old),
+          revisions = await prisma.academicContentRevision.count({
+            where: { schoolId: f.schoolId },
+          });
+        const broken = prisma.$extends({
+          query: {
+            auditLog: {
+              async create({ args, query }) {
+                if (
+                  args.data.action ===
+                  `academics.academic_content.publication.${action}`
+                )
+                  throw new Error('Injected audit failure');
+                return query(args);
+              },
+            },
+          },
+        }) as unknown as PrismaService;
+        await expect(
+          action === 'revision_start'
+            ? revise(f, old, broken)
+            : intentRepo(broken).schedule({
+                ...mutation(f),
+                command: { clientRequestId: randomUUID() },
+              }),
+        ).rejects.toThrow('Injected audit failure');
+        expect(await state(f, old)).toEqual(before);
+        expect(
+          await prisma.academicContentRevision.count({
+            where: { schoolId: f.schoolId },
+          }),
+        ).toBe(revisions);
+        expect(
+          await prisma.academicContentPublication.count({
+            where: { schoolId: f.schoolId },
+          }),
+        ).toBe(1);
+      },
+    );
+
+    it.each(['cancel', 'expiry', 'duplicate'] as const)(
+      'ACC-8C serializes revise vs %s with revise winning',
+      async (rival) => {
+        const f = await fixture(),
+          old = await schedule(f, {
+            clientRequestId: randomUUID(),
+            visibleUntil: expiryTime,
+          });
+        await execute(f, old);
+        const entered = deferred(),
+          release = deferred();
+        const holder = prisma.$extends({
+          query: {
+            academicContentPublication: {
+              async updateMany({ args, query }) {
+                entered.resolve();
+                await release.promise;
+                return query(args);
+              },
+            },
+          },
+        }) as unknown as PrismaService;
+        const first = revise(f, old, holder);
+        await waitForSignal(entered.promise);
+        const contender = (
+          rival === 'cancel'
+            ? cancel(f, old, second)
+            : rival === 'expiry'
+              ? expire(f, old, second)
+              : revise(f, old, second)
+        ).then(
+          (value: unknown) => ({ value, error: null }),
+          (error: unknown) => ({ value: null, error }),
+        );
+        try {
+          await waitForParentLock();
+        } finally {
+          release.resolve();
+        }
+        await first;
+        const loser = await contender;
+        if (rival === 'expiry')
+          expect(loser.value).toMatchObject({ outcome: 'TERMINAL_NOOP' });
+        else
+          expect(loser.error).toMatchObject({
+            code: 'academic_content.publication.lifecycle_conflict',
+          });
+        const saved = await state(f, old);
+        expect(saved.publication).toMatchObject({
+          status: 'CANCELLED',
+          cancellationReason: 'REVISION_STARTED',
+        });
+        expect(saved.content.status).toBe('DRAFT');
+        expect(
+          saved.audits.filter((audit) =>
+            ['revision_start', 'cancel', 'expire'].some((action) =>
+              audit.action.endsWith(`.${action}`),
+            ),
+          ),
+        ).toHaveLength(1);
+      },
+    );
+
+    it.each(['cancel', 'expiry'] as const)(
+      'ACC-8C serializes %s winning before revision start',
+      async (winner) => {
+        const f = await fixture(),
+          old = await schedule(f, {
+            clientRequestId: randomUUID(),
+            visibleUntil: expiryTime,
+          });
+        await execute(f, old);
+        const entered = deferred(),
+          release = deferred();
+        const holder = prisma.$extends({
+          query: {
+            academicContentPublication: {
+              async updateMany({ args, query }) {
+                entered.resolve();
+                await release.promise;
+                return query(args);
+              },
+            },
+          },
+        }) as unknown as PrismaService;
+        const first =
+          winner === 'cancel' ? cancel(f, old, holder) : expire(f, old, holder);
+        await waitForSignal(entered.promise);
+        const contender = revise(f, old, second).catch(
+          (error: unknown) => error,
+        );
+        try {
+          await waitForParentLock();
+        } finally {
+          release.resolve();
+        }
+        await first;
+        expect(await contender).toMatchObject({
+          code: 'academic_content.publication.lifecycle_conflict',
+        });
+        const saved = await state(f, old);
+        expect(saved.content.status).toBe(
+          winner === 'cancel' ? 'CANCELLED' : 'EXPIRED',
+        );
+        expect(saved.publication.cancellationReason).toBe(
+          winner === 'cancel' ? 'WITHDRAWN' : null,
+        );
+        expect(
+          saved.audits.filter((audit) =>
+            audit.action.endsWith('.revision_start'),
+          ),
+        ).toHaveLength(0);
+      },
+    );
+
+    it('ACC-8C two successor writers serialize to one lineage and stable domain conflict', async () => {
+      const f = await fixture(),
+        old = await schedule(f);
+      await execute(f, old);
+      await revise(f, old);
+      await editTitle(f);
+      const entered = deferred(),
+        release = deferred();
+      const holder = prisma.$extends({
+        query: {
+          academicContentPublication: {
+            async create({ args, query }) {
+              entered.resolve();
+              await release.promise;
+              return query(args);
+            },
+          },
+        },
+      }) as unknown as PrismaService;
+      const first = intentRepo(holder).schedule({
+        ...mutation(f),
+        command: { clientRequestId: randomUUID() },
+      });
+      await waitForSignal(entered.promise);
+      const contender = intentRepo(second)
+        .schedule({
+          ...mutation(f),
+          command: { clientRequestId: randomUUID() },
+        })
+        .catch((error: unknown) => error);
+      try {
+        await waitForParentLock();
+      } finally {
+        release.resolve();
+      }
+      const next = await first;
+      expect(await contender).toMatchObject({
+        code: 'academic_content.publication.not_ready',
+      });
+      expect(
+        await prisma.academicContentPublication.count({
+          where: {
+            schoolId: f.schoolId,
+            supersedesPublicationId: old.publicationId,
+          },
+        }),
+      ).toBe(1);
+      expect(
+        await prisma.academicContentRevision.count({
+          where: { schoolId: f.schoolId },
+        }),
+      ).toBe(2);
+      expect(
+        (await state(f, next)).audits.filter((audit) =>
+          audit.action.endsWith('.update_classified'),
+        ),
+      ).toHaveLength(1);
+    });
+
+    it('ACC-8C rejects foreign publication/content identity and initial true override without writes', async () => {
+      const f = await fixture(),
+        foreign = await fixture(),
+        old = await schedule(f);
+      await execute(f, old);
+      const before = await state(f, old);
+      await expect(
+        lifecycle().startRevision({
+          ...mutation(foreign),
+          publicationId: old.publicationId,
+        }),
+      ).rejects.toMatchObject({ code: 'not_found' });
+      expect(await state(f, old)).toEqual(before);
+      await expect(
+        schedule(foreign, {
+          clientRequestId: randomUUID(),
+          notifyMinorUpdate: true,
+        }),
+      ).rejects.toThrow();
+      expect(
+        await prisma.academicContentPublication.count({
+          where: { schoolId: foreign.schoolId },
+        }),
+      ).toBe(0);
+    });
+
+    it('ACC-8C catalog and raw writes enforce cancellation, linkage, self FK and one successor', async () => {
+      const constraints = await prisma.$queryRaw<
+        Array<{ conname: string; definition: string }>
+      >`SELECT conname, pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid = 'academic_content_publications'::regclass`;
+      for (const name of [
+        'acc_publication_cancellation_reason_check',
+        'acc_publication_cancellation_kind_check',
+        'acc_publication_update_linkage_check',
+        'acc_publication_no_self_supersede_check',
+      ])
+        expect(constraints.some((row) => row.conname === name)).toBe(true);
+      expect(
+        constraints.find(
+          (row) =>
+            row.conname ===
+            'academic_content_publications_supersedes_publication_id_sc_fkey',
+        )?.definition,
+      ).toContain(
+        'FOREIGN KEY (supersedes_publication_id, school_id, academic_content_id)',
+      );
+      const enums = await prisma.$queryRaw<
+        Array<{ name: string; labels: string[] }>
+      >`SELECT t.typname AS name, array_agg(e.enumlabel ORDER BY e.enumsortorder) AS labels FROM pg_type t JOIN pg_enum e ON e.enumtypid = t.oid WHERE t.typname IN ('AcademicContentPublicationCancellationReason', 'AcademicContentChangeSignificance') GROUP BY t.typname`;
+      expect(
+        enums.find(
+          (row) => row.name === 'AcademicContentPublicationCancellationReason',
+        )?.labels,
+      ).toEqual(['UNSCHEDULED', 'WITHDRAWN', 'REVISION_STARTED']);
+      expect(
+        enums.find((row) => row.name === 'AcademicContentChangeSignificance')
+          ?.labels,
+      ).toEqual(['MINOR', 'SIGNIFICANT']);
+      const columns = await prisma.$queryRaw<
+        Array<{
+          column_name: string;
+          is_nullable: string;
+          column_default: string | null;
+        }>
+      >`SELECT column_name, is_nullable, column_default FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'academic_content_publications' AND column_name IN ('cancellation_reason', 'supersedes_publication_id', 'change_significance', 'notify_minor_update')`;
+      expect(columns).toHaveLength(4);
+      expect(
+        columns.find((row) => row.column_name === 'notify_minor_update'),
+      ).toMatchObject({ is_nullable: 'NO', column_default: 'false' });
+      const indexes = await prisma.$queryRaw<
+        Array<{ indexdef: string }>
+      >`SELECT indexdef FROM pg_indexes WHERE tablename = 'academic_content_publications' AND indexname = 'academic_content_publications_school_id_supersedes_publicat_key'`;
+      expect(indexes[0].indexdef).toContain('UNIQUE INDEX');
+      expect(indexes[0].indexdef).toContain(
+        '(school_id, supersedes_publication_id)',
+      );
+      const f = await fixture(),
+        old = await schedule(f);
+      await execute(f, old);
+      await revise(f, old);
+      await editTitle(f);
+      const next = await schedule(f);
+      const saved = (await state(f, old)).publication;
+      for (const change of [
+        { cancellationReason: null },
+        { cancellationReason: 'UNSCHEDULED' },
+        {
+          status: 'PUBLISHED',
+          cancelledAt: null,
+          cancellationReason: 'WITHDRAWN',
+        },
+        { supersedesPublicationId: null, changeSignificance: 'MINOR' },
+        { notifyMinorUpdate: true },
+      ] as const) {
+        await expect(
+          prisma.academicContentPublication.updateMany({
+            where: { id: old.publicationId, schoolId: f.schoolId },
+            data: change,
+          }),
+        ).rejects.toThrow('acc_publication_');
+      }
+      const self = randomUUID();
+      await expect(
+        prisma.academicContentPublication.create({
+          data: {
+            ...saved,
+            id: self,
+            clientRequestId: randomUUID(),
+            supersedesPublicationId: self,
+            changeSignificance: 'MINOR',
+          },
+        }),
+      ).rejects.toThrow('acc_publication_');
+      await expect(
+        prisma.academicContentPublication.create({
+          data: {
+            ...saved,
+            id: randomUUID(),
+            clientRequestId: randomUUID(),
+            supersedesPublicationId: old.publicationId,
+            changeSignificance: 'MINOR',
+          },
+        }),
+      ).rejects.toMatchObject({ code: 'P2002' });
+      const foreign = await fixture(),
+        q = await schedule(foreign);
+      await execute(foreign, q);
+      await revise(foreign, q);
+      await expect(
+        prisma.academicContentPublication.create({
+          data: {
+            ...(await state(foreign, q)).publication,
+            id: randomUUID(),
+            clientRequestId: randomUUID(),
+            supersedesPublicationId: old.publicationId,
+            changeSignificance: 'SIGNIFICANT',
+          },
+        }),
+      ).rejects.toMatchObject({ code: 'P2003' });
+      const anotherContent = await prisma.academicContent.create({
+        data: { ...foreign.content, id: randomUUID() },
+      });
+      const anotherRevision = await new AcademicContentRevisionRepository(
+        prisma,
+      ).capture({ ...mutation(foreign), contentId: anotherContent.id });
+      await expect(
+        prisma.academicContentPublication.create({
+          data: {
+            ...(await state(foreign, q)).publication,
+            id: randomUUID(),
+            clientRequestId: randomUUID(),
+            academicContentId: anotherContent.id,
+            revisionId: anotherRevision.id,
+            supersedesPublicationId: q.publicationId,
+            changeSignificance: 'MINOR',
+          },
+        }),
+      ).rejects.toMatchObject({ code: 'P2003' });
+      expect((await state(f, next)).publication.supersedesPublicationId).toBe(
+        old.publicationId,
+      );
+    });
+
+    it.each([false, true])(
+      'ACC-8C minor override=%s respects policy/preferences and no-op recovery',
+      async (override) => {
+        const f = await fixture();
+        await addStudent(f, true);
+        const old = await schedule(f);
+        await execute(f, old);
+        await revise(f, old);
+        await editTitle(f);
+        const next = await schedule(f, {
+          clientRequestId: randomUUID(),
+          notifyMinorUpdate: override,
+        });
+        await execute(f, next);
+        const adapter = notificationAdapter();
+        if (!override) {
+          await adapter.service.ensureAfterPublicationCommit(
+            jobIdentity(f, next),
+            now,
+          );
+          expect(adapter.ensure).not.toHaveBeenCalled();
+          expect(
+            (
+              await scopedNotifications(f, () =>
+                adapter.service.generate(notificationInput(f, next), now),
+              )
+            ).skippedReason,
+          ).toBe('no_notification_event');
+          expect(await savedNotifications(f, next)).toHaveLength(0);
+        } else {
+          const policy = {
+            notificationsEnabled: true,
+            studentNotificationsEnabled: true,
+            guardianNotificationsEnabled: true,
+            weeklyPlanNotificationsEnabled: true,
+            guardianWeeklyNoteNotificationsEnabled: true,
+            subjectResourceNotificationsEnabled: true,
+            onlineSessionNotificationsEnabled: true,
+            generalResourceNotificationsEnabled: true,
+            significantUpdateNotificationsEnabled: false,
+            cancellationNotificationsEnabled: false,
+            onlineSessionRemindersEnabled: false,
+            onlineSessionReminderOffsetsMinutes: [15],
+          };
+          await prisma.academicContentNotificationPolicy.create({
+            data: { schoolId: f.schoolId, ...policy },
+          });
+          await scopedNotifications(f, () =>
+            adapter.service.generate(notificationInput(f, next), now),
+          );
+          expect(await savedNotifications(f, next)).toHaveLength(0);
+          await prisma.academicContentNotificationPolicy.update({
+            where: { schoolId: f.schoolId },
+            data: { significantUpdateNotificationsEnabled: true },
+          });
+          await scopedNotifications(f, () =>
+            adapter.service.generate(notificationInput(f, next), now),
+          );
+          expect(await savedNotifications(f, next)).toHaveLength(1);
+        }
+      },
+    );
 
     it('publishes at publishAt before visibleFrom and preserves worker retry history', async () => {
       const f = await fixture();
@@ -680,7 +1592,7 @@ describeDatabase(
         const secondResult = (
           winner === 'expiry' ? cancel(f, p, second) : expire(f, p, second)
         ).then(
-          (value) => ({ value, error: null }),
+          (value: unknown) => ({ value, error: null }),
           (error: unknown) => ({ value: null, error }),
         );
         try {
@@ -924,6 +1836,117 @@ describeDatabase(
       (process.env.PRD3_G03_QUEUE_PORT
         ? `redis://127.0.0.1:${process.env.PRD3_G03_QUEUE_PORT}`
         : undefined);
+    (redisUrl ? it : it.skip)(
+      'ACC-8C recovers committed significant updates after enqueue failure and real Redis loss; minor false is a no-op',
+      async () => {
+        const queue = new BullmqService(
+          new ConfigService({ NODE_ENV: 'test', QUEUE_REDIS_URL: redisUrl }),
+        );
+        await queue.getQueueReadiness(COMMUNICATION_NOTIFICATION_QUEUE_NAME);
+        const jobs = queue.getQueue(COMMUNICATION_NOTIFICATION_QUEUE_NAME);
+        const adapter = notificationAdapter(
+          new CommunicationNotificationQueueService(queue),
+        );
+        const r = runtime(queue);
+        const worker = new AcademicContentPublicationWorker(
+          queue,
+          snapshotRepo(),
+          lifecycle(),
+          r.producer,
+          r.reconciliation,
+          adapter.service,
+        );
+        try {
+          const f = await fixture();
+          await addStudent(f, true);
+          const old = await schedule(f);
+          await execute(f, old);
+          await revise(f, old);
+          await prisma.academicContent.update({
+            where: { id: f.content.id },
+            data: { audience: Audience.STUDENTS },
+          });
+          const next = await schedule(f);
+          expect((await state(f, next)).publication.changeSignificance).toBe(
+            'SIGNIFICANT',
+          );
+          const originalEnsure = queue.ensureJobFromPersistedTruth.bind(
+            queue,
+          ) as BullmqService['ensureJobFromPersistedTruth'];
+          const outage = jest
+            .spyOn(queue, 'ensureJobFromPersistedTruth')
+            .mockImplementation((name, ...args) => {
+              if (name === COMMUNICATION_NOTIFICATION_QUEUE_NAME)
+                return Promise.reject(new Error('Synthetic Redis outage'));
+              return originalEnsure(name, ...args);
+            });
+          const jobId = buildAcademicContentNotificationGenerationJobId({
+            schoolId: f.schoolId,
+            publicationId: next.publicationId,
+          });
+          await worker.process('publish', jobIdentity(f, next), now);
+          expect((await state(f, next)).publication.status).toBe('PUBLISHED');
+          expect(await jobs.getJob(jobId)).toBeUndefined();
+          outage.mockRestore();
+          await adapter.service.recover(now);
+          expect((await jobs.getJob(jobId))?.id).toBe(jobId);
+          await scopedNotifications(f, () =>
+            adapter.service.generate(notificationInput(f, next), now),
+          );
+          const before = await savedNotifications(f, next);
+          await jobs.obliterate({ force: true });
+          await adapter.service.recover(now);
+          expect((await jobs.getJob(jobId))?.id).toBe(jobId);
+          await scopedNotifications(f, () =>
+            adapter.service.generate(notificationInput(f, next), now),
+          );
+          expect(await savedNotifications(f, next)).toEqual(before);
+          expect(before).toHaveLength(1);
+          await revise(f, next);
+          await editTitle(f);
+          const minorTrue = await schedule(f, {
+            clientRequestId: randomUUID(),
+            notifyMinorUpdate: true,
+          });
+          await worker.process('publish', jobIdentity(f, minorTrue), now);
+          const minorTrueId = buildAcademicContentNotificationGenerationJobId({
+            schoolId: f.schoolId,
+            publicationId: minorTrue.publicationId,
+          });
+          await jobs.obliterate({ force: true });
+          await adapter.service.recover(now);
+          expect((await jobs.getJob(minorTrueId))?.id).toBe(minorTrueId);
+          await scopedNotifications(f, () =>
+            adapter.service.generate(notificationInput(f, minorTrue), now),
+          );
+          await scopedNotifications(f, () =>
+            adapter.service.generate(notificationInput(f, minorTrue), now),
+          );
+          expect(await savedNotifications(f, minorTrue)).toHaveLength(1);
+          await revise(f, minorTrue);
+          await prisma.academicContent.update({
+            where: { id: f.content.id },
+            data: { description: 'Another minor revision' },
+          });
+          const minor = await schedule(f);
+          await worker.process('publish', jobIdentity(f, minor), now);
+          const minorId = buildAcademicContentNotificationGenerationJobId({
+            schoolId: f.schoolId,
+            publicationId: minor.publicationId,
+          });
+          await adapter.service.recover(now);
+          expect(await jobs.getJob(minorId)).toBeUndefined();
+          expect(await savedNotifications(f, minor)).toHaveLength(0);
+        } finally {
+          await jobs.obliterate({ force: true });
+          await queue
+            .getQueue(ACADEMIC_CONTENT_PUBLICATION_QUEUE)
+            .obliterate({ force: true });
+          await queue.onModuleDestroy();
+        }
+      },
+    );
+
     (redisUrl ? it : it.skip)(
       'serializes duplicate publish workers across two PostgreSQL connections with one snapshot and one expiry job',
       async () => {

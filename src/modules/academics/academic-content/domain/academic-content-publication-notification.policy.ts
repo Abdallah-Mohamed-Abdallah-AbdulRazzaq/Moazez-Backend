@@ -2,6 +2,7 @@ import {
   AcademicContentAudienceRecipientKind as Kind,
   AcademicContentAudienceType as Audience,
   AcademicContentType as Type,
+  AcademicContentChangeSignificance as Significance,
   UserStatus,
   UserType,
 } from '@prisma/client';
@@ -10,6 +11,25 @@ import { AcademicContentEffectiveNotificationPolicy } from './academic-content-n
 export const ACADEMIC_CONTENT_NOTIFICATION_RECIPIENT_PAGE_SIZE = 500;
 export const ACADEMIC_CONTENT_NOTIFICATION_CONTEXT_PAGE_SIZE = 500;
 export const ACADEMIC_CONTENT_NOTIFICATION_RECOVERY_PAGE_SIZE = 100;
+
+/** Decision from persisted publication lineage only, independent of policy/delivery. */
+export function academicContentPublicationNotificationEvent(source: {
+  supersedesPublicationId: string | null;
+  changeSignificance: Significance | null;
+  notifyMinorUpdate: boolean;
+}): 'academic_content_published' | 'academic_content_updated' | null {
+  if (source.supersedesPublicationId === null)
+    return source.changeSignificance === null && !source.notifyMinorUpdate
+      ? 'academic_content_published'
+      : null;
+  if (
+    source.changeSignificance === Significance.SIGNIFICANT ||
+    (source.changeSignificance === Significance.MINOR &&
+      source.notifyMinorUpdate)
+  )
+    return 'academic_content_updated';
+  return null;
+}
 
 export function publishedNotificationPolicyAllows(
   type: Type,

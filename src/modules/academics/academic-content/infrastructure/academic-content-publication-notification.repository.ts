@@ -20,6 +20,9 @@ import {
 
 const SOURCE_SELECT = {
   id: true,
+  supersedesPublicationId: true,
+  changeSignificance: true,
+  notifyMinorUpdate: true,
   schoolId: true,
   academicContentId: true,
   revisionId: true,

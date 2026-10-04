@@ -1255,6 +1255,17 @@ enum AcademicContentApprovalStatus {
   @@map("academic_content_approval_status")
 }
 
+enum AcademicContentPublicationCancellationReason {
+  UNSCHEDULED
+  WITHDRAWN
+  REVISION_STARTED
+}
+
+enum AcademicContentChangeSignificance {
+  MINOR
+  SIGNIFICANT
+}
+
 enum AcademicContentPublicationStatus {
   SCHEDULED
   PUBLISHED
@@ -3310,34 +3321,42 @@ model AcademicContentRevisionTarget {
 }
 
 model AcademicContentPublication {
-  id                            String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schoolId                      String                           @map("school_id") @db.Uuid
-  academicContentId             String                           @map("academic_content_id") @db.Uuid
-  revisionId                    String                           @map("revision_id") @db.Uuid
-  clientRequestId               String                           @map("client_request_id") @db.Uuid
-  requestFingerprint            String                           @map("request_fingerprint") @db.VarChar(64)
-  sourceContentStatus           AcademicContentStatus            @map("source_content_status")
+  id                            String                                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                      String                                        @map("school_id") @db.Uuid
+  academicContentId             String                                        @map("academic_content_id") @db.Uuid
+  revisionId                    String                                        @map("revision_id") @db.Uuid
+  clientRequestId               String                                        @map("client_request_id") @db.Uuid
+  requestFingerprint            String                                        @map("request_fingerprint") @db.VarChar(64)
+  sourceContentStatus           AcademicContentStatus                         @map("source_content_status")
   status                        AcademicContentPublicationStatus
-  publishAt                     DateTime                         @map("publish_at")
-  visibleFrom                   DateTime                         @map("visible_from")
-  visibleUntil                  DateTime?                        @map("visible_until")
-  publishedAt                   DateTime?                        @map("published_at")
-  expiredAt                     DateTime?                        @map("expired_at")
-  cancelledAt                   DateTime?                        @map("cancelled_at")
-  cancelledByUserId             String?                          @map("cancelled_by_user_id") @db.Uuid
-  createdByUserId               String                           @map("created_by_user_id") @db.Uuid
-  studentRecipientCount         Int                              @default(0) @map("student_recipient_count")
-  guardianRecipientContextCount Int                              @default(0) @map("guardian_recipient_context_count")
-  createdAt                     DateTime                         @default(now()) @map("created_at")
-  updatedAt                     DateTime                         @updatedAt @map("updated_at")
+  publishAt                     DateTime                                      @map("publish_at")
+  visibleFrom                   DateTime                                      @map("visible_from")
+  visibleUntil                  DateTime?                                     @map("visible_until")
+  publishedAt                   DateTime?                                     @map("published_at")
+  expiredAt                     DateTime?                                     @map("expired_at")
+  cancelledAt                   DateTime?                                     @map("cancelled_at")
+  cancellationReason            AcademicContentPublicationCancellationReason? @map("cancellation_reason")
+  supersedesPublicationId       String?                                       @map("supersedes_publication_id") @db.Uuid
+  changeSignificance            AcademicContentChangeSignificance?            @map("change_significance")
+  notifyMinorUpdate             Boolean                                       @default(false) @map("notify_minor_update")
+  cancelledByUserId             String?                                       @map("cancelled_by_user_id") @db.Uuid
+  createdByUserId               String                                        @map("created_by_user_id") @db.Uuid
+  studentRecipientCount         Int                                           @default(0) @map("student_recipient_count")
+  guardianRecipientContextCount Int                                           @default(0) @map("guardian_recipient_context_count")
+  createdAt                     DateTime                                      @default(now()) @map("created_at")
+  updatedAt                     DateTime                                      @updatedAt @map("updated_at")
 
   school          School                             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   academicContent AcademicContent                    @relation(fields: [academicContentId, schoolId], references: [id, schoolId], onDelete: Restrict)
   revision        AcademicContentRevision            @relation(fields: [revisionId, schoolId, academicContentId], references: [id, schoolId, academicContentId], onDelete: Restrict)
   createdBy       User                               @relation("AcademicContentPublicationCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   cancelledBy     User?                              @relation("AcademicContentPublicationCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: Restrict)
+  supersedes      AcademicContentPublication?        @relation("AcademicContentPublicationSuccessor", fields: [supersedesPublicationId, schoolId, academicContentId], references: [id, schoolId, academicContentId], onDelete: Restrict, onUpdate: Restrict)
+  successors      AcademicContentPublication[]       @relation("AcademicContentPublicationSuccessor")
   recipients      AcademicContentAudienceRecipient[]
 
+  @@unique([id, schoolId, academicContentId])
+  @@unique([schoolId, supersedesPublicationId])
   @@unique([id, schoolId, revisionId])
   @@unique([schoolId, clientRequestId])
   @@index([schoolId, academicContentId])

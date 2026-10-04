@@ -241,8 +241,17 @@ export class CommunicationNotificationGenerationRepository {
     return this.scopedPrisma.$transaction(async (tx) => {
       const lockKey = `communication:academics-notifications:${input.schoolId}:${input.publicationId}`;
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+      if (
+        input.eventType !== 'academic_content_published' &&
+        input.eventType !== 'academic_content_updated'
+      )
+        throw new Error('communication_academic_content_event_invalid');
+      const updated = input.eventType === 'academic_content_updated';
+      const notificationType = updated
+        ? CommunicationNotificationType.ACADEMIC_CONTENT_UPDATED
+        : CommunicationNotificationType.ACADEMIC_CONTENT_PUBLISHED;
       const keyForUser = (userId: string) =>
-        `acc:published:${input.publicationId}:${userId}`;
+        `acc:${updated ? 'updated' : 'published'}:${input.publicationId}:${userId}`;
       const expectedByKey = new Map(
         input.recipients.map((row) => [
           keyForUser(row.recipientUserId),
@@ -265,8 +274,7 @@ export class CommunicationNotificationGenerationRepository {
           notification.sourceType !==
             COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_SOURCE_TYPE ||
           notification.sourceId !== input.publicationId ||
-          notification.type !==
-            CommunicationNotificationType.ACADEMIC_CONTENT_PUBLISHED
+          notification.type !== notificationType
         )
           throw new Error('communication_notification_idempotency_collision');
       }
@@ -284,7 +292,7 @@ export class CommunicationNotificationGenerationRepository {
               sourceType:
                 COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_SOURCE_TYPE,
               sourceId: input.publicationId,
-              type: CommunicationNotificationType.ACADEMIC_CONTENT_PUBLISHED,
+              type: notificationType,
               title: input.title,
               body: input.body,
               priority: CommunicationNotificationPriority.NORMAL,
@@ -296,7 +304,7 @@ export class CommunicationNotificationGenerationRepository {
                 publicationId: row.metadata.publicationId,
                 revisionId: row.metadata.revisionId,
                 contentType: row.metadata.contentType,
-                eventType: 'academic_content_published',
+                eventType: input.eventType,
                 publishedAt: row.metadata.publishedAt,
                 studentIds: row.metadata.studentIds,
                 childContextCount: row.metadata.childContextCount,

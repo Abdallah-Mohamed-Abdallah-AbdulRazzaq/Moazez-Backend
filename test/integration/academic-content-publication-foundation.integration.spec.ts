@@ -80,6 +80,13 @@ describeDatabase('ACC-7A direct PostgreSQL publication foundation', () => {
         publishAt: now,
         visibleFrom: now,
         createdByUserId: ids.user,
+        ...(patch.status === PublicationStatus.CANCELLED
+          ? {
+              cancellationReason: patch.publishedAt
+                ? ('WITHDRAWN' as const)
+                : ('UNSCHEDULED' as const),
+            }
+          : {}),
         ...patch,
       },
     });
@@ -268,6 +275,7 @@ describeDatabase('ACC-7A direct PostgreSQL publication foundation', () => {
     // Historical status isolates ownership FKs from active-row uniqueness.
     const historical = {
       status: PublicationStatus.CANCELLED,
+      cancellationReason: 'UNSCHEDULED',
       cancelledAt: now,
     };
     await expect(
@@ -314,7 +322,11 @@ describeDatabase('ACC-7A direct PostgreSQL publication foundation', () => {
   it('keeps CANCELLED/EXPIRED history without blocking a new active publication', async () => {
     const parent = await context();
     await publication(
-      { status: PublicationStatus.CANCELLED, cancelledAt: now },
+      {
+        status: PublicationStatus.CANCELLED,
+        cancellationReason: 'UNSCHEDULED',
+        cancelledAt: now,
+      },
       parent,
     );
     await publication(
@@ -612,6 +624,7 @@ describeDatabase('ACC-7A direct PostgreSQL publication foundation', () => {
     });
     const created = await publication({
       status: PublicationStatus.CANCELLED,
+      cancellationReason: 'UNSCHEDULED',
       cancelledAt: now,
       cancelledByUserId: actor.id,
     });

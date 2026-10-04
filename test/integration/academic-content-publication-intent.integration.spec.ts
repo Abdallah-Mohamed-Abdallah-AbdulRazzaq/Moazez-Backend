@@ -1127,6 +1127,7 @@ describeDatabase(
         revisionId: scheduled.revisionId,
         fromPublicationStatus: PublicationStatus.SCHEDULED,
         toPublicationStatus: PublicationStatus.CANCELLED,
+        cancellationReason: 'UNSCHEDULED',
         restoredContentStatus: ContentStatus.DRAFT,
         cancelledAt: now.toISOString(),
       });

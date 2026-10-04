@@ -4,6 +4,7 @@ import {
   IsInt,
   IsISO8601,
   IsUUID,
+  IsBoolean,
   Matches,
   Max,
   Min,
@@ -18,6 +19,11 @@ const publicationInstant =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 export class CreateAcademicContentPublicationDto {
+  @ApiPropertyOptional({ type: Boolean, default: false })
+  @ValidateIf((_, value) => value !== undefined)
+  @IsBoolean()
+  notifyMinorUpdate?: boolean;
+
   @ApiProperty({ format: 'uuid' })
   @IsUUID()
   clientRequestId!: string;

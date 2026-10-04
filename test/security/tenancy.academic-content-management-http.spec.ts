@@ -1333,11 +1333,16 @@ describe('Academic Content management HTTP security and transport', () => {
       const create = schema('CreateAcademicContentPublicationDto');
       expect(Object.keys(create.properties!).sort()).toEqual([
         'clientRequestId',
+        'notifyMinorUpdate',
         'publishAt',
         'visibleFrom',
         'visibleUntil',
       ]);
       expect(create.required).toEqual(['clientRequestId']);
+      expect(create.properties!.notifyMinorUpdate).toMatchObject({
+        type: 'boolean',
+        default: false,
+      });
       expect(create.properties!.visibleUntil).toMatchObject({
         type: 'string',
         format: 'date-time',

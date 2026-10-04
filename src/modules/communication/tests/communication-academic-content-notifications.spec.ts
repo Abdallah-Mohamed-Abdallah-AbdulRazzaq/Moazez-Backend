@@ -39,6 +39,7 @@ const batch = (): CommunicationPreparedAcademicContentBatch => {
   const contentId = randomUUID(),
     publicationId = randomUUID();
   return {
+    eventType: 'academic_content_published',
     schoolId: randomUUID(),
     organizationId: randomUUID(),
     contentId,
@@ -68,14 +69,22 @@ const batch = (): CommunicationPreparedAcademicContentBatch => {
 };
 
 describe('ACC publication Communication generation and preferences', () => {
-  it.each([
-    { inApp: true, push: true },
-    { inApp: false, push: true },
-    { inApp: true, push: false },
-  ])(
-    'preserves in-app=$inApp push=$push semantics and commit ordering',
-    async ({ inApp, push }) => {
+  it.each(
+    [
+      { inApp: true, push: true },
+      { inApp: false, push: true },
+      { inApp: true, push: false },
+    ].flatMap((settings) =>
+      (['academic_content_published', 'academic_content_updated'] as const).map(
+        (eventType) => ({ ...settings, eventType }),
+      ),
+    ),
+  )(
+    'preserves in-app=$inApp push=$push event=$eventType semantics and commit ordering',
+    async ({ inApp, push, eventType }) => {
       const input = batch();
+      input.eventType = eventType;
+      input.recipients[0].metadata.eventType = eventType;
       const recipient = input.recipients[0].recipientUserId;
       const inAppDisabled = jest
         .fn()
@@ -169,9 +178,15 @@ describe('ACC publication Communication generation and preferences', () => {
 });
 
 describe('ACC push navigation allowlist', () => {
-  it.each([0, 1, 2])(
-    'includes studentId only for one valid child (children=%i)',
-    (count) => {
+  it.each(
+    [0, 1, 2].flatMap((count) =>
+      [Type.ACADEMIC_CONTENT_PUBLISHED, Type.ACADEMIC_CONTENT_UPDATED].map(
+        (type) => ({ count, type }),
+      ),
+    ),
+  )(
+    'includes studentId only for one valid child (children=$count type=$type)',
+    ({ count, type }) => {
       const input = batch();
       const studentIds = Array.from({ length: count }, () => randomUUID());
       const data = new CommunicationNotificationPushPayloadBuilder().build({
@@ -179,7 +194,7 @@ describe('ACC push navigation allowlist', () => {
         sourceModule: Module.ACADEMICS,
         sourceType: 'academic_content_publication',
         sourceId: input.publicationId,
-        type: Type.ACADEMIC_CONTENT_PUBLISHED,
+        type,
         title: input.title,
         body: input.body,
         metadata: {
@@ -197,7 +212,7 @@ describe('ACC push navigation allowlist', () => {
       }).data;
       expect(data).toEqual({
         notificationId: expect.any(String) as unknown,
-        type: 'academic_content_published',
+        type: type.toLowerCase(),
         sourceModule: 'academics',
         deepLinkType: 'academic_content',
         academicContentId: input.contentId,
@@ -228,14 +243,22 @@ describe('ACC push navigation allowlist', () => {
 });
 
 describe('ACC push surface isolation', () => {
-  it.each([
-    [UserType.STUDENT, AppDeviceTokenSurface.STUDENT],
-    [UserType.PARENT, AppDeviceTokenSurface.PARENT],
-    [UserType.TEACHER, null],
-    [UserType.SCHOOL_USER, null],
-  ] as const)(
-    'routes %s to %s with no all-surface fallback',
-    async (userType, surface) => {
+  it.each(
+    (
+      [
+        [UserType.STUDENT, AppDeviceTokenSurface.STUDENT],
+        [UserType.PARENT, AppDeviceTokenSurface.PARENT],
+        [UserType.TEACHER, null],
+        [UserType.SCHOOL_USER, null],
+      ] as const
+    ).flatMap(([userType, surface]) =>
+      [Type.ACADEMIC_CONTENT_PUBLISHED, Type.ACADEMIC_CONTENT_UPDATED].map(
+        (type) => ({ userType, surface, type }),
+      ),
+    ),
+  )(
+    'routes $userType to $surface for $type with no all-surface fallback',
+    async ({ userType, surface, type }) => {
       const delivery: CommunicationPushDeliveryForProcessing = {
         id: randomUUID(),
         schoolId: randomUUID(),
@@ -251,7 +274,7 @@ describe('ACC push surface isolation', () => {
           sourceModule: Module.ACADEMICS,
           sourceType: 'academic_content_publication',
           sourceId: randomUUID(),
-          type: Type.ACADEMIC_CONTENT_PUBLISHED,
+          type,
           title: 'New academic content',
           body: 'Title',
           metadata: {},
