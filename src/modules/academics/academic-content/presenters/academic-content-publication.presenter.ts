@@ -3,6 +3,7 @@ import type {
   AcademicContentPublicationHistoryResponseDto,
   AcademicContentPublicationReadinessResponseDto,
   AcademicContentPublicationResponseDto,
+  AcademicContentPublicationRevisionStartResponseDto,
 } from '../dto/academic-content-publication.dto';
 
 type PublicationView = Omit<
@@ -42,6 +43,28 @@ export function presentAcademicContentPublication(
     guardianRecipientContextCount: input.guardianRecipientContextCount,
     createdByUserId: input.createdByUserId,
     createdAt: input.createdAt.toISOString(),
+    cancellationReason: input.cancellationReason,
+    supersedesPublicationId: input.supersedesPublicationId,
+    changeSignificance: input.changeSignificance,
+    notifyMinorUpdate: input.notifyMinorUpdate,
+  };
+}
+
+export function presentAcademicContentPublicationRevisionStart(
+  input: Omit<
+    AcademicContentPublicationRevisionStartResponseDto,
+    'cancelledAt'
+  > & {
+    cancelledAt: Date;
+  },
+): AcademicContentPublicationRevisionStartResponseDto {
+  return {
+    contentId: input.contentId,
+    oldPublicationId: input.oldPublicationId,
+    oldRevisionId: input.oldRevisionId,
+    cancellationReason: input.cancellationReason,
+    restoredContentStatus: input.restoredContentStatus,
+    cancelledAt: input.cancelledAt.toISOString(),
   };
 }
 

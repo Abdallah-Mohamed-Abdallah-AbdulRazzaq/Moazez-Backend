@@ -1406,9 +1406,19 @@ describeDatabase(
         publicationId: first.publicationId,
       });
       expect(detail.status).toBe(PublicationStatus.CANCELLED);
+      expect(detail).toMatchObject({
+        cancellationReason: 'UNSCHEDULED',
+        supersedesPublicationId: null,
+        changeSignificance: null,
+        notifyMinorUpdate: false,
+      });
       expect(Object.keys(detail).sort()).toEqual(
         [
           'publicationId',
+          'cancellationReason',
+          'supersedesPublicationId',
+          'changeSignificance',
+          'notifyMinorUpdate',
           'revisionId',
           'status',
           'sourceContentStatus',

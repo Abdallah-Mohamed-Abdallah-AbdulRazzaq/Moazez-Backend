@@ -36,6 +36,7 @@ import {
   GetAcademicContentPublicationUseCase,
   ListAcademicContentPublicationHistoryUseCase,
   ScheduleAcademicContentPublicationUseCase,
+  StartAcademicContentRevisionUseCase,
   UnscheduleAcademicContentPublicationUseCase,
 } from '../application/academic-content-publication.use-cases';
 import {
@@ -45,6 +46,7 @@ import {
   AcademicContentPublicationHistoryResponseDto,
   AcademicContentPublicationReadinessResponseDto,
   AcademicContentPublicationResponseDto,
+  AcademicContentPublicationRevisionStartResponseDto,
   CreateAcademicContentPublicationDto,
 } from '../dto/academic-content-publication.dto';
 import {
@@ -52,6 +54,7 @@ import {
   presentAcademicContentPublication,
   presentAcademicContentPublicationList,
   presentAcademicContentPublicationReadiness,
+  presentAcademicContentPublicationRevisionStart,
 } from '../presenters/academic-content-publication.presenter';
 import { AcademicContentTypeDetailUseCases } from '../application/academic-content-type-detail.use-cases';
 import type {
@@ -168,6 +171,7 @@ export class AcademicContentController {
     private readonly getPublication: GetAcademicContentPublicationUseCase,
     private readonly unschedulePublication: UnscheduleAcademicContentPublicationUseCase,
     private readonly cancelPublication: CancelAcademicContentPublicationUseCase,
+    private readonly startRevision: StartAcademicContentRevisionUseCase,
   ) {}
 
   @Post()
@@ -357,6 +361,31 @@ export class AcademicContentController {
     void body;
     return presentAcademicContentPublication(
       await this.cancelPublication.execute(contentId, publicationId),
+    );
+  }
+
+  @Post(':contentId/publications/:publicationId/revise')
+  @HttpCode(HttpStatus.OK)
+  @RequiredPermissions(
+    'academics.academic_content.manage',
+    'academics.academic_content.publish',
+  )
+  @ApiOperation({ summary: 'Start a revision of published Academic Content' })
+  @ApiParam({ name: 'contentId', format: 'uuid' })
+  @ApiParam({ name: 'publicationId', format: 'uuid' })
+  @ApiBody({
+    required: false,
+    schema: { type: 'object', properties: {}, additionalProperties: false },
+  })
+  @ApiOkResponse({ type: AcademicContentPublicationRevisionStartResponseDto })
+  async revise(
+    @Param('contentId', new ParseUUIDPipe()) contentId: string,
+    @Param('publicationId', new ParseUUIDPipe()) publicationId: string,
+    @Body() body: AcademicContentEmptyPublicationBodyDto,
+  ): Promise<AcademicContentPublicationRevisionStartResponseDto> {
+    void body;
+    return presentAcademicContentPublicationRevisionStart(
+      await this.startRevision.execute(contentId, publicationId),
     );
   }
 

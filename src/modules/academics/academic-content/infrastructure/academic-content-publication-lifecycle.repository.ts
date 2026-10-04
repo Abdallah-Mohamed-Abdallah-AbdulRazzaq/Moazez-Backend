@@ -26,6 +26,10 @@ const SELECT = {
   publishedAt: true,
   expiredAt: true,
   cancelledAt: true,
+  cancellationReason: true,
+  supersedesPublicationId: true,
+  changeSignificance: true,
+  notifyMinorUpdate: true,
   cancelledByUserId: true,
   publishAt: true,
   visibleFrom: true,
@@ -40,9 +44,9 @@ type CancellationInput = AcademicContentPublicationExecutionInput & {
   actorId: string;
   organizationId: string;
 };
-function safe(row: Publication & { cancellationReason?: Reason | null }) {
-  const { id, cancellationReason, ...fields } = row;
-  void cancellationReason;
+function safe(row: Publication) {
+  const { id, cancelledByUserId, ...fields } = row;
+  void cancelledByUserId;
   return { publicationId: id, ...fields };
 }
 function conflict(): never {
@@ -90,7 +94,7 @@ export class AcademicContentPublicationLifecycleRepository {
         schoolId: input.schoolId,
         academicContentId: input.contentId,
       },
-      select: { ...SELECT, cancellationReason: true },
+      select: SELECT,
     });
     return { content, publication };
   }
@@ -352,6 +356,7 @@ export class AcademicContentPublicationLifecycleRepository {
         return safe({
           ...row,
           status: Status.CANCELLED,
+          cancellationReason: Reason.WITHDRAWN,
           cancelledAt: command.now,
           cancelledByUserId: command.actorId,
         });

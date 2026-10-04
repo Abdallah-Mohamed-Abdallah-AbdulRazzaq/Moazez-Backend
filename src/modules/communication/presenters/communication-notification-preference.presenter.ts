@@ -37,7 +37,8 @@ const PREFERENCE_METADATA: PreferenceMetadata[] = [
   {
     category: CommunicationNotificationPreferenceCategory.ACADEMIC_CONTENT,
     label: 'Academic Content',
-    description: 'Notifications for published and updated academic content.',
+    description:
+      'Notifications for academic content publications, updates, cancellations, and online session reminders.',
   },
 ];
 

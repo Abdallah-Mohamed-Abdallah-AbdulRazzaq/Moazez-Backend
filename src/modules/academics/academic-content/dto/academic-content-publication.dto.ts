@@ -12,6 +12,8 @@ import {
 } from 'class-validator';
 import {
   AcademicContentPublicationStatus,
+  AcademicContentPublicationCancellationReason,
+  AcademicContentChangeSignificance,
   AcademicContentStatus,
 } from '@prisma/client';
 
@@ -106,6 +108,27 @@ export class AcademicContentPublicationResponseDto {
   guardianRecipientContextCount!: number;
   @ApiProperty({ format: 'uuid' }) createdByUserId!: string;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
+  @ApiProperty({
+    enum: AcademicContentPublicationCancellationReason,
+    nullable: true,
+  })
+  cancellationReason!: AcademicContentPublicationCancellationReason | null;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
+  supersedesPublicationId!: string | null;
+  @ApiProperty({ enum: AcademicContentChangeSignificance, nullable: true })
+  changeSignificance!: AcademicContentChangeSignificance | null;
+  @ApiProperty({ type: Boolean }) notifyMinorUpdate!: boolean;
+}
+
+export class AcademicContentPublicationRevisionStartResponseDto {
+  @ApiProperty({ format: 'uuid' }) contentId!: string;
+  @ApiProperty({ format: 'uuid' }) oldPublicationId!: string;
+  @ApiProperty({ format: 'uuid' }) oldRevisionId!: string;
+  @ApiProperty({ enum: AcademicContentPublicationCancellationReason })
+  cancellationReason!: AcademicContentPublicationCancellationReason;
+  @ApiProperty({ enum: AcademicContentStatus })
+  restoredContentStatus!: AcademicContentStatus;
+  @ApiProperty({ format: 'date-time' }) cancelledAt!: string;
 }
 
 export class AcademicContentPublicationHistoryResponseDto {

@@ -1440,6 +1440,12 @@ describeDatabase(
         clientRequestId: randomUUID(),
         notifyMinorUpdate: true,
       });
+      expect(next).toMatchObject({
+        cancellationReason: null,
+        supersedesPublicationId: old.publicationId,
+        changeSignificance: 'SIGNIFICANT',
+        notifyMinorUpdate: true,
+      });
       expect((await state(f, next)).publication).toMatchObject({
         supersedesPublicationId: old.publicationId,
         changeSignificance: 'SIGNIFICANT',
@@ -1631,6 +1637,12 @@ describeDatabase(
       });
       const next = await schedule(f);
       expect(next.revisionId).toBe(approved.id);
+      expect(next).toMatchObject({
+        cancellationReason: null,
+        supersedesPublicationId: old.publicationId,
+        changeSignificance: 'MINOR',
+        notifyMinorUpdate: false,
+      });
       expect((await state(f, next)).publication).toMatchObject({
         supersedesPublicationId: old.publicationId,
         changeSignificance: 'MINOR',
@@ -1653,9 +1665,15 @@ describeDatabase(
       await editTitle(f);
       const command = { clientRequestId: randomUUID() };
       const next = await schedule(f, command);
-      await intentRepo().unschedule({
+      const unscheduled = await intentRepo().unschedule({
         ...mutation(f),
         publicationId: next.publicationId,
+      });
+      expect(unscheduled).toMatchObject({
+        cancellationReason: 'UNSCHEDULED',
+        supersedesPublicationId: old.publicationId,
+        changeSignificance: 'MINOR',
+        notifyMinorUpdate: false,
       });
       const before = await state(f, next);
       const revisions = await prisma.academicContentRevision.count({
@@ -2301,9 +2319,22 @@ describeDatabase(
       const f = await fixture();
       await addStudent(f, true);
       const p = await schedule(f);
+      expect(p).toMatchObject({
+        cancellationReason: null,
+        supersedesPublicationId: null,
+        changeSignificance: null,
+        notifyMinorUpdate: false,
+      });
       await execute(f, p);
       const before = await state(f, p);
-      await cancel(f, p);
+      const cancelled = await cancel(f, p);
+      expect(cancelled).toMatchObject({
+        cancellationReason: 'WITHDRAWN',
+        supersedesPublicationId: null,
+        changeSignificance: null,
+        notifyMinorUpdate: false,
+      });
+      expect(cancelled).not.toHaveProperty('cancelledByUserId');
       const after = await state(f, p);
       expect(after.content.status).toBe(ContentStatus.CANCELLED);
       expect(after.publication).toMatchObject({

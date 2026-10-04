@@ -58,7 +58,6 @@ export class ScheduleAcademicContentPublicationUseCase {
   }
 }
 
-/** Internal composition boundary; the management HTTP route is deferred to ACC-8E. */
 @Injectable()
 export class StartAcademicContentRevisionUseCase {
   constructor(
