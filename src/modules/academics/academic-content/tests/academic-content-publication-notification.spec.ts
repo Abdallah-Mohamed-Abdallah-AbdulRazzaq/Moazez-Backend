@@ -242,6 +242,9 @@ describe('ACC-8B publication notification decisions', () => {
         ),
       ),
       listRecoveryCandidates: jest.fn().mockResolvedValue([]),
+      findLaterSource: jest.fn().mockResolvedValue(null),
+      listCancellationRecoveryCandidates: jest.fn().mockResolvedValue([]),
+      listReminderRecoveryCandidates: jest.fn().mockResolvedValue([]),
     };
     const generate = jest.fn(
       (batch: CommunicationPreparedAcademicContentBatch) =>

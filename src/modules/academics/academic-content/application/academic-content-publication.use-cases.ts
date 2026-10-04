@@ -13,6 +13,7 @@ import {
 } from '../infrastructure/academic-content-publication.repository';
 import { AcademicContentAudienceResolver } from './academic-content-audience.resolver';
 import { academicContentManagementScope } from './academic-content-management.scope';
+import { CommunicationNotificationQueueService } from '../../../communication/application/communication-notification-queue.service';
 
 @Injectable()
 export class ScheduleAcademicContentPublicationUseCase {
@@ -86,6 +87,7 @@ export class CancelAcademicContentPublicationUseCase {
   );
   constructor(
     private readonly publications: AcademicContentPublicationLifecycleRepository,
+    private readonly notifications: CommunicationNotificationQueueService,
   ) {}
   execute(contentId: string, publicationId: string) {
     const scope = academicContentManagementScope(
@@ -106,6 +108,30 @@ export class CancelAcademicContentPublicationUseCase {
       publicationId,
       now: new Date(),
     });
+    try {
+      await this.notifications.ensureAcademicContentCancellationNotifications({
+        schoolId: scope.schoolId,
+        organizationId: scope.organizationId,
+        contentId,
+        publicationId,
+        actorUserId: null,
+        actorUserType: null,
+      });
+      this.logger.log({
+        event: 'academic_content.cancellation_notification.enqueued',
+        schoolId: scope.schoolId,
+        contentId,
+        publicationId,
+      });
+    } catch {
+      this.logger.warn({
+        event: 'academic_content.cancellation_notification.skipped',
+        schoolId: scope.schoolId,
+        contentId,
+        publicationId,
+        reason: 'post_commit_enqueue_failed',
+      });
+    }
     this.logger.log({
       event: 'academic_content.publication.cancelled',
       schoolId: scope.schoolId,

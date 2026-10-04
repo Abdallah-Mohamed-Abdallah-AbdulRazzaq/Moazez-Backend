@@ -75,15 +75,27 @@ describe('ACC publication Communication generation and preferences', () => {
       { inApp: false, push: true },
       { inApp: true, push: false },
     ].flatMap((settings) =>
-      (['academic_content_published', 'academic_content_updated'] as const).map(
-        (eventType) => ({ ...settings, eventType }),
-      ),
+      (
+        [
+          'academic_content_published',
+          'academic_content_updated',
+          'academic_content_cancelled',
+          'online_session_reminder',
+        ] as const
+      ).map((eventType) => ({ ...settings, eventType })),
     ),
   )(
     'preserves in-app=$inApp push=$push event=$eventType semantics and commit ordering',
     async ({ inApp, push, eventType }) => {
-      const input = batch();
-      input.eventType = eventType;
+      const input: CommunicationPreparedAcademicContentBatch =
+        eventType === 'online_session_reminder'
+          ? {
+              ...batch(),
+              eventType,
+              reminderOffsetMinutes: 15,
+              sessionStartAt: new Date().toISOString(),
+            }
+          : { ...batch(), eventType };
       input.recipients[0].metadata.eventType = eventType;
       const recipient = input.recipients[0].recipientUserId;
       const inAppDisabled = jest
@@ -180,9 +192,12 @@ describe('ACC publication Communication generation and preferences', () => {
 describe('ACC push navigation allowlist', () => {
   it.each(
     [0, 1, 2].flatMap((count) =>
-      [Type.ACADEMIC_CONTENT_PUBLISHED, Type.ACADEMIC_CONTENT_UPDATED].map(
-        (type) => ({ count, type }),
-      ),
+      [
+        Type.ACADEMIC_CONTENT_PUBLISHED,
+        Type.ACADEMIC_CONTENT_UPDATED,
+        Type.ACADEMIC_CONTENT_CANCELLED,
+        Type.ONLINE_SESSION_REMINDER,
+      ].map((type) => ({ count, type })),
     ),
   )(
     'includes studentId only for one valid child (children=$count type=$type)',
@@ -252,9 +267,12 @@ describe('ACC push surface isolation', () => {
         [UserType.SCHOOL_USER, null],
       ] as const
     ).flatMap(([userType, surface]) =>
-      [Type.ACADEMIC_CONTENT_PUBLISHED, Type.ACADEMIC_CONTENT_UPDATED].map(
-        (type) => ({ userType, surface, type }),
-      ),
+      [
+        Type.ACADEMIC_CONTENT_PUBLISHED,
+        Type.ACADEMIC_CONTENT_UPDATED,
+        Type.ACADEMIC_CONTENT_CANCELLED,
+        Type.ONLINE_SESSION_REMINDER,
+      ].map((type) => ({ userType, surface, type })),
     ),
   )(
     'routes $userType to $surface for $type with no all-surface fallback',

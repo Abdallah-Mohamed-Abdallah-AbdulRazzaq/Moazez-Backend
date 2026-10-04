@@ -20,6 +20,7 @@ import {
   mapAnnouncementPriorityToNotificationPriority,
   CommunicationPreparedAcademicContentBatch,
   COMMUNICATION_PREPARED_NOTIFICATION_BATCH_MAX_USERS,
+  CommunicationAcademicContentBatchAuthorization,
 } from '../domain/communication-notification-generation-domain';
 import { CommunicationNotificationGenerationRepository } from '../infrastructure/communication-notification-generation.repository';
 import { CommunicationRealtimeEventsService } from './communication-realtime-events.service';
@@ -41,6 +42,7 @@ export class CommunicationNotificationGenerationService {
 
   async generateForAcademicContentPublicationBatch(
     input: CommunicationPreparedAcademicContentBatch,
+    authorize?: CommunicationAcademicContentBatchAuthorization,
   ) {
     if (
       input.recipients.length >
@@ -69,6 +71,8 @@ export class CommunicationNotificationGenerationService {
             CommunicationNotificationPreferenceCategory.ACADEMIC_CONTENT,
         },
       );
+    let authorizedInput: CommunicationPreparedAcademicContentBatch | null =
+      input;
     const { createdNotifications, pushDeliveries, ...result } =
       await this.communicationNotificationGenerationRepository.createMissingAcademicContentPublishedNotifications(
         {
@@ -78,6 +82,12 @@ export class CommunicationNotificationGenerationService {
           ),
           pushEnabledRecipientUserIds,
         },
+        authorize
+          ? async (tx) => {
+              authorizedInput = await authorize(tx);
+              return authorizedInput;
+            }
+          : undefined,
       );
     for (const notification of createdNotifications) {
       this.communicationRealtimeEventsService.publishNotificationCreated(
@@ -85,7 +95,10 @@ export class CommunicationNotificationGenerationService {
         notification,
       );
     }
-    await this.enqueuePushDeliveriesSafely({ ...input, pushDeliveries });
+    await this.enqueuePushDeliveriesSafely({
+      ...(authorizedInput ?? input),
+      pushDeliveries,
+    });
     return result;
   }
 

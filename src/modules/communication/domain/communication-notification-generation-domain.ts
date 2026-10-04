@@ -4,12 +4,18 @@ import {
   CommunicationMessageKind,
   CommunicationNotificationPriority,
   UserType,
+  Prisma,
 } from '@prisma/client';
+import { normalizeAcademicContentReminderOffsets } from '../../academics/academic-content/domain/academic-content-notification.policy';
 
 export const COMMUNICATION_NOTIFICATION_QUEUE_NAME =
   'communication-notifications';
 export const COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATIONS_GENERATE_JOB_NAME =
   'communication.academic-content.notifications.generate';
+export const COMMUNICATION_ACADEMIC_CONTENT_CANCELLATION_GENERATE_JOB_NAME =
+  'communication.academic-content.cancellation.generate';
+export const COMMUNICATION_ACADEMIC_CONTENT_SESSION_REMINDER_GENERATE_JOB_NAME =
+  'communication.academic-content.session-reminder.generate';
 export const COMMUNICATION_PREPARED_NOTIFICATION_BATCH_MAX_USERS = 500;
 
 export interface CommunicationAcademicContentNotificationGenerationJobData {
@@ -23,7 +29,13 @@ export interface CommunicationAcademicContentNotificationGenerationJobData {
 
 export type CommunicationAcademicContentNotificationEvent =
   | 'academic_content_published'
-  | 'academic_content_updated';
+  | 'academic_content_updated'
+  | 'academic_content_cancelled'
+  | 'online_session_reminder';
+
+export interface CommunicationAcademicContentSessionReminderJobData extends CommunicationAcademicContentNotificationGenerationJobData {
+  reminderOffsetMinutes: number;
+}
 
 export interface CommunicationPreparedAcademicContentRecipient {
   recipientUserId: string;
@@ -39,13 +51,65 @@ export interface CommunicationPreparedAcademicContentRecipient {
   };
 }
 
-export interface CommunicationPreparedAcademicContentBatch extends CommunicationAcademicContentNotificationGenerationJobData {
-  eventType: CommunicationAcademicContentNotificationEvent;
+interface CommunicationPreparedAcademicContentBatchFields extends CommunicationAcademicContentNotificationGenerationJobData {
   recipients: CommunicationPreparedAcademicContentRecipient[];
   title: string;
   body: string;
   expiresAt: Date | null;
   now: Date;
+}
+
+export type CommunicationPreparedAcademicContentBatch =
+  CommunicationPreparedAcademicContentBatchFields &
+    (
+      | {
+          eventType:
+            | 'academic_content_published'
+            | 'academic_content_updated'
+            | 'academic_content_cancelled';
+        }
+      | {
+          eventType: 'online_session_reminder';
+          reminderOffsetMinutes: number;
+          sessionStartAt: string;
+        }
+    );
+
+/** Source-owned DB authorization, executed inside Communication's generation transaction. */
+export type CommunicationAcademicContentBatchAuthorization = (
+  tx: Prisma.TransactionClient,
+) => Promise<CommunicationPreparedAcademicContentBatch | null>;
+
+export function buildAcademicContentCancellationJobId(input: {
+  schoolId: string;
+  publicationId: string;
+}): string {
+  return `communication-academic-content-cancellation-${input.schoolId}-${input.publicationId}`;
+}
+
+export function buildAcademicContentSessionReminderJobId(input: {
+  schoolId: string;
+  publicationId: string;
+  reminderOffsetMinutes: number;
+}): string {
+  return `communication-academic-content-session-reminder-${input.schoolId}-${input.publicationId}-${input.reminderOffsetMinutes}`;
+}
+
+export function isAcademicContentSessionReminderJobData(
+  data: unknown,
+): data is CommunicationAcademicContentSessionReminderJobData {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+  const { reminderOffsetMinutes, ...identity } = data as Record<
+    string,
+    unknown
+  >;
+  if (!isAcademicContentNotificationGenerationJobData(identity)) return false;
+  try {
+    normalizeAcademicContentReminderOffsets([reminderOffsetMinutes]);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function buildAcademicContentNotificationGenerationJobId(input: {
