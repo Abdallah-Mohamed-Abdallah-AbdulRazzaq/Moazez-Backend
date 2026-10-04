@@ -263,6 +263,9 @@ export class AcademicContentController {
     return presentAcademicContentPublication(
       await this.schedulePublication.execute(contentId, {
         clientRequestId: dto.clientRequestId,
+        ...(dto.notifyMinorUpdate === undefined
+          ? {}
+          : { notifyMinorUpdate: dto.notifyMinorUpdate }),
         ...(dto.publishAt === undefined
           ? {}
           : { publishAt: new Date(dto.publishAt) }),

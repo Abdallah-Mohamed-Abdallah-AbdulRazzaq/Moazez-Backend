@@ -49,6 +49,9 @@ function source(): AcademicContentPublishedNotificationSource {
     revisionId,
     publishedAt: now,
     visibleUntil: null,
+    supersedesPublicationId: null,
+    changeSignificance: null,
+    notifyMinorUpdate: false,
     school: { organizationId: randomUUID() },
     revision: {
       id: revisionId,
@@ -261,6 +264,83 @@ describe('ACC-8B publication notification decisions', () => {
     );
     return { publication, input, repository, generate, ensure, service };
   }
+  it.each([
+    ['SIGNIFICANT', false, true],
+    ['SIGNIFICANT', true, true],
+    ['MINOR', true, true],
+    ['MINOR', false, false],
+  ] as const)(
+    'UPDATED decision %s override=%s',
+    async (changeSignificance, notifyMinorUpdate, expected) => {
+      const h = harness(505, 501);
+      Object.assign(h.publication, {
+        supersedesPublicationId: randomUUID(),
+        changeSignificance,
+        notifyMinorUpdate,
+      });
+      await h.service.generate(h.input, now);
+      expect(h.generate).toHaveBeenCalledTimes(expected ? 2 : 0);
+      if (expected) {
+        expect(
+          h.generate.mock.calls.map(([batch]) => batch.recipients.length),
+        ).toEqual([500, 5]);
+        expect(h.generate.mock.calls[0][0]).toMatchObject({
+          eventType: 'academic_content_updated',
+          title: 'Academic content updated',
+          body: 'Frozen revision title',
+        });
+        expect(
+          h.generate.mock.calls[0][0].recipients[0].metadata.eventType,
+        ).toBe('academic_content_updated');
+      } else {
+        expect(h.repository.listRecipientUsers).not.toHaveBeenCalled();
+        h.repository.listRecoveryCandidates.mockResolvedValue([
+          h.publication,
+        ] as never);
+        await h.service.ensureAfterPublicationCommit(h.input, now);
+        await h.service.recover(now);
+        expect(h.ensure).not.toHaveBeenCalled();
+      }
+    },
+  );
+  it.each([
+    'notificationsEnabled',
+    'generalResourceNotificationsEnabled',
+    'significantUpdateNotificationsEnabled',
+  ] as const)(
+    'UPDATED obeys School %s even with minor override',
+    async (field) => {
+      const h = harness();
+      Object.assign(h.publication, {
+        supersedesPublicationId: randomUUID(),
+        changeSignificance: 'MINOR',
+        notifyMinorUpdate: true,
+      });
+      h.repository.findPolicy.mockResolvedValue({
+        ...defaults,
+        [field]: false,
+      } as never);
+      await h.service.generate(h.input, now);
+      expect(h.generate).not.toHaveBeenCalled();
+    },
+  );
+  it.each([
+    'studentNotificationsEnabled',
+    'guardianNotificationsEnabled',
+  ] as const)('UPDATED preserves the %s gate', async (field) => {
+    const h = harness();
+    Object.assign(h.publication, {
+      supersedesPublicationId: randomUUID(),
+      changeSignificance: 'SIGNIFICANT',
+      notifyMinorUpdate: false,
+    });
+    h.repository.findPolicy.mockResolvedValue({
+      ...defaults,
+      [field]: false,
+    } as never);
+    await h.service.generate(h.input, now);
+    expect(h.generate.mock.calls[0][0].recipients).toHaveLength(1);
+  });
   it('deduplicates two child contexts into one Parent notification', async () => {
     const h = harness(1);
     await h.service.generate(h.input, now);

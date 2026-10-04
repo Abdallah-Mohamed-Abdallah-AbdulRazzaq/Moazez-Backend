@@ -1,6 +1,7 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import {
   AcademicContentPublicationStatus as Status,
+  AcademicContentPublicationCancellationReason as Reason,
   AcademicContentStatus as ContentStatus,
   AuditOutcome,
   Prisma,
@@ -39,8 +40,9 @@ type CancellationInput = AcademicContentPublicationExecutionInput & {
   actorId: string;
   organizationId: string;
 };
-function safe(row: Publication) {
-  const { id, ...fields } = row;
+function safe(row: Publication & { cancellationReason?: Reason | null }) {
+  const { id, cancellationReason, ...fields } = row;
+  void cancellationReason;
   return { publicationId: id, ...fields };
 }
 function conflict(): never {
@@ -88,7 +90,7 @@ export class AcademicContentPublicationLifecycleRepository {
         schoolId: input.schoolId,
         academicContentId: input.contentId,
       },
-      select: SELECT,
+      select: { ...SELECT, cancellationReason: true },
     });
     return { content, publication };
   }
@@ -186,6 +188,89 @@ export class AcademicContentPublicationLifecycleRepository {
     );
   }
 
+  async startRevision(input: CancellationInput) {
+    validate(input);
+    assertAcademicContentPublicationUuid(input.actorId);
+    assertAcademicContentPublicationUuid(input.organizationId);
+    const command = { ...input, now: new Date(input.now) };
+    return this.prisma.$transaction(
+      async (tx) => {
+        const { content, publication: row } = await this.lock(tx, command);
+        if (content.school.organizationId !== command.organizationId)
+          conflict();
+        if (
+          row.status !== Status.PUBLISHED ||
+          row.publishedAt === null ||
+          content.status !== ContentStatus.PUBLISHED
+        )
+          conflict();
+        const changed = await tx.academicContentPublication.updateMany({
+          where: {
+            id: command.publicationId,
+            schoolId: command.schoolId,
+            academicContentId: command.contentId,
+            revisionId: row.revisionId,
+            status: Status.PUBLISHED,
+          },
+          data: {
+            status: Status.CANCELLED,
+            cancellationReason: Reason.REVISION_STARTED,
+            cancelledAt: command.now,
+            cancelledByUserId: command.actorId,
+          },
+        });
+        const restored = await tx.academicContent.updateMany({
+          where: {
+            id: command.contentId,
+            schoolId: command.schoolId,
+            deletedAt: null,
+            status: ContentStatus.PUBLISHED,
+          },
+          data: {
+            status: ContentStatus.DRAFT,
+            updatedByUserId: command.actorId,
+          },
+        });
+        if (changed.count !== 1 || restored.count !== 1) conflict();
+        await tx.auditLog.create({
+          data: {
+            actorId: command.actorId,
+            organizationId: command.organizationId,
+            schoolId: command.schoolId,
+            module: 'academic-content',
+            action: 'academics.academic_content.publication.revision_start',
+            resourceType: 'academic_content_publication',
+            resourceId: command.publicationId,
+            outcome: AuditOutcome.SUCCESS,
+            after: {
+              contentId: command.contentId,
+              oldPublicationId: row.id,
+              oldRevisionId: row.revisionId,
+              fromStatus: Status.PUBLISHED,
+              toStatus: Status.CANCELLED,
+              cancellationReason: Reason.REVISION_STARTED,
+              restoredContentStatus: ContentStatus.DRAFT,
+              cancelledAt: command.now.toISOString(),
+            },
+          },
+        });
+        return {
+          contentId: command.contentId,
+          oldPublicationId: row.id,
+          oldRevisionId: row.revisionId,
+          cancellationReason: Reason.REVISION_STARTED,
+          restoredContentStatus: ContentStatus.DRAFT,
+          cancelledAt: command.now,
+        };
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+        maxWait: 20_000,
+        timeout: 20_000,
+      },
+    );
+  }
+
   async cancel(input: CancellationInput) {
     validate(input);
     assertAcademicContentPublicationUuid(input.actorId);
@@ -198,6 +283,7 @@ export class AcademicContentPublicationLifecycleRepository {
           conflict();
         if (
           row.status === Status.CANCELLED &&
+          row.cancellationReason === Reason.WITHDRAWN &&
           row.publishedAt !== null &&
           row.cancelledAt !== null &&
           row.cancelledByUserId !== null &&
@@ -222,6 +308,7 @@ export class AcademicContentPublicationLifecycleRepository {
             status: Status.CANCELLED,
             cancelledAt: command.now,
             cancelledByUserId: command.actorId,
+            cancellationReason: Reason.WITHDRAWN,
           },
         });
         const changedContent = await tx.academicContent.updateMany({
@@ -253,6 +340,7 @@ export class AcademicContentPublicationLifecycleRepository {
               revisionId: row.revisionId,
               fromStatus: Status.PUBLISHED,
               toStatus: Status.CANCELLED,
+              cancellationReason: Reason.WITHDRAWN,
               publishedAt: row.publishedAt.toISOString(),
               cancelledAt: command.now.toISOString(),
               visibleUntil: row.visibleUntil?.toISOString() ?? null,

@@ -95,6 +95,7 @@ function validInstant(value: Date): boolean {
 
 export type AcademicContentPublicationCommand = {
   clientRequestId: string;
+  notifyMinorUpdate?: boolean;
   publishAt?: Date;
   visibleFrom?: Date;
   visibleUntil?: Date | null;
@@ -115,7 +116,7 @@ export function academicContentPublicationRequestFingerprint(
   contentId: string,
   input: Pick<
     AcademicContentPublicationCommand,
-    'publishAt' | 'visibleFrom' | 'visibleUntil'
+    'publishAt' | 'visibleFrom' | 'visibleUntil' | 'notifyMinorUpdate'
   >,
 ): string {
   assertAcademicContentPublicationUuid(contentId);
@@ -127,16 +128,26 @@ export function academicContentPublicationRequestFingerprint(
       );
     return ['EXPLICIT_ISO', value.toISOString()];
   };
+  if (
+    input.notifyMinorUpdate !== undefined &&
+    typeof input.notifyMinorUpdate !== 'boolean'
+  )
+    throw new ValidationDomainException(
+      'Minor update override requires a boolean',
+    );
   return crypto
     .createHash('sha256')
     .update(
       JSON.stringify({
-        contractVersion: 1,
+        contractVersion: input.notifyMinorUpdate === undefined ? 1 : 2,
         academicContentId: contentId.toLowerCase(),
         publishAt: instant(input.publishAt),
         visibleFrom: instant(input.visibleFrom),
         visibleUntil:
           input.visibleUntil === null ? ['NULL'] : instant(input.visibleUntil),
+        ...(input.notifyMinorUpdate === undefined
+          ? {}
+          : { notifyMinorUpdate: input.notifyMinorUpdate }),
       }),
     )
     .digest('hex');
@@ -154,6 +165,7 @@ export function assertAcademicContentPublicationCommand(
       (key) =>
         ![
           'clientRequestId',
+          'notifyMinorUpdate',
           'publishAt',
           'visibleFrom',
           'visibleUntil',

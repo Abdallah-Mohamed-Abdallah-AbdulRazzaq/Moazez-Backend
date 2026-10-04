@@ -21,6 +21,10 @@ export interface CommunicationAcademicContentNotificationGenerationJobData {
   actorUserType: UserType | null;
 }
 
+export type CommunicationAcademicContentNotificationEvent =
+  | 'academic_content_published'
+  | 'academic_content_updated';
+
 export interface CommunicationPreparedAcademicContentRecipient {
   recipientUserId: string;
   metadata: {
@@ -28,7 +32,7 @@ export interface CommunicationPreparedAcademicContentRecipient {
     publicationId: string;
     revisionId: string;
     contentType: string;
-    eventType: 'academic_content_published';
+    eventType: CommunicationAcademicContentNotificationEvent;
     publishedAt: string;
     studentIds: string[];
     childContextCount: number;
@@ -36,6 +40,7 @@ export interface CommunicationPreparedAcademicContentRecipient {
 }
 
 export interface CommunicationPreparedAcademicContentBatch extends CommunicationAcademicContentNotificationGenerationJobData {
+  eventType: CommunicationAcademicContentNotificationEvent;
   recipients: CommunicationPreparedAcademicContentRecipient[];
   title: string;
   body: string;

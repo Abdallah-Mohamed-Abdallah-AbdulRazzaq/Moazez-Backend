@@ -57,6 +57,28 @@ export class ScheduleAcademicContentPublicationUseCase {
   }
 }
 
+/** Internal composition boundary; the management HTTP route is deferred to ACC-8E. */
+@Injectable()
+export class StartAcademicContentRevisionUseCase {
+  constructor(
+    private readonly repository: AcademicContentPublicationLifecycleRepository,
+  ) {}
+  execute(contentId: string, publicationId: string) {
+    const scope = academicContentManagementScope(
+      'academics.academic_content.manage',
+    );
+    academicContentManagementScope('academics.academic_content.publish');
+    assertAcademicContentPublicationUuid(contentId);
+    assertAcademicContentPublicationUuid(publicationId);
+    return this.repository.startRevision({
+      ...scope,
+      contentId,
+      publicationId,
+      now: new Date(),
+    });
+  }
+}
+
 @Injectable()
 export class CancelAcademicContentPublicationUseCase {
   private readonly logger = new Logger(
