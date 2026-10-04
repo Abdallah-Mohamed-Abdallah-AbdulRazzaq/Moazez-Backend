@@ -140,6 +140,64 @@ test('ACC transaction facade has a scoped reviewed storage-wait record', () => {
   assert.match(override.reviewEvidence, /READY orphan cleanup.*storage deletion.*120-second/u);
 });
 
+test('ACC later-event authorization has a scoped reviewed transaction-bound lock record', () => {
+  const row = INVENTORY.find(
+    (item) =>
+      item.path ===
+        'src/modules/communication/infrastructure/communication-notification-generation.repository.ts' &&
+      item.entryOwner ===
+        'CommunicationNotificationGenerationRepository.createMissingAcademicContentPublishedNotifications',
+  );
+  assert.ok(row);
+  assert.deepEqual(row.unresolvedCalls, []);
+  assert.equal(row.classification, 'LOCK_CONTENTION_SENSITIVE');
+  assert.equal(row.explicitLock, true);
+  assert.equal(row.externalWaitInsideTransaction, false);
+  const override = row.manualOverrides.find(
+    (item) => item.unresolvedCallExpression === 'authorize',
+  );
+  assert.ok(override);
+  assert.equal(override.classification, 'LOCK_CONTENTION_SENSITIVE');
+  assert.match(
+    override.reason,
+    /ACC later-event source authorization callback/u,
+  );
+  assert.match(
+    override.reason,
+    /already-open notification generation transaction/u,
+  );
+  assert.match(
+    override.reviewEvidence,
+    /only the active Prisma\.TransactionClient/u,
+  );
+  for (const method of [
+    'lockLaterSource',
+    'findLaterSource',
+    'findPolicyInTransaction',
+    'listCurrentLaterContexts',
+  ]) {
+    assert.ok(override.reviewEvidence.includes(method));
+  }
+  assert.match(override.reviewEvidence, /reads and locks to that transaction/u);
+  assert.match(override.reviewEvidence, /bounded to 500/u);
+  assert.match(
+    override.reviewEvidence,
+    /policy\/timing transformations.*in-memory only/u,
+  );
+  assert.match(
+    override.reviewEvidence,
+    /No Redis\/BullMQ\/Realtime\/FCM\/HTTP\/Storage wait/u,
+  );
+  assert.match(
+    override.reviewEvidence,
+    /Queue\/realtime\/push remain post-commit/u,
+  );
+  assert.deepEqual(override.resolvedCallers, [
+    'AcademicContentPublicationNotificationService.generateLaterEvent',
+    'CommunicationNotificationGenerationService.generateForAcademicContentPublicationBatch',
+  ]);
+});
+
 test('ACC-5B type authoring uses one locked database-only transaction site', () => {
   const rows = INVENTORY.filter((item) =>
     item.path === 'src/modules/academics/academic-content/infrastructure/academic-content-type-detail.repository.ts');
