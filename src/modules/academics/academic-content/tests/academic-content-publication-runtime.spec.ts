@@ -291,9 +291,12 @@ describe('ACC-7D publication runtime contracts', () => {
     UserType.SERVICE_ACCOUNT,
   ])('rejects published cancellation by %s before persistence', (type) => {
     const cancel = jest.fn();
-    const useCase = new CancelAcademicContentPublicationUseCase({
-      cancel,
-    } as never);
+    const useCase = new CancelAcademicContentPublicationUseCase(
+      {
+        cancel,
+      } as never,
+      { ensureAcademicContentCancellationNotifications: jest.fn() } as never,
+    );
     expect(() =>
       asActor(type, ['academics.academic_content.publish'], () =>
         useCase.execute(identity.contentId, identity.publicationId),
@@ -307,9 +310,12 @@ describe('ACC-7D publication runtime contracts', () => {
       const cancel = jest
         .fn()
         .mockResolvedValue({ publicationId: identity.publicationId });
-      const useCase = new CancelAcademicContentPublicationUseCase({
-        cancel,
-      } as never);
+      const useCase = new CancelAcademicContentPublicationUseCase(
+        {
+          cancel,
+        } as never,
+        { ensureAcademicContentCancellationNotifications: jest.fn() } as never,
+      );
       expect(() =>
         asActor(type, ['academics.academic_content.manage'], () =>
           useCase.execute(identity.contentId, identity.publicationId),
@@ -326,6 +332,45 @@ describe('ACC-7D publication runtime contracts', () => {
       });
     },
   );
+  it('ensures cancellation only after commit and retries safely after queue failure', async () => {
+    const phases: string[] = [];
+    const result = {
+      publicationId: identity.publicationId,
+      status: 'CANCELLED',
+    };
+    const cancel = jest.fn(() => {
+      phases.push('commit');
+      return Promise.resolve(result);
+    });
+    const ensure = jest.fn(() => {
+      phases.push('queue');
+      return Promise.reject(new Error('synthetic outage'));
+    });
+    const useCase = new CancelAcademicContentPublicationUseCase(
+      { cancel } as never,
+      { ensureAcademicContentCancellationNotifications: ensure } as never,
+    );
+    for (let attempt = 0; attempt < 2; attempt++) {
+      expect(
+        await asActor(
+          UserType.SCHOOL_USER,
+          ['academics.academic_content.publish'],
+          () => useCase.execute(identity.contentId, identity.publicationId),
+        ),
+      ).toEqual(result);
+    }
+    expect(phases).toEqual(['commit', 'queue', 'commit', 'queue']);
+    expect(ensure.mock.calls[0]).toEqual(ensure.mock.calls[1]);
+    cancel.mockRejectedValueOnce(new Error('transaction failed'));
+    await expect(
+      asActor(
+        UserType.SCHOOL_USER,
+        ['academics.academic_content.publish'],
+        () => useCase.execute(identity.contentId, identity.publicationId),
+      ),
+    ).rejects.toThrow('transaction failed');
+    expect(ensure).toHaveBeenCalledTimes(2);
+  });
   function worker() {
     const snapshots = { publishScheduledPublication: jest.fn() },
       lifecycle = {

@@ -7,7 +7,10 @@ import { AcademicContentPublicationRuntimeRepository } from '../../src/modules/a
 import { AcademicContentPublicationQueueService } from '../../src/modules/academics/academic-content/application/academic-content-publication-queue.service';
 import { AcademicContentPublicationReconciliationService } from '../../src/modules/academics/academic-content/application/academic-content-publication-reconciliation.service';
 import { AcademicContentPublicationWorker } from '../../src/modules/academics/academic-content/infrastructure/academic-content-publication.worker';
-import { ScheduleAcademicContentPublicationUseCase } from '../../src/modules/academics/academic-content/application/academic-content-publication.use-cases';
+import {
+  CancelAcademicContentPublicationUseCase,
+  ScheduleAcademicContentPublicationUseCase,
+} from '../../src/modules/academics/academic-content/application/academic-content-publication.use-cases';
 import {
   academicContentPublicationJobId,
   ACADEMIC_CONTENT_PUBLICATION_QUEUE,
@@ -27,6 +30,7 @@ import {
   AcademicContentType as Type,
   UserType,
   Prisma,
+  PrismaClient,
 } from '@prisma/client';
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
 import { AcademicContentAudienceRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-audience.repository';
@@ -42,8 +46,13 @@ import { CommunicationNotificationGenerationRepository } from '../../src/modules
 import { CommunicationNotificationPreferenceService } from '../../src/modules/communication/application/communication-notification-preference.service';
 import { CommunicationNotificationPreferenceRepository } from '../../src/modules/communication/infrastructure/communication-notification-preference.repository';
 import { CommunicationNotificationQueueService } from '../../src/modules/communication/application/communication-notification-queue.service';
+import { CommunicationNotificationPushPayloadBuilder } from '../../src/modules/communication/application/communication-notification-push-payload.builder';
 import {
   buildAcademicContentNotificationGenerationJobId,
+  buildAcademicContentCancellationJobId,
+  buildAcademicContentSessionReminderJobId,
+  COMMUNICATION_ACADEMIC_CONTENT_CANCELLATION_GENERATE_JOB_NAME,
+  COMMUNICATION_ACADEMIC_CONTENT_SESSION_REMINDER_GENERATE_JOB_NAME,
   COMMUNICATION_NOTIFICATION_QUEUE_NAME,
 } from '../../src/modules/communication/domain/communication-notification-generation-domain';
 
@@ -522,7 +531,15 @@ describeDatabase(
           { enqueueNotificationPushDelivery: push } as never,
         ),
         queue ??
-          ({ ensureAcademicContentPublishedNotifications: ensure } as never),
+          ({
+            ensureAcademicContentPublishedNotifications: ensure,
+            ensureAcademicContentCancellationNotifications: jest
+              .fn()
+              .mockResolvedValue('created'),
+            ensureAcademicContentSessionReminder: jest
+              .fn()
+              .mockResolvedValue('created'),
+          } as never),
       );
       return { service, realtime, push, ensure };
     }
@@ -547,6 +564,797 @@ describeDatabase(
         },
         data: { title: 'Revised resource', updatedByUserId: actorId },
       });
+
+    const sessionStart = new Date(now.getTime() + 3600000);
+    const reminderDue = new Date(sessionStart.getTime() - 15 * 60000);
+    async function sessionFixture() {
+      const f = await fixture(
+        Audience.STUDENTS_AND_GUARDIANS,
+        [Scope.CLASSROOM],
+        true,
+      );
+      await prisma.academicContent.update({
+        where: { id: f.content.id },
+        data: { type: Type.ONLINE_SESSION },
+      });
+      await prisma.academicContentOnlineSessionDetail.create({
+        data: {
+          schoolId: f.schoolId,
+          academicContentId: f.content.id,
+          platform: 'ZOOM',
+          providerName: 'provider-secret-8d',
+          joinUrl: 'https://example.test/join-secret-8d',
+          accessCode: 'access-secret-8d',
+          instructions: 'instructions-secret-8d',
+          startAt: sessionStart,
+          endAt: new Date(sessionStart.getTime() + 3600000),
+          timezone: 'Africa/Cairo',
+        },
+      });
+      await prisma.academicContentNotificationPolicy.create({
+        data: {
+          schoolId: f.schoolId,
+          onlineSessionRemindersEnabled: true,
+          onlineSessionReminderOffsetsMinutes: [15],
+        },
+      });
+      return f;
+    }
+    type Later = 'cancel' | 'reminder';
+    function holdNotificationTransaction(
+      entered: ReturnType<typeof deferred>,
+      release: ReturnType<typeof deferred>,
+    ) {
+      // Extend the scoped client actually used by Communication, preserving the real database transaction.
+      const heldScoped = (prisma.scoped as unknown as PrismaClient).$extends({
+        query: {
+          communicationNotification: {
+            async createManyAndReturn({ args, query }) {
+              entered.resolve();
+              await release.promise;
+              return query(args);
+            },
+          },
+        },
+      });
+      return new Proxy(prisma, {
+        get(target, property): unknown {
+          return property === 'scoped'
+            ? heldScoped
+            : Reflect.get(target, property);
+        },
+      });
+    }
+    async function laterPublication(
+      f: Fixture,
+      event: Later,
+      command?: AcademicContentPublicationCommand,
+    ) {
+      const p = await schedule(f, command);
+      await execute(f, p);
+      if (event === 'cancel') await cancel(f, p);
+      return p;
+    }
+    const generateLater = (
+      f: Fixture,
+      p: Publication,
+      event: Later,
+      client = prisma,
+    ) =>
+      scopedNotifications(f, () =>
+        event === 'cancel'
+          ? notificationAdapter(undefined, client).service.generateCancellation(
+              notificationInput(f, p),
+              now,
+            )
+          : notificationAdapter(
+              undefined,
+              client,
+            ).service.generateSessionReminder(
+              { ...notificationInput(f, p), reminderOffsetMinutes: 15 },
+              reminderDue,
+            ),
+      );
+
+    it.each(
+      (['cancel', 'reminder'] as const).flatMap((event) =>
+        [
+          'active',
+          'withdrawn',
+          'completed',
+          'enrollment_deleted',
+          'enrollment_replaced',
+          'classroom_changed',
+          'student_inactive',
+          'student_deleted',
+          'account_missing',
+          'user_inactive',
+          'user_deleted',
+          'wrong_type',
+        ].map((change) => ({ event, change })),
+      ),
+    )(
+      'ACC-8D current Student $change for $event',
+      async ({ event, change }) => {
+        const f = await sessionFixture(),
+          child = await addStudent(f, true);
+        const p = await laterPublication(f, event);
+        const before = (await state(f, p)).recipients;
+        if (change === 'withdrawn' || change === 'completed')
+          await prisma.enrollment.update({
+            where: { id: child.enrollment.id },
+            data: {
+              status: change === 'withdrawn' ? 'WITHDRAWN' : 'COMPLETED',
+            },
+          });
+        if (
+          change === 'enrollment_deleted' ||
+          change === 'enrollment_replaced'
+        ) {
+          await prisma.enrollment.update({
+            where: { id: child.enrollment.id },
+            data: { deletedAt: now },
+          });
+          if (change === 'enrollment_replaced')
+            await prisma.enrollment.create({
+              data: { ...child.enrollment, id: randomUUID(), deletedAt: null },
+            });
+        }
+        if (change === 'classroom_changed') {
+          const other = await prisma.classroom.create({
+            data: {
+              schoolId: f.schoolId,
+              sectionId: f.sectionId,
+              nameAr: 'آخر',
+              nameEn: 'Other',
+            },
+          });
+          await prisma.enrollment.update({
+            where: { id: child.enrollment.id },
+            data: { classroomId: other.id },
+          });
+        }
+        if (change === 'student_inactive')
+          await prisma.student.update({
+            where: { id: child.student.id },
+            data: { status: 'SUSPENDED' },
+          });
+        if (change === 'student_deleted')
+          await prisma.student.update({
+            where: { id: child.student.id },
+            data: { deletedAt: now },
+          });
+        if (change === 'account_missing')
+          await prisma.student.update({
+            where: { id: child.student.id },
+            data: { userId: null },
+          });
+        if (change === 'user_inactive')
+          await prisma.user.update({
+            where: { id: child.student.userId! },
+            data: { status: 'DISABLED' },
+          });
+        if (change === 'user_deleted')
+          await prisma.user.update({
+            where: { id: child.student.userId! },
+            data: { deletedAt: now },
+          });
+        if (change === 'wrong_type')
+          await prisma.user.update({
+            where: { id: child.student.userId! },
+            data: { userType: 'PARENT' },
+          });
+        await generateLater(f, p, event);
+        expect(await savedNotifications(f, p)).toHaveLength(
+          change === 'active' ? 1 : 0,
+        );
+        expect((await state(f, p)).recipients).toEqual(before);
+      },
+    );
+
+    it.each(
+      (['cancel', 'reminder'] as const).flatMap((event) =>
+        [
+          'true',
+          'null',
+          'optout',
+          'link_removed',
+          'guardian_deleted',
+          'account_missing',
+          'user_inactive',
+          'user_deleted',
+          'wrong_type',
+        ].map((change) => ({ event, change })),
+      ),
+    )(
+      'ACC-8D current Guardian $change for $event',
+      async ({ event, change }) => {
+        const f = await sessionFixture(),
+          child = await addStudent(f, true);
+        const guardian = await addGuardian(f, [child], true, true);
+        const p = await laterPublication(f, event);
+        if (change === 'null' || change === 'optout')
+          await prisma.guardian.update({
+            where: { id: guardian.id },
+            data: { canReceiveNotifications: change === 'null' ? null : false },
+          });
+        if (change === 'link_removed')
+          await prisma.studentGuardian.deleteMany({
+            where: { schoolId: f.schoolId, guardianId: guardian.id },
+          });
+        if (change === 'guardian_deleted')
+          await prisma.guardian.update({
+            where: { id: guardian.id },
+            data: { deletedAt: now },
+          });
+        if (change === 'account_missing')
+          await prisma.guardian.update({
+            where: { id: guardian.id },
+            data: { userId: null },
+          });
+        if (change === 'user_inactive')
+          await prisma.user.update({
+            where: { id: guardian.userId! },
+            data: { status: 'DISABLED' },
+          });
+        if (change === 'user_deleted')
+          await prisma.user.update({
+            where: { id: guardian.userId! },
+            data: { deletedAt: now },
+          });
+        if (change === 'wrong_type')
+          await prisma.user.update({
+            where: { id: guardian.userId! },
+            data: { userType: 'STUDENT' },
+          });
+        await generateLater(f, p, event);
+        const notifications = await savedNotifications(f, p);
+        expect(
+          notifications.filter((n) => n.recipientUserId === guardian.userId),
+        ).toHaveLength(change === 'true' || change === 'null' ? 1 : 0);
+        expect(
+          notifications.some((n) => n.recipientUserId === child.student.userId),
+        ).toBe(true);
+      },
+    );
+
+    it.each(
+      (['cancel', 'reminder'] as const).flatMap((event) =>
+        [1, 2].map((children) => ({ event, children })),
+      ),
+    )(
+      'ACC-8D resolves snapshot-null current accounts and dedupes $children eligible children for $event',
+      async ({ event, children }) => {
+        const f = await sessionFixture(),
+          first = await addStudent(f),
+          secondChild = await addStudent(f);
+        const guardian = await addGuardian(f, [first, secondChild], null);
+        const p = await laterPublication(f, event);
+        const before = (await state(f, p)).recipients;
+        expect(before.every((r) => r.recipientUserId === null)).toBe(true);
+        const studentAccount = await prisma.user.create({
+          data: {
+            email: `acc8d-${randomUUID()}@example.test`,
+            firstName: 'New',
+            lastName: 'Student',
+            userType: 'STUDENT',
+          },
+        });
+        const parentAccount = await prisma.user.create({
+          data: {
+            email: `acc8d-${randomUUID()}@example.test`,
+            firstName: 'New',
+            lastName: 'Parent',
+            userType: 'PARENT',
+          },
+        });
+        users.push(studentAccount.id, parentAccount.id);
+        await prisma.student.update({
+          where: { id: first.student.id },
+          data: { userId: studentAccount.id },
+        });
+        await prisma.guardian.update({
+          where: { id: guardian.id },
+          data: { userId: parentAccount.id },
+        });
+        if (children === 1)
+          await prisma.enrollment.update({
+            where: { id: secondChild.enrollment.id },
+            data: { status: 'WITHDRAWN' },
+          });
+        const unrelated = await addStudent(f, true);
+        await addGuardian(f, [unrelated], true, true);
+        const adapter = notificationAdapter();
+        const work = () =>
+          scopedNotifications(f, () =>
+            event === 'cancel'
+              ? adapter.service.generateCancellation(
+                  notificationInput(f, p),
+                  now,
+                )
+              : adapter.service.generateSessionReminder(
+                  { ...notificationInput(f, p), reminderOffsetMinutes: 15 },
+                  reminderDue,
+                ),
+          );
+        await Promise.all([work(), generateLater(f, p, event, second)]);
+        await work();
+        const saved = await savedNotifications(f, p);
+        expect(saved).toHaveLength(2);
+        const parent = saved.find(
+          (n) => n.recipientUserId === parentAccount.id,
+        )!;
+        expect(parent.metadata).toMatchObject({
+          childContextCount: children,
+          studentIds: (children === 2
+            ? [first.student.id, secondChild.student.id]
+            : [first.student.id]
+          ).sort(),
+        });
+        expect(
+          saved.some((n) => n.recipientUserId === unrelated.student.userId),
+        ).toBe(false);
+        for (const notification of saved) {
+          expect(notification.deliveries).toHaveLength(2);
+          expect(notification.deliveries.map((d) => d.channel).sort()).toEqual([
+            'IN_APP',
+            'PUSH',
+          ]);
+          expect(notification.idempotencyKey).toBe(
+            event === 'cancel'
+              ? `acc:cancelled:${p.publicationId}:${notification.recipientUserId}`
+              : `acc:session-reminder:${p.publicationId}:15:${notification.recipientUserId}`,
+          );
+        }
+        expect(adapter.realtime.mock.calls.length).toBeLessThanOrEqual(2);
+        expect((await state(f, p)).recipients).toEqual(before);
+      },
+    );
+
+    it('ACC-8D cancellation commit survives queue failure and idempotent use-case retry repairs the job', async () => {
+      const f = await fixture();
+      await addStudent(f, true);
+      const p = await schedule(f);
+      await execute(f, p);
+      const ensure = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('synthetic queue failure'))
+        .mockResolvedValue('created');
+      const useCase = new CancelAcademicContentPublicationUseCase(lifecycle(), {
+        ensureAcademicContentCancellationNotifications: ensure,
+      } as never);
+      const invoke = () =>
+        runWithRequestContext(createRequestContext(), () => {
+          setActor({ id: actorId, userType: UserType.SCHOOL_USER });
+          setActiveMembership({
+            membershipId: 'test',
+            schoolId: f.schoolId,
+            organizationId,
+            roleId: 'test',
+            permissions: ['academics.academic_content.publish'],
+          });
+          return useCase.execute(f.content.id, p.publicationId);
+        });
+      await invoke();
+      const committed = await state(f, p);
+      expect(committed.publication).toMatchObject({
+        status: 'CANCELLED',
+        cancellationReason: 'WITHDRAWN',
+      });
+      expect(committed.content.status).toBe('CANCELLED');
+      expect(
+        committed.audits.some(
+          (a) => a.action === 'academics.academic_content.publication.cancel',
+        ),
+      ).toBe(true);
+      await invoke();
+      expect(await state(f, p)).toEqual(committed);
+      expect(ensure).toHaveBeenCalledTimes(2);
+      expect(ensure.mock.calls[0]).toEqual(ensure.mock.calls[1]);
+      expect((ensure.mock.calls[1] as unknown[])[0]).toEqual({
+        ...jobIdentity(f, p),
+        organizationId,
+        actorUserId: null,
+        actorUserType: null,
+      });
+    });
+
+    it.each([
+      'notificationsEnabled',
+      'onlineSessionNotificationsEnabled',
+      'cancellationNotificationsEnabled',
+      'studentNotificationsEnabled',
+      'guardianNotificationsEnabled',
+    ] as const)(
+      'ACC-8D cancellation respects current %s policy',
+      async (flag) => {
+        const f = await sessionFixture(),
+          child = await addStudent(f, true);
+        await addGuardian(f, [child], true, true);
+        const p = await laterPublication(f, 'cancel');
+        await prisma.academicContentNotificationPolicy.update({
+          where: { schoolId: f.schoolId },
+          data: { [flag]: false },
+        });
+        await generateLater(f, p, 'cancel');
+        expect(await savedNotifications(f, p)).toHaveLength(
+          flag === 'studentNotificationsEnabled' ||
+            flag === 'guardianNotificationsEnabled'
+            ? 1
+            : 0,
+        );
+      },
+    );
+
+    it('ACC-8D cancellation uses persisted valid cancelling actor, including inactive-actor fallback and post-visibility expiry', async () => {
+      const f = await sessionFixture();
+      await addStudent(f, true);
+      const p = await laterPublication(f, 'cancel', {
+        clientRequestId: randomUUID(),
+        visibleUntil: expiryTime,
+      });
+      const inactive = await prisma.user.create({
+        data: {
+          email: `acc8d-${randomUUID()}@example.test`,
+          firstName: 'Old',
+          lastName: 'Actor',
+          userType: 'SCHOOL_USER',
+          status: 'DISABLED',
+        },
+      });
+      users.push(inactive.id);
+      await prisma.academicContentPublication.update({
+        where: { id: p.publicationId },
+        data: { cancelledByUserId: inactive.id },
+      });
+      await scopedNotifications(f, () =>
+        notificationAdapter().service.generateCancellation(
+          notificationInput(f, p),
+          new Date(expiryTime.getTime() + 1),
+        ),
+      );
+      const saved = await savedNotifications(f, p);
+      expect(saved).toHaveLength(1);
+      expect(saved[0].actorUserId).toBeNull();
+      expect(saved[0].expiresAt).toBeNull();
+    });
+
+    it('ACC-8D reminder uses immutable timing, rechecks policy/offset and allows two idempotent offsets', async () => {
+      const f = await sessionFixture();
+      await addStudent(f, true);
+      const p = await laterPublication(f, 'reminder');
+      await prisma.academicContentOnlineSessionDetail.update({
+        where: {
+          schoolId_academicContentId: {
+            schoolId: f.schoolId,
+            academicContentId: f.content.id,
+          },
+        },
+        data: {
+          startAt: new Date(sessionStart.getTime() + 86400000),
+          endAt: new Date(sessionStart.getTime() + 90000000),
+        },
+      });
+      const adapter = notificationAdapter();
+      const logs = jest.spyOn(adapter.service['logger'], 'log');
+      const work = (offset: number, instant: Date) =>
+        scopedNotifications(f, () =>
+          adapter.service.generateSessionReminder(
+            { ...notificationInput(f, p), reminderOffsetMinutes: offset },
+            instant,
+          ),
+        );
+      await work(15, new Date(reminderDue.getTime() - 1));
+      await prisma.academicContentNotificationPolicy.update({
+        where: { schoolId: f.schoolId },
+        data: { onlineSessionRemindersEnabled: false },
+      });
+      await work(15, reminderDue);
+      await prisma.academicContentNotificationPolicy.update({
+        where: { schoolId: f.schoolId },
+        data: {
+          onlineSessionRemindersEnabled: true,
+          onlineSessionReminderOffsetsMinutes: [5],
+        },
+      });
+      await work(15, reminderDue);
+      expect(await savedNotifications(f, p)).toHaveLength(0);
+      await prisma.academicContentNotificationPolicy.update({
+        where: { schoolId: f.schoolId },
+        data: { onlineSessionReminderOffsetsMinutes: [5, 15] },
+      });
+      await Promise.all([
+        work(15, reminderDue),
+        generateLater(f, p, 'reminder', second),
+      ]);
+      await work(15, reminderDue);
+      await work(5, new Date(sessionStart.getTime() - 5 * 60000));
+      const saved = await savedNotifications(f, p);
+      expect(saved).toHaveLength(2);
+      for (const n of saved) {
+        expect(n.title).toBe('Online session reminder');
+        expect(n.body).toBe(f.content.title);
+        expect(n.metadata).toMatchObject({
+          sessionStartAt: sessionStart.toISOString(),
+        });
+        expect(Object.keys(n.metadata as object).sort()).toEqual(
+          [
+            'academicContentId',
+            'publicationId',
+            'revisionId',
+            'contentType',
+            'eventType',
+            'publishedAt',
+            'studentIds',
+            'childContextCount',
+            'sessionStartAt',
+            'reminderOffsetMinutes',
+          ].sort(),
+        );
+        expect(n.deliveries).toHaveLength(2);
+        expect(JSON.stringify(n)).not.toContain('secret-8d');
+        expect(
+          JSON.stringify(
+            new CommunicationNotificationPushPayloadBuilder().build(n),
+          ),
+        ).not.toContain('secret-8d');
+      }
+      expect(JSON.stringify(logs.mock.calls)).not.toContain('secret-8d');
+      logs.mockRestore();
+      const staleF = await sessionFixture();
+      await addStudent(staleF, true);
+      const stale = await laterPublication(staleF, 'reminder');
+      await scopedNotifications(staleF, () =>
+        adapter.service.generateSessionReminder(
+          { ...notificationInput(staleF, stale), reminderOffsetMinutes: 15 },
+          new Date(reminderDue.getTime() + 300000),
+        ),
+      );
+      await scopedNotifications(staleF, () =>
+        adapter.service.generateSessionReminder(
+          { ...notificationInput(staleF, stale), reminderOffsetMinutes: 15 },
+          sessionStart,
+        ),
+      );
+      expect(await savedNotifications(staleF, stale)).toHaveLength(0);
+    });
+
+    it.each(
+      (['cancel', 'expiry', 'revise'] as const).flatMap((transition) =>
+        [false, true].map((reminderFirst) => ({ transition, reminderFirst })),
+      ),
+    )(
+      'ACC-8D real PostgreSQL $transition vs reminder (reminder first=$reminderFirst)',
+      async ({ transition, reminderFirst }) => {
+        const f = await sessionFixture();
+        await addStudent(f, true);
+        const p = await laterPublication(f, 'reminder', {
+          clientRequestId: randomUUID(),
+          visibleUntil: new Date(reminderDue.getTime() + 1000),
+        });
+        const entered = deferred(),
+          release = deferred();
+        const lifecycleHolder = prisma.$extends({
+          query: {
+            academicContentPublication: {
+              async updateMany({ args, query }) {
+                entered.resolve();
+                await release.promise;
+                return query(args);
+              },
+            },
+          },
+        }) as unknown as PrismaService;
+        const holder = reminderFirst
+          ? holdNotificationTransaction(entered, release)
+          : lifecycleHolder;
+        const change = (client: PrismaService) =>
+          transition === 'cancel'
+            ? cancel(f, p, client, reminderDue)
+            : transition === 'expiry'
+              ? expire(f, p, client, new Date(reminderDue.getTime() + 1000))
+              : revise(f, p, client);
+        const first = reminderFirst
+          ? generateLater(f, p, 'reminder', holder)
+          : change(holder);
+        await waitForSignal(entered.promise);
+        const contender = (
+          reminderFirst
+            ? change(second)
+            : generateLater(f, p, 'reminder', second)
+        ).then(
+          () => ({ error: null }),
+          (error: unknown) => ({ error }),
+        );
+        try {
+          await waitForParentLock();
+        } finally {
+          release.resolve();
+        }
+        await first;
+        expect((await contender).error).toBeNull();
+        const saved = await savedNotifications(f, p);
+        expect(
+          saved.filter((n) => n.type === 'ONLINE_SESSION_REMINDER'),
+        ).toHaveLength(reminderFirst ? 1 : 0);
+        await generateLater(f, p, 'reminder');
+        expect(await savedNotifications(f, p)).toEqual(saved);
+        await scopedNotifications(f, () =>
+          notificationAdapter().service.generateCancellation(
+            notificationInput(f, p),
+            new Date(reminderDue.getTime() + 1000),
+          ),
+        );
+        expect(
+          (await savedNotifications(f, p)).filter(
+            (n) => n.type === 'ACADEMIC_CONTENT_CANCELLED',
+          ),
+        ).toHaveLength(transition === 'cancel' ? 1 : 0);
+      },
+    );
+
+    it.each(['policy', 'authorization'] as const)(
+      'ACC-8D current $change mutation serializes with reminder authorization',
+      async (change) => {
+        const f = await sessionFixture(),
+          child = await addStudent(f, true);
+        const p = await laterPublication(f, 'reminder');
+        const entered = deferred(),
+          release = deferred();
+        const holder = holdNotificationTransaction(entered, release);
+        const first = generateLater(f, p, 'reminder', holder);
+        await waitForSignal(entered.promise);
+        const contender =
+          change === 'policy'
+            ? second.academicContentNotificationPolicy.update({
+                where: { schoolId: f.schoolId },
+                data: { onlineSessionRemindersEnabled: false },
+              })
+            : second.enrollment.update({
+                where: { id: child.enrollment.id },
+                data: { status: 'WITHDRAWN' },
+              });
+        let finished = false;
+        const pending = contender.then(() => {
+          finished = true;
+        });
+        try {
+          const deadline = Date.now() + 10000;
+          let blocked = false;
+          while (Date.now() < deadline) {
+            const rows = await prisma.$queryRaw<
+              Array<{ blocked: boolean }>
+            >`SELECT cardinality(pg_blocking_pids(pid)) > 0 AS blocked FROM pg_stat_activity WHERE application_name = ${applicationName}`;
+            if (rows.some((row) => row.blocked)) {
+              blocked = true;
+              break;
+            }
+            await new Promise((done) => setTimeout(done, 20));
+          }
+          expect(blocked).toBe(true);
+          expect(finished).toBe(false);
+        } finally {
+          release.resolve();
+        }
+        await first;
+        await pending;
+        expect(await savedNotifications(f, p)).toHaveLength(1);
+        // Retry the original event after the mutation: no new notification or realtime event.
+        await generateLater(f, p, 'reminder');
+        expect(await savedNotifications(f, p)).toHaveLength(1);
+      },
+    );
+
+    it.each(['cancel', 'reminder'] as const)(
+      'ACC-8D real later-event $event generation processes 505 current users with bounded pages',
+      async (event) => {
+        const f = await sessionFixture();
+        const accounts = Array.from({ length: 504 }, () => ({
+          id: randomUUID(),
+          email: `acc8d-${randomUUID()}@example.test`,
+          firstName: 'Scale',
+          lastName: 'Student',
+          userType: UserType.STUDENT,
+        }));
+        users.push(...accounts.map((a) => a.id));
+        await prisma.user.createMany({ data: accounts });
+        const students = accounts.map((a) => ({
+          id: randomUUID(),
+          userId: a.id,
+          schoolId: f.schoolId,
+          organizationId,
+          firstName: 'Scale',
+          lastName: 'Student',
+        }));
+        await prisma.student.createMany({ data: students });
+        await prisma.enrollment.createMany({
+          data: students.map((s) => ({
+            schoolId: f.schoolId,
+            studentId: s.id,
+            academicYearId: f.academicYearId,
+            termId: f.termId,
+            classroomId: f.classroomId,
+            enrolledAt: now,
+          })),
+        });
+        const first = await addStudent(f),
+          secondChild = await addStudent(f);
+        const parent = await addGuardian(f, [first, secondChild], null, true);
+        const p = await laterPublication(f, event);
+        const userPages = jest.spyOn(
+          AcademicContentPublicationNotificationRepository.prototype,
+          'listLaterRecipientUsers',
+        );
+        const contexts = jest.spyOn(
+          AcademicContentPublicationNotificationRepository.prototype,
+          'listCurrentLaterContexts',
+        );
+        try {
+          const generated = await generateLater(f, p, event);
+          expect(generated.createdNotificationCount).toBe(505);
+          const pages = await Promise.all(
+            userPages.mock.results.map((r) => r.value as Promise<string[]>),
+          );
+          expect(pages.map((page) => page.length)).toEqual([500, 5]);
+          for (const call of contexts.mock.calls)
+            expect(call[2].length).toBeLessThanOrEqual(500);
+          for (const result of contexts.mock.results) {
+            const page = await (result.value as ReturnType<
+              AcademicContentPublicationNotificationRepository['listCurrentLaterContexts']
+            >);
+            expect(page.contexts.length).toBeLessThanOrEqual(500);
+          }
+          const saved = await savedNotifications(f, p);
+          expect(new Set(saved.map((n) => n.recipientUserId)).size).toBe(505);
+          expect(
+            saved.find((n) => n.recipientUserId === parent.userId)?.metadata,
+          ).toMatchObject({
+            childContextCount: 2,
+            studentIds: [first.student.id, secondChild.student.id].sort(),
+          });
+        } finally {
+          userPages.mockRestore();
+          contexts.mockRestore();
+        }
+      },
+    );
+
+    it('ACC-8D exact-school later jobs fail closed and historical non-withdrawal reasons emit no cancellation', async () => {
+      const f = await sessionFixture();
+      await addStudent(f, true);
+      const p = await laterPublication(f, 'reminder'),
+        foreign = await sessionFixture();
+      const adapter = notificationAdapter();
+      await scopedNotifications(foreign, () =>
+        adapter.service.generateSessionReminder(
+          {
+            ...notificationInput(f, p),
+            schoolId: foreign.schoolId,
+            reminderOffsetMinutes: 15,
+          },
+          reminderDue,
+        ),
+      );
+      await scopedNotifications(f, () =>
+        adapter.service.generateCancellation(notificationInput(f, p), now),
+      );
+      expect(await savedNotifications(f, p)).toHaveLength(0);
+      await revise(f, p);
+      await scopedNotifications(f, () =>
+        adapter.service.generateCancellation(notificationInput(f, p), now),
+      );
+      await editTitle(f);
+      const next = await schedule(f);
+      await intentRepo().unschedule({
+        ...mutation(f),
+        publicationId: next.publicationId,
+      });
+      await scopedNotifications(f, () =>
+        adapter.service.generateCancellation(notificationInput(f, next), now),
+      );
+      expect(await savedNotifications(f, p)).toHaveLength(0);
+      expect(await savedNotifications(f, next)).toHaveLength(0);
+    });
 
     it('ACC-8C preserves Revision V2 relations, old audience and notification history across revise/edit/schedule/publish', async () => {
       const f = await fixture();
@@ -1836,6 +2644,345 @@ describeDatabase(
       (process.env.PRD3_G03_QUEUE_PORT
         ? `redis://127.0.0.1:${process.env.PRD3_G03_QUEUE_PORT}`
         : undefined);
+    (redisUrl ? it : it.skip)(
+      'ACC-8D reconstructs cancellation and delayed reminders after real Redis loss with current offset and immutable successor timing',
+      async () => {
+        const queue = new BullmqService(
+          new ConfigService({ NODE_ENV: 'test', QUEUE_REDIS_URL: redisUrl }),
+        );
+        await queue.getQueueReadiness(COMMUNICATION_NOTIFICATION_QUEUE_NAME);
+        const jobs = queue.getQueue(COMMUNICATION_NOTIFICATION_QUEUE_NAME);
+        const producer = new CommunicationNotificationQueueService(queue);
+        const adapter = notificationAdapter(producer);
+        try {
+          const f = await sessionFixture();
+          await addStudent(f, true);
+          const p = await laterPublication(f, 'reminder');
+          const data = {
+            ...notificationInput(f, p),
+            reminderOffsetMinutes: 15,
+          };
+          const id = buildAcademicContentSessionReminderJobId(data);
+          await adapter.service.ensureAfterPublicationCommit(
+            jobIdentity(f, p),
+            now,
+          );
+          expect((await jobs.getJob(id))?.name).toBe(
+            COMMUNICATION_ACADEMIC_CONTENT_SESSION_REMINDER_GENERATE_JOB_NAME,
+          );
+          expect(await (await jobs.getJob(id))?.getState()).toBe('delayed');
+          expect((await jobs.getJob(id))?.opts.delay).toBe(
+            reminderDue.getTime() - now.getTime(),
+          );
+          expect(
+            Object.keys((await jobs.getJob(id))?.data as object).sort(),
+          ).toEqual(
+            [
+              'schoolId',
+              'organizationId',
+              'contentId',
+              'publicationId',
+              'actorUserId',
+              'actorUserType',
+              'reminderOffsetMinutes',
+            ].sort(),
+          );
+          expect(JSON.stringify((await jobs.getJob(id))?.data)).not.toContain(
+            'secret-8d',
+          );
+          await jobs.obliterate({ force: true });
+          await adapter.service.recover(now);
+          expect(await (await jobs.getJob(id))?.getState()).toBe('delayed');
+          await adapter.service.ensureAfterPublicationCommit(
+            jobIdentity(f, p),
+            now,
+          ); // ALREADY_PUBLISHED repair hook.
+          expect(
+            (await jobs.getJobs(['delayed'])).filter((j) => j.id === id),
+          ).toHaveLength(1);
+          await scopedNotifications(f, () =>
+            adapter.service.generateSessionReminder(data, reminderDue),
+          );
+          const saved = await savedNotifications(f, p);
+          await jobs.obliterate({ force: true });
+          await adapter.service.recover(reminderDue);
+          await scopedNotifications(f, () =>
+            adapter.service.generateSessionReminder(data, reminderDue),
+          );
+          expect(await savedNotifications(f, p)).toEqual(saved);
+          await jobs.obliterate({ force: true });
+          await prisma.academicContentNotificationPolicy.update({
+            where: { schoolId: f.schoolId },
+            data: { onlineSessionReminderOffsetsMinutes: [5] },
+          });
+          await adapter.service.recover(now);
+          expect(await jobs.getJob(id)).toBeUndefined();
+          const newOffsetId = buildAcademicContentSessionReminderJobId({
+            ...data,
+            reminderOffsetMinutes: 5,
+          });
+          expect(await (await jobs.getJob(newOffsetId))?.getState()).toBe(
+            'delayed',
+          );
+          await jobs.obliterate({ force: true });
+          await adapter.service.recover(
+            new Date(sessionStart.getTime() - 5 * 60000 + 300000),
+          );
+          expect(await jobs.getJob(newOffsetId)).toBeUndefined();
+          const expiredF = await sessionFixture();
+          await addStudent(expiredF, true);
+          const expiredP = await laterPublication(expiredF, 'reminder', {
+            clientRequestId: randomUUID(),
+            visibleUntil: expiryTime,
+          });
+          await expire(expiredF, expiredP);
+          await jobs.obliterate({ force: true });
+          await adapter.service.recover(expiryTime);
+          expect(
+            await jobs.getJob(
+              buildAcademicContentSessionReminderJobId({
+                ...notificationInput(expiredF, expiredP),
+                reminderOffsetMinutes: 15,
+              }),
+            ),
+          ).toBeUndefined();
+          expect((await state(expiredF, expiredP)).publication.status).toBe(
+            'EXPIRED',
+          );
+          await revise(f, p);
+          const successorStart = new Date(sessionStart.getTime() + 3600000);
+          await prisma.academicContentOnlineSessionDetail.update({
+            where: {
+              schoolId_academicContentId: {
+                schoolId: f.schoolId,
+                academicContentId: f.content.id,
+              },
+            },
+            data: {
+              startAt: successorStart,
+              endAt: new Date(successorStart.getTime() + 3600000),
+            },
+          });
+          const next = await schedule(f);
+          await execute(f, next);
+          await jobs.obliterate({ force: true });
+          await adapter.service.recover(now);
+          expect(await jobs.getJob(id)).toBeUndefined();
+          expect(await jobs.getJob(newOffsetId)).toBeUndefined();
+          const successorId = buildAcademicContentSessionReminderJobId({
+            ...notificationInput(f, next),
+            reminderOffsetMinutes: 5,
+          });
+          expect((await jobs.getJob(successorId))?.opts.delay).toBe(
+            successorStart.getTime() - 5 * 60000 - now.getTime(),
+          );
+          await scopedNotifications(f, () =>
+            adapter.service.generateSessionReminder(data, reminderDue),
+          );
+          expect(await savedNotifications(f, p)).toEqual(saved);
+          const outage = jest
+            .spyOn(queue, 'ensureJobFromPersistedTruth')
+            .mockRejectedValue(new Error('synthetic queue outage'));
+          const useCase = new CancelAcademicContentPublicationUseCase(
+            lifecycle(),
+            producer,
+          );
+          await runWithRequestContext(createRequestContext(), () => {
+            setActor({ id: actorId, userType: 'SCHOOL_USER' });
+            setActiveMembership({
+              membershipId: 'test',
+              schoolId: f.schoolId,
+              organizationId,
+              roleId: 'test',
+              permissions: ['academics.academic_content.publish'],
+            });
+            return useCase.execute(f.content.id, next.publicationId);
+          });
+          outage.mockRestore();
+          const cancelId = buildAcademicContentCancellationJobId(
+            notificationInput(f, next),
+          );
+          const committed = await state(f, next);
+          expect(committed.publication.cancellationReason).toBe('WITHDRAWN');
+          expect(await jobs.getJob(cancelId)).toBeUndefined();
+          const cancellationNow = new Date(
+            committed.publication.cancelledAt!.getTime() + 1,
+          );
+          await jobs.obliterate({ force: true });
+          await adapter.service.recover(cancellationNow);
+          expect((await jobs.getJob(cancelId))?.name).toBe(
+            COMMUNICATION_ACADEMIC_CONTENT_CANCELLATION_GENERATE_JOB_NAME,
+          );
+          expect(await jobs.getJob(successorId)).toBeUndefined();
+          await scopedNotifications(f, () =>
+            adapter.service.generateCancellation(
+              notificationInput(f, next),
+              cancellationNow,
+            ),
+          );
+          const cancelled = await savedNotifications(f, next);
+          await jobs.obliterate({ force: true });
+          await adapter.service.recover(cancellationNow);
+          await scopedNotifications(f, () =>
+            adapter.service.generateCancellation(
+              notificationInput(f, next),
+              cancellationNow,
+            ),
+          );
+          expect(await savedNotifications(f, next)).toEqual(cancelled);
+          expect(cancelled).toHaveLength(1);
+          expect(await state(f, next)).toEqual(committed);
+        } finally {
+          jest.restoreAllMocks();
+          await jobs.obliterate({ force: true });
+          await queue.onModuleDestroy();
+        }
+      },
+    );
+
+    (redisUrl ? it : it.skip).each([
+      'waiting',
+      'active',
+      'completed',
+      'failed',
+    ] as const)(
+      'ACC-8D cancellation identity coexists with an original %s publication job',
+      async (originalState) => {
+        const queue = new BullmqService(
+          new ConfigService({ NODE_ENV: 'test', QUEUE_REDIS_URL: redisUrl }),
+        );
+        await queue.getQueueReadiness(COMMUNICATION_NOTIFICATION_QUEUE_NAME);
+        const jobs = queue.getQueue(COMMUNICATION_NOTIFICATION_QUEUE_NAME);
+        const producer = new CommunicationNotificationQueueService(queue);
+        const data = {
+          schoolId: randomUUID(),
+          organizationId,
+          contentId: randomUUID(),
+          publicationId: randomUUID(),
+          actorUserId: null,
+          actorUserType: null,
+        };
+        try {
+          await producer.ensureAcademicContentPublishedNotifications(data);
+          const id = buildAcademicContentNotificationGenerationJobId(data);
+          const original = (await jobs.getJob(id))!;
+          const key = jobs.toKey('wait'),
+            token = randomUUID();
+          if (originalState !== 'waiting') {
+            const redis = await jobs.client;
+            await redis.lrem(key, 0, id);
+            await redis.lpush(jobs.toKey('active'), id);
+            await redis.set(`${jobs.toKey(id)}:lock`, token, 'PX', 30000);
+            if (originalState === 'completed')
+              await original.moveToCompleted('done', token, false);
+            if (originalState === 'failed') {
+              original.opts.attempts = 1;
+              await original.moveToFailed(
+                new UnrecoverableError('expected fixture failure'),
+                token,
+                false,
+              );
+            }
+          }
+          expect(await original.getState()).toBe(originalState);
+          const before = await jobs.getJob(id);
+          await producer.ensureAcademicContentCancellationNotifications(data);
+          await producer.ensureAcademicContentCancellationNotifications(data);
+          const after = (await jobs.getJob(id))!;
+          expect(after.name).toBe(before!.name);
+          expect(after.data).toEqual(before!.data);
+          expect(await after.getState()).toBe(originalState);
+          expect(
+            (await jobs.getJob(buildAcademicContentCancellationJobId(data)))
+              ?.name,
+          ).toBe(COMMUNICATION_ACADEMIC_CONTENT_CANCELLATION_GENERATE_JOB_NAME);
+        } finally {
+          await jobs.obliterate({ force: true });
+          await queue.onModuleDestroy();
+        }
+      },
+    );
+
+    it.each(['cancel', 'reminder'] as const)(
+      'ACC-8D real recovery discovers multiple bounded pages of %s candidates',
+      async (event) => {
+        const f = await sessionFixture();
+        const p = await laterPublication(f, event);
+        const original = (await state(f, p)).publication;
+        const content = (await state(f, p)).content;
+        const revision = await prisma.academicContentRevision.findUniqueOrThrow(
+          { where: { id: p.revisionId } },
+        );
+        const identities = Array.from({ length: 205 }, () => ({
+          contentId: randomUUID(),
+          revisionId: randomUUID(),
+          publicationId: randomUUID(),
+        }));
+        await prisma.academicContent.createMany({
+          data: identities.map((row) => ({ ...content, id: row.contentId })),
+        });
+        await prisma.academicContentRevision.createMany({
+          data: identities.map((row) => ({
+            ...revision,
+            id: row.revisionId,
+            academicContentId: row.contentId,
+            typeSpecificSnapshot:
+              revision.typeSpecificSnapshot as Prisma.InputJsonValue,
+          })),
+        });
+        const extra = identities.map((row) => ({
+          ...original,
+          id: row.publicationId,
+          academicContentId: row.contentId,
+          revisionId: row.revisionId,
+          clientRequestId: randomUUID(),
+        }));
+        await prisma.academicContentPublication.createMany({ data: extra });
+        const repository = new AcademicContentPublicationNotificationRepository(
+          prisma,
+        );
+        const found: string[] = [];
+        let pages = 0;
+        let cancelCursor: { cancelledAt: Date; id: string } | undefined,
+          reminderCursor: string | undefined;
+        while (true) {
+          const rows =
+            event === 'cancel'
+              ? await repository.listCancellationRecoveryCandidates(
+                  now,
+                  cancelCursor,
+                )
+              : await repository.listReminderRecoveryCandidates(
+                  now,
+                  reminderCursor,
+                );
+          expect(rows.length).toBeLessThanOrEqual(100);
+          pages++;
+          found.push(
+            ...rows.filter((r) => r.schoolId === f.schoolId).map((r) => r.id),
+          );
+          if (rows.length < 100) break;
+          const last = rows[rows.length - 1];
+          cancelCursor = { cancelledAt: last.cancelledAt!, id: last.id };
+          reminderCursor = last.id;
+        }
+        expect(pages).toBeGreaterThan(2);
+        expect(found).toHaveLength(206);
+        expect(new Set(found).size).toBe(206);
+        // Reminder discovery depends on the future point, even for an old publication.
+        if (event === 'reminder') {
+          await prisma.academicContentPublication.updateMany({
+            where: { schoolId: f.schoolId },
+            data: { publishedAt: new Date(now.getTime() - 2 * 86400000) },
+          });
+          expect(
+            (await repository.listReminderRecoveryCandidates(now)).some(
+              (r) => r.schoolId === f.schoolId,
+            ),
+          ).toBe(true);
+        }
+      },
+    );
     (redisUrl ? it : it.skip)(
       'ACC-8C recovers committed significant updates after enqueue failure and real Redis loss; minor false is a no-op',
       async () => {

@@ -5,8 +5,59 @@ import {
   AcademicContentChangeSignificance as Significance,
   UserStatus,
   UserType,
+  Prisma,
 } from '@prisma/client';
 import { AcademicContentEffectiveNotificationPolicy } from './academic-content-notification.policy';
+import { decodeAcademicContentRevisionSnapshotV2 } from './academic-content-revision-snapshot';
+import {
+  COMMUNICATION_NOTIFICATION_RECONCILE_INTERVAL_MS,
+  COMMUNICATION_NOTIFICATION_RECOVERY_WINDOW_MS,
+} from '../../../communication/domain/communication-notification-generation-domain';
+
+export const ACADEMIC_CONTENT_REMINDER_STALE_GRACE_MS =
+  COMMUNICATION_NOTIFICATION_RECONCILE_INTERVAL_MS;
+
+export function academicContentSessionStartAt(
+  snapshot: Prisma.JsonValue,
+  type: Type,
+): Date | null {
+  if (type !== Type.ONLINE_SESSION) return null;
+  try {
+    const decoded = decodeAcademicContentRevisionSnapshotV2(snapshot, type);
+    return decoded.type === Type.ONLINE_SESSION
+      ? new Date(decoded.state.startAt)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function academicContentReminderAt(input: {
+  startAt: Date;
+  publishedAt: Date;
+  offsetMinutes: number;
+  now: Date;
+  phase: 'publication' | 'recovery' | 'worker';
+}): Date | null {
+  const at = new Date(input.startAt.getTime() - input.offsetMinutes * 60_000);
+  if (
+    !Number.isFinite(at.getTime()) ||
+    at <= input.publishedAt ||
+    input.startAt <= input.now
+  )
+    return null;
+  if (input.phase === 'publication') return at > input.now ? at : null;
+  if (
+    input.now.getTime() >=
+    at.getTime() + ACADEMIC_CONTENT_REMINDER_STALE_GRACE_MS
+  )
+    return null;
+  if (input.phase === 'worker') return at <= input.now ? at : null;
+  return at.getTime() <=
+    input.now.getTime() + COMMUNICATION_NOTIFICATION_RECOVERY_WINDOW_MS
+    ? at
+    : null;
+}
 
 export const ACADEMIC_CONTENT_NOTIFICATION_RECIPIENT_PAGE_SIZE = 500;
 export const ACADEMIC_CONTENT_NOTIFICATION_CONTEXT_PAGE_SIZE = 500;

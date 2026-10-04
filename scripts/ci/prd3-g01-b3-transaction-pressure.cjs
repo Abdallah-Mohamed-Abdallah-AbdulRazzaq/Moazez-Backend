@@ -343,6 +343,19 @@ const REVIEWED_CALL_OVERRIDES = Object.freeze([
     evidence: 'All callers receive only AcademicContentFileTransaction. READY orphan cleanup intentionally holds upload and file row locks across confirmed storage deletion, with a 120-second transaction timeout, to preserve its no-claim concurrency guarantee; other callers perform database-only transactions.',
   }),
   Object.freeze({
+    path: 'src/modules/communication/infrastructure/communication-notification-generation.repository.ts',
+    target: /^authorize$/,
+    reason:
+      "The ACC later-event source authorization callback is supplied by AcademicContentPublicationNotificationService.generateLaterEvent through CommunicationNotificationGenerationService.generateForAcademicContentPublicationBatch and intentionally runs inside Communication's already-open notification generation transaction so source lifecycle, current policy and current relationship authorization are serialized with notification persistence.",
+    classification: 'LOCK_CONTENTION_SENSITIVE',
+    resolvedCallers: Object.freeze([
+      'AcademicContentPublicationNotificationService.generateLaterEvent',
+      'CommunicationNotificationGenerationService.generateForAcademicContentPublicationBatch',
+    ]),
+    evidence:
+      'The callback receives only the active Prisma.TransactionClient. lockLaterSource, findLaterSource, findPolicyInTransaction and listCurrentLaterContexts bind content/publication/school/organization/policy/current relationship and account reads and locks to that transaction beneath the Communication source advisory lock. Recipient batches and context pages are bounded to 500; policy/timing transformations and laterBatch are in-memory only. No Redis/BullMQ/Realtime/FCM/HTTP/Storage wait occurs inside the callback. Queue/realtime/push remain post-commit in the Communication service.',
+  }),
+  Object.freeze({
     path: 'src/modules/teachers/lifecycle/infrastructure/prisma-teacher-lifecycle.unit-of-work.ts',
     target: /^callback$/,
     reason: 'The generic unit-of-work callback is supplied by reviewed teacher lifecycle application coordinators and use cases.',
@@ -1568,6 +1581,7 @@ function inventoryTransactions(sourceRoot = path.join(ROOT, 'src')) {
             reason: reviewed.reason,
             reviewedClassification: reviewed.classification,
             reviewEvidence: reviewed.evidence,
+            resolvedCallers: reviewed.resolvedCallers,
           });
         }
         const externalInside = analysis.externalCalls.some((item) => item.awaited);

@@ -15,6 +15,10 @@ import {
   COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATIONS_GENERATE_JOB_NAME,
   CommunicationAcademicContentNotificationGenerationJobData,
   isAcademicContentNotificationGenerationJobData,
+  CommunicationAcademicContentSessionReminderJobData,
+  isAcademicContentSessionReminderJobData,
+  COMMUNICATION_ACADEMIC_CONTENT_CANCELLATION_GENERATE_JOB_NAME,
+  COMMUNICATION_ACADEMIC_CONTENT_SESSION_REMINDER_GENERATE_JOB_NAME,
 } from '../domain/communication-notification-generation-domain';
 
 @Injectable()
@@ -29,7 +33,8 @@ export class CommunicationNotificationGenerationWorker implements OnModuleInit {
   onModuleInit(): void {
     this.bullmqService.createWorker<
       | CommunicationAnnouncementNotificationGenerationJobData
-      | CommunicationAcademicContentNotificationGenerationJobData,
+      | CommunicationAcademicContentNotificationGenerationJobData
+      | CommunicationAcademicContentSessionReminderJobData,
       void
     >(COMMUNICATION_NOTIFICATION_QUEUE_NAME, async (job) => {
       if (
@@ -39,16 +44,32 @@ export class CommunicationNotificationGenerationWorker implements OnModuleInit {
         return;
       }
       if (
-        job.name ===
-        COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATIONS_GENERATE_JOB_NAME
+        [
+          COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATIONS_GENERATE_JOB_NAME,
+          COMMUNICATION_ACADEMIC_CONTENT_CANCELLATION_GENERATE_JOB_NAME,
+          COMMUNICATION_ACADEMIC_CONTENT_SESSION_REMINDER_GENERATE_JOB_NAME,
+        ].includes(job.name)
       ) {
-        if (!isAcademicContentNotificationGenerationJobData(job.data))
+        const reminder =
+          job.name ===
+          COMMUNICATION_ACADEMIC_CONTENT_SESSION_REMINDER_GENERATE_JOB_NAME;
+        if (
+          reminder
+            ? !isAcademicContentSessionReminderJobData(job.data)
+            : !isAcademicContentNotificationGenerationJobData(job.data)
+        )
           throw new Error('academic_content_notification_job_invalid');
-        const data = job.data;
+        const data =
+          job.data as CommunicationAcademicContentNotificationGenerationJobData;
         const context = createRequestContext(
           `academic-content-notification-generation:${job.id ?? data.publicationId}`,
         );
-        if (data.actorUserId && data.actorUserType)
+        if (
+          job.name ===
+            COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATIONS_GENERATE_JOB_NAME &&
+          data.actorUserId &&
+          data.actorUserType
+        )
           context.actor = {
             id: data.actorUserId,
             userType: data.actorUserType,
@@ -61,7 +82,14 @@ export class CommunicationNotificationGenerationWorker implements OnModuleInit {
           permissions: [],
         };
         await runWithRequestContext(context, () =>
-          this.academicContent.generate(data),
+          job.name ===
+          COMMUNICATION_ACADEMIC_CONTENT_CANCELLATION_GENERATE_JOB_NAME
+            ? this.academicContent.generateCancellation(data)
+            : reminder
+              ? this.academicContent.generateSessionReminder(
+                  data as CommunicationAcademicContentSessionReminderJobData,
+                )
+              : this.academicContent.generate(data),
         );
         return;
       }

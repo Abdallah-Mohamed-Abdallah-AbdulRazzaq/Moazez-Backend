@@ -1,4 +1,5 @@
 import { QueueModule } from '../../../infrastructure/queue/queue.module';
+import { CommunicationNotificationQueueService } from '../../communication/application/communication-notification-queue.service';
 import { AcademicContentPublicationQueueService } from './application/academic-content-publication-queue.service';
 import { AcademicContentPublicationRuntimeRepository } from './infrastructure/academic-content-publication-runtime.repository';
 import { AcademicContentPublicationLifecycleRepository } from './infrastructure/academic-content-publication-lifecycle.repository';
@@ -102,6 +103,7 @@ import {
     AcademicContentController,
   ],
   providers: [
+    CommunicationNotificationQueueService,
     AcademicContentPublicationQueueService,
     AcademicContentPublicationRuntimeRepository,
     AcademicContentPublicationLifecycleRepository,

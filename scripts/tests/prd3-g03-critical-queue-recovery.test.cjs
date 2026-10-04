@@ -418,7 +418,7 @@ test('R2/R3 actorless recovery and type-safe primary generation are enforced', (
   assert.match(generationContract, /actorUserType: UserType \| null;/u);
   assert.match(
     generationWorker,
-    /createWorker<\s*\| CommunicationAnnouncementNotificationGenerationJobData\s*\| CommunicationAcademicContentNotificationGenerationJobData,\s*void\s*>/u,
+    /createWorker<\s*\| CommunicationAnnouncementNotificationGenerationJobData\s*\| CommunicationAcademicContentNotificationGenerationJobData\s*\| CommunicationAcademicContentSessionReminderJobData,\s*void\s*>/u,
   );
   assert.doesNotMatch(
     generationWorker,
@@ -428,7 +428,23 @@ test('R2/R3 actorless recovery and type-safe primary generation are enforced', (
   assert.match(generationWorker, /const data = job\.data;/u);
   assert.match(
     generationWorker,
-    /if \(!isAcademicContentNotificationGenerationJobData\(job\.data\)\)/u,
+    /reminder\s*\? !isAcademicContentSessionReminderJobData\(job\.data\)\s*: !isAcademicContentNotificationGenerationJobData\(job\.data\)/u,
+  );
+  assert.match(
+    generationWorker,
+    /COMMUNICATION_ACADEMIC_CONTENT_CANCELLATION_GENERATE_JOB_NAME/u,
+  );
+  assert.match(
+    generationWorker,
+    /COMMUNICATION_ACADEMIC_CONTENT_SESSION_REMINDER_GENERATE_JOB_NAME/u,
+  );
+  assert.match(
+    generationWorker,
+    /this\.academicContent\.generateCancellation\(data\)/u,
+  );
+  assert.match(
+    generationWorker,
+    /this\.academicContent\.generateSessionReminder\(/u,
   );
   assert.match(generationWorker, /this\.academicContent\.generate\(data\)/u);
   assert.match(generationService, /actorUserId: string \| null;/u);
