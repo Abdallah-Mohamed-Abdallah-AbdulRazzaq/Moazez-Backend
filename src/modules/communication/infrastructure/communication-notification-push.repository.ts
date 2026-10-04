@@ -263,6 +263,7 @@ export class CommunicationNotificationPushRepository {
           deliveryId: input.deliveryId,
           deviceTokenId: input.deviceTokenId,
         },
+        schoolId: input.schoolId,
       },
       create: {
         schoolId: input.schoolId,
