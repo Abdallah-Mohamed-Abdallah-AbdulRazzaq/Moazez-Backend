@@ -418,11 +418,44 @@ test('R2/R3 actorless recovery and type-safe primary generation are enforced', (
   assert.match(generationContract, /actorUserType: UserType \| null;/u);
   assert.match(
     generationWorker,
-    /createWorker<\s*\| CommunicationAnnouncementNotificationGenerationJobData\s*\| CommunicationAcademicContentNotificationGenerationJobData\s*\| CommunicationAcademicContentSessionReminderJobData,\s*void\s*>/u,
+    /createWorker<\s*\| CommunicationAnnouncementNotificationGenerationJobData\s*\| CommunicationAcademicContentNotificationGenerationJobData\s*\| CommunicationAcademicContentReviewDecisionJobData\s*\| CommunicationAcademicContentSessionReminderJobData,\s*void\s*>/u,
   );
   assert.doesNotMatch(
     generationWorker,
     /CommunicationNotificationGenerationWorkerJobData|as unknown as CommunicationAnnouncementNotificationGenerationJobData/u,
+  );
+  const reviewBranch =
+    /if \(\s*job\.name ===\s*COMMUNICATION_ACADEMIC_CONTENT_REVIEW_DECISION_GENERATE_JOB_NAME\s*\) \{([\s\S]*?)\n {6}\}\n {6}if \(/u.exec(
+      generationWorker,
+    )?.[1];
+  assert.ok(
+    reviewBranch,
+    'dedicated review decision dispatch branch is missing',
+  );
+  assert.match(
+    reviewBranch,
+    /if \(!isAcademicContentReviewDecisionJobData\(job\.data\)\)\s*throw new Error\('academic_content_review_decision_job_invalid'\);\s*const data = job\.data;/u,
+  );
+  assert.match(
+    reviewBranch,
+    /await runWithRequestContext\(context, \(\) =>\s*this\.reviewDecisions\.generate\(data\),\s*\);\s*return;\s*$/u,
+  );
+  assert.doesNotMatch(
+    reviewBranch,
+    /\bas\s+(?:unknown|any|CommunicationAcademicContentNotificationGenerationJobData)\b|isAcademicContentNotificationGenerationJobData|this\.academicContent\./u,
+  );
+  const reviewValidator =
+    /export function isAcademicContentReviewDecisionJobData\([\s\S]*?(?=\nexport interface CommunicationAcademicContentNotificationGenerationJobData)/u.exec(
+      generationContract,
+    )?.[0];
+  assert.ok(reviewValidator, 'review decision job-data validator is missing');
+  assert.match(
+    reviewValidator,
+    /const keys = \[\s*'schoolId',\s*'organizationId',\s*'approvalId',\s*'actorUserId',\s*'actorUserType',\s*\];/u,
+  );
+  assert.match(
+    reviewValidator,
+    /Object\.keys\(row\)\.length === keys\.length &&\s*keys\.every\(\(key\) => Object\.prototype\.hasOwnProperty\.call\(row, key\)\)/u,
   );
   assert.match(generationWorker, /generateForPublishedAnnouncement\(data\)/u);
   assert.match(generationWorker, /const data = job\.data;/u);
