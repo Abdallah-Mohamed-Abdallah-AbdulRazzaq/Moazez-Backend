@@ -35,6 +35,7 @@ import request from 'supertest';
 import type { App } from 'supertest/types';
 import { REQUIRED_PERMISSIONS_METADATA } from '../../src/common/decorators/required-permissions.decorator';
 import { AppModule } from '../../src/app.module';
+import { TeacherAcademicContentController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content.controller';
 import { TeacherAnnouncementsController } from '../../src/modules/teacher-app/announcements/controller/teacher-announcements.controller';
 import { TeacherCalendarController } from '../../src/modules/teacher-app/calendar/controller/teacher-calendar.controller';
 import { TeacherClassroomAttendanceController } from '../../src/modules/teacher-app/classroom/attendance/controller/teacher-classroom-attendance.controller';
@@ -70,6 +71,9 @@ const ARGON2_OPTIONS: argon2.Options = {
 
 const FINAL_TEACHER_PERMISSIONS = [
   'app.device_tokens.manage',
+  'academics.academic_content.view',
+  'academics.academic_content.manage',
+  'academics.academic_content.publish',
   'academics.calendar.view',
   'academics.curriculum.view',
   'academics.lesson_plans.view',
@@ -126,6 +130,9 @@ const FINAL_TEACHER_PERMISSIONS = [
 ] as const;
 
 const REQUIRED_FINAL_TEACHER_APP_PERMISSIONS = [
+  'academics.academic_content.view',
+  'academics.academic_content.manage',
+  'academics.academic_content.publish',
   'teacher.home.view',
   'teacher.classes.view',
   'teacher.classroom.view',
@@ -161,6 +168,9 @@ const REQUIRED_FINAL_TEACHER_APP_PERMISSIONS = [
 ] as const;
 
 const FORBIDDEN_TEACHER_PERMISSIONS = [
+  'academics.academic_content.approve',
+  'academics.academic_content.settings.manage',
+  'academics.academic_content.analytics.view',
   'files.downloads.view',
   'communication.announcements.manage',
   'communication.messages.attachments.manage',
@@ -223,6 +233,7 @@ const TEACHER_APP_CONTROLLER_CLASSES = [
   TeacherScheduleController,
   TeacherCalendarController,
   TeacherLessonPreparationController,
+  TeacherAcademicContentController,
 ] as const;
 
 type AcademicContext = {
@@ -637,9 +648,9 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       (entry) => entry.permissions,
     );
 
-    expect(routes).toHaveLength(112);
-    expect(inventory).toHaveLength(112);
-    expect(decorated).toHaveLength(112);
+    expect(routes).toHaveLength(115);
+    expect(inventory).toHaveLength(115);
+    expect(decorated).toHaveLength(115);
     expect(undecorated).toEqual([]);
 
     expect(routes).toEqual(
@@ -673,6 +684,9 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
         'GET /api/v1/teacher/calendar/events',
         'GET /api/v1/teacher/lesson-preparation/today',
         'GET /api/v1/teacher/lesson-preparation/:lessonPlanItemId/content/:contentItemId/playback',
+        'GET /api/v1/teacher/academic-content/capabilities',
+        'GET /api/v1/teacher/academic-content',
+        'GET /api/v1/teacher/academic-content/:contentId',
       ]),
     );
 
@@ -696,6 +710,15 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     expect(
       getHandlerPermissions(TeacherMessagesController, 'downloadAttachment'),
     ).toEqual(['communication.messages.view']);
+    expect(
+      getHandlerPermissions(TeacherAcademicContentController, 'capabilities'),
+    ).toEqual(['academics.academic_content.view']);
+    expect(
+      getHandlerPermissions(TeacherAcademicContentController, 'list'),
+    ).toEqual(['academics.academic_content.view']);
+    expect(
+      getHandlerPermissions(TeacherAcademicContentController, 'detail'),
+    ).toEqual(['academics.academic_content.view']);
     expect(
       getHandlerPermissions(TeacherMessagesController, 'previewAttachment'),
     ).toEqual(['communication.messages.view']);
@@ -728,7 +751,7 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     ]);
 
     const teacherPermissions = await getSystemRolePermissionCodes('teacher');
-    expect(teacherPermissions).toHaveLength(54);
+    expect(teacherPermissions).toHaveLength(57);
     expect(new Set(teacherPermissions).size).toBe(teacherPermissions.length);
     expect(teacherPermissions).toEqual(
       Array.from(FINAL_TEACHER_PERMISSIONS).sort(),
