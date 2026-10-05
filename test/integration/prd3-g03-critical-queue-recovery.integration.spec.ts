@@ -495,6 +495,7 @@ function createProductionComponents(
       generationRepository,
       queue,
       publicationNotifications,
+      { recover: jest.fn().mockResolvedValue(0) } as never,
     );
   const pushRepository = new CommunicationNotificationPushRepository(prisma);
   const deviceTokens = new AppDeviceTokenRepository(prisma);
@@ -768,6 +769,7 @@ async function exerciseProductionWorkerDispatch(
     components.generationService,
     components.generationReconciliation,
     components.publicationNotifications,
+    {} as never,
   ).onModuleInit();
   new CommunicationNotificationPushWorker(
     bullmq,

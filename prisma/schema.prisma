@@ -1142,6 +1142,9 @@ enum CommunicationNotificationType {
   ACADEMIC_CONTENT_CANCELLED
   ONLINE_SESSION_REMINDER
 
+  ACADEMIC_CONTENT_APPROVED
+  ACADEMIC_CONTENT_CHANGES_REQUESTED
+
   @@map("communication_notification_type")
 }
 

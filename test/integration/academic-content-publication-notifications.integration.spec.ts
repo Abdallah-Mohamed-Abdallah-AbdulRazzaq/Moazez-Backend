@@ -656,6 +656,7 @@ describeDatabase(
         new CommunicationNotificationGenerationRepository(prisma),
         {} as never,
         adapter(),
+        { recover: jest.fn().mockResolvedValue(0) } as never,
       ).reconcile(now);
       expect(
         ensureJob.mock.calls.some(
@@ -710,6 +711,7 @@ describeDatabase(
               new CommunicationNotificationGenerationRepository(prisma),
               queue,
               service,
+              { recover: jest.fn().mockResolvedValue(0) } as never,
             ).reconcile(now);
             job = await jobs.getJob(jobId);
             expect(job?.id).toBe(jobId);
@@ -948,6 +950,7 @@ describeDatabase(
         new CommunicationNotificationGenerationRepository(prisma),
         {} as never,
         adapter(),
+        { recover: jest.fn().mockResolvedValue(0) } as never,
       );
       await service.reconcile(now);
       expect(

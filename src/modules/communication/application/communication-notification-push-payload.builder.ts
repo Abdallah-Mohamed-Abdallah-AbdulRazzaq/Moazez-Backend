@@ -115,6 +115,13 @@ function buildDeepLink(
     CommunicationNotificationSourceModule.ACADEMICS
   ) {
     const link = buildAppNotificationDeepLink(notification);
+    if (link?.type === 'teacher_academic_content')
+      return {
+        deepLinkType: link.type,
+        academicContentId: link.academicContentId,
+        revisionId: link.revisionId,
+        approvalId: link.approvalId,
+      };
     if (link?.type !== 'academic_content') return null;
     return {
       deepLinkType: link.type,

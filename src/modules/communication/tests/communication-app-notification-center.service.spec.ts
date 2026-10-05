@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/unbound-method -- Jest assertions intentionally inspect detached mock methods without invoking them. */
-import { COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_TYPES } from '../domain/communication-notification-domain';
+import { COMMUNICATION_ACADEMIC_CONTENT_APP_NOTIFICATION_TYPES } from '../domain/communication-notification-domain';
 import {
   CommunicationNotificationPriority,
   CommunicationNotificationSourceModule,
@@ -22,9 +22,9 @@ const OTHER_USER_ID = 'other-user-1';
 const NOTIFICATION_ID = 'notification-1';
 
 describe('CommunicationAppNotificationCenterService', () => {
-  it('maps academic_content to all four types, intersects exact type, and groups counts safely', async () => {
+  it('maps academic_content to publication and review types, intersects exact type, and groups counts safely', async () => {
     const rows = [
-      ...COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_TYPES,
+      ...COMMUNICATION_ACADEMIC_CONTENT_APP_NOTIFICATION_TYPES,
       CommunicationNotificationType.MESSAGE_RECEIVED,
       CommunicationNotificationType.ANNOUNCEMENT_PUBLISHED,
     ].map((type, index) =>
@@ -32,7 +32,7 @@ describe('CommunicationAppNotificationCenterService', () => {
         id: `row-${index}`,
         type,
         sourceModule:
-          index < 4
+          index < 6
             ? CommunicationNotificationSourceModule.ACADEMICS
             : CommunicationNotificationSourceModule.COMMUNICATION,
         status:
@@ -67,7 +67,7 @@ describe('CommunicationAppNotificationCenterService', () => {
       aliasStyle: 'dual',
     });
     expect(result.notifications.map((row) => row.type)).toEqual(
-      COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_TYPES.map((type) =>
+      COMMUNICATION_ACADEMIC_CONTENT_APP_NOTIFICATION_TYPES.map((type) =>
         type.toLowerCase(),
       ),
     );
@@ -76,15 +76,15 @@ describe('CommunicationAppNotificationCenterService', () => {
         .filters,
     ).toEqual({
       recipientUserId: ACTOR_ID,
-      types: COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_TYPES,
+      types: COMMUNICATION_ACADEMIC_CONTENT_APP_NOTIFICATION_TYPES,
     });
     expect(result.groups).toEqual([
       {
         key: 'academic_content',
         label: 'Academic Content',
-        count: 4,
-        unreadCount: 3,
-        unread_count: 3,
+        count: 6,
+        unreadCount: 5,
+        unread_count: 5,
       },
     ]);
     const exact = await service.listForActor({

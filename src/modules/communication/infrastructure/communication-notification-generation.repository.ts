@@ -33,8 +33,13 @@ import {
   CommunicationAcademicContentBatchAuthorization,
   isAcademicContentSessionReminderJobData,
   COMMUNICATION_PREPARED_NOTIFICATION_BATCH_MAX_USERS,
+  CommunicationPreparedAcademicContentReviewDecision,
+  CommunicationAcademicContentReviewDecisionAuthorization,
 } from '../domain/communication-notification-generation-domain';
-import { COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_SOURCE_TYPE } from '../domain/communication-notification-domain';
+import {
+  COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_SOURCE_TYPE,
+  COMMUNICATION_ACADEMIC_CONTENT_REVIEW_SOURCE_TYPE,
+} from '../domain/communication-notification-domain';
 
 const COMMUNICATION_ANNOUNCEMENT_FOR_NOTIFICATION_GENERATION_ARGS =
   Prisma.validator<Prisma.CommunicationAnnouncementDefaultArgs>()({
@@ -218,6 +223,165 @@ interface AudienceTargetIds {
 export class CommunicationNotificationGenerationRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  async createMissingAcademicContentReviewDecisionNotification(
+    input: CommunicationPreparedAcademicContentReviewDecision & {
+      inAppEnabled: boolean;
+      pushEnabled: boolean;
+    },
+    authorize: CommunicationAcademicContentReviewDecisionAuthorization,
+  ): Promise<CommunicationAnnouncementNotificationCreateResult> {
+    const empty = () => ({
+      recipientCount: 0,
+      createdNotificationCount: 0,
+      existingNotificationCount: 0,
+      createdDeliveryCount: 0,
+      existingDeliveryCount: 0,
+      createdNotifications: [],
+      pushDeliveries: [],
+    });
+    if (!input.inAppEnabled) return empty();
+    return this.scopedPrisma.$transaction(
+      async (tx) => {
+        const lockKey = `communication:academics-review:${input.schoolId}:${input.approvalId}`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+        const current = await authorize(tx);
+        if (!current) return empty();
+        if (
+          current.schoolId !== input.schoolId ||
+          current.organizationId !== input.organizationId ||
+          current.approvalId !== input.approvalId ||
+          current.recipientUserId !== input.recipientUserId ||
+          current.academicContentId !== input.academicContentId ||
+          current.revisionId !== input.revisionId ||
+          current.roundNumber !== input.roundNumber ||
+          current.decision !== input.decision ||
+          !['APPROVED', 'CHANGES_REQUESTED'].includes(current.decision)
+        )
+          throw new Error('communication_review_decision_source_invalid');
+        const type =
+          current.decision === 'APPROVED'
+            ? CommunicationNotificationType.ACADEMIC_CONTENT_APPROVED
+            : CommunicationNotificationType.ACADEMIC_CONTENT_CHANGES_REQUESTED;
+        const decisionKey =
+          current.decision === 'APPROVED' ? 'approved' : 'changes-requested';
+        const key = `acc:review:${current.approvalId}:${decisionKey}:${current.recipientUserId}`;
+        const existing = await tx.communicationNotification.findUnique({
+          where: {
+            schoolId_idempotencyKey: {
+              schoolId: current.schoolId,
+              idempotencyKey: key,
+            },
+          },
+          select: GENERATED_NOTIFICATION_SELECT,
+        });
+        if (
+          existing &&
+          (existing.recipientUserId !== current.recipientUserId ||
+            existing.sourceModule !==
+              CommunicationNotificationSourceModule.ACADEMICS ||
+            existing.sourceType !==
+              COMMUNICATION_ACADEMIC_CONTENT_REVIEW_SOURCE_TYPE ||
+            existing.sourceId !== current.approvalId ||
+            existing.type !== type)
+        )
+          throw new Error('communication_notification_idempotency_collision');
+        const notification =
+          existing ??
+          (await tx.communicationNotification.create({
+            data: {
+              schoolId: current.schoolId,
+              recipientUserId: current.recipientUserId,
+              actorUserId: current.actorUserId,
+              sourceModule: CommunicationNotificationSourceModule.ACADEMICS,
+              sourceType: COMMUNICATION_ACADEMIC_CONTENT_REVIEW_SOURCE_TYPE,
+              sourceId: current.approvalId,
+              type,
+              title: current.title,
+              body: current.body,
+              priority: CommunicationNotificationPriority.NORMAL,
+              status: CommunicationNotificationStatus.UNREAD,
+              idempotencyKey: key,
+              metadata: {
+                academicContentId: current.academicContentId,
+                revisionId: current.revisionId,
+                approvalId: current.approvalId,
+                roundNumber: current.roundNumber,
+                decision: current.decision.toLowerCase(),
+              },
+            },
+            select: GENERATED_NOTIFICATION_SELECT,
+          }));
+        const deliveryCounts = await this.ensureInAppDeliveriesInTransaction(
+          tx,
+          {
+            schoolId: current.schoolId,
+            notificationIds: [notification.id],
+            now: current.now,
+          },
+        );
+        const pushDeliveries = await this.ensurePushDeliveriesInTransaction(
+          tx,
+          {
+            schoolId: current.schoolId,
+            now: current.now,
+            notificationIds: [notification.id],
+            pushEnabledRecipientUserIds: input.pushEnabled
+              ? [current.recipientUserId]
+              : [],
+            notificationRecipientPairs: [
+              {
+                notificationId: notification.id,
+                recipientUserId: current.recipientUserId,
+              },
+            ],
+            createDisabledDeliveries: false,
+          },
+        );
+        return {
+          recipientCount: 1,
+          createdNotificationCount: existing ? 0 : 1,
+          existingNotificationCount: existing ? 1 : 0,
+          ...deliveryCounts,
+          createdNotifications: existing ? [] : [notification],
+          pushDeliveries,
+        };
+      },
+      { maxWait: 20_000, timeout: 20_000 },
+    );
+  }
+
+  private async ensureInAppDeliveriesInTransaction(
+    tx: Prisma.TransactionClient,
+    input: { schoolId: string; notificationIds: string[]; now: Date },
+  ) {
+    const existing = await tx.communicationNotificationDelivery.findMany({
+      where: {
+        schoolId: input.schoolId,
+        notificationId: { in: input.notificationIds },
+        channel: CommunicationNotificationDeliveryChannel.IN_APP,
+      },
+      select: { notificationId: true },
+    });
+    const delivered = new Set(existing.map((row) => row.notificationId));
+    const missing = input.notificationIds.filter((id) => !delivered.has(id));
+    if (missing.length)
+      await tx.communicationNotificationDelivery.createMany({
+        data: missing.map((notificationId) => ({
+          schoolId: input.schoolId,
+          notificationId,
+          channel: CommunicationNotificationDeliveryChannel.IN_APP,
+          status: CommunicationNotificationDeliveryStatus.DELIVERED,
+          provider: COMMUNICATION_IN_APP_NOTIFICATION_PROVIDER,
+          attemptedAt: input.now,
+          deliveredAt: input.now,
+        })),
+      });
+    return {
+      createdDeliveryCount: missing.length,
+      existingDeliveryCount: existing.length,
+    };
+  }
+
   async createMissingAcademicContentPublishedNotifications(
     input: CommunicationPreparedAcademicContentBatch & {
       pushEnabledRecipientUserIds: string[];
@@ -396,33 +560,10 @@ export class CommunicationNotificationGenerationRepository {
           : [];
         const notifications = [...existing, ...createdNotifications];
         const notificationIds = notifications.map((row) => row.id);
-        const existingDeliveries =
-          await tx.communicationNotificationDelivery.findMany({
-            where: {
-              schoolId: input.schoolId,
-              notificationId: { in: notificationIds },
-              channel: CommunicationNotificationDeliveryChannel.IN_APP,
-            },
-            select: { notificationId: true },
-          });
-        const withDelivery = new Set(
-          existingDeliveries.map((row) => row.notificationId),
+        const deliveryCounts = await this.ensureInAppDeliveriesInTransaction(
+          tx,
+          { schoolId: input.schoolId, notificationIds, now: input.now },
         );
-        const missingDeliveries = notificationIds.filter(
-          (id) => !withDelivery.has(id),
-        );
-        if (missingDeliveries.length)
-          await tx.communicationNotificationDelivery.createMany({
-            data: missingDeliveries.map((notificationId) => ({
-              schoolId: input.schoolId,
-              notificationId,
-              channel: CommunicationNotificationDeliveryChannel.IN_APP,
-              status: CommunicationNotificationDeliveryStatus.DELIVERED,
-              provider: COMMUNICATION_IN_APP_NOTIFICATION_PROVIDER,
-              attemptedAt: input.now,
-              deliveredAt: input.now,
-            })),
-          });
         const pushDeliveries = await this.ensurePushDeliveriesInTransaction(
           tx,
           {
@@ -440,8 +581,7 @@ export class CommunicationNotificationGenerationRepository {
           recipientCount: input.recipients.length,
           createdNotificationCount: createdNotifications.length,
           existingNotificationCount: existing.length,
-          createdDeliveryCount: missingDeliveries.length,
-          existingDeliveryCount: existingDeliveries.length,
+          ...deliveryCounts,
           createdNotifications,
           pushDeliveries,
         };
@@ -897,6 +1037,7 @@ export class CommunicationNotificationGenerationRepository {
         recipientUserId: string;
       }>;
       pushEnabledRecipientUserIds: string[];
+      createDisabledDeliveries?: boolean;
     },
   ): Promise<CommunicationGeneratedPushDeliveryRecord[]> {
     const notificationIds = deduplicateRecipientUserIds(input.notificationIds);
@@ -924,7 +1065,12 @@ export class CommunicationNotificationGenerationRepository {
       existingDeliveries.map((delivery) => delivery.notificationId),
     );
     const missingDeliveryNotificationIds = notificationIds.filter(
-      (notificationId) => !notificationIdsWithDelivery.has(notificationId),
+      (notificationId) =>
+        !notificationIdsWithDelivery.has(notificationId) &&
+        (input.createDisabledDeliveries !== false ||
+          pushEnabledRecipientUserIds.has(
+            recipientByNotificationId.get(notificationId) ?? '',
+          )),
     );
 
     if (missingDeliveryNotificationIds.length > 0) {

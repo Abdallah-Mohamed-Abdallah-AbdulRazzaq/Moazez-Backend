@@ -1,4 +1,5 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
+import { AcademicContentReviewDecisionNotificationService } from '../../academics/academic-content/application/academic-content-review-decision-notification.service';
 import {
   createRequestContext,
   runWithRequestContext,
@@ -9,6 +10,9 @@ import { CommunicationNotificationReconciliationService } from '../application/c
 import { AcademicContentPublicationNotificationService } from '../../academics/academic-content/application/academic-content-publication-notification.service';
 import {
   COMMUNICATION_ANNOUNCEMENT_NOTIFICATIONS_GENERATE_JOB_NAME,
+  COMMUNICATION_ACADEMIC_CONTENT_REVIEW_DECISION_GENERATE_JOB_NAME,
+  CommunicationAcademicContentReviewDecisionJobData,
+  isAcademicContentReviewDecisionJobData,
   COMMUNICATION_ANNOUNCEMENT_NOTIFICATIONS_RECONCILE_JOB_NAME,
   CommunicationAnnouncementNotificationGenerationJobData,
   COMMUNICATION_NOTIFICATION_QUEUE_NAME,
@@ -28,12 +32,14 @@ export class CommunicationNotificationGenerationWorker implements OnModuleInit {
     private readonly generationService: CommunicationNotificationGenerationService,
     private readonly reconciliationService: CommunicationNotificationReconciliationService,
     private readonly academicContent: AcademicContentPublicationNotificationService,
+    private readonly reviewDecisions: AcademicContentReviewDecisionNotificationService,
   ) {}
 
   onModuleInit(): void {
     this.bullmqService.createWorker<
       | CommunicationAnnouncementNotificationGenerationJobData
       | CommunicationAcademicContentNotificationGenerationJobData
+      | CommunicationAcademicContentReviewDecisionJobData
       | CommunicationAcademicContentSessionReminderJobData,
       void
     >(COMMUNICATION_NOTIFICATION_QUEUE_NAME, async (job) => {
@@ -41,6 +47,33 @@ export class CommunicationNotificationGenerationWorker implements OnModuleInit {
         job.name === COMMUNICATION_ANNOUNCEMENT_NOTIFICATIONS_RECONCILE_JOB_NAME
       ) {
         await this.reconciliationService.reconcile();
+        return;
+      }
+      if (
+        job.name ===
+        COMMUNICATION_ACADEMIC_CONTENT_REVIEW_DECISION_GENERATE_JOB_NAME
+      ) {
+        if (!isAcademicContentReviewDecisionJobData(job.data))
+          throw new Error('academic_content_review_decision_job_invalid');
+        const data = job.data;
+        const context = createRequestContext(
+          `academic-content-review-decision:${job.id ?? data.approvalId}`,
+        );
+        if (data.actorUserId && data.actorUserType)
+          context.actor = {
+            id: data.actorUserId,
+            userType: data.actorUserType,
+          };
+        context.activeMembership = {
+          membershipId: 'queue:academic-content-review-decision',
+          organizationId: data.organizationId,
+          schoolId: data.schoolId,
+          roleId: 'queue:academic-content-review-decision',
+          permissions: [],
+        };
+        await runWithRequestContext(context, () =>
+          this.reviewDecisions.generate(data),
+        );
         return;
       }
       if (

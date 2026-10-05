@@ -384,6 +384,7 @@ const REVIEWED_CALL_OVERRIDES = Object.freeze([
   Object.freeze({
     path: 'src/modules/communication/infrastructure/communication-notification-generation.repository.ts',
     target: /^authorize$/,
+    owner: 'CommunicationNotificationGenerationRepository.createMissingAcademicContentPublishedNotifications',
     reason:
       "The ACC later-event source authorization callback is supplied by AcademicContentPublicationNotificationService.generateLaterEvent through CommunicationNotificationGenerationService.generateForAcademicContentPublicationBatch and intentionally runs inside Communication's already-open notification generation transaction so source lifecycle, current policy and current relationship authorization are serialized with notification persistence.",
     classification: 'LOCK_CONTENTION_SENSITIVE',
@@ -393,6 +394,15 @@ const REVIEWED_CALL_OVERRIDES = Object.freeze([
     ]),
     evidence:
       'The callback receives only the active Prisma.TransactionClient. lockLaterSource, findLaterSource, findPolicyInTransaction and listCurrentLaterContexts bind content/publication/school/organization/policy/current relationship and account reads and locks to that transaction beneath the Communication source advisory lock. Recipient batches and context pages are bounded to 500; policy/timing transformations and laterBatch are in-memory only. No Redis/BullMQ/Realtime/FCM/HTTP/Storage wait occurs inside the callback. Queue/realtime/push remain post-commit in the Communication service.',
+  }),
+  Object.freeze({
+    path: 'src/modules/communication/infrastructure/communication-notification-generation.repository.ts',
+    owner: 'CommunicationNotificationGenerationRepository.createMissingAcademicContentReviewDecisionNotification',
+    target: /^authorize$/,
+    reason: 'The ACC-9E review-decision callback supplied by AcademicContentReviewDecisionNotificationService.generate through CommunicationNotificationGenerationService.generateForAcademicContentReviewDecision receives the active notification transaction.',
+    classification: 'LOCK_CONTENTION_SENSITIVE',
+    resolvedCallers: Object.freeze(['AcademicContentReviewDecisionNotificationService.generate', 'CommunicationNotificationGenerationService.generateForAcademicContentReviewDecision']),
+    evidence: 'AcademicContentReviewDecisionNotificationRepository.authorize uses only the active Prisma.TransactionClient to lock Content before Approval, then the exact Revision, School/Organization, submittedBy User and same-School Teacher Membership rows FOR SHARE and re-read findSource and eligibleRecipient before persistence. The advisory lock serializes the exact Approval identity. This one-recipient path has no nested transaction, transaction escape or Redis/BullMQ/Realtime/FCM/HTTP/Storage wait. Queue/realtime/push calls occur after commit.',
   }),
   Object.freeze({
     path: 'src/modules/teachers/lifecycle/infrastructure/prisma-teacher-lifecycle.unit-of-work.ts',
@@ -1619,6 +1629,7 @@ function inventoryTransactions(sourceRoot = path.join(ROOT, 'src')) {
         for (const item of unresolved) {
           const reviewed = REVIEWED_CALL_OVERRIDES.find((override) =>
             (!override.path || override.path === normalized(relativePath)) &&
+            (!override.owner || override.owner === owner) &&
             (!override.origin || override.origin === item.origin) &&
             override.target.test(item.target),
           );

@@ -1,4 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import { AcademicContentReviewDecisionNotificationEnqueueService } from '../../src/modules/academics/academic-content/application/academic-content-review-decision-notification-enqueue.service';
+import { AcademicContentReviewDecisionNotificationService } from '../../src/modules/academics/academic-content/application/academic-content-review-decision-notification.service';
+import { AcademicContentReviewDecisionNotificationRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-review-decision-notification.repository';
+import { CommunicationNotificationGenerationService } from '../../src/modules/communication/application/communication-notification-generation.service';
+import { CommunicationNotificationGenerationRepository } from '../../src/modules/communication/infrastructure/communication-notification-generation.repository';
+import { CommunicationNotificationPreferenceService } from '../../src/modules/communication/application/communication-notification-preference.service';
+import { CommunicationNotificationPreferenceRepository } from '../../src/modules/communication/infrastructure/communication-notification-preference.repository';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
@@ -444,6 +451,14 @@ describeDatabase('ACC-9D PostgreSQL Teacher workflow and publication', () => {
     if (app) await app.close();
     if (ids.school && ids.foreignschool) {
       const schoolId = { in: [ids.school, ids.foreignschool] };
+      await prisma.communicationNotificationDelivery.deleteMany({
+        where: { schoolId },
+      });
+      await prisma.communicationNotification.deleteMany({
+        where: { schoolId },
+      });
+      await prisma.membership.deleteMany({ where: { schoolId } });
+      await prisma.role.deleteMany({ where: { schoolId } });
       await prisma.auditLog.deleteMany({ where: { schoolId } });
       await prisma.academicContentApproval.deleteMany({ where: { schoolId } });
       await prisma.academicContentAudienceRecipientTarget.deleteMany({
@@ -571,6 +586,34 @@ describeDatabase('ACC-9D PostgreSQL Teacher workflow and publication', () => {
   }
 
   it('submits, requests changes, edits, resubmits and approves through the unchanged Management workflow', async () => {
+    const role = await prisma.role.create({
+      data: {
+        schoolId: ids.school,
+        key: 'acc9e-feedback',
+        name: 'Teacher feedback fixture',
+      },
+    });
+    await prisma.membership.create({
+      data: {
+        schoolId: ids.school,
+        organizationId: ids.org,
+        roleId: role.id,
+        userId: ids.teacher,
+        userType: UserType.TEACHER,
+      },
+    });
+    const ensureFailed = jest.fn(async (input: { approvalId: string }) => {
+      const persisted = await prisma.academicContentApproval.findUniqueOrThrow({
+        where: { id: input.approvalId },
+      });
+      expect(['APPROVED', 'CHANGES_REQUESTED']).toContain(persisted.status);
+      expect(persisted.decidedAt).not.toBeNull();
+      throw new Error('fixture_queue_unavailable_after_commit');
+    });
+    const feedback =
+      new AcademicContentReviewDecisionNotificationEnqueueService({
+        ensureAcademicContentReviewDecision: ensureFailed,
+      } as never);
     await policy(true);
     const content = await prep();
     expect(
@@ -591,9 +634,12 @@ describeDatabase('ACC-9D PostgreSQL Teacher workflow and publication', () => {
     expect(frozen.snapshotContractVersion).toBe(2);
     await asTeacher(
       () =>
-        new RequestAcademicContentChangesUseCase(workflow).execute(content.id, {
-          note: 'Revise topic',
-        }),
+        new RequestAcademicContentChangesUseCase(workflow, feedback).execute(
+          content.id,
+          {
+            note: 'Revise topic',
+          },
+        ),
       ids.manager,
       ['academics.academic_content.approve'],
       UserType.SCHOOL_USER,
@@ -605,7 +651,10 @@ describeDatabase('ACC-9D PostgreSQL Teacher workflow and publication', () => {
     expect(second.roundNumber).toBe(2);
     expect(second.revisionId).not.toBe(first.revisionId);
     await asTeacher(
-      () => new ApproveAcademicContentUseCase(workflow).execute(content.id),
+      () =>
+        new ApproveAcademicContentUseCase(workflow, feedback).execute(
+          content.id,
+        ),
       ids.manager,
       ['academics.academic_content.approve'],
       UserType.SCHOOL_USER,
@@ -617,6 +666,67 @@ describeDatabase('ACC-9D PostgreSQL Teacher workflow and publication', () => {
         })
       ).status,
     ).toBe(Status.APPROVED);
+    expect(ensureFailed).toHaveBeenCalledTimes(2);
+    const recovered: {
+      approvalId: string;
+      schoolId: string;
+      organizationId: string;
+      actorUserId: null;
+      actorUserType: null;
+    }[] = [];
+    const realtime = jest.fn();
+    const reviewNotifications =
+      new AcademicContentReviewDecisionNotificationService(
+        new AcademicContentReviewDecisionNotificationRepository(prisma),
+        new CommunicationNotificationGenerationService(
+          new CommunicationNotificationGenerationRepository(prisma),
+          { publishNotificationCreated: realtime } as never,
+          new CommunicationNotificationPreferenceService(
+            new CommunicationNotificationPreferenceRepository(prisma),
+          ),
+          { enqueueNotificationPushDelivery: jest.fn() } as never,
+        ),
+        {
+          ensureAcademicContentReviewDecision: jest.fn(
+            (data: (typeof recovered)[number]) => {
+              recovered.push(data);
+              return Promise.resolve('created');
+            },
+          ),
+        } as never,
+      );
+    await reviewNotifications.recover(new Date(Date.now() + 100));
+    expect(recovered.map((data) => data.approvalId).sort()).toEqual(
+      [first.approvalId, second.approvalId].sort(),
+    );
+    for (const data of recovered)
+      await asTeacher(() => reviewNotifications.generate(data));
+    const feedbackRows = await prisma.communicationNotification.findMany({
+      where: { schoolId: ids.school, recipientUserId: ids.teacher },
+      include: { deliveries: true },
+    });
+    expect(feedbackRows).toHaveLength(2);
+    for (const [result, type] of [
+      [first, 'ACADEMIC_CONTENT_CHANGES_REQUESTED'],
+      [second, 'ACADEMIC_CONTENT_APPROVED'],
+    ] as const) {
+      const row = feedbackRows.find(
+        (item) => item.sourceId === result.approvalId,
+      )!;
+      expect(row.type).toBe(type);
+      expect(row.metadata).toMatchObject({
+        approvalId: result.approvalId,
+        revisionId: result.revisionId,
+        roundNumber: result.roundNumber,
+      });
+      expect(row.deliveries.map((delivery) => delivery.channel).sort()).toEqual(
+        ['IN_APP', 'PUSH'],
+      );
+      expect(row.body).not.toContain('Revise topic');
+    }
+    for (const data of recovered)
+      await asTeacher(() => reviewNotifications.generate(data));
+    expect(realtime).toHaveBeenCalledTimes(2);
     expect(
       await revisions.detail({
         schoolId: ids.school,

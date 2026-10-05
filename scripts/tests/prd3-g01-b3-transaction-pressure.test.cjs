@@ -198,6 +198,22 @@ test('ACC later-event authorization has a scoped reviewed transaction-bound lock
   ]);
 });
 
+test('ACC-9E review authorization has its own exact transaction-bound evidence', () => {
+  const row = INVENTORY.find(item => item.entryOwner === 'CommunicationNotificationGenerationRepository.createMissingAcademicContentReviewDecisionNotification');
+  assert.ok(row);
+  assert.deepEqual(row.unresolvedCalls, []);
+  assert.equal(row.explicitLock, true);
+  assert.equal(row.externalWaitInsideTransaction, false);
+  assert.equal(row.classification, 'LOCK_CONTENTION_SENSITIVE');
+  const override = row.manualOverrides.find(item => item.unresolvedCallExpression === 'authorize');
+  assert.ok(override);
+  assert.deepEqual(override.resolvedCallers, ['AcademicContentReviewDecisionNotificationService.generate', 'CommunicationNotificationGenerationService.generateForAcademicContentReviewDecision']);
+  assert.match(override.reviewEvidence, /only the active Prisma.TransactionClient/u);
+  assert.match(override.reviewEvidence, /Content before Approval/u);
+  assert.match(override.reviewEvidence, /User and same-School Teacher Membership rows FOR SHARE/u);
+  assert.match(override.reviewEvidence, /no nested transaction, transaction escape or Redis\/BullMQ\/Realtime\/FCM\/HTTP\/Storage wait/u);
+});
+
 test('ACC-5B type authoring uses one locked database-only transaction site', () => {
   const rows = INVENTORY.filter((item) =>
     item.path === 'src/modules/academics/academic-content/infrastructure/academic-content-type-detail.repository.ts');

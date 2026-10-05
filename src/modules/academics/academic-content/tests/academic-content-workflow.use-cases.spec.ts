@@ -27,9 +27,15 @@ describe('ACC-6B workflow application boundary', () => {
   );
   const approve = new ApproveAcademicContentUseCase(
     repository as unknown as AcademicContentWorkflowRepository,
+    {
+      ensureAfterDecisionCommit: jest.fn().mockResolvedValue(undefined),
+    } as never,
   );
   const request = new RequestAcademicContentChangesUseCase(
     repository as unknown as AcademicContentWorkflowRepository,
+    {
+      ensureAfterDecisionCommit: jest.fn().mockResolvedValue(undefined),
+    } as never,
   );
 
   function asActor<T>(

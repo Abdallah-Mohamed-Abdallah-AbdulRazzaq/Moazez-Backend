@@ -184,6 +184,7 @@ describe('ACC-8D immutable reminder timing and queue boundary', () => {
         generateCancellation: observed,
         generateSessionReminder: observed,
       } as never,
+      {} as never,
     ).onModuleInit();
     const data = {
       ...identity(),
