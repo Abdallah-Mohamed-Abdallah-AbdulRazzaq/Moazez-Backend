@@ -51,6 +51,7 @@ import { buildTeacherAnnouncementMetadata } from '../../../src/modules/communica
 import { HomeworkRepository } from '../../../src/modules/homework/infrastructure/homework.repository';
 import { CreateReinforcementTaskUseCase } from '../../../src/modules/reinforcement/tasks/application/create-reinforcement-task.use-case';
 import { ReinforcementTasksRepository } from '../../../src/modules/reinforcement/tasks/infrastructure/reinforcement-tasks.repository';
+import { TeacherAcademicContentAuthoringUseCases } from '../../../src/modules/teacher-app/academic-content/application/teacher-academic-content-authoring.use-cases';
 
 type RaceMode = 'idle' | 'writer_first' | 'reassignment_first';
 
@@ -89,7 +90,9 @@ interface RaceFixture {
   count: () => Promise<number>;
   owner: () => Promise<string | null>;
   teacherSpecific: boolean;
-  expectedReassignmentFirstFailure?: 'reinforcement_invalid_scope';
+  expectedReassignmentFirstFailure?:
+    | 'reinforcement_invalid_scope'
+    | 'academic_content_not_found';
 }
 
 interface BulkTimetableRaceFixture {
@@ -305,7 +308,7 @@ async function run(): Promise<void> {
     currentStage = 'fixture-academics';
     const academic = await createAcademicBase(fixturePrisma, schoolId, marker);
     const allocations: AllocationFixture[] = [];
-    for (let index = 0; index < 20; index += 1) {
+    for (let index = 0; index < 28; index += 1) {
       allocations.push(
         await createAllocationFixture({
           prisma: fixturePrisma,
@@ -314,7 +317,7 @@ async function run(): Promise<void> {
           schoolId,
           academic,
           teacherUserId:
-            index >= 17
+            index >= 17 && index < 20
               ? nonOperationalTeacher.id
               : index === 11 || index === 13
                 ? targetTeacher.id
@@ -387,7 +390,13 @@ async function run(): Promise<void> {
           organizationId: activeOrganizationId,
           schoolId: activeSchoolId,
           roleId: identity.roleId,
-          permissions: ['academics.structure.manage'],
+          permissions:
+            identity.userType === UserType.TEACHER
+              ? [
+                  'academics.academic_content.manage',
+                  'academics.academic_content.view',
+                ]
+              : ['academics.structure.manage'],
         });
         return action();
       });
@@ -406,6 +415,136 @@ async function run(): Promise<void> {
           reasonCode: 'deterministic_race_test',
         }),
       );
+
+    const academicContent = app.get(TeacherAcademicContentAuthoringUseCases);
+    for (const [offset, kind] of [
+      'CREATE',
+      'EDIT',
+      'TARGET',
+      'DETAIL',
+    ].entries()) {
+      for (const [orderIndex, order] of [
+        'writer_first',
+        'reassignment_first',
+      ].entries()) {
+        const allocation = allocations[20 + offset * 2 + orderIndex];
+        const title = `${marker}-acc-${kind}-${order}`;
+        const command = {
+          type:
+            kind === 'DETAIL'
+              ? ('GUARDIAN_WEEKLY_NOTE' as const)
+              : ('GENERAL_RESOURCE' as const),
+          audience:
+            kind === 'DETAIL' ? ('GUARDIANS' as const) : ('STUDENTS' as const),
+          title: title + '-before',
+        };
+        const content =
+          kind === 'CREATE'
+            ? undefined
+            : await scope(sourceTeacher, () =>
+                academicContent.create(allocation.id, command),
+              );
+        let requestedClassId = allocation.id;
+        if (kind === 'TARGET') {
+          const classroom = await fixturePrisma.classroom.create({
+            data: {
+              schoolId,
+              sectionId: academic.sectionId,
+              nameAr: title,
+              nameEn: title,
+            },
+          });
+          requestedClassId = (
+            await fixturePrisma.teacherSubjectAllocation.create({
+              data: {
+                schoolId,
+                classroomId: classroom.id,
+                subjectId: allocation.subjectId,
+                termId: academic.termId,
+                teacherUserId: sourceTeacher.id,
+              },
+            })
+          ).id;
+        }
+        const scenario: RaceFixture = {
+          domain: `ACC_${kind}`,
+          allocation,
+          marker: title,
+          teacherSpecific: true,
+          expectedReassignmentFirstFailure: 'academic_content_not_found',
+          write: () =>
+            scope<unknown>(sourceTeacher, () => {
+              if (kind === 'CREATE')
+                return academicContent.create(allocation.id, {
+                  ...command,
+                  title,
+                });
+              if (kind === 'EDIT')
+                return academicContent.update(content!.id, { title });
+              if (kind === 'TARGET')
+                return academicContent.targets(content!.id, {
+                  classIds: [requestedClassId],
+                });
+              return academicContent.guardianNote(content!.id, {
+                body: title,
+                priority: 'NORMAL',
+                requiresAcknowledgement: false,
+              });
+            }),
+          count: () =>
+            kind === 'TARGET'
+              ? fixturePrisma.academicContentTarget.count({
+                  where: {
+                    academicContentId: content!.id,
+                    teacherSubjectAllocationId: requestedClassId,
+                  },
+                })
+              : kind === 'DETAIL'
+                ? fixturePrisma.academicContentGuardianNoteDetail.count({
+                    where: { academicContentId: content!.id, body: title },
+                  })
+                : fixturePrisma.academicContent.count({
+                    where: { schoolId, title },
+                  }),
+          owner: async () =>
+            (
+              await fixturePrisma.academicContent.findFirst({
+                where: {
+                  schoolId,
+                  ...(content ? { id: content.id } : { title }),
+                },
+              })
+            )?.createdByUserId ?? null,
+        };
+        currentStage = `race-acc-${kind}-${order}`;
+        if (order === 'writer_first')
+          await proveWriterFirst({
+            scenario,
+            coordinator,
+            preview,
+            reassign,
+            prisma: fixturePrisma,
+            sourceTeacherUserId: sourceTeacher.id,
+          });
+        else
+          await proveReassignmentFirst({
+            scenario,
+            coordinator,
+            preview,
+            reassign,
+            prisma: fixturePrisma,
+            targetTeacherUserId: targetTeacher.id,
+          });
+        console.log(`ACC_${kind}_${order.toUpperCase()}=PASS`);
+      }
+    }
+    assert.equal(
+      await fixturePrisma.academicContent.count({
+        where: { schoolId, targets: { none: {} } },
+      }),
+      0,
+    );
+    console.log('ACC_OWNERLESS_DRAFT_COUNT=0');
 
     const scenarios: RaceFixture[] = [
       taskScenario({
@@ -984,6 +1123,30 @@ async function proveReassignmentFirst(input: {
       'reinforcement_invalid_scope'
     ) {
       assertReinforcementInvalidScope(writerResult.reason);
+    } else if (
+      input.scenario.expectedReassignmentFirstFailure ===
+      'academic_content_not_found'
+    ) {
+      if (writerResult.reason instanceof DomainException) {
+        assert.equal(writerResult.reason.httpStatus, 404);
+        console.log(
+          `${input.scenario.domain}_REASSIGNMENT_FIRST_FAILURE=OWNERSHIP_404`,
+        );
+      } else {
+        assert.ok(
+          writerResult.reason instanceof Prisma.PrismaClientKnownRequestError,
+          `Unexpected ACC rejection: ${String(writerResult.reason)}`,
+        );
+        assert.ok(
+          writerResult.reason.code === 'P2034' ||
+            (writerResult.reason.code === 'P2010' &&
+              writerResult.reason.meta?.code === '40001'),
+          `Unexpected ACC database rejection: ${writerResult.reason.code} SQLSTATE=${String(writerResult.reason.meta?.code)}`,
+        );
+        console.log(
+          `${input.scenario.domain}_REASSIGNMENT_FIRST_FAILURE=SERIALIZATION_CONFLICT`,
+        );
+      }
     } else {
       assert.ok(
         writerResult.reason instanceof
@@ -1859,6 +2022,11 @@ async function cleanupSchool(
   });
   const userIds = memberships.map(({ userId }) => userId);
   await prisma.auditLog.deleteMany({ where: { schoolId } });
+  await prisma.academicContentGuardianNoteDetail.deleteMany({
+    where: { schoolId },
+  });
+  await prisma.academicContentTarget.deleteMany({ where: { schoolId } });
+  await prisma.academicContent.deleteMany({ where: { schoolId } });
   await prisma.communicationAnnouncementAudience.deleteMany({
     where: { schoolId },
   });

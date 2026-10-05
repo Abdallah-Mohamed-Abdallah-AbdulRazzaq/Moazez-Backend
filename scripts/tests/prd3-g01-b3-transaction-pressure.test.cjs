@@ -209,6 +209,32 @@ test('ACC-5B type authoring uses one locked database-only transaction site', () 
   assert.deepEqual(rows[0].unresolvedCalls, []);
 });
 
+test('ACC-9B Core writer gate has scoped resolution and transaction-bound caller evidence', () => {
+  const paths = [
+    'academic-content.repository.ts',
+    'academic-content-target.repository.ts',
+    'academic-content-type-detail.repository.ts',
+    'academic-content-links-tags.repository.ts',
+  ].map((file) => `src/modules/academics/academic-content/infrastructure/${file}`);
+  const rows = INVENTORY.filter((row) => row.manualOverrides.some((override) => override.unresolvedCallExpression === 'gate.lock'));
+  assert.deepEqual([...new Set(rows.map((row) => row.path))].sort(), [...paths].sort());
+  assert.ok(rows.some((row) => row.entryOwner === 'AcademicContentRepository.createForTeacherAllocation'));
+  for (const row of rows) {
+    assert.deepEqual(row.unresolvedCalls, []);
+    assert.equal(row.explicitLock, true);
+    assert.equal(row.externalWaitInsideTransaction, false);
+    const override = row.manualOverrides.find((item) => item.unresolvedCallExpression === 'gate.lock');
+    assert.deepEqual(override.resolvedCallers, ['lockTeacherAcademicContentAllocations']);
+    assert.equal(override.classification, 'LOCK_CONTENTION_SENSITIVE');
+    assert.match(override.reviewEvidence, /active Prisma\.TransactionClient/u);
+  }
+  const gateAudit = validateTeacherAllocationOperationalWriteGate(auditTeacherAllocationOperationalWriteGate());
+  assert.ok(gateAudit.callers.some((caller) =>
+    caller.path === 'src/modules/academics/academic-content/infrastructure/academic-content-teacher-write.authorization.ts' &&
+    caller.owner === 'lockTeacherAcademicContentAllocations' &&
+    caller.transactionArgument === 'tx' && !caller.transactionEscape));
+});
+
 test('Teacher allocation reassignment callback has no transaction escape or external wait', () => {
   const rows = validateTeacherAllocationReassignmentUnitOfWorkCallbacks(
     auditTeacherAllocationReassignmentUnitOfWorkCallbacks(),

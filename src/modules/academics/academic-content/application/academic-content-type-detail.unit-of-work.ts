@@ -5,6 +5,7 @@ export type TypeDetailMutation = {
   schoolId: string;
   organizationId: string;
   actorId: string;
+  teacherUserId?: string;
   now: Date;
   detail: NormalizedDetail;
 };

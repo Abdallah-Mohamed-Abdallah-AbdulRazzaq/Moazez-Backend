@@ -36,6 +36,7 @@ import type { App } from 'supertest/types';
 import { REQUIRED_PERMISSIONS_METADATA } from '../../src/common/decorators/required-permissions.decorator';
 import { AppModule } from '../../src/app.module';
 import { TeacherAcademicContentController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content.controller';
+import { TeacherAcademicContentAuthoringController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content-authoring.controller';
 import { TeacherAnnouncementsController } from '../../src/modules/teacher-app/announcements/controller/teacher-announcements.controller';
 import { TeacherCalendarController } from '../../src/modules/teacher-app/calendar/controller/teacher-calendar.controller';
 import { TeacherClassroomAttendanceController } from '../../src/modules/teacher-app/classroom/attendance/controller/teacher-classroom-attendance.controller';
@@ -234,6 +235,7 @@ const TEACHER_APP_CONTROLLER_CLASSES = [
   TeacherCalendarController,
   TeacherLessonPreparationController,
   TeacherAcademicContentController,
+  TeacherAcademicContentAuthoringController,
 ] as const;
 
 type AcademicContext = {
@@ -648,10 +650,38 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       (entry) => entry.permissions,
     );
 
-    expect(routes).toHaveLength(115);
-    expect(inventory).toHaveLength(115);
-    expect(decorated).toHaveLength(115);
+    expect(routes).toHaveLength(129);
+    expect(inventory).toHaveLength(129);
+    expect(decorated).toHaveLength(129);
     expect(undecorated).toEqual([]);
+    for (const method of [
+      'create',
+      'update',
+      'delete',
+      'archive',
+      'restore',
+      'targets',
+      'preparation',
+      'weeklyPlan',
+      'guardianNote',
+      'subjectResource',
+      'onlineSession',
+      'links',
+      'tags',
+    ]) {
+      expect(
+        getHandlerPermissions(
+          TeacherAcademicContentAuthoringController,
+          method,
+        ),
+      ).toEqual(['academics.academic_content.manage']);
+    }
+    expect(
+      getHandlerPermissions(
+        TeacherAcademicContentAuthoringController,
+        'readiness',
+      ),
+    ).toEqual(['academics.academic_content.view']);
 
     expect(routes).toEqual(
       expect.arrayContaining([
@@ -687,6 +717,20 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
         'GET /api/v1/teacher/academic-content/capabilities',
         'GET /api/v1/teacher/academic-content',
         'GET /api/v1/teacher/academic-content/:contentId',
+        'POST /api/v1/teacher/classes/:classId/academic-content',
+        'PATCH /api/v1/teacher/academic-content/:contentId',
+        'DELETE /api/v1/teacher/academic-content/:contentId',
+        'POST /api/v1/teacher/academic-content/:contentId/archive',
+        'POST /api/v1/teacher/academic-content/:contentId/restore',
+        'PUT /api/v1/teacher/academic-content/:contentId/targets',
+        'PUT /api/v1/teacher/academic-content/:contentId/details/preparation',
+        'PUT /api/v1/teacher/academic-content/:contentId/details/weekly-plan',
+        'PUT /api/v1/teacher/academic-content/:contentId/details/guardian-note',
+        'PUT /api/v1/teacher/academic-content/:contentId/details/subject-resource',
+        'PUT /api/v1/teacher/academic-content/:contentId/details/online-session',
+        'PUT /api/v1/teacher/academic-content/:contentId/links',
+        'PUT /api/v1/teacher/academic-content/:contentId/tags',
+        'GET /api/v1/teacher/academic-content/:contentId/readiness',
       ]),
     );
 
