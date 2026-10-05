@@ -20,6 +20,7 @@ import {
   UnlinkAcademicContentAssetUseCase,
 } from './files/application/academic-content-upload.use-cases';
 import { AcademicContentFileRepository } from './files/infrastructure/academic-content-file.repository';
+import { AcademicContentAssetAccessOperations } from './files/application/academic-content-asset-access.operations';
 import { AcademicContentAudienceResolver } from './application/academic-content-audience.resolver';
 import { AcademicContentContextValidator } from './application/academic-content-context-validator';
 import { AcademicContentTargetValidator } from './application/academic-content-target-validator';
@@ -105,6 +106,7 @@ import {
     AcademicContentController,
   ],
   providers: [
+    AcademicContentAssetAccessOperations,
     AcademicContentAuthoringOperations,
     CommunicationNotificationQueueService,
     AcademicContentPublicationQueueService,
@@ -174,6 +176,8 @@ import {
     AcademicContentAudienceResolver,
   ],
   exports: [
+    AcademicContentAssetAccessOperations,
+    AcademicContentPreparationTemplateUseCases,
     AcademicContentAuthoringOperations,
     GetAcademicContentReadinessUseCase,
     AcademicContentRepository,

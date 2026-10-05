@@ -72,6 +72,7 @@ describe('ACC upload intent', () => {
       .fn()
       .mockResolvedValue({ session: existing, created: true }),
     markCapabilityFailed: jest.fn().mockResolvedValue(undefined),
+    fenceIssuedCapability: jest.fn().mockResolvedValue(undefined),
     persistCapabilityExpiry: jest.fn().mockResolvedValue(true),
   };
   const policy = {
@@ -239,7 +240,32 @@ describe('ACC upload intent', () => {
       }),
       expect.any(Date),
     );
+    expect(repository.fenceIssuedCapability).not.toHaveBeenCalled();
   });
+
+  it.each(['false', 'transaction error'] as const)(
+    'fences the issued capability before returning a %s persistence outcome',
+    async (outcome) => {
+      const error = new Error('transaction rolled back');
+      if (outcome === 'false')
+        repository.persistCapabilityExpiry.mockResolvedValueOnce(false);
+      else repository.persistCapabilityExpiry.mockRejectedValueOnce(error);
+      const result = withManager(() => useCase.execute(command));
+      if (outcome === 'false')
+        await expect(result).rejects.toMatchObject({
+          code: 'academic_content.file.upload_capability_not_reissuable',
+        });
+      else await expect(result).rejects.toBe(error);
+      expect(repository.fenceIssuedCapability).toHaveBeenCalledWith(
+        { uploadId, schoolId, actorId, contentId },
+        capabilityExpiresAt,
+      );
+      expect(repository.markCapabilityFailed).not.toHaveBeenCalled();
+      expect(
+        JSON.stringify(repository.fenceIssuedCapability.mock.calls),
+      ).not.toContain('provider.example/session');
+    },
+  );
 
   it('fails closed for teachers and unavailable resumable storage', async () => {
     await expect(

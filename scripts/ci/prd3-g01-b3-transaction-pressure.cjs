@@ -334,6 +334,16 @@ const REVIEWED_CALL_OVERRIDES = Object.freeze([
     evidence: 'The Core helper supplies only its active Prisma.TransactionClient and expectedTeacherUserId. The independently audited PrismaTeacherAllocationOperationalWriteGate acquires the allocation advisory/row locks and ownership fence without a nested transaction or external wait. Create, metadata/lifecycle, target replacement, all five details, links and tags retain their existing Core transaction boundaries.',
   })),
   Object.freeze({
+    path: 'src/modules/academics/academic-content/files/infrastructure/academic-content-file.repository.ts',
+    target: /^gate\.lock$/,
+    origin: 'lockTeacherAcademicContentAllocations',
+    explicitLock: true,
+    reason: 'ACC-9C file writes reuse the ACC-9B helper and existing Teacher allocation operational write gate on the active transaction.',
+    classification: 'LOCK_CONTENTION_SENSITIVE',
+    resolvedCallers: Object.freeze(['lockTeacherAcademicContentAllocations']),
+    evidence: 'AcademicContentFileRepository.lockContent passes only the active Prisma.TransactionClient through authorizeTeacherAcademicContentMutation to lockTeacherAcademicContentAllocations and the existing gate. Upload intent, capability state persistence, completion, cancellation and unlink retain that supplied transaction; the gate has no nested transaction, transaction escape or external wait. Resumable capability creation and bounded verification occur outside these transactions. The separately reviewed READY orphan cleanup storage-deletion wait is unchanged.',
+  }),
+  Object.freeze({
     path: 'src/modules/academics/curriculum/infrastructure/prisma-lesson-content.unit-of-work.ts',
     target: /^callback$/,
     reason: 'The generic unit-of-work callback is supplied by the seven lesson-content application use cases.',
@@ -354,7 +364,7 @@ const REVIEWED_CALL_OVERRIDES = Object.freeze([
     target: /^callback$/,
     reason: 'The ACC repository transaction facade accepts only the reviewed upload, unlink, and cleanup callers.',
     classification: 'EXTERNAL_WAIT_SENSITIVE',
-    resolvedCallers: Object.freeze(['CompleteAcademicContentUploadUseCase.execute', 'CancelAcademicContentUploadUseCase.execute', 'UnlinkAcademicContentAssetUseCase.execute', 'AcademicContentCleanupWorker.cleanUpload', 'AcademicContentCleanupWorker.cleanReadyOrphan']),
+    resolvedCallers: Object.freeze(['CompleteAcademicContentUploadUseCase.executeScoped', 'CancelAcademicContentUploadUseCase.executeScoped', 'UnlinkAcademicContentAssetUseCase.executeScoped', 'AcademicContentCleanupWorker.cleanUpload', 'AcademicContentCleanupWorker.cleanReadyOrphan']),
     evidence: 'All callers receive only AcademicContentFileTransaction. READY orphan cleanup intentionally holds upload and file row locks across confirmed storage deletion, with a 120-second transaction timeout, to preserve its no-claim concurrency guarantee; other callers perform database-only transactions.',
   }),
   Object.freeze({

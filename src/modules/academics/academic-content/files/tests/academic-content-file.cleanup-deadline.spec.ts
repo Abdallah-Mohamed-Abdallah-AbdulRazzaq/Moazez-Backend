@@ -28,13 +28,13 @@ describe('ACC resumable capability cleanup deadline', () => {
     );
   });
 
-  it('allows a genuine CREATED session with no issued capability to clean now', () => {
+  it('fences CREATED while an issued capability can be awaiting persistence', () => {
     expect(
       academicContentFinalCleanupDeadline(t1, {
         status: FileUploadSessionStatus.CREATED,
         latestUploadUrlExpiresAt: null,
       }),
-    ).toEqual(t1);
+    ).toEqual(missingAcademicCapabilityCleanupDeadline(t1));
   });
 
   it('fails safe for an unexpected UPLOADING row with no persisted expiry', () => {

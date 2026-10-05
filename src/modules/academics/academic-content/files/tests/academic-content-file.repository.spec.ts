@@ -140,7 +140,7 @@ describe('ACC cleanup repository purpose isolation', () => {
     const sql = parts.join('?');
     expect(sql).toMatch(/purpose = 'ACADEMIC_CONTENT'/u);
     expect(sql).toMatch(/status IN \([\s\S]*'CREATED'[\s\S]*'UPLOADING'/u);
-    expect(sql).toMatch(/WHEN status = 'CREATED'[\s\S]*THEN \?/u);
+    expect(sql).not.toMatch(/WHEN status = 'CREATED'/u);
     expect(sql).toMatch(
       /GREATEST\([\s\S]*COALESCE\(latest_upload_url_expires_at, \?\)/u,
     );

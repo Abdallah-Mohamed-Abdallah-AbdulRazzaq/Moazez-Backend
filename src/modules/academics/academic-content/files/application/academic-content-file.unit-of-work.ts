@@ -3,6 +3,12 @@ import type {
   File,
   FileUploadSession,
 } from '@prisma/client';
+import type { AcademicContentTeacherWriteScope } from '../../infrastructure/academic-content-teacher-write.authorization';
+
+export type AcademicContentFileWriteAuthorization = {
+  teacherScope: AcademicContentTeacherWriteScope;
+  ownershipOnly?: boolean;
+};
 
 export type AcademicUploadIdentity = {
   uploadId: string;
@@ -83,6 +89,7 @@ export interface AcademicContentFileTransaction {
     contentId: string,
     schoolId: string,
     now: Date,
+    authorization?: AcademicContentFileWriteAuthorization,
   ): Promise<void>;
   createFile(data: AcademicFileCreate): Promise<File>;
   createAsset(data: AcademicAssetCreate): Promise<AcademicContentAsset>;

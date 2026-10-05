@@ -6,7 +6,10 @@ import {
   type PreparationTemplateInput,
 } from '../domain/academic-content-preparation-template.policy';
 import { optionalId } from '../domain/academic-content-type-detail.policy';
-import { AcademicContentPreparationTemplateRepository } from '../infrastructure/academic-content-preparation-template.repository';
+import {
+  AcademicContentPreparationTemplateRepository,
+  type PreparationTemplateApplicability,
+} from '../infrastructure/academic-content-preparation-template.repository';
 import { academicContentManagementScope } from './academic-content-management.scope';
 
 const ownedFields = new Set([
@@ -24,6 +27,27 @@ const ownedFields = new Set([
   'teacherNotes',
 ]);
 
+export type PreparationTemplateReadQuery = {
+  search?: string;
+  page?: number;
+  limit?: number;
+};
+
+function normalizeReadQuery(query: PreparationTemplateReadQuery) {
+  const page = query.page ?? 1;
+  const limit = query.limit ?? 50;
+  if (
+    !Number.isSafeInteger(page) ||
+    page < 1 ||
+    !Number.isSafeInteger(limit) ||
+    limit < 1 ||
+    limit > 100 ||
+    (page - 1) * limit > 2_147_483_647
+  )
+    throw new ValidationDomainException('Invalid template pagination');
+  return { page, limit, search: normalizeTemplateSearch(query.search) };
+}
+
 @Injectable()
 export class AcademicContentPreparationTemplateUseCases {
   constructor(
@@ -40,28 +64,27 @@ export class AcademicContentPreparationTemplateUseCases {
     const { schoolId } = academicContentManagementScope(
       'academics.academic_content.view',
     );
-    const page = query.page ?? 1;
-    const limit = query.limit ?? 50;
-    if (
-      !Number.isSafeInteger(page) ||
-      page < 1 ||
-      !Number.isSafeInteger(limit) ||
-      limit < 1 ||
-      limit > 100 ||
-      (page - 1) * limit > 2_147_483_647
-    )
-      throw new ValidationDomainException('Invalid template pagination');
     return this.repository.list(schoolId, {
-      page,
-      limit,
+      ...normalizeReadQuery(query),
       stageId: query.stageId
         ? (optionalId(query.stageId, 'stageId') ?? undefined)
         : undefined,
       subjectId: query.subjectId
         ? (optionalId(query.subjectId, 'subjectId') ?? undefined)
         : undefined,
-      search: normalizeTemplateSearch(query.search),
     });
+  }
+
+  /** Trusted Core read boundary; Teacher App resolves allocation applicability. */
+  listApplicable(
+    scope: PreparationTemplateApplicability,
+    query: PreparationTemplateReadQuery,
+  ) {
+    return this.repository.listApplicable(scope, normalizeReadQuery(query));
+  }
+
+  detailApplicable(scope: PreparationTemplateApplicability, id: string) {
+    return this.repository.detailApplicable(scope, id);
   }
 
   detail(id: string) {

@@ -4,6 +4,9 @@ import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import {
   AuditOutcome,
+  FileUploadPurpose,
+  FileUploadSessionStatus,
+  type FileUploadSession,
   CommunicationAnnouncementAudienceType,
   CommunicationAnnouncementPriority,
   CommunicationAnnouncementStatus,
@@ -52,6 +55,11 @@ import { HomeworkRepository } from '../../../src/modules/homework/infrastructure
 import { CreateReinforcementTaskUseCase } from '../../../src/modules/reinforcement/tasks/application/create-reinforcement-task.use-case';
 import { ReinforcementTasksRepository } from '../../../src/modules/reinforcement/tasks/infrastructure/reinforcement-tasks.repository';
 import { TeacherAcademicContentAuthoringUseCases } from '../../../src/modules/teacher-app/academic-content/application/teacher-academic-content-authoring.use-cases';
+import { TeacherAcademicContentFilesUseCases } from '../../../src/modules/teacher-app/academic-content/application/teacher-academic-content-files.use-cases';
+import { AcademicContentFileVerifier } from '../../../src/modules/academics/academic-content/files/application/academic-content-file-verifier';
+import { StorageService } from '../../../src/infrastructure/storage/storage.service';
+import type { ObjectStoragePort } from '../../../src/infrastructure/storage/object-storage.port';
+import type { SignedUrlService } from '../../../src/infrastructure/storage/signed-url.service';
 
 type RaceMode = 'idle' | 'writer_first' | 'reassignment_first';
 
@@ -210,6 +218,32 @@ async function run(): Promise<void> {
     coordinator,
   );
   const operations = new CoordinatedReassignmentOperations(coordinator);
+  const verificationControls = new Map<
+    string,
+    { started: Deferred; release: Deferred }
+  >();
+  const pdf = Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\n');
+  const verifier = new AcademicContentFileVerifier(
+    new StorageService(
+      {
+        statObject: () =>
+          Promise.resolve({
+            size: pdf.length,
+            etag: null,
+            contentType: 'application/pdf',
+            metadata: {},
+            lastModified: null,
+            generation: null,
+            version: null,
+          }),
+        readObjectRange: (input: { offset: number; length: number }) =>
+          Promise.resolve(
+            pdf.subarray(input.offset, input.offset + input.length),
+          ),
+      } as unknown as ObjectStoragePort,
+      {} as SignedUrlService,
+    ),
+  );
   let app: INestApplication | undefined;
   let organizationId: string | undefined;
   let schoolId: string | undefined;
@@ -308,7 +342,7 @@ async function run(): Promise<void> {
     currentStage = 'fixture-academics';
     const academic = await createAcademicBase(fixturePrisma, schoolId, marker);
     const allocations: AllocationFixture[] = [];
-    for (let index = 0; index < 28; index += 1) {
+    for (let index = 0; index < 30; index += 1) {
       allocations.push(
         await createAllocationFixture({
           prisma: fixturePrisma,
@@ -357,6 +391,18 @@ async function run(): Promise<void> {
 
     currentStage = 'app-init';
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(AcademicContentFileVerifier)
+      .useValue({
+        verify: async (session: FileUploadSession) => {
+          const verified = await verifier.verify(session);
+          const control = verificationControls.get(session.id);
+          if (control) {
+            control.started.resolve();
+            await control.release.promise;
+          }
+          return verified;
+        },
+      })
       .overrideProvider(TeacherAllocationOperationalWriteGate)
       .useValue(gate)
       .overrideProvider(
@@ -545,6 +591,137 @@ async function run(): Promise<void> {
       0,
     );
     console.log('ACC_OWNERLESS_DRAFT_COUNT=0');
+
+    const academicFiles = app.get(TeacherAcademicContentFilesUseCases);
+    for (const [index, order] of [
+      'writer_first',
+      'reassignment_first',
+    ].entries()) {
+      const allocation = allocations[28 + index];
+      const content = await scope(sourceTeacher, () =>
+        academicContent.create(allocation.id, {
+          type: 'GENERAL_RESOURCE',
+          audience: 'STUDENTS',
+          title: marker + '-file-' + order,
+        }),
+      );
+      const upload: FileUploadSession =
+        await fixturePrisma.fileUploadSession.create({
+          data: {
+            schoolId,
+            organizationId,
+            createdByUserId: sourceTeacher.id,
+            purpose: FileUploadPurpose.ACADEMIC_CONTENT,
+            purposeContextId: content.id,
+            clientRequestId: randomUUID(),
+            originalName: 'race.pdf',
+            expectedMimeType: 'application/pdf',
+            expectedSizeBytes: BigInt(pdf.length),
+            finalBucket: 'owned-concurrency-fixture',
+            finalObjectKey: marker + '/file/' + order,
+            status: FileUploadSessionStatus.UPLOADING,
+            expiresAt: new Date(Date.now() + 86400_000),
+            latestUploadUrlExpiresAt: new Date(Date.now() + 7 * 86400_000),
+          },
+        });
+      const control = { started: deferred(), release: deferred() };
+      verificationControls.set(upload.id, control);
+      // The real initial ownership transaction commits before either final
+      // completion/reassignment ordering is armed. Only provider verification
+      // is paused; the final gate and both database writers remain real.
+      const completion = settle(
+        scope(sourceTeacher, () =>
+          academicFiles.complete(content.id, upload.id),
+        ),
+      );
+      await withTimeout(
+        control.started.promise,
+        10_000,
+        'Academic upload did not enter bounded verification',
+      );
+      assert.equal(
+        (
+          await fixturePrisma.fileUploadSession.findUniqueOrThrow({
+            where: { id: upload.id },
+          })
+        ).status,
+        FileUploadSessionStatus.VERIFYING,
+      );
+      const scenario: RaceFixture = {
+        domain: 'ACC_UPLOAD_COMPLETE',
+        allocation,
+        marker: upload.finalObjectKey,
+        teacherSpecific: true,
+        expectedReassignmentFirstFailure: 'academic_content_not_found',
+        write: async () => {
+          control.release.resolve();
+          const result = await completion;
+          if (result.status === 'rejected') throw result.reason;
+          return result.value;
+        },
+        count: () =>
+          fixturePrisma.academicContentAsset.count({
+            where: { academicContentId: content.id },
+          }),
+        owner: async () =>
+          (
+            await fixturePrisma.academicContentAsset.findFirst({
+              where: { academicContentId: content.id },
+            })
+          )?.createdByUserId ?? null,
+      };
+      currentStage = 'race-acc-upload-complete-' + order;
+      if (order === 'writer_first')
+        await proveWriterFirst({
+          scenario,
+          coordinator,
+          preview,
+          reassign,
+          prisma: fixturePrisma,
+          sourceTeacherUserId: sourceTeacher.id,
+        });
+      else
+        await proveReassignmentFirst({
+          scenario,
+          coordinator,
+          preview,
+          reassign,
+          prisma: fixturePrisma,
+          targetTeacherUserId: targetTeacher.id,
+        });
+      const finished = await fixturePrisma.fileUploadSession.findUniqueOrThrow({
+        where: { id: upload.id },
+      });
+      assert.equal(
+        finished.status,
+        order === 'writer_first'
+          ? FileUploadSessionStatus.READY
+          : FileUploadSessionStatus.FAILED,
+      );
+      assert.equal(
+        await fixturePrisma.file.count({
+          where: { schoolId, objectKey: upload.finalObjectKey },
+        }),
+        order === 'writer_first' ? 1 : 0,
+      );
+      console.log('ACC_UPLOAD_COMPLETE_' + order.toUpperCase() + '=PASS');
+    }
+    assert.equal(
+      await fixturePrisma.fileUploadSession.count({
+        where: { schoolId, status: FileUploadSessionStatus.VERIFYING },
+      }),
+      0,
+    );
+    console.log('ACC_UPLOAD_COMPLETION_CLAIM_RECOVERY=PASS');
+    const unsafeFiles = await fixturePrisma.$queryRaw<
+      Array<{ count: bigint }>
+    >(Prisma.sql`
+      SELECT COUNT(*)::bigint AS count FROM academic_content_assets asset
+      JOIN academic_content_targets target ON target.academic_content_id = asset.academic_content_id AND target.school_id = asset.school_id
+      JOIN teacher_subject_allocations allocation ON allocation.id = target.teacher_subject_allocation_id AND allocation.school_id = target.school_id
+      WHERE asset.school_id = ${schoolId}::uuid AND asset.created_by_user_id <> allocation.teacher_user_id`);
+    assert.equal(Number(unsafeFiles[0].count), 0);
+    console.log('ACC_UNAUTHORIZED_FILE_ASSET_COUNT=0');
 
     const scenarios: RaceFixture[] = [
       taskScenario({
@@ -2022,6 +2199,9 @@ async function cleanupSchool(
   });
   const userIds = memberships.map(({ userId }) => userId);
   await prisma.auditLog.deleteMany({ where: { schoolId } });
+  await prisma.academicContentAsset.deleteMany({ where: { schoolId } });
+  await prisma.fileUploadSession.deleteMany({ where: { schoolId } });
+  await prisma.file.deleteMany({ where: { schoolId } });
   await prisma.academicContentGuardianNoteDetail.deleteMany({
     where: { schoolId },
   });
