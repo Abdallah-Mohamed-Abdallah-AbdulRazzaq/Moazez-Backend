@@ -23,6 +23,9 @@ const NON_PLATFORM = ALL.filter(
 const SCHOOL_LEVEL = NON_PLATFORM;
 
 export const TEACHER_PERMISSIONS = [
+  'academics.academic_content.view',
+  'academics.academic_content.manage',
+  'academics.academic_content.publish',
   // teachers.records.view/manage are intentionally excluded: this role gets
   // self-service access, never Teacher Directory management.
   'app.device_tokens.manage',
