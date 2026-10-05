@@ -159,8 +159,8 @@
     {
       "directory": "20261005184814_academic_content_review_decision_notification_types",
       "path": "prisma/migrations/20261005184814_academic_content_review_decision_notification_types/migration.sql",
-      "sha256": "ac4d0ecd3f7175a5ae6f3ef80ebb9b917d4c2ad2b99a5f5f2cab2344da91c452"
+      "sha256": "d11334b71f092bc570fd7d952ea6b73bd9864376a0dd1800063869f3febfa1a2"
     }
   ],
-  "aggregateMigrationChainSha256": "8684970b53760855a5f87e924c0e1b78a76ca9f18eb82879f13f926dbfe146fb"
+  "aggregateMigrationChainSha256": "8d5b305c01692bfb292bbf6ceab063b8794c2577b7ab96074ff1508e2e0f21b9"
 }
