@@ -1,3 +1,4 @@
+import { AcademicContentWorkflowPublicationCapabilities } from '../../src/modules/academics/academic-content/application/academic-content-workflow-publication-capabilities';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { Reflector } from '@nestjs/core';
@@ -66,6 +67,10 @@ describe('Teacher Academic Content HTTP actor and permission boundary', () => {
           },
         },
         { provide: TeacherAcademicContentReadAdapter, useValue: read },
+        {
+          provide: AcademicContentWorkflowPublicationCapabilities,
+          useValue: { evaluateAuthorizedContent: jest.fn() },
+        },
       ],
     }).compile();
     app = module.createNestApplication();

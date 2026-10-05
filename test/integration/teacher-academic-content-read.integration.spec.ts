@@ -1,3 +1,8 @@
+import { AcademicContentWorkflowPublicationCapabilities } from '../../src/modules/academics/academic-content/application/academic-content-workflow-publication-capabilities';
+import { AcademicContentPublicationRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-publication.repository';
+import { AcademicContentRevisionRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-revision.repository';
+import { AcademicContentValidationRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-validation.repository';
+import { GetAcademicContentReadinessUseCase } from '../../src/modules/academics/academic-content/application/academic-content-readiness.use-case';
 import { randomUUID } from 'node:crypto';
 import {
   AcademicContentAudienceType as Audience,
@@ -45,7 +50,20 @@ describeDatabase(
       new TeacherAppAllocationReadAdapter(prisma),
     );
     const list = new ListTeacherAcademicContentUseCase(access, read);
-    const detail = new GetTeacherAcademicContentUseCase(access, read);
+    const detail = new GetTeacherAcademicContentUseCase(
+      access,
+      read,
+      new AcademicContentWorkflowPublicationCapabilities(
+        new GetAcademicContentReadinessUseCase(
+          new AcademicContentRepository(prisma),
+          new AcademicContentValidationRepository(prisma),
+        ),
+        new AcademicContentPublicationRepository(
+          prisma,
+          new AcademicContentRevisionRepository(prisma),
+        ),
+      ),
+    );
     const capabilities = new GetTeacherAcademicContentCapabilitiesUseCase(
       access,
       read,

@@ -7,6 +7,7 @@ import type { TeacherAcademicContentReadAdapter } from '../infrastructure/teache
 import type { TeacherAppContext } from '../../shared/teacher-app-context';
 import type { AcademicContentEffectiveWorkflowPolicy } from '../../../academics/academic-content/domain/academic-content-workflow.policy';
 import type {
+  TeacherAcademicContentActionsDto,
   TeacherAcademicContentCapabilitiesDto,
   TeacherAcademicContentDetailDto,
 } from '../dto/teacher-academic-content.dto';
@@ -18,6 +19,9 @@ export function presentTeacherAcademicContentDetail(
   teacher: TeacherAppContext,
   workflow: AcademicContentEffectiveWorkflowPolicy,
   now: Date,
+  verifiedActions: Partial<
+    Omit<TeacherAcademicContentActionsDto, 'canEdit'>
+  > = {},
 ): TeacherAcademicContentDetailDto {
   const term =
     content.term.schoolId === teacher.schoolId &&
@@ -34,6 +38,7 @@ export function presentTeacherAcademicContentDetail(
       workflow,
       term,
       now,
+      verifiedActions,
     }),
   };
 }

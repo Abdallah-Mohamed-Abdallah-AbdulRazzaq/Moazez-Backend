@@ -1,3 +1,4 @@
+import { AcademicContentWorkflowPublicationCapabilities } from './application/academic-content-workflow-publication-capabilities';
 import { QueueModule } from '../../../infrastructure/queue/queue.module';
 import { CommunicationNotificationQueueService } from '../../communication/application/communication-notification-queue.service';
 import { AcademicContentPublicationQueueService } from './application/academic-content-publication-queue.service';
@@ -106,6 +107,7 @@ import {
     AcademicContentController,
   ],
   providers: [
+    AcademicContentWorkflowPublicationCapabilities,
     AcademicContentAssetAccessOperations,
     AcademicContentAuthoringOperations,
     CommunicationNotificationQueueService,
@@ -176,6 +178,17 @@ import {
     AcademicContentAudienceResolver,
   ],
   exports: [
+    AcademicContentWorkflowPublicationCapabilities,
+    SubmitAcademicContentUseCase,
+    ScheduleAcademicContentPublicationUseCase,
+    UnscheduleAcademicContentPublicationUseCase,
+    GetAcademicContentPublicationReadinessUseCase,
+    ListAcademicContentPublicationHistoryUseCase,
+    GetAcademicContentPublicationUseCase,
+    GetAcademicContentAudiencePreviewUseCase,
+    ListAcademicContentRevisionsUseCase,
+    GetAcademicContentRevisionUseCase,
+    ListAcademicContentApprovalHistoryUseCase,
     AcademicContentAssetAccessOperations,
     AcademicContentPreparationTemplateUseCases,
     AcademicContentAuthoringOperations,

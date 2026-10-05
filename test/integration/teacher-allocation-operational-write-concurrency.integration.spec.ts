@@ -69,7 +69,17 @@ describe('teacher allocation operational write concurrency', () => {
     );
     expect(stdout).toContain('ACTIVE_REINFORCEMENT_ORPHAN_COUNT=0');
     expect(stdout).toContain('CORE_MULTI_CONNECTION_INTERLEAVING=PASS');
-    for (const domain of ['CREATE', 'EDIT', 'TARGET', 'DETAIL']) {
+    for (const domain of [
+      'CREATE',
+      'EDIT',
+      'TARGET',
+      'DETAIL',
+      'SUBMIT',
+      'PUBLISH',
+      'UNSCHEDULE',
+      'WITHDRAW',
+      'REVISE',
+    ]) {
       expect(stdout).toContain(`ACC_${domain}_WRITER_FIRST=PASS`);
       expect(stdout).toContain(`ACC_${domain}_REASSIGNMENT_FIRST=PASS`);
     }

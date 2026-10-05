@@ -1,3 +1,4 @@
+import type { AcademicContentTeacherWriteScope } from '../infrastructure/academic-content-teacher-write.authorization';
 import { Injectable } from '@nestjs/common';
 import { ValidationDomainException } from '../../../../common/exceptions/domain-exception';
 import { AcademicContentWorkflowRepository } from '../infrastructure/academic-content-workflow.repository';
@@ -24,6 +25,25 @@ export class SubmitAcademicContentUseCase {
     const scope = academicContentManagementScope(
       'academics.academic_content.manage',
     );
+    return this.executeScoped(scope, contentId, body);
+  }
+
+  /** Trusted entry point: Teacher App has checked actor and manage permission. */
+  executeForTeacher(
+    scope: AcademicContentTeacherWriteScope,
+    contentId: string,
+    body: unknown = {},
+  ) {
+    return this.executeScoped(scope, contentId, body);
+  }
+
+  private executeScoped(
+    scope:
+      | ReturnType<typeof academicContentManagementScope>
+      | AcademicContentTeacherWriteScope,
+    contentId: string,
+    body: unknown,
+  ) {
     requireEmptyBody(body);
     return this.workflow.submit({ ...scope, contentId });
   }

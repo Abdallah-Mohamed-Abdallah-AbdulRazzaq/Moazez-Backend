@@ -1858,3 +1858,28 @@ function formalBuilderArgs(source) {
     supervisorCleanupAudit:{clients:0,children:0,containers:0,networks:0,images:0,scratchFiles:0,inspectionVerified:true},
   };
 }
+
+test('ACC-9D workflow and publication gate resolution is confined to five user writers', () => {
+  const paths = ['academic-content-workflow.repository.ts', 'academic-content-publication.repository.ts', 'academic-content-publication-lifecycle.repository.ts'].map(file => 'src/modules/academics/academic-content/infrastructure/' + file);
+  const rows = INVENTORY.filter(row => paths.includes(row.path));
+  const gated = rows.filter(row => row.manualOverrides.some(override => override.unresolvedCallExpression === 'gate.lock'));
+  assert.deepEqual(gated.map(row => row.entryOwner).sort(), [
+    'AcademicContentWorkflowRepository.submit',
+    'AcademicContentPublicationRepository.schedule',
+    'AcademicContentPublicationRepository.unschedule',
+    'AcademicContentPublicationLifecycleRepository.cancel',
+    'AcademicContentPublicationLifecycleRepository.startRevision',
+  ].sort());
+  for (const row of gated) {
+    assert.deepEqual(row.unresolvedCalls, []);
+    assert.equal(row.explicitLock, true);
+    assert.equal(row.externalWaitInsideTransaction, false);
+    assert.equal(row.classification, 'LOCK_CONTENTION_SENSITIVE');
+    const override = row.manualOverrides.find(item => item.unresolvedCallExpression === 'gate.lock');
+    assert.deepEqual(override.resolvedCallers, ['lockTeacherAcademicContentAllocations']);
+    assert.match(override.reviewEvidence, /active Prisma\.TransactionClient/u);
+    assert.match(override.reviewEvidence, /no nested transaction, transaction escape or external wait/u);
+    assert.match(override.reviewEvidence, /after the awaited transaction commits/u);
+  }
+  assert.ok(rows.filter(row => !gated.includes(row)).every(row => row.manualOverrides.every(override => override.unresolvedCallExpression !== 'gate.lock')));
+});
