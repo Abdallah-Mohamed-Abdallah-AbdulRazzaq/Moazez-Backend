@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import {
   AuditOutcome,
   FileUploadPurpose,
@@ -18,8 +18,14 @@ import {
   assertAcademicContentTermWritable,
 } from '../../domain/academic-content-lifecycle.policy';
 import { NotFoundDomainException } from '../../../../../common/exceptions/domain-exception';
+import { TeacherAllocationOperationalWriteGate } from '../../../teacher-allocation/application/teacher-allocation-operational-write-gate';
+import {
+  authorizeTeacherAcademicContentMutation,
+  type AcademicContentTeacherWriteScope,
+} from '../../infrastructure/academic-content-teacher-write.authorization';
 import type {
   AcademicContentFileTransaction,
+  AcademicContentFileWriteAuthorization,
   AcademicUploadIdentity,
   AcademicUploadIntent,
 } from '../application/academic-content-file.unit-of-work';
@@ -28,7 +34,51 @@ export type { AcademicUploadIdentity } from '../application/academic-content-fil
 
 @Injectable()
 export class AcademicContentFileRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional()
+    private readonly teacherGate?: TeacherAllocationOperationalWriteGate,
+  ) {}
+
+  private async lockContent(
+    tx: Prisma.TransactionClient,
+    contentId: string,
+    schoolId: string,
+    now: Date,
+    authorization?: AcademicContentFileWriteAuthorization,
+  ): Promise<void> {
+    const rows = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM academic_contents
+      WHERE id = ${contentId}::uuid AND school_id = ${schoolId}::uuid
+        AND deleted_at IS NULL FOR UPDATE`;
+    if (!rows.length)
+      throw new NotFoundDomainException('Academic content not found');
+    const content = await tx.academicContent.findFirst({
+      where: { id: contentId, schoolId, deletedAt: null },
+      select: { status: true, termId: true, createdByUserId: true },
+    });
+    if (!content)
+      throw new NotFoundDomainException('Academic content not found');
+    if (authorization) {
+      const scope = authorization.teacherScope;
+      if (scope.schoolId !== schoolId)
+        throw new NotFoundDomainException('Academic content not found');
+      await authorizeTeacherAcademicContentMutation(
+        tx,
+        this.teacherGate,
+        { ...scope, id: contentId },
+        content.createdByUserId,
+      );
+      if (authorization.ownershipOnly) return;
+    }
+    assertAcademicContentMutable(content.status);
+    const term = await tx.term.findFirst({
+      where: { id: content.termId, schoolId, deletedAt: null },
+      select: { startDate: true, endDate: true, isActive: true },
+    });
+    if (!term) throw new NotFoundDomainException('Term not found');
+    assertAcademicContentTermWritable(term, now);
+  }
 
   withTransaction<T>(
     callback: (context: AcademicContentFileTransaction) => Promise<T>,
@@ -52,27 +102,8 @@ export class AcademicContentFileRepository {
           where: { id, schoolId, purpose: FileUploadPurpose.ACADEMIC_CONTENT },
           data,
         }),
-      lockMutableContent: async (contentId, schoolId, now) => {
-        const rows = await tx.$queryRaw<Array<{ id: string }>>`
-          SELECT id FROM academic_contents
-          WHERE id = ${contentId}::uuid AND school_id = ${schoolId}::uuid
-            AND deleted_at IS NULL FOR UPDATE`;
-        if (!rows.length)
-          throw new NotFoundDomainException('Academic content not found');
-        const content = await tx.academicContent.findFirst({
-          where: { id: contentId, schoolId, deletedAt: null },
-          select: { status: true, termId: true },
-        });
-        if (!content)
-          throw new NotFoundDomainException('Academic content not found');
-        assertAcademicContentMutable(content.status);
-        const term = await tx.term.findFirst({
-          where: { id: content.termId, schoolId, deletedAt: null },
-          select: { startDate: true, endDate: true, isActive: true },
-        });
-        if (!term) throw new NotFoundDomainException('Term not found');
-        assertAcademicContentTermWritable(term, now);
-      },
+      lockMutableContent: (contentId, schoolId, now, authorization) =>
+        this.lockContent(tx, contentId, schoolId, now, authorization),
       createFile: (data) => tx.file.create({ data }),
       createAsset: async (data) => {
         const latest = await tx.academicContentAsset.aggregate({
@@ -273,7 +304,61 @@ export class AcademicContentFileRepository {
     });
   }
 
-  async createOrFindRequest(data: AcademicUploadIntent) {
+  async createOrFindRequest(
+    data: AcademicUploadIntent,
+    teacherScope?: AcademicContentTeacherWriteScope,
+    validatePolicy?: (policy: AcademicContentEffectiveFilePolicy) => void,
+  ) {
+    if (teacherScope) {
+      if (!validatePolicy) throw new Error('Upload policy validation required');
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          return await this.prisma.$transaction(async (tx) => {
+            await this.lockContent(
+              tx,
+              data.purposeContextId,
+              data.schoolId,
+              new Date(),
+              { teacherScope },
+            );
+            validatePolicy(
+              effectiveAcademicContentFilePolicy(
+                await tx.academicContentFilePolicy.findUnique({
+                  where: { schoolId: data.schoolId },
+                }),
+              ),
+            );
+            const existing = await tx.fileUploadSession.findUnique({
+              where: {
+                schoolId_createdByUserId_purpose_clientRequestId: {
+                  schoolId: data.schoolId,
+                  createdByUserId: data.createdByUserId,
+                  purpose: FileUploadPurpose.ACADEMIC_CONTENT,
+                  clientRequestId: data.clientRequestId,
+                },
+              },
+            });
+            if (existing) return { session: existing, created: false as const };
+            const session = await tx.fileUploadSession.create({
+              data: {
+                ...data,
+                purpose: FileUploadPurpose.ACADEMIC_CONTENT,
+                status: FileUploadSessionStatus.CREATED,
+              },
+            });
+            return { session, created: true as const };
+          });
+        } catch (error) {
+          if (
+            !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+            error.code !== 'P2002' ||
+            attempt === 2
+          )
+            throw error;
+        }
+      }
+      throw new Error('Unreachable Academic Content upload idempotency retry');
+    }
     try {
       const session = await this.prisma.fileUploadSession.create({
         data: {
@@ -316,6 +401,7 @@ export class AcademicContentFileRepository {
   async markCapabilityFailed(
     owner: AcademicUploadIdentity,
     now: Date,
+    capabilityExpiresAt?: Date,
   ): Promise<void> {
     await this.prisma.fileUploadSession.updateMany({
       where: this.ownedStatusWhere(owner, FileUploadSessionStatus.CREATED),
@@ -323,7 +409,10 @@ export class AcademicContentFileRepository {
         status: FileUploadSessionStatus.FAILED,
         failedAt: now,
         failureReason: 'resumable_capability_failed',
-        finalCleanupEligibleAt: now,
+        latestUploadUrlExpiresAt: capabilityExpiresAt,
+        finalCleanupEligibleAt: capabilityExpiresAt
+          ? new Date(Math.max(now.getTime(), capabilityExpiresAt.getTime()))
+          : now,
       },
     });
   }
@@ -331,7 +420,27 @@ export class AcademicContentFileRepository {
   async persistCapabilityExpiry(
     owner: AcademicUploadIdentity,
     capabilityExpiresAt: Date,
+    teacherScope?: AcademicContentTeacherWriteScope,
   ): Promise<boolean> {
+    if (teacherScope) {
+      return this.prisma.$transaction(async (tx) => {
+        await this.lockContent(
+          tx,
+          owner.contentId,
+          owner.schoolId,
+          new Date(),
+          { teacherScope },
+        );
+        const result = await tx.fileUploadSession.updateMany({
+          where: this.ownedStatusWhere(owner, FileUploadSessionStatus.CREATED),
+          data: {
+            status: FileUploadSessionStatus.UPLOADING,
+            latestUploadUrlExpiresAt: capabilityExpiresAt,
+          },
+        });
+        return result.count === 1;
+      });
+    }
     const result = await this.prisma.fileUploadSession.updateMany({
       where: this.ownedStatusWhere(owner, FileUploadSessionStatus.CREATED),
       data: {
@@ -367,6 +476,45 @@ export class AcademicContentFileRepository {
       where: this.ownedStatusWhere(owner, FileUploadSessionStatus.VERIFYING),
       data: { status: FileUploadSessionStatus.UPLOADING },
     });
+  }
+
+  async findCurrentAssetFile(input: {
+    schoolId: string;
+    contentId: string;
+    assetId: string;
+  }) {
+    const asset = await this.prisma.academicContentAsset.findFirst({
+      where: {
+        id: input.assetId,
+        schoolId: input.schoolId,
+        academicContentId: input.contentId,
+        deletedAt: null,
+        file: { is: { schoolId: input.schoolId, deletedAt: null } },
+      },
+      include: { file: true },
+    });
+    return asset?.file ?? null;
+  }
+
+  async findRevisionAssetFile(input: {
+    schoolId: string;
+    contentId: string;
+    revisionId: string;
+    fileId: string;
+  }) {
+    const asset = await this.prisma.academicContentRevisionAsset.findFirst({
+      where: {
+        schoolId: input.schoolId,
+        revisionId: input.revisionId,
+        fileId: input.fileId,
+        revision: {
+          is: { schoolId: input.schoolId, academicContentId: input.contentId },
+        },
+        file: { is: { schoolId: input.schoolId, deletedAt: null } },
+      },
+      include: { file: true },
+    });
+    return asset?.file ?? null;
   }
 
   async releaseTerminalCleanupClaim(

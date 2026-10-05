@@ -2,6 +2,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { METHOD_METADATA } from '@nestjs/common/constants';
 import { TeacherAcademicContentController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content.controller';
 import { TeacherAcademicContentAuthoringController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content-authoring.controller';
+import { TeacherAcademicContentFilesController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content-files.controller';
 import { Test, TestingModule } from '@nestjs/testing';
 import { readFileSync } from 'node:fs';
 import {
@@ -227,6 +228,7 @@ type TeacherAppDeferredCase = {
 const TEACHER_APP_CONTROLLER_CLASSES = [
   TeacherAcademicContentController,
   TeacherAcademicContentAuthoringController,
+  TeacherAcademicContentFilesController,
   TeacherHomeController,
   TeacherMyClassesController,
   TeacherClassroomController,
@@ -840,6 +842,46 @@ const TEACHER_APP_DEFERRED_ACTION_CASES: TeacherAppDeferredCase[] = [];
 
 const TEACHER_APP_DECORATED_PERMISSION_CASES: TeacherAppPermissionCase[] = [
   {
+    controller: TeacherAcademicContentFilesController,
+    method: 'uploadIntent',
+    permissions: ['academics.academic_content.manage'],
+  },
+  {
+    controller: TeacherAcademicContentFilesController,
+    method: 'complete',
+    permissions: ['academics.academic_content.manage'],
+  },
+  {
+    controller: TeacherAcademicContentFilesController,
+    method: 'cancel',
+    permissions: ['academics.academic_content.manage'],
+  },
+  {
+    controller: TeacherAcademicContentFilesController,
+    method: 'unlink',
+    permissions: ['academics.academic_content.manage'],
+  },
+  {
+    controller: TeacherAcademicContentFilesController,
+    method: 'currentAccess',
+    permissions: ['academics.academic_content.view'],
+  },
+  {
+    controller: TeacherAcademicContentFilesController,
+    method: 'revisionAccess',
+    permissions: ['academics.academic_content.view'],
+  },
+  {
+    controller: TeacherAcademicContentFilesController,
+    method: 'listTemplates',
+    permissions: ['academics.academic_content.view'],
+  },
+  {
+    controller: TeacherAcademicContentFilesController,
+    method: 'templateDetail',
+    permissions: ['academics.academic_content.view'],
+  },
+  {
     controller: TeacherAcademicContentAuthoringController,
     method: 'create',
     permissions: ['academics.academic_content.manage'],
@@ -1035,8 +1077,8 @@ describe('Teacher App route permission metadata (security)', () => {
           .map((method) => `${controller.name}.${method}`),
     ).sort();
 
-    expect(discoveredRouteHandlers).toHaveLength(129);
-    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(129);
+    expect(discoveredRouteHandlers).toHaveLength(137);
+    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(137);
     expect(TEACHER_APP_DEFERRED_ACTION_CASES).toHaveLength(0);
     expect(discoveredRouteHandlers).toEqual(
       Array.from(expectedKnownHandlers).sort(),

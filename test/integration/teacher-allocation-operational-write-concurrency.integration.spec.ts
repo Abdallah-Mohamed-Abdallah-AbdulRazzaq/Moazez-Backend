@@ -74,11 +74,15 @@ describe('teacher allocation operational write concurrency', () => {
       expect(stdout).toContain(`ACC_${domain}_REASSIGNMENT_FIRST=PASS`);
     }
     expect(stdout).toContain('ACC_OWNERLESS_DRAFT_COUNT=0');
-    console.log(
+    expect(stdout).toContain('ACC_UPLOAD_COMPLETE_WRITER_FIRST=PASS');
+    expect(stdout).toContain('ACC_UPLOAD_COMPLETE_REASSIGNMENT_FIRST=PASS');
+    expect(stdout).toContain('ACC_UPLOAD_COMPLETION_CLAIM_RECOVERY=PASS');
+    expect(stdout).toContain('ACC_UNAUTHORIZED_FILE_ASSET_COUNT=0');
+    process.stdout.write(
       stdout
         .split(/\r?\n/u)
         .filter((line) => line.startsWith('ACC_'))
-        .join('\n'),
+        .join('\n') + '\n',
     );
   });
 });

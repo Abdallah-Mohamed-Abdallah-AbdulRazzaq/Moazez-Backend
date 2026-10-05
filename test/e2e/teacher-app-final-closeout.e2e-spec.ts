@@ -37,6 +37,7 @@ import { REQUIRED_PERMISSIONS_METADATA } from '../../src/common/decorators/requi
 import { AppModule } from '../../src/app.module';
 import { TeacherAcademicContentController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content.controller';
 import { TeacherAcademicContentAuthoringController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content-authoring.controller';
+import { TeacherAcademicContentFilesController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content-files.controller';
 import { TeacherAnnouncementsController } from '../../src/modules/teacher-app/announcements/controller/teacher-announcements.controller';
 import { TeacherCalendarController } from '../../src/modules/teacher-app/calendar/controller/teacher-calendar.controller';
 import { TeacherClassroomAttendanceController } from '../../src/modules/teacher-app/classroom/attendance/controller/teacher-classroom-attendance.controller';
@@ -236,6 +237,7 @@ const TEACHER_APP_CONTROLLER_CLASSES = [
   TeacherLessonPreparationController,
   TeacherAcademicContentController,
   TeacherAcademicContentAuthoringController,
+  TeacherAcademicContentFilesController,
 ] as const;
 
 type AcademicContext = {
@@ -650,10 +652,25 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       (entry) => entry.permissions,
     );
 
-    expect(routes).toHaveLength(129);
-    expect(inventory).toHaveLength(129);
-    expect(decorated).toHaveLength(129);
+    expect(routes).toHaveLength(137);
+    expect(inventory).toHaveLength(137);
+    expect(decorated).toHaveLength(137);
     expect(undecorated).toEqual([]);
+    for (const method of ['uploadIntent', 'complete', 'cancel', 'unlink']) {
+      expect(
+        getHandlerPermissions(TeacherAcademicContentFilesController, method),
+      ).toEqual(['academics.academic_content.manage']);
+    }
+    for (const method of [
+      'currentAccess',
+      'revisionAccess',
+      'listTemplates',
+      'templateDetail',
+    ]) {
+      expect(
+        getHandlerPermissions(TeacherAcademicContentFilesController, method),
+      ).toEqual(['academics.academic_content.view']);
+    }
     for (const method of [
       'create',
       'update',

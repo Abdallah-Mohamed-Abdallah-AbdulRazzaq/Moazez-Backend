@@ -22,6 +22,8 @@ import {
   assertAcademicContentTermWritable,
 } from '../../domain/academic-content-lifecycle.policy';
 import type { AcademicUploadIdentity } from './academic-content-file.unit-of-work';
+import type { AcademicContentTeacherWriteScope } from '../../infrastructure/academic-content-teacher-write.authorization';
+import type { AcademicContentEffectiveFilePolicy } from '../domain/academic-content-file-policy';
 import { academicContentFileScope } from './academic-content-file-scope';
 import { AcademicContentFilePolicyResolver } from './academic-content-file-policy.resolver';
 import {
@@ -37,8 +39,12 @@ function conflict(reason: string): DomainException {
   });
 }
 
-function identity(uploadId: string, contentId: string): AcademicUploadIdentity {
-  const scope = academicContentFileScope();
+function identity(
+  uploadId: string,
+  contentId: string,
+  trustedScope?: AcademicContentTeacherWriteScope,
+): AcademicUploadIdentity {
+  const scope = trustedScope ?? academicContentFileScope();
   return {
     uploadId,
     contentId,
@@ -78,14 +84,32 @@ export class CreateAcademicContentUploadUseCase {
 
   async execute(command: CreateAcademicContentUploadCommand) {
     const scope = academicContentFileScope();
-    const content = await this.repository.findContent(
-      command.contentId,
-      scope.schoolId,
-    );
-    if (!content)
-      throw new NotFoundDomainException('Academic content not found');
-    assertAcademicContentMutable(content.status);
-    assertAcademicContentTermWritable(content.term, new Date());
+    return this.executeScoped(command, scope);
+  }
+
+  /** Internal entry point; Teacher App has already proven actor and manage. */
+  executeForTeacher(
+    command: CreateAcademicContentUploadCommand,
+    scope: AcademicContentTeacherWriteScope,
+  ) {
+    return this.executeScoped(command, scope, scope);
+  }
+
+  private async executeScoped(
+    command: CreateAcademicContentUploadCommand,
+    scope: ReturnType<typeof academicContentFileScope>,
+    teacherScope?: AcademicContentTeacherWriteScope,
+  ) {
+    if (!teacherScope) {
+      const content = await this.repository.findContent(
+        command.contentId,
+        scope.schoolId,
+      );
+      if (!content)
+        throw new NotFoundDomainException('Academic content not found');
+      assertAcademicContentMutable(content.status);
+      assertAcademicContentTermWritable(content.term, new Date());
+    }
     const originalName = sanitizeOriginalName(command.originalName);
     const type = resolveAcademicContentFileType(
       originalName,
@@ -96,20 +120,25 @@ export class CreateAcademicContentUploadUseCase {
         'Unsupported file extension and MIME pair',
       );
     const expectedSizeBytes = parseSize(command.expectedSizeBytes);
-    const effectivePolicy = await this.policy.resolve(scope.schoolId);
-    if (
-      !effectivePolicy.attachmentsEnabled ||
-      !this.policy.categoryEnabled(effectivePolicy, type.category) ||
-      expectedSizeBytes > effectivePolicy.maximumFileSizeBytes
-    )
-      throw new ValidationDomainException(
-        'Academic content file policy does not allow this upload',
-      );
+    const validatePolicy = (
+      effectivePolicy: AcademicContentEffectiveFilePolicy,
+    ) => {
+      if (
+        !effectivePolicy.attachmentsEnabled ||
+        !this.policy.categoryEnabled(effectivePolicy, type.category) ||
+        expectedSizeBytes > effectivePolicy.maximumFileSizeBytes
+      )
+        throw new ValidationDomainException(
+          'Academic content file policy does not allow this upload',
+        );
+    };
+    if (!teacherScope)
+      validatePolicy(await this.policy.resolve(scope.schoolId));
     if (!this.storage.getCapabilities().resumableUpload)
       throw conflict('storage_resumable_upload_unavailable');
     const uploadId = randomUUID();
     const now = new Date();
-    const intent = await this.repository.createOrFindRequest({
+    const data = {
       id: uploadId,
       organizationId: scope.organizationId,
       schoolId: scope.schoolId,
@@ -124,7 +153,14 @@ export class CreateAcademicContentUploadUseCase {
       expiresAt: new Date(
         now.getTime() + ACADEMIC_CONTENT_UPLOAD_SESSION_TTL_MS,
       ),
-    });
+    };
+    const intent = teacherScope
+      ? await this.repository.createOrFindRequest(
+          data,
+          teacherScope,
+          validatePolicy,
+        )
+      : await this.repository.createOrFindRequest(data);
     if (!intent.created) {
       const existing = intent.session;
       if (
@@ -137,7 +173,7 @@ export class CreateAcademicContentUploadUseCase {
       throw conflict('upload_capability_not_reissuable');
     }
     const session = intent.session;
-    const owner = identity(session.id, command.contentId);
+    const owner = identity(session.id, command.contentId, teacherScope);
     let sessionUrl: string;
     let capabilityExpiresAt: Date;
     try {
@@ -153,10 +189,30 @@ export class CreateAcademicContentUploadUseCase {
       await this.repository.markCapabilityFailed(owner, new Date());
       throw conflict('resumable_capability_failed');
     }
-    const transitioned = await this.repository.persistCapabilityExpiry(
-      owner,
-      capabilityExpiresAt,
-    );
+    let transitioned: boolean;
+    if (teacherScope) {
+      try {
+        transitioned = await this.repository.persistCapabilityExpiry(
+          owner,
+          capabilityExpiresAt,
+          teacherScope,
+        );
+      } catch (error) {
+        // The external bearer capability may still be usable. Preserve its
+        // deadline for the existing deferred cleanup lifecycle, never its URL.
+        await this.repository.markCapabilityFailed(
+          owner,
+          new Date(),
+          capabilityExpiresAt,
+        );
+        throw error;
+      }
+    } else {
+      transitioned = await this.repository.persistCapabilityExpiry(
+        owner,
+        capabilityExpiresAt,
+      );
+    }
     if (!transitioned) throw conflict('upload_capability_not_reissuable');
     return {
       uploadId: session.id,
@@ -179,11 +235,36 @@ export class CompleteAcademicContentUploadUseCase {
   ) {}
 
   async execute(command: { contentId: string; uploadId: string }) {
-    const owner = identity(command.uploadId, command.contentId);
+    return this.executeScoped(command);
+  }
+
+  executeForTeacher(
+    command: { contentId: string; uploadId: string },
+    scope: AcademicContentTeacherWriteScope,
+  ) {
+    return this.executeScoped(command, scope);
+  }
+
+  private async executeScoped(
+    command: { contentId: string; uploadId: string },
+    teacherScope?: AcademicContentTeacherWriteScope,
+  ) {
+    const owner = identity(command.uploadId, command.contentId, teacherScope);
     const claimed = await this.repository.withTransaction(async (tx) => {
       const session = await tx.lockUpload(owner);
       if (!session)
         throw new NotFoundDomainException('Academic upload not found');
+      if (teacherScope) {
+        await tx.lockMutableContent(
+          owner.contentId,
+          owner.schoolId,
+          new Date(),
+          {
+            teacherScope,
+            ownershipOnly: session.status === FileUploadSessionStatus.READY,
+          },
+        );
+      }
       if (session.status === FileUploadSessionStatus.READY) {
         const link = await tx.readyLink(session);
         if (!link) throw conflict('ready_relationship_invalid');
@@ -250,6 +331,7 @@ export class CompleteAcademicContentUploadUseCase {
           owner.contentId,
           owner.schoolId,
           new Date(),
+          ...(teacherScope ? [{ teacherScope }] : []),
         );
         const session = await tx.lockUpload(owner);
         if (!session || session.status !== FileUploadSessionStatus.VERIFYING)
@@ -304,7 +386,8 @@ export class CompleteAcademicContentUploadUseCase {
       if (
         error instanceof DomainException &&
         (error.code === 'academic_content.status.read_only' ||
-          error.code === 'academic_content.term.closed')
+          error.code === 'academic_content.term.closed' ||
+          (teacherScope && error instanceof NotFoundDomainException))
       ) {
         const failedAt = new Date();
         await this.repository.markVerificationFailed({
@@ -316,6 +399,10 @@ export class CompleteAcademicContentUploadUseCase {
             claimed.session,
           ),
         });
+      } else if (teacherScope) {
+        // A rolled-back final transaction has no File/Asset relationship.
+        // Release this exact claim so retry need not await stale recovery.
+        await this.repository.releaseVerification(owner);
       }
       throw error;
     }
@@ -326,11 +413,34 @@ export class CompleteAcademicContentUploadUseCase {
 export class CancelAcademicContentUploadUseCase {
   constructor(private readonly repository: AcademicContentFileRepository) {}
   async execute(command: { contentId: string; uploadId: string }) {
-    const owner = identity(command.uploadId, command.contentId);
+    return this.executeScoped(command);
+  }
+  executeForTeacher(
+    command: { contentId: string; uploadId: string },
+    scope: AcademicContentTeacherWriteScope,
+  ) {
+    return this.executeScoped(command, scope);
+  }
+  private async executeScoped(
+    command: { contentId: string; uploadId: string },
+    teacherScope?: AcademicContentTeacherWriteScope,
+  ) {
+    const owner = identity(command.uploadId, command.contentId, teacherScope);
     return this.repository.withTransaction(async (tx) => {
       const session = await tx.lockUpload(owner);
       if (!session)
         throw new NotFoundDomainException('Academic upload not found');
+      if (teacherScope) {
+        await tx.lockMutableContent(
+          owner.contentId,
+          owner.schoolId,
+          new Date(),
+          {
+            teacherScope,
+            ownershipOnly: true,
+          },
+        );
+      }
       if (
         session.status !== FileUploadSessionStatus.CREATED &&
         session.status !== FileUploadSessionStatus.UPLOADING
@@ -354,11 +464,25 @@ export class UnlinkAcademicContentAssetUseCase {
   constructor(private readonly repository: AcademicContentFileRepository) {}
   async execute(command: { contentId: string; assetId: string }) {
     const scope = academicContentFileScope();
+    return this.executeScoped(command, scope);
+  }
+  executeForTeacher(
+    command: { contentId: string; assetId: string },
+    scope: AcademicContentTeacherWriteScope,
+  ) {
+    return this.executeScoped(command, scope, scope);
+  }
+  private async executeScoped(
+    command: { contentId: string; assetId: string },
+    scope: ReturnType<typeof academicContentFileScope>,
+    teacherScope?: AcademicContentTeacherWriteScope,
+  ) {
     return this.repository.withTransaction(async (tx) => {
       await tx.lockMutableContent(
         command.contentId,
         scope.schoolId,
         new Date(),
+        ...(teacherScope ? [{ teacherScope }] : []),
       );
       const candidate = await tx.findActiveAsset({
         assetId: command.assetId,

@@ -216,7 +216,7 @@ test('ACC-9B Core writer gate has scoped resolution and transaction-bound caller
     'academic-content-type-detail.repository.ts',
     'academic-content-links-tags.repository.ts',
   ].map((file) => `src/modules/academics/academic-content/infrastructure/${file}`);
-  const rows = INVENTORY.filter((row) => row.manualOverrides.some((override) => override.unresolvedCallExpression === 'gate.lock'));
+  const rows = INVENTORY.filter((row) => paths.includes(row.path) && row.manualOverrides.some((override) => override.unresolvedCallExpression === 'gate.lock'));
   assert.deepEqual([...new Set(rows.map((row) => row.path))].sort(), [...paths].sort());
   assert.ok(rows.some((row) => row.entryOwner === 'AcademicContentRepository.createForTeacherAllocation'));
   for (const row of rows) {
@@ -233,6 +233,37 @@ test('ACC-9B Core writer gate has scoped resolution and transaction-bound caller
     caller.path === 'src/modules/academics/academic-content/infrastructure/academic-content-teacher-write.authorization.ts' &&
     caller.owner === 'lockTeacherAcademicContentAllocations' &&
     caller.transactionArgument === 'tx' && !caller.transactionEscape));
+});
+
+test('ACC-9C file gate resolution is exact and new intent transactions contain no external wait', () => {
+  const filePath = 'src/modules/academics/academic-content/files/infrastructure/academic-content-file.repository.ts';
+  const rows = INVENTORY.filter((row) => row.path === filePath);
+  const gated = rows.filter((row) => row.manualOverrides.some((override) => override.unresolvedCallExpression === 'gate.lock'));
+  assert.equal(gated.length, 2);
+  assert.deepEqual(gated.map((row) => row.entryOwner).sort(), [
+    'AcademicContentFileRepository.createOrFindRequest',
+    'AcademicContentFileRepository.persistCapabilityExpiry',
+  ]);
+  for (const row of gated) {
+    assert.equal(row.explicitLock, true);
+    assert.deepEqual(row.unresolvedCalls, []);
+    const override = row.manualOverrides.find((item) => item.unresolvedCallExpression === 'gate.lock');
+    assert.deepEqual(override.resolvedCallers, ['lockTeacherAcademicContentAllocations']);
+    assert.match(override.reviewEvidence, /active Prisma\.TransactionClient/u);
+    assert.match(override.reviewEvidence, /no nested transaction, transaction escape or external wait/u);
+    assert.match(override.reviewEvidence, /capability creation and bounded verification occur outside/u);
+    assert.equal(row.classification, 'LOCK_CONTENTION_SENSITIVE');
+    assert.equal(row.externalWaitInsideTransaction, false);
+  }
+  const facade = rows.find((row) => row.entryOwner === 'AcademicContentFileRepository.withTransaction');
+  const callback = facade.manualOverrides.find((override) => override.unresolvedCallExpression === 'callback');
+  for (const operation of ['Complete', 'Cancel', 'Unlink']) {
+    assert.ok(callback.resolvedCallers.includes(operation + 'AcademicContent' + (operation === 'Unlink' ? 'Asset' : 'Upload') + 'UseCase.executeScoped'));
+  }
+  const gateAudit = validateTeacherAllocationOperationalWriteGate(auditTeacherAllocationOperationalWriteGate());
+  assert.equal(gateAudit.transactionEscapeCount, 0);
+  assert.equal(gateAudit.nestedTransactionCount, 0);
+  assert.equal(gateAudit.externalWaitInsideGateCount, 0);
 });
 
 test('Teacher allocation reassignment callback has no transaction escape or external wait', () => {

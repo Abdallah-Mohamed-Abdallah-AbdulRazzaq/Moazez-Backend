@@ -14,6 +14,11 @@ import {
 } from '../domain/academic-content-preparation-template.policy';
 
 type Scope = { schoolId: string; organizationId: string; actorId: string };
+export type PreparationTemplateApplicability = {
+  schoolId: string;
+  stageId: string;
+  subjectId: string;
+};
 
 const notFound = () =>
   new DomainException({
@@ -90,6 +95,7 @@ export class AcademicContentPreparationTemplateRepository {
       page: number;
       limit: number;
     },
+    applicable?: PreparationTemplateApplicability,
   ) {
     const clauses: Prisma.Sql[] = [
       Prisma.sql`school_id = ${schoolId}::uuid`,
@@ -99,6 +105,14 @@ export class AcademicContentPreparationTemplateRepository {
       clauses.push(Prisma.sql`stage_id = ${query.stageId}::uuid`);
     if (query.subjectId)
       clauses.push(Prisma.sql`subject_id = ${query.subjectId}::uuid`);
+    if (applicable) {
+      clauses.push(
+        Prisma.sql`(stage_id IS NULL OR stage_id = ${applicable.stageId}::uuid)`,
+      );
+      clauses.push(
+        Prisma.sql`(subject_id IS NULL OR subject_id = ${applicable.subjectId}::uuid)`,
+      );
+    }
     if (query.search)
       clauses.push(Prisma.sql`(
         POSITION(LOWER(${query.search}) IN LOWER(name)) > 0
@@ -146,6 +160,29 @@ export class AcademicContentPreparationTemplateRepository {
   async detail(schoolId: string, id: string) {
     const row = await this.prisma.academicContentPreparationTemplate.findFirst({
       where: { id, schoolId, deletedAt: null },
+    });
+    if (!row) throw notFound();
+    return presentTemplate(row);
+  }
+
+  listApplicable(
+    scope: PreparationTemplateApplicability,
+    query: { search?: string; page: number; limit: number },
+  ) {
+    return this.list(scope.schoolId, query, scope);
+  }
+
+  async detailApplicable(scope: PreparationTemplateApplicability, id: string) {
+    const row = await this.prisma.academicContentPreparationTemplate.findFirst({
+      where: {
+        id,
+        schoolId: scope.schoolId,
+        deletedAt: null,
+        AND: [
+          { OR: [{ stageId: null }, { stageId: scope.stageId }] },
+          { OR: [{ subjectId: null }, { subjectId: scope.subjectId }] },
+        ],
+      },
     });
     if (!row) throw notFound();
     return presentTemplate(row);
