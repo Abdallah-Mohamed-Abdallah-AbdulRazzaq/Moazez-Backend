@@ -319,6 +319,20 @@ const PURE_METHODS = new Set([
 ]);
 const REVIEWED_CALL_OVERRIDES = Object.freeze([
   ...[
+    'academic-content-workflow.repository.ts',
+    'academic-content-publication.repository.ts',
+    'academic-content-publication-lifecycle.repository.ts',
+  ].map((file) => Object.freeze({
+    path: `src/modules/academics/academic-content/infrastructure/${file}`,
+    target: /^gate\.lock$/,
+    origin: 'lockTeacherAcademicContentAllocations',
+    explicitLock: true,
+    reason: 'ACC-9D user workflow/publication writes reuse the existing Teacher allocation gate on their active transaction.',
+    classification: 'LOCK_CONTENTION_SENSITIVE',
+    resolvedCallers: Object.freeze(['lockTeacherAcademicContentAllocations']),
+    evidence: 'Submit, schedule, unschedule, withdraw and start revision pass their active Prisma.TransactionClient from the locked current content through authorizeTeacherAcademicContentMutation and lockTeacherAcademicContentAllocations to the independently audited PrismaTeacherAllocationOperationalWriteGate. Exact publication lifecycle locks retain the Content-first order; ownership is checked before idempotent success. There is no nested transaction, transaction escape or external wait. Publication and cancellation notification enqueue occur after the awaited transaction commits. Service-owned expire and publication workers do not gain Teacher gates.',
+  })),
+  ...[
     'academic-content.repository.ts',
     'academic-content-target.repository.ts',
     'academic-content-type-detail.repository.ts',

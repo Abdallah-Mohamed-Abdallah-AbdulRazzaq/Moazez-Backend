@@ -1,3 +1,4 @@
+import type { AcademicContentTeacherWriteScope } from '../infrastructure/academic-content-teacher-write.authorization';
 import { Injectable, Logger } from '@nestjs/common';
 import { AcademicContentPublicationStatus } from '@prisma/client';
 import { AcademicContentPublicationQueueService } from './academic-content-publication-queue.service';
@@ -31,8 +32,19 @@ export class ScheduleAcademicContentPublicationUseCase {
     assertAcademicContentPublicationCommand(contentId, command);
     return this.schedule(scope, contentId, command);
   }
+  /** Trusted entry point: actor and publish permission have been checked. */
+  executeForTeacher(
+    scope: AcademicContentTeacherWriteScope,
+    contentId: string,
+    command: AcademicContentPublicationCommand,
+  ) {
+    assertAcademicContentPublicationCommand(contentId, command);
+    return this.schedule(scope, contentId, command);
+  }
   private async schedule(
-    scope: ReturnType<typeof academicContentManagementScope>,
+    scope:
+      | ReturnType<typeof academicContentManagementScope>
+      | AcademicContentTeacherWriteScope,
     contentId: string,
     command: AcademicContentPublicationCommand,
   ) {
@@ -68,6 +80,23 @@ export class StartAcademicContentRevisionUseCase {
       'academics.academic_content.manage',
     );
     academicContentManagementScope('academics.academic_content.publish');
+    return this.executeScoped(scope, contentId, publicationId);
+  }
+  /** Trusted entry point: actor, manage and publish have been checked. */
+  executeForTeacher(
+    scope: AcademicContentTeacherWriteScope,
+    contentId: string,
+    publicationId: string,
+  ) {
+    return this.executeScoped(scope, contentId, publicationId);
+  }
+  private executeScoped(
+    scope:
+      | ReturnType<typeof academicContentManagementScope>
+      | AcademicContentTeacherWriteScope,
+    contentId: string,
+    publicationId: string,
+  ) {
     assertAcademicContentPublicationUuid(contentId);
     assertAcademicContentPublicationUuid(publicationId);
     return this.repository.startRevision({
@@ -96,8 +125,20 @@ export class CancelAcademicContentPublicationUseCase {
     assertAcademicContentPublicationUuid(publicationId);
     return this.cancel(scope, contentId, publicationId);
   }
+  /** Trusted entry point: actor and publish permission have been checked. */
+  executeForTeacher(
+    scope: AcademicContentTeacherWriteScope,
+    contentId: string,
+    publicationId: string,
+  ) {
+    assertAcademicContentPublicationUuid(contentId);
+    assertAcademicContentPublicationUuid(publicationId);
+    return this.cancel(scope, contentId, publicationId);
+  }
   private async cancel(
-    scope: ReturnType<typeof academicContentManagementScope>,
+    scope:
+      | ReturnType<typeof academicContentManagementScope>
+      | AcademicContentTeacherWriteScope,
     contentId: string,
     publicationId: string,
   ) {
@@ -150,6 +191,23 @@ export class UnscheduleAcademicContentPublicationUseCase {
     const scope = academicContentManagementScope(
       'academics.academic_content.publish',
     );
+    return this.executeScoped(scope, contentId, publicationId);
+  }
+  /** Trusted entry point: actor and publish permission have been checked. */
+  executeForTeacher(
+    scope: AcademicContentTeacherWriteScope,
+    contentId: string,
+    publicationId: string,
+  ) {
+    return this.executeScoped(scope, contentId, publicationId);
+  }
+  private executeScoped(
+    scope:
+      | ReturnType<typeof academicContentManagementScope>
+      | AcademicContentTeacherWriteScope,
+    contentId: string,
+    publicationId: string,
+  ) {
     assertAcademicContentPublicationUuid(contentId);
     assertAcademicContentPublicationUuid(publicationId);
     return this.publications.unschedule({ ...scope, contentId, publicationId });
@@ -165,8 +223,12 @@ export class GetAcademicContentPublicationReadinessUseCase {
     const scope = academicContentManagementScope(
       'academics.academic_content.view',
     );
+    return this.executeForAuthorizedContent(scope.schoolId, contentId);
+  }
+  /** Internal read boundary: caller has authorized the current parent content. */
+  executeForAuthorizedContent(schoolId: string, contentId: string) {
     assertAcademicContentPublicationUuid(contentId);
-    return this.publications.readiness({ schoolId: scope.schoolId, contentId });
+    return this.publications.readiness({ schoolId: schoolId, contentId });
   }
 }
 
@@ -179,12 +241,20 @@ export class ListAcademicContentPublicationHistoryUseCase {
     const scope = academicContentManagementScope(
       'academics.academic_content.view',
     );
+    return this.executeForAuthorizedContent(scope.schoolId, contentId, input);
+  }
+  /** Internal read boundary: caller has authorized the current parent content. */
+  executeForAuthorizedContent(
+    schoolId: string,
+    contentId: string,
+    input: { page?: number; limit?: number } = {},
+  ) {
     assertAcademicContentPublicationUuid(contentId);
     const page = input.page ?? 1;
     const limit = input.limit ?? 20;
     academicContentPublicationPagination(page, limit);
     return this.publications.history({
-      schoolId: scope.schoolId,
+      schoolId: schoolId,
       contentId,
       page,
       limit,
@@ -201,10 +271,22 @@ export class GetAcademicContentPublicationUseCase {
     const scope = academicContentManagementScope(
       'academics.academic_content.view',
     );
+    return this.executeForAuthorizedContent(
+      scope.schoolId,
+      contentId,
+      publicationId,
+    );
+  }
+  /** Internal read boundary: caller has authorized the current parent content. */
+  executeForAuthorizedContent(
+    schoolId: string,
+    contentId: string,
+    publicationId: string,
+  ) {
     assertAcademicContentPublicationUuid(contentId);
     assertAcademicContentPublicationUuid(publicationId);
     return this.publications.detail({
-      schoolId: scope.schoolId,
+      schoolId: schoolId,
       contentId,
       publicationId,
     });
@@ -218,9 +300,13 @@ export class GetAcademicContentAudiencePreviewUseCase {
     const scope = academicContentManagementScope(
       'academics.academic_content.view',
     );
+    return this.executeForAuthorizedContent(scope.schoolId, contentId);
+  }
+  /** Internal read boundary: caller has authorized the current parent content. */
+  async executeForAuthorizedContent(schoolId: string, contentId: string) {
     assertAcademicContentPublicationUuid(contentId);
     const asOf = new Date();
-    const resolved = await this.audience.resolve(contentId, scope.schoolId);
+    const resolved = await this.audience.resolve(contentId, schoolId);
     return {
       asOf,
       students: resolved.students.length,

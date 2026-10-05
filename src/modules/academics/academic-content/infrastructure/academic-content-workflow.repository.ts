@@ -1,4 +1,6 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { TeacherAllocationOperationalWriteGate } from '../../teacher-allocation/application/teacher-allocation-operational-write-gate';
+import { authorizeTeacherAcademicContentMutation } from './academic-content-teacher-write.authorization';
+import { HttpStatus, Injectable, Optional } from '@nestjs/common';
 import {
   AcademicContentApprovalStatus,
   AcademicContentStatus,
@@ -20,6 +22,7 @@ import {
 import { AcademicContentRevisionRepository } from './academic-content-revision.repository';
 
 type WorkflowCommand = {
+  teacherUserId?: string;
   schoolId: string;
   organizationId: string;
   actorId: string;
@@ -36,6 +39,8 @@ export class AcademicContentWorkflowRepository {
   constructor(
     private readonly prisma: PrismaService,
     private readonly revisions: AcademicContentRevisionRepository,
+    @Optional()
+    private readonly teacherGate?: TeacherAllocationOperationalWriteGate,
   ) {}
 
   private async lockContent(
@@ -51,6 +56,7 @@ export class AcademicContentWorkflowRepository {
     return tx.academicContent.findFirstOrThrow({
       where: { id: input.contentId, schoolId: input.schoolId, deletedAt: null },
       select: {
+        createdByUserId: true,
         status: true,
         type: true,
         audience: true,
@@ -65,6 +71,17 @@ export class AcademicContentWorkflowRepository {
     return this.prisma.$transaction(
       async (tx) => {
         const content = await this.lockContent(tx, input);
+        if (input.teacherUserId)
+          await authorizeTeacherAcademicContentMutation(
+            tx,
+            this.teacherGate,
+            {
+              ...input,
+              id: input.contentId,
+              teacherUserId: input.teacherUserId,
+            },
+            content.createdByUserId,
+          );
         if (content.type !== AcademicContentType.TEACHER_PREPARATION)
           conflict(
             'academic_content.approval.type_unsupported',

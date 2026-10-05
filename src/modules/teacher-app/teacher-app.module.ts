@@ -1,3 +1,5 @@
+import { TeacherAcademicContentWorkflowPublicationController } from './academic-content/controller/teacher-academic-content-workflow-publication.controller';
+import { TeacherAcademicContentWorkflowPublicationUseCases } from './academic-content/application/teacher-academic-content-workflow-publication.use-cases';
 import { Module } from '@nestjs/common';
 import { AppCalendarReadModelModule } from '../academics/calendar/app-facing/app-calendar-read-model.module';
 import { LessonContentPlaybackModule } from '../academics/curriculum/app-facing/lesson-content-playback/lesson-content-playback.module';
@@ -154,6 +156,7 @@ import {
     TeacherHomeworksModule,
   ],
   controllers: [
+    TeacherAcademicContentWorkflowPublicationController,
     TeacherAcademicContentFilesController,
     TeacherAcademicContentAuthoringController,
     TeacherAcademicContentController,
@@ -177,6 +180,7 @@ import {
     TeacherLessonPreparationController,
   ],
   providers: [
+    TeacherAcademicContentWorkflowPublicationUseCases,
     TeacherAcademicContentFilesUseCases,
     TeacherAcademicContentAuthoringUseCases,
     TeacherAcademicContentReadAdapter,

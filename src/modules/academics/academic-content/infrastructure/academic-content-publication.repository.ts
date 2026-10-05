@@ -1,4 +1,6 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { TeacherAllocationOperationalWriteGate } from '../../teacher-allocation/application/teacher-allocation-operational-write-gate';
+import { authorizeTeacherAcademicContentMutation } from './academic-content-teacher-write.authorization';
+import { HttpStatus, Injectable, Optional } from '@nestjs/common';
 import {
   AcademicContentApprovalStatus as ApprovalStatus,
   AcademicContentChangeSignificance,
@@ -36,6 +38,7 @@ import { AcademicContentRevisionRepository } from './academic-content-revision.r
 
 type PublicationIdentity = { schoolId: string; contentId: string };
 type PublicationMutation = PublicationIdentity & {
+  teacherUserId?: string;
   organizationId: string;
   actorId: string;
   now?: Date;
@@ -148,6 +151,8 @@ export class AcademicContentPublicationRepository {
   constructor(
     private readonly prisma: PrismaService,
     private readonly revisions: AcademicContentRevisionRepository,
+    @Optional()
+    private readonly teacherGate?: TeacherAllocationOperationalWriteGate,
   ) {}
 
   private async content(
@@ -158,6 +163,7 @@ export class AcademicContentPublicationRepository {
       where: { id: input.contentId, schoolId: input.schoolId, deletedAt: null },
       select: {
         id: true,
+        createdByUserId: true,
         status: true,
         type: true,
         audience: true,
@@ -380,7 +386,18 @@ export class AcademicContentPublicationRepository {
     try {
       return await this.prisma.$transaction(
         async (tx) => {
-          await this.lockContent(tx, input);
+          const content = await this.lockContent(tx, input);
+          if (input.teacherUserId)
+            await authorizeTeacherAcademicContentMutation(
+              tx,
+              this.teacherGate,
+              {
+                ...input,
+                id: input.contentId,
+                teacherUserId: input.teacherUserId,
+              },
+              content.createdByUserId,
+            );
           const existing = await tx.academicContentPublication.findUnique({
             where: {
               schoolId_clientRequestId: {
@@ -609,6 +626,17 @@ export class AcademicContentPublicationRepository {
           AND school_id = ${input.schoolId}::uuid AND academic_content_id = ${input.contentId}::uuid FOR UPDATE`;
         if (!rows.length)
           throw new NotFoundDomainException('Publication not found');
+        if (input.teacherUserId)
+          await authorizeTeacherAcademicContentMutation(
+            tx,
+            this.teacherGate,
+            {
+              ...input,
+              id: input.contentId,
+              teacherUserId: input.teacherUserId,
+            },
+            content.createdByUserId,
+          );
         const publication =
           await tx.academicContentPublication.findFirstOrThrow({
             where: {

@@ -1,4 +1,6 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { TeacherAllocationOperationalWriteGate } from '../../teacher-allocation/application/teacher-allocation-operational-write-gate';
+import { authorizeTeacherAcademicContentMutation } from './academic-content-teacher-write.authorization';
+import { HttpStatus, Injectable, Optional } from '@nestjs/common';
 import {
   AcademicContentPublicationStatus as Status,
   AcademicContentPublicationCancellationReason as Reason,
@@ -41,6 +43,7 @@ type Publication = Prisma.AcademicContentPublicationGetPayload<{
   select: typeof SELECT;
 }>;
 type CancellationInput = AcademicContentPublicationExecutionInput & {
+  teacherUserId?: string;
   actorId: string;
   organizationId: string;
 };
@@ -67,7 +70,11 @@ function validate(input: AcademicContentPublicationExecutionInput) {
 
 @Injectable()
 export class AcademicContentPublicationLifecycleRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional()
+    private readonly teacherGate?: TeacherAllocationOperationalWriteGate,
+  ) {}
 
   private async lock(
     tx: Prisma.TransactionClient,
@@ -86,7 +93,11 @@ export class AcademicContentPublicationLifecycleRepository {
       throw new NotFoundDomainException('Publication not found');
     const content = await tx.academicContent.findFirstOrThrow({
       where: { id: input.contentId, schoolId: input.schoolId, deletedAt: null },
-      select: { status: true, school: { select: { organizationId: true } } },
+      select: {
+        createdByUserId: true,
+        status: true,
+        school: { select: { organizationId: true } },
+      },
     });
     const publication = await tx.academicContentPublication.findFirstOrThrow({
       where: {
@@ -200,6 +211,17 @@ export class AcademicContentPublicationLifecycleRepository {
     return this.prisma.$transaction(
       async (tx) => {
         const { content, publication: row } = await this.lock(tx, command);
+        if (command.teacherUserId)
+          await authorizeTeacherAcademicContentMutation(
+            tx,
+            this.teacherGate,
+            {
+              ...command,
+              id: command.contentId,
+              teacherUserId: command.teacherUserId,
+            },
+            content.createdByUserId,
+          );
         if (content.school.organizationId !== command.organizationId)
           conflict();
         if (
@@ -283,6 +305,17 @@ export class AcademicContentPublicationLifecycleRepository {
     return this.prisma.$transaction(
       async (tx) => {
         const { content, publication: row } = await this.lock(tx, command);
+        if (command.teacherUserId)
+          await authorizeTeacherAcademicContentMutation(
+            tx,
+            this.teacherGate,
+            {
+              ...command,
+              id: command.contentId,
+              teacherUserId: command.teacherUserId,
+            },
+            content.createdByUserId,
+          );
         if (content.school.organizationId !== command.organizationId)
           conflict();
         if (

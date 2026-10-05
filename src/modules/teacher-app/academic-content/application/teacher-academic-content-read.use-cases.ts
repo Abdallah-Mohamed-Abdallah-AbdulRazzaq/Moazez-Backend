@@ -1,3 +1,4 @@
+import { AcademicContentWorkflowPublicationCapabilities } from '../../../academics/academic-content/application/academic-content-workflow-publication-capabilities';
 import { Injectable } from '@nestjs/common';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 import { ScopeMissingException } from '../../../iam/auth/domain/auth.exceptions';
@@ -76,6 +77,7 @@ export class GetTeacherAcademicContentUseCase {
   constructor(
     private readonly access: TeacherAppAccessService,
     private readonly read: TeacherAcademicContentReadAdapter,
+    private readonly actions: AcademicContentWorkflowPublicationCapabilities,
   ) {}
 
   async execute(contentId: string, now = new Date()) {
@@ -89,7 +91,18 @@ export class GetTeacherAcademicContentUseCase {
     if (!content)
       throw new NotFoundDomainException('Academic content not found');
     const workflow = await this.read.workflow(teacher.schoolId);
-    return presentTeacherAcademicContentDetail(content, teacher, workflow, now);
+    const verifiedActions = await this.actions.evaluateAuthorizedContent(
+      content,
+      workflow,
+      now,
+    );
+    return presentTeacherAcademicContentDetail(
+      content,
+      teacher,
+      workflow,
+      now,
+      verifiedActions,
+    );
   }
 }
 

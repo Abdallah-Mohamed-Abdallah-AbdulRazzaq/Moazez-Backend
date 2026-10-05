@@ -27,6 +27,15 @@ export class ListAcademicContentRevisionsUseCase {
     const { schoolId } = academicContentManagementScope(
       'academics.academic_content.view',
     );
+    return this.executeForAuthorizedContent(schoolId, contentId, query);
+  }
+
+  /** Caller must first authorize the current parent content. */
+  executeForAuthorizedContent(
+    schoolId: string,
+    contentId: string,
+    query: { page?: number; limit?: number } = {},
+  ) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 50;
     if (
@@ -50,6 +59,15 @@ export class GetAcademicContentRevisionUseCase {
     const { schoolId } = academicContentManagementScope(
       'academics.academic_content.view',
     );
+    return this.executeForAuthorizedContent(schoolId, contentId, revisionId);
+  }
+
+  /** Caller must first authorize the current parent content. */
+  executeForAuthorizedContent(
+    schoolId: string,
+    contentId: string,
+    revisionId: string,
+  ) {
     return this.revisions.detail({ schoolId, contentId, revisionId });
   }
 }

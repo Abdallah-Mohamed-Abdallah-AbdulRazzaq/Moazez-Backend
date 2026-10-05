@@ -1,3 +1,5 @@
+import { TeacherAcademicContentWorkflowPublicationUseCases } from '../../../src/modules/teacher-app/academic-content/application/teacher-academic-content-workflow-publication.use-cases';
+import { AcademicContentPublicationSnapshotRepository } from '../../../src/modules/academics/academic-content/infrastructure/academic-content-publication-snapshot.repository';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { INestApplication } from '@nestjs/common';
@@ -342,7 +344,7 @@ async function run(): Promise<void> {
     currentStage = 'fixture-academics';
     const academic = await createAcademicBase(fixturePrisma, schoolId, marker);
     const allocations: AllocationFixture[] = [];
-    for (let index = 0; index < 30; index += 1) {
+    for (let index = 0; index < 40; index += 1) {
       allocations.push(
         await createAllocationFixture({
           prisma: fixturePrisma,
@@ -441,6 +443,7 @@ async function run(): Promise<void> {
               ? [
                   'academics.academic_content.manage',
                   'academics.academic_content.view',
+                  'academics.academic_content.publish',
                 ]
               : ['academics.structure.manage'],
         });
@@ -591,6 +594,175 @@ async function run(): Promise<void> {
       0,
     );
     console.log('ACC_OWNERLESS_DRAFT_COUNT=0');
+
+    const academicWorkflow = app.get(
+      TeacherAcademicContentWorkflowPublicationUseCases,
+    );
+    const publicationSnapshots = app.get(
+      AcademicContentPublicationSnapshotRepository,
+    );
+    await fixturePrisma.academicContentWorkflowPolicy.create({
+      data: { schoolId, preparationApprovalRequired: true },
+    });
+    for (const [offset, kind] of [
+      'SUBMIT',
+      'PUBLISH',
+      'UNSCHEDULE',
+      'WITHDRAW',
+      'REVISE',
+    ].entries()) {
+      for (const [orderIndex, order] of [
+        'writer_first',
+        'reassignment_first',
+      ].entries()) {
+        const allocation = allocations[30 + offset * 2 + orderIndex];
+        const content = await scope(sourceTeacher, () =>
+          academicContent.create(allocation.id, {
+            type:
+              kind === 'SUBMIT' ? 'TEACHER_PREPARATION' : 'GENERAL_RESOURCE',
+            audience: kind === 'SUBMIT' ? 'INTERNAL_STAFF' : 'STUDENTS',
+            title: marker + '-acc-' + kind + '-' + order,
+          }),
+        );
+        if (kind === 'SUBMIT')
+          await scope(sourceTeacher, () =>
+            academicContent.preparation(content.id, {
+              topic: 'Race topic',
+              objectives: [],
+              learningOutcomes: [],
+              teachingStrategies: [],
+              activities: [],
+            }),
+          );
+        let publicationId = '';
+        if (['UNSCHEDULE', 'WITHDRAW', 'REVISE'].includes(kind)) {
+          const publication = await scope(sourceTeacher, () =>
+            academicWorkflow.publish(content.id, {
+              clientRequestId: randomUUID(),
+              publishAt: new Date(Date.now() + 3600000),
+            }),
+          );
+          publicationId = publication.publicationId;
+          if (kind !== 'UNSCHEDULE')
+            await publicationSnapshots.publishScheduledPublication({
+              schoolId,
+              contentId: content.id,
+              publicationId,
+              now: new Date(Date.now() + 3601000),
+            });
+        }
+        const action =
+          kind === 'SUBMIT'
+            ? 'academics.academic_content.submit'
+            : 'academics.academic_content.publication.' +
+              (
+                {
+                  PUBLISH: 'schedule',
+                  UNSCHEDULE: 'unschedule',
+                  WITHDRAW: 'cancel',
+                  REVISE: 'revision_start',
+                } as Record<string, string>
+              )[kind];
+        const scenario: RaceFixture = {
+          domain: 'ACC_' + kind,
+          allocation,
+          marker,
+          teacherSpecific: true,
+          expectedReassignmentFirstFailure: 'academic_content_not_found',
+          write: () =>
+            scope<unknown>(sourceTeacher, () => {
+              if (kind === 'SUBMIT') return academicWorkflow.submit(content.id);
+              if (kind === 'PUBLISH')
+                return academicWorkflow.publish(content.id, {
+                  clientRequestId: randomUUID(),
+                  publishAt: new Date(Date.now() + 3600000),
+                });
+              if (kind === 'UNSCHEDULE')
+                return academicWorkflow.unschedule(content.id, publicationId);
+              if (kind === 'WITHDRAW')
+                return academicWorkflow.withdraw(content.id, publicationId);
+              return academicWorkflow.revise(content.id, publicationId);
+            }),
+          count: () =>
+            fixturePrisma.auditLog.count({
+              where: {
+                schoolId,
+                resourceId:
+                  kind === 'SUBMIT' ? content.id : publicationId || undefined,
+                action,
+                ...(kind === 'PUBLISH'
+                  ? { after: { path: ['contentId'], equals: content.id } }
+                  : {}),
+              },
+            }),
+          owner: async () =>
+            (
+              await fixturePrisma.academicContent.findUniqueOrThrow({
+                where: { id: content.id },
+              })
+            ).createdByUserId,
+        };
+        currentStage = 'race-acc-' + kind + '-' + order;
+        if (order === 'writer_first') {
+          // A workflow transition may leave the reassignment fingerprint unchanged.
+          // Prove its committed write preceded any accepted new allocation owner.
+          const before = await preview(allocation.id);
+          coordinator.configure('writer_first', allocation.id);
+          const writer = scenario.write();
+          await withTimeout(
+            coordinator.writerAcquired.promise,
+            10000,
+            kind + ' gate did not acquire',
+          );
+          const reassignment = settle(
+            reassign(allocation.id, before.impactFingerprint),
+          );
+          await withTimeout(
+            coordinator.reassignmentAttempted.promise,
+            10000,
+            kind + ' reallocation did not wait',
+          );
+          assert.equal(
+            (
+              await fixturePrisma.teacherSubjectAllocation.findUniqueOrThrow({
+                where: { id: allocation.id },
+              })
+            ).teacherUserId,
+            sourceTeacher.id,
+          );
+          coordinator.releaseWriter.resolve();
+          await writer;
+          const result = await reassignment;
+          assert.equal(await scenario.count(), 1);
+          coordinator.reset();
+          if (result.status === 'rejected')
+            assertSafeReassignmentFailure(result.reason);
+          else {
+            assert.equal(
+              (
+                await fixturePrisma.teacherSubjectAllocation.findUniqueOrThrow({
+                  where: { id: allocation.id },
+                })
+              ).teacherUserId,
+              targetTeacher.id,
+            );
+            const replay = await settle(scenario.write());
+            assert.equal(replay.status, 'rejected');
+            assert.ok(replay.reason instanceof DomainException);
+            assert.equal(replay.reason.httpStatus, 404);
+          }
+        } else
+          await proveReassignmentFirst({
+            scenario,
+            coordinator,
+            preview,
+            reassign,
+            prisma: fixturePrisma,
+            targetTeacherUserId: targetTeacher.id,
+          });
+        console.log('ACC_' + kind + '_' + order.toUpperCase() + '=PASS');
+      }
+    }
 
     const academicFiles = app.get(TeacherAcademicContentFilesUseCases);
     for (const [index, order] of [
@@ -2199,6 +2371,27 @@ async function cleanupSchool(
   });
   const userIds = memberships.map(({ userId }) => userId);
   await prisma.auditLog.deleteMany({ where: { schoolId } });
+  await prisma.academicContentAudienceRecipientTarget.deleteMany({
+    where: { schoolId },
+  });
+  await prisma.academicContentAudienceRecipient.deleteMany({
+    where: { schoolId },
+  });
+  await prisma.academicContentApproval.deleteMany({ where: { schoolId } });
+  await prisma.academicContentPublication.deleteMany({ where: { schoolId } });
+  await prisma.academicContentRevisionAsset.deleteMany({ where: { schoolId } });
+  await prisma.academicContentRevisionLink.deleteMany({ where: { schoolId } });
+  await prisma.academicContentRevisionTag.deleteMany({ where: { schoolId } });
+  await prisma.academicContentRevisionTarget.deleteMany({
+    where: { schoolId },
+  });
+  await prisma.academicContentRevision.deleteMany({ where: { schoolId } });
+  await prisma.academicContentPreparationDetail.deleteMany({
+    where: { schoolId },
+  });
+  await prisma.academicContentWorkflowPolicy.deleteMany({
+    where: { schoolId },
+  });
   await prisma.academicContentAsset.deleteMany({ where: { schoolId } });
   await prisma.fileUploadSession.deleteMany({ where: { schoolId } });
   await prisma.file.deleteMany({ where: { schoolId } });

@@ -49,6 +49,15 @@ export class ListAcademicContentApprovalHistoryUseCase {
     const { schoolId } = academicContentManagementScope(
       'academics.academic_content.view',
     );
+    return this.executeForAuthorizedContent(schoolId, contentId, query);
+  }
+
+  /** Caller must first authorize the current parent content. */
+  executeForAuthorizedContent(
+    schoolId: string,
+    contentId: string,
+    query: AcademicContentReviewPage = {},
+  ) {
     return this.reviews.history({ schoolId, contentId, ...boundedPage(query) });
   }
 }

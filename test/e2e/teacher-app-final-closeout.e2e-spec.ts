@@ -1,3 +1,4 @@
+import { TeacherAcademicContentWorkflowPublicationController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content-workflow-publication.controller';
 import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { METHOD_METADATA } from '@nestjs/common/constants';
@@ -238,6 +239,7 @@ const TEACHER_APP_CONTROLLER_CLASSES = [
   TeacherAcademicContentController,
   TeacherAcademicContentAuthoringController,
   TeacherAcademicContentFilesController,
+  TeacherAcademicContentWorkflowPublicationController,
 ] as const;
 
 type AcademicContext = {
@@ -652,9 +654,9 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       (entry) => entry.permissions,
     );
 
-    expect(routes).toHaveLength(137);
-    expect(inventory).toHaveLength(137);
-    expect(decorated).toHaveLength(137);
+    expect(routes).toHaveLength(149);
+    expect(inventory).toHaveLength(149);
+    expect(decorated).toHaveLength(149);
     expect(undecorated).toEqual([]);
     for (const method of ['uploadIntent', 'complete', 'cancel', 'unlink']) {
       expect(
