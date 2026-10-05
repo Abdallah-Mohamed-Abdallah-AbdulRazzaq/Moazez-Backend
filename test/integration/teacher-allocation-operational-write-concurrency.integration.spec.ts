@@ -30,8 +30,10 @@ describe('teacher allocation operational write concurrency', () => {
           DATABASE_CONNECTION_LIMIT: '5',
           DATABASE_POOL_TIMEOUT_SECONDS: '5',
           DATABASE_CONNECT_TIMEOUT_SECONDS: '5',
-          QUEUE_REDIS_URL: 'redis://127.0.0.1:6379/0',
-          REALTIME_REDIS_URL: 'redis://127.0.0.1:6379/1',
+          QUEUE_REDIS_URL:
+            process.env.QUEUE_REDIS_URL ?? 'redis://127.0.0.1:6379/0',
+          REALTIME_REDIS_URL:
+            process.env.REALTIME_REDIS_URL ?? 'redis://127.0.0.1:6379/1',
           NODE_OPTIONS: '--max-old-space-size=4096',
         },
         maxBuffer: 1024 * 1024,
@@ -67,5 +69,16 @@ describe('teacher allocation operational write concurrency', () => {
     );
     expect(stdout).toContain('ACTIVE_REINFORCEMENT_ORPHAN_COUNT=0');
     expect(stdout).toContain('CORE_MULTI_CONNECTION_INTERLEAVING=PASS');
+    for (const domain of ['CREATE', 'EDIT', 'TARGET', 'DETAIL']) {
+      expect(stdout).toContain(`ACC_${domain}_WRITER_FIRST=PASS`);
+      expect(stdout).toContain(`ACC_${domain}_REASSIGNMENT_FIRST=PASS`);
+    }
+    expect(stdout).toContain('ACC_OWNERLESS_DRAFT_COUNT=0');
+    console.log(
+      stdout
+        .split(/\r?\n/u)
+        .filter((line) => line.startsWith('ACC_'))
+        .join('\n'),
+    );
   });
 });

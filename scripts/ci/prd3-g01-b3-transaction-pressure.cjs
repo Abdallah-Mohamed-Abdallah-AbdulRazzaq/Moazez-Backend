@@ -318,6 +318,21 @@ const PURE_METHODS = new Set([
   'toLowerCase', 'trim', 'values',
 ]);
 const REVIEWED_CALL_OVERRIDES = Object.freeze([
+  ...[
+    'academic-content.repository.ts',
+    'academic-content-target.repository.ts',
+    'academic-content-type-detail.repository.ts',
+    'academic-content-links-tags.repository.ts',
+  ].map((file) => Object.freeze({
+    path: `src/modules/academics/academic-content/infrastructure/${file}`,
+    target: /^gate\.lock$/,
+    origin: 'lockTeacherAcademicContentAllocations',
+    explicitLock: true,
+    reason: 'ACC-9B Core writes pass the active transaction to the existing abstract Teacher allocation operational write gate.',
+    classification: 'LOCK_CONTENTION_SENSITIVE',
+    resolvedCallers: Object.freeze(['lockTeacherAcademicContentAllocations']),
+    evidence: 'The Core helper supplies only its active Prisma.TransactionClient and expectedTeacherUserId. The independently audited PrismaTeacherAllocationOperationalWriteGate acquires the allocation advisory/row locks and ownership fence without a nested transaction or external wait. Create, metadata/lifecycle, target replacement, all five details, links and tags retain their existing Core transaction boundaries.',
+  })),
   Object.freeze({
     path: 'src/modules/academics/curriculum/infrastructure/prisma-lesson-content.unit-of-work.ts',
     target: /^callback$/,
@@ -1402,6 +1417,8 @@ function auditTeacherAllocationOperationalWriteGate(
   suppliedProgram,
 ) {
   const program = suppliedProgram ?? createInventoryProgram(sourceRoot);
+  // Bind declarations so standalone helper owners have their parent links.
+  program.getTypeChecker();
   const providers = [];
   const callers = [];
   for (const source of program.getSourceFiles()) {
@@ -1449,7 +1466,14 @@ function auditTeacherAllocationOperationalWriteGate(
         ts.isCallExpression(node) &&
         ts.isPropertyAccessExpression(node.expression) &&
         node.expression.name.text === 'lock' &&
-        /teacherAllocationWriteGate$/u.test(node.expression.expression.getText(source))
+        (
+          /teacherAllocationWriteGate$/u.test(node.expression.expression.getText(source)) ||
+          (
+            normalized(path.relative(ROOT, absolute)) === 'src/modules/academics/academic-content/infrastructure/academic-content-teacher-write.authorization.ts' &&
+            node.expression.expression.getText(source) === 'gate' &&
+            enclosingOwner(node) === 'lockTeacherAcademicContentAllocations'
+          )
+        )
       ) {
         const transactionArgument = node.arguments[0]?.getText(source) ?? '';
         callers.push({
@@ -1570,7 +1594,9 @@ function inventoryTransactions(sourceRoot = path.join(ROOT, 'src')) {
         const remainingUnresolved = [];
         for (const item of unresolved) {
           const reviewed = REVIEWED_CALL_OVERRIDES.find((override) =>
-            (!override.path || override.path === normalized(relativePath)) && override.target.test(item.target),
+            (!override.path || override.path === normalized(relativePath)) &&
+            (!override.origin || override.origin === item.origin) &&
+            override.target.test(item.target),
           );
           if (!reviewed) {
             remainingUnresolved.push(item);
@@ -1582,10 +1608,12 @@ function inventoryTransactions(sourceRoot = path.join(ROOT, 'src')) {
             reviewedClassification: reviewed.classification,
             reviewEvidence: reviewed.evidence,
             resolvedCallers: reviewed.resolvedCallers,
+            explicitLock: reviewed.explicitLock === true,
           });
         }
         const externalInside = analysis.externalCalls.some((item) => item.awaited);
-        const explicitLock = analysis.explicitLocks.length > 0;
+        const explicitLock = analysis.explicitLocks.length > 0 ||
+          reviewedOverrides.some((override) => override.explicitLock);
         let classification = 'SHORT_DB_ONLY';
         if (externalInside) classification = 'EXTERNAL_WAIT_SENSITIVE';
         else if (/Serializable/i.test(isolationText)) classification = 'SERIALIZABLE_CONFLICT_SENSITIVE';

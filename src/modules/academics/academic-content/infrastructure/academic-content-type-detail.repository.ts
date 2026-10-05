@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import {
   AcademicContentTargetScopeType as Scope,
   AuditOutcome,
@@ -23,6 +23,8 @@ import {
   ResolvedAcademicScope,
 } from '../domain/academic-content-reference-scope.policy';
 import { NormalizedDetail } from '../domain/academic-content-type-detail.policy';
+import { TeacherAllocationOperationalWriteGate } from '../../teacher-allocation/application/teacher-allocation-operational-write-gate';
+import { authorizeTeacherAcademicContentMutation } from './academic-content-teacher-write.authorization';
 
 type Tx = Prisma.TransactionClient;
 type Content = {
@@ -805,7 +807,11 @@ async function persist(
 
 @Injectable()
 export class AcademicContentTypeDetailRepository implements AcademicContentTypeDetailUnitOfWork {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional()
+    private readonly allocationWriteGate?: TeacherAllocationOperationalWriteGate,
+  ) {}
 
   async mutate(input: TypeDetailMutation): Promise<TypeDetailMutationResult> {
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -834,10 +840,22 @@ export class AcademicContentTypeDetailRepository implements AcademicContentTypeD
                 type: true,
                 status: true,
                 updatedAt: true,
+                createdByUserId: true,
               },
             });
             if (!content)
               throw new NotFoundDomainException('Academic content not found');
+            if (input.teacherUserId !== undefined)
+              await authorizeTeacherAcademicContentMutation(
+                tx,
+                this.allocationWriteGate,
+                {
+                  ...input,
+                  id: input.contentId,
+                  teacherUserId: input.teacherUserId,
+                },
+                content.createdByUserId,
+              );
             if (content.type !== input.detail.type)
               throw new ValidationDomainException(
                 'Academic content type is incompatible with this authoring detail',

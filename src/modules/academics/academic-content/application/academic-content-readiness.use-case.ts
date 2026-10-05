@@ -2,7 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { AcademicContentType } from '@prisma/client';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 import { evaluateAcademicContentReadiness } from '../domain/academic-content-readiness.policy';
-import { AcademicContentRepository } from '../infrastructure/academic-content.repository';
+import {
+  AcademicContentRepository,
+  AcademicContentManagementDetail,
+} from '../infrastructure/academic-content.repository';
 import { AcademicContentValidationRepository } from '../infrastructure/academic-content-validation.repository';
 import { academicContentManagementScope } from './academic-content-management.scope';
 
@@ -23,7 +26,15 @@ export class GetAcademicContentReadinessUseCase {
     );
     if (!content)
       throw new NotFoundDomainException('Academic content not found');
+    return this.evaluateAuthorizedContent(content, now);
+  }
 
+  /** Internal evaluation boundary: callers must first authorize this current resource. */
+  async evaluateAuthorizedContent(
+    content: AcademicContentManagementDetail,
+    now = new Date(),
+  ) {
+    const { schoolId } = content;
     const [year, term] = await Promise.all([
       this.validation.findAcademicYear(content.academicYearId, schoolId),
       this.validation.findTerm(content.termId, schoolId),

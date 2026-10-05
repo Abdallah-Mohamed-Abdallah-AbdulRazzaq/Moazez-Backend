@@ -15,7 +15,10 @@ export class AcademicContentTargetValidator {
   ) {}
 
   async validate(
-    content: AcademicContentRecord,
+    content: Pick<
+      AcademicContentRecord,
+      'schoolId' | 'academicYearId' | 'termId'
+    >,
     targets: readonly NormalizedAcademicContentTarget[],
     actor: { id: string; userType: UserType },
   ): Promise<void> {

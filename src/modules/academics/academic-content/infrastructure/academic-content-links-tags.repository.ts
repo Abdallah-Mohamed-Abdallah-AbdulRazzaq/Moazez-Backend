@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { AuditOutcome, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
@@ -10,18 +10,25 @@ import {
   NormalizedAcademicContentLink,
   NormalizedAcademicContentTag,
 } from '../domain/academic-content-links-tags.policy';
+import { TeacherAllocationOperationalWriteGate } from '../../teacher-allocation/application/teacher-allocation-operational-write-gate';
+import { authorizeTeacherAcademicContentMutation } from './academic-content-teacher-write.authorization';
 
 type MutationScope = {
   contentId: string;
   schoolId: string;
   organizationId: string;
   actorId: string;
+  teacherUserId?: string;
   now: Date;
 };
 
 @Injectable()
 export class AcademicContentLinksTagsRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional()
+    private readonly allocationWriteGate?: TeacherAllocationOperationalWriteGate,
+  ) {}
 
   private async lockMutableContent(
     tx: Prisma.TransactionClient,
@@ -35,10 +42,17 @@ export class AcademicContentLinksTagsRepository {
       throw new NotFoundDomainException('Academic content not found');
     const content = await tx.academicContent.findFirst({
       where: { id: input.contentId, schoolId: input.schoolId, deletedAt: null },
-      select: { status: true, termId: true },
+      select: { status: true, termId: true, createdByUserId: true },
     });
     if (!content)
       throw new NotFoundDomainException('Academic content not found');
+    if (input.teacherUserId !== undefined)
+      await authorizeTeacherAcademicContentMutation(
+        tx,
+        this.allocationWriteGate,
+        { ...input, id: input.contentId, teacherUserId: input.teacherUserId },
+        content.createdByUserId,
+      );
     assertAcademicContentMutable(content.status);
     const term = await tx.term.findFirst({
       where: { id: content.termId, schoolId: input.schoolId, deletedAt: null },

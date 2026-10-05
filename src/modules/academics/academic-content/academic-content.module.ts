@@ -8,6 +8,8 @@ import {
   StartAcademicContentRevisionUseCase,
 } from './application/academic-content-publication.use-cases';
 import { Module } from '@nestjs/common';
+import { TeacherAllocationModule } from '../teacher-allocation/teacher-allocation.module';
+import { AcademicContentAuthoringOperations } from './application/academic-content-authoring.operations';
 import { StorageModule } from '../../../infrastructure/storage/storage.module';
 import { AcademicContentFilePolicyResolver } from './files/application/academic-content-file-policy.resolver';
 import { AcademicContentFileVerifier } from './files/application/academic-content-file-verifier';
@@ -93,7 +95,7 @@ import {
 } from './files/application/academic-content-file-policy.use-cases';
 
 @Module({
-  imports: [StorageModule, QueueModule],
+  imports: [StorageModule, QueueModule, TeacherAllocationModule],
   controllers: [
     AcademicContentFilePolicyController,
     AcademicContentWorkflowPolicyController,
@@ -103,6 +105,7 @@ import {
     AcademicContentController,
   ],
   providers: [
+    AcademicContentAuthoringOperations,
     CommunicationNotificationQueueService,
     AcademicContentPublicationQueueService,
     AcademicContentPublicationRuntimeRepository,
@@ -171,6 +174,8 @@ import {
     AcademicContentAudienceResolver,
   ],
   exports: [
+    AcademicContentAuthoringOperations,
+    GetAcademicContentReadinessUseCase,
     AcademicContentRepository,
     AcademicContentWorkflowPolicyRepository,
     AcademicContentFilePolicyResolver,

@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import {
   AcademicContentAudienceType,
   AcademicContentStatus,
   AcademicContentType,
   AuditOutcome,
   Prisma,
+  UserType,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import {
@@ -18,6 +19,17 @@ import {
   assertAcademicContentTermWritable,
 } from '../domain/academic-content-lifecycle.policy';
 import { assertAcademicContentAudience } from '../domain/academic-content-audience.policy';
+import { TeacherAllocationOperationalWriteGate } from '../../teacher-allocation/application/teacher-allocation-operational-write-gate';
+import { AcademicContentTargetValidator } from '../application/academic-content-target-validator';
+import { AcademicContentValidationRepository } from './academic-content-validation.repository';
+import type { NormalizedAcademicContentTarget } from '../domain/academic-content-target.policy';
+import {
+  AcademicContentTeacherWriteScope,
+  assertTeacherAcademicContentClassIds,
+  authorizeTeacherAcademicContentMutation,
+  lockTeacherAcademicContentAllocations,
+  teacherAcademicContentTargets,
+} from './academic-content-teacher-write.authorization';
 import type {
   AcademicContentLibraryQuery,
   AcademicContentLibraryResolvedScope,
@@ -223,7 +235,11 @@ export type CreateAcademicContentInput = {
 
 @Injectable()
 export class AcademicContentRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional()
+    private readonly allocationWriteGate?: TeacherAllocationOperationalWriteGate,
+  ) {}
 
   private get scopedPrisma(): PrismaService {
     return this.prisma.scoped as unknown as PrismaService;
@@ -496,34 +512,112 @@ export class AcademicContentRepository {
   async create(
     data: CreateAcademicContentInput,
   ): Promise<AcademicContentRecord> {
+    return this.prisma.$transaction((tx) => this.createInTransaction(tx, data));
+  }
+
+  createForTeacherAllocation(
+    input: AcademicContentTeacherWriteScope & {
+      classId: string;
+      type: AcademicContentType;
+      audience: AcademicContentAudienceType;
+      title: string;
+      description: string | null;
+      now: Date;
+    },
+  ): Promise<AcademicContentRecord> {
+    assertTeacherAcademicContentClassIds([input.classId]);
+    if (input.actorId !== input.teacherUserId)
+      throw new NotFoundDomainException('Academic content or class not found');
     return this.prisma.$transaction(async (tx) => {
-      const content = await tx.academicContent.create({
-        data: {
-          schoolId: data.schoolId,
-          academicYearId: data.academicYearId,
-          termId: data.termId,
-          type: data.type,
-          audience: data.audience,
-          title: data.title,
-          description: data.description,
-          status: data.status,
-          createdByUserId: data.createdByUserId,
-          updatedByUserId: data.updatedByUserId,
-        },
-        ...ACADEMIC_CONTENT_ARGS,
-      });
-      await this.recordAudit(
+      const [allocation] = await lockTeacherAcademicContentAllocations(
         tx,
-        data.organizationId,
-        data.schoolId,
-        data.createdByUserId,
-        'create',
-        content.id,
-        null,
-        content,
+        this.allocationWriteGate,
+        { ...input, allocationIds: [input.classId] },
       );
-      return content;
+      const term = await tx.term.findFirst({
+        where: {
+          id: allocation.termId,
+          schoolId: input.schoolId,
+          deletedAt: null,
+          academicYear: { schoolId: input.schoolId, deletedAt: null },
+        },
+        select: {
+          academicYearId: true,
+          startDate: true,
+          endDate: true,
+          isActive: true,
+        },
+      });
+      if (!term)
+        throw new NotFoundDomainException('Academic content term not found');
+      assertAcademicContentTermWritable(term, input.now);
+      assertAcademicContentAudience(input.type, input.audience);
+      return this.createInTransaction(
+        tx,
+        {
+          schoolId: input.schoolId,
+          organizationId: input.organizationId,
+          academicYearId: term.academicYearId,
+          termId: allocation.termId,
+          type: input.type,
+          audience: input.audience,
+          title: input.title,
+          description: input.description,
+          status: AcademicContentStatus.DRAFT,
+          createdByUserId: input.teacherUserId,
+        },
+        teacherAcademicContentTargets(input.type, [allocation]),
+      );
     });
+  }
+
+  private async createInTransaction(
+    tx: Prisma.TransactionClient,
+    data: CreateAcademicContentInput,
+    initialTargets?: readonly NormalizedAcademicContentTarget[],
+  ): Promise<AcademicContentRecord> {
+    const content = await tx.academicContent.create({
+      data: {
+        schoolId: data.schoolId,
+        academicYearId: data.academicYearId,
+        termId: data.termId,
+        type: data.type,
+        audience: data.audience,
+        title: data.title,
+        description: data.description,
+        status: data.status,
+        createdByUserId: data.createdByUserId,
+        updatedByUserId: data.updatedByUserId,
+      },
+      ...ACADEMIC_CONTENT_ARGS,
+    });
+    if (initialTargets) {
+      await new AcademicContentTargetValidator(
+        new AcademicContentValidationRepository(tx),
+      ).validate(content, initialTargets, {
+        id: data.createdByUserId,
+        userType: UserType.TEACHER,
+      });
+      await tx.academicContentTarget.createMany({
+        data: initialTargets.map((target) => ({
+          ...target,
+          schoolId: data.schoolId,
+          academicContentId: content.id,
+          createdByUserId: data.createdByUserId,
+        })),
+      });
+    }
+    await this.recordAudit(
+      tx,
+      data.organizationId,
+      data.schoolId,
+      data.createdByUserId,
+      'create',
+      content.id,
+      null,
+      content,
+    );
+    return content;
   }
 
   // Lock order for ACC mutations: AcademicContent, then upload session (when
@@ -534,6 +628,7 @@ export class AcademicContentRepository {
     schoolId: string;
     organizationId: string;
     actorId: string;
+    teacherUserId?: string;
     action: 'update' | 'archive' | 'restore' | 'delete';
     now: Date;
     changes?: {
@@ -555,6 +650,13 @@ export class AcademicContentRepository {
       });
       if (!current)
         throw new NotFoundDomainException('Academic content not found');
+      if (input.teacherUserId !== undefined)
+        await authorizeTeacherAcademicContentMutation(
+          tx,
+          this.allocationWriteGate,
+          { ...input, teacherUserId: input.teacherUserId },
+          current.createdByUserId,
+        );
       if (input.action === 'restore')
         assertAcademicContentArchived(current.status);
       else assertAcademicContentMutable(current.status);
