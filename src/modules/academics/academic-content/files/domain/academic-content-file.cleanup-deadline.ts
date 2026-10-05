@@ -1,7 +1,4 @@
-import {
-  FileUploadSessionStatus,
-  type FileUploadSession,
-} from '@prisma/client';
+import type { FileUploadSession } from '@prisma/client';
 import { MAX_RESUMABLE_UPLOAD_CAPABILITY_LIFETIME_MS } from '../../../../../infrastructure/storage/object-storage.port';
 
 export function missingAcademicCapabilityCleanupDeadline(now: Date): Date {
@@ -12,7 +9,8 @@ export function academicContentFinalCleanupDeadline(
   now: Date,
   session: Pick<FileUploadSession, 'status' | 'latestUploadUrlExpiresAt'>,
 ): Date {
-  if (session.status === FileUploadSessionStatus.CREATED) return now;
+  // CREATED may already have an issued capability awaiting DB persistence.
+  // Cover that interval with the supported provider lifetime.
   const capabilityExpiry =
     session.latestUploadUrlExpiresAt ??
     missingAcademicCapabilityCleanupDeadline(now);

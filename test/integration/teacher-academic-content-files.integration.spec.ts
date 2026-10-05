@@ -12,6 +12,7 @@ import {
   FileUploadPurpose,
   FileUploadSessionStatus as UploadStatus,
   FileVisibility,
+  Prisma,
   UserType,
 } from '@prisma/client';
 import {
@@ -29,6 +30,7 @@ import { AcademicContentRepository } from '../../src/modules/academics/academic-
 import { AcademicContentPreparationTemplateRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-preparation-template.repository';
 import { AcademicContentPreparationTemplateUseCases } from '../../src/modules/academics/academic-content/application/academic-content-preparation-template.use-cases';
 import { AcademicContentFileRepository } from '../../src/modules/academics/academic-content/files/infrastructure/academic-content-file.repository';
+import { AcademicContentCleanupWorker } from '../../src/modules/academics/academic-content/files/infrastructure/academic-content-cleanup.worker';
 import type { AcademicContentFileTransaction } from '../../src/modules/academics/academic-content/files/application/academic-content-file.unit-of-work';
 import { AcademicContentFilePolicyResolver } from '../../src/modules/academics/academic-content/files/application/academic-content-file-policy.resolver';
 import { AcademicContentFileVerifier } from '../../src/modules/academics/academic-content/files/application/academic-content-file-verifier';
@@ -62,18 +64,25 @@ describeDatabase(
       retryableVerification = false;
     let verificationHook: (() => Promise<void>) | undefined;
     let capabilityHook: (() => Promise<void>) | undefined;
+    let issuedCapabilityExpiresAt: Date;
     const sign = jest
       .fn()
       .mockResolvedValue({ url: 'https://capability.invalid/short-lived' });
-    const deleteObject = jest.fn();
+    const deleteObject = jest.fn(({ objectKey }: { objectKey: string }) => {
+      objects.delete(objectKey);
+      return Promise.resolve();
+    });
     const provider = {
       getCapabilities: () => ({ resumableUpload: resumable, rangeRead: true }),
+      objectExists: ({ objectKey }: { objectKey: string }) =>
+        Promise.resolve(objects.has(objectKey)),
       createResumableUploadSession: async () => {
         if (capabilityFailure) throw new Error('Fixture provider failure');
+        issuedCapabilityExpiresAt = new Date(Date.now() + 7 * 86400_000);
         await capabilityHook?.();
         return {
           sessionUrl: 'https://capability.invalid/resumable',
-          expiresAt: new Date(Date.now() + 7 * 86400_000),
+          expiresAt: issuedCapabilityExpiresAt,
         };
       },
       statObject: async ({ objectKey }: { objectKey: string }) => {
@@ -527,6 +536,7 @@ describeDatabase(
       verificationHook = undefined;
       capabilityHook = undefined;
       sign.mockClear();
+      deleteObject.mockClear();
       await changeOwner(ids.teacher);
       await prisma.term.update({
         where: { id: ids.term },
@@ -828,6 +838,330 @@ describeDatabase(
         Date.now() + 6 * 86400_000,
       );
       expect(deleteObject).not.toHaveBeenCalled();
+    });
+
+    function barrier() {
+      let resolve!: () => void;
+      const promise = new Promise<void>((done) => {
+        resolve = done;
+      });
+      return { promise, resolve };
+    }
+
+    it('fences capability-issued vs cancel through the persistence gap, late upload and actual cleanup', async () => {
+      const row = await content();
+      const issued = barrier(),
+        resume = barrier();
+      capabilityHook = async () => {
+        issued.resolve();
+        await resume.promise;
+      };
+      // Attach rejection handling before releasing the provider barrier.
+      const pending = asTeacher(() => files.uploadIntent(row.id, input())).then(
+        (value) => ({ value }),
+        (error: unknown) => ({ error }),
+      );
+      await issued.promise;
+      const created = await prisma.fileUploadSession.findFirstOrThrow({
+        where: { purposeContextId: row.id },
+      });
+      expect(created.status).toBe(UploadStatus.CREATED);
+      const worker = new AcademicContentCleanupWorker(
+        {} as never,
+        repository,
+        storage,
+      );
+      try {
+        await asTeacher(() => files.cancel(row.id, created.id));
+        const beforePersistence =
+          await prisma.fileUploadSession.findUniqueOrThrow({
+            where: { id: created.id },
+          });
+        expect(beforePersistence.status).toBe(UploadStatus.CANCELLED);
+        expect(
+          Number(beforePersistence.finalCleanupEligibleAt),
+        ).toBeGreaterThanOrEqual(Number(issuedCapabilityExpiresAt));
+        const candidates = await repository.cleanupCandidates(
+          new Date(),
+          new Date(),
+        );
+        expect(candidates.map((candidate) => candidate.id)).not.toContain(
+          created.id,
+        );
+        await worker.cleanUpload(created.id);
+        expect(deleteObject).not.toHaveBeenCalled();
+        expect(
+          (
+            await prisma.fileUploadSession.findUniqueOrThrow({
+              where: { id: created.id },
+            })
+          ).finalObjectDeletedAt,
+        ).toBeNull();
+        // A holder finalizes through the still-valid provider capability.
+        objects.set(created.finalObjectKey, pdf);
+      } finally {
+        resume.resolve();
+      }
+      expect(await pending).toMatchObject({
+        error: {
+          code: 'academic_content.file.upload_capability_not_reissuable',
+        },
+      });
+      const cancelled = await prisma.fileUploadSession.findUniqueOrThrow({
+        where: { id: created.id },
+      });
+      expect(cancelled.status).toBe(UploadStatus.CANCELLED);
+      expect(Number(cancelled.latestUploadUrlExpiresAt)).toBeGreaterThanOrEqual(
+        Number(issuedCapabilityExpiresAt),
+      );
+      expect(Number(cancelled.finalCleanupEligibleAt)).toBeGreaterThanOrEqual(
+        Number(issuedCapabilityExpiresAt),
+      );
+      expect(cancelled.finalObjectDeletedAt).toBeNull();
+      const beforeExpiry = new Date(
+        Number(cancelled.finalCleanupEligibleAt) - 1,
+      );
+      expect(
+        (await repository.cleanupCandidates(beforeExpiry, beforeExpiry)).map(
+          (candidate) => candidate.id,
+        ),
+      ).not.toContain(created.id);
+      await worker.cleanUpload(created.id, beforeExpiry);
+      expect(deleteObject).not.toHaveBeenCalled();
+      expect(objects.has(created.finalObjectKey)).toBe(true);
+      expect(
+        JSON.stringify(cancelled, (_key, value: unknown) =>
+          typeof value === 'bigint' ? String(value) : value,
+        ),
+      ).not.toContain('capability.invalid');
+      // Advance only Date; PostgreSQL/network scheduling remains real.
+      jest.useFakeTimers({
+        now: Number(cancelled.finalCleanupEligibleAt) + 1,
+        doNotFake: [
+          'hrtime',
+          'nextTick',
+          'performance',
+          'queueMicrotask',
+          'setImmediate',
+          'clearImmediate',
+          'setInterval',
+          'clearInterval',
+          'setTimeout',
+          'clearTimeout',
+        ],
+      });
+      try {
+        const now = new Date();
+        expect(
+          (await repository.cleanupCandidates(now, now)).map(
+            (candidate) => candidate.id,
+          ),
+        ).toContain(created.id);
+        await worker.cleanUpload(created.id, now);
+        expect(objects.has(created.finalObjectKey)).toBe(false);
+        expect(
+          (
+            await prisma.fileUploadSession.findUniqueOrThrow({
+              where: { id: created.id },
+            })
+          ).finalObjectDeletedAt,
+        ).not.toBeNull();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('preserves CANCELLED and fences issuance after a capability-persistence transaction error', async () => {
+      const row = await content();
+      capabilityHook = async () => {
+        const upload = await prisma.fileUploadSession.findFirstOrThrow({
+          where: { purposeContextId: row.id },
+        });
+        await asTeacher(() => files.cancel(row.id, upload.id));
+      };
+      const error = new Prisma.PrismaClientKnownRequestError(
+        'Fixture rollback',
+        {
+          code: 'P2034',
+          clientVersion: 'fixture',
+        },
+      );
+      const persist = jest
+        .spyOn(repository, 'persistCapabilityExpiry')
+        .mockRejectedValueOnce(error);
+      try {
+        await expect(
+          asTeacher(() => files.uploadIntent(row.id, input())),
+        ).rejects.toBe(error);
+      } finally {
+        persist.mockRestore();
+      }
+      const upload = await prisma.fileUploadSession.findFirstOrThrow({
+        where: { purposeContextId: row.id },
+      });
+      expect(upload.status).toBe(UploadStatus.CANCELLED);
+      expect(Number(upload.latestUploadUrlExpiresAt)).toBeGreaterThanOrEqual(
+        Number(issuedCapabilityExpiresAt),
+      );
+      expect(Number(upload.finalCleanupEligibleAt)).toBeGreaterThanOrEqual(
+        Number(issuedCapabilityExpiresAt),
+      );
+      expect(upload.finalObjectDeletedAt).toBeNull();
+    });
+
+    it.each([
+      UploadStatus.FAILED,
+      UploadStatus.CANCELLED,
+      UploadStatus.EXPIRED,
+    ])(
+      'monotonically fences exact owned %s identity without changing terminal facts',
+      async (status) => {
+        const row = await content(),
+          upload = await intent(row.id);
+        const later = new Date(Date.now() + 9 * 86400_000);
+        await prisma.fileUploadSession.update({
+          where: { id: upload.id },
+          data: {
+            status,
+            finalCleanupEligibleAt: later,
+            latestUploadUrlExpiresAt: later,
+            ...(status === UploadStatus.FAILED
+              ? {
+                  failedAt: new Date(),
+                  failureReason: 'fixture_terminal',
+                }
+              : {}),
+            ...(status === UploadStatus.CANCELLED
+              ? { cancelledAt: new Date() }
+              : {}),
+          },
+        });
+        const owner = {
+          uploadId: upload.id,
+          schoolId: ids.school,
+          actorId: ids.teacher,
+          contentId: row.id,
+        };
+        for (const wrong of [
+          { actorId: ids.other },
+          { schoolId: ids.foreignschool },
+          { contentId: randomUUID() },
+          { uploadId: randomUUID() },
+        ]) {
+          await expect(
+            repository.fenceIssuedCapability({ ...owner, ...wrong }, later),
+          ).rejects.toMatchObject({ httpStatus: 404 });
+        }
+        await repository.fenceIssuedCapability(
+          owner,
+          issuedCapabilityExpiresAt,
+        );
+        const fenced = await prisma.fileUploadSession.findUniqueOrThrow({
+          where: { id: upload.id },
+        });
+        expect(fenced.status).toBe(status);
+        expect(fenced.latestUploadUrlExpiresAt).toEqual(later);
+        expect(fenced.finalCleanupEligibleAt).toEqual(later);
+        expect(fenced.finalObjectDeletedAt).toBeNull();
+        const extended = new Date(Number(later) + 86400_000);
+        await repository.fenceIssuedCapability(owner, extended);
+        const after = await prisma.fileUploadSession.findUniqueOrThrow({
+          where: { id: upload.id },
+        });
+        expect(after.status).toBe(status);
+        expect(after.failedAt).toEqual(fenced.failedAt);
+        expect(after.cancelledAt).toEqual(fenced.cancelledAt);
+        expect(after.failureReason).toEqual(fenced.failureReason);
+        expect(after.latestUploadUrlExpiresAt).toEqual(extended);
+        expect(after.finalCleanupEligibleAt).toEqual(extended);
+      },
+    );
+
+    it('serializes capability persistence and cancel with upload-first locks without a PostgreSQL deadlock', async () => {
+      const row = await content();
+      const upload = await prisma.fileUploadSession.create({
+        data: {
+          organizationId: ids.org,
+          schoolId: ids.school,
+          createdByUserId: ids.teacher,
+          purpose: FileUploadPurpose.ACADEMIC_CONTENT,
+          purposeContextId: row.id,
+          clientRequestId: randomUUID(),
+          originalName: 'resource.pdf',
+          expectedMimeType: 'application/pdf',
+          expectedSizeBytes: BigInt(pdf.length),
+          finalBucket: 'acc9c-private-fixture',
+          finalObjectKey: 'fixture/' + randomUUID(),
+          expiresAt: new Date(Date.now() + 86400_000),
+        },
+      });
+      const held = barrier(),
+        release = barrier();
+      const blocker = prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`SELECT id FROM academic_contents WHERE id = ${row.id}::uuid FOR UPDATE`;
+          held.resolve();
+          await release.promise;
+        },
+        { timeout: 15_000 },
+      );
+      await Promise.race([held.promise, blocker]);
+      async function waitForBlocked(count: number) {
+        const until = Date.now() + 3000;
+        while (Date.now() < until) {
+          const waiting = await prisma.$queryRaw<Array<{ pid: number }>>`
+            SELECT pid FROM pg_stat_activity WHERE datname = current_database()
+              AND wait_event_type = 'Lock'`;
+          if (waiting.length >= count) return;
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        throw new Error('Expected real PostgreSQL lock overlap did not occur');
+      }
+      const owner = {
+        uploadId: upload.id,
+        schoolId: ids.school,
+        actorId: ids.teacher,
+        contentId: row.id,
+      };
+      const scope = {
+        organizationId: ids.org,
+        schoolId: ids.school,
+        actorId: ids.teacher,
+        teacherUserId: ids.teacher,
+      };
+      const expiry = new Date(Date.now() + 7 * 86400_000);
+      const persistence = repository.persistCapabilityExpiry(
+        owner,
+        expiry,
+        scope,
+      );
+      let cancellation: ReturnType<typeof files.cancel> | undefined;
+      try {
+        await waitForBlocked(1);
+        cancellation = asTeacher(() => files.cancel(row.id, upload.id));
+        await waitForBlocked(2);
+      } finally {
+        release.resolve();
+      }
+      await blocker;
+      const results = await Promise.allSettled([persistence, cancellation]);
+      for (const result of results) {
+        if (result.status === 'rejected') throw result.reason;
+      }
+      expect(results.map((result) => result.status)).toEqual([
+        'fulfilled',
+        'fulfilled',
+      ]);
+      expect(results[0]).toMatchObject({ value: true });
+      const cancelled = await prisma.fileUploadSession.findUniqueOrThrow({
+        where: { id: upload.id },
+      });
+      expect(cancelled.status).toBe(UploadStatus.CANCELLED);
+      expect(cancelled.latestUploadUrlExpiresAt).toEqual(expiry);
+      expect(Number(cancelled.finalCleanupEligibleAt)).toBeGreaterThanOrEqual(
+        Number(expiry),
+      );
+      expect(cancelled.finalObjectDeletedAt).toBeNull();
     });
     it.each(['reallocation', 'mixed', 'readOnly', 'termClosed'] as const)(
       'final completion rejects %s during bounded verification without stuck VERIFYING or File/Asset',

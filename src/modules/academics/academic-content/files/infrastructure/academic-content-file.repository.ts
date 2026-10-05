@@ -424,6 +424,9 @@ export class AcademicContentFileRepository {
   ): Promise<boolean> {
     if (teacherScope) {
       return this.prisma.$transaction(async (tx) => {
+        const session = await this.lock(tx, owner);
+        if (!session)
+          throw new NotFoundDomainException('Academic upload not found');
         await this.lockContent(
           tx,
           owner.contentId,
@@ -449,6 +452,56 @@ export class AcademicContentFileRepository {
       },
     });
     return result.count === 1;
+  }
+
+  /** Cleanup compensation after issuance, independent of mutable ownership. */
+  async fenceIssuedCapability(
+    owner: AcademicUploadIdentity,
+    capabilityExpiresAt: Date,
+    now = new Date(),
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const session = await this.lock(tx, owner);
+      if (!session)
+        throw new NotFoundDomainException('Academic upload not found');
+      const latestUploadUrlExpiresAt = new Date(
+        Math.max(
+          Number(session.latestUploadUrlExpiresAt ?? capabilityExpiresAt),
+          Number(capabilityExpiresAt),
+        ),
+      );
+      const terminal = new Set<FileUploadSessionStatus>([
+        FileUploadSessionStatus.CREATED,
+        FileUploadSessionStatus.FAILED,
+        FileUploadSessionStatus.CANCELLED,
+        FileUploadSessionStatus.EXPIRED,
+        FileUploadSessionStatus.READY,
+        FileUploadSessionStatus.PURGED,
+      ]).has(session.status);
+      const finalCleanupEligibleAt = terminal
+        ? new Date(
+            Math.max(
+              Number(now),
+              Number(latestUploadUrlExpiresAt),
+              Number(session.finalCleanupEligibleAt ?? now),
+            ),
+          )
+        : null;
+      await tx.fileUploadSession.updateMany({
+        where: this.ownedStatusWhere(owner, session.status),
+        data: {
+          latestUploadUrlExpiresAt,
+          ...(session.status === FileUploadSessionStatus.CREATED
+            ? {
+                status: FileUploadSessionStatus.FAILED,
+                failedAt: now,
+                failureReason: 'resumable_capability_failed',
+              }
+            : {}),
+          ...(terminal ? { finalCleanupEligibleAt } : {}),
+        },
+      });
+    });
   }
 
   async markVerificationFailed(input: {
@@ -595,20 +648,18 @@ export class AcademicContentFileRepository {
 
   async expireAbandoned(now: Date): Promise<number> {
     // The provider may still accept a resumable URI after ACC's 24-hour
-    // application TTL. A malformed old UPLOADING row is deferred a full
+    // application TTL. CREATED can also be awaiting capability persistence.
+    // A row without a recorded expiry is deferred a full
     // supported capability lifetime from discovery, never treated as absent.
     const missingCapabilityDeadline =
       missingAcademicCapabilityCleanupDeadline(now);
     return this.prisma.$executeRaw`
       UPDATE file_upload_sessions
       SET status = 'EXPIRED'::file_upload_session_status,
-          final_cleanup_eligible_at = CASE
-            WHEN status = 'CREATED'::file_upload_session_status THEN ${now}
-            ELSE GREATEST(
+          final_cleanup_eligible_at = GREATEST(
               ${now},
               COALESCE(latest_upload_url_expires_at, ${missingCapabilityDeadline})
-            )
-          END,
+            ),
           updated_at = ${now}
       WHERE purpose = 'ACADEMIC_CONTENT'::file_upload_purpose
         AND status IN (

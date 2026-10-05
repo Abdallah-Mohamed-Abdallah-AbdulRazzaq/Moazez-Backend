@@ -190,30 +190,25 @@ export class CreateAcademicContentUploadUseCase {
       throw conflict('resumable_capability_failed');
     }
     let transitioned: boolean;
-    if (teacherScope) {
-      try {
-        transitioned = await this.repository.persistCapabilityExpiry(
-          owner,
-          capabilityExpiresAt,
-          teacherScope,
-        );
-      } catch (error) {
-        // The external bearer capability may still be usable. Preserve its
-        // deadline for the existing deferred cleanup lifecycle, never its URL.
-        await this.repository.markCapabilityFailed(
-          owner,
-          new Date(),
-          capabilityExpiresAt,
-        );
-        throw error;
-      }
-    } else {
-      transitioned = await this.repository.persistCapabilityExpiry(
-        owner,
-        capabilityExpiresAt,
-      );
+    try {
+      transitioned = teacherScope
+        ? await this.repository.persistCapabilityExpiry(
+            owner,
+            capabilityExpiresAt,
+            teacherScope,
+          )
+        : await this.repository.persistCapabilityExpiry(
+            owner,
+            capabilityExpiresAt,
+          );
+    } catch (error) {
+      await this.repository.fenceIssuedCapability(owner, capabilityExpiresAt);
+      throw error;
     }
-    if (!transitioned) throw conflict('upload_capability_not_reissuable');
+    if (!transitioned) {
+      await this.repository.fenceIssuedCapability(owner, capabilityExpiresAt);
+      throw conflict('upload_capability_not_reissuable');
+    }
     return {
       uploadId: session.id,
       status: FileUploadSessionStatus.UPLOADING,
@@ -327,15 +322,15 @@ export class CompleteAcademicContentUploadUseCase {
     );
     try {
       return await this.repository.withTransaction(async (tx) => {
+        const session = await tx.lockUpload(owner);
+        if (!session || session.status !== FileUploadSessionStatus.VERIFYING)
+          throw conflict('verification_state_changed');
         await tx.lockMutableContent(
           owner.contentId,
           owner.schoolId,
           new Date(),
           ...(teacherScope ? [{ teacherScope }] : []),
         );
-        const session = await tx.lockUpload(owner);
-        if (!session || session.status !== FileUploadSessionStatus.VERIFYING)
-          throw conflict('verification_state_changed');
         const file = await tx.createFile({
           id: fileId,
           organizationId: session.organizationId,
@@ -478,12 +473,6 @@ export class UnlinkAcademicContentAssetUseCase {
     teacherScope?: AcademicContentTeacherWriteScope,
   ) {
     return this.repository.withTransaction(async (tx) => {
-      await tx.lockMutableContent(
-        command.contentId,
-        scope.schoolId,
-        new Date(),
-        ...(teacherScope ? [{ teacherScope }] : []),
-      );
       const candidate = await tx.findActiveAsset({
         assetId: command.assetId,
         schoolId: scope.schoolId,
@@ -496,6 +485,12 @@ export class UnlinkAcademicContentAssetUseCase {
         scope.schoolId,
       );
       if (uploadId) await tx.lockUploadById(uploadId);
+      await tx.lockMutableContent(
+        command.contentId,
+        scope.schoolId,
+        new Date(),
+        ...(teacherScope ? [{ teacherScope }] : []),
+      );
       if (!(await tx.lockActiveFile(candidate.fileId, scope.schoolId)))
         throw new NotFoundDomainException('Academic file not found');
       if (

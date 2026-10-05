@@ -351,7 +351,9 @@ describeEvidence('ACC-3C real PostgreSQL lifecycle', () => {
       where: { id: createdId },
     });
     expect(createdExpired.status).toBe(FileUploadSessionStatus.EXPIRED);
-    expect(createdExpired.finalCleanupEligibleAt).toEqual(discoveryNow);
+    expect(createdExpired.finalCleanupEligibleAt).toEqual(
+      new Date(discoveryNow.getTime() + 7 * 24 * 60 * 60 * 1_000),
+    );
 
     const malformedUploadingId = randomUUID();
     await prisma.fileUploadSession.create({
