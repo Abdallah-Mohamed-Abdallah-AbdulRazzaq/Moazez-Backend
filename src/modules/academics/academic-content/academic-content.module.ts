@@ -1,4 +1,5 @@
 import { AcademicContentWorkflowPublicationCapabilities } from './application/academic-content-workflow-publication-capabilities';
+import { AcademicContentReviewDecisionNotificationEnqueueService } from './application/academic-content-review-decision-notification-enqueue.service';
 import { QueueModule } from '../../../infrastructure/queue/queue.module';
 import { CommunicationNotificationQueueService } from '../../communication/application/communication-notification-queue.service';
 import { AcademicContentPublicationQueueService } from './application/academic-content-publication-queue.service';
@@ -107,6 +108,7 @@ import {
     AcademicContentController,
   ],
   providers: [
+    AcademicContentReviewDecisionNotificationEnqueueService,
     AcademicContentWorkflowPublicationCapabilities,
     AcademicContentAssetAccessOperations,
     AcademicContentAuthoringOperations,

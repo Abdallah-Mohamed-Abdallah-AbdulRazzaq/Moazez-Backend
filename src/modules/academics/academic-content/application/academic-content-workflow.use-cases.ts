@@ -1,5 +1,6 @@
 import type { AcademicContentTeacherWriteScope } from '../infrastructure/academic-content-teacher-write.authorization';
 import { Injectable } from '@nestjs/common';
+import { AcademicContentReviewDecisionNotificationEnqueueService } from './academic-content-review-decision-notification-enqueue.service';
 import { ValidationDomainException } from '../../../../common/exceptions/domain-exception';
 import { AcademicContentWorkflowRepository } from '../infrastructure/academic-content-workflow.repository';
 import { academicContentManagementScope } from './academic-content-management.scope';
@@ -51,25 +52,42 @@ export class SubmitAcademicContentUseCase {
 
 @Injectable()
 export class ApproveAcademicContentUseCase {
-  constructor(private readonly workflow: AcademicContentWorkflowRepository) {}
+  constructor(
+    private readonly workflow: AcademicContentWorkflowRepository,
+    private readonly notifications: AcademicContentReviewDecisionNotificationEnqueueService,
+  ) {}
 
   execute(contentId: string, body: unknown = {}) {
     const scope = academicContentManagementScope(
       'academics.academic_content.approve',
     );
     requireEmptyBody(body);
-    return this.workflow.decide({
-      ...scope,
-      contentId,
-      decision: 'approve',
-      note: null,
-    });
+    return this.workflow
+      .decide({
+        ...scope,
+        contentId,
+        decision: 'approve',
+        note: null,
+      })
+      .then(async (result) => {
+        await this.notifications.ensureAfterDecisionCommit({
+          schoolId: scope.schoolId,
+          organizationId: scope.organizationId,
+          approvalId: result.approvalId,
+          actorUserId: null,
+          actorUserType: null,
+        });
+        return result;
+      });
   }
 }
 
 @Injectable()
 export class RequestAcademicContentChangesUseCase {
-  constructor(private readonly workflow: AcademicContentWorkflowRepository) {}
+  constructor(
+    private readonly workflow: AcademicContentWorkflowRepository,
+    private readonly notifications: AcademicContentReviewDecisionNotificationEnqueueService,
+  ) {}
 
   execute(contentId: string, body: unknown) {
     const scope = academicContentManagementScope(
@@ -89,11 +107,22 @@ export class RequestAcademicContentChangesUseCase {
       throw new ValidationDomainException(
         'Decision note must contain 1 to 4000 characters',
       );
-    return this.workflow.decide({
-      ...scope,
-      contentId,
-      decision: 'request-changes',
-      note,
-    });
+    return this.workflow
+      .decide({
+        ...scope,
+        contentId,
+        decision: 'request-changes',
+        note,
+      })
+      .then(async (result) => {
+        await this.notifications.ensureAfterDecisionCommit({
+          schoolId: scope.schoolId,
+          organizationId: scope.organizationId,
+          approvalId: result.approvalId,
+          actorUserId: null,
+          actorUserType: null,
+        });
+        return result;
+      });
   }
 }

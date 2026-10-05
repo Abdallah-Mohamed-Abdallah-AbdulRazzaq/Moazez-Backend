@@ -18,6 +18,66 @@ export const COMMUNICATION_ACADEMIC_CONTENT_SESSION_REMINDER_GENERATE_JOB_NAME =
   'communication.academic-content.session-reminder.generate';
 export const COMMUNICATION_PREPARED_NOTIFICATION_BATCH_MAX_USERS = 500;
 
+export const COMMUNICATION_ACADEMIC_CONTENT_REVIEW_DECISION_GENERATE_JOB_NAME =
+  'communication.academic-content.review-decision.generate';
+
+export interface CommunicationAcademicContentReviewDecisionJobData {
+  schoolId: string;
+  organizationId: string;
+  approvalId: string;
+  actorUserId: string | null;
+  actorUserType: UserType | null;
+}
+
+export interface CommunicationPreparedAcademicContentReviewDecision extends CommunicationAcademicContentReviewDecisionJobData {
+  academicContentId: string;
+  revisionId: string;
+  roundNumber: number;
+  decision: 'APPROVED' | 'CHANGES_REQUESTED';
+  recipientUserId: string;
+  title: string;
+  body: string;
+  now: Date;
+}
+
+export type CommunicationAcademicContentReviewDecisionAuthorization = (
+  tx: Prisma.TransactionClient,
+) => Promise<CommunicationPreparedAcademicContentReviewDecision | null>;
+
+export function buildAcademicContentReviewDecisionJobId(input: {
+  schoolId: string;
+  approvalId: string;
+}): string {
+  return `communication-academic-content-review-decision-${input.schoolId}-${input.approvalId}`;
+}
+
+export function isAcademicContentReviewDecisionJobData(
+  data: unknown,
+): data is CommunicationAcademicContentReviewDecisionJobData {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+  const row = data as Record<string, unknown>;
+  const keys = [
+    'schoolId',
+    'organizationId',
+    'approvalId',
+    'actorUserId',
+    'actorUserType',
+  ];
+  const uuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return (
+    Object.keys(row).length === keys.length &&
+    keys.every((key) => Object.prototype.hasOwnProperty.call(row, key)) &&
+    ['schoolId', 'organizationId', 'approvalId'].every(
+      (key) => typeof row[key] === 'string' && uuid.test(row[key]),
+    ) &&
+    ((row.actorUserId === null && row.actorUserType === null) ||
+      (typeof row.actorUserId === 'string' &&
+        uuid.test(row.actorUserId) &&
+        Object.values(UserType).includes(row.actorUserType as UserType)))
+  );
+}
+
 export interface CommunicationAcademicContentNotificationGenerationJobData {
   schoolId: string;
   organizationId: string;

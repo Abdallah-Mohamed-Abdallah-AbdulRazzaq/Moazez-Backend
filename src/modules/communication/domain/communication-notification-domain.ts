@@ -31,6 +31,8 @@ export type CommunicationNotificationTypeValue =
   | 'ACADEMIC_CONTENT_PUBLISHED'
   | 'ACADEMIC_CONTENT_UPDATED'
   | 'ACADEMIC_CONTENT_CANCELLED'
+  | 'ACADEMIC_CONTENT_APPROVED'
+  | 'ACADEMIC_CONTENT_CHANGES_REQUESTED'
   | 'ONLINE_SESSION_REMINDER'
   | 'MESSAGE_RECEIVED'
   | 'MESSAGE_MENTION'
@@ -114,6 +116,8 @@ const NOTIFICATION_TYPE_MAP: Record<
   academic_content_published: 'ACADEMIC_CONTENT_PUBLISHED',
   academic_content_updated: 'ACADEMIC_CONTENT_UPDATED',
   academic_content_cancelled: 'ACADEMIC_CONTENT_CANCELLED',
+  academic_content_approved: 'ACADEMIC_CONTENT_APPROVED',
+  academic_content_changes_requested: 'ACADEMIC_CONTENT_CHANGES_REQUESTED',
   online_session_reminder: 'ONLINE_SESSION_REMINDER',
   message_received: 'MESSAGE_RECEIVED',
   message_mention: 'MESSAGE_MENTION',
@@ -348,6 +352,15 @@ function normalizeNotificationEnum<T extends string>(
 export const COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_SOURCE_TYPE =
   'academic_content_publication';
 
+export const COMMUNICATION_ACADEMIC_CONTENT_REVIEW_SOURCE_TYPE =
+  'academic_content_approval';
+
+export const COMMUNICATION_ACADEMIC_CONTENT_REVIEW_NOTIFICATION_TYPES: readonly CommunicationNotificationType[] =
+  [
+    CommunicationNotificationType.ACADEMIC_CONTENT_APPROVED,
+    CommunicationNotificationType.ACADEMIC_CONTENT_CHANGES_REQUESTED,
+  ];
+
 export const COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_TYPES: readonly CommunicationNotificationType[] =
   [
     CommunicationNotificationType.ACADEMIC_CONTENT_PUBLISHED,
@@ -355,3 +368,8 @@ export const COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_TYPES: readonly Communi
     CommunicationNotificationType.ACADEMIC_CONTENT_CANCELLED,
     CommunicationNotificationType.ONLINE_SESSION_REMINDER,
   ];
+
+export const COMMUNICATION_ACADEMIC_CONTENT_APP_NOTIFICATION_TYPES = [
+  ...COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_TYPES,
+  ...COMMUNICATION_ACADEMIC_CONTENT_REVIEW_NOTIFICATION_TYPES,
+];

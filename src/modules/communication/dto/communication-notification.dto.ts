@@ -38,6 +38,8 @@ export const COMMUNICATION_NOTIFICATION_SOURCE_MODULES = [
 ] as const;
 
 export const COMMUNICATION_NOTIFICATION_TYPES = [
+  'academic_content_approved',
+  'academic_content_changes_requested',
   'academic_content_published',
   'academic_content_updated',
   'academic_content_cancelled',

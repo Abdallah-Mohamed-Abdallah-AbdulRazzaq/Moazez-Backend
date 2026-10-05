@@ -7,7 +7,7 @@ import {
 } from '@prisma/client';
 import { NotFoundDomainException } from '../../../common/exceptions/domain-exception';
 import {
-  COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_TYPES,
+  COMMUNICATION_ACADEMIC_CONTENT_APP_NOTIFICATION_TYPES,
   assertCanArchiveNotification,
   assertCanMarkNotificationRead,
   CommunicationNotificationInvalidException,
@@ -348,7 +348,7 @@ function normalizeAppNotificationCategory(
 ): CommunicationNotificationType[] {
   const normalized = value.trim().toLowerCase();
   if (normalized === 'academic_content')
-    return [...COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_TYPES];
+    return [...COMMUNICATION_ACADEMIC_CONTENT_APP_NOTIFICATION_TYPES];
   if (normalized === 'message_received') {
     return [CommunicationNotificationType.MESSAGE_RECEIVED];
   }
@@ -437,7 +437,7 @@ function categoryGroupForType(type: CommunicationNotificationType): {
   key: string;
   label: string;
 } {
-  if (COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_TYPES.includes(type))
+  if (COMMUNICATION_ACADEMIC_CONTENT_APP_NOTIFICATION_TYPES.includes(type))
     return { key: 'academic_content', label: 'Academic Content' };
   switch (type) {
     case CommunicationNotificationType.MESSAGE_RECEIVED:

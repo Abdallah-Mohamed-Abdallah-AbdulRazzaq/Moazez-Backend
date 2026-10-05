@@ -127,6 +127,7 @@ describe('critical queue persisted-truth reconciliation', () => {
       repository as unknown as CommunicationNotificationGenerationRepository,
       queue as unknown as BullmqService,
       { recover: jest.fn().mockResolvedValue(0) } as never,
+      { recover: jest.fn().mockResolvedValue(0) } as never,
     );
 
     await expect(service.reconcile(NOW)).resolves.toBe(1);
@@ -344,6 +345,7 @@ describe('critical queue persisted-truth reconciliation', () => {
       bullmq as unknown as BullmqService,
       generation as unknown as CommunicationNotificationGenerationService,
       {} as CommunicationNotificationReconciliationService,
+      {} as never,
       {} as never,
     ).onModuleInit();
 

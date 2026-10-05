@@ -1,6 +1,8 @@
 import { AcademicContentPublicationWorker } from '../../modules/academics/academic-content/infrastructure/academic-content-publication.worker';
 import { AcademicContentPublicationNotificationRepository } from '../../modules/academics/academic-content/infrastructure/academic-content-publication-notification.repository';
 import { AcademicContentPublicationNotificationService } from '../../modules/academics/academic-content/application/academic-content-publication-notification.service';
+import { AcademicContentReviewDecisionNotificationService } from '../../modules/academics/academic-content/application/academic-content-review-decision-notification.service';
+import { AcademicContentReviewDecisionNotificationRepository } from '../../modules/academics/academic-content/infrastructure/academic-content-review-decision-notification.repository';
 import { CommunicationNotificationQueueService } from '../../modules/communication/application/communication-notification-queue.service';
 import { AcademicContentPublicationRuntimeRepository } from '../../modules/academics/academic-content/infrastructure/academic-content-publication-runtime.repository';
 import { AcademicContentPublicationLifecycleRepository } from '../../modules/academics/academic-content/infrastructure/academic-content-publication-lifecycle.repository';
@@ -92,6 +94,8 @@ export const CORE_WORKER_CONSUMER_PROVIDERS = Object.freeze([
 const CORE_WORKER_SUPPORT_PROVIDERS: Provider[] = [
   AcademicContentPublicationNotificationRepository,
   AcademicContentPublicationNotificationService,
+  AcademicContentReviewDecisionNotificationService,
+  AcademicContentReviewDecisionNotificationRepository,
   CommunicationNotificationQueueService,
   AcademicContentPublicationRuntimeRepository,
   AcademicContentPublicationLifecycleRepository,

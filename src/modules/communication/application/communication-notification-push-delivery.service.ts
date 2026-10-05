@@ -492,6 +492,18 @@ function isInvalidOrUnregisteredTokenError(errorCode: string): boolean {
 function resolveDeliveryTokenSurface(
   notification: CommunicationPushDeliveryForProcessing['notification'],
 ): AppDeviceTokenSurface | undefined | null {
+  const reviewType =
+    notification.type === 'ACADEMIC_CONTENT_APPROVED' ||
+    notification.type === 'ACADEMIC_CONTENT_CHANGES_REQUESTED';
+  if (reviewType || notification.sourceType === 'academic_content_approval') {
+    return reviewType &&
+      notification.sourceModule ===
+        CommunicationNotificationSourceModule.ACADEMICS &&
+      notification.sourceType === 'academic_content_approval' &&
+      notification.recipientUser.userType === UserType.TEACHER
+      ? AppDeviceTokenSurface.TEACHER
+      : null;
+  }
   if (
     notification.sourceModule ===
     CommunicationNotificationSourceModule.ACADEMICS

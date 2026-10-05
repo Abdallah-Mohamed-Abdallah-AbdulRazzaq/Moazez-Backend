@@ -21,6 +21,8 @@ import {
   CommunicationPreparedAcademicContentBatch,
   COMMUNICATION_PREPARED_NOTIFICATION_BATCH_MAX_USERS,
   CommunicationAcademicContentBatchAuthorization,
+  CommunicationPreparedAcademicContentReviewDecision,
+  CommunicationAcademicContentReviewDecisionAuthorization,
 } from '../domain/communication-notification-generation-domain';
 import { CommunicationNotificationGenerationRepository } from '../infrastructure/communication-notification-generation.repository';
 import { CommunicationRealtimeEventsService } from './communication-realtime-events.service';
@@ -39,6 +41,54 @@ export class CommunicationNotificationGenerationService {
     private readonly communicationNotificationPreferenceService: CommunicationNotificationPreferenceService,
     private readonly communicationNotificationPushQueueService?: CommunicationNotificationPushQueueService,
   ) {}
+
+  async generateForAcademicContentReviewDecision(
+    input: CommunicationPreparedAcademicContentReviewDecision,
+    authorize: CommunicationAcademicContentReviewDecisionAuthorization,
+  ) {
+    const preference = {
+      schoolId: input.schoolId,
+      recipientUserIds: [input.recipientUserId],
+      category: CommunicationNotificationPreferenceCategory.ACADEMIC_CONTENT,
+    };
+    const enabled =
+      await this.communicationNotificationPreferenceService.filterInAppEnabledRecipientUserIds(
+        preference,
+      );
+    const pushEnabled =
+      await this.communicationNotificationPreferenceService.filterPushEnabledRecipientUserIds(
+        { ...preference, recipientUserIds: enabled },
+      );
+    let current: CommunicationPreparedAcademicContentReviewDecision | null =
+      input;
+    const { createdNotifications, pushDeliveries, ...result } =
+      await this.communicationNotificationGenerationRepository.createMissingAcademicContentReviewDecisionNotification(
+        {
+          ...input,
+          inAppEnabled: enabled.includes(input.recipientUserId),
+          pushEnabled: pushEnabled.includes(input.recipientUserId),
+        },
+        async (tx) => {
+          current = await authorize(tx);
+          return current;
+        },
+      );
+    for (const notification of createdNotifications)
+      this.communicationRealtimeEventsService.publishNotificationCreated(
+        input.schoolId,
+        notification,
+      );
+    await this.enqueuePushDeliveriesSafely({
+      ...(current ?? input),
+      pushDeliveries,
+    });
+    return {
+      ...result,
+      skippedReason: result.recipientCount
+        ? null
+        : 'source_or_preferences_not_eligible',
+    };
+  }
 
   async generateForAcademicContentPublicationBatch(
     input: CommunicationPreparedAcademicContentBatch,

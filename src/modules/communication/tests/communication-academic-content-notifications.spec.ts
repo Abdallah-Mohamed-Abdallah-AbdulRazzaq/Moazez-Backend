@@ -406,6 +406,7 @@ describe('ACC deterministic queue and existing worker dispatch', () => {
       {
         generate: observed,
       } as unknown as AcademicContentPublicationNotificationService,
+      {} as never,
     ).onModuleInit();
     const {
       schoolId,

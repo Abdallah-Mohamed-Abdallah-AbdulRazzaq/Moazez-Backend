@@ -7,7 +7,11 @@ import {
 } from '../infrastructure/communication-notification.repository';
 import { COMMUNICATION_MESSAGE_NOTIFICATION_SOURCE_TYPE } from '../domain/communication-notification-generation-domain';
 
-import { COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_SOURCE_TYPE } from '../domain/communication-notification-domain';
+import {
+  COMMUNICATION_ACADEMIC_CONTENT_NOTIFICATION_SOURCE_TYPE,
+  COMMUNICATION_ACADEMIC_CONTENT_REVIEW_SOURCE_TYPE,
+  COMMUNICATION_ACADEMIC_CONTENT_REVIEW_NOTIFICATION_TYPES,
+} from '../domain/communication-notification-domain';
 
 type AppNotificationRecord =
   | CommunicationNotificationListRecord
@@ -16,6 +20,12 @@ type AppNotificationRecord =
 export type CommunicationAppNotificationAliasStyle = 'dual' | 'camel';
 
 export type CommunicationAppNotificationDeepLink =
+  | {
+      type: 'teacher_academic_content';
+      academicContentId: string;
+      revisionId: string;
+      approvalId: string;
+    }
   | {
       type: 'academic_content';
       academicContentId: string;
@@ -194,6 +204,40 @@ export function buildDeepLink(
     'sourceType' | 'sourceId' | 'metadata'
   > & { sourceModule: string; type: string },
 ): CommunicationAppNotificationDeepLink | null {
+  const reviewType =
+    COMMUNICATION_ACADEMIC_CONTENT_REVIEW_NOTIFICATION_TYPES.some(
+      (type) => type === notification.type,
+    );
+  if (
+    reviewType ||
+    notification.sourceType ===
+      COMMUNICATION_ACADEMIC_CONTENT_REVIEW_SOURCE_TYPE
+  ) {
+    if (
+      notification.sourceModule !== 'ACADEMICS' ||
+      notification.sourceType !==
+        COMMUNICATION_ACADEMIC_CONTENT_REVIEW_SOURCE_TYPE ||
+      !reviewType
+    )
+      return null;
+    const metadata = asRecord(notification.metadata);
+    const approvalId = readUuid(notification.sourceId);
+    const academicContentId = readUuid(metadata?.academicContentId);
+    const revisionId = readUuid(metadata?.revisionId);
+    if (
+      !approvalId ||
+      !academicContentId ||
+      !revisionId ||
+      readUuid(metadata?.approvalId) !== approvalId
+    )
+      return null;
+    return {
+      type: 'teacher_academic_content',
+      academicContentId,
+      revisionId,
+      approvalId,
+    };
+  }
   if (
     notification.sourceModule === 'ACADEMICS' &&
     notification.sourceType ===

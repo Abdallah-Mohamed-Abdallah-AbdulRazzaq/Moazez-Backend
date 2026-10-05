@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { AcademicContentReviewDecisionNotificationService } from '../../academics/academic-content/application/academic-content-review-decision-notification.service';
 import { BullmqService } from '../../../infrastructure/queue/bullmq.service';
 import {
   buildAnnouncementNotificationGenerationJobId,
@@ -17,6 +18,7 @@ export class CommunicationNotificationReconciliationService {
     private readonly repository: CommunicationNotificationGenerationRepository,
     private readonly queue: BullmqService,
     private readonly academicContent: AcademicContentPublicationNotificationService,
+    private readonly reviewDecisions: AcademicContentReviewDecisionNotificationService,
   ) {}
 
   async reconcile(now = new Date()): Promise<number> {
@@ -61,6 +63,10 @@ export class CommunicationNotificationReconciliationService {
       cursor = page.next ?? undefined;
     } while (cursor);
 
-    return restored + (await this.academicContent.recover(now));
+    return (
+      restored +
+      (await this.academicContent.recover(now)) +
+      (await this.reviewDecisions.recover(now))
+    );
   }
 }

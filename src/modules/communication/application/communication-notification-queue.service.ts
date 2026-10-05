@@ -15,11 +15,32 @@ import {
   buildAcademicContentSessionReminderJobId,
   COMMUNICATION_ACADEMIC_CONTENT_CANCELLATION_GENERATE_JOB_NAME,
   COMMUNICATION_ACADEMIC_CONTENT_SESSION_REMINDER_GENERATE_JOB_NAME,
+  CommunicationAcademicContentReviewDecisionJobData,
+  isAcademicContentReviewDecisionJobData,
+  buildAcademicContentReviewDecisionJobId,
+  COMMUNICATION_ACADEMIC_CONTENT_REVIEW_DECISION_GENERATE_JOB_NAME,
 } from '../domain/communication-notification-generation-domain';
 
 @Injectable()
 export class CommunicationNotificationQueueService {
   constructor(private readonly bullmqService: BullmqService) {}
+
+  ensureAcademicContentReviewDecision(
+    data: CommunicationAcademicContentReviewDecisionJobData,
+  ) {
+    if (!isAcademicContentReviewDecisionJobData(data))
+      throw new Error('academic_content_review_decision_job_invalid');
+    return this.bullmqService.ensureJobFromPersistedTruth(
+      COMMUNICATION_NOTIFICATION_QUEUE_NAME,
+      COMMUNICATION_ACADEMIC_CONTENT_REVIEW_DECISION_GENERATE_JOB_NAME,
+      data,
+      {
+        jobId: buildAcademicContentReviewDecisionJobId(data),
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 1000 },
+      },
+    );
+  }
 
   ensureAcademicContentCancellationNotifications(
     data: CommunicationAcademicContentNotificationGenerationJobData,
