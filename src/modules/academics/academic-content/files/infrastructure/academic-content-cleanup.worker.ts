@@ -89,8 +89,17 @@ export class AcademicContentCleanupWorker implements OnModuleInit {
           session.finalCleanupClaimedAt >= staleBefore)
       )
         return null;
+      if (!session.purposeContextId)
+        throw new Error('academic_content_cleanup_context_missing');
       await tx.updateUpload(session, { finalCleanupClaimedAt: now });
-      return { bucket: session.finalBucket, objectKey: session.finalObjectKey };
+      return {
+        uploadId: session.id,
+        schoolId: session.schoolId,
+        contentId: session.purposeContextId,
+        bucket: session.finalBucket,
+        objectKey: session.finalObjectKey,
+        claimedAt: now,
+      };
     });
     if (!claim) {
       await this.cleanReadyOrphan(uploadId, now);
@@ -102,7 +111,12 @@ export class AcademicContentCleanupWorker implements OnModuleInit {
         objectKey: claim.objectKey,
       });
     } catch (error) {
-      await this.repository.releaseTerminalCleanupClaim(uploadId, now);
+      await this.repository.releaseTerminalCleanupClaim({
+        uploadId: claim.uploadId,
+        schoolId: claim.schoolId,
+        contentId: claim.contentId,
+        claimedAt: claim.claimedAt,
+      });
       throw error;
     }
     await this.repository.withTransaction(async (tx) => {

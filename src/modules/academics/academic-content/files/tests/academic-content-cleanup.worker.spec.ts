@@ -4,6 +4,7 @@ import { AcademicContentCleanupWorker } from '../infrastructure/academic-content
 const uploadId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const schoolId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const fileId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+const contentId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const now = new Date('2026-09-24T00:00:00.000Z');
 const eligible = new Date('2026-09-23T00:00:00.000Z');
 
@@ -12,6 +13,7 @@ describe('ACC cleanup worker', () => {
     id: uploadId,
     purpose: FileUploadPurpose.ACADEMIC_CONTENT,
     schoolId,
+    purposeContextId: contentId as string | null,
     fileId,
     status: FileUploadSessionStatus.READY,
     finalBucket: 'private',
@@ -174,6 +176,90 @@ describe('ACC cleanup worker', () => {
       .mockResolvedValueOnce({ ...stale, finalCleanupClaimedAt: now });
     await worker.cleanUpload(uploadId, now);
     expect(storage.deleteObjectAndConfirmAbsent).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    FileUploadSessionStatus.FAILED,
+    FileUploadSessionStatus.CANCELLED,
+    FileUploadSessionStatus.EXPIRED,
+  ])(
+    'releases persisted tenant/resource identity after %s deletion fails',
+    async (status) => {
+      const terminal = { ...session, status, fileId: null };
+      const failure = new Error('provider deletion failed');
+      tx.lockUploadById.mockResolvedValueOnce(terminal);
+      storage.deleteObjectAndConfirmAbsent.mockRejectedValueOnce(failure);
+      await expect(worker.cleanUpload(uploadId, now)).rejects.toBe(failure);
+      expect(repository.releaseTerminalCleanupClaim).toHaveBeenCalledWith({
+        uploadId: terminal.id,
+        schoolId: terminal.schoolId,
+        contentId: terminal.purposeContextId,
+        claimedAt: now,
+      });
+      expect(tx.updateUpload).toHaveBeenCalledTimes(1);
+      expect(tx.updateUpload).toHaveBeenCalledWith(terminal, {
+        finalCleanupClaimedAt: now,
+      });
+      expect(tx.softDeleteFile).not.toHaveBeenCalled();
+    },
+  );
+
+  it('fails closed before claim or deletion when the terminal ACC parent is missing', async () => {
+    tx.lockUploadById.mockResolvedValueOnce({
+      ...session,
+      status: FileUploadSessionStatus.FAILED,
+      fileId: null,
+      purposeContextId: null,
+    });
+    await expect(worker.cleanUpload(uploadId, now)).rejects.toThrow(
+      'academic_content_cleanup_context_missing',
+    );
+    expect(tx.updateUpload).not.toHaveBeenCalled();
+    expect(storage.deleteObjectAndConfirmAbsent).not.toHaveBeenCalled();
+    expect(repository.releaseTerminalCleanupClaim).not.toHaveBeenCalled();
+  });
+
+  it('ignores tenant/resource fields supplied in queue data when releasing a claim', async () => {
+    const terminal = {
+      ...session,
+      status: FileUploadSessionStatus.FAILED,
+      fileId: null,
+    };
+    tx.lockUploadById.mockResolvedValueOnce(terminal);
+    storage.deleteObjectAndConfirmAbsent.mockRejectedValueOnce(
+      new Error('provider deletion failed'),
+    );
+    worker.onModuleInit();
+    type Processor = (job: {
+      name: string;
+      data: { uploadId: string };
+    }) => Promise<unknown>;
+    const calls = queue.createWorker.mock.calls as unknown as Array<
+      [string, Processor]
+    >;
+    const job = {
+      name: 'cleanup-object',
+      data: { uploadId, schoolId: 'untrusted', contentId: 'untrusted' },
+    };
+    await expect(calls[0][1](job)).rejects.toThrow('provider deletion failed');
+    const release = (
+      repository.releaseTerminalCleanupClaim.mock.calls as unknown as Array<
+        [
+          {
+            uploadId: string;
+            schoolId: string;
+            contentId: string;
+            claimedAt: Date;
+          },
+        ]
+      >
+    )[0][0];
+    expect(release).toMatchObject({
+      uploadId,
+      schoolId,
+      contentId,
+    });
+    expect(release.claimedAt).toBeInstanceOf(Date);
   });
 
   it('never acts on a session rejected by the ACC-purpose lock', async () => {

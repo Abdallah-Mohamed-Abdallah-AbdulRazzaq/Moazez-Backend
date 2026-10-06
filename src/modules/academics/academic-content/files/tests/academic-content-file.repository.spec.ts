@@ -131,6 +131,35 @@ describe('ACC cleanup repository purpose isolation', () => {
 
   beforeEach(() => jest.clearAllMocks());
 
+  it('releases only the exact terminal claim in its persisted School and parent Content', async () => {
+    const identity = {
+      uploadId: '11111111-1111-4111-8111-111111111111',
+      schoolId: '22222222-2222-4222-8222-222222222222',
+      contentId: '33333333-3333-4333-8333-333333333333',
+      claimedAt: now,
+    };
+    await repository.releaseTerminalCleanupClaim(identity);
+    expect(updateMany).toHaveBeenCalledTimes(1);
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        id: identity.uploadId,
+        schoolId: identity.schoolId,
+        purpose: FileUploadPurpose.ACADEMIC_CONTENT,
+        purposeContextId: identity.contentId,
+        status: {
+          in: [
+            FileUploadSessionStatus.FAILED,
+            FileUploadSessionStatus.CANCELLED,
+            FileUploadSessionStatus.EXPIRED,
+          ],
+        },
+        finalCleanupClaimedAt: identity.claimedAt,
+        finalObjectDeletedAt: null,
+      },
+      data: { finalCleanupClaimedAt: null },
+    });
+  });
+
   it('expires only ACC CREATED/UPLOADING with provider-safe cleanup deadlines', async () => {
     await expect(repository.expireAbandoned(now)).resolves.toBe(2);
     const [parts, ...values] = executeRaw.mock.calls[0] as [

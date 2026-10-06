@@ -15,6 +15,7 @@ import {
 } from '../../src/common/context/request-context';
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
 import { AcademicContentFileRepository } from '../../src/modules/academics/academic-content/files/infrastructure/academic-content-file.repository';
+import { AcademicContentCleanupWorker } from '../../src/modules/academics/academic-content/files/infrastructure/academic-content-cleanup.worker';
 
 describe('ACC-3A purpose-safe Files database foundation', () => {
   const prisma = new PrismaService();
@@ -269,6 +270,165 @@ describe('ACC-3A purpose-safe Files database foundation', () => {
       expiresAt: new Date(createdAt.getTime() + 60 * 60 * 1000),
     };
   }
+
+  function terminalSession(suffix: 'a' | 'b', claimedAt: Date | null) {
+    const now = claimedAt ?? new Date();
+    return {
+      ...accSession(1024n),
+      organizationId: ids[`org${suffix}`],
+      schoolId: ids[`school${suffix}`],
+      createdByUserId: ids[`user${suffix}`],
+      purposeContextId: ids[`content${suffix}`],
+      status: FileUploadSessionStatus.FAILED,
+      failedAt: now,
+      failureReason: 'cleanup-test',
+      finalCleanupEligibleAt: now,
+      finalCleanupClaimedAt: claimedAt,
+    };
+  }
+
+  it('retains tenant, parent Content and exact claim identity at the terminal release write', async () => {
+    const repository = new AcademicContentFileRepository(prisma);
+    const claimedAt = new Date();
+    const upload = await prisma.fileUploadSession.create({
+      data: terminalSession('a', claimedAt),
+    });
+    const foreign = await prisma.fileUploadSession.create({
+      data: terminalSession('b', claimedAt),
+    });
+    const identity = {
+      uploadId: upload.id,
+      schoolId: ids.schoola,
+      contentId: ids.contenta,
+      claimedAt,
+    };
+    for (const wrongIdentity of [
+      { ...identity, schoolId: ids.schoolb },
+      { ...identity, contentId: ids.contentb },
+      { ...identity, claimedAt: new Date(claimedAt.getTime() - 1) },
+      { ...identity, uploadId: foreign.id },
+    ]) {
+      await repository.releaseTerminalCleanupClaim(wrongIdentity);
+      expect(
+        await prisma.fileUploadSession.findUniqueOrThrow({
+          where: { id: upload.id },
+        }),
+      ).toEqual(upload);
+      expect(
+        await prisma.fileUploadSession.findUniqueOrThrow({
+          where: { id: foreign.id },
+        }),
+      ).toEqual(foreign);
+    }
+    await repository.releaseTerminalCleanupClaim(identity);
+    expect(
+      await prisma.fileUploadSession.findUniqueOrThrow({
+        where: { id: upload.id },
+      }),
+    ).toMatchObject({
+      finalCleanupClaimedAt: null,
+      finalObjectDeletedAt: null,
+    });
+    expect(
+      await prisma.fileUploadSession.findUniqueOrThrow({
+        where: { id: foreign.id },
+      }),
+    ).toEqual(foreign);
+  });
+
+  it('preserves a newer worker claim and completed deletion evidence during stale release', async () => {
+    const repository = new AcademicContentFileRepository(prisma);
+    const oldClaim = new Date(Date.now() - 20 * 60_000);
+    const newerClaim = new Date();
+    const upload = await prisma.fileUploadSession.create({
+      data: terminalSession('a', newerClaim),
+    });
+    const identity = {
+      uploadId: upload.id,
+      schoolId: ids.schoola,
+      contentId: ids.contenta,
+      claimedAt: oldClaim,
+    };
+    await repository.releaseTerminalCleanupClaim(identity);
+    expect(
+      await prisma.fileUploadSession.findUniqueOrThrow({
+        where: { id: upload.id },
+      }),
+    ).toEqual(upload);
+    const deleted = await prisma.fileUploadSession.update({
+      where: { id: upload.id },
+      data: { finalObjectDeletedAt: new Date() },
+    });
+    await repository.releaseTerminalCleanupClaim({
+      ...identity,
+      claimedAt: newerClaim,
+    });
+    expect(
+      await prisma.fileUploadSession.findUniqueOrThrow({
+        where: { id: upload.id },
+      }),
+    ).toEqual(deleted);
+  });
+
+  it('releases a failed provider deletion claim and retries the same session without mutating another School', async () => {
+    const repository = new AcademicContentFileRepository(prisma);
+    const upload = await prisma.fileUploadSession.create({
+      data: terminalSession('a', null),
+    });
+    const foreign = await prisma.fileUploadSession.create({
+      data: terminalSession('b', null),
+    });
+    const failure = new Error('provider deletion failed');
+    const storage = {
+      deleteObjectAndConfirmAbsent: jest
+        .fn()
+        .mockRejectedValueOnce(failure)
+        .mockResolvedValueOnce(undefined),
+    };
+    const worker = new AcademicContentCleanupWorker(
+      {} as never,
+      repository,
+      storage as never,
+    );
+    const now = new Date();
+    await expect(worker.cleanUpload(upload.id, now)).rejects.toBe(failure);
+    const released = await prisma.fileUploadSession.findUniqueOrThrow({
+      where: { id: upload.id },
+    });
+    expect(released).toMatchObject({
+      schoolId: upload.schoolId,
+      purposeContextId: upload.purposeContextId,
+      status: FileUploadSessionStatus.FAILED,
+      finalCleanupClaimedAt: null,
+      finalObjectDeletedAt: null,
+    });
+    const retryAt = new Date(now.getTime() + 1);
+    await worker.cleanUpload(upload.id, retryAt);
+    const cleaned = await prisma.fileUploadSession.findUniqueOrThrow({
+      where: { id: upload.id },
+    });
+    expect(cleaned).toMatchObject({
+      schoolId: upload.schoolId,
+      purposeContextId: upload.purposeContextId,
+      status: FileUploadSessionStatus.FAILED,
+      finalCleanupClaimedAt: retryAt,
+    });
+    expect(cleaned.finalObjectDeletedAt).toBeInstanceOf(Date);
+    expect(storage.deleteObjectAndConfirmAbsent).toHaveBeenCalledTimes(2);
+    expect(storage.deleteObjectAndConfirmAbsent).toHaveBeenNthCalledWith(1, {
+      bucket: upload.finalBucket,
+      objectKey: upload.finalObjectKey,
+    });
+    expect(storage.deleteObjectAndConfirmAbsent).toHaveBeenNthCalledWith(2, {
+      bucket: upload.finalBucket,
+      objectKey: upload.finalObjectKey,
+    });
+    expect(
+      await prisma.fileUploadSession.findUniqueOrThrow({
+        where: { id: foreign.id },
+      }),
+    ).toEqual(foreign);
+  });
 
   it('rejects foreign-School upload and asset writes and non-ACC upload writes at the final predicate', async () => {
     const repository = new AcademicContentFileRepository(prisma);

@@ -570,15 +570,26 @@ export class AcademicContentFileRepository {
     return asset?.file ?? null;
   }
 
-  async releaseTerminalCleanupClaim(
-    uploadId: string,
-    claimedAt: Date,
-  ): Promise<void> {
+  async releaseTerminalCleanupClaim(input: {
+    uploadId: string;
+    schoolId: string;
+    contentId: string;
+    claimedAt: Date;
+  }): Promise<void> {
     await this.prisma.fileUploadSession.updateMany({
       where: {
-        id: uploadId,
+        id: input.uploadId,
+        schoolId: input.schoolId,
         purpose: FileUploadPurpose.ACADEMIC_CONTENT,
-        finalCleanupClaimedAt: claimedAt,
+        purposeContextId: input.contentId,
+        status: {
+          in: [
+            FileUploadSessionStatus.FAILED,
+            FileUploadSessionStatus.CANCELLED,
+            FileUploadSessionStatus.EXPIRED,
+          ],
+        },
+        finalCleanupClaimedAt: input.claimedAt,
         finalObjectDeletedAt: null,
       },
       data: { finalCleanupClaimedAt: null },
