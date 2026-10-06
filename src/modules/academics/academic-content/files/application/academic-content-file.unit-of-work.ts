@@ -17,6 +17,17 @@ export type AcademicUploadIdentity = {
   contentId: string;
 };
 
+export type AcademicUploadResourceIdentity = Pick<
+  AcademicUploadIdentity,
+  'uploadId' | 'schoolId' | 'contentId'
+>;
+
+export type AcademicAssetIdentity = {
+  assetId: string;
+  schoolId: string;
+  contentId: string;
+};
+
 export type AcademicUploadIntent = {
   id: string;
   organizationId: string;
@@ -82,7 +93,7 @@ export interface AcademicContentFileTransaction {
     session: FileUploadSession,
   ): Promise<{ file: File; asset: AcademicContentAsset } | null>;
   updateUpload(
-    identity: Pick<FileUploadSession, 'id' | 'schoolId'>,
+    identity: AcademicUploadResourceIdentity,
     data: AcademicUploadUpdate,
   ): Promise<FileUploadSession>;
   lockMutableContent(
@@ -115,8 +126,7 @@ export interface AcademicContentFileTransaction {
     schoolId: string;
   }): Promise<boolean>;
   softDeleteAsset(
-    assetId: string,
-    schoolId: string,
+    identity: AcademicAssetIdentity,
     deletedAt: Date,
   ): Promise<AcademicContentAsset>;
   countAcademicContentFileReferences(

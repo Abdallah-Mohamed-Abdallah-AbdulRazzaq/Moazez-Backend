@@ -274,7 +274,7 @@ export class CompleteAcademicContentUploadUseCase {
         throw conflict('upload_not_completable');
       if (session.expiresAt <= new Date()) {
         const now = new Date();
-        await tx.updateUpload(session, {
+        await tx.updateUpload(owner, {
           status: FileUploadSessionStatus.EXPIRED,
           finalCleanupEligibleAt: academicContentFinalCleanupDeadline(
             now,
@@ -285,7 +285,7 @@ export class CompleteAcademicContentUploadUseCase {
       }
       if (session.status === FileUploadSessionStatus.CREATED)
         throw conflict('upload_not_completable');
-      await tx.updateUpload(session, {
+      await tx.updateUpload(owner, {
         status: FileUploadSessionStatus.VERIFYING,
       });
       return { kind: 'claimed' as const, session };
@@ -350,7 +350,7 @@ export class CompleteAcademicContentUploadUseCase {
           fileId: file.id,
           createdByUserId: session.createdByUserId,
         });
-        await tx.updateUpload(session, {
+        await tx.updateUpload(owner, {
           status: FileUploadSessionStatus.READY,
           fileId: file.id,
           completedAt,
@@ -442,7 +442,7 @@ export class CancelAcademicContentUploadUseCase {
       )
         throw conflict('upload_not_cancellable');
       const now = new Date();
-      return tx.updateUpload(session, {
+      return tx.updateUpload(owner, {
         status: FileUploadSessionStatus.CANCELLED,
         cancelledAt: now,
         finalCleanupEligibleAt: academicContentFinalCleanupDeadline(
@@ -502,8 +502,11 @@ export class UnlinkAcademicContentAssetUseCase {
       )
         throw new NotFoundDomainException('Academic asset not found');
       const asset = await tx.softDeleteAsset(
-        command.assetId,
-        scope.schoolId,
+        {
+          assetId: command.assetId,
+          schoolId: scope.schoolId,
+          contentId: command.contentId,
+        },
         new Date(),
       );
       const remaining = await tx.countAcademicContentFileReferences(

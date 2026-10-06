@@ -119,7 +119,7 @@ describe('ACC cleanup worker', () => {
     const purgedUpdate = (
       tx.updateUpload.mock.calls as unknown as Array<
         [
-          { id: string; schoolId: string },
+          { uploadId: string; schoolId: string; contentId: string },
           {
             status: string;
             finalCleanupClaimedAt: Date;
@@ -131,6 +131,10 @@ describe('ACC cleanup worker', () => {
     expect(purgedUpdate.status).toBe(FileUploadSessionStatus.PURGED);
     expect(purgedUpdate.finalCleanupClaimedAt).toEqual(now);
     expect(purgedUpdate.finalObjectDeletedAt).toBeInstanceOf(Date);
+    expect(tx.updateUpload).toHaveBeenCalledWith(
+      { uploadId, schoolId, contentId },
+      expect.objectContaining({ status: FileUploadSessionStatus.PURGED }),
+    );
   });
 
   it('claims and deletes terminal orphan without creating a File or changing terminal state', async () => {
@@ -146,15 +150,24 @@ describe('ACC cleanup worker', () => {
     expect(storage.deleteObjectAndConfirmAbsent).toHaveBeenCalledTimes(1);
     expect(tx.softDeleteFile).not.toHaveBeenCalled();
     expect(tx.updateUpload).toHaveBeenCalledWith(
-      expect.objectContaining({ id: uploadId, schoolId }),
+      { uploadId, schoolId, contentId },
       { finalCleanupClaimedAt: now },
     );
     const evidenceUpdate = (
       tx.updateUpload.mock.calls as unknown as Array<
-        [{ id: string; schoolId: string }, { finalObjectDeletedAt?: Date }]
+        [
+          { uploadId: string; schoolId: string; contentId: string },
+          { finalObjectDeletedAt?: Date },
+        ]
       >
     )[1][1];
     expect(evidenceUpdate.finalObjectDeletedAt).toBeInstanceOf(Date);
+    expect(tx.updateUpload).toHaveBeenLastCalledWith(
+      { uploadId, schoolId, contentId },
+      expect.objectContaining({
+        finalObjectDeletedAt: expect.any(Date) as unknown,
+      }),
+    );
   });
 
   it('preserves a fresh terminal claim and recovers one older than the lease threshold', async () => {
@@ -197,9 +210,10 @@ describe('ACC cleanup worker', () => {
         claimedAt: now,
       });
       expect(tx.updateUpload).toHaveBeenCalledTimes(1);
-      expect(tx.updateUpload).toHaveBeenCalledWith(terminal, {
-        finalCleanupClaimedAt: now,
-      });
+      expect(tx.updateUpload).toHaveBeenCalledWith(
+        { uploadId, schoolId, contentId },
+        { finalCleanupClaimedAt: now },
+      );
       expect(tx.softDeleteFile).not.toHaveBeenCalled();
     },
   );
@@ -217,6 +231,42 @@ describe('ACC cleanup worker', () => {
     expect(tx.updateUpload).not.toHaveBeenCalled();
     expect(storage.deleteObjectAndConfirmAbsent).not.toHaveBeenCalled();
     expect(repository.releaseTerminalCleanupClaim).not.toHaveBeenCalled();
+  });
+
+  it('fails closed before File lock or deletion when a READY ACC parent is missing', async () => {
+    tx.lockUploadById.mockResolvedValue({
+      ...session,
+      purposeContextId: null,
+    });
+    await expect(worker.cleanUpload(uploadId, now)).rejects.toThrow(
+      'academic_content_cleanup_context_missing',
+    );
+    expect(tx.lockActiveFile).not.toHaveBeenCalled();
+    expect(tx.updateUpload).not.toHaveBeenCalled();
+    expect(tx.softDeleteFile).not.toHaveBeenCalled();
+    expect(storage.deleteObjectAndConfirmAbsent).not.toHaveBeenCalled();
+  });
+
+  it('fails closed before terminal finalization when the persisted parent is missing', async () => {
+    const terminal = {
+      ...session,
+      status: FileUploadSessionStatus.FAILED,
+      fileId: null,
+    };
+    tx.lockUploadById.mockResolvedValueOnce(terminal).mockResolvedValueOnce({
+      ...terminal,
+      purposeContextId: null,
+      finalCleanupClaimedAt: now,
+    });
+    await expect(worker.cleanUpload(uploadId, now)).rejects.toThrow(
+      'academic_content_cleanup_context_missing',
+    );
+    expect(tx.updateUpload).toHaveBeenCalledTimes(1);
+    expect(tx.updateUpload).toHaveBeenCalledWith(
+      { uploadId, schoolId, contentId },
+      { finalCleanupClaimedAt: now },
+    );
+    expect(tx.softDeleteFile).not.toHaveBeenCalled();
   });
 
   it('ignores tenant/resource fields supplied in queue data when releasing a claim', async () => {

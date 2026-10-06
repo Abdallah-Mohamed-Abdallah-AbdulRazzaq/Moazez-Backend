@@ -419,7 +419,7 @@ describe('ACC completion and cancellation', () => {
     const readyUpdate = (
       tx.updateUpload.mock.calls as unknown as Array<
         [
-          { id: string; schoolId: string },
+          { uploadId: string; schoolId: string; contentId: string },
           {
             status: string;
             verifiedMimeType: string;
@@ -434,6 +434,11 @@ describe('ACC completion and cancellation', () => {
       verificationVersion: 'academic-content-bounded-v1',
     });
     expect(tx.recordCompletedAudit).toHaveBeenCalledTimes(1);
+    for (const [identity] of tx.updateUpload.mock.calls as unknown as Array<
+      [{ uploadId: string; schoolId: string; contentId: string }]
+    >) {
+      expect(identity).toMatchObject({ uploadId, schoolId, contentId });
+    }
   });
 
   it('returns READY relationship without re-verifying or creating duplicates', async () => {
@@ -502,13 +507,17 @@ describe('ACC completion and cancellation', () => {
     const cancelUpdate = (
       tx.updateUpload.mock.calls as unknown as Array<
         [
-          { id: string; schoolId: string },
+          { uploadId: string; schoolId: string; contentId: string },
           { status: string; finalCleanupEligibleAt: Date },
         ]
       >
     )[0][1];
     expect(cancelUpdate.status).toBe(FileUploadSessionStatus.CANCELLED);
     expect(cancelUpdate.finalCleanupEligibleAt).toEqual(capabilityExpiresAt);
+    expect(tx.updateUpload).toHaveBeenCalledWith(
+      expect.objectContaining({ uploadId, schoolId, contentId }),
+      expect.objectContaining({ status: FileUploadSessionStatus.CANCELLED }),
+    );
     tx.lockUpload.mockResolvedValueOnce({
       ...base,
       status: FileUploadSessionStatus.READY,
@@ -529,7 +538,7 @@ describe('ACC completion and cancellation', () => {
       withManager(() => complete.execute({ contentId, uploadId })),
     ).rejects.toMatchObject({ code: 'academic_content.file.upload_expired' });
     expect(tx.updateUpload).toHaveBeenCalledWith(
-      expect.objectContaining({ id: uploadId, schoolId }),
+      expect.objectContaining({ uploadId, schoolId, contentId }),
       {
         status: FileUploadSessionStatus.EXPIRED,
         finalCleanupEligibleAt: capabilityExpiresAt,
