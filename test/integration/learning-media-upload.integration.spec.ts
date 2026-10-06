@@ -1144,6 +1144,14 @@ describe('learning media PostgreSQL lifecycle', () => {
         status: fixture.status,
         expectedMimeType: fixture.mimeType ?? 'video/mp4',
       });
+      if (fixture.status === FileUploadSessionStatus.PURGED) {
+        // Model an existing upload reference followed by File soft deletion.
+        const purgedFile = await prisma.file.update({
+          where: { id: data.fileId! },
+          data: { deletedAt: new Date() },
+        });
+        expect(purgedFile.deletedAt).toBeInstanceOf(Date);
+      }
     }
     expect(cases).toHaveLength(20);
   });
@@ -1599,7 +1607,6 @@ describe('learning media PostgreSQL lifecycle', () => {
             mimeType,
             sizeBytes: 1n,
             ...(isReady || isPurged ? { checksumSha256: 'c'.repeat(64) } : {}),
-            ...(isPurged ? { deletedAt: new Date() } : {}),
           },
         })
       : null;
