@@ -21,6 +21,7 @@ import {
   setActiveMembership,
 } from '../../src/common/context/request-context';
 import { AcademicContentPublicationNotificationRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-publication-notification.repository';
+import { AcademicContentNotificationPolicyRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-notification-policy.repository';
 import { AcademicContentPublicationNotificationService } from '../../src/modules/academics/academic-content/application/academic-content-publication-notification.service';
 import { CommunicationNotificationGenerationRepository } from '../../src/modules/communication/infrastructure/communication-notification-generation.repository';
 import { CommunicationNotificationGenerationService } from '../../src/modules/communication/application/communication-notification-generation.service';
@@ -283,6 +284,7 @@ describeDatabase(
         await prisma.communicationNotificationDelivery.deleteMany({ where });
         await prisma.communicationNotification.deleteMany({ where });
         await prisma.communicationNotificationPreference.deleteMany({ where });
+        await prisma.auditLog.deleteMany({ where });
         await prisma.academicContentNotificationPolicy.deleteMany({ where });
         await prisma.academicContentAudienceRecipient.deleteMany({ where });
         await prisma.academicContentPublication.deleteMany({ where });
@@ -572,6 +574,237 @@ describeDatabase(
         }
       },
     );
+
+    function holdActorRow() {
+      let release = () => {};
+      let acquired: (pid: number) => void = () => {};
+      let failed: (error: unknown) => void = () => {};
+      const entered = new Promise<number>((resolve, reject) => {
+        acquired = resolve;
+        failed = reject;
+      });
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const completed = second.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`SELECT id FROM users WHERE id = ${actorId}::uuid FOR UPDATE`;
+          const [row] = await tx.$queryRaw<
+            Array<{ pid: number }>
+          >`SELECT pg_backend_pid() AS pid`;
+          acquired(row.pid);
+          await gate;
+        },
+        { timeout: 15000 },
+      );
+      void completed.catch(failed);
+      return { entered, completed, release: () => release() };
+    }
+
+    async function waitingBehind(blockerPid: number, queryFragment: string) {
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        const rows = await observer.$queryRaw<Array<{ pid: number }>>`
+          SELECT DISTINCT a.pid FROM pg_stat_activity a JOIN pg_locks l ON l.pid = a.pid
+          WHERE NOT l.granted AND ${blockerPid} = ANY(pg_blocking_pids(a.pid))
+            AND a.query LIKE ${'%' + queryFragment + '%'}`;
+        if (rows.length === 1) return rows[0].pid;
+      }
+      throw new Error(`Expected PostgreSQL lock dependency: ${queryFragment}`);
+    }
+
+    const disablePolicy = () =>
+      new AcademicContentNotificationPolicyRepository(observer).updatePolicy({
+        schoolId,
+        organizationId,
+        actorId,
+        patch: { notificationsEnabled: false },
+      });
+
+    async function writerWaitingAtSchool(generationPid: number) {
+      const writerPid = await waitingBehind(generationPid, 'FOR KEY SHARE');
+      const policyLocks = await observer.$queryRaw<Array<{ pid: number }>>`
+        SELECT pid FROM pg_locks WHERE pid = ${writerPid}
+          AND relation = 'academic_content_notification_policies'::regclass`;
+      expect(policyLocks).toHaveLength(0);
+    }
+
+    it('G12 missing-policy generation first blocks real policy creation until notification persistence commits', async () => {
+      const input = await publication();
+      expect(
+        await prisma.academicContentNotificationPolicy.count({
+          where: { schoolId },
+        }),
+      ).toBe(0);
+      const actor = holdActorRow();
+      const actorPid = await actor.entered;
+      const generation = scoped(() => adapter().generate(input, now));
+      let writer: ReturnType<typeof disablePolicy> | undefined;
+      let writerCommitted = false;
+      try {
+        // The real Notification actor FK holds generation after authorization,
+        // while its School UPDATE lock still protects absent-policy persistence.
+        const generationPid = await waitingBehind(
+          actorPid,
+          'communication_notifications',
+        );
+        writer = disablePolicy().then((result) => {
+          writerCommitted = true;
+          return result;
+        });
+        await writerWaitingAtSchool(generationPid);
+        expect(writerCommitted).toBe(false);
+        expect(
+          await prisma.academicContentNotificationPolicy.count({
+            where: { schoolId },
+          }),
+        ).toBe(0);
+        actor.release();
+        await actor.completed;
+        expect(await generation).toMatchObject({ createdNotificationCount: 4 });
+        expect(await writer).toMatchObject({ notificationsEnabled: false });
+        expect(await notifications(input.publicationId)).toHaveLength(4);
+        expect(realtime).toHaveBeenCalledTimes(4);
+        expect(enqueuePush).toHaveBeenCalledTimes(4);
+      } finally {
+        actor.release();
+        await Promise.allSettled([
+          actor.completed,
+          generation,
+          ...(writer ? [writer] : []),
+        ]);
+      }
+    });
+
+    it('G12 missing-policy writer first makes generation wait and observe the disabled committed policy', async () => {
+      const input = await publication();
+      expect(
+        await prisma.academicContentNotificationPolicy.count({
+          where: { schoolId },
+        }),
+      ).toBe(0);
+      const actor = holdActorRow();
+      const actorPid = await actor.entered;
+      const writer = disablePolicy();
+      let generation:
+        | ReturnType<AcademicContentPublicationNotificationService['generate']>
+        | undefined;
+      try {
+        // The actual writer owns School KEY SHARE before policy creation.
+        // The real audit actor FK is a database barrier before writer commit.
+        const writerPid = await waitingBehind(actorPid, 'audit_logs');
+        generation = scoped(() => adapter().generate(input, now));
+        await waitingBehind(writerPid, 'FROM schools');
+        expect(await notifications(input.publicationId)).toHaveLength(0);
+        actor.release();
+        await actor.completed;
+        expect(await writer).toMatchObject({ notificationsEnabled: false });
+        expect(await generation).toMatchObject({
+          createdNotificationCount: 0,
+          recipientCount: 0,
+        });
+        expect(await notifications(input.publicationId)).toHaveLength(0);
+        expect(
+          await prisma.communicationNotificationDelivery.count({
+            where: { notification: { sourceId: input.publicationId } },
+          }),
+        ).toBe(0);
+        expect(realtime).not.toHaveBeenCalled();
+        expect(enqueuePush).not.toHaveBeenCalled();
+      } finally {
+        actor.release();
+        await Promise.allSettled([
+          actor.completed,
+          writer,
+          ...(generation ? [generation] : []),
+        ]);
+      }
+    });
+
+    it('G12 existing-policy generation first blocks the real writer at School before policy mutation', async () => {
+      const input = await publication();
+      await prisma.academicContentNotificationPolicy.create({
+        data: { schoolId },
+      });
+      const actor = holdActorRow();
+      const actorPid = await actor.entered;
+      const generation = scoped(() => adapter().generate(input, now));
+      let writer: ReturnType<typeof disablePolicy> | undefined;
+      let writerCommitted = false;
+      try {
+        const generationPid = await waitingBehind(
+          actorPid,
+          'communication_notifications',
+        );
+        writer = disablePolicy().then((result) => {
+          writerCommitted = true;
+          return result;
+        });
+        await writerWaitingAtSchool(generationPid);
+        expect(writerCommitted).toBe(false);
+        expect(
+          await prisma.academicContentNotificationPolicy.findUnique({
+            where: { schoolId },
+            select: { notificationsEnabled: true },
+          }),
+        ).toEqual({ notificationsEnabled: true });
+        actor.release();
+        await actor.completed;
+        expect(await generation).toMatchObject({ createdNotificationCount: 4 });
+        expect(await writer).toMatchObject({ notificationsEnabled: false });
+        expect(await notifications(input.publicationId)).toHaveLength(4);
+        expect(realtime).toHaveBeenCalledTimes(4);
+        expect(enqueuePush).toHaveBeenCalledTimes(4);
+      } finally {
+        actor.release();
+        await Promise.allSettled([
+          actor.completed,
+          generation,
+          ...(writer ? [writer] : []),
+        ]);
+      }
+    });
+
+    it('G12 existing-policy writer first makes generation wait at School and observe the disabled committed policy', async () => {
+      const input = await publication();
+      await prisma.academicContentNotificationPolicy.create({
+        data: { schoolId },
+      });
+      const actor = holdActorRow();
+      const actorPid = await actor.entered;
+      const writer = disablePolicy();
+      let generation:
+        | ReturnType<AcademicContentPublicationNotificationService['generate']>
+        | undefined;
+      try {
+        const writerPid = await waitingBehind(actorPid, 'audit_logs');
+        generation = scoped(() => adapter().generate(input, now));
+        await waitingBehind(writerPid, 'FROM schools');
+        expect(await notifications(input.publicationId)).toHaveLength(0);
+        actor.release();
+        await actor.completed;
+        expect(await writer).toMatchObject({ notificationsEnabled: false });
+        expect(await generation).toMatchObject({
+          createdNotificationCount: 0,
+          recipientCount: 0,
+        });
+        expect(await notifications(input.publicationId)).toHaveLength(0);
+        expect(
+          await prisma.communicationNotificationDelivery.count({
+            where: { notification: { sourceId: input.publicationId } },
+          }),
+        ).toBe(0);
+        expect(realtime).not.toHaveBeenCalled();
+        expect(enqueuePush).not.toHaveBeenCalled();
+      } finally {
+        actor.release();
+        await Promise.allSettled([
+          actor.completed,
+          writer,
+          ...(generation ? [generation] : []),
+        ]);
+      }
+    });
 
     it('uses immutable revision and audience, skips opt-outs/null/inactive/deleted/wrong-type contexts, and preserves preferences', async () => {
       const input = await publication();

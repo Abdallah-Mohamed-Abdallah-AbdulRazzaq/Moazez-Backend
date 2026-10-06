@@ -183,7 +183,9 @@ export class AcademicContentPublicationNotificationRepository {
     // Same parent/exact-publication order as cancel, expire and revision start.
     await tx.$queryRaw`SELECT id FROM academic_contents WHERE id = ${identity.contentId}::uuid AND school_id = ${identity.schoolId}::uuid AND deleted_at IS NULL FOR UPDATE`;
     await tx.$queryRaw`SELECT id FROM academic_content_publications WHERE id = ${identity.publicationId}::uuid AND school_id = ${identity.schoolId}::uuid AND academic_content_id = ${identity.contentId}::uuid FOR UPDATE`;
-    await tx.$queryRaw`SELECT s.id FROM schools s JOIN organizations o ON o.id = s.organization_id WHERE s.id = ${identity.schoolId}::uuid FOR SHARE OF s, o`;
+    // Protect policy absence against the School FK's KEY SHARE lock on insert.
+    await tx.$queryRaw`SELECT id FROM schools WHERE id = ${identity.schoolId}::uuid FOR UPDATE`;
+    await tx.$queryRaw`SELECT o.id FROM organizations o JOIN schools s ON s.organization_id = o.id WHERE s.id = ${identity.schoolId}::uuid FOR SHARE OF o`;
     await tx.$queryRaw`SELECT id FROM academic_content_notification_policies WHERE school_id = ${identity.schoolId}::uuid FOR SHARE`;
   }
 
