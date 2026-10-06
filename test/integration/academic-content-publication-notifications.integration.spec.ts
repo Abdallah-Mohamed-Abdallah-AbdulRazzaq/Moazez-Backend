@@ -248,7 +248,18 @@ describeDatabase(
           ).id,
         );
       }
-      // No current Student/Guardian links or school memberships: only the frozen snapshot authorizes notification targeting.
+      // Frozen audience remains authoritative; current links/accounts prove eligibility at persistence.
+      for (let i = 3; i < 9; i++) {
+        await prisma.student.update({
+          where: { id: studentIds[i] },
+          data: { userId: accountIds[i - 2] },
+        });
+      }
+      await prisma.studentGuardian.createMany({
+        data: studentIds
+          .slice(0, 3)
+          .map((studentId) => ({ schoolId, studentId, guardianId })),
+      });
     });
     beforeEach(async () => {
       realtime.mockClear();
@@ -277,6 +288,7 @@ describeDatabase(
         await prisma.academicContentPublication.deleteMany({ where });
         await prisma.academicContentRevision.deleteMany({ where });
         await prisma.academicContent.deleteMany({ where });
+        await prisma.studentGuardian.deleteMany({ where });
         await prisma.enrollment.deleteMany({ where });
         await prisma.student.deleteMany({ where });
         await prisma.guardian.deleteMany({ where });
@@ -404,6 +416,162 @@ describeDatabase(
         orderBy: { recipientUserId: 'asc' },
         include: { deliveries: true },
       });
+
+    async function predecessor(input: Awaited<ReturnType<typeof publication>>) {
+      const current = await prisma.academicContentPublication.findUniqueOrThrow(
+        {
+          where: { id: input.publicationId },
+        },
+      );
+      return prisma.academicContentPublication.create({
+        data: {
+          schoolId,
+          academicContentId: current.academicContentId,
+          revisionId: current.revisionId,
+          clientRequestId: randomUUID(),
+          requestFingerprint: randomBytes(32).toString('hex'),
+          sourceContentStatus: 'DRAFT',
+          status: PublicationStatus.EXPIRED,
+          publishAt: now,
+          visibleFrom: now,
+          publishedAt: now,
+          expiredAt: now,
+          createdByUserId: actorId,
+        },
+      });
+    }
+
+    it.each([
+      'publication',
+      'school',
+      'user',
+      'enrollment',
+      'policy',
+      'update-policy',
+      'event',
+    ])(
+      'G12 reauthorizes %s after candidate discovery at the PostgreSQL advisory barrier',
+      async (change) => {
+        const input = await publication();
+        if (change === 'update-policy') {
+          const previous = await predecessor(input);
+          await prisma.academicContentPublication.update({
+            where: { id: input.publicationId },
+            data: {
+              supersedesPublicationId: previous.id,
+              changeSignificance: 'SIGNIFICANT',
+            },
+          });
+        }
+        const lockKey = `communication:academics-notifications:${schoolId}:${input.publicationId}`;
+        let acquired = () => {},
+          release = () => {};
+        const entered = new Promise<void>((resolve) => {
+          acquired = resolve;
+        });
+        const gate = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const blocker = second.$transaction(
+          async (tx) => {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+            acquired();
+            await gate;
+          },
+          { timeout: 15000 },
+        );
+        await entered;
+        const generation = scoped(() => adapter().generate(input, now));
+        try {
+          let waiting = false;
+          const deadline = Date.now() + 5000;
+          while (!waiting && Date.now() < deadline) {
+            const rows = await observer.$queryRaw<
+              Array<{ waiting: boolean }>
+            >`SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND NOT granted AND objid = (hashtextextended(${lockKey}, 0) & 4294967295)::oid AND classid = ((hashtextextended(${lockKey}, 0) >> 32) & 4294967295)::oid) AS waiting`;
+            waiting = rows[0].waiting;
+          }
+          // Database lock state proves discovery completed; elapsed time is only a failure bound.
+          expect(waiting).toBe(true);
+          if (change === 'publication')
+            await observer.academicContentPublication.update({
+              where: { id: input.publicationId },
+              data: {
+                status: PublicationStatus.EXPIRED,
+                expiredAt: new Date(),
+              },
+            });
+          if (change === 'school')
+            await observer.school.update({
+              where: { id: schoolId },
+              data: { status: SchoolStatus.SUSPENDED },
+            });
+          if (change === 'user')
+            await observer.user.update({
+              where: { id: accountIds[1] },
+              data: { status: UserStatus.DISABLED },
+            });
+          if (change === 'enrollment')
+            await observer.enrollment.update({
+              where: { id: enrollmentIds[3] },
+              data: { status: 'WITHDRAWN' },
+            });
+          if (change === 'policy' || change === 'update-policy')
+            await observer.academicContentNotificationPolicy.create({
+              data: {
+                schoolId,
+                ...(change === 'policy'
+                  ? { generalResourceNotificationsEnabled: false }
+                  : { significantUpdateNotificationsEnabled: false }),
+              },
+            });
+          if (change === 'event') {
+            const previous = await predecessor(input);
+            await observer.academicContentPublication.update({
+              where: { id: input.publicationId },
+              data: {
+                supersedesPublicationId: previous.id,
+                changeSignificance: 'SIGNIFICANT',
+              },
+            });
+          }
+        } finally {
+          release();
+          await Promise.allSettled([blocker, generation]);
+        }
+        try {
+          await blocker;
+          const result = await generation;
+          const rows = await notifications(input.publicationId);
+          if (change === 'user' || change === 'enrollment') {
+            expect(rows).toHaveLength(3);
+            expect(
+              rows.some((row) => row.recipientUserId === accountIds[1]),
+            ).toBe(false);
+            expect(rows.every((row) => row.deliveries.length === 2)).toBe(true);
+          } else {
+            expect(result.createdNotificationCount).toBe(0);
+            expect(rows).toHaveLength(0);
+            expect(
+              await prisma.communicationNotificationDelivery.count({
+                where: { notification: { sourceId: input.publicationId } },
+              }),
+            ).toBe(0);
+            expect(realtime).not.toHaveBeenCalled();
+            expect(enqueuePush).not.toHaveBeenCalled();
+          }
+        } finally {
+          await prisma.user.update({
+            where: { id: accountIds[1] },
+            data: { status: UserStatus.ACTIVE },
+          });
+          await prisma.enrollment.update({
+            where: { id: enrollmentIds[3] },
+            data: { status: 'ACTIVE' },
+          });
+        }
+      },
+    );
 
     it('uses immutable revision and audience, skips opt-outs/null/inactive/deleted/wrong-type contexts, and preserves preferences', async () => {
       const input = await publication();
@@ -566,13 +734,13 @@ describeDatabase(
       let failSecondBatch = true;
       jest
         .spyOn(generation, 'generateForAcademicContentPublicationBatch')
-        .mockImplementation(async (batch) => {
+        .mockImplementation(async (batch, authorize) => {
           sizes.push(batch.recipients.length);
           if (sizes.length === 2 && failSecondBatch) {
             failSecondBatch = false;
             throw new Error('controlled_second_batch_failure');
           }
-          return persist(batch);
+          return persist(batch, authorize);
         });
       const service = new AcademicContentPublicationNotificationService(
         new AcademicContentPublicationNotificationRepository(prisma),

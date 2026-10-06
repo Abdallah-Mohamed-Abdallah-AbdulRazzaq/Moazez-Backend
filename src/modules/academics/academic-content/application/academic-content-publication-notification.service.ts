@@ -483,6 +483,7 @@ export class AcademicContentPublicationNotificationService {
     input: CommunicationAcademicContentNotificationGenerationJobData,
     now = new Date(),
   ) {
+    const executionNow = () => new Date(Math.max(Date.now(), now.getTime()));
     const source = await this.repository.findSource(input, now);
     if (
       !source ||
@@ -595,18 +596,132 @@ export class AcademicContentPublicationNotificationService {
           ];
         });
       const result =
-        await this.generation.generateForAcademicContentPublicationBatch({
-          ...publicationNotificationJobData(source),
-          eventType,
-          title:
-            eventType === 'academic_content_updated'
-              ? 'Academic content updated'
-              : 'New academic content',
-          body: source.revision.title.trim(),
-          expiresAt: source.visibleUntil,
-          recipients,
-          now,
-        });
+        await this.generation.generateForAcademicContentPublicationBatch(
+          {
+            ...publicationNotificationJobData(source),
+            eventType,
+            title:
+              eventType === 'academic_content_updated'
+                ? 'Academic content updated'
+                : 'New academic content',
+            body: source.revision.title.trim(),
+            expiresAt: source.visibleUntil,
+            recipients,
+            now,
+          },
+          async (tx) => {
+            // Communication owns the advisory generation lock; Academics owns
+            // source/policy/audience authorization in that same transaction.
+            await this.repository.lockLaterSource(tx, input);
+            const authorizedAt = executionNow();
+            const current = await this.repository.findSource(
+              input,
+              authorizedAt,
+              tx,
+            );
+            if (
+              !current ||
+              current.school.organizationId !== input.organizationId ||
+              current.revision.id !== current.revisionId ||
+              current.revision.schoolId !== current.schoolId ||
+              current.revision.academicContentId !==
+                current.academicContentId ||
+              !current.publishedAt ||
+              academicContentPublicationNotificationEvent(current) !== eventType
+            )
+              return null;
+            const currentPolicy = effectiveAcademicContentNotificationPolicy(
+              await this.repository.findPolicyInTransaction(
+                tx,
+                current.schoolId,
+              ),
+            );
+            if (
+              !publishedNotificationPolicyAllows(
+                current.revision.type,
+                currentPolicy,
+              ) ||
+              (eventType === 'academic_content_updated' &&
+                !currentPolicy.significantUpdateNotificationsEnabled)
+            )
+              return null;
+            const authorizedContexts = new Map<
+              string,
+              { studentIds: Set<string>; contextCount: number }
+            >();
+            const candidateIds = recipients.map(
+              (recipient) => recipient.recipientUserId,
+            );
+            let cursor: string | undefined;
+            while (true) {
+              const page = await this.repository.listCurrentLaterContexts(
+                tx,
+                current,
+                candidateIds,
+                cursor,
+                true,
+              );
+              for (const context of page.contexts) {
+                if (
+                  !isUUID(context.studentId) ||
+                  !publishedNotificationContextAllows(
+                    { ...context, guardianCanReceiveNotifications: null },
+                    {
+                      status: 'ACTIVE',
+                      deletedAt: null,
+                      userType:
+                        context.recipientKind === 'STUDENT'
+                          ? 'STUDENT'
+                          : 'PARENT',
+                    },
+                    currentPolicy,
+                    current.revision.audience,
+                  )
+                )
+                  continue;
+                const value = authorizedContexts.get(
+                  context.recipientUserId,
+                ) ?? { studentIds: new Set<string>(), contextCount: 0 };
+                value.studentIds.add(context.studentId);
+                value.contextCount++;
+                authorizedContexts.set(context.recipientUserId, value);
+              }
+              if (!page.next) break;
+              cursor = page.next;
+            }
+            return {
+              ...publicationNotificationJobData(current),
+              eventType,
+              title:
+                eventType === 'academic_content_updated'
+                  ? 'Academic content updated'
+                  : 'New academic content',
+              body: current.revision.title.trim(),
+              expiresAt: current.visibleUntil,
+              now: authorizedAt,
+              recipients: candidateIds.flatMap((recipientUserId) => {
+                const value = authorizedContexts.get(recipientUserId);
+                return value?.studentIds.size
+                  ? [
+                      {
+                        recipientUserId,
+                        metadata: {
+                          academicContentId: current.academicContentId,
+                          publicationId: current.id,
+                          revisionId: current.revisionId,
+                          contentType: current.revision.type.toLowerCase(),
+                          eventType,
+                          publishedAt: current.publishedAt!.toISOString(),
+                          studentIds: [...value.studentIds].sort(),
+                          childContextCount: value.contextCount,
+                        },
+                      },
+                    ]
+                  : [];
+              }),
+            };
+          },
+        );
       recipientCount += result.recipientCount;
       createdNotificationCount += result.createdNotificationCount;
       if (userIds.length < ACADEMIC_CONTENT_NOTIFICATION_RECIPIENT_PAGE_SIZE)

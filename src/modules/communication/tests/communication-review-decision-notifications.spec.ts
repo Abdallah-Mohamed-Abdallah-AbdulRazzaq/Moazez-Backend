@@ -291,6 +291,11 @@ describe('ACC-9E review decision Communication contracts', () => {
               recipientUser: { userType },
             },
           } as unknown as CommunicationPushDeliveryForProcessing),
+        findCurrentDeliveryEligibility: jest.fn().mockResolvedValue({
+          status: 'PENDING',
+          errorCode: null,
+          ineligibilityCode: null,
+        }),
         updateDeliveryStatus: jest.fn(),
         ensurePendingAttempts: jest.fn(),
         listAttemptsForDelivery: jest.fn().mockResolvedValue([]),

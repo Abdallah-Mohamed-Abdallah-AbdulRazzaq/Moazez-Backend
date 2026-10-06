@@ -284,6 +284,7 @@ describe('ACC push surface isolation', () => {
         channel: Channel.PUSH,
         status: DeliveryStatus.PENDING,
         provider: 'firebase_fcm',
+        errorCode: null,
         createdAt: new Date(),
         notification: {
           id: randomUUID(),
@@ -306,6 +307,11 @@ describe('ACC push surface isolation', () => {
       const service = new CommunicationNotificationPushDeliveryService(
         {
           findCurrentSchoolPushDeliveryForProcessing: find,
+          findCurrentDeliveryEligibility: jest.fn().mockResolvedValue({
+            status: DeliveryStatus.PENDING,
+            errorCode: null,
+            ineligibilityCode: null,
+          }),
           ensurePendingAttempts: jest.fn(),
           listAttemptsForDelivery: jest.fn().mockResolvedValue([]),
           updateDeliveryStatus: update,
