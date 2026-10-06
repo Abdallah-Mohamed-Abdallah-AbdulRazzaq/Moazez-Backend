@@ -351,11 +351,10 @@ directly protects these objects against PostgreSQL.
 Outside explicitly documented compatibility migrations, no committed
 incremental migration contains unreviewed data backfills or other DML.
 
-No committed migration or current schema contains:
+Outside the explicitly inventoried custom SQL in this document, no committed migration or current schema contains:
 
 - extensions;
-- functions or procedures other than the explicitly inventoried immutable
-  `normalize_learning_media_original_name` compatibility function;
+- functions or procedures;
 - triggers;
 - views or materialized views;
 - expression indexes;
@@ -439,3 +438,73 @@ CANCELLED rows are deterministically backfilled: null publishedAt => UNSCHEDULED
 non-null publishedAt => WITHDRAWN. No old row is assigned REVISION_STARTED. No revision,
 audience, or Communication history is rewritten. Fresh replay, catalog assertions,
 raw rejection tests, and a 23-to-24 historical fixture rehearse this migration.
+
+## ACC-9F-R4 shared File lifetime integrity
+
+Migration `20261006155322_file_live_reference_integrity` adds one function,
+`public.enforce_live_file_reference()`, and 22 row triggers. Prisma cannot
+express the referenced File's `deleted_at IS NULL` predicate or its required
+`FOR KEY SHARE` serialization lock. There are no schema columns, indexes,
+backfills, or destructive data changes.
+
+Each trigger runs BEFORE INSERT OR UPDATE OF its exact File FK column. The
+function reads the column through migration-owned static `TG_ARGV` metadata;
+it uses no dynamic SQL. Null references and unchanged FK values return NEW.
+A new nonnull link locks the exact live `public.files` row FOR KEY SHARE or
+raises SQLSTATE 23503 with a constant message containing no File ID or object
+coordinates. ACC READY cleanup retains its exact School/File FOR UPDATE lock,
+which conflicts with that KEY SHARE lock. Linker-first cleanup waits and then
+sees the retained child; cleanup-first stale linking fails after soft deletion.
+
+| Physical File reference | Retention contract |
+| --- | --- |
+| SchoolProfile.logoFileId | Any persisted FK |
+| ApplicationDocument.fileId | Any persisted FK |
+| ApplicantAdmissionRequestDocument.fileId | Any persisted FK |
+| AcademicContentAsset.fileId | Only `deletedAt IS NULL` |
+| AcademicContentRevisionAsset.fileId | Any persisted FK, including history |
+| LessonContentItem.fileId | Any persisted FK |
+| TeacherProfile.avatarFileId | Any persisted FK |
+| Student.avatarFileId | Any persisted FK |
+| StudentCredentialBatch.secretArtifactFileId | Any persisted FK |
+| StudentDocument.fileId | Any persisted FK |
+| HomeworkSubmissionAttachment.fileId | Any persisted FK |
+| HomeworkAssignmentAttachment.fileId | Any persisted FK |
+| ReinforcementSubmission.proofFileId | Any persisted FK |
+| RewardCatalogItem.imageFileId | Any persisted FK |
+| HeroBadge.fileId | Any persisted FK |
+| CommunicationConversation.avatarFileId | Any persisted FK |
+| CommunicationMessageAttachment.fileId | Any persisted FK |
+| CommunicationAnnouncement.imageFileId | Any persisted FK |
+| CommunicationAnnouncementAttachment.fileId | Any persisted FK |
+| Attachment.fileId | Any persisted FK |
+| ImportJob.uploadedFileId | Any persisted FK |
+| FileUploadSession.fileId | Trigger guarded; upload provenance does not retain |
+
+The Files-owned helper `hasRetainedFileReferences(tx, fileId)` uses one
+parameterized EXISTS/UNION ALL query over the 21 consumer relations inside the
+caller's transaction. Integrity operates on globally unique File identity,
+without a School filter that could hide a corrupt cross-School FK. External
+soft deletion alone does not release its File. `StudentDocument.sourceFileId`
+is logical provenance; deprecated `SchoolEmailTemplate.logoFileId` is ignored.
+Neither has a physical File relation or new lifetime semantics.
+
+The function uses SECURITY INVOKER and a fixed `pg_catalog` search path with
+fully qualified `public.files`. Function execution is revoked from PUBLIC.
+The Migration role owns DDL creation; existing runtime SELECT/UPDATE privileges
+suffice for the triggered read/row lock. Runtime roles gain no CREATE, TRIGGER,
+schema ownership, or migration privilege. PostgreSQL invokes the installed
+trigger during normal DML without granting runtime trigger-creation rights.
+
+Protecting tests: `file-lifetime.inventory.spec.ts` compares current schema,
+Prisma relation metadata, the complete physical inventory and actual retention
+query. `file-lifetime-integrity.integration.spec.ts` inspects migrated FK/trigger
+catalogs, normal nullable/required/ACC/upload writes, rejected soft-deleted
+links, retained Attachment/StudentDocument/revision links, true orphan cleanup,
+and both deterministic G13 schedules. Fresh replay/status/seed/build/second
+deploy and G01/G03/G04/G05 protect migration and runtime compatibility.
+
+Applied migration SQL is immutable. Rollback must use a reviewed compatible
+forward fix or an approved isolated restore. Removing the triggers would reopen
+the stale-link race; removing the shared guard would reopen existing-reference
+data loss. This migration does not purge pre-existing corrupt references.

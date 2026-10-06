@@ -1160,11 +1160,15 @@ describe('Lesson Content publication atomicity and parent-state locking', () => 
 
   describe('FILE validity and locking', () => {
     it('rejects publish when the DRAFT File is already soft-deleted', async () => {
-      const file = await createFile(ids.schoolId, true);
+      const file = await createFile(ids.schoolId, false);
       const item = await createContent(LessonContentPublicationStatus.DRAFT, {
         type: LessonContentItemType.FILE,
         bodyText: null,
         fileId: file.id,
+      });
+      await prisma.file.update({
+        where: { id: file.id },
+        data: { deletedAt: new Date() },
       });
       await expect(
         inScope(() => publishUseCase.execute(pathFor(item.id))),
@@ -1832,7 +1836,6 @@ describe('Lesson Content publication atomicity and parent-state locking', () => 
         mimeType: 'application/pdf',
         sizeBytes: 1024n,
         visibility: FileVisibility.PRIVATE,
-        deletedAt: deleted ? new Date() : null,
       },
     });
     await prisma.fileUploadSession.create({
@@ -1869,6 +1872,13 @@ describe('Lesson Content publication atomicity and parent-state locking', () => 
         createdAt: now,
       },
     });
+    // Upload provenance is written against a live File before this fixture
+    // models its later soft deletion.
+    if (deleted)
+      return prisma.file.update({
+        where: { id: file.id },
+        data: { deletedAt: new Date() },
+      });
     return file;
   }
 

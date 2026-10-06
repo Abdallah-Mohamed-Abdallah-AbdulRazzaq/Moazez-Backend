@@ -1594,7 +1594,6 @@ async function seedProductionModels(
         'deleted.csv',
         'text/csv',
       ),
-      deletedAt: old,
     },
   });
   const deletedImportJobId = id();
@@ -1607,6 +1606,11 @@ async function seedProductionModels(
       status: ImportJobStatus.PROCESSING,
       updatedAt: old,
     },
+  });
+  // Retain an existing deleted-File job without inserting a new stale FK.
+  await prisma.file.update({
+    where: { id: deletedImportFileId },
+    data: { deletedAt: old },
   });
 
   const learningUploadId = id();
