@@ -44,6 +44,8 @@ export class AcademicContentNotificationPolicyRepository {
       try {
         return await this.prisma.$transaction(
           async (tx) => {
+            // Serialize policy mutation before owning Policy or AuditLog FK locks.
+            await tx.$queryRaw`SELECT id FROM schools WHERE id = ${input.schoolId}::uuid FOR KEY SHARE`;
             const current =
               await tx.academicContentNotificationPolicy.findUnique({
                 where: { schoolId: input.schoolId },

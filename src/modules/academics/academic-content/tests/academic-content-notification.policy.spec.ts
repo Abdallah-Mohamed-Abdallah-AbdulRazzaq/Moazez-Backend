@@ -117,6 +117,7 @@ describe('ACC-8A notification policy contracts', () => {
     'retries %s and does not write or audit a default no-op',
     async (code) => {
       const tx = {
+        $queryRaw: jest.fn().mockResolvedValue([]),
         academicContentNotificationPolicy: {
           findUnique: jest.fn().mockResolvedValue(null),
           create: jest.fn(),

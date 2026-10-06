@@ -16,6 +16,307 @@ import {
 } from '../infrastructure/communication-notification-push.repository';
 
 describe('CommunicationNotificationPushDeliveryService', () => {
+  it('refuses Teacher review Push when the exact Membership becomes ineligible before dispatch', async () => {
+    const delivery = pushDeliveryRecord();
+    delivery.notification.sourceModule =
+      CommunicationNotificationSourceModule.ACADEMICS;
+    delivery.notification.sourceType = 'academic_content_approval';
+    delivery.notification.type =
+      CommunicationNotificationType.ACADEMIC_CONTENT_CHANGES_REQUESTED;
+    delivery.notification.recipientUser.userType = UserType.TEACHER;
+    const pushRepository = pushRepositoryMock({
+      findCurrentSchoolPushDeliveryForProcessing: jest
+        .fn()
+        .mockResolvedValue(delivery),
+      findCurrentDeliveryEligibility: jest
+        .fn()
+        .mockResolvedValueOnce({
+          status: 'PENDING',
+          errorCode: null,
+          ineligibilityCode: null,
+        })
+        .mockResolvedValueOnce({
+          status: 'PENDING',
+          errorCode: null,
+          ineligibilityCode: 'push/recipient-ineligible',
+        }),
+    });
+    const provider = firebasePushProviderMock();
+    expect(
+      await createService({
+        pushRepository,
+        firebasePushProvider: provider,
+      }).processDelivery({
+        schoolId: delivery.schoolId,
+        deliveryId: delivery.id,
+      }),
+    ).toMatchObject({ status: 'failed', sentCount: 0 });
+    expect(
+      (pushRepository as Record<string, jest.Mock>)
+        .findCurrentDeliveryEligibility,
+    ).toHaveBeenLastCalledWith({
+      schoolId: delivery.schoolId,
+      deliveryId: delivery.id,
+      recipientUserType: UserType.TEACHER,
+    });
+    expect(
+      (provider as Record<string, jest.Mock>).sendBatch,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('excludes a known success discovered after token preparation while another attempt remains unresolved', async () => {
+    const successful = {
+      deviceTokenId: 'device-token-1',
+      status: 'SENT',
+      errorCode: null,
+    };
+    const pending = {
+      deviceTokenId: 'device-token-2',
+      status: 'PENDING',
+      errorCode: null,
+    };
+    const pushRepository = pushRepositoryMock({
+      listAttemptsForDelivery: jest
+        .fn()
+        .mockResolvedValueOnce([{ ...successful, status: 'PENDING' }, pending])
+        .mockResolvedValueOnce([successful, pending])
+        .mockResolvedValueOnce([successful, { ...pending, status: 'SENT' }]),
+    });
+    const provider = firebasePushProviderMock({
+      sendBatch: jest
+        .fn()
+        .mockResolvedValue({ results: [{ tokenIndex: 0, status: 'sent' }] }),
+    });
+    await createService({
+      pushRepository,
+      firebasePushProvider: provider,
+    }).processDelivery({ schoolId: 'school-1', deliveryId: 'delivery-1' });
+    expect(
+      (provider as Record<string, jest.Mock>).sendBatch,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({ tokens: ['plain-token:ciphertext-2'] }),
+    );
+    expect(
+      (pushRepository as Record<string, jest.Mock>).recordAttemptResult,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      (pushRepository as Record<string, jest.Mock>).recordAttemptResult,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({ deviceTokenId: 'device-token-2' }),
+    );
+  });
+
+  it('dispatches valid review feedback using only the Teacher surface', async () => {
+    const delivery = pushDeliveryRecord();
+    delivery.notification.sourceModule =
+      CommunicationNotificationSourceModule.ACADEMICS;
+    delivery.notification.sourceType = 'academic_content_approval';
+    delivery.notification.type =
+      CommunicationNotificationType.ACADEMIC_CONTENT_APPROVED;
+    delivery.notification.recipientUser.userType = UserType.TEACHER;
+    const pushRepository = pushRepositoryMock({
+      findCurrentSchoolPushDeliveryForProcessing: jest
+        .fn()
+        .mockResolvedValue(delivery),
+    });
+    const tokens = appDeviceTokenRepositoryMock();
+    const provider = firebasePushProviderMock();
+    await createService({
+      pushRepository,
+      appDeviceTokenRepository: tokens,
+      firebasePushProvider: provider,
+    }).processDelivery({
+      schoolId: delivery.schoolId,
+      deliveryId: delivery.id,
+    });
+    expect(
+      (tokens as Record<string, jest.Mock>).listActiveCurrentSchoolUserTokens,
+    ).toHaveBeenCalledWith({
+      schoolId: delivery.schoolId,
+      userId: delivery.notification.recipientUserId,
+      appSurface: 'TEACHER',
+    });
+    expect(
+      (pushRepository as Record<string, jest.Mock>)
+        .findCurrentDeliveryEligibility,
+    ).toHaveBeenCalledTimes(2);
+    expect(
+      (provider as Record<string, jest.Mock>).sendBatch,
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { status: CommunicationNotificationDeliveryStatus.SENT, errorCode: null },
+    {
+      status: CommunicationNotificationDeliveryStatus.SKIPPED,
+      errorCode: 'push/dry-run',
+    },
+    {
+      status: CommunicationNotificationDeliveryStatus.FAILED,
+      errorCode: 'push/recipient-ineligible',
+    },
+    {
+      status: CommunicationNotificationDeliveryStatus.FAILED,
+      errorCode: 'push/recovery-window-expired',
+    },
+  ])(
+    'fences a late result against a newer terminal attempt $status / $errorCode',
+    async (state) => {
+      const updateMany = jest.fn();
+      const client = {
+        communicationNotificationDelivery: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValue({ status: 'PENDING', errorCode: null }),
+        },
+        communicationNotificationPushAttempt: {
+          findFirst: jest.fn().mockResolvedValue(state),
+          updateMany,
+        },
+        $executeRaw: jest.fn().mockResolvedValue(0),
+      };
+      const repository = new CommunicationNotificationPushRepository({
+        scoped: client,
+      } as never);
+      await repository.recordAttemptResult({
+        schoolId: 'school-1',
+        deliveryId: 'delivery-1',
+        deviceTokenId: 'token-1',
+        status: CommunicationNotificationDeliveryStatus.SENT,
+        attemptedAt: new Date(),
+      });
+      expect(updateMany).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['push/tenant-ineligible', 'push/recipient-ineligible'])(
+    'fence A terminalizes %s before token lookup',
+    async (code) => {
+      const pushRepository = pushRepositoryMock({
+        findCurrentDeliveryEligibility: jest.fn().mockResolvedValue({
+          status: 'PENDING',
+          errorCode: null,
+          ineligibilityCode: code,
+        }),
+      });
+      const tokens = appDeviceTokenRepositoryMock();
+      const provider = firebasePushProviderMock();
+      await createService({
+        pushRepository,
+        appDeviceTokenRepository: tokens,
+        firebasePushProvider: provider,
+      }).processDelivery({ schoolId: 'school-1', deliveryId: 'delivery-1' });
+      expect(
+        (tokens as Record<string, jest.Mock>).listActiveCurrentSchoolUserTokens,
+      ).not.toHaveBeenCalled();
+      expect(
+        (pushRepository as Record<string, jest.Mock>).ensurePendingAttempts,
+      ).not.toHaveBeenCalled();
+      expect(
+        (provider as Record<string, jest.Mock>).sendBatch,
+      ).not.toHaveBeenCalled();
+      expect(
+        (pushRepository as Record<string, jest.Mock>).updateDeliveryStatus,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'FAILED', errorCode: code }),
+      );
+    },
+  );
+
+  it.each(['push/tenant-ineligible', 'push/recipient-ineligible'])(
+    'fence B terminalizes prepared attempts after %s without Firebase',
+    async (code) => {
+      const pushRepository = pushRepositoryMock({
+        findCurrentDeliveryEligibility: jest
+          .fn()
+          .mockResolvedValueOnce({
+            status: 'PENDING',
+            errorCode: null,
+            ineligibilityCode: null,
+          })
+          .mockResolvedValueOnce({
+            status: 'PENDING',
+            errorCode: null,
+            ineligibilityCode: code,
+          }),
+      });
+      const provider = firebasePushProviderMock();
+      await createService({
+        pushRepository,
+        firebasePushProvider: provider,
+      }).processDelivery({ schoolId: 'school-1', deliveryId: 'delivery-1' });
+      expect(
+        (pushRepository as Record<string, jest.Mock>).ensurePendingAttempts,
+      ).toHaveBeenCalled();
+      expect(
+        (provider as Record<string, jest.Mock>).sendBatch,
+      ).not.toHaveBeenCalled();
+      expect(
+        (pushRepository as Record<string, jest.Mock>).recordAttemptResult,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'FAILED', errorCode: code }),
+      );
+    },
+  );
+
+  it.each([
+    { status: CommunicationNotificationDeliveryStatus.SENT, errorCode: null },
+    {
+      status: CommunicationNotificationDeliveryStatus.SKIPPED,
+      errorCode: 'push/dry-run',
+    },
+    {
+      status: CommunicationNotificationDeliveryStatus.FAILED,
+      errorCode: 'push/recipient-ineligible',
+    },
+    {
+      status: CommunicationNotificationDeliveryStatus.FAILED,
+      errorCode: 'fcm/invalid-registration-token',
+    },
+  ])('does not resend terminal $status / $errorCode', async (state) => {
+    const pushRepository = pushRepositoryMock({
+      findCurrentSchoolPushDeliveryForProcessing: jest
+        .fn()
+        .mockResolvedValue(pushDeliveryRecord(state)),
+    });
+    const tokens = appDeviceTokenRepositoryMock();
+    const provider = firebasePushProviderMock();
+    await createService({
+      pushRepository,
+      appDeviceTokenRepository: tokens,
+      firebasePushProvider: provider,
+    }).processDelivery({ schoolId: 'school-1', deliveryId: 'delivery-1' });
+    expect(
+      (tokens as Record<string, jest.Mock>).listActiveCurrentSchoolUserTokens,
+    ).not.toHaveBeenCalled();
+    expect(
+      (provider as Record<string, jest.Mock>).sendBatch,
+    ).not.toHaveBeenCalled();
+    expect(
+      (pushRepository as Record<string, jest.Mock>).updateDeliveryStatus,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('presents the concurrent terminal winner when the final aggregate loses its fence', async () => {
+    const pushRepository = pushRepositoryMock({
+      findCurrentSchoolPushDeliveryForProcessing: jest
+        .fn()
+        .mockResolvedValueOnce(pushDeliveryRecord())
+        .mockResolvedValueOnce(
+          pushDeliveryRecord({
+            status: CommunicationNotificationDeliveryStatus.FAILED,
+            errorCode: 'push/tenant-ineligible',
+          }),
+        ),
+      updateDeliveryStatus: jest.fn().mockResolvedValue(false),
+    });
+    const result = await createService({ pushRepository }).processDelivery({
+      schoolId: 'school-1',
+      deliveryId: 'delivery-1',
+    });
+    expect(result.status).toBe('failed');
+  });
+
   it('marks delivery skipped when no active device tokens exist', async () => {
     const pushRepository = pushRepositoryMock();
     const appDeviceTokenRepository = appDeviceTokenRepositoryMock({
@@ -394,6 +695,11 @@ function pushRepositoryMock(
     findCurrentSchoolPushDeliveryForProcessing: jest
       .fn()
       .mockResolvedValue(pushDeliveryRecord()),
+    findCurrentDeliveryEligibility: jest.fn().mockResolvedValue({
+      status: CommunicationNotificationDeliveryStatus.PENDING,
+      errorCode: null,
+      ineligibilityCode: null,
+    }),
     ensurePendingAttempts: jest.fn(async (input) => {
       for (const deviceTokenId of input.deviceTokenIds) {
         if (!attempts.has(deviceTokenId)) {
@@ -415,7 +721,7 @@ function pushRepositoryMock(
         errorCode: input.errorCode ?? null,
       });
     }),
-    updateDeliveryStatus: jest.fn().mockResolvedValue(undefined),
+    updateDeliveryStatus: jest.fn().mockResolvedValue(true),
     ...(overrides ?? {}),
   } as unknown as CommunicationNotificationPushRepository &
     Record<string, jest.Mock>;
@@ -485,6 +791,7 @@ function pushDeliveryRecord(
     channel: CommunicationNotificationDeliveryChannel.PUSH,
     status: CommunicationNotificationDeliveryStatus.PENDING,
     provider: 'firebase_fcm',
+    errorCode: null,
     createdAt: new Date(),
     notification: {
       id: 'notification-1',

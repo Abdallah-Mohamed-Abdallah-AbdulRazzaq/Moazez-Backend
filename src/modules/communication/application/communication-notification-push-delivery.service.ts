@@ -25,6 +25,7 @@ import {
   CommunicationNotificationPushRepository,
   CommunicationPushAttemptRecord,
   CommunicationPushDeliveryForProcessing,
+  isProcessableCommunicationPushState,
 } from '../infrastructure/communication-notification-push.repository';
 import { CommunicationNotificationPushPayloadBuilder } from './communication-notification-push-payload.builder';
 
@@ -75,6 +76,12 @@ export class CommunicationNotificationPushDeliveryService {
     if (delivery.status === CommunicationNotificationDeliveryStatus.SENT) {
       return skippedResult(delivery.id, ALREADY_SENT_CODE);
     }
+    if (!isProcessableCommunicationPushState(delivery)) {
+      return skippedResult(
+        delivery.id,
+        delivery.errorCode ?? 'push/all-skipped',
+      );
+    }
     if (
       delivery.createdAt.getTime() <=
       now.getTime() - COMMUNICATION_NOTIFICATION_RECOVERY_WINDOW_MS
@@ -102,6 +109,12 @@ export class CommunicationNotificationPushDeliveryService {
         'push/academic-content-recipient-type-ineligible',
       );
     }
+    // Fence A precedes all token lookup and attempt preparation.
+    const stoppedBeforePreparation = await this.checkDispatchEligibility(
+      delivery,
+      now,
+    );
+    if (stoppedBeforePreparation) return stoppedBeforePreparation;
     const activeDeviceTokens =
       await this.appDeviceTokenRepository.listActiveCurrentSchoolUserTokens({
         schoolId: delivery.schoolId,
@@ -172,23 +185,41 @@ export class CommunicationNotificationPushDeliveryService {
       }
     }
 
-    if (decryptedItems.length > 0) {
+    const currentAttempts =
+      decryptedItems.length > 0
+        ? await this.pushRepository.listAttemptsForDelivery(delivery.id)
+        : [];
+    const unresolvedTokens = new Set(
+      currentAttempts
+        .filter(isProcessableCommunicationPushState)
+        .map((attempt) => attempt.deviceTokenId),
+    );
+    const dispatchItems = decryptedItems.filter((item) =>
+      unresolvedTokens.has(item.deviceToken.id),
+    );
+    if (dispatchItems.length > 0) {
       const payload = this.payloadBuilder.build(delivery.notification);
+      // Fence B releases every database call before the external provider wait.
+      const stoppedBeforeDispatch = await this.checkDispatchEligibility(
+        delivery,
+        now,
+      );
+      if (stoppedBeforeDispatch) return stoppedBeforeDispatch;
       const result = await this.firebasePushProvider.sendBatch({
-        tokens: decryptedItems.map((item) => item.token),
+        tokens: dispatchItems.map((item) => item.token),
         notification: payload.notification,
         data: payload.data,
       });
       const itemResults = normalizeProviderItemResults({
         resultResults: result.results,
-        itemCount: decryptedItems.length,
+        itemCount: dispatchItems.length,
         skippedReason: result.skippedReason,
         errorCode: result.errorCode,
         errorMessage: result.errorMessage,
       });
 
       for (const itemResult of itemResults) {
-        const item = decryptedItems[itemResult.tokenIndex];
+        const item = dispatchItems[itemResult.tokenIndex];
         if (!item) continue;
 
         if (itemResult.status === 'sent') {
@@ -246,7 +277,9 @@ export class CommunicationNotificationPushDeliveryService {
     const aggregate = resolveAttemptAggregate(
       await this.pushRepository.listAttemptsForDelivery(delivery.id),
     );
-    await this.persistAggregate(delivery, aggregate, now);
+    if (!(await this.persistAggregate(delivery, aggregate, now))) {
+      return this.currentResult(delivery.id);
+    }
 
     if (aggregate.retryableCount > 0) {
       throw new Error('communication_push_retryable_failure');
@@ -309,7 +342,7 @@ export class CommunicationNotificationPushDeliveryService {
         : aggregate.skippedCount > 0 && aggregate.failedCount === 0
           ? CommunicationNotificationDeliveryStatus.SKIPPED
           : CommunicationNotificationDeliveryStatus.FAILED;
-    await this.pushRepository.updateDeliveryStatus({
+    const updated = await this.pushRepository.updateDeliveryStatus({
       schoolId: input.schoolId,
       deliveryId: input.deliveryId,
       status,
@@ -326,15 +359,54 @@ export class CommunicationNotificationPushDeliveryService {
       metadata: aggregateMetadata(aggregate),
     });
 
-    return presentAggregate(input.deliveryId, { ...aggregate, status });
+    return updated
+      ? presentAggregate(input.deliveryId, { ...aggregate, status })
+      : this.currentResult(input.deliveryId);
+  }
+
+  private async checkDispatchEligibility(
+    delivery: CommunicationPushDeliveryForProcessing,
+    now: Date,
+  ): Promise<CommunicationPushDeliveryProcessingResult | null> {
+    const current = await this.pushRepository.findCurrentDeliveryEligibility({
+      schoolId: delivery.schoolId,
+      deliveryId: delivery.id,
+      recipientUserType: delivery.notification.recipientUser.userType,
+    });
+    if (!current || !isProcessableCommunicationPushState(current))
+      return this.currentResult(delivery.id);
+    if (current.ineligibilityCode)
+      return this.terminalizeRecovery({
+        schoolId: delivery.schoolId,
+        deliveryId: delivery.id,
+        errorCode: current.ineligibilityCode,
+        errorMessage: 'Push tenant or recipient is ineligible',
+        now,
+      });
+    return null;
+  }
+
+  private async currentResult(deliveryId: string) {
+    const current =
+      await this.pushRepository.findCurrentSchoolPushDeliveryForProcessing(
+        deliveryId,
+      );
+    if (!current) return skippedResult(deliveryId, DELIVERY_NOT_FOUND_CODE);
+    const aggregate = resolveAttemptAggregate(
+      await this.pushRepository.listAttemptsForDelivery(deliveryId),
+    );
+    return presentAggregate(deliveryId, {
+      ...aggregate,
+      status: current.status,
+    });
   }
 
   private async persistAggregate(
     delivery: CommunicationPushDeliveryForProcessing,
     aggregate: AttemptAggregate,
     now: Date,
-  ): Promise<void> {
-    await this.pushRepository.updateDeliveryStatus({
+  ): Promise<boolean> {
+    return this.pushRepository.updateDeliveryStatus({
       schoolId: delivery.schoolId,
       deliveryId: delivery.id,
       status: aggregate.status,

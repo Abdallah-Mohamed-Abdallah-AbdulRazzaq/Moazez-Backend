@@ -183,7 +183,9 @@ export class AcademicContentPublicationNotificationRepository {
     // Same parent/exact-publication order as cancel, expire and revision start.
     await tx.$queryRaw`SELECT id FROM academic_contents WHERE id = ${identity.contentId}::uuid AND school_id = ${identity.schoolId}::uuid AND deleted_at IS NULL FOR UPDATE`;
     await tx.$queryRaw`SELECT id FROM academic_content_publications WHERE id = ${identity.publicationId}::uuid AND school_id = ${identity.schoolId}::uuid AND academic_content_id = ${identity.contentId}::uuid FOR UPDATE`;
-    await tx.$queryRaw`SELECT s.id FROM schools s JOIN organizations o ON o.id = s.organization_id WHERE s.id = ${identity.schoolId}::uuid FOR SHARE OF s, o`;
+    // Protect policy absence against the School FK's KEY SHARE lock on insert.
+    await tx.$queryRaw`SELECT id FROM schools WHERE id = ${identity.schoolId}::uuid FOR UPDATE`;
+    await tx.$queryRaw`SELECT o.id FROM organizations o JOIN schools s ON s.organization_id = o.id WHERE s.id = ${identity.schoolId}::uuid FOR SHARE OF o`;
     await tx.$queryRaw`SELECT id FROM academic_content_notification_policies WHERE school_id = ${identity.schoolId}::uuid FOR SHARE`;
   }
 
@@ -213,9 +215,10 @@ export class AcademicContentPublicationNotificationRepository {
 
   async listCurrentLaterContexts(
     tx: Prisma.TransactionClient,
-    source: AcademicContentLaterNotificationSource,
+    source: AcademicContentPublishedNotificationSource,
     userIds: string[],
     after?: string,
+    frozenRecipient = false,
   ) {
     if (!userIds.length)
       return { contexts: [], next: undefined as string | undefined };
@@ -238,7 +241,8 @@ export class AcademicContentPublicationNotificationRepository {
     const common = Prisma.sql`a.id IN (${contextIds}) AND a.school_id = ${source.schoolId}::uuid AND a.publication_id = ${source.id}::uuid AND a.revision_id = ${source.revisionId}::uuid
       AND s.status = 'ACTIVE' AND s.deleted_at IS NULL AND e.status = 'ACTIVE' AND e.deleted_at IS NULL
       AND e.student_id = a.student_id AND e.classroom_id = a.classroom_id
-      AND u.status = 'ACTIVE' AND u.deleted_at IS NULL AND u.id IN (${users})`;
+      AND u.status = 'ACTIVE' AND u.deleted_at IS NULL AND u.id IN (${users})
+      ${frozenRecipient ? Prisma.sql`AND a.recipient_user_id = u.id` : Prisma.empty}`;
     type Context = {
       id: string;
       recipientUserId: string;
@@ -263,6 +267,7 @@ export class AcademicContentPublicationNotificationRepository {
       JOIN users u ON u.id = g.user_id
       WHERE ${common} AND a.recipient_kind = 'GUARDIAN' AND u.user_type = 'PARENT'
         AND g.deleted_at IS NULL AND g.can_receive_notifications IS DISTINCT FROM false
+        ${frozenRecipient ? Prisma.sql`AND a.guardian_can_receive_notifications IS DISTINCT FROM false` : Prisma.empty}
       ORDER BY a.id FOR SHARE OF a, s, e, g, l, u`);
     return {
       contexts: [...students, ...guardians],
@@ -331,8 +336,12 @@ export class AcademicContentPublicationNotificationRepository {
     });
   }
 
-  findSource(identity: AcademicContentPublicationJobData, now: Date) {
-    return this.prisma.academicContentPublication.findFirst({
+  findSource(
+    identity: AcademicContentPublicationJobData,
+    now: Date,
+    tx: Prisma.TransactionClient = this.prisma,
+  ) {
+    return tx.academicContentPublication.findFirst({
       where: {
         ...eligibleSourceWhere(now),
         id: identity.publicationId,

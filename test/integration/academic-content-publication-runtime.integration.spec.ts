@@ -1457,12 +1457,24 @@ describeDatabase(
       );
       await execute(f, next);
       const newSnapshot = (await state(f, next)).recipients;
-      // The resolver must not consult current enrollment/authoring on worker retries.
+      // Audience stays frozen; notification persistence requires current enrollment eligibility.
       await prisma.enrollment.updateMany({
         where: { schoolId: f.schoolId },
         data: { status: 'WITHDRAWN' },
       });
       adapter.realtime.mockClear();
+      expect(
+        await scopedNotifications(f, () =>
+          adapter.service.generate(notificationInput(f, next), now),
+        ),
+      ).toMatchObject({ recipientCount: 0, createdNotificationCount: 0 });
+      expect(await savedNotifications(f, next)).toHaveLength(0);
+      expect(adapter.realtime).not.toHaveBeenCalled();
+      expect((await state(f, next)).recipients).toEqual(newSnapshot);
+      await prisma.enrollment.updateMany({
+        where: { id: { in: [both.enrollment.id, newOnly.enrollment.id] } },
+        data: { status: 'ACTIVE' },
+      });
       await scopedNotifications(f, () =>
         Promise.all([
           adapter.service.generate(notificationInput(f, next), now),
