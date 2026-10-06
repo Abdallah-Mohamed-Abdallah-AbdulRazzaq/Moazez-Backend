@@ -29,13 +29,31 @@ describe('ACC cleanup worker', () => {
     updateUpload: jest.fn().mockResolvedValue(session),
     softDeleteFile: jest.fn().mockResolvedValue(undefined),
   };
+  const retired = {
+    uploadId,
+    schoolId,
+    contentId,
+    fileId,
+    bucket: session.finalBucket,
+    objectKey: session.finalObjectKey,
+  };
+  let transactionOpen = false;
   const repository = {
     expireAbandoned: jest.fn().mockResolvedValue(1),
     recoverStaleVerification: jest.fn().mockResolvedValue(1),
     cleanupCandidates: jest.fn().mockResolvedValue([{ id: uploadId }]),
-    withTransaction: jest.fn((callback: (value: typeof tx) => unknown) =>
-      callback(tx),
+    withTransaction: jest.fn(
+      async (callback: (value: typeof tx) => unknown) => {
+        transactionOpen = true;
+        try {
+          return await callback(tx);
+        } finally {
+          transactionOpen = false;
+        }
+      },
     ),
+    prepareReadyOrphanCleanup: jest.fn().mockResolvedValue(retired),
+    finalizeReadyOrphanCleanup: jest.fn().mockResolvedValue(undefined),
     releaseTerminalCleanupClaim: jest.fn().mockResolvedValue(undefined),
   };
   const queue = {
@@ -55,6 +73,9 @@ describe('ACC cleanup worker', () => {
     jest.clearAllMocks();
     tx.lockUploadById.mockResolvedValue(session);
     tx.hasRetainedFileReferences.mockResolvedValue(false);
+    repository.prepareReadyOrphanCleanup.mockResolvedValue(retired);
+    repository.finalizeReadyOrphanCleanup.mockResolvedValue(undefined);
+    storage.deleteObjectAndConfirmAbsent.mockResolvedValue(undefined);
   });
 
   it('discovers purpose-scoped persisted work with a deterministic retryable job', async () => {
@@ -97,44 +118,78 @@ describe('ACC cleanup worker', () => {
   });
 
   it('never claims or deletes READY File while an active asset exists', async () => {
-    tx.hasRetainedFileReferences.mockResolvedValue(true);
+    repository.prepareReadyOrphanCleanup.mockResolvedValue(null);
     await worker.cleanUpload(uploadId, now);
     expect(storage.deleteObjectAndConfirmAbsent).not.toHaveBeenCalled();
     expect(tx.softDeleteFile).not.toHaveBeenCalled();
     expect(tx.updateUpload).not.toHaveBeenCalled();
   });
 
-  it('deletes READY orphan under lock then atomically records PURGED evidence', async () => {
+  it('waits for committed retirement before storage and finalizes after storage outside the transaction facade', async () => {
+    const phases: string[] = [];
+    repository.prepareReadyOrphanCleanup.mockImplementationOnce(() => {
+      expect(transactionOpen).toBe(false);
+      phases.push('retirement committed');
+      return Promise.resolve(retired);
+    });
+    storage.deleteObjectAndConfirmAbsent.mockImplementationOnce(() => {
+      expect(transactionOpen).toBe(false);
+      phases.push('storage confirmed absent');
+      return Promise.resolve();
+    });
+    repository.finalizeReadyOrphanCleanup.mockImplementationOnce(() => {
+      phases.push('finalization');
+      return Promise.resolve();
+    });
     await worker.cleanUpload(uploadId, now);
+    expect(phases).toEqual([
+      'retirement committed',
+      'storage confirmed absent',
+      'finalization',
+    ]);
+    expect(repository.prepareReadyOrphanCleanup).toHaveBeenCalledWith(
+      uploadId,
+      now,
+    );
     expect(storage.deleteObjectAndConfirmAbsent).toHaveBeenCalledWith({
       bucket: 'private',
       objectKey: session.finalObjectKey,
     });
-    expect(tx.hasRetainedFileReferences).toHaveBeenCalledTimes(2);
-    expect(tx.softDeleteFile).toHaveBeenCalledWith(
-      fileId,
-      schoolId,
+    expect(repository.finalizeReadyOrphanCleanup).toHaveBeenCalledWith(
+      retired,
       expect.any(Date),
     );
-    const purgedUpdate = (
-      tx.updateUpload.mock.calls as unknown as Array<
-        [
-          { uploadId: string; schoolId: string; contentId: string },
-          {
-            status: string;
-            finalCleanupClaimedAt: Date;
-            finalObjectDeletedAt: Date;
-          },
-        ]
-      >
-    )[0][1];
-    expect(purgedUpdate.status).toBe(FileUploadSessionStatus.PURGED);
-    expect(purgedUpdate.finalCleanupClaimedAt).toEqual(now);
-    expect(purgedUpdate.finalObjectDeletedAt).toBeInstanceOf(Date);
-    expect(tx.updateUpload).toHaveBeenCalledWith(
-      { uploadId, schoolId, contentId },
-      expect.objectContaining({ status: FileUploadSessionStatus.PURGED }),
+    expect(tx.updateUpload).not.toHaveBeenCalled();
+  });
+
+  it('propagates READY storage failure without finalization or terminal claim release and retries', async () => {
+    storage.deleteObjectAndConfirmAbsent.mockRejectedValueOnce(
+      new Error('provider deletion failed'),
     );
+    await expect(worker.cleanUpload(uploadId, now)).rejects.toThrow(
+      'provider deletion failed',
+    );
+    expect(repository.finalizeReadyOrphanCleanup).not.toHaveBeenCalled();
+    expect(repository.releaseTerminalCleanupClaim).not.toHaveBeenCalled();
+    await worker.cleanUpload(uploadId, now);
+    expect(repository.prepareReadyOrphanCleanup).toHaveBeenCalledTimes(2);
+    expect(storage.deleteObjectAndConfirmAbsent).toHaveBeenCalledTimes(2);
+    expect(repository.finalizeReadyOrphanCleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries preparation and confirm-absent after READY finalization failure', async () => {
+    repository.finalizeReadyOrphanCleanup.mockRejectedValueOnce(
+      new Error('finalization failed'),
+    );
+    await expect(worker.cleanUpload(uploadId, now)).rejects.toThrow(
+      'finalization failed',
+    );
+    expect(storage.deleteObjectAndConfirmAbsent).toHaveBeenCalledTimes(1);
+    expect(repository.releaseTerminalCleanupClaim).not.toHaveBeenCalled();
+    await worker.cleanUpload(uploadId, now);
+    expect(repository.prepareReadyOrphanCleanup).toHaveBeenCalledTimes(2);
+    expect(storage.deleteObjectAndConfirmAbsent).toHaveBeenCalledTimes(2);
+    expect(repository.finalizeReadyOrphanCleanup).toHaveBeenCalledTimes(2);
   });
 
   it('claims and deletes terminal orphan without creating a File or changing terminal state', async () => {
@@ -178,6 +233,7 @@ describe('ACC cleanup worker', () => {
       finalCleanupClaimedAt: new Date(now.getTime() - 60_000),
     };
     tx.lockUploadById.mockResolvedValue(terminal);
+    repository.prepareReadyOrphanCleanup.mockResolvedValue(null);
     await worker.cleanUpload(uploadId, now);
     expect(storage.deleteObjectAndConfirmAbsent).not.toHaveBeenCalled();
     const stale = {
@@ -238,6 +294,9 @@ describe('ACC cleanup worker', () => {
       ...session,
       purposeContextId: null,
     });
+    repository.prepareReadyOrphanCleanup.mockRejectedValueOnce(
+      new Error('academic_content_cleanup_context_missing'),
+    );
     await expect(worker.cleanUpload(uploadId, now)).rejects.toThrow(
       'academic_content_cleanup_context_missing',
     );
@@ -314,6 +373,7 @@ describe('ACC cleanup worker', () => {
 
   it('never acts on a session rejected by the ACC-purpose lock', async () => {
     tx.lockUploadById.mockResolvedValue(null);
+    repository.prepareReadyOrphanCleanup.mockResolvedValue(null);
     await worker.cleanUpload(uploadId, now);
     expect(storage.deleteObjectAndConfirmAbsent).not.toHaveBeenCalled();
     expect(tx.softDeleteFile).not.toHaveBeenCalled();

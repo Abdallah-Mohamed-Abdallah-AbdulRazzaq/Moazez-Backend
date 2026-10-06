@@ -33,6 +33,15 @@ import type {
 
 export type { AcademicUploadIdentity } from '../application/academic-content-file.unit-of-work';
 
+export type AcademicContentReadyOrphanCleanup = {
+  uploadId: string;
+  schoolId: string;
+  contentId: string;
+  fileId: string;
+  bucket: string;
+  objectKey: string;
+};
+
 @Injectable()
 export class AcademicContentFileRepository {
   constructor(
@@ -593,6 +602,111 @@ export class AcademicContentFileRepository {
       },
       data: { finalCleanupClaimedAt: null },
     });
+  }
+
+  async prepareReadyOrphanCleanup(
+    uploadId: string,
+    now: Date,
+  ): Promise<AcademicContentReadyOrphanCleanup | null> {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const session = await this.lockById(tx, uploadId);
+        if (
+          !session ||
+          session.status !== FileUploadSessionStatus.READY ||
+          !session.fileId ||
+          !session.finalCleanupEligibleAt ||
+          session.finalCleanupEligibleAt > now ||
+          session.finalObjectDeletedAt
+        )
+          return null;
+        if (!session.purposeContextId)
+          throw new Error('academic_content_cleanup_context_missing');
+        const file = await this.lockCleanupFile(
+          tx,
+          session.fileId,
+          session.schoolId,
+        );
+        if (!file || (await hasRetainedFileReferences(tx, file.id)))
+          return null;
+        if (file.deletedAt === null) {
+          const retired = await tx.file.updateMany({
+            where: { id: file.id, schoolId: session.schoolId, deletedAt: null },
+            data: { deletedAt: now },
+          });
+          if (retired.count !== 1)
+            throw new Error('academic_content_cleanup_file_retirement_failed');
+        }
+        return {
+          uploadId: session.id,
+          schoolId: session.schoolId,
+          contentId: session.purposeContextId,
+          fileId: file.id,
+          bucket: session.finalBucket,
+          objectKey: session.finalObjectKey,
+        };
+      },
+      { maxWait: 10_000, timeout: 20_000 },
+    );
+  }
+
+  async finalizeReadyOrphanCleanup(
+    identity: AcademicContentReadyOrphanCleanup,
+    finalizedAt: Date,
+  ): Promise<void> {
+    await this.prisma.$transaction(
+      async (tx) => {
+        const rows = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM file_upload_sessions
+          WHERE id = ${identity.uploadId}::uuid AND school_id = ${identity.schoolId}::uuid
+            AND purpose = 'ACADEMIC_CONTENT'::file_upload_purpose
+            AND purpose_context_id = ${identity.contentId}::uuid
+            AND file_id = ${identity.fileId}::uuid AND status = 'READY'
+            AND final_object_deleted_at IS NULL FOR UPDATE`;
+        if (!rows.length) return;
+        const file = await this.lockCleanupFile(
+          tx,
+          identity.fileId,
+          identity.schoolId,
+        );
+        if (!file || file.deletedAt === null)
+          throw new Error('academic_content_cleanup_file_not_retired');
+        if (await hasRetainedFileReferences(tx, file.id))
+          throw new Error('academic_content_cleanup_asset_race');
+        const finalized = await tx.fileUploadSession.updateMany({
+          where: {
+            id: identity.uploadId,
+            schoolId: identity.schoolId,
+            purpose: FileUploadPurpose.ACADEMIC_CONTENT,
+            purposeContextId: identity.contentId,
+            fileId: identity.fileId,
+            status: FileUploadSessionStatus.READY,
+            finalObjectDeletedAt: null,
+          },
+          data: {
+            status: FileUploadSessionStatus.PURGED,
+            finalCleanupClaimedAt: file.deletedAt,
+            finalObjectDeletedAt: finalizedAt,
+          },
+        });
+        if (finalized.count !== 1)
+          throw new Error('academic_content_cleanup_finalization_failed');
+      },
+      { maxWait: 10_000, timeout: 20_000 },
+    );
+  }
+
+  private async lockCleanupFile(
+    tx: Prisma.TransactionClient,
+    fileId: string,
+    schoolId: string,
+  ): Promise<{ id: string; deletedAt: Date | null } | null> {
+    const rows = await tx.$queryRaw<
+      Array<{ id: string; deletedAt: Date | null }>
+    >`
+      SELECT id, deleted_at AS "deletedAt" FROM files WHERE id = ${fileId}::uuid
+        AND school_id = ${schoolId}::uuid FOR UPDATE`;
+    return rows[0] ?? null;
   }
 
   private async lock(

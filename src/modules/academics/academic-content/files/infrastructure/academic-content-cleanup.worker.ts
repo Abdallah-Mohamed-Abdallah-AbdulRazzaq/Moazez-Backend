@@ -157,46 +157,17 @@ export class AcademicContentCleanupWorker implements OnModuleInit {
   }
 
   private async cleanReadyOrphan(uploadId: string, now: Date): Promise<void> {
-    // The ACC DB contract forbids a persisted claim while status is READY. Keep
-    // the row lock across deletion, then record claim and deletion atomically
-    // with the READY -> PURGED transition. A failed transaction is retryable.
-    await this.repository.withTransaction(
-      async (tx) => {
-        const session = await tx.lockUploadById(uploadId);
-        if (
-          !session ||
-          session.status !== FileUploadSessionStatus.READY ||
-          !session.fileId ||
-          !session.finalCleanupEligibleAt ||
-          session.finalCleanupEligibleAt > now
-        )
-          return;
-        if (!session.purposeContextId)
-          throw new Error('academic_content_cleanup_context_missing');
-        if (!(await tx.lockActiveFile(session.fileId, session.schoolId)))
-          return;
-        if (await tx.hasRetainedFileReferences(session.fileId)) return;
-        await this.storage.deleteObjectAndConfirmAbsent({
-          bucket: session.finalBucket,
-          objectKey: session.finalObjectKey,
-        });
-        if (await tx.hasRetainedFileReferences(session.fileId))
-          throw new Error('academic_content_cleanup_asset_race');
-        await tx.softDeleteFile(session.fileId, session.schoolId, new Date());
-        await tx.updateUpload(
-          {
-            uploadId: session.id,
-            schoolId: session.schoolId,
-            contentId: session.purposeContextId,
-          },
-          {
-            status: FileUploadSessionStatus.PURGED,
-            finalCleanupClaimedAt: now,
-            finalObjectDeletedAt: new Date(),
-          },
-        );
-      },
-      { maxWait: 10000, timeout: 120000 },
+    const retired = await this.repository.prepareReadyOrphanCleanup(
+      uploadId,
+      now,
     );
+    if (!retired) return;
+    // File retirement has committed. Its live-reference trigger fences new
+    // consumers while storage deletion and either DB/provider retry proceed.
+    await this.storage.deleteObjectAndConfirmAbsent({
+      bucket: retired.bucket,
+      objectKey: retired.objectKey,
+    });
+    await this.repository.finalizeReadyOrphanCleanup(retired, new Date());
   }
 }
