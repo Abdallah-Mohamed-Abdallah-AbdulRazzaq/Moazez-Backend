@@ -359,3 +359,226 @@ describe('ACC intent repository idempotency boundary', () => {
     });
   });
 });
+
+describe('ACC READY orphan retirement and finalization', () => {
+  const now = new Date('2026-10-07T00:00:00Z');
+  const retiredAt = new Date('2026-10-06T00:00:00Z');
+  const identity = {
+    uploadId: '11111111-1111-4111-8111-111111111111',
+    schoolId: '22222222-2222-4222-8222-222222222222',
+    contentId: '33333333-3333-4333-8333-333333333333',
+    fileId: '44444444-4444-4444-8444-444444444444',
+    bucket: 'private',
+    objectKey: 'academic-content/object',
+  };
+  const session = {
+    id: identity.uploadId,
+    schoolId: identity.schoolId,
+    purpose: FileUploadPurpose.ACADEMIC_CONTENT,
+    purposeContextId: identity.contentId,
+    fileId: identity.fileId,
+    status: FileUploadSessionStatus.READY,
+    finalCleanupEligibleAt: retiredAt,
+    finalObjectDeletedAt: null,
+    finalBucket: identity.bucket,
+    finalObjectKey: identity.objectKey,
+  };
+  const tx = {
+    $queryRaw: jest.fn(),
+    file: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    fileUploadSession: {
+      findUnique: jest.fn().mockResolvedValue(session),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+  };
+  const transaction = jest.fn((callback: (client: typeof tx) => unknown) =>
+    callback(tx),
+  );
+  const repository = new AcademicContentFileRepository({
+    $transaction: transaction,
+  } as never);
+  function rawCall(index: number) {
+    const [parts, ...values] = tx.$queryRaw.mock.calls[index] as [
+      TemplateStringsArray,
+      ...unknown[],
+    ];
+    return { sql: parts.join('?'), values };
+  }
+  function lockRows(deletedAt: Date | null = null, retained = false) {
+    tx.$queryRaw
+      .mockResolvedValueOnce([{ id: identity.uploadId }])
+      .mockResolvedValueOnce([{ id: identity.fileId, deletedAt }])
+      .mockResolvedValueOnce([{ retained }]);
+  }
+  beforeEach(() => {
+    jest.resetAllMocks();
+    transaction.mockImplementation((callback) => callback(tx));
+    tx.fileUploadSession.findUnique.mockResolvedValue(session);
+    tx.file.updateMany.mockResolvedValue({ count: 1 });
+    tx.fileUploadSession.updateMany.mockResolvedValue({ count: 1 });
+  });
+
+  it('retires the exact School File after canonical retention inspection in a short transaction without claiming READY', async () => {
+    lockRows();
+    await expect(
+      repository.prepareReadyOrphanCleanup(identity.uploadId, now),
+    ).resolves.toEqual(identity);
+    expect(rawCall(0)).toEqual({
+      sql: expect.stringMatching(
+        /purpose = 'ACADEMIC_CONTENT'.*FOR UPDATE/su,
+      ) as unknown,
+      values: [identity.uploadId],
+    });
+    expect(rawCall(1).sql).toMatch(
+      /WHERE id = \?::uuid\s+AND school_id = \?::uuid FOR UPDATE/u,
+    );
+    expect(rawCall(1).values).toEqual([identity.fileId, identity.schoolId]);
+    expect(rawCall(2).sql).toContain('FROM public.attachments');
+    expect(tx.file.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: identity.fileId,
+        schoolId: identity.schoolId,
+        deletedAt: null,
+      },
+      data: { deletedAt: now },
+    });
+    expect(tx.fileUploadSession.updateMany).not.toHaveBeenCalled();
+    expect(transaction).toHaveBeenCalledWith(expect.any(Function), {
+      maxWait: 10_000,
+      timeout: 20_000,
+    });
+  });
+
+  it('recognizes an already-retired File without resetting its durable retirement timestamp', async () => {
+    lockRows(retiredAt);
+    await expect(
+      repository.prepareReadyOrphanCleanup(identity.uploadId, now),
+    ).resolves.toEqual(identity);
+    expect(tx.file.updateMany).not.toHaveBeenCalled();
+    expect(tx.fileUploadSession.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('skips retained Files before retirement or storage eligibility', async () => {
+    lockRows(null, true);
+    await expect(
+      repository.prepareReadyOrphanCleanup(identity.uploadId, now),
+    ).resolves.toBeNull();
+    expect(tx.file.updateMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['not READY', { status: FileUploadSessionStatus.FAILED }],
+    ['no File', { fileId: null }],
+    ['no deadline', { finalCleanupEligibleAt: null }],
+    [
+      'future deadline',
+      { finalCleanupEligibleAt: new Date(now.getTime() + 1) },
+    ],
+    ['already finalized', { finalObjectDeletedAt: now }],
+  ])('skips %s before File lock', async (_case, changed) => {
+    tx.$queryRaw.mockResolvedValueOnce([{ id: identity.uploadId }]);
+    tx.fileUploadSession.findUnique.mockResolvedValue({
+      ...session,
+      ...changed,
+    });
+    await expect(
+      repository.prepareReadyOrphanCleanup(identity.uploadId, now),
+    ).resolves.toBeNull();
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.file.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('fails closed on a missing persisted ACC parent before File lock', async () => {
+    tx.$queryRaw.mockResolvedValueOnce([{ id: identity.uploadId }]);
+    tx.fileUploadSession.findUnique.mockResolvedValue({
+      ...session,
+      purposeContextId: null,
+    });
+    await expect(
+      repository.prepareReadyOrphanCleanup(identity.uploadId, now),
+    ).rejects.toThrow('academic_content_cleanup_context_missing');
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retire a missing/foreign-purpose upload', async () => {
+    tx.$queryRaw.mockResolvedValueOnce([]);
+    await expect(
+      repository.prepareReadyOrphanCleanup(identity.uploadId, now),
+    ).resolves.toBeNull();
+    expect(tx.fileUploadSession.findUnique).not.toHaveBeenCalled();
+    expect(tx.file.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('fails retirement if the exact final File write does not affect one row', async () => {
+    lockRows();
+    tx.file.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(
+      repository.prepareReadyOrphanCleanup(identity.uploadId, now),
+    ).rejects.toThrow('academic_content_cleanup_file_retirement_failed');
+  });
+
+  it('finalizes with exact persisted tenant/parent/File identity and the original retirement timestamp', async () => {
+    lockRows(retiredAt);
+    await repository.finalizeReadyOrphanCleanup(identity, now);
+    const lock = rawCall(0);
+    expect(lock.sql).toMatch(
+      /school_id = \?::uuid[\s\S]*purpose = 'ACADEMIC_CONTENT'[\s\S]*purpose_context_id = \?::uuid[\s\S]*file_id = \?::uuid AND status = 'READY'[\s\S]*final_object_deleted_at IS NULL FOR UPDATE/u,
+    );
+    expect(lock.values).toEqual([
+      identity.uploadId,
+      identity.schoolId,
+      identity.contentId,
+      identity.fileId,
+    ]);
+    expect(rawCall(1).values).toEqual([identity.fileId, identity.schoolId]);
+    expect(tx.fileUploadSession.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: identity.uploadId,
+        schoolId: identity.schoolId,
+        purpose: FileUploadPurpose.ACADEMIC_CONTENT,
+        purposeContextId: identity.contentId,
+        fileId: identity.fileId,
+        status: FileUploadSessionStatus.READY,
+        finalObjectDeletedAt: null,
+      },
+      data: {
+        status: FileUploadSessionStatus.PURGED,
+        finalCleanupClaimedAt: retiredAt,
+        finalObjectDeletedAt: now,
+      },
+    });
+    expect(transaction).toHaveBeenCalledWith(expect.any(Function), {
+      maxWait: 10_000,
+      timeout: 20_000,
+    });
+    expect(tx.file.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('does not finalize an identity/state mismatch or concurrently finalized upload', async () => {
+    tx.$queryRaw.mockResolvedValueOnce([]);
+    await repository.finalizeReadyOrphanCleanup(identity, now);
+    expect(tx.fileUploadSession.updateMany).not.toHaveBeenCalled();
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects finalization for a live File or a retained reference', async () => {
+    lockRows();
+    await expect(
+      repository.finalizeReadyOrphanCleanup(identity, now),
+    ).rejects.toThrow('academic_content_cleanup_file_not_retired');
+    tx.$queryRaw.mockReset();
+    lockRows(retiredAt, true);
+    await expect(
+      repository.finalizeReadyOrphanCleanup(identity, now),
+    ).rejects.toThrow('academic_content_cleanup_asset_race');
+    expect(tx.fileUploadSession.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the final exact Upload write misses', async () => {
+    lockRows(retiredAt);
+    tx.fileUploadSession.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(
+      repository.finalizeReadyOrphanCleanup(identity, now),
+    ).rejects.toThrow('academic_content_cleanup_finalization_failed');
+  });
+});

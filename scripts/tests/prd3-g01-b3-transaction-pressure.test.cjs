@@ -127,7 +127,7 @@ test('corrected inventory covers every transaction without unknown or unresolved
   );
 });
 
-test('ACC transaction facade has a scoped reviewed storage-wait record', () => {
+test('ACC transaction facade and READY cleanup have scoped DB-only lock boundaries with storage between transactions', () => {
   const row = INVENTORY.find((item) =>
     item.path === 'src/modules/academics/academic-content/files/infrastructure/academic-content-file.repository.ts' &&
     item.entryOwner === 'AcademicContentFileRepository.withTransaction',
@@ -135,9 +135,42 @@ test('ACC transaction facade has a scoped reviewed storage-wait record', () => {
   assert.ok(row);
   const override = row.manualOverrides.find((item) => item.unresolvedCallExpression === 'callback');
   assert.ok(override);
-  assert.equal(override.classification, 'EXTERNAL_WAIT_SENSITIVE');
+  assert.equal(override.classification, 'LOCK_CONTENTION_SENSITIVE');
+  assert.equal(row.classification, 'LOCK_CONTENTION_SENSITIVE');
+  assert.equal(row.explicitLock, true);
+  assert.equal(row.externalWaitInsideTransaction, false);
+  assert.deepEqual(row.unresolvedCalls, []);
+  assert.deepEqual(override.resolvedCallers, [
+    'AcademicContentCleanupWorker.cleanUpload',
+    'CancelAcademicContentUploadUseCase.executeScoped',
+    'CompleteAcademicContentUploadUseCase.executeScoped',
+    'UnlinkAcademicContentAssetUseCase.executeScoped',
+  ]);
   assert.match(override.reason, /ACC repository transaction facade/u);
-  assert.match(override.reviewEvidence, /READY orphan cleanup.*storage deletion.*120-second/u);
+  assert.match(override.reviewEvidence, /All AcademicContentFileTransaction callbacks are DB-only/u);
+  assert.match(override.reviewEvidence, /READY orphan cleanup performs retirement and finalization in two separate bounded database transactions/u);
+  assert.match(override.reviewEvidence, /storage deletion occurs between these transactions, after retirement commits and before finalization begins/u);
+  assert.match(override.reviewEvidence, /no database transaction or row lock is intentionally held while awaiting Storage/u);
+  assert.doesNotMatch(override.reviewEvidence, /120-second|locks across confirmed storage deletion/u);
+  const phases = INVENTORY.filter((item) => item.path === row.path && [
+    'AcademicContentFileRepository.prepareReadyOrphanCleanup',
+    'AcademicContentFileRepository.finalizeReadyOrphanCleanup',
+  ].includes(item.entryOwner));
+  assert.equal(phases.length, 2);
+  for (const phase of phases) {
+    assert.equal(phase.classification, 'LOCK_CONTENTION_SENSITIVE');
+    assert.equal(phase.explicitLock, true);
+    assert.equal(phase.externalWaitInsideTransaction, false);
+    assert.deepEqual(phase.unresolvedCalls, []);
+    assert.equal(phase.maxWaitMs, 10_000);
+    assert.equal(phase.timeoutMs, 20_000);
+  }
+  assert.deepEqual(INVENTORY_SUMMARY.externalWaitOutsideEvidence.filter((item) =>
+    item.owner === 'AcademicContentCleanupWorker.cleanReadyOrphan'), [{
+    path: 'src/modules/academics/academic-content/files/infrastructure/academic-content-cleanup.worker.ts',
+    owner: 'AcademicContentCleanupWorker.cleanReadyOrphan',
+    target: 'this.storage.deleteObjectAndConfirmAbsent',
+  }]);
 });
 
 test('ACC later-event authorization has a scoped reviewed transaction-bound lock record', () => {
@@ -268,6 +301,7 @@ test('ACC-9C file gate resolution is exact and new intent transactions contain n
     assert.match(override.reviewEvidence, /active Prisma\.TransactionClient/u);
     assert.match(override.reviewEvidence, /no nested transaction, transaction escape or external wait/u);
     assert.match(override.reviewEvidence, /capability creation and bounded verification occur outside/u);
+    assert.match(override.reviewEvidence, /READY orphan cleanup uses short DB-only retirement\/finalization phases, while Storage deletion occurs outside those transactions/u);
     assert.equal(row.classification, 'LOCK_CONTENTION_SENSITIVE');
     assert.equal(row.externalWaitInsideTransaction, false);
   }

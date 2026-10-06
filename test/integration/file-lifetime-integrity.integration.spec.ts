@@ -279,6 +279,7 @@ describe('G13 shared File lifetime integrity on PostgreSQL', () => {
   });
 
   beforeEach(() => {
+    jest.restoreAllMocks();
     jest.clearAllMocks();
     beforeDelete = undefined;
   });
@@ -475,52 +476,53 @@ describe('G13 shared File lifetime integrity on PostgreSQL', () => {
     ).toBe('PURGED');
   });
 
-  it('cleanup first rejects a stale real Attachment linker after File purge', async () => {
+  it('cleanup first commits retirement before storage wait and immediately rejects a stale real Attachment linker', async () => {
     const upload = await readyFile();
     const preread = await prisma.file.findFirst({
       where: { id: upload.file.id, deletedAt: null },
     });
     expect(preread).not.toBeNull();
     const deletionEntered = barrier(),
-      allowDeletion = barrier(),
-      linkerStarted = barrier();
+      allowDeletion = barrier();
     beforeDelete = async () => {
       deletionEntered.release();
       await allowDeletion.promise;
     };
-    let linkerPid = 0;
     const cleaning = cleanup.cleanUpload(upload.uploadId);
     await deletionEntered.promise;
-    const linking = prisma
-      .$transaction(
-        async (tx) => {
-          const [backend] = await tx.$queryRaw<
-            Array<{ pid: number }>
-          >`SELECT pg_catalog.pg_backend_pid() AS pid`;
-          linkerPid = backend.pid;
-          linkerStarted.release();
-          return new AttachmentsRepository(tx as never).createAttachment(
-            attachmentData(upload.file.id),
-          );
-        },
-        { timeout: 30_000 },
-      )
-      .then(
-        (value) => ({ value, error: null }),
-        (error: unknown) => ({ value: null, error }),
-      );
     try {
-      await linkerStarted.promise;
-      await waitingAtLock(linkerPid, 'INSERT INTO');
       expect(
         (await prisma.file.findUniqueOrThrow({ where: { id: upload.file.id } }))
           .deletedAt,
-      ).toBeNull();
+      ).not.toBeNull();
+      expect(
+        await prisma.fileUploadSession.findUniqueOrThrow({
+          where: { id: upload.uploadId },
+        }),
+      ).toMatchObject({
+        status: 'READY',
+        finalCleanupClaimedAt: null,
+        finalObjectDeletedAt: null,
+      });
+      // A database lock timeout bounds the stale-link attempt while the
+      // provider barrier is still held. It must fail on the committed fence.
+      await expect(
+        prisma.$transaction(
+          async (tx) => {
+            await tx.$executeRaw`SET LOCAL lock_timeout = '1000ms'`;
+            return new AttachmentsRepository(tx as never).createAttachment(
+              attachmentData(upload.file.id),
+            );
+          },
+          { timeout: 10_000 },
+        ),
+      ).rejects.toMatchObject({ code: 'P2003' });
+      expect(
+        await prisma.attachment.count({ where: { fileId: upload.file.id } }),
+      ).toBe(0);
+      expect(objects.has(upload.file.objectKey)).toBe(true);
       allowDeletion.release();
       await cleaning;
-      const result = await linking;
-      expect(result.error).toMatchObject({ code: 'P2003' });
-      expect(result.value).toBeNull();
       expect(
         await prisma.attachment.count({ where: { fileId: upload.file.id } }),
       ).toBe(0);
@@ -538,8 +540,119 @@ describe('G13 shared File lifetime integrity on PostgreSQL', () => {
       expect(objects.has(upload.file.objectKey)).toBe(false);
     } finally {
       allowDeletion.release();
-      await Promise.allSettled([cleaning, linking]);
+      await Promise.allSettled([cleaning]);
     }
+  });
+
+  it('rediscovers a retired READY File after storage failure and retries to PURGED', async () => {
+    const upload = await readyFile();
+    beforeDelete = () => Promise.reject(new Error('provider deletion failed'));
+    await expect(cleanup.cleanUpload(upload.uploadId)).rejects.toThrow(
+      'provider deletion failed',
+    );
+    const retired = await prisma.file.findUniqueOrThrow({
+      where: { id: upload.file.id },
+    });
+    expect(retired.deletedAt).not.toBeNull();
+    expect(objects.has(upload.file.objectKey)).toBe(true);
+    expect(
+      await prisma.fileUploadSession.findUniqueOrThrow({
+        where: { id: upload.uploadId },
+      }),
+    ).toMatchObject({
+      status: 'READY',
+      finalCleanupClaimedAt: null,
+      finalObjectDeletedAt: null,
+    });
+    expect(
+      await repository.cleanupCandidates(
+        new Date(),
+        new Date(Date.now() - 900_000),
+      ),
+    ).toContainEqual({ id: upload.uploadId });
+    beforeDelete = undefined;
+    await cleanup.cleanUpload(upload.uploadId);
+    expect(deleteObject).toHaveBeenCalledTimes(2);
+    expect(objects.has(upload.file.objectKey)).toBe(false);
+    expect(
+      await prisma.fileUploadSession.findUniqueOrThrow({
+        where: { id: upload.uploadId },
+      }),
+    ).toMatchObject({
+      status: 'PURGED',
+      finalCleanupClaimedAt: retired.deletedAt,
+      finalObjectDeletedAt: expect.any(Date) as unknown,
+    });
+    expect(
+      (await prisma.file.findUniqueOrThrow({ where: { id: upload.file.id } }))
+        .deletedAt,
+    ).toEqual(retired.deletedAt);
+  });
+
+  it('rolls back finalization after successful delete, preserves retirement and safely retries an absent object', async () => {
+    const upload = await readyFile();
+    const confirmAbsent = jest.spyOn(storage, 'deleteObjectAndConfirmAbsent');
+    let failFinalization = true;
+    const failingClient = prisma.$extends({
+      query: {
+        fileUploadSession: {
+          async updateMany({ args, query }) {
+            const result = await query(args);
+            if (failFinalization && args.data.status === 'PURGED') {
+              failFinalization = false;
+              throw new Error('controlled finalization failure');
+            }
+            return result;
+          },
+        },
+      },
+    });
+    const retryingCleanup = new AcademicContentCleanupWorker(
+      {} as BullmqService,
+      new AcademicContentFileRepository(failingClient as never),
+      storage,
+    );
+    await expect(retryingCleanup.cleanUpload(upload.uploadId)).rejects.toThrow(
+      'controlled finalization failure',
+    );
+    expect(objects.has(upload.file.objectKey)).toBe(false);
+    const retired = await prisma.file.findUniqueOrThrow({
+      where: { id: upload.file.id },
+    });
+    expect(retired.deletedAt).not.toBeNull();
+    expect(
+      await prisma.fileUploadSession.findUniqueOrThrow({
+        where: { id: upload.uploadId },
+      }),
+    ).toMatchObject({
+      status: 'READY',
+      finalCleanupClaimedAt: null,
+      finalObjectDeletedAt: null,
+    });
+    expect(
+      await repository.cleanupCandidates(
+        new Date(),
+        new Date(Date.now() - 900_000),
+      ),
+    ).toContainEqual({ id: upload.uploadId });
+    await retryingCleanup.cleanUpload(upload.uploadId);
+    expect(confirmAbsent).toHaveBeenCalledTimes(2);
+    // The existing Storage abstraction skips provider deletion on the retry
+    // when its first existence check already confirms absence.
+    expect(deleteObject).toHaveBeenCalledTimes(1);
+    expect(
+      await prisma.fileUploadSession.findUniqueOrThrow({
+        where: { id: upload.uploadId },
+      }),
+    ).toMatchObject({
+      status: 'PURGED',
+      finalCleanupClaimedAt: retired.deletedAt,
+      finalObjectDeletedAt: expect.any(Date) as unknown,
+    });
+    expect(
+      (await prisma.file.findUniqueOrThrow({ where: { id: upload.file.id } }))
+        .deletedAt,
+    ).toEqual(retired.deletedAt);
   });
 
   it('linker first blocks real cleanup at File and retains the committed child without storage deletion', async () => {
