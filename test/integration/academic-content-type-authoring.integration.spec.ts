@@ -1127,9 +1127,10 @@ describeDatabase('ACC-5B PostgreSQL type authoring', () => {
   });
 
   it.each(details.map((factory) => [factory().type, factory] as const))(
-    'includes School identity in %s detail and parent update selectors',
+    'includes School and parent identity in the %s final detail update selector',
     async (type, factory) => {
       const updates: string[] = [];
+      const row = await content(type);
       const client = prisma.$extends({
         query: {
           $allModels: {
@@ -1140,6 +1141,9 @@ describeDatabase('ACC-5B PostgreSQL type authoring', () => {
                   schoolId: ids.school,
                 },
               });
+              if (model !== 'AcademicContent') {
+                expect(args.where).toMatchObject({ academicContentId: row.id });
+              }
               updates.push(model);
               return query(args);
             },
@@ -1147,7 +1151,6 @@ describeDatabase('ACC-5B PostgreSQL type authoring', () => {
         },
       }) as unknown as PrismaService;
       const scopedWriter = new AcademicContentTypeDetailRepository(client);
-      const row = await content(type);
       await scopedWriter.mutate(scope(row.id, factory()));
       const [, changed] = revisionStates(type);
       await scopedWriter.mutate(scope(row.id, changed));

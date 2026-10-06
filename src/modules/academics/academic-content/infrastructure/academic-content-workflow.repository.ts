@@ -298,7 +298,11 @@ export class AcademicContentWorkflowRepository {
           : AcademicContentStatus.CHANGES_REQUESTED;
         const decidedAt = input.now ?? new Date();
         await tx.academicContentApproval.update({
-          where: { id: approval.id, schoolId: input.schoolId },
+          where: {
+            id: approval.id,
+            schoolId: input.schoolId,
+            academicContentId: input.contentId,
+          },
           data: {
             status: approvalStatus,
             decidedByUserId: input.actorId,

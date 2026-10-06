@@ -690,7 +690,10 @@ async function persist(
     const data = { ...detail.state };
     if (row)
       await tx.academicContentPreparationDetail.update({
-        where: { id_schoolId: { id: row.id, schoolId: content.schoolId } },
+        where: {
+          id_schoolId: { id: row.id, schoolId: content.schoolId },
+          academicContentId: content.id,
+        },
         data,
       });
     else
@@ -716,7 +719,10 @@ async function persist(
     };
     const saved = row
       ? await tx.academicContentWeeklyPlanDetail.update({
-          where: { id_schoolId: { id: row.id, schoolId: content.schoolId } },
+          where: {
+            id_schoolId: { id: row.id, schoolId: content.schoolId },
+            academicContentId: content.id,
+          },
           data,
         })
       : await tx.academicContentWeeklyPlanDetail.create({
@@ -761,7 +767,10 @@ async function persist(
     });
     if (row)
       await tx.academicContentGuardianNoteDetail.update({
-        where: { id_schoolId: { id: row.id, schoolId: content.schoolId } },
+        where: {
+          id_schoolId: { id: row.id, schoolId: content.schoolId },
+          academicContentId: content.id,
+        },
         data: detail.state,
       });
     else
@@ -775,7 +784,10 @@ async function persist(
     });
     if (row)
       await tx.academicContentSubjectResourceDetail.update({
-        where: { id_schoolId: { id: row.id, schoolId: content.schoolId } },
+        where: {
+          id_schoolId: { id: row.id, schoolId: content.schoolId },
+          academicContentId: content.id,
+        },
         data: detail.state,
       });
     else
@@ -795,7 +807,10 @@ async function persist(
     };
     if (row)
       await tx.academicContentOnlineSessionDetail.update({
-        where: { id_schoolId: { id: row.id, schoolId: content.schoolId } },
+        where: {
+          id_schoolId: { id: row.id, schoolId: content.schoolId },
+          academicContentId: content.id,
+        },
         data,
       });
     else

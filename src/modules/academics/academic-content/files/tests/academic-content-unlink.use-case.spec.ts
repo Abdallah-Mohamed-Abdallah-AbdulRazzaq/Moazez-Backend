@@ -62,8 +62,7 @@ describe('ACC asset unlink', () => {
     await expect(run()).resolves.toEqual(asset);
     expect(tx.lockUploadById).toHaveBeenCalledWith('upload');
     expect(tx.softDeleteAsset).toHaveBeenCalledWith(
-      assetId,
-      schoolId,
+      { assetId, schoolId, contentId },
       expect.any(Date),
     );
     expect(tx.extendReadyCleanup).toHaveBeenCalledWith(

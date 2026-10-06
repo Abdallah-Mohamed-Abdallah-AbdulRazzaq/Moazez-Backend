@@ -4,6 +4,7 @@ import {
   AcademicContentType,
   FileUploadPurpose,
   FileUploadSessionStatus,
+  Prisma,
   PrismaClient,
   UserType,
 } from '@prisma/client';
@@ -430,8 +431,26 @@ describe('ACC-3A purpose-safe Files database foundation', () => {
     ).toEqual(foreign);
   });
 
-  it('rejects foreign-School upload and asset writes and non-ACC upload writes at the final predicate', async () => {
-    const repository = new AcademicContentFileRepository(prisma);
+  it('enforces School, parent Content and ACC purpose at the actual upload and asset final predicates', async () => {
+    const uploadSelectors: Prisma.FileUploadSessionWhereUniqueInput[] = [];
+    const assetSelectors: Prisma.AcademicContentAssetWhereUniqueInput[] = [];
+    const client = prisma.$extends({
+      query: {
+        fileUploadSession: {
+          async update({ args, query }) {
+            uploadSelectors.push(args.where);
+            return query(args);
+          },
+        },
+        academicContentAsset: {
+          async update({ args, query }) {
+            assetSelectors.push(args.where);
+            return query(args);
+          },
+        },
+      },
+    }) as unknown as PrismaService;
+    const repository = new AcademicContentFileRepository(client);
     const upload = await prisma.fileUploadSession.create({
       data: accSession(1024n),
     });
@@ -456,22 +475,76 @@ describe('ACC-3A purpose-safe Files database foundation', () => {
         sortOrder: 0,
       },
     });
+    const otherContent = await prisma.academicContent.create({
+      data: {
+        schoolId: ids.schoola,
+        academicYearId: ids.yeara,
+        termId: ids.terma,
+        type: AcademicContentType.GENERAL_RESOURCE,
+        audience: AcademicContentAudienceType.STUDENTS,
+        title: 'Other parent',
+        createdByUserId: ids.usera,
+      },
+    });
+    const otherUpload = await prisma.fileUploadSession.create({
+      data: { ...accSession(1024n), purposeContextId: otherContent.id },
+    });
+    const otherAsset = await prisma.academicContentAsset.create({
+      data: {
+        schoolId: ids.schoola,
+        academicContentId: otherContent.id,
+        fileId: file.id,
+        createdByUserId: ids.usera,
+        sortOrder: 0,
+      },
+    });
+    const uploadIdentity = {
+      uploadId: upload.id,
+      schoolId: ids.schoola,
+      contentId: ids.contenta,
+    };
+    const assetIdentity = {
+      assetId: asset.id,
+      schoolId: ids.schoola,
+      contentId: ids.contenta,
+    };
     const deletedAt = new Date();
     const changes = {
       status: FileUploadSessionStatus.CANCELLED,
       cancelledAt: deletedAt,
       finalCleanupEligibleAt: deletedAt,
     };
-    await expect(
-      repository.withTransaction((tx) =>
-        tx.updateUpload({ id: upload.id, schoolId: ids.schoolb }, changes),
-      ),
-    ).rejects.toMatchObject({ code: 'P2025' });
-    await expect(
-      repository.withTransaction((tx) =>
-        tx.softDeleteAsset(asset.id, ids.schoolb, deletedAt),
-      ),
-    ).rejects.toMatchObject({ code: 'P2025' });
+    for (const identity of [
+      { ...uploadIdentity, schoolId: ids.schoolb },
+      { ...uploadIdentity, contentId: otherContent.id },
+      { ...uploadIdentity, uploadId: otherUpload.id },
+    ]) {
+      await expect(
+        repository.withTransaction((tx) => tx.updateUpload(identity, changes)),
+      ).rejects.toMatchObject({ code: 'P2025' });
+      expect(uploadSelectors.at(-1)).toEqual({
+        id: identity.uploadId,
+        schoolId: identity.schoolId,
+        purpose: FileUploadPurpose.ACADEMIC_CONTENT,
+        purposeContextId: identity.contentId,
+      });
+    }
+    for (const identity of [
+      { ...assetIdentity, schoolId: ids.schoolb },
+      { ...assetIdentity, contentId: otherContent.id },
+      { ...assetIdentity, assetId: otherAsset.id },
+    ]) {
+      await expect(
+        repository.withTransaction((tx) =>
+          tx.softDeleteAsset(identity, deletedAt),
+        ),
+      ).rejects.toMatchObject({ code: 'P2025' });
+      expect(assetSelectors.at(-1)).toEqual({
+        id: identity.assetId,
+        schoolId: identity.schoolId,
+        academicContentId: identity.contentId,
+      });
+    }
     expect(
       await prisma.fileUploadSession.findUniqueOrThrow({
         where: { id: upload.id },
@@ -487,17 +560,48 @@ describe('ACC-3A purpose-safe Files database foundation', () => {
     });
     await expect(
       repository.withTransaction((tx) =>
-        tx.updateUpload(otherPurpose, { finalCleanupClaimedAt: null }),
+        tx.updateUpload(
+          { ...uploadIdentity, uploadId: otherPurpose.id },
+          changes,
+        ),
       ),
     ).rejects.toMatchObject({ code: 'P2025' });
     await expect(
-      repository.withTransaction((tx) => tx.updateUpload(upload, changes)),
+      repository.withTransaction((tx) =>
+        tx.updateUpload(uploadIdentity, changes),
+      ),
     ).resolves.toMatchObject({ finalCleanupEligibleAt: deletedAt });
     await expect(
       repository.withTransaction((tx) =>
-        tx.softDeleteAsset(asset.id, ids.schoola, deletedAt),
+        tx.softDeleteAsset(assetIdentity, deletedAt),
       ),
     ).resolves.toMatchObject({ deletedAt });
+    expect(uploadSelectors.at(-1)).toEqual({
+      id: upload.id,
+      schoolId: ids.schoola,
+      purpose: FileUploadPurpose.ACADEMIC_CONTENT,
+      purposeContextId: ids.contenta,
+    });
+    expect(assetSelectors.at(-1)).toEqual({
+      id: asset.id,
+      schoolId: ids.schoola,
+      academicContentId: ids.contenta,
+    });
+    expect(
+      await prisma.fileUploadSession.findUniqueOrThrow({
+        where: { id: otherUpload.id },
+      }),
+    ).toEqual(otherUpload);
+    expect(
+      await prisma.fileUploadSession.findUniqueOrThrow({
+        where: { id: otherPurpose.id },
+      }),
+    ).toEqual(otherPurpose);
+    expect(
+      await prisma.academicContentAsset.findUniqueOrThrow({
+        where: { id: otherAsset.id },
+      }),
+    ).toEqual(otherAsset);
   });
 
   it('binds ACC purpose context, supports large direct-final upload metadata, and caps at 10 GiB', async () => {

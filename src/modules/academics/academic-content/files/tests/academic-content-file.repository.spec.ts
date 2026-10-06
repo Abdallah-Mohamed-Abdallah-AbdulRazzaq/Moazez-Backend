@@ -5,6 +5,55 @@ import {
 } from '@prisma/client';
 import { AcademicContentFileRepository } from '../infrastructure/academic-content-file.repository';
 
+describe('ACC resource-specific final write predicates', () => {
+  const schoolId = '11111111-1111-4111-8111-111111111111';
+  const contentId = '22222222-2222-4222-8222-222222222222';
+  const resourceId = '33333333-3333-4333-8333-333333333333';
+  const updateUpload = jest.fn().mockResolvedValue(undefined);
+  const updateAsset = jest.fn().mockResolvedValue(undefined);
+  const tx = {
+    fileUploadSession: { update: updateUpload },
+    academicContentAsset: { update: updateAsset },
+  };
+  const repository = new AcademicContentFileRepository({
+    $transaction: (callback: (client: typeof tx) => unknown) => callback(tx),
+  } as never);
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('retains exact upload, School, ACC purpose and parent in the final update', async () => {
+    const data = { status: FileUploadSessionStatus.VERIFYING };
+    await repository.withTransaction((context) =>
+      context.updateUpload({ uploadId: resourceId, schoolId, contentId }, data),
+    );
+    expect(updateUpload).toHaveBeenCalledTimes(1);
+    expect(updateUpload).toHaveBeenCalledWith({
+      where: {
+        id: resourceId,
+        schoolId,
+        purpose: FileUploadPurpose.ACADEMIC_CONTENT,
+        purposeContextId: contentId,
+      },
+      data,
+    });
+  });
+
+  it('retains exact Asset, School and parent while preserving soft deletion', async () => {
+    const deletedAt = new Date('2026-10-06T00:00:00Z');
+    await repository.withTransaction((context) =>
+      context.softDeleteAsset(
+        { assetId: resourceId, schoolId, contentId },
+        deletedAt,
+      ),
+    );
+    expect(updateAsset).toHaveBeenCalledTimes(1);
+    expect(updateAsset).toHaveBeenCalledWith({
+      where: { id: resourceId, schoolId, academicContentId: contentId },
+      data: { deletedAt },
+    });
+  });
+});
+
 describe('ACC READY relationship boundary', () => {
   const schoolId = '11111111-1111-4111-8111-111111111111';
   const contentId = '22222222-2222-4222-8222-222222222222';

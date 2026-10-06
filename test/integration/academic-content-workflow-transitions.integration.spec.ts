@@ -257,8 +257,9 @@ describeDatabase('ACC-6B atomic PostgreSQL workflow transitions', () => {
     await prisma.$disconnect();
   });
 
-  it('includes School identity in every workflow and draft lifecycle update', async () => {
+  it('includes School identity in every update and parent identity in Approval decisions', async () => {
     const updates: Array<{ model: string; id: string }> = [];
+    const approvalParents: string[] = [];
     const client = prisma.$extends({
       query: {
         $allModels: {
@@ -282,8 +283,13 @@ describeDatabase('ACC-6B atomic PostgreSQL workflow transitions', () => {
                 expect(args.where).toMatchObject({
                   id: expect.any(String) as unknown,
                   schoolId: ids.schoolA,
+                  academicContentId: expect.any(String) as unknown,
                 });
                 updates.push({ model, id: args.where.id as string });
+                approvalParents.push(
+                  (args.where as { academicContentId: string })
+                    .academicContentId,
+                );
               }
             }
             return query(args);
@@ -333,6 +339,54 @@ describeDatabase('ACC-6B atomic PostgreSQL workflow transitions', () => {
     expect((await state(content.id)).content.status).toBe(
       AcademicContentStatus.APPROVED,
     );
+    expect(approvalParents).toEqual([content.id, content.id]);
+    await expect(
+      scopedWorkflow.decide({
+        ...command(content.id),
+        decision: 'approve',
+        note: null,
+      }),
+    ).rejects.toMatchObject({
+      code: 'academic_content.approval.invalid_status',
+    });
+    expect(approvalParents).toEqual([content.id, content.id]);
+  });
+
+  it('rejects another parent at the Approval final write and rolls back the decision', async () => {
+    const content = await makeContent();
+    const otherContent = await makeContent();
+    const submitted = await workflow.submit(command(content.id));
+    const before = await state(content.id);
+    const client = prisma.$extends({
+      query: {
+        academicContentApproval: {
+          async update({ args, query }) {
+            expect(args.where).toEqual({
+              id: submitted.approvalId,
+              schoolId: ids.schoolA,
+              academicContentId: content.id,
+            });
+            return query({
+              ...args,
+              where: { ...args.where, academicContentId: otherContent.id },
+            });
+          },
+        },
+      },
+    }) as unknown as PrismaService;
+    const scopedWorkflow = new AcademicContentWorkflowRepository(
+      client,
+      new AcademicContentRevisionRepository(client),
+    );
+    await expect(
+      scopedWorkflow.decide({
+        ...command(content.id),
+        decision: 'approve',
+        note: null,
+      }),
+    ).rejects.toMatchObject({ code: 'P2025' });
+    expect(await state(content.id)).toEqual(before);
+    expect((await state(otherContent.id)).approval).toHaveLength(0);
   });
 
   it('submits, requests changes, edits, resubmits and approves immutable V2 rounds', async () => {
@@ -939,7 +993,10 @@ describeDatabase('ACC-6B atomic PostgreSQL workflow transitions', () => {
     });
     const unlinked = await files.withTransaction(async (tx) => {
       await tx.lockMutableContent(content.id, ids.schoolA, now);
-      return tx.softDeleteAsset(asset.id, ids.schoolA, now);
+      return tx.softDeleteAsset(
+        { assetId: asset.id, schoolId: ids.schoolA, contentId: content.id },
+        now,
+      );
     });
     expect(unlinked.deletedAt).toEqual(now);
     const third = await workflow.submit(scope);

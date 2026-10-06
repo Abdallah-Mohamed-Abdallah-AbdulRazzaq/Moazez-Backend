@@ -91,7 +91,14 @@ export class AcademicContentCleanupWorker implements OnModuleInit {
         return null;
       if (!session.purposeContextId)
         throw new Error('academic_content_cleanup_context_missing');
-      await tx.updateUpload(session, { finalCleanupClaimedAt: now });
+      await tx.updateUpload(
+        {
+          uploadId: session.id,
+          schoolId: session.schoolId,
+          contentId: session.purposeContextId,
+        },
+        { finalCleanupClaimedAt: now },
+      );
       return {
         uploadId: session.id,
         schoolId: session.schoolId,
@@ -135,7 +142,16 @@ export class AcademicContentCleanupWorker implements OnModuleInit {
           FileUploadSessionStatus.EXPIRED,
         ]).has(session.status)
       ) {
-        await tx.updateUpload(session, { finalObjectDeletedAt: new Date() });
+        if (!session.purposeContextId)
+          throw new Error('academic_content_cleanup_context_missing');
+        await tx.updateUpload(
+          {
+            uploadId: session.id,
+            schoolId: session.schoolId,
+            contentId: session.purposeContextId,
+          },
+          { finalObjectDeletedAt: new Date() },
+        );
       }
     });
   }
@@ -155,6 +171,8 @@ export class AcademicContentCleanupWorker implements OnModuleInit {
           session.finalCleanupEligibleAt > now
         )
           return;
+        if (!session.purposeContextId)
+          throw new Error('academic_content_cleanup_context_missing');
         if (!(await tx.lockActiveFile(session.fileId, session.schoolId)))
           return;
         const active = await tx.countAcademicContentFileReferences(
@@ -173,11 +191,18 @@ export class AcademicContentCleanupWorker implements OnModuleInit {
         if (stillActive > 0)
           throw new Error('academic_content_cleanup_asset_race');
         await tx.softDeleteFile(session.fileId, session.schoolId, new Date());
-        await tx.updateUpload(session, {
-          status: FileUploadSessionStatus.PURGED,
-          finalCleanupClaimedAt: now,
-          finalObjectDeletedAt: new Date(),
-        });
+        await tx.updateUpload(
+          {
+            uploadId: session.id,
+            schoolId: session.schoolId,
+            contentId: session.purposeContextId,
+          },
+          {
+            status: FileUploadSessionStatus.PURGED,
+            finalCleanupClaimedAt: now,
+            finalObjectDeletedAt: new Date(),
+          },
+        );
       },
       { maxWait: 10000, timeout: 120000 },
     );
