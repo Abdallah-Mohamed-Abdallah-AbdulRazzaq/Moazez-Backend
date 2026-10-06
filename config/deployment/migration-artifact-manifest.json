@@ -33,7 +33,8 @@
     "20261003045105_academic_content_publication_runtime_indexes",
     "20261003165648_academic_content_notification_contract_policy",
     "20261004002712_academic_content_published_revision_updates",
-    "20261005184814_academic_content_review_decision_notification_types"
+    "20261005184814_academic_content_review_decision_notification_types",
+    "20261006155322_file_live_reference_integrity"
   ],
   "migrations": [
     {
@@ -160,7 +161,12 @@
       "directory": "20261005184814_academic_content_review_decision_notification_types",
       "path": "prisma/migrations/20261005184814_academic_content_review_decision_notification_types/migration.sql",
       "sha256": "d11334b71f092bc570fd7d952ea6b73bd9864376a0dd1800063869f3febfa1a2"
+    },
+    {
+      "directory": "20261006155322_file_live_reference_integrity",
+      "path": "prisma/migrations/20261006155322_file_live_reference_integrity/migration.sql",
+      "sha256": "957aa76226c10e7fbb8d349b3abce050741d90de643a1fa4f55382ddc5b23d87"
     }
   ],
-  "aggregateMigrationChainSha256": "8d5b305c01692bfb292bbf6ceab063b8794c2577b7ab96074ff1508e2e0f21b9"
+  "aggregateMigrationChainSha256": "3bc5a2b3a402d3d2a48ea0ee1938cde1c110172a57f2c260721019b90d4920db"
 }

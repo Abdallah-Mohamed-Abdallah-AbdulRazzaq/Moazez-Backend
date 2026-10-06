@@ -25,7 +25,7 @@ describe('ACC cleanup worker', () => {
   const tx = {
     lockUploadById: jest.fn().mockResolvedValue(session),
     lockActiveFile: jest.fn().mockResolvedValue(true),
-    countAcademicContentFileReferences: jest.fn().mockResolvedValue(0),
+    hasRetainedFileReferences: jest.fn().mockResolvedValue(false),
     updateUpload: jest.fn().mockResolvedValue(session),
     softDeleteFile: jest.fn().mockResolvedValue(undefined),
   };
@@ -54,7 +54,7 @@ describe('ACC cleanup worker', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     tx.lockUploadById.mockResolvedValue(session);
-    tx.countAcademicContentFileReferences.mockResolvedValue(0);
+    tx.hasRetainedFileReferences.mockResolvedValue(false);
   });
 
   it('discovers purpose-scoped persisted work with a deterministic retryable job', async () => {
@@ -97,7 +97,7 @@ describe('ACC cleanup worker', () => {
   });
 
   it('never claims or deletes READY File while an active asset exists', async () => {
-    tx.countAcademicContentFileReferences.mockResolvedValue(1);
+    tx.hasRetainedFileReferences.mockResolvedValue(true);
     await worker.cleanUpload(uploadId, now);
     expect(storage.deleteObjectAndConfirmAbsent).not.toHaveBeenCalled();
     expect(tx.softDeleteFile).not.toHaveBeenCalled();
@@ -110,7 +110,7 @@ describe('ACC cleanup worker', () => {
       bucket: 'private',
       objectKey: session.finalObjectKey,
     });
-    expect(tx.countAcademicContentFileReferences).toHaveBeenCalledTimes(2);
+    expect(tx.hasRetainedFileReferences).toHaveBeenCalledTimes(2);
     expect(tx.softDeleteFile).toHaveBeenCalledWith(
       fileId,
       schoolId,

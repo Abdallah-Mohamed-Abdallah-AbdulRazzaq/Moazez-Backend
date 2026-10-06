@@ -1045,13 +1045,25 @@ function verifyOwnershipAndPrivileges(context) {
   assert.equal(
     queryScalar(
       context,
-      `SELECT count(*) = 1 AND bool_and(
-         procedure.proname = 'normalize_learning_media_original_name'
-         AND procedure.provolatile = 'i'
-         AND procedure.proisstrict
-         AND NOT procedure.prosecdef
-         AND procedure.proparallel = 's'
-         AND language.lanname = 'sql'
+      `SELECT count(*) = 2 AND count(DISTINCT procedure.proname) = 2 AND bool_and(
+         CASE procedure.proname
+           WHEN 'normalize_learning_media_original_name' THEN
+             procedure.provolatile = 'i'
+             AND procedure.proisstrict
+             AND NOT procedure.prosecdef
+             AND procedure.proparallel = 's'
+             AND language.lanname = 'sql'
+           WHEN 'enforce_live_file_reference' THEN
+             procedure.pronargs = 0
+             AND procedure.prorettype = 'trigger'::regtype
+             AND procedure.provolatile = 'v'
+             AND NOT procedure.proisstrict
+             AND NOT procedure.prosecdef
+             AND procedure.proparallel = 'u'
+             AND COALESCE(procedure.proconfig = ARRAY['search_path=pg_catalog']::text[], false)
+             AND language.lanname = 'plpgsql'
+           ELSE false
+         END
        )
        FROM pg_catalog.pg_proc procedure
        JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
@@ -1073,6 +1085,22 @@ function verifyOwnershipAndPrivileges(context) {
              CROSS JOIN LATERAL aclexplode(COALESCE(procedure.proacl, acldefault('f', procedure.proowner))) acl
              WHERE namespace.nspname = 'public' AND procedure.proname = 'normalize_learning_media_original_name'
                AND acl.grantee = grantee.oid
+           )`,
+      ),
+      't',
+    );
+    assert.equal(
+      queryScalar(
+        context,
+        `SELECT NOT has_function_privilege(${sqlLiteral(login)}, 'public.enforce_live_file_reference()', 'EXECUTE')
+           AND NOT EXISTS (
+             SELECT 1
+             FROM pg_catalog.pg_proc procedure
+             JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
+             JOIN pg_catalog.pg_roles grantee ON grantee.rolname = ${sqlLiteral(login)}
+             CROSS JOIN LATERAL aclexplode(COALESCE(procedure.proacl, acldefault('f', procedure.proowner))) acl
+             WHERE namespace.nspname = 'public' AND procedure.proname = 'enforce_live_file_reference'
+               AND acl.grantee IN (0, grantee.oid)
            )`,
       ),
       't',

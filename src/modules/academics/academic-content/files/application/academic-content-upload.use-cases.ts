@@ -509,11 +509,7 @@ export class UnlinkAcademicContentAssetUseCase {
         },
         new Date(),
       );
-      const remaining = await tx.countAcademicContentFileReferences(
-        asset.fileId,
-        scope.schoolId,
-      );
-      if (remaining === 0) {
+      if (!(await tx.hasRetainedFileReferences(asset.fileId))) {
         const eligibleAt = new Date(
           Date.now() + ACADEMIC_CONTENT_READY_RETENTION_MS,
         );

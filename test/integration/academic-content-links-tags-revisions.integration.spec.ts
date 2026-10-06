@@ -534,8 +534,13 @@ describeDatabase('ACC-4C PostgreSQL snapshot and retention boundary', () => {
     );
     expect(
       await files.withTransaction((tx) =>
-        tx.countAcademicContentFileReferences(file.id, ids.school),
+        tx.hasRetainedFileReferences(file.id),
       ),
+    ).toBe(true);
+    expect(
+      await prisma.academicContentRevisionAsset.count({
+        where: { fileId: file.id, schoolId: ids.school },
+      }),
     ).toBe(3);
     const candidates = await files.cleanupCandidates(
       controlledNow,

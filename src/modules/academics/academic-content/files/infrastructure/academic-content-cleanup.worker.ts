@@ -175,20 +175,12 @@ export class AcademicContentCleanupWorker implements OnModuleInit {
           throw new Error('academic_content_cleanup_context_missing');
         if (!(await tx.lockActiveFile(session.fileId, session.schoolId)))
           return;
-        const active = await tx.countAcademicContentFileReferences(
-          session.fileId,
-          session.schoolId,
-        );
-        if (active > 0) return;
+        if (await tx.hasRetainedFileReferences(session.fileId)) return;
         await this.storage.deleteObjectAndConfirmAbsent({
           bucket: session.finalBucket,
           objectKey: session.finalObjectKey,
         });
-        const stillActive = await tx.countAcademicContentFileReferences(
-          session.fileId,
-          session.schoolId,
-        );
-        if (stillActive > 0)
+        if (await tx.hasRetainedFileReferences(session.fileId))
           throw new Error('academic_content_cleanup_asset_race');
         await tx.softDeleteFile(session.fileId, session.schoolId, new Date());
         await tx.updateUpload(

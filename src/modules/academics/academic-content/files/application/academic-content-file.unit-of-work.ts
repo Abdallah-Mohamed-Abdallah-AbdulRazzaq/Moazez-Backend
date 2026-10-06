@@ -129,10 +129,7 @@ export interface AcademicContentFileTransaction {
     identity: AcademicAssetIdentity,
     deletedAt: Date,
   ): Promise<AcademicContentAsset>;
-  countAcademicContentFileReferences(
-    fileId: string,
-    schoolId: string,
-  ): Promise<number>;
+  hasRetainedFileReferences(fileId: string): Promise<boolean>;
   extendReadyCleanup(
     fileId: string,
     schoolId: string,

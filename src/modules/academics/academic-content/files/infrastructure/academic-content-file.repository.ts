@@ -7,6 +7,7 @@ import {
   type FileUploadSession,
 } from '@prisma/client';
 import { PrismaService } from '../../../../../infrastructure/database/prisma.service';
+import { hasRetainedFileReferences } from '../../../../files/shared/infrastructure/file-lifetime.repository';
 import { missingAcademicCapabilityCleanupDeadline } from '../domain/academic-content-file.cleanup-deadline';
 import {
   AcademicContentEffectiveFilePolicy,
@@ -182,15 +183,8 @@ export class AcademicContentFileRepository {
           where: { id: assetId, schoolId, academicContentId: contentId },
           data: { deletedAt },
         }),
-      countAcademicContentFileReferences: async (fileId, schoolId) => {
-        const current = await tx.academicContentAsset.count({
-          where: { schoolId, fileId, deletedAt: null },
-        });
-        const historical = await tx.academicContentRevisionAsset.count({
-          where: { schoolId, fileId },
-        });
-        return current + historical;
-      },
+      hasRetainedFileReferences: (fileId) =>
+        hasRetainedFileReferences(tx, fileId),
       extendReadyCleanup: async (fileId, schoolId, eligibleAt) => {
         await tx.fileUploadSession.updateMany({
           where: {

@@ -1339,7 +1339,6 @@ describeDatabase('ACC-9D PostgreSQL Teacher workflow and publication', () => {
             originalName: 'test.pdf',
             mimeType: 'application/pdf',
             sizeBytes: 1n,
-            deletedAt: now,
           },
         });
         await prisma.academicContentAsset.create({
@@ -1350,6 +1349,12 @@ describeDatabase('ACC-9D PostgreSQL Teacher workflow and publication', () => {
             createdByUserId: ids.teacher,
             sortOrder: 0,
           },
+        });
+        // Preserve an existing invalid-asset fixture without creating a new
+        // reference to a File that the live-reference invariant rejects.
+        await prisma.file.update({
+          where: { id: file.id },
+          data: { deletedAt: now },
         });
       }
       if (kind === 'active-conflict') await publish(c.id);
