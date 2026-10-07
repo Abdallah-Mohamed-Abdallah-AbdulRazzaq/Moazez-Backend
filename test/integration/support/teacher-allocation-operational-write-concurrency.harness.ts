@@ -225,27 +225,34 @@ async function run(): Promise<void> {
     { started: Deferred; release: Deferred }
   >();
   const pdf = Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\n');
-  const verifier = new AcademicContentFileVerifier(
-    new StorageService(
-      {
-        statObject: () =>
-          Promise.resolve({
-            size: pdf.length,
-            etag: null,
-            contentType: 'application/pdf',
-            metadata: {},
-            lastModified: null,
-            generation: null,
-            version: null,
-          }),
-        readObjectRange: (input: { offset: number; length: number }) =>
-          Promise.resolve(
-            pdf.subarray(input.offset, input.offset + input.length),
-          ),
-      } as unknown as ObjectStoragePort,
-      {} as SignedUrlService,
-    ),
+  const storage = new StorageService(
+    {
+      getCapabilities: () => ({ resumableUpload: true, rangeRead: true }),
+      createResumableUploadSession: (input: { objectKey: string }) =>
+        Promise.resolve({
+          sessionUrl: `https://provider.invalid/resumable/${input.objectKey}`,
+          expiresAt: new Date(Date.now() + 7 * 86400_000),
+        }),
+      statObject: () =>
+        Promise.resolve({
+          size: pdf.length,
+          etag: null,
+          contentType: 'application/pdf',
+          metadata: {},
+          lastModified: null,
+          generation: null,
+          version: null,
+        }),
+      readObjectRange: (input: { offset: number; length: number }) =>
+        Promise.resolve(
+          pdf.subarray(input.offset, input.offset + input.length),
+        ),
+    } as unknown as ObjectStoragePort,
+    {
+      resolveBucket: () => 'owned-concurrency-fixture',
+    } as unknown as SignedUrlService,
   );
+  const verifier = new AcademicContentFileVerifier(storage);
   let app: INestApplication | undefined;
   let organizationId: string | undefined;
   let schoolId: string | undefined;
@@ -344,7 +351,7 @@ async function run(): Promise<void> {
     currentStage = 'fixture-academics';
     const academic = await createAcademicBase(fixturePrisma, schoolId, marker);
     const allocations: AllocationFixture[] = [];
-    for (let index = 0; index < 40; index += 1) {
+    for (let index = 0; index < 64; index += 1) {
       allocations.push(
         await createAllocationFixture({
           prisma: fixturePrisma,
@@ -393,6 +400,8 @@ async function run(): Promise<void> {
 
     currentStage = 'app-init';
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(StorageService)
+      .useValue(storage)
       .overrideProvider(AcademicContentFileVerifier)
       .useValue({
         verify: async (session: FileUploadSession) => {
@@ -895,6 +904,273 @@ async function run(): Promise<void> {
     assert.equal(Number(unsafeFiles[0].count), 0);
     console.log('ACC_UNAUTHORIZED_FILE_ASSET_COUNT=0');
 
+    // The following unlink fixtures intentionally retain pre-reassignment assets.
+    // Each race checks the actual mutation, independently of historical authorship.
+    for (const [offset, kind] of [
+      'ARCHIVE',
+      'RESTORE',
+      'DELETE',
+      'LINKS',
+      'TAGS',
+      'PREPARATION',
+      'WEEKLY_PLAN',
+      'SUBJECT_RESOURCE',
+      'ONLINE_SESSION',
+      'UPLOAD_INTENT',
+      'UPLOAD_CANCEL',
+      'ASSET_UNLINK',
+    ].entries()) {
+      for (const [orderIndex, order] of [
+        'writer_first',
+        'reassignment_first',
+      ].entries()) {
+        const allocation = allocations[40 + offset * 2 + orderIndex];
+        const title = `${marker}-closeout-${kind}-${order}`;
+        const type =
+          kind === 'PREPARATION'
+            ? 'TEACHER_PREPARATION'
+            : kind === 'WEEKLY_PLAN'
+              ? 'WEEKLY_PLAN'
+              : kind === 'SUBJECT_RESOURCE'
+                ? 'SUBJECT_RESOURCE'
+                : kind === 'ONLINE_SESSION'
+                  ? 'ONLINE_SESSION'
+                  : 'GENERAL_RESOURCE';
+        const content = await scope(sourceTeacher, () =>
+          academicContent.create(allocation.id, {
+            type,
+            audience:
+              kind === 'PREPARATION'
+                ? 'INTERNAL_STAFF'
+                : kind === 'WEEKLY_PLAN'
+                  ? 'GUARDIANS'
+                  : 'STUDENTS',
+            title,
+          }),
+        );
+        if (kind === 'RESTORE')
+          await scope(sourceTeacher, () => academicContent.archive(content.id));
+        let uploadId = '',
+          assetId = '';
+        const clientRequestId = randomUUID();
+        if (kind === 'UPLOAD_CANCEL')
+          uploadId = (
+            await fixturePrisma.fileUploadSession.create({
+              data: {
+                schoolId,
+                organizationId,
+                createdByUserId: sourceTeacher.id,
+                purpose: FileUploadPurpose.ACADEMIC_CONTENT,
+                purposeContextId: content.id,
+                clientRequestId,
+                originalName: 'race.pdf',
+                expectedMimeType: 'application/pdf',
+                expectedSizeBytes: BigInt(pdf.length),
+                finalBucket: 'owned-concurrency-fixture',
+                finalObjectKey: title,
+                status: FileUploadSessionStatus.UPLOADING,
+                expiresAt: new Date(Date.now() + 86400_000),
+              },
+            })
+          ).id;
+        if (kind === 'ASSET_UNLINK') {
+          const file = await fixturePrisma.file.create({
+            data: {
+              schoolId,
+              organizationId,
+              uploaderId: sourceTeacher.id,
+              bucket: 'owned-concurrency-fixture',
+              objectKey: title,
+              originalName: 'race.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: BigInt(pdf.length),
+            },
+          });
+          assetId = (
+            await fixturePrisma.academicContentAsset.create({
+              data: {
+                schoolId,
+                academicContentId: content.id,
+                fileId: file.id,
+                createdByUserId: sourceTeacher.id,
+                sortOrder: 0,
+              },
+            })
+          ).id;
+        }
+        const actions: Record<string, () => Promise<unknown>> = {
+          ARCHIVE: () => academicContent.archive(content.id),
+          RESTORE: () => academicContent.restore(content.id),
+          DELETE: () => academicContent.delete(content.id),
+          LINKS: () =>
+            academicContent.links(content.id, [
+              { label: title, url: 'https://example.test/reference' },
+            ]),
+          TAGS: () => academicContent.tags(content.id, [{ value: title }]),
+          PREPARATION: () =>
+            academicContent.preparation(content.id, {
+              topic: title,
+              objectives: [],
+              learningOutcomes: [],
+              teachingStrategies: [],
+              activities: [],
+            }),
+          WEEKLY_PLAN: () =>
+            academicContent.weeklyPlan(content.id, {
+              weekStartDate: '2026-10-05',
+              weekEndDate: '2026-10-11',
+              objectives: [],
+              topics: [title],
+              homeworkAssignmentIds: [],
+              gradeAssessmentIds: [],
+            }),
+          SUBJECT_RESOURCE: () =>
+            academicContent.subjectResource(content.id, {
+              resourceCategory: 'OTHER',
+            }),
+          ONLINE_SESSION: () =>
+            academicContent.onlineSession(content.id, {
+              platform: 'ZOOM',
+              joinUrl: 'https://example.test/meeting',
+              startAt: '2026-10-08T10:00:00Z',
+              endAt: '2026-10-08T11:00:00Z',
+              timezone: 'Africa/Cairo',
+            }),
+          UPLOAD_INTENT: () =>
+            academicFiles.uploadIntent(content.id, {
+              clientRequestId,
+              originalName: 'race.pdf',
+              expectedMimeType: 'application/pdf',
+              expectedSizeBytes: String(pdf.length),
+            }),
+          UPLOAD_CANCEL: () => academicFiles.cancel(content.id, uploadId),
+          ASSET_UNLINK: () => academicFiles.unlink(content.id, assetId),
+        };
+        const detailActions: Record<string, string> = {
+          PREPARATION: 'preparation',
+          WEEKLY_PLAN: 'weekly_plan',
+          SUBJECT_RESOURCE: 'subject_resource',
+          ONLINE_SESSION: 'online_session',
+        };
+        const action =
+          kind === 'LINKS' || kind === 'TAGS'
+            ? `academics.academic_content.${kind.toLowerCase()}.replace`
+            : detailActions[kind]
+              ? `academics.academic_content.details.${detailActions[kind]}.update`
+              : `academics.academic_content.${kind.toLowerCase()}`;
+        const count = () =>
+          kind === 'UPLOAD_INTENT'
+            ? fixturePrisma.fileUploadSession.count({
+                where: {
+                  schoolId,
+                  purposeContextId: content.id,
+                  clientRequestId,
+                },
+              })
+            : kind === 'UPLOAD_CANCEL'
+              ? fixturePrisma.fileUploadSession.count({
+                  where: {
+                    id: uploadId,
+                    status: FileUploadSessionStatus.CANCELLED,
+                  },
+                })
+              : kind === 'ASSET_UNLINK'
+                ? fixturePrisma.academicContentAsset.count({
+                    where: { id: assetId, deletedAt: { not: null } },
+                  })
+                : fixturePrisma.auditLog.count({
+                    where: { schoolId, resourceId: content.id, action },
+                  });
+        const before = await preview(allocation.id);
+        coordinator.configure(
+          order as Exclude<RaceMode, 'idle'>,
+          allocation.id,
+        );
+        const write = () => scope(sourceTeacher, actions[kind]);
+        currentStage = 'closeout-' + kind + '-' + order;
+        if (order === 'writer_first') {
+          const writer = settle(write());
+          await withTimeout(
+            coordinator.writerAcquired.promise,
+            10000,
+            currentStage + ' writer gate',
+          );
+          const reassignment = settle(
+            reassign(allocation.id, before.impactFingerprint),
+          );
+          await withTimeout(
+            coordinator.reassignmentAttempted.promise,
+            10000,
+            currentStage + ' reassignment gate',
+          );
+          try {
+            await waitForAllocationBlock(fixturePrisma);
+          } finally {
+            coordinator.releaseWriter.resolve();
+          }
+          const written = await writer,
+            reassigned = await reassignment;
+          if (written.status === 'rejected') {
+            // Intent has another authorization transaction after provider issuance.
+            // A reassignment between those phases must fence its late persistence.
+            assert.equal(kind, 'UPLOAD_INTENT');
+            assert.equal(reassigned.status, 'fulfilled');
+            assertAcademicOwnershipFailure(written.reason);
+            const session =
+              (await fixturePrisma.fileUploadSession.findFirstOrThrow({
+                where: { schoolId, purposeContextId: content.id },
+              })) as { status: FileUploadSessionStatus };
+            assert.equal(session.status, FileUploadSessionStatus.FAILED);
+          }
+          assert.equal(await count(), 1);
+          coordinator.reset();
+          if (reassigned.status === 'rejected')
+            assertSafeReassignmentFailure(reassigned.reason);
+          else {
+            assert.equal(
+              (
+                await fixturePrisma.teacherSubjectAllocation.findUniqueOrThrow({
+                  where: { id: allocation.id },
+                })
+              ).teacherUserId,
+              targetTeacher.id,
+            );
+            const replay = await settle(write());
+            assert.equal(replay.status, 'rejected');
+            assertAcademicOwnershipFailure(replay.reason);
+          }
+        } else {
+          const reassignment = reassign(
+            allocation.id,
+            before.impactFingerprint,
+          );
+          await withTimeout(
+            coordinator.reassignmentAcquired.promise,
+            10000,
+            currentStage + ' reassignment gate',
+          );
+          const writer = settle(write());
+          await withTimeout(
+            coordinator.writerAttempted.promise,
+            10000,
+            currentStage + ' writer gate',
+          );
+          try {
+            await waitForAllocationBlock(fixturePrisma);
+            assert.equal(await count(), 0);
+          } finally {
+            coordinator.releaseReassignment.resolve();
+          }
+          await reassignment;
+          const written = await writer;
+          assert.equal(written.status, 'rejected');
+          assertAcademicOwnershipFailure(written.reason);
+          assert.equal(await count(), 0);
+          coordinator.reset();
+        }
+        console.log(`ACC_${kind}_${order.toUpperCase()}=PASS`);
+      }
+    }
     const scenarios: RaceFixture[] = [
       taskScenario({
         repository: taskRepository,
@@ -1431,6 +1707,33 @@ async function proveWriterFirst(input: {
     input.sourceTeacherUserId,
   );
   input.coordinator.reset();
+}
+
+async function waitForAllocationBlock(prisma: PrismaClient): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const rows = await prisma.$queryRaw<Array<{ waiting: boolean }>>`
+      SELECT (wait_event_type = 'Lock' AND cardinality(pg_blocking_pids(pid)) > 0) AS waiting
+      FROM pg_stat_activity WHERE datname = current_database()
+        AND query LIKE '%teacher_subject_allocations%'`;
+    if (rows.some((row) => row.waiting)) return;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  throw new Error(
+    'Competing allocation writer did not wait on the real PostgreSQL lock',
+  );
+}
+
+function assertAcademicOwnershipFailure(error: unknown): void {
+  if (error instanceof DomainException) {
+    assert.equal(error.httpStatus, 404);
+    return;
+  }
+  assert.ok(error instanceof Prisma.PrismaClientKnownRequestError);
+  assert.ok(
+    error.code === 'P2034' ||
+      (error.code === 'P2010' && error.meta?.code === '40001'),
+  );
 }
 
 async function proveReassignmentFirst(input: {
@@ -2398,6 +2701,17 @@ async function cleanupSchool(
   await prisma.academicContentGuardianNoteDetail.deleteMany({
     where: { schoolId },
   });
+  await prisma.academicContentWeeklyPlanDetail.deleteMany({
+    where: { schoolId },
+  });
+  await prisma.academicContentSubjectResourceDetail.deleteMany({
+    where: { schoolId },
+  });
+  await prisma.academicContentOnlineSessionDetail.deleteMany({
+    where: { schoolId },
+  });
+  await prisma.academicContentLink.deleteMany({ where: { schoolId } });
+  await prisma.academicContentTag.deleteMany({ where: { schoolId } });
   await prisma.academicContentTarget.deleteMany({ where: { schoolId } });
   await prisma.academicContent.deleteMany({ where: { schoolId } });
   await prisma.communicationAnnouncementAudience.deleteMany({
