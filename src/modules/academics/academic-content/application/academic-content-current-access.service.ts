@@ -13,6 +13,9 @@ import { AcademicContentRecipientReadRepository } from '../infrastructure/academ
 import {
   AcademicContentRecipientQuery,
   normalizeAcademicContentRecipientQuery,
+  ParentAcademicContentType,
+  ParentRecipientContext,
+  ParentRecipientChildrenContext,
 } from '../domain/academic-content-recipient.query';
 
 @Injectable()
@@ -76,6 +79,59 @@ export class AcademicContentCurrentAccessService {
     if (!detail)
       throw new NotFoundDomainException('Academic content not found');
     return detail;
+  }
+
+  listCurrentParentPublications(
+    context: ParentRecipientContext,
+    query: AcademicContentRecipientQuery<ParentAcademicContentType> = {},
+    now = new Date(),
+  ) {
+    return this.reads.listCurrentParentPublications(
+      context,
+      normalizeAcademicContentRecipientQuery(query, 'PARENT'),
+      now,
+    );
+  }
+
+  async getCurrentParentContent(
+    context: ParentRecipientContext,
+    contentId: string,
+    now?: Date,
+  ) {
+    const identity = await this.reads.findCurrentParentPublication(
+      context,
+      contentId,
+      now ?? new Date(),
+    );
+    if (!identity)
+      throw new NotFoundDomainException('Academic content not found');
+    const detail = await this.reads.findCurrentParentDetail(
+      context,
+      identity,
+      now ?? new Date(),
+    );
+    if (!detail)
+      throw new NotFoundDomainException('Academic content not found');
+    return detail;
+  }
+
+  async listCurrentParentAccessibleChildren(
+    context: ParentRecipientChildrenContext,
+    contentId: string,
+    now = new Date(),
+  ) {
+    const rows = await this.reads.listCurrentParentAccessibleChildren(
+      context,
+      contentId,
+      now,
+    );
+    if (!rows.length)
+      throw new NotFoundDomainException('Academic content not found');
+    return {
+      academicContentId: rows[0].academicContentId,
+      publicationId: rows[0].publicationId,
+      children: rows.map((row) => ({ studentId: row.studentId })),
+    };
   }
 
   /** Returns exact immutable publication identity; every denial is non-disclosing. */

@@ -14,6 +14,10 @@ import {
   AcademicContentRecipientCard,
   AcademicContentRecipientDetail,
   AcademicContentRecipientFeedQuery,
+  ParentAcademicContentType,
+  ParentRecipientContext,
+  ParentRecipientChildrenContext,
+  StudentAcademicContentType,
 } from '../domain/academic-content-recipient.query';
 
 type StudentRecipientContext = Extract<
@@ -21,21 +25,60 @@ type StudentRecipientContext = Extract<
   { actorKind: 'STUDENT' }
 >;
 
+type RecipientActor = { schoolId: string; userId: string } & (
+  | { actorKind: 'STUDENT' }
+  | { actorKind: 'PARENT'; guardianIds: readonly string[] }
+);
+type RecipientChildSql = Record<
+  'studentId' | 'enrollmentId' | 'classroomId' | 'academicYearId' | 'termId',
+  Prisma.Sql
+>;
+function childSql(
+  context: AcademicContentCurrentRecipientContext,
+): RecipientChildSql {
+  return {
+    studentId: Prisma.sql`${context.studentId}`,
+    enrollmentId: Prisma.sql`${context.enrollmentId}`,
+    classroomId: Prisma.sql`${context.classroomId}`,
+    academicYearId: Prisma.sql`${context.academicYearId}`,
+    termId: Prisma.sql`${context.termId}`,
+  };
+}
+
 // Reuses the ACC-10A matcher semantics against live relationships and immutable targets.
 // Every raw query explicitly constrains the School; no recipient snapshot is an ACL.
-function currentStudentPublicationQuery(
-  context: StudentRecipientContext,
+function currentRecipientPublicationQuery(
+  context: RecipientActor,
   now: Date,
+  child: RecipientChildSql,
 ) {
+  const relationship =
+    context.actorKind === 'STUDENT'
+      ? Prisma.sql`actor.id = student.user_id AND actor.user_type = 'STUDENT'`
+      : Prisma.sql`actor.user_type = 'PARENT' AND EXISTS (
+        SELECT 1 FROM student_guardian_links link
+        JOIN guardians guardian ON guardian.id = link.guardian_id AND guardian.school_id = link.school_id
+        WHERE link.student_id = student.id AND link.school_id = p.school_id
+          AND guardian.id = ANY(${[...context.guardianIds]}::uuid[])
+          AND guardian.user_id = actor.id AND guardian.deleted_at IS NULL
+      )`;
+  const audience =
+    context.actorKind === 'STUDENT'
+      ? Prisma.sql`r.audience IN ('STUDENTS', 'STUDENTS_AND_GUARDIANS')`
+      : Prisma.sql`r.audience IN ('GUARDIANS', 'STUDENTS_AND_GUARDIANS')`;
+  const types =
+    context.actorKind === 'STUDENT'
+      ? Prisma.sql`r.type IN ('WEEKLY_PLAN', 'SUBJECT_RESOURCE', 'ONLINE_SESSION', 'GENERAL_RESOURCE')`
+      : Prisma.sql`r.type IN ('WEEKLY_PLAN', 'GUARDIAN_WEEKLY_NOTE', 'SUBJECT_RESOURCE', 'ONLINE_SESSION', 'GENERAL_RESOURCE')`;
   return Prisma.sql`
     FROM academic_content_publications p
     JOIN academic_content_revisions r ON r.id = p.revision_id AND r.school_id = p.school_id AND r.academic_content_id = p.academic_content_id
     JOIN academic_contents c ON c.id = p.academic_content_id AND c.school_id = p.school_id
     JOIN schools school ON school.id = p.school_id
     JOIN organizations organization ON organization.id = school.organization_id
-    JOIN student_enrollments e ON e.id = ${context.enrollmentId}::uuid AND e.school_id = p.school_id
+    JOIN student_enrollments e ON e.id = ${child.enrollmentId}::uuid AND e.school_id = p.school_id
     JOIN students student ON student.id = e.student_id AND student.school_id = e.school_id
-    JOIN users actor ON actor.id = student.user_id
+    JOIN users actor ON actor.id = ${context.userId}::uuid
     JOIN classrooms classroom ON classroom.id = e.classroom_id AND classroom.school_id = e.school_id
     JOIN sections section ON section.id = classroom.section_id AND section.school_id = e.school_id
     JOIN grades grade ON grade.id = section.grade_id AND grade.school_id = e.school_id
@@ -47,13 +90,12 @@ function currentStudentPublicationQuery(
       AND p.status = 'PUBLISHED' AND p.published_at IS NOT NULL AND p.published_at <= ${now}
       AND p.visible_from <= ${now} AND (p.visible_until IS NULL OR p.visible_until > ${now})
       AND r.snapshot_contract_version = 2
-      AND r.academic_year_id = ${context.academicYearId}::uuid AND r.term_id = ${context.termId}::uuid
-      AND r.type IN ('WEEKLY_PLAN', 'SUBJECT_RESOURCE', 'ONLINE_SESSION', 'GENERAL_RESOURCE')
-      AND r.audience IN ('STUDENTS', 'STUDENTS_AND_GUARDIANS')
-      AND student.id = ${context.studentId}::uuid AND student.status = 'ACTIVE' AND student.deleted_at IS NULL
-      AND actor.id = ${context.userId}::uuid AND actor.user_type = 'STUDENT' AND actor.status = 'ACTIVE' AND actor.deleted_at IS NULL
+      AND r.academic_year_id = ${child.academicYearId}::uuid AND r.term_id = ${child.termId}::uuid
+      AND ${types} AND ${audience}
+      AND student.id = ${child.studentId}::uuid AND student.status = 'ACTIVE' AND student.deleted_at IS NULL
+      AND actor.status = 'ACTIVE' AND actor.deleted_at IS NULL AND ${relationship}
       AND e.status = 'ACTIVE' AND e.deleted_at IS NULL
-      AND e.classroom_id = ${context.classroomId}::uuid
+      AND e.classroom_id = ${child.classroomId}::uuid
       AND e.academic_year_id = r.academic_year_id AND e.term_id = r.term_id
       AND classroom.deleted_at IS NULL AND section.deleted_at IS NULL AND grade.deleted_at IS NULL AND stage.deleted_at IS NULL`;
 }
@@ -84,6 +126,7 @@ const CARD_COLUMNS = Prisma.sql`
   p.visible_from AS "visibleFrom", p.visible_until AS "visibleUntil",
   CASE r.type
     WHEN 'WEEKLY_PLAN' THEN jsonb_build_object('weekStartDate', r.type_specific_snapshot #> '{state,weekStartDate}', 'weekEndDate', r.type_specific_snapshot #> '{state,weekEndDate}')
+    WHEN 'GUARDIAN_WEEKLY_NOTE' THEN jsonb_build_object('priority', r.type_specific_snapshot #> '{state,priority}', 'requiresAcknowledgement', r.type_specific_snapshot #> '{state,requiresAcknowledgement}')
     WHEN 'SUBJECT_RESOURCE' THEN jsonb_build_object('resourceCategory', r.type_specific_snapshot #> '{state,resourceCategory}')
     WHEN 'ONLINE_SESSION' THEN jsonb_build_object('platform', r.type_specific_snapshot #> '{state,platform}', 'startAt', r.type_specific_snapshot #> '{state,startAt}', 'endAt', r.type_specific_snapshot #> '{state,endAt}')
     ELSE NULL
@@ -129,8 +172,10 @@ const PUBLICATION_SELECT = {
 export class AcademicContentRecipientReadRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listCurrentStudentPublications(
-    context: StudentRecipientContext,
+  private async listCurrentRecipientPublications<
+    T extends ParentAcademicContentType,
+  >(
+    context: AcademicContentCurrentRecipientContext,
     query: AcademicContentRecipientFeedQuery,
     now: Date,
   ) {
@@ -180,10 +225,10 @@ export class AcademicContentRecipientReadRepository {
     // A single statement gives count and page the same live authorization snapshot,
     // including the count when an out-of-range page has no rows. No secrets are selected.
     const rows = await this.prisma.$queryRaw<
-      (AcademicContentRecipientCard & { total: number })[]
+      (AcademicContentRecipientCard<T> & { total: number })[]
     >(Prisma.sql`
       WITH eligible AS (
-        SELECT ${CARD_COLUMNS} ${currentStudentPublicationQuery(context, now)}
+        SELECT ${CARD_COLUMNS} ${currentRecipientPublicationQuery(context, now, childSql(context))}
           AND ${Prisma.join(filters, ' AND ')}
       ), page AS (
         SELECT * FROM eligible ORDER BY "visibleFrom" DESC, "publicationId" DESC
@@ -215,8 +260,8 @@ export class AcademicContentRecipientReadRepository {
     };
   }
 
-  async findCurrentStudentPublication(
-    context: StudentRecipientContext,
+  private async findCurrentRecipientPublication(
+    context: AcademicContentCurrentRecipientContext,
     contentId: string,
     now: Date,
   ) {
@@ -224,21 +269,21 @@ export class AcademicContentRecipientReadRepository {
       { publicationId: string; revisionId: string }[]
     >(Prisma.sql`
       SELECT p.id AS "publicationId", p.revision_id AS "revisionId"
-      ${currentStudentPublicationQuery(context, now)}
+      ${currentRecipientPublicationQuery(context, now, childSql(context))}
         AND p.academic_content_id = ${contentId}::uuid AND ${matchingRevisionTarget()}
       ORDER BY p.visible_from DESC, p.id DESC LIMIT 1`);
     return rows[0] ?? null;
   }
 
-  async findCurrentStudentDetail(
-    context: StudentRecipientContext,
+  private async findCurrentRecipientDetail<T extends ParentAcademicContentType>(
+    context: AcademicContentCurrentRecipientContext,
     identity: { publicationId: string; revisionId: string },
     now: Date,
   ) {
     // Called only after authorization; the same live predicates also fence this final
     // sensitive read against cancellation, relationship changes and successor races.
     const rows = await this.prisma.$queryRaw<
-      AcademicContentRecipientDetail[]
+      AcademicContentRecipientDetail<T>[]
     >(Prisma.sql`
       SELECT ${CARD_COLUMNS}, r.type_specific_snapshot AS "typeSpecificSnapshot",
         COALESCE((SELECT jsonb_agg(jsonb_build_object('fileId', asset.file_id, 'originalName', file.original_name, 'mimeType', file.mime_type, 'sizeBytes', file.size_bytes::text, 'sortOrder', asset.sort_order) ORDER BY asset.sort_order)
@@ -248,11 +293,105 @@ export class AcademicContentRecipientReadRepository {
           FROM academic_content_revision_links link WHERE link.revision_id = r.id AND link.school_id = p.school_id), '[]'::jsonb) AS links,
         COALESCE((SELECT jsonb_agg(jsonb_build_object('displayValue', tag.display_value, 'sortOrder', tag.sort_order) ORDER BY tag.sort_order)
           FROM academic_content_revision_tags tag WHERE tag.revision_id = r.id AND tag.school_id = p.school_id), '[]'::jsonb) AS tags
-      ${currentStudentPublicationQuery(context, now)}
+      ${currentRecipientPublicationQuery(context, now, childSql(context))}
         AND p.id = ${identity.publicationId}::uuid AND r.id = ${identity.revisionId}::uuid
         AND ${matchingRevisionTarget()}
       LIMIT 1`);
     return rows[0] ?? null;
+  }
+
+  listCurrentStudentPublications(
+    context: StudentRecipientContext,
+    query: AcademicContentRecipientFeedQuery,
+    now: Date,
+  ) {
+    return this.listCurrentRecipientPublications<StudentAcademicContentType>(
+      context,
+      query,
+      now,
+    );
+  }
+  listCurrentParentPublications(
+    context: ParentRecipientContext,
+    query: AcademicContentRecipientFeedQuery,
+    now: Date,
+  ) {
+    return this.listCurrentRecipientPublications<ParentAcademicContentType>(
+      context,
+      query,
+      now,
+    );
+  }
+  findCurrentStudentPublication(
+    context: StudentRecipientContext,
+    contentId: string,
+    now: Date,
+  ) {
+    return this.findCurrentRecipientPublication(context, contentId, now);
+  }
+  findCurrentParentPublication(
+    context: ParentRecipientContext,
+    contentId: string,
+    now: Date,
+  ) {
+    return this.findCurrentRecipientPublication(context, contentId, now);
+  }
+  findCurrentStudentDetail(
+    context: StudentRecipientContext,
+    identity: { publicationId: string; revisionId: string },
+    now: Date,
+  ) {
+    return this.findCurrentRecipientDetail<StudentAcademicContentType>(
+      context,
+      identity,
+      now,
+    );
+  }
+  findCurrentParentDetail(
+    context: ParentRecipientContext,
+    identity: { publicationId: string; revisionId: string },
+    now: Date,
+  ) {
+    return this.findCurrentRecipientDetail<ParentAcademicContentType>(
+      context,
+      identity,
+      now,
+    );
+  }
+
+  async listCurrentParentAccessibleChildren(
+    context: ParentRecipientChildrenContext,
+    contentId: string,
+    now: Date,
+  ) {
+    // One parameterized statement revalidates all server-resolved child contexts.
+    // Notification metadata and historical recipient rows never enter this query.
+    const child: RecipientChildSql = {
+      studentId: Prisma.sql`current_child."studentId"`,
+      enrollmentId: Prisma.sql`current_child."enrollmentId"`,
+      classroomId: Prisma.sql`current_child."classroomId"`,
+      academicYearId: Prisma.sql`current_child."academicYearId"`,
+      termId: Prisma.sql`current_child."termId"`,
+    };
+    return this.prisma.$queryRaw<
+      { academicContentId: string; publicationId: string; studentId: string }[]
+    >(Prisma.sql`
+      WITH current_children AS (
+        SELECT * FROM jsonb_to_recordset(${JSON.stringify(context.children)}::jsonb)
+          AS child("studentId" uuid, "enrollmentId" uuid, "classroomId" uuid, "academicYearId" uuid, "termId" uuid)
+      ), eligible AS (
+        SELECT DISTINCT authorized.* FROM current_children current_child
+        CROSS JOIN LATERAL (
+          SELECT p.academic_content_id AS "academicContentId", p.id AS "publicationId", p.revision_id AS "revisionId", p.visible_from AS "visibleFrom", student.id AS "studentId"
+          ${currentRecipientPublicationQuery({ ...context, actorKind: 'PARENT' }, now, child)}
+            AND p.academic_content_id = ${contentId}::uuid AND ${matchingRevisionTarget()}
+          ORDER BY p.visible_from DESC, p.id DESC LIMIT 1
+        ) authorized
+      ), canonical AS (
+        SELECT "publicationId", "revisionId" FROM eligible ORDER BY "visibleFrom" DESC, "publicationId" DESC LIMIT 1
+      )
+      SELECT eligible."academicContentId", eligible."publicationId", eligible."studentId" FROM eligible
+      JOIN canonical USING ("publicationId", "revisionId") ORDER BY eligible."studentId" ASC`);
   }
 
   findPublication(schoolId: string, publicationId: string) {

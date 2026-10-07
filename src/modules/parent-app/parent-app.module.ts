@@ -1,3 +1,10 @@
+import { AcademicContentModule } from '../academics/academic-content/academic-content.module';
+import { ParentAcademicContentController } from './academic-content/controller/parent-academic-content.controller';
+import {
+  GetParentAcademicContentUseCase,
+  ListParentAcademicContentUseCase,
+  ListParentAcademicContentAccessibleChildrenUseCase,
+} from './academic-content/application/parent-academic-content.use-cases';
 import { Module } from '@nestjs/common';
 import { StorageModule } from '../../infrastructure/storage/storage.module';
 import { AppCalendarReadModelModule } from '../academics/calendar/app-facing/app-calendar-read-model.module';
@@ -129,6 +136,7 @@ import { ParentSmartPickupRecentCallsRepository } from './smart-pickup/infrastru
 
 @Module({
   imports: [
+    AcademicContentModule,
     AppCalendarReadModelModule,
     LessonContentPlaybackModule,
     AppDeviceTokensModule,
@@ -141,6 +149,7 @@ import { ParentSmartPickupRecentCallsRepository } from './smart-pickup/infrastru
     StorageModule,
   ],
   controllers: [
+    ParentAcademicContentController,
     ParentHomeController,
     ParentChildrenController,
     ParentProfileController,
@@ -162,6 +171,9 @@ import { ParentSmartPickupRecentCallsRepository } from './smart-pickup/infrastru
     ParentSmartPickupController,
   ],
   providers: [
+    GetParentAcademicContentUseCase,
+    ListParentAcademicContentUseCase,
+    ListParentAcademicContentAccessibleChildrenUseCase,
     ParentAppAccessService,
     ParentAppGuardianReadAdapter,
     ParentHomeReadAdapter,

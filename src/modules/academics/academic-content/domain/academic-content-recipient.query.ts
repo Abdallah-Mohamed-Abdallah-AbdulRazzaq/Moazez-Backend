@@ -4,6 +4,7 @@ import {
   AcademicOnlineSessionPlatform,
   Prisma,
 } from '@prisma/client';
+import type { AcademicContentCurrentRecipientContext } from './academic-content-current-access.policy';
 import { ValidationDomainException } from '../../../../common/exceptions/domain-exception';
 import { normalizeAcademicContentLibraryQuery } from './academic-content-library-normalization.policy';
 import { normalizeAcademicContentTagValue } from './academic-content-links-tags.policy';
@@ -21,8 +22,30 @@ export const STUDENT_ACADEMIC_CONTENT_TYPES = [
 export type StudentAcademicContentType =
   (typeof STUDENT_ACADEMIC_CONTENT_TYPES)[number];
 
-export type AcademicContentRecipientQuery = {
-  type?: StudentAcademicContentType;
+export const PARENT_ACADEMIC_CONTENT_TYPES = [
+  ...STUDENT_ACADEMIC_CONTENT_TYPES,
+  AcademicContentType.GUARDIAN_WEEKLY_NOTE,
+] as const;
+export type ParentAcademicContentType =
+  (typeof PARENT_ACADEMIC_CONTENT_TYPES)[number];
+export type ParentRecipientContext = Extract<
+  AcademicContentCurrentRecipientContext,
+  { actorKind: 'PARENT' }
+>;
+export type ParentRecipientChildrenContext = Pick<
+  ParentRecipientContext,
+  'schoolId' | 'userId' | 'guardianIds'
+> & {
+  children: Pick<
+    ParentRecipientContext,
+    'studentId' | 'enrollmentId' | 'classroomId' | 'academicYearId' | 'termId'
+  >[];
+};
+
+export type AcademicContentRecipientQuery<
+  T extends ParentAcademicContentType = StudentAcademicContentType,
+> = {
+  type?: T;
   subjectId?: string;
   search?: string;
   tag?: string;
@@ -36,14 +59,19 @@ export type AcademicContentRecipientQuery = {
 };
 
 export function normalizeAcademicContentRecipientQuery(
-  query: AcademicContentRecipientQuery = {},
+  query: AcademicContentRecipientQuery<ParentAcademicContentType> = {},
+  actorKind: 'STUDENT' | 'PARENT' = 'STUDENT',
 ) {
   if (
     query.type !== undefined &&
-    !STUDENT_ACADEMIC_CONTENT_TYPES.includes(query.type)
+    !(
+      actorKind === 'PARENT'
+        ? PARENT_ACADEMIC_CONTENT_TYPES
+        : (STUDENT_ACADEMIC_CONTENT_TYPES as readonly ParentAcademicContentType[])
+    ).includes(query.type)
   )
     throw new ValidationDomainException(
-      'Invalid Student Academic Content type',
+      `Invalid ${actorKind === 'PARENT' ? 'Parent' : 'Student'} Academic Content type`,
     );
   if (
     query.sessionPlatform !== undefined &&
@@ -81,11 +109,13 @@ export function normalizeAcademicContentRecipientQuery(
 export type AcademicContentRecipientFeedQuery = ReturnType<
   typeof normalizeAcademicContentRecipientQuery
 >;
-export type AcademicContentRecipientCard = {
+export type AcademicContentRecipientCard<
+  T extends ParentAcademicContentType = StudentAcademicContentType,
+> = {
   contentId: string;
   publicationId: string;
   revisionId: string;
-  type: StudentAcademicContentType;
+  type: T;
   audience: AcademicContentAudienceType;
   title: string;
   description: string | null;
@@ -94,7 +124,9 @@ export type AcademicContentRecipientCard = {
   visibleUntil: Date | null;
   summary: Prisma.JsonValue | null;
 };
-export type AcademicContentRecipientDetail = AcademicContentRecipientCard & {
+export type AcademicContentRecipientDetail<
+  T extends ParentAcademicContentType = StudentAcademicContentType,
+> = AcademicContentRecipientCard<T> & {
   typeSpecificSnapshot: Prisma.JsonValue | null;
   assets: {
     fileId: string;
