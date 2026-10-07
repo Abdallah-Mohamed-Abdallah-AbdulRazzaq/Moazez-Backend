@@ -79,6 +79,18 @@ describe('teacher allocation operational write concurrency', () => {
       'UNSCHEDULE',
       'WITHDRAW',
       'REVISE',
+      'ARCHIVE',
+      'RESTORE',
+      'DELETE',
+      'LINKS',
+      'TAGS',
+      'PREPARATION',
+      'WEEKLY_PLAN',
+      'SUBJECT_RESOURCE',
+      'ONLINE_SESSION',
+      'UPLOAD_INTENT',
+      'UPLOAD_CANCEL',
+      'ASSET_UNLINK',
     ]) {
       expect(stdout).toContain(`ACC_${domain}_WRITER_FIRST=PASS`);
       expect(stdout).toContain(`ACC_${domain}_REASSIGNMENT_FIRST=PASS`);
