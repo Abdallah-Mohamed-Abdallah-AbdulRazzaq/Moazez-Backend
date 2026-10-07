@@ -841,13 +841,15 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     ).toBe(false);
 
     const parentPermissions = await getSystemRolePermissionCodes('parent');
-    expect(parentPermissions).toHaveLength(46);
+    expect(parentPermissions).toHaveLength(47);
+    expect(parentPermissions).toContain('academics.academic_content.view');
     expect(new Set(parentPermissions).size).toBe(parentPermissions.length);
     expect(parentPermissions).not.toContain('dashboard.todos.view');
     expect(parentPermissions).not.toContain('dashboard.todos.manage');
 
     const studentPermissions = await getSystemRolePermissionCodes('student');
-    expect(studentPermissions).toHaveLength(57);
+    expect(studentPermissions).toHaveLength(58);
+    expect(studentPermissions).toContain('academics.academic_content.view');
     expect(new Set(studentPermissions).size).toBe(studentPermissions.length);
     expect(studentPermissions).not.toContain('dashboard.todos.view');
     expect(studentPermissions).not.toContain('dashboard.todos.manage');

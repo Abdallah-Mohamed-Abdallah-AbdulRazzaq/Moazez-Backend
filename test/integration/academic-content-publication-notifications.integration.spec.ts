@@ -316,14 +316,17 @@ describeDatabase(
       ]);
     });
 
-    async function publication() {
+    async function publication(
+      type: ContentType = ContentType.GENERAL_RESOURCE,
+      snapshot?: Prisma.InputJsonValue,
+    ) {
       const content = await prisma.academicContent.create({
         data: {
           schoolId,
           academicYearId: yearId,
           termId,
           title: 'Mutable title must not be copied',
-          type: ContentType.GENERAL_RESOURCE,
+          type,
           audience: Audience.STUDENTS_AND_GUARDIANS,
           createdByUserId: actorId,
         },
@@ -336,12 +339,12 @@ describeDatabase(
           termId,
           revisionNumber: 1,
           snapshotContractVersion: 2,
-          type: ContentType.GENERAL_RESOURCE,
+          type,
           audience: Audience.STUDENTS_AND_GUARDIANS,
           title: 'Frozen publication title',
           sourceStatus: 'DRAFT',
           capturedByUserId: actorId,
-          typeSpecificSnapshot: {
+          typeSpecificSnapshot: snapshot ?? {
             joinUrl: 'hidden',
             accessCode: 'hidden',
             bucket: 'hidden',
@@ -442,6 +445,226 @@ describeDatabase(
         },
       });
     }
+
+    it.each(['initial', 'updated'] as const)(
+      'ACC-10A %s waits for visibleFrom beyond the old recovery window and generates once',
+      async (event) => {
+        const input = await publication();
+        if (event === 'updated') {
+          const previous = await predecessor(input);
+          await prisma.academicContentPublication.update({
+            where: { id: input.publicationId },
+            data: {
+              supersedesPublicationId: previous.id,
+              changeSignificance: 'SIGNIFICANT',
+            },
+          });
+        }
+        const due = new Date(now.getTime() + 3 * 86400000);
+        await prisma.academicContentPublication.update({
+          where: { id: input.publicationId },
+          data: { visibleFrom: due },
+        });
+        const before = await prisma.academicContentAudienceRecipient.findMany({
+          where: { publicationId: input.publicationId },
+        });
+        const jobs = new Map<string, { data: unknown; delay: number }>();
+        const ensure = jest.fn(
+          (
+            _queue: string,
+            _name: string,
+            data: unknown,
+            options: { jobId: string; delay: number },
+          ) => {
+            if (jobs.has(options.jobId)) return Promise.resolve('preserved');
+            jobs.set(options.jobId, { data, delay: options.delay });
+            return Promise.resolve('created');
+          },
+        );
+        const queue = new CommunicationNotificationQueueService({
+          ensureJobFromPersistedTruth: ensure,
+        } as unknown as BullmqService);
+        const repository = new AcademicContentPublicationNotificationRepository(
+          prisma,
+        );
+        const service = new AcademicContentPublicationNotificationService(
+          repository,
+          generator(),
+          queue,
+        );
+        await scoped(() => service.ensureAfterPublicationCommit(input, now));
+        const jobId = buildAcademicContentNotificationGenerationJobId(input);
+        expect(jobs.get(jobId)?.delay).toBe(3 * 86400000);
+        await scoped(() => service.generate(input, now));
+        expect(await notifications(input.publicationId)).toHaveLength(0);
+        // Losing a job even well before due must restore the same logical ID.
+        jobs.delete(jobId);
+        await scoped(() => service.recover(new Date(now.getTime() + 1000)));
+        expect(jobs.get(jobId)?.delay).toBe(3 * 86400000 - 1000);
+        const preserved = jobs.get(jobId);
+        await scoped(() => service.recover(new Date(now.getTime() + 2000)));
+        expect(jobs.get(jobId)).toBe(preserved);
+        jobs.delete(jobId);
+        await scoped(() => service.recover(due));
+        expect(jobs.get(jobId)?.delay).toBe(0);
+        const first = await scoped(() => service.generate(input, due));
+        expect(first.createdNotificationCount).toBeGreaterThan(0);
+        await scoped(() => service.generate(input, due));
+        await scoped(() => service.recover(due));
+        const rows = await notifications(input.publicationId);
+        expect(rows).toHaveLength(first.createdNotificationCount);
+        expect(
+          rows.every(
+            (row) =>
+              row.type ===
+              (event === 'updated'
+                ? NotificationType.ACADEMIC_CONTENT_UPDATED
+                : NotificationType.ACADEMIC_CONTENT_PUBLISHED),
+          ),
+        ).toBe(true);
+        expect(
+          await prisma.academicContentAudienceRecipient.findMany({
+            where: { publicationId: input.publicationId },
+          }),
+        ).toEqual(before);
+      },
+    );
+
+    it.each(['before', 'at'] as const)(
+      'ACC-10A cancellation %s first visibility protects disclosure',
+      async (timing) => {
+        const input = await publication();
+        const visibleFrom = new Date(now.getTime() + 2 * 86400000);
+        const cancelledAt = timing === 'before' ? now : visibleFrom;
+        await prisma.academicContentPublication.update({
+          where: { id: input.publicationId },
+          data: {
+            visibleFrom,
+            status: 'CANCELLED',
+            cancellationReason: 'WITHDRAWN',
+            cancelledAt,
+            cancelledByUserId: actorId,
+          },
+        });
+        const service = adapter();
+        const delayedAt = new Date(visibleFrom.getTime() + 1000);
+        await scoped(() => service.generate(input, delayedAt));
+        expect(await notifications(input.publicationId)).toHaveLength(0);
+        await scoped(() => service.generateCancellation(input, delayedAt));
+        const rows = await notifications(input.publicationId);
+        if (timing === 'before') expect(rows).toHaveLength(0);
+        else {
+          expect(rows.length).toBeGreaterThan(0);
+          expect(
+            rows.every(
+              (row) => row.type === NotificationType.ACADEMIC_CONTENT_CANCELLED,
+            ),
+          ).toBe(true);
+        }
+      },
+    );
+
+    it('ACC-10A recovers by stable due-time/id pages and excludes early reminders', async () => {
+      const startAt = new Date(now.getTime() + 3600000);
+      const visibleFrom = new Date(now.getTime() + 30 * 60000);
+      const input = await publication(ContentType.ONLINE_SESSION, {
+        type: 'ONLINE_SESSION',
+        state: {
+          platform: 'ZOOM',
+          providerName: null,
+          joinUrl: 'https://example.test/join',
+          accessCode: null,
+          instructions: null,
+          startAt: startAt.toISOString(),
+          endAt: new Date(startAt.getTime() + 3600000).toISOString(),
+          timezone: 'Africa/Cairo',
+          timetableEntryId: null,
+        },
+      });
+      await prisma.academicContentPublication.update({
+        where: { id: input.publicationId },
+        data: { visibleFrom },
+      });
+      await prisma.academicContentNotificationPolicy.create({
+        data: {
+          schoolId,
+          onlineSessionRemindersEnabled: true,
+          onlineSessionReminderOffsetsMinutes: [45, 15],
+        },
+      });
+      const ensure = jest
+        .fn<
+          ReturnType<
+            CommunicationNotificationQueueService['ensureAcademicContentSessionReminder']
+          >,
+          Parameters<
+            CommunicationNotificationQueueService['ensureAcademicContentSessionReminder']
+          >
+        >()
+        .mockResolvedValue('created');
+      const service = new AcademicContentPublicationNotificationService(
+        new AcademicContentPublicationNotificationRepository(prisma),
+        generator(),
+        {
+          ensureAcademicContentSessionReminder: ensure,
+        } as unknown as CommunicationNotificationQueueService,
+      );
+      await scoped(() =>
+        service.ensureSessionReminders(input, now, 'publication'),
+      );
+      expect(ensure).toHaveBeenCalledTimes(1);
+      expect(ensure.mock.calls[0][0].reminderOffsetMinutes).toBe(15);
+      expect(ensure.mock.calls[0][1]).toEqual(
+        new Date(startAt.getTime() - 15 * 60000),
+      );
+      ensure.mockClear();
+      await scoped(() =>
+        service.ensureSessionReminders(input, now, 'recovery'),
+      );
+      expect(ensure).toHaveBeenCalledTimes(1);
+      await scoped(() =>
+        service.generateSessionReminder(
+          { ...input, reminderOffsetMinutes: 45 },
+          new Date(now.getTime() + 15 * 60000),
+        ),
+      );
+      expect(await notifications(input.publicationId)).toHaveLength(0);
+      const due = new Date(startAt.getTime() - 15 * 60000);
+      const first = await scoped(() =>
+        service.generateSessionReminder(
+          { ...input, reminderOffsetMinutes: 15 },
+          due,
+        ),
+      );
+      expect(first.createdNotificationCount).toBeGreaterThan(0);
+      await scoped(() =>
+        service.generateSessionReminder(
+          { ...input, reminderOffsetMinutes: 15 },
+          due,
+        ),
+      );
+      expect(await notifications(input.publicationId)).toHaveLength(
+        first.createdNotificationCount,
+      );
+      const repository = new AcademicContentPublicationNotificationRepository(
+        prisma,
+      );
+      const page = await scoped(() => repository.listRecoveryCandidates(now));
+      expect(page.length).toBeLessThanOrEqual(100);
+      const row = page.find(
+        (candidate) => candidate.id === input.publicationId,
+      );
+      expect(row).toBeDefined();
+      const after = await scoped(() =>
+        repository.listRecoveryCandidates(now, {
+          dueAt: visibleFrom,
+          id: input.publicationId,
+        }),
+      );
+      expect(
+        after.some((candidate) => candidate.id === input.publicationId),
+      ).toBe(false);
+    });
 
     it.each([
       'publication',
@@ -1131,6 +1354,74 @@ describeDatabase(
       },
     );
 
+    (process.env.TEST_QUEUE_REDIS_URL ? it : it.skip)(
+      'ACC-10A restores real delayed Redis jobs before and at due, preserving identity and minimum payload',
+      async () => {
+        const queue = new BullmqService(
+          new ConfigService({
+            NODE_ENV: 'test',
+            QUEUE_REDIS_URL: process.env.TEST_QUEUE_REDIS_URL,
+          }),
+        );
+        const sourceQueue = new CommunicationNotificationQueueService(queue);
+        const service = new AcademicContentPublicationNotificationService(
+          new AcademicContentPublicationNotificationRepository(prisma),
+          generator(),
+          sourceQueue,
+        );
+        const input = await publication();
+        const due = new Date(now.getTime() + 3 * 86400000);
+        await prisma.academicContentPublication.update({
+          where: { id: input.publicationId },
+          data: { visibleFrom: due },
+        });
+        const jobId = buildAcademicContentNotificationGenerationJobId(input);
+        await queue.getQueueReadiness(COMMUNICATION_NOTIFICATION_QUEUE_NAME);
+        const jobs = queue.getQueue(COMMUNICATION_NOTIFICATION_QUEUE_NAME);
+        try {
+          await scoped(() => service.ensureAfterPublicationCommit(input, now));
+          let job = await jobs.getJob(jobId);
+          expect(await job?.getState()).toBe('delayed');
+          expect(job?.opts.delay).toBe(3 * 86400000);
+          expect(Object.keys(job?.data as object).sort()).toEqual(
+            [
+              'schoolId',
+              'organizationId',
+              'contentId',
+              'publicationId',
+              'actorUserId',
+              'actorUserType',
+            ].sort(),
+          );
+          const timestamp = job?.timestamp;
+          await scoped(() => service.recover(now));
+          expect((await jobs.getJob(jobId))?.timestamp).toBe(timestamp);
+          await job?.remove();
+          await scoped(() => service.recover(new Date(now.getTime() + 1000)));
+          job = await jobs.getJob(jobId);
+          expect(job?.id).toBe(jobId);
+          expect(job?.opts.delay).toBe(3 * 86400000 - 1000);
+          expect(await job?.getState()).toBe('delayed');
+          await scoped(() =>
+            service.generate(input, new Date(due.getTime() - 1)),
+          );
+          expect(await notifications(input.publicationId)).toHaveLength(0);
+          await job?.remove();
+          await scoped(() => service.recover(due));
+          job = await jobs.getJob(jobId);
+          expect(job?.id).toBe(jobId);
+          expect(await job?.getState()).toBe('waiting');
+          expect(job?.opts.delay).toBe(0);
+          await scoped(() => service.generate(input, due));
+          await scoped(() => service.generate(input, due));
+          expect(await notifications(input.publicationId)).toHaveLength(4);
+        } finally {
+          await jobs.obliterate({ force: true });
+          await queue.onModuleDestroy();
+        }
+      },
+    );
+
     it('serializes two genuinely overlapping PostgreSQL generation paths, including deliveries and metadata', async () => {
       const input = await publication();
       const lockKey = `communication:academics-notifications:${schoolId}:${input.publicationId}`;
@@ -1302,6 +1593,8 @@ describeDatabase(
         data: {
           visibleUntil: null,
           publishedAt: new Date(now.getTime() - 86400001),
+          visibleFrom: new Date(now.getTime() - 86400001),
+          publishAt: new Date(now.getTime() - 86400002),
         },
       });
       expect(

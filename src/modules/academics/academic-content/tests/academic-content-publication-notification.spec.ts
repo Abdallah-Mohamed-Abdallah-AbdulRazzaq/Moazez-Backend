@@ -48,6 +48,7 @@ function source(): AcademicContentPublishedNotificationSource {
     academicContentId,
     revisionId,
     publishedAt: now,
+    visibleFrom: now,
     visibleUntil: null,
     supersedesPublicationId: null,
     changeSignificance: null,
@@ -219,6 +220,8 @@ describe('ACC-8B publication notification decisions', () => {
     );
     const repository = {
       findSource: jest.fn().mockResolvedValue(publication),
+      findSchedulingSource: jest.fn().mockResolvedValue(publication),
+      findReminderSchedulingSource: jest.fn().mockResolvedValue(null),
       findPolicy: jest.fn().mockResolvedValue(null),
       listRecipientUsers: jest.fn((_source: unknown, after?: string) =>
         Promise.resolve(
@@ -254,7 +257,7 @@ describe('ACC-8B publication notification decisions', () => {
         }),
     );
     const ensure = jest
-      .fn<Promise<string>, [unknown]>()
+      .fn<Promise<string>, [unknown, Date?, Date?]>()
       .mockResolvedValue('created');
     const service = new AcademicContentPublicationNotificationService(
       repository as unknown as AcademicContentPublicationNotificationRepository,
@@ -267,6 +270,22 @@ describe('ACC-8B publication notification decisions', () => {
     );
     return { publication, input, repository, generate, ensure, service };
   }
+  it('schedules future visibility and recovers long-delayed due events deterministically', async () => {
+    const h = harness();
+    h.publication.visibleFrom = new Date(now.getTime() + 3 * 86400000);
+    await h.service.ensureAfterPublicationCommit(h.input, now);
+    expect(h.ensure.mock.calls[0]).toEqual([
+      expect.objectContaining({ publicationId: h.input.publicationId }),
+      h.publication.visibleFrom,
+      now,
+    ]);
+    h.repository.listRecoveryCandidates.mockResolvedValue([
+      h.publication,
+    ] as never);
+    await h.service.recover(h.publication.visibleFrom);
+    expect(h.ensure.mock.calls[1][1]).toEqual(h.publication.visibleFrom);
+    expect(h.ensure.mock.calls[1][2]).toEqual(h.publication.visibleFrom);
+  });
   it.each([
     ['SIGNIFICANT', false, true],
     ['SIGNIFICANT', true, true],
@@ -457,7 +476,7 @@ describe('ACC-8B publication notification decisions', () => {
     });
     expect(h.repository.listRecoveryCandidates.mock.calls[1]).toEqual([
       now,
-      { publishedAt: now, id: first[99].id },
+      { dueAt: now, id: first[99].id },
     ]);
   });
 });
@@ -467,9 +486,13 @@ describe('ACC-8B snapshot repository query bounds', () => {
     const groupBy = jest.fn().mockResolvedValue([{ recipientUserId: uuid(1) }]);
     const findMany = jest.fn().mockResolvedValue([]);
     const findFirst = jest.fn().mockResolvedValue(null);
+    const queryRaw = jest
+      .fn<Promise<unknown[]>, [unknown]>()
+      .mockResolvedValue([]);
     const repository = new AcademicContentPublicationNotificationRepository({
       academicContentAudienceRecipient: { groupBy, findMany },
       academicContentPublication: { findFirst, findMany },
+      $queryRaw: queryRaw,
     } as unknown as PrismaService);
     const publication = source();
     await repository.listRecipientUsers(publication, uuid(0));
@@ -511,19 +534,21 @@ describe('ACC-8B snapshot repository query bounds', () => {
         where: expect.objectContaining({
           status: 'PUBLISHED',
           publishedAt: { not: null, lte: now },
+          visibleFrom: { lte: now },
           revision: { snapshotContractVersion: 2 },
           OR: [{ visibleUntil: null }, { visibleUntil: { gt: now } }],
         }) as unknown,
       }),
     );
     await repository.listRecoveryCandidates(now);
-    expect(findMany).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        take: 100,
-        where: expect.objectContaining({
-          publishedAt: { gt: new Date(now.getTime() - 86400000), lte: now },
-        }) as unknown,
-      }),
+    const sql = queryRaw.mock.calls[0][0] as {
+      strings: string[];
+      values: unknown[];
+    };
+    expect(sql.strings.join('')).toContain(
+      'GREATEST(p.published_at, p.visible_from)',
     );
+    expect(sql.values).toContainEqual(new Date(now.getTime() - 86400000));
+    expect(sql.values).toContain(100);
   });
 });

@@ -1257,8 +1257,10 @@ describe('Teacher role seed integrity (security)', () => {
       teacherPermissions.some((code) => code.startsWith('admissions.')),
     ).toBe(false);
 
-    expect(parentPermissions).toHaveLength(46);
-    expect(studentPermissions).toHaveLength(57);
+    expect(parentPermissions).toHaveLength(47);
+    expect(parentPermissions).toContain('academics.academic_content.view');
+    expect(studentPermissions).toHaveLength(58);
+    expect(studentPermissions).toContain('academics.academic_content.view');
     for (const permission of [
       'dashboard.todos.view',
       'dashboard.todos.manage',

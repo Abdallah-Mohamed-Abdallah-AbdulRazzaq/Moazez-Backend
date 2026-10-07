@@ -13,6 +13,8 @@ import {
 import {
   academicContentReminderAt,
   academicContentSessionStartAt,
+  academicContentNotificationDueAt,
+  academicContentWasVisibleBeforeCancellation,
 } from '../domain/academic-content-publication-notification.policy';
 import { getRequestContext } from '../../../../common/context/request-context';
 
@@ -28,6 +30,67 @@ const identity = () => ({
 });
 
 describe('ACC-8D immutable reminder timing and queue boundary', () => {
+  it('uses max(publishedAt, visibleFrom), including legacy reversed timing', () => {
+    const later = new Date(now.getTime() + 60_000);
+    expect(
+      academicContentNotificationDueAt({
+        publishedAt: now,
+        visibleFrom: later,
+      }),
+    ).toEqual(later);
+    expect(
+      academicContentNotificationDueAt({
+        publishedAt: later,
+        visibleFrom: now,
+      }),
+    ).toEqual(later);
+  });
+  it('evaluates first visibility at cancellation time, independent of execution time', () => {
+    const visibleFrom = new Date(now.getTime() + 60_000);
+    expect(
+      academicContentWasVisibleBeforeCancellation({
+        publishedAt: now,
+        visibleFrom,
+        cancelledAt: now,
+      }),
+    ).toBe(false);
+    expect(
+      academicContentWasVisibleBeforeCancellation({
+        publishedAt: now,
+        visibleFrom,
+        cancelledAt: visibleFrom,
+      }),
+    ).toBe(true);
+    expect(
+      academicContentWasVisibleBeforeCancellation({
+        publishedAt: null,
+        visibleFrom,
+        cancelledAt: visibleFrom,
+      }),
+    ).toBe(false);
+  });
+  it.each(['publication', 'recovery', 'worker'] as const)(
+    'skips offsets before visibleFrom in %s without rescheduling',
+    (phase) => {
+      const due = new Date(start.getTime() - 15 * 60_000);
+      const input = {
+        startAt: start,
+        publishedAt: now,
+        offsetMinutes: 15,
+        now: phase === 'worker' ? due : now,
+        phase,
+      };
+      expect(
+        academicContentReminderAt({
+          ...input,
+          visibleFrom: new Date(due.getTime() + 1),
+        }),
+      ).toBeNull();
+      expect(academicContentReminderAt({ ...input, visibleFrom: due })).toEqual(
+        due,
+      );
+    },
+  );
   const timing = (
     phase: 'publication' | 'worker' | 'recovery',
     instant: Date,
@@ -36,6 +99,7 @@ describe('ACC-8D immutable reminder timing and queue boundary', () => {
     academicContentReminderAt({
       startAt: start,
       publishedAt,
+      visibleFrom: publishedAt,
       offsetMinutes: 15,
       now: instant,
       phase,

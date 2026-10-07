@@ -870,7 +870,7 @@ function provePostSeedRowScope() {
 
   assert.equal(permissionCount, 242);
   assert.equal(systemRoleCount, 7);
-  assert.equal(rolePermissionCount, 868);
+  assert.equal(rolePermissionCount, 870);
   assert.equal(userCount, 0);
   assert.equal(organizationCount, 0);
   assert.equal(schoolCount, 0);

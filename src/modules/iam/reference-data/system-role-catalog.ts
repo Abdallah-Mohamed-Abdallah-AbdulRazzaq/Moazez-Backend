@@ -86,6 +86,7 @@ export const TEACHER_PERMISSIONS = [
 
 const PARENT_PERMISSIONS = [
   'app.device_tokens.manage',
+  'academics.academic_content.view',
   'academics.calendar.view',
   'academics.curriculum.view',
   'academics.lesson_plans.view',
@@ -135,6 +136,7 @@ const PARENT_PERMISSIONS = [
 
 const STUDENT_PERMISSIONS = [
   'app.device_tokens.manage',
+  'academics.academic_content.view',
   'academics.calendar.view',
   'academics.lesson_plans.view',
   'academics.subjects.view',

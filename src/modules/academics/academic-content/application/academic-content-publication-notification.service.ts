@@ -18,6 +18,8 @@ import {
   publishedNotificationPolicyAllows,
   academicContentReminderAt,
   academicContentSessionStartAt,
+  academicContentNotificationDueAt,
+  academicContentWasVisibleBeforeCancellation,
 } from '../domain/academic-content-publication-notification.policy';
 import { AcademicContentPublicationJobData } from '../domain/academic-content-publication-runtime.constants';
 import {
@@ -45,10 +47,18 @@ export class AcademicContentPublicationNotificationService {
     now = new Date(),
   ): Promise<void> {
     try {
-      const source = await this.repository.findSource(identity, now);
-      if (source && academicContentPublicationNotificationEvent(source)) {
+      const source = await this.repository.findSchedulingSource(identity, now);
+      if (
+        source?.publishedAt &&
+        academicContentPublicationNotificationEvent(source)
+      ) {
         await this.queue.ensureAcademicContentPublishedNotifications(
           publicationNotificationJobData(source),
+          academicContentNotificationDueAt({
+            ...source,
+            publishedAt: source.publishedAt,
+          }),
+          now,
         );
         this.signal('enqueued', identity, { reason: 'publication_committed' });
       }
@@ -260,6 +270,7 @@ export class AcademicContentPublicationNotificationService {
                 !academicContentReminderAt({
                   startAt: start,
                   publishedAt: current.publishedAt,
+                  visibleFrom: current.visibleFrom,
                   offsetMinutes: offset,
                   now: authorizedAt,
                   phase: 'worker',
@@ -372,9 +383,8 @@ export class AcademicContentPublicationNotificationService {
     now: Date,
     phase: 'publication' | 'recovery',
   ) {
-    const source = await this.repository.findLaterSource(
+    const source = await this.repository.findReminderSchedulingSource(
       identity,
-      'online_session_reminder',
       now,
     );
     if (!source?.publishedAt) return 0;
@@ -396,6 +406,7 @@ export class AcademicContentPublicationNotificationService {
       const at = academicContentReminderAt({
         startAt: start,
         publishedAt: source.publishedAt,
+        visibleFrom: source.visibleFrom,
         offsetMinutes: offset,
         now,
         phase,
@@ -433,6 +444,7 @@ export class AcademicContentPublicationNotificationService {
         cancelCursor,
       );
       for (const source of page) {
+        if (!academicContentWasVisibleBeforeCancellation(source)) continue;
         const result =
           await this.queue.ensureAcademicContentCancellationNotifications(
             laterPublicationNotificationJobData(
@@ -746,6 +758,11 @@ export class AcademicContentPublicationNotificationService {
         const result =
           await this.queue.ensureAcademicContentPublishedNotifications(
             publicationNotificationJobData(source),
+            academicContentNotificationDueAt({
+              ...source,
+              publishedAt: source.publishedAt!,
+            }),
+            now,
           );
         if (result === 'created' || result === 'replaced') {
           restored++;
@@ -762,7 +779,13 @@ export class AcademicContentPublicationNotificationService {
       }
       if (page.length < ACADEMIC_CONTENT_NOTIFICATION_RECOVERY_PAGE_SIZE) break;
       const last = page[page.length - 1];
-      after = { publishedAt: last.publishedAt!, id: last.id };
+      after = {
+        dueAt: academicContentNotificationDueAt({
+          ...last,
+          publishedAt: last.publishedAt!,
+        }),
+        id: last.id,
+      };
     }
     return restored + (await this.recoverLaterEvents(now));
   }

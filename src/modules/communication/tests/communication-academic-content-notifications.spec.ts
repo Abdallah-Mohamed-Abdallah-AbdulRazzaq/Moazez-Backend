@@ -347,6 +347,56 @@ describe('ACC push surface isolation', () => {
 });
 
 describe('ACC deterministic queue and existing worker dispatch', () => {
+  it('delays the same minimum-payload logical job until its persisted due time', async () => {
+    const data = batch();
+    const job = {
+      schoolId: data.schoolId,
+      organizationId: data.organizationId,
+      contentId: data.contentId,
+      publicationId: data.publicationId,
+      actorUserId: null,
+      actorUserType: null,
+    };
+    const ensure = jest
+      .fn<
+        ReturnType<BullmqService['ensureJobFromPersistedTruth']>,
+        Parameters<BullmqService['ensureJobFromPersistedTruth']>
+      >()
+      .mockResolvedValue('preserved');
+    const service = new CommunicationNotificationQueueService({
+      ensureJobFromPersistedTruth: ensure,
+    } as unknown as BullmqService);
+    const enqueueNow = new Date('2026-10-07T00:00:00Z');
+    const dueAt = new Date(enqueueNow.getTime() + 3 * 86400000);
+    await service.ensureAcademicContentPublishedNotifications(
+      job,
+      dueAt,
+      enqueueNow,
+    );
+    await service.ensureAcademicContentPublishedNotifications(
+      job,
+      dueAt,
+      dueAt,
+    );
+    expect(ensure.mock.calls[0][2]).toEqual(job);
+    expect(ensure.mock.calls[0][3]).toEqual({
+      jobId: buildAcademicContentNotificationGenerationJobId(job),
+      delay: 3 * 86400000,
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 1000 },
+    });
+    expect(ensure.mock.calls[1][3]).toEqual({
+      ...ensure.mock.calls[0][3],
+      delay: 0,
+    });
+    expect(() =>
+      service.ensureAcademicContentPublishedNotifications(
+        job,
+        new Date(NaN),
+        enqueueNow,
+      ),
+    ).toThrow();
+  });
   it('ensures one logical colon-free job identity and validates exact server-owned payload', async () => {
     const {
       schoolId,
@@ -377,6 +427,7 @@ describe('ACC deterministic queue and existing worker dispatch', () => {
       data,
       {
         jobId: buildAcademicContentNotificationGenerationJobId(data),
+        delay: 0,
         attempts: 3,
         backoff: { type: 'exponential', delay: 1000 },
       },
