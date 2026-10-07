@@ -550,6 +550,41 @@ describe('authorization reference-data bootstrap (integration)', () => {
       );
     }
 
+    // ACC-10E checks persisted grants after both canonical bootstrap runs.
+    for (const key of ['student', 'parent']) {
+      expect(
+        roleByKey
+          .get(key)
+          ?.permissionCodes.filter((code) =>
+            code.startsWith('academics.academic_content.'),
+          ),
+      ).toEqual(['academics.academic_content.view']);
+    }
+    expect(
+      roleByKey
+        .get('teacher')
+        ?.permissionCodes.filter((code) =>
+          code.startsWith('academics.academic_content.'),
+        ),
+    ).toEqual([
+      'academics.academic_content.manage',
+      'academics.academic_content.publish',
+      'academics.academic_content.view',
+    ]);
+    expect(new Set(state.permissions.map(({ code }) => code)).size).toBe(
+      state.permissions.length,
+    );
+    const persistedGrants = await prisma.rolePermission.findMany({
+      select: { roleId: true, permissionId: true },
+    });
+    expect(
+      new Set(
+        persistedGrants.map(
+          ({ roleId, permissionId }) => `${roleId}:${permissionId}`,
+        ),
+      ).size,
+    ).toBe(persistedGrants.length);
+
     const verification = await repository.verify();
     expect(verification).toEqual({
       ready: true,
