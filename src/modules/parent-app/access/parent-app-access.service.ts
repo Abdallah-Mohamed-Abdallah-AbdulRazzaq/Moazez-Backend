@@ -72,9 +72,14 @@ export class ParentAppAccessService {
   async assertParentOwnsStudent(
     studentId: ParentAppStudentId,
   ): Promise<ParentAppAccessibleChild> {
-    const context = await this.getParentAppContext();
+    return (await this.getOwnedStudentContext(studentId)).child;
+  }
 
-    return assertParentAppOwnsChildEnrollmentRecord({
+  async getOwnedStudentContext(
+    studentId: ParentAppStudentId,
+  ): Promise<{ context: ParentAppContext; child: ParentAppAccessibleChild }> {
+    const context = await this.getParentAppContext();
+    const child = assertParentAppOwnsChildEnrollmentRecord({
       context,
       studentId,
       enrollment:
@@ -83,6 +88,7 @@ export class ParentAppAccessService {
           guardianIds: context.guardianIds,
         }),
     });
+    return { context, child };
   }
 
   async assertParentOwnsEnrollment(

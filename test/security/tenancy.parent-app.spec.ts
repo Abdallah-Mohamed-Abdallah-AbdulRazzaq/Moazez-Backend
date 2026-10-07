@@ -1,3 +1,5 @@
+import { assertParentAcademicContentHttpContract } from '../../src/modules/parent-app/academic-content/tests/parent-academic-content-http.fixture';
+import { ParentAcademicContentController } from '../../src/modules/parent-app/academic-content/controller/parent-academic-content.controller';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { METHOD_METADATA } from '@nestjs/common/constants';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -146,6 +148,24 @@ type ParentAppActionPermissionCase = {
 };
 
 const PARENT_APP_READ_PERMISSION_CASES: ParentAppReadPermissionCase[] = [
+  {
+    controller: ParentAcademicContentController,
+    method: 'list',
+    permissions: ['academics.academic_content.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentAcademicContentController,
+    method: 'detail',
+    permissions: ['academics.academic_content.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentAcademicContentController,
+    method: 'listAccessibleChildren',
+    permissions: ['academics.academic_content.view'],
+    sprint: '1B',
+  },
   {
     controller: ParentHomeController,
     method: 'getHome',
@@ -548,6 +568,7 @@ const PARENT_APP_READ_PERMISSION_CASES: ParentAppReadPermissionCase[] = [
 ];
 
 const PARENT_APP_CONTROLLER_CLASSES = [
+  ParentAcademicContentController as ParentAppControllerClass,
   ParentHomeController,
   ParentChildrenController,
   ParentProfileController,
@@ -720,7 +741,7 @@ const FORBIDDEN_PARENT_PERMISSIONS = [
 
 describe('Parent App route permission metadata (security)', () => {
   it('declares the PARENT-PERM-1B read-only permission inventory', () => {
-    expect(PARENT_APP_READ_PERMISSION_CASES).toHaveLength(61);
+    expect(PARENT_APP_READ_PERMISSION_CASES).toHaveLength(64);
 
     for (const entry of PARENT_APP_READ_PERMISSION_CASES) {
       const handler = (entry.controller.prototype as Record<string, unknown>)[
@@ -756,7 +777,7 @@ describe('Parent App route permission metadata (security)', () => {
   });
 
   it('keeps the complete Parent App RBAC route inventory explicit', () => {
-    expect(PARENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(73);
+    expect(PARENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(76);
 
     const expectedKnownHandlers = new Set<string>();
 
@@ -2120,6 +2141,9 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
 
       for (const path of [
         'parent/home',
+        `parent/children/${ownedStudentAId}/academic-content`,
+        `parent/children/${ownedStudentAId}/academic-content/${placeholderId}`,
+        `parent/academic-content/${placeholderId}/accessible-children`,
         'parent/children',
         `parent/children/${ownedStudentAId}`,
         'parent/profile',
@@ -2296,6 +2320,20 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
         data: { roleId: membership.roleId },
       });
     }
+  });
+
+  it('enforces the ACC-10C read-only HTTP boundary, ownership, permissions and query validation', async () => {
+    await assertParentAcademicContentHttpContract({
+      app,
+      login,
+      parentEmail,
+      nonParentEmails: [adminEmail, teacherEmail, studentEmail],
+      ownedStudentId: ownedStudentAId,
+      foreignStudentIds: [
+        sameSchoolUnlinkedStudentId,
+        crossSchoolLinkedStudentId,
+      ],
+    });
   });
 
   it('linked parent can read owned child grades and assessment grade detail', async () => {
