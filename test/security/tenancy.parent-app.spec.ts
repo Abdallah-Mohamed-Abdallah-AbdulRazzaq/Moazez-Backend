@@ -652,6 +652,7 @@ const PARENT_APP_ROUTE_PERMISSION_CASES = [
 
 const FINAL_PARENT_PERMISSIONS = [
   'app.device_tokens.manage',
+  'academics.academic_content.view',
   'academics.calendar.view',
   'academics.curriculum.view',
   'academics.lesson_plans.view',
@@ -823,7 +824,7 @@ describe('Parent role seed integrity (security)', () => {
       'STUDENT_PERMISSIONS',
     );
 
-    expect(parentPermissions).toHaveLength(46);
+    expect(parentPermissions).toHaveLength(47);
     expect(new Set(parentPermissions).size).toBe(parentPermissions.length);
     expect(parentPermissions).toEqual(Array.from(FINAL_PARENT_PERMISSIONS));
     expect(catalogCodes).toEqual(
@@ -840,7 +841,8 @@ describe('Parent role seed integrity (security)', () => {
       false,
     );
 
-    expect(studentPermissions).toHaveLength(57);
+    expect(studentPermissions).toHaveLength(58);
+    expect(studentPermissions).toContain('academics.academic_content.view');
     expect(roleApplySource).toContain('foundPermissionIdsByCode');
     expect(roleApplySource).toContain(
       'Missing permissions for system role ${role.key}',
@@ -2075,12 +2077,13 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
         organizationId: organizationAId,
       }),
     );
-    expect(permissions).toHaveLength(46);
+    expect(permissions).toHaveLength(47);
     expect(sortedStrings(permissions)).toEqual(
       sortedStrings(FINAL_PARENT_PERMISSIONS),
     );
     expect(permissions).toEqual(
       expect.arrayContaining([
+        'academics.academic_content.view',
         'parent.home.view',
         'parent.children.view',
         'parent.smart_pickup.request',

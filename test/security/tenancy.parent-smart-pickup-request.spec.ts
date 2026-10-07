@@ -89,7 +89,8 @@ describe('PARENT-DISMISSAL-1B route metadata and seed boundaries', () => {
     expect(permissionsSeed).toContain(
       'Create Parent App smart pickup requests for linked children',
     );
-    expect(parentPermissions).toHaveLength(46);
+    expect(parentPermissions).toHaveLength(47);
+    expect(parentPermissions).toContain('academics.academic_content.view');
     expect(parentPermissions).toContain('parent.smart_pickup.view');
     expect(parentPermissions).toContain('parent.smart_pickup.request');
     expect(parentPermissions).toContain('parent.smart_pickup.cancel');
