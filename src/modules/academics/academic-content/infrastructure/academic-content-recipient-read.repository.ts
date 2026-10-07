@@ -394,6 +394,42 @@ export class AcademicContentRecipientReadRepository {
       JOIN canonical USING ("publicationId", "revisionId") ORDER BY eligible."studentId" ASC`);
   }
 
+  async findCurrentRecipientAsset(
+    context: AcademicContentCurrentRecipientContext,
+    contentId: string,
+    fileId: string,
+    now: Date,
+  ) {
+    const rows = await this.prisma.$queryRaw<
+      {
+        publicationId: string;
+        revisionId: string;
+        visibleUntil: Date | null;
+        bucket: string;
+        objectKey: string;
+        originalName: string;
+        mimeType: string;
+      }[]
+    >(Prisma.sql`
+      WITH canonical_publication AS MATERIALIZED (
+        SELECT p.id, p.school_id, p.revision_id, p.visible_until
+        ${currentRecipientPublicationQuery(context, now, childSql(context))}
+          AND p.academic_content_id = ${contentId}::uuid AND ${matchingRevisionTarget()}
+        ORDER BY p.visible_from DESC, p.id DESC LIMIT 1
+      )
+      SELECT canonical.id AS "publicationId", canonical.revision_id AS "revisionId",
+        canonical.visible_until AS "visibleUntil", file.bucket, file.object_key AS "objectKey",
+        file.original_name AS "originalName", file.mime_type AS "mimeType"
+      FROM canonical_publication canonical
+      JOIN academic_content_revision_assets asset
+        ON asset.revision_id = canonical.revision_id AND asset.school_id = canonical.school_id
+        AND asset.file_id = ${fileId}::uuid
+      JOIN files file ON file.id = asset.file_id AND file.school_id = canonical.school_id
+      WHERE file.deleted_at IS NULL AND file.size_bytes > 0 AND file.visibility = 'PRIVATE'
+      LIMIT 1`);
+    return rows[0] ?? null;
+  }
+
   findPublication(schoolId: string, publicationId: string) {
     return this.prisma.academicContentPublication.findFirst({
       where: {

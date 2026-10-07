@@ -22,6 +22,57 @@ const context: Extract<
 const now = new Date('2026-10-07T10:00:00.000Z');
 
 describe('Core bounded immutable Student recipient reads', () => {
+  it.each(['STUDENT', 'PARENT'] as const)(
+    '%s selects canonical publication before exact live private File membership',
+    async (actorKind) => {
+      const raw = jest
+        .fn<Promise<unknown>, [Prisma.Sql]>()
+        .mockResolvedValue([]);
+      const reads = new AcademicContentRecipientReadRepository({
+        $queryRaw: raw,
+      } as unknown as PrismaService);
+      const recipient: AcademicContentCurrentRecipientContext =
+        actorKind === 'STUDENT'
+          ? { ...context, actorKind }
+          : { ...context, actorKind, guardianIds: [context.userId] };
+      await expect(
+        reads.findCurrentRecipientAsset(
+          recipient,
+          context.studentId,
+          context.enrollmentId,
+          now,
+        ),
+      ).resolves.toBeNull();
+      const sql = raw.mock.calls[0][0];
+      const canonical = sql.sql.slice(
+        0,
+        sql.sql.indexOf('SELECT canonical.id'),
+      );
+      expect(canonical).toContain('canonical_publication AS MATERIALIZED');
+      expect(canonical).toContain(
+        'ORDER BY p.visible_from DESC, p.id DESC LIMIT 1',
+      );
+      expect(canonical).not.toContain('academic_content_revision_assets');
+      expect(canonical).not.toContain('file_id');
+      expect(canonical).toContain('academic_content_revision_targets');
+      expect(canonical).toContain('subject_allocations');
+      expect(canonical).toContain(
+        actorKind === 'PARENT'
+          ? 'student_guardian_links'
+          : 'actor.id = student.user_id',
+      );
+      expect(sql.sql).toContain('asset.revision_id = canonical.revision_id');
+      expect(sql.sql).toContain('asset.school_id = canonical.school_id');
+      expect(sql.sql).toContain('file.school_id = canonical.school_id');
+      expect(sql.sql).toContain("file.visibility = 'PRIVATE'");
+      expect(sql.sql).toContain(
+        'file.deleted_at IS NULL AND file.size_bytes > 0',
+      );
+      expect(sql.sql).not.toContain('academic_content_audience_recipients');
+      expect(sql.sql).not.toContain('can_receive_notifications');
+      expect(raw).toHaveBeenCalledTimes(1);
+    },
+  );
   it('uses one parameterized statement for page and total, even for an empty page', async () => {
     const raw = jest
       .fn<Promise<unknown>, [Prisma.Sql]>()

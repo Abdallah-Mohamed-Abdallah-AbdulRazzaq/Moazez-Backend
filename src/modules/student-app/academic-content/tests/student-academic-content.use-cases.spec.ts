@@ -5,8 +5,10 @@ import { StudentAppContext } from '../../shared/student-app.types';
 import {
   GetStudentAcademicContentUseCase,
   ListStudentAcademicContentUseCase,
+  AccessStudentAcademicContentAssetUseCase,
 } from '../application/student-academic-content.use-cases';
 import { studentContentFixture } from './student-academic-content.fixture';
+import { AcademicContentRecipientAssetAccessService } from '../../../academics/academic-content/files/application/academic-content-recipient-asset-access.service';
 
 const context: StudentAppContext = {
   studentUserId: 'actor',
@@ -38,6 +40,9 @@ function setup() {
       .mockResolvedValue(context),
   };
   const core = {
+    access: jest
+      .fn()
+      .mockResolvedValue({ url: 'https://capability.invalid/private' }),
     listCurrentStudentPublications: jest
       .fn<
         ReturnType<
@@ -65,6 +70,10 @@ function setup() {
   return {
     access,
     core,
+    asset: new AccessStudentAcademicContentAssetUseCase(
+      access as unknown as StudentAppAccessService,
+      core as unknown as AcademicContentRecipientAssetAccessService,
+    ),
     list: new ListStudentAcademicContentUseCase(
       access as unknown as StudentAppAccessService,
       core as unknown as AcademicContentCurrentAccessService,
@@ -77,6 +86,39 @@ function setup() {
 }
 
 describe('Student Academic Content server-owned context coordination', () => {
+  it('resolves current Student context before calling the Core asset boundary', async () => {
+    const { access, core, asset } = setup();
+    await expect(asset.execute('content', 'file', 'download')).resolves.toEqual(
+      { url: 'https://capability.invalid/private' },
+    );
+    expect(core.access).toHaveBeenCalledWith(
+      coreContext,
+      'content',
+      'file',
+      'download',
+    );
+    expect(
+      access.getStudentAppContext.mock.invocationCallOrder[0],
+    ).toBeLessThan(core.access.mock.invocationCallOrder[0]);
+  });
+  it('denies null-term assets before Core', async () => {
+    const { access, core, asset } = setup();
+    access.getStudentAppContext.mockResolvedValue({ ...context, termId: null });
+    await expect(
+      asset.execute('content', 'file', 'preview'),
+    ).rejects.toMatchObject({ code: 'not_found', httpStatus: 404 });
+    expect(core.access).not.toHaveBeenCalled();
+  });
+  it('stops asset resolution when Student authority denies', async () => {
+    const { access, core, asset } = setup();
+    access.getStudentAppContext.mockRejectedValue(
+      new NotFoundDomainException('Student not found'),
+    );
+    await expect(
+      asset.execute('content', 'file', 'download'),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    expect(core.access).not.toHaveBeenCalled();
+  });
   it('resolves identity before calling set-based Core feed and presents the result', async () => {
     const { access, core, list } = setup();
     const query = { search: 'published', page: 1, limit: 20 };

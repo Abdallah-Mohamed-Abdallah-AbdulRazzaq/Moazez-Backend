@@ -17,6 +17,8 @@ import {
   ParentAcademicContentListResponseDto,
 } from '../dto/parent-academic-content-response.dto';
 import { ParentAcademicContentPresenter } from '../presenters/parent-academic-content.presenter';
+import { AcademicContentRecipientAssetAccessService } from '../../../academics/academic-content/files/application/academic-content-recipient-asset-access.service';
+import type { AcademicContentAssetAccessMode } from '../../../academics/academic-content/files/application/academic-content-authorized-file.signer';
 
 function recipientContext(
   context: ParentAppContext,
@@ -124,5 +126,27 @@ export class ListParentAcademicContentAccessibleChildrenUseCase {
         studentId: child.studentId,
       })),
     };
+  }
+}
+
+@Injectable()
+export class AccessParentAcademicContentAssetUseCase {
+  constructor(
+    private readonly access: ParentAppAccessService,
+    private readonly assets: AcademicContentRecipientAssetAccessService,
+  ) {}
+
+  async execute(
+    studentId: string,
+    contentId: string,
+    fileId: string,
+    mode: AcademicContentAssetAccessMode,
+  ): Promise<{ url: string }> {
+    const { context, child } =
+      await this.access.getOwnedStudentContext(studentId);
+    const recipient = recipientContext(context, child);
+    if (!recipient)
+      throw new NotFoundDomainException('Academic asset not found');
+    return this.assets.access(recipient, contentId, fileId, mode);
   }
 }

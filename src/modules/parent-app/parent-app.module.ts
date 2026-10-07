@@ -4,6 +4,7 @@ import {
   GetParentAcademicContentUseCase,
   ListParentAcademicContentUseCase,
   ListParentAcademicContentAccessibleChildrenUseCase,
+  AccessParentAcademicContentAssetUseCase,
 } from './academic-content/application/parent-academic-content.use-cases';
 import { Module } from '@nestjs/common';
 import { StorageModule } from '../../infrastructure/storage/storage.module';
@@ -171,6 +172,7 @@ import { ParentSmartPickupRecentCallsRepository } from './smart-pickup/infrastru
     ParentSmartPickupController,
   ],
   providers: [
+    AccessParentAcademicContentAssetUseCase,
     GetParentAcademicContentUseCase,
     ListParentAcademicContentUseCase,
     ListParentAcademicContentAccessibleChildrenUseCase,
