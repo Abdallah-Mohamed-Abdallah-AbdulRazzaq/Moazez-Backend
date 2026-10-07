@@ -747,6 +747,13 @@ These codes are emitted by internal ACC-3C use cases; ACC-3C adds no HTTP routes
 | `academic_content.file.verification_state_changed` | 409 | Upload state changed during verification |
 | `academic_content.file.upload_not_cancellable` | 409 | Upload cannot be cancelled in its current state |
 
+### Academic Content file capabilities
+
+| Code | HTTP | Message |
+| ---- | ---- | ------- |
+| `academic_content.file.download_unavailable` | 403 | Recipient download disabled by current Academic Content file policy |
+| `academic_content.file.preview_unavailable` | 403 | Inline preview is unavailable under current file policy or file type |
+
 ### Cross-cutting
 
 | Code                  | HTTP | Message                                            |

@@ -150,6 +150,12 @@ type ParentAppActionPermissionCase = {
 const PARENT_APP_READ_PERMISSION_CASES: ParentAppReadPermissionCase[] = [
   {
     controller: ParentAcademicContentController,
+    method: 'assetAccess',
+    permissions: ['academics.academic_content.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentAcademicContentController,
     method: 'list',
     permissions: ['academics.academic_content.view'],
     sprint: '1B',
@@ -741,7 +747,7 @@ const FORBIDDEN_PARENT_PERMISSIONS = [
 
 describe('Parent App route permission metadata (security)', () => {
   it('declares the PARENT-PERM-1B read-only permission inventory', () => {
-    expect(PARENT_APP_READ_PERMISSION_CASES).toHaveLength(64);
+    expect(PARENT_APP_READ_PERMISSION_CASES).toHaveLength(65);
 
     for (const entry of PARENT_APP_READ_PERMISSION_CASES) {
       const handler = (entry.controller.prototype as Record<string, unknown>)[
@@ -777,7 +783,7 @@ describe('Parent App route permission metadata (security)', () => {
   });
 
   it('keeps the complete Parent App RBAC route inventory explicit', () => {
-    expect(PARENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(76);
+    expect(PARENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(77);
 
     const expectedKnownHandlers = new Set<string>();
 

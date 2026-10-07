@@ -35,6 +35,7 @@ import type { AcademicContentFileTransaction } from '../../src/modules/academics
 import { AcademicContentFilePolicyResolver } from '../../src/modules/academics/academic-content/files/application/academic-content-file-policy.resolver';
 import { AcademicContentFileVerifier } from '../../src/modules/academics/academic-content/files/application/academic-content-file-verifier';
 import { AcademicContentAssetAccessOperations } from '../../src/modules/academics/academic-content/files/application/academic-content-asset-access.operations';
+import { AcademicContentAuthorizedFileSigner } from '../../src/modules/academics/academic-content/files/application/academic-content-authorized-file.signer';
 import {
   CancelAcademicContentUploadUseCase,
   CompleteAcademicContentUploadUseCase,
@@ -146,7 +147,7 @@ describeDatabase(
         new AcademicContentRepository(prisma),
         repository,
         policy,
-        storage,
+        new AcademicContentAuthorizedFileSigner(storage),
       ),
       new AcademicContentPreparationTemplateUseCases(
         new AcademicContentPreparationTemplateRepository(prisma),

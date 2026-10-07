@@ -1,5 +1,6 @@
 import { ValidationPipe } from '@nestjs/common';
 import { StudentAcademicContentQueryDto } from '../dto/student-academic-content-query.dto';
+import { StudentAcademicContentAssetAccessDto } from '../dto/student-academic-content-asset-access.dto';
 
 const pipe = new ValidationPipe({
   transform: true,
@@ -13,6 +14,35 @@ const parse = (value: unknown): Promise<unknown> =>
   });
 
 describe('Student Academic Content safe query validation', () => {
+  it.each(['preview', 'download'])(
+    'accepts exact asset mode %s',
+    async (mode) => {
+      await expect(
+        pipe.transform(
+          { mode },
+          { type: 'query', metatype: StudentAcademicContentAssetAccessDto },
+        ),
+      ).resolves.toMatchObject({ mode });
+    },
+  );
+  it.each([
+    {},
+    { mode: 'DOWNLOAD' },
+    { mode: 'invalid' },
+    { mode: ['preview', 'download'] },
+    { mode: 'preview', schoolId: 'chosen' },
+    { mode: 'download', mimeType: 'image/png' },
+  ])(
+    'rejects missing, invalid or authority-bearing asset query %j',
+    async (query) => {
+      await expect(
+        pipe.transform(query, {
+          type: 'query',
+          metatype: StudentAcademicContentAssetAccessDto,
+        }),
+      ).rejects.toMatchObject({ status: 400 });
+    },
+  );
   it('accepts only the supported filters and transforms pagination and whitespace', async () => {
     await expect(
       parse({

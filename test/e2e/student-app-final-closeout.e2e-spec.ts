@@ -766,6 +766,7 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       'DELETE /api/v1/student/profile/avatar',
       'GET /api/v1/student/academic-content',
       'GET /api/v1/student/academic-content/:contentId',
+      'GET /api/v1/student/academic-content/:contentId/assets/:fileId/access',
       'GET /api/v1/student/announcements',
       'GET /api/v1/student/announcements/:announcementId',
       'GET /api/v1/student/announcements/:announcementId/attachments',

@@ -777,7 +777,7 @@ describe('Student App read-only route permission metadata (security)', () => {
   });
 
   it('declares the final STU-PERM route permission inventory for every Student App handler', () => {
-    expect(STUDENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(103);
+    expect(STUDENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(104);
 
     const expectedByHandler = new Map<string, StudentAppRoutePermissionCase>();
     for (const entry of STUDENT_APP_ROUTE_PERMISSION_CASES) {
@@ -3669,14 +3669,35 @@ describe('Student App Home/Profile routes (security)', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(400);
     }
-    for (const path of [
-      `student/academic-content/${contentId}/assets/${contentId}/access`,
-      `student/academic-content/${contentId}/acknowledge`,
-    ]) {
+    for (const path of [`student/academic-content/${contentId}/acknowledge`]) {
       await request(app.getHttpServer())
         .get(`${GLOBAL_PREFIX}/${path}`)
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(404);
+    }
+    const assetPath = `${GLOBAL_PREFIX}/student/academic-content/${contentId}/assets/${contentId}/access`;
+    const assetServer = app.getHttpServer();
+    await request(assetServer)
+      .get(`${assetPath}?mode=download`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(assetServer).get(`${assetPath}?mode=download`).expect(401);
+    for (const mode of [
+      '',
+      '?mode=invalid',
+      '?mode=DOWNLOAD',
+      '?mode=preview&schoolId=chosen',
+    ])
+      await request(assetServer)
+        .get(`${assetPath}${mode}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(400);
+    for (const email of [adminEmail, teacherEmail, parentEmail]) {
+      const other = await login(email);
+      await request(assetServer)
+        .get(`${assetPath}?mode=download`)
+        .set('Authorization', `Bearer ${other.accessToken}`)
+        .expect(403);
     }
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/student/academic-content`)

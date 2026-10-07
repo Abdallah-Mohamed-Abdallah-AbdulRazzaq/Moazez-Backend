@@ -72,6 +72,12 @@ import { StudentAcademicContentController } from '../controller/student-academic
 export const STUDENT_ACADEMIC_CONTENT_PERMISSION_CASES = [
   {
     controller: StudentAcademicContentController,
+    method: 'assetAccess',
+    permissions: ['academics.academic_content.view'],
+    sprint: '1B' as const,
+  },
+  {
+    controller: StudentAcademicContentController,
     method: 'list',
     permissions: ['academics.academic_content.view'],
     sprint: '1B' as const,

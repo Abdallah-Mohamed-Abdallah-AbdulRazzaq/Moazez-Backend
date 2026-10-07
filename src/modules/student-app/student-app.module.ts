@@ -3,6 +3,7 @@ import { AcademicContentModule } from '../academics/academic-content/academic-co
 import {
   GetStudentAcademicContentUseCase,
   ListStudentAcademicContentUseCase,
+  AccessStudentAcademicContentAssetUseCase,
 } from './academic-content/application/student-academic-content.use-cases';
 import { StudentAcademicContentController } from './academic-content/controller/student-academic-content.controller';
 import { AppCalendarReadModelModule } from '../academics/calendar/app-facing/app-calendar-read-model.module';
@@ -191,6 +192,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     StudentRewardsController,
   ],
   providers: [
+    AccessStudentAcademicContentAssetUseCase,
     ListStudentAcademicContentUseCase,
     GetStudentAcademicContentUseCase,
     StudentAppAccessService,

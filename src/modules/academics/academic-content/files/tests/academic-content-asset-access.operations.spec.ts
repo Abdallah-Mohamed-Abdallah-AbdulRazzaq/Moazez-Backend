@@ -5,6 +5,7 @@ import { AcademicContentRepository } from '../../infrastructure/academic-content
 import { AcademicContentFileRepository } from '../infrastructure/academic-content-file.repository';
 import { AcademicContentFilePolicyResolver } from '../application/academic-content-file-policy.resolver';
 import { AcademicContentAssetAccessOperations } from '../application/academic-content-asset-access.operations';
+import { AcademicContentAuthorizedFileSigner } from '../application/academic-content-authorized-file.signer';
 
 describe('ACC-9C authorized asset signing', () => {
   const scope = { schoolId: randomUUID(), teacherUserId: randomUUID() };
@@ -22,7 +23,9 @@ describe('ACC-9C authorized asset signing', () => {
     contents as unknown as AcademicContentRepository,
     files as unknown as AcademicContentFileRepository,
     policy as unknown as AcademicContentFilePolicyResolver,
-    storage as unknown as StorageService,
+    new AcademicContentAuthorizedFileSigner(
+      storage as unknown as StorageService,
+    ),
   );
   const file = {
     id: randomUUID(),

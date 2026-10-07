@@ -7,8 +7,10 @@ import {
   GetParentAcademicContentUseCase,
   ListParentAcademicContentUseCase,
   ListParentAcademicContentAccessibleChildrenUseCase,
+  AccessParentAcademicContentAssetUseCase,
 } from '../application/parent-academic-content.use-cases';
 import { parentContentFixture } from './parent-academic-content.fixture';
+import { AcademicContentRecipientAssetAccessService } from '../../../academics/academic-content/files/application/academic-content-recipient-asset-access.service';
 const child = {
   studentId: 'student',
   enrollmentId: 'enrollment',
@@ -39,6 +41,9 @@ function setup() {
       .mockResolvedValue(context),
   };
   const core = {
+    access: jest
+      .fn()
+      .mockResolvedValue({ url: 'https://capability.invalid/private' }),
     listCurrentParentPublications: jest
       .fn<
         ReturnType<
@@ -82,12 +87,59 @@ function setup() {
   return {
     access,
     core,
+    asset: new AccessParentAcademicContentAssetUseCase(
+      access as unknown as ParentAppAccessService,
+      core as unknown as AcademicContentRecipientAssetAccessService,
+    ),
     list: new ListParentAcademicContentUseCase(a, c),
     detail: new GetParentAcademicContentUseCase(a, c),
     children: new ListParentAcademicContentAccessibleChildrenUseCase(a, c),
   };
 }
 describe('Parent Academic Content server-owned context coordination', () => {
+  it('resolves an owned child before calling the Core asset boundary', async () => {
+    const { access, core, asset } = setup();
+    await expect(
+      asset.execute('student', 'content', 'file', 'download'),
+    ).resolves.toEqual({ url: 'https://capability.invalid/private' });
+    expect(access.getOwnedStudentContext).toHaveBeenCalledWith('student');
+    expect(core.access).toHaveBeenCalledWith(
+      {
+        ...child,
+        actorKind: 'PARENT',
+        schoolId: 'school',
+        userId: 'actor',
+        guardianIds: ['guardian'],
+      },
+      'content',
+      'file',
+      'download',
+    );
+    expect(
+      access.getOwnedStudentContext.mock.invocationCallOrder[0],
+    ).toBeLessThan(core.access.mock.invocationCallOrder[0]);
+  });
+  it('denies null-term assets before Core', async () => {
+    const { access, core, asset } = setup();
+    access.getOwnedStudentContext.mockResolvedValue({
+      context,
+      child: { ...child, termId: null },
+    });
+    await expect(
+      asset.execute('student', 'content', 'file', 'preview'),
+    ).rejects.toMatchObject({ code: 'not_found', httpStatus: 404 });
+    expect(core.access).not.toHaveBeenCalled();
+  });
+  it('stops asset resolution when owned-child authority denies', async () => {
+    const { access, core, asset } = setup();
+    access.getOwnedStudentContext.mockRejectedValue(
+      new NotFoundDomainException('Child not found'),
+    );
+    await expect(
+      asset.execute('foreign', 'content', 'file', 'download'),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    expect(core.access).not.toHaveBeenCalled();
+  });
   it('uses the owned Student context before querying Core and never returns authorization IDs', async () => {
     const { access, core, list, detail } = setup();
     const query = { type: 'GUARDIAN_WEEKLY_NOTE' as const };

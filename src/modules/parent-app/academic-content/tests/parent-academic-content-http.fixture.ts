@@ -15,7 +15,13 @@ export async function assertParentAcademicContentHttpContract(params: {
   const contentId = randomUUID();
   const childPath = `/api/v1/parent/children/${params.ownedStudentId}/academic-content`;
   const childrenPath = `/api/v1/parent/academic-content/${contentId}/accessible-children`;
-  const paths = [childPath, `${childPath}/${contentId}`, childrenPath];
+  const assetPath = `${childPath}/${contentId}/assets/${randomUUID()}/access`;
+  const paths = [
+    childPath,
+    `${childPath}/${contentId}`,
+    childrenPath,
+    `${assetPath}?mode=download`,
+  ];
   for (const path of paths) await request(server).get(path).expect(401);
   const parent = await params.login(params.parentEmail);
   const feed = await request(server)
@@ -33,7 +39,11 @@ export async function assertParentAcademicContentHttpContract(params: {
       .set('Authorization', `Bearer ${parent.accessToken}`)
       .expect(404);
   for (const studentId of [...params.foreignStudentIds, randomUUID()]) {
-    for (const suffix of ['', `/${contentId}`]) {
+    for (const suffix of [
+      '',
+      `/${contentId}`,
+      `/${contentId}/assets/${randomUUID()}/access?mode=download`,
+    ]) {
       const response = await request(server)
         .get(`/api/v1/parent/children/${studentId}/academic-content${suffix}`)
         .set('Authorization', `Bearer ${parent.accessToken}`)
@@ -83,10 +93,19 @@ export async function assertParentAcademicContentHttpContract(params: {
   for (const path of [
     '/api/v1/parent/academic-content',
     `${childPath}/${contentId}/acknowledge`,
-    `${childPath}/${contentId}/assets/${randomUUID()}/access`,
   ])
     await request(server)
       .get(path)
       .set('Authorization', `Bearer ${parent.accessToken}`)
       .expect(404);
+  for (const suffix of [
+    '',
+    '?mode=invalid',
+    '?mode=DOWNLOAD',
+    '?mode=preview&guardianId=chosen',
+  ])
+    await request(server)
+      .get(`${assetPath}${suffix}`)
+      .set('Authorization', `Bearer ${parent.accessToken}`)
+      .expect(400);
 }
