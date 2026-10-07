@@ -85,8 +85,14 @@ export class CommunicationNotificationQueueService {
 
   ensureAcademicContentPublishedNotifications(
     data: CommunicationAcademicContentNotificationGenerationJobData,
+    dueAt = new Date(),
+    enqueueNow = new Date(),
   ) {
-    if (!isAcademicContentNotificationGenerationJobData(data))
+    if (
+      !isAcademicContentNotificationGenerationJobData(data) ||
+      !Number.isFinite(dueAt.getTime()) ||
+      !Number.isFinite(enqueueNow.getTime())
+    )
       throw new Error('academic_content_notification_job_invalid');
     return this.bullmqService.ensureJobFromPersistedTruth(
       COMMUNICATION_NOTIFICATION_QUEUE_NAME,
@@ -94,6 +100,7 @@ export class CommunicationNotificationQueueService {
       data,
       {
         jobId: buildAcademicContentNotificationGenerationJobId(data),
+        delay: Math.max(0, dueAt.getTime() - enqueueNow.getTime()),
         attempts: 3,
         backoff: { type: 'exponential', delay: 1000 },
       },

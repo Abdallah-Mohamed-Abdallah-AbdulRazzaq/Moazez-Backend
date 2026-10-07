@@ -100,12 +100,21 @@ describe('Academic Content authorization reference data', () => {
       );
     }
 
-    for (const roleKey of ['parent', 'student', 'dismissal_staff']) {
+    for (const roleKey of ['dismissal_staff']) {
       const role = SYSTEM_ROLES.find(({ key }) => key === roleKey);
       for (const permission of ACADEMIC_CONTENT_PERMISSION_CODES) {
         expect(role?.permissions).not.toContain(permission);
       }
     }
+  });
+
+  it.each(['parent', 'student'])('grants %s exactly recipient view', (key) => {
+    const role = SYSTEM_ROLES.find((entry) => entry.key === key);
+    expect(
+      role?.permissions.filter((code) =>
+        code.startsWith('academics.academic_content'),
+      ),
+    ).toEqual(['academics.academic_content.view']);
   });
 
   it('grants Teacher only view, manage and publish', () => {

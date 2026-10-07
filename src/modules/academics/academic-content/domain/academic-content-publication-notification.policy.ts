@@ -17,6 +17,31 @@ import {
 export const ACADEMIC_CONTENT_REMINDER_STALE_GRACE_MS =
   COMMUNICATION_NOTIFICATION_RECONCILE_INTERVAL_MS;
 
+export function academicContentNotificationDueAt(source: {
+  publishedAt: Date;
+  visibleFrom: Date;
+}): Date {
+  return new Date(
+    Math.max(source.publishedAt.getTime(), source.visibleFrom.getTime()),
+  );
+}
+
+export function academicContentWasVisibleBeforeCancellation(source: {
+  publishedAt: Date | null;
+  visibleFrom: Date;
+  cancelledAt: Date | null;
+}): boolean {
+  return (
+    source.publishedAt !== null &&
+    source.cancelledAt !== null &&
+    source.cancelledAt >=
+      academicContentNotificationDueAt({
+        ...source,
+        publishedAt: source.publishedAt,
+      })
+  );
+}
+
 export function academicContentSessionStartAt(
   snapshot: Prisma.JsonValue,
   type: Type,
@@ -35,6 +60,7 @@ export function academicContentSessionStartAt(
 export function academicContentReminderAt(input: {
   startAt: Date;
   publishedAt: Date;
+  visibleFrom: Date;
   offsetMinutes: number;
   now: Date;
   phase: 'publication' | 'recovery' | 'worker';
@@ -43,6 +69,7 @@ export function academicContentReminderAt(input: {
   if (
     !Number.isFinite(at.getTime()) ||
     at <= input.publishedAt ||
+    at < input.visibleFrom ||
     input.startAt <= input.now
   )
     return null;

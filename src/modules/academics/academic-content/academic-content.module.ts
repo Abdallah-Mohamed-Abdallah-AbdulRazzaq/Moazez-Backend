@@ -30,6 +30,8 @@ import { CreateAcademicContentUseCase } from './application/create-academic-cont
 import { ReplaceAcademicContentTargetsUseCase } from './application/replace-academic-content-targets.use-case';
 import { AcademicContentLifecycleUseCases } from './application/academic-content-lifecycle.use-cases';
 import { AcademicContentAudienceRepository } from './infrastructure/academic-content-audience.repository';
+import { AcademicContentRecipientReadRepository } from './infrastructure/academic-content-recipient-read.repository';
+import { AcademicContentCurrentAccessService } from './application/academic-content-current-access.service';
 import { AcademicContentRepository } from './infrastructure/academic-content.repository';
 import { AcademicContentTargetRepository } from './infrastructure/academic-content-target.repository';
 import { AcademicContentTypeDetailRepository } from './infrastructure/academic-content-type-detail.repository';
@@ -108,6 +110,8 @@ import {
     AcademicContentController,
   ],
   providers: [
+    AcademicContentRecipientReadRepository,
+    AcademicContentCurrentAccessService,
     AcademicContentReviewDecisionNotificationEnqueueService,
     AcademicContentWorkflowPublicationCapabilities,
     AcademicContentAssetAccessOperations,
@@ -180,6 +184,7 @@ import {
     AcademicContentAudienceResolver,
   ],
   exports: [
+    AcademicContentCurrentAccessService,
     AcademicContentWorkflowPublicationCapabilities,
     SubmitAcademicContentUseCase,
     ScheduleAcademicContentPublicationUseCase,

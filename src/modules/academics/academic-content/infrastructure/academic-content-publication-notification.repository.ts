@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { getRequestContext } from '../../../../common/context/request-context';
 import {
   AcademicContentPublicationStatus as Status,
   OrganizationStatus,
@@ -18,6 +19,7 @@ import {
   ACADEMIC_CONTENT_NOTIFICATION_CONTEXT_PAGE_SIZE,
   ACADEMIC_CONTENT_NOTIFICATION_RECIPIENT_PAGE_SIZE,
   ACADEMIC_CONTENT_NOTIFICATION_RECOVERY_PAGE_SIZE,
+  academicContentWasVisibleBeforeCancellation,
 } from '../domain/academic-content-publication-notification.policy';
 
 const SOURCE_SELECT = {
@@ -29,6 +31,7 @@ const SOURCE_SELECT = {
   academicContentId: true,
   revisionId: true,
   publishedAt: true,
+  visibleFrom: true,
   visibleUntil: true,
   revision: {
     select: {
@@ -94,7 +97,7 @@ function cancellationSourceWhere(
   now: Date,
 ): Prisma.AcademicContentPublicationWhereInput {
   return {
-    ...eligibleSourceWhere(now),
+    ...schedulingSourceWhere(now),
     status: Status.CANCELLED,
     cancellationReason: 'WITHDRAWN',
     publishedAt: { not: null, lte: now },
@@ -106,11 +109,11 @@ function cancellationSourceWhere(
 export type AcademicContentPublishedNotificationSource =
   Prisma.AcademicContentPublicationGetPayload<{ select: typeof SOURCE_SELECT }>;
 export type AcademicContentNotificationRecoveryCursor = {
-  publishedAt: Date;
+  dueAt: Date;
   id: string;
 };
 
-function eligibleSourceWhere(
+function schedulingSourceWhere(
   now: Date,
 ): Prisma.AcademicContentPublicationWhereInput {
   return {
@@ -125,6 +128,12 @@ function eligibleSourceWhere(
     },
     OR: [{ visibleUntil: null }, { visibleUntil: { gt: now } }],
   };
+}
+
+function deliverySourceWhere(
+  now: Date,
+): Prisma.AcademicContentPublicationWhereInput {
+  return { ...schedulingSourceWhere(now), visibleFrom: { lte: now } };
 }
 
 export function publicationNotificationJobData(
@@ -149,17 +158,17 @@ export function publicationNotificationJobData(
 export class AcademicContentPublicationNotificationRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findLaterSource(
+  async findLaterSource(
     identity: AcademicContentPublicationJobData,
     event: AcademicContentLaterEvent,
     now: Date,
     tx: Prisma.TransactionClient = this.prisma,
   ) {
-    return tx.academicContentPublication.findFirst({
+    const source = await tx.academicContentPublication.findFirst({
       where: {
         ...(event === 'academic_content_cancelled'
           ? cancellationSourceWhere(now)
-          : eligibleSourceWhere(now)),
+          : deliverySourceWhere(now)),
         id: identity.publicationId,
         schoolId: identity.schoolId,
         academicContentId: identity.contentId,
@@ -171,6 +180,30 @@ export class AcademicContentPublicationNotificationRepository {
               },
             }
           : {}),
+      },
+      select: LATER_SOURCE_SELECT,
+    });
+    return source &&
+      event === 'academic_content_cancelled' &&
+      !academicContentWasVisibleBeforeCancellation(source)
+      ? null
+      : source;
+  }
+
+  findReminderSchedulingSource(
+    identity: AcademicContentPublicationJobData,
+    now: Date,
+  ) {
+    return this.prisma.academicContentPublication.findFirst({
+      where: {
+        ...schedulingSourceWhere(now),
+        id: identity.publicationId,
+        schoolId: identity.schoolId,
+        academicContentId: identity.contentId,
+        revision: {
+          snapshotContractVersion: 2,
+          type: AcademicContentType.ONLINE_SESSION,
+        },
       },
       select: LATER_SOURCE_SELECT,
     });
@@ -314,7 +347,7 @@ export class AcademicContentPublicationNotificationRepository {
     // V2 instant decoding requires canonical UTC ISO; JSON string bounds avoid unsafe casts of corrupt snapshots.
     return this.prisma.academicContentPublication.findMany({
       where: {
-        ...eligibleSourceWhere(now),
+        ...schedulingSourceWhere(now),
         ...(after ? { id: { gt: after } } : {}),
         revision: {
           snapshotContractVersion: 2,
@@ -343,7 +376,19 @@ export class AcademicContentPublicationNotificationRepository {
   ) {
     return tx.academicContentPublication.findFirst({
       where: {
-        ...eligibleSourceWhere(now),
+        ...deliverySourceWhere(now),
+        id: identity.publicationId,
+        schoolId: identity.schoolId,
+        academicContentId: identity.contentId,
+      },
+      select: SOURCE_SELECT,
+    });
+  }
+
+  findSchedulingSource(identity: AcademicContentPublicationJobData, now: Date) {
+    return this.prisma.academicContentPublication.findFirst({
+      where: {
+        ...schedulingSourceWhere(now),
         id: identity.publicationId,
         schoolId: identity.schoolId,
         academicContentId: identity.contentId,
@@ -420,33 +465,44 @@ export class AcademicContentPublicationNotificationRepository {
     });
   }
 
-  listRecoveryCandidates(
+  async listRecoveryCandidates(
     now: Date,
     after?: AcademicContentNotificationRecoveryCursor,
   ) {
     const windowStartedAt = new Date(
       now.getTime() - COMMUNICATION_NOTIFICATION_RECOVERY_WINDOW_MS,
     );
-    return this.prisma.academicContentPublication.findMany({
-      where: {
-        ...eligibleSourceWhere(now),
-        publishedAt: { gt: windowStartedAt, lte: now },
-        ...(after
-          ? {
-              AND: [
-                {
-                  OR: [
-                    { publishedAt: { gt: after.publishedAt } },
-                    { publishedAt: after.publishedAt, id: { gt: after.id } },
-                  ],
-                },
-              ],
-            }
-          : {}),
-      },
+    const scopedSchoolId = getRequestContext()?.activeMembership?.schoolId;
+    // Recover recent due events and already-published future work. Each page is
+    // bounded; ordering uses the actual due instant, including legacy timing.
+    const rows = await this.prisma.$queryRaw<
+      Array<{ id: string; dueAt: Date }>
+    >(Prisma.sql`
+      SELECT p.id, GREATEST(p.published_at, p.visible_from) AS "dueAt"
+      FROM academic_content_publications p
+      JOIN academic_contents c ON c.id = p.academic_content_id AND c.school_id = p.school_id
+      JOIN academic_content_revisions r ON r.id = p.revision_id AND r.school_id = p.school_id AND r.academic_content_id = p.academic_content_id
+      JOIN schools s ON s.id = p.school_id
+      JOIN organizations o ON o.id = s.organization_id
+      WHERE p.status = 'PUBLISHED' AND p.published_at IS NOT NULL AND p.published_at <= ${now}
+        ${scopedSchoolId ? Prisma.sql`AND p.school_id = ${scopedSchoolId}::uuid` : Prisma.empty}
+        AND c.deleted_at IS NULL AND r.snapshot_contract_version = 2
+        AND s.status = 'ACTIVE' AND s.deleted_at IS NULL AND o.status = 'ACTIVE' AND o.deleted_at IS NULL
+        AND (p.visible_until IS NULL OR p.visible_until > ${now})
+        AND GREATEST(p.published_at, p.visible_from) > ${windowStartedAt}
+        ${after ? Prisma.sql`AND (GREATEST(p.published_at, p.visible_from), p.id) > (${after.dueAt}, ${after.id}::uuid)` : Prisma.empty}
+      ORDER BY GREATEST(p.published_at, p.visible_from), p.id
+      LIMIT ${ACADEMIC_CONTENT_NOTIFICATION_RECOVERY_PAGE_SIZE}`);
+    if (!rows.length) return [];
+    const sources = await this.prisma.academicContentPublication.findMany({
+      where: { id: { in: rows.map((row) => row.id) } },
       select: SOURCE_SELECT,
-      orderBy: [{ publishedAt: 'asc' }, { id: 'asc' }],
       take: ACADEMIC_CONTENT_NOTIFICATION_RECOVERY_PAGE_SIZE,
+    });
+    const byId = new Map(sources.map((source) => [source.id, source]));
+    return rows.flatMap((row) => {
+      const source = byId.get(row.id);
+      return source ? [source] : [];
     });
   }
 }
