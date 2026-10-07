@@ -10,6 +10,10 @@ import {
 } from '../domain/academic-content-current-access.policy';
 import { AcademicContentAudienceRepository } from '../infrastructure/academic-content-audience.repository';
 import { AcademicContentRecipientReadRepository } from '../infrastructure/academic-content-recipient-read.repository';
+import {
+  AcademicContentRecipientQuery,
+  normalizeAcademicContentRecipientQuery,
+} from '../domain/academic-content-recipient.query';
 
 @Injectable()
 export class AcademicContentCurrentAccessService {
@@ -17,6 +21,62 @@ export class AcademicContentCurrentAccessService {
     private readonly reads: AcademicContentRecipientReadRepository,
     private readonly audience: AcademicContentAudienceRepository,
   ) {}
+
+  listCurrentStudentPublications(
+    context: Extract<
+      AcademicContentCurrentRecipientContext,
+      { actorKind: 'STUDENT' }
+    >,
+    query: AcademicContentRecipientQuery = {},
+    now = new Date(),
+  ) {
+    return this.reads.listCurrentStudentPublications(
+      context,
+      normalizeAcademicContentRecipientQuery(query),
+      now,
+    );
+  }
+
+  async assertCurrentStudentContentAccess(
+    context: Extract<
+      AcademicContentCurrentRecipientContext,
+      { actorKind: 'STUDENT' }
+    >,
+    contentId: string,
+    now = new Date(),
+  ) {
+    const identity = await this.reads.findCurrentStudentPublication(
+      context,
+      contentId,
+      now,
+    );
+    if (!identity)
+      throw new NotFoundDomainException('Academic content not found');
+    return identity;
+  }
+
+  async getCurrentStudentContent(
+    context: Extract<
+      AcademicContentCurrentRecipientContext,
+      { actorKind: 'STUDENT' }
+    >,
+    contentId: string,
+    now = new Date(),
+  ) {
+    const identity = await this.assertCurrentStudentContentAccess(
+      context,
+      contentId,
+      now,
+    );
+    const detail = await this.reads.findCurrentStudentDetail(
+      context,
+      identity,
+      now,
+    );
+    if (!detail)
+      throw new NotFoundDomainException('Academic content not found');
+    return detail;
+  }
 
   /** Returns exact immutable publication identity; every denial is non-disclosing. */
   async assertPublicationAccess(
