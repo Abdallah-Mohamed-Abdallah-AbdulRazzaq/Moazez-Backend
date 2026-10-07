@@ -74,6 +74,8 @@ import { ObjectStorageError } from '../../src/infrastructure/storage/object-stor
 import { FilesRepository } from '../../src/modules/files/uploads/infrastructure/files.repository';
 import { REQUIRED_PERMISSIONS_METADATA } from '../../src/common/decorators/required-permissions.decorator';
 import { StudentAppAccessService } from '../../src/modules/student-app/access/student-app-access.service';
+import { StudentAcademicContentController } from '../../src/modules/student-app/academic-content/controller/student-academic-content.controller';
+import { STUDENT_ACADEMIC_CONTENT_PERMISSION_CASES } from '../../src/modules/student-app/academic-content/tests/student-academic-content.fixture';
 import { StudentAppStudentReadAdapter } from '../../src/modules/student-app/access/student-app-student-read.adapter';
 import { StudentAnnouncementsController } from '../../src/modules/student-app/announcements/controller/student-announcements.controller';
 import { StudentBehaviorController } from '../../src/modules/student-app/behavior/controller/student-behavior.controller';
@@ -657,6 +659,7 @@ const STUDENT_APP_COMMUNICATION_PROFILE_ACTION_PERMISSION_CASES: StudentAppActio
 ];
 
 const STUDENT_APP_CONTROLLER_CLASSES = [
+  StudentAcademicContentController as StudentAppControllerClass,
   StudentHomeController,
   StudentProfileController,
   StudentSubjectsController,
@@ -695,6 +698,7 @@ const STUDENT_APP_ROUTE_PERMISSION_CASES: StudentAppRoutePermissionCase[] = [
     ...entry,
     sprint: '1E' as const,
   })),
+  ...STUDENT_ACADEMIC_CONTENT_PERMISSION_CASES,
 ];
 
 describe('Student App read-only route permission metadata (security)', () => {
@@ -773,7 +777,7 @@ describe('Student App read-only route permission metadata (security)', () => {
   });
 
   it('declares the final STU-PERM route permission inventory for every Student App handler', () => {
-    expect(STUDENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(101);
+    expect(STUDENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(103);
 
     const expectedByHandler = new Map<string, StudentAppRoutePermissionCase>();
     for (const entry of STUDENT_APP_ROUTE_PERMISSION_CASES) {
@@ -1711,6 +1715,8 @@ describe('Student App Home/Profile routes (security)', () => {
       const placeholderId = '11111111-1111-4111-8111-111111111111';
 
       for (const path of [
+        'student/academic-content',
+        `student/academic-content/${placeholderId}`,
         'student/home',
         'student/profile',
         'student/profile/correction-requests',
@@ -3627,11 +3633,65 @@ describe('Student App Home/Profile routes (security)', () => {
     }
   });
 
+  it('serves only the bounded read-only Student ACC surface with non-disclosing detail', async () => {
+    const { accessToken } = await login(linkedStudentEmail);
+    const contentId = '11111111-1111-4111-8111-111111111111';
+    const feed = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/academic-content`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const feedBody = feed.body as unknown as {
+      items: unknown[];
+      pagination: { page: number; limit: number; total: number };
+    };
+    expect(feedBody.items).toEqual([]);
+    expect(feedBody.pagination).toEqual({ page: 1, limit: 20, total: 0 });
+    expect(feed.headers['cache-control']).toBe('no-store, private, max-age=0');
+    const missing = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/academic-content/${contentId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    const missingBody = missing.body as unknown as { error: { code: string } };
+    expect(missingBody.error.code).toBe('not_found');
+    expect(JSON.stringify(missing.body)).not.toContain(contentId);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/academic-content/not-a-uuid`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(400);
+    for (const query of [
+      'studentId=chosen',
+      'termId=chosen',
+      'audience=GUARDIANS',
+      'type=GUARDIAN_WEEKLY_NOTE',
+    ]) {
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/student/academic-content?${query}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(400);
+    }
+    for (const path of [
+      `student/academic-content/${contentId}/assets/${contentId}/access`,
+      `student/academic-content/${contentId}/acknowledge`,
+    ]) {
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/${path}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+    }
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/student/academic-content`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+  });
+
   it('forbids non-student actors from home and profile', async () => {
     for (const email of [adminEmail, teacherEmail, parentEmail]) {
       const { accessToken } = await login(email);
 
       for (const path of [
+        'academic-content',
+        'academic-content/11111111-1111-4111-8111-111111111111',
         'home',
         'profile',
         'subjects',

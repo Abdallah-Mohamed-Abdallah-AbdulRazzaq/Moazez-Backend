@@ -1,4 +1,10 @@
 import { Module } from '@nestjs/common';
+import { AcademicContentModule } from '../academics/academic-content/academic-content.module';
+import {
+  GetStudentAcademicContentUseCase,
+  ListStudentAcademicContentUseCase,
+} from './academic-content/application/student-academic-content.use-cases';
+import { StudentAcademicContentController } from './academic-content/controller/student-academic-content.controller';
 import { AppCalendarReadModelModule } from '../academics/calendar/app-facing/app-calendar-read-model.module';
 import { LessonContentPlaybackModule } from '../academics/curriculum/app-facing/lesson-content-playback/lesson-content-playback.module';
 import { AppDeviceTokensModule } from '../app-device-tokens/app-device-tokens.module';
@@ -147,6 +153,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
 
 @Module({
   imports: [
+    AcademicContentModule,
     AppCalendarReadModelModule,
     LessonContentPlaybackModule,
     AppDeviceTokensModule,
@@ -162,6 +169,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     StudentHomeworksModule,
   ],
   controllers: [
+    StudentAcademicContentController,
     StudentHomeController,
     StudentProfileController,
     StudentSubjectsController,
@@ -183,6 +191,8 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     StudentRewardsController,
   ],
   providers: [
+    ListStudentAcademicContentUseCase,
+    GetStudentAcademicContentUseCase,
     StudentAppAccessService,
     StudentAppStudentReadAdapter,
     StudentHomeReadAdapter,
