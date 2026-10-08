@@ -129,6 +129,7 @@ export class StudentAcademicContentPresenter {
           sortOrder: asset.sortOrder,
         })),
         links: row.links.map((link) => ({
+          revisionLinkId: link.revisionLinkId,
           label: link.label,
           url: link.url,
           sortOrder: link.sortOrder,

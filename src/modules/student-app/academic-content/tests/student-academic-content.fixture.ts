@@ -59,6 +59,7 @@ export function studentContentFixture(
     ],
     links: [
       {
+        revisionLinkId: '55555555-5555-4555-8555-555555555555',
         label: 'Published link',
         url: 'https://example.test/published',
         sortOrder: 0,
