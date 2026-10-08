@@ -38,6 +38,12 @@ const ACADEMIC_CONTENT_PERMISSIONS = [
     action: 'view',
   },
   {
+    code: 'academics.academic_content.analytics.own.view',
+    module: 'academics',
+    resource: 'academic_content.analytics.own',
+    action: 'view',
+  },
+  {
     code: 'academics.academic_content.settings.manage',
     module: 'academics',
     resource: 'academic_content.settings',
@@ -71,13 +77,13 @@ type RolePermissionCreateManyInput = {
 };
 
 describe('Academic Content authorization reference data', () => {
-  it('defines all six canonical permissions exactly once', () => {
+  it('defines all seven canonical permissions exactly once', () => {
     const definitions = PERMISSIONS.filter((permission) =>
       permission.code.startsWith('academics.academic_content'),
     );
 
-    expect(definitions).toHaveLength(6);
-    expect(new Set(definitions.map(({ code }) => code)).size).toBe(6);
+    expect(definitions).toHaveLength(7);
+    expect(new Set(definitions.map(({ code }) => code)).size).toBe(7);
     expect(
       definitions.map(({ code, module, resource, action }) => ({
         code,
@@ -117,7 +123,7 @@ describe('Academic Content authorization reference data', () => {
     ).toEqual(['academics.academic_content.view']);
   });
 
-  it('grants Teacher only view, manage and publish', () => {
+  it('grants Teacher view, manage, publish and own analytics', () => {
     const role = SYSTEM_ROLES.find(({ key }) => key === 'teacher');
     expect(
       role?.permissions.filter((code) =>
@@ -127,7 +133,11 @@ describe('Academic Content authorization reference data', () => {
       'academics.academic_content.view',
       'academics.academic_content.manage',
       'academics.academic_content.publish',
+      'academics.academic_content.analytics.own.view',
     ]);
+    expect(role?.permissions).not.toContain(
+      'academics.academic_content.analytics.view',
+    );
   });
 
   it('converges permissions and system-role grants idempotently', async () => {

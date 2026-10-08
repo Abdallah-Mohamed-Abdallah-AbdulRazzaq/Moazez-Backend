@@ -100,6 +100,7 @@ const FINAL_TEACHER_PERMISSIONS = [
   'academics.academic_content.view',
   'academics.academic_content.manage',
   'academics.academic_content.publish',
+  'academics.academic_content.analytics.own.view',
   'app.device_tokens.manage',
   'academics.calendar.view',
   'academics.curriculum.view',
@@ -1223,7 +1224,7 @@ describe('Teacher role seed integrity (security)', () => {
       'STUDENT_PERMISSIONS',
     );
 
-    expect(catalogCodes).toHaveLength(242);
+    expect(catalogCodes).toHaveLength(243);
     expect(catalogCodeSet.size).toBe(catalogCodes.length);
     expect(catalogCodes).toEqual(
       expect.arrayContaining(Array.from(TEACHER_PERM_1A_CATALOG_ADDITIONS)),
@@ -1233,7 +1234,7 @@ describe('Teacher role seed integrity (security)', () => {
     expect(catalogCodeSet.has('teachers.records.view')).toBe(true);
     expect(catalogCodeSet.has('teachers.records.manage')).toBe(true);
 
-    expect(teacherPermissions).toHaveLength(57);
+    expect(teacherPermissions).toHaveLength(58);
     expect(new Set(teacherPermissions).size).toBe(teacherPermissions.length);
     expect(teacherPermissions).toEqual(Array.from(FINAL_TEACHER_PERMISSIONS));
     expect(teacherPermissions).not.toContain('dashboard.todos.view');
@@ -2113,7 +2114,7 @@ describe('Teacher App tenancy isolation (security)', () => {
         organizationId: organizationAId,
       }),
     );
-    expect(permissions).toHaveLength(57);
+    expect(permissions).toHaveLength(58);
     expect(new Set(permissions).size).toBe(permissions.length);
     expect(sortedStrings(permissions)).toEqual(
       sortedStrings(FINAL_TEACHER_PERMISSIONS),

@@ -570,6 +570,13 @@ export const PERMISSIONS: PermissionSeed[] = [
     description: 'View academic content analytics',
   },
   {
+    code: 'academics.academic_content.analytics.own.view',
+    module: 'academics',
+    resource: 'academic_content.analytics.own',
+    action: 'view',
+    description: 'View analytics for currently owned Teacher academic content',
+  },
+  {
     code: 'academics.academic_content.settings.manage',
     module: 'academics',
     resource: 'academic_content.settings',

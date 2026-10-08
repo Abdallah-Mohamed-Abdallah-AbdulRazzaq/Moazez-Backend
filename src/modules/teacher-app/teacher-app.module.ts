@@ -129,6 +129,8 @@ import { TeacherXpController } from './xp/controller/teacher-xp.controller';
 import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapter';
 
 import { AcademicContentModule } from '../academics/academic-content/academic-content.module';
+import { TeacherAcademicContentAnalyticsController } from './academic-content/controller/teacher-academic-content-analytics.controller';
+import { TeacherAcademicContentAnalyticsUseCase } from './academic-content/application/teacher-academic-content-analytics.use-case';
 import { TeacherAcademicContentAuthoringController } from './academic-content/controller/teacher-academic-content-authoring.controller';
 import { TeacherAcademicContentFilesController } from './academic-content/controller/teacher-academic-content-files.controller';
 import { TeacherAcademicContentFilesUseCases } from './academic-content/application/teacher-academic-content-files.use-cases';
@@ -156,6 +158,7 @@ import {
     TeacherHomeworksModule,
   ],
   controllers: [
+    TeacherAcademicContentAnalyticsController,
     TeacherAcademicContentWorkflowPublicationController,
     TeacherAcademicContentFilesController,
     TeacherAcademicContentAuthoringController,
@@ -180,6 +183,7 @@ import {
     TeacherLessonPreparationController,
   ],
   providers: [
+    TeacherAcademicContentAnalyticsUseCase,
     TeacherAcademicContentWorkflowPublicationUseCases,
     TeacherAcademicContentFilesUseCases,
     TeacherAcademicContentAuthoringUseCases,
