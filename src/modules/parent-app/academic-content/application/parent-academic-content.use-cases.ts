@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import { AcademicContentEngagementService } from '../../../academics/academic-content/application/academic-content-engagement.service';
+import { RecordAcademicContentEngagementDto } from '../../../academics/academic-content/dto/academic-content-engagement.dto';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 import { AcademicContentCurrentAccessService } from '../../../academics/academic-content/application/academic-content-current-access.service';
 import {
@@ -36,6 +38,27 @@ function recipientContext(
     academicYearId: child.academicYearId,
     termId: child.termId,
   };
+}
+
+@Injectable()
+export class RecordParentAcademicContentEngagementUseCase {
+  constructor(
+    private readonly access: ParentAppAccessService,
+    private readonly engagement: AcademicContentEngagementService,
+  ) {}
+
+  async execute(
+    studentId: string,
+    contentId: string,
+    body: RecordAcademicContentEngagementDto,
+  ) {
+    const { context, child } =
+      await this.access.getOwnedStudentContext(studentId);
+    const recipient = recipientContext(context, child);
+    if (!recipient)
+      throw new NotFoundDomainException('Academic content not found');
+    return this.engagement.record(recipient, contentId, body);
+  }
 }
 
 @Injectable()

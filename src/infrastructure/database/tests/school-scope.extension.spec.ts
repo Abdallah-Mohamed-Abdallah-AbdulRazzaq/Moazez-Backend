@@ -8,6 +8,7 @@ describe('schoolScope communication registration', () => {
   it.each([
     'AcademicContentPublication',
     'AcademicContentEngagementEvent',
+    'AcademicContentEngagementAdmission',
     'AcademicContentAcknowledgement',
     'AcademicContentAudienceRecipient',
     'AcademicContentAudienceRecipientTarget',
