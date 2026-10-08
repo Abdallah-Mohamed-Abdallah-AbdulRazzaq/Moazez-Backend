@@ -26,6 +26,32 @@ describe('Student Academic Content immutable safe projection', () => {
     },
   );
 
+  it('adds immutable RevisionLink identity while preserving every legacy link field', () => {
+    const row = studentContentFixture('GENERAL_RESOURCE');
+    const projected = Presenter.presentDetail(row).content;
+    expect(projected.links).toEqual([
+      {
+        revisionLinkId: row.links[0].revisionLinkId,
+        label: 'Published link',
+        url: 'https://example.test/published',
+        sortOrder: 0,
+      },
+    ]);
+    const { revisionLinkId, ...legacy } = projected.links[0];
+    expect(revisionLinkId).toBe('55555555-5555-4555-8555-555555555555');
+    expect(legacy).toEqual({
+      label: 'Published link',
+      url: 'https://example.test/published',
+      sortOrder: 0,
+    });
+    expect(
+      Presenter.presentList({
+        items: [row],
+        pagination: { page: 1, limit: 20, total: 1 },
+      }).items[0],
+    ).not.toHaveProperty('links');
+  });
+
   it('excludes meeting capabilities from feed while authorized detail includes them', () => {
     const row = studentContentFixture('ONLINE_SESSION');
     const list = Presenter.presentList({

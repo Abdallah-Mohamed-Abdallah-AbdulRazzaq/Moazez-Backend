@@ -56,6 +56,7 @@ export class StudentAcademicContentAssetDto {
   @ApiProperty() sortOrder!: number;
 }
 export class StudentAcademicContentLinkDto {
+  @ApiProperty({ format: 'uuid' }) revisionLinkId!: string;
   @ApiProperty() label!: string;
   @ApiProperty() url!: string;
   @ApiProperty() sortOrder!: number;

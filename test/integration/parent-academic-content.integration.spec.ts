@@ -1100,7 +1100,7 @@ describeDatabase(
           sortOrder: 0,
         },
       });
-      await prisma.academicContentRevisionLink.create({
+      const publishedLink = await prisma.academicContentRevisionLink.create({
         data: {
           schoolId,
           revisionId: p.revision.id,
@@ -1181,6 +1181,7 @@ describeDatabase(
       expect(projected.title).toBe('Published weekly');
       expect(projected.links).toEqual([
         {
+          revisionLinkId: publishedLink.id,
           label: 'Published',
           url: 'https://example.test/published',
           sortOrder: 0,

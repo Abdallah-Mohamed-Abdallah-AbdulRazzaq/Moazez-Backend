@@ -135,6 +135,11 @@ export type AcademicContentRecipientDetail<
     sizeBytes: string;
     sortOrder: number;
   }[];
-  links: { label: string; url: string; sortOrder: number }[];
+  links: {
+    revisionLinkId: string;
+    label: string;
+    url: string;
+    sortOrder: number;
+  }[];
   tags: { displayValue: string; sortOrder: number }[];
 };
