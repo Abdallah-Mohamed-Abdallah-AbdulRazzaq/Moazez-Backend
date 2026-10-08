@@ -4,6 +4,7 @@ import { METHOD_METADATA } from '@nestjs/common/constants';
 import { TeacherAcademicContentController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content.controller';
 import { TeacherAcademicContentAuthoringController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content-authoring.controller';
 import { TeacherAcademicContentFilesController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content-files.controller';
+import { TeacherAcademicContentAnalyticsController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content-analytics.controller';
 import { Test, TestingModule } from '@nestjs/testing';
 import { readFileSync } from 'node:fs';
 import {
@@ -232,6 +233,7 @@ const TEACHER_APP_CONTROLLER_CLASSES = [
   TeacherAcademicContentAuthoringController,
   TeacherAcademicContentFilesController,
   TeacherAcademicContentWorkflowPublicationController,
+  TeacherAcademicContentAnalyticsController,
   TeacherHomeController,
   TeacherMyClassesController,
   TeacherClassroomController,
@@ -845,6 +847,22 @@ const TEACHER_APP_DEFERRED_ACTION_CASES: TeacherAppDeferredCase[] = [];
 
 const TEACHER_APP_DECORATED_PERMISSION_CASES: TeacherAppPermissionCase[] = [
   {
+    controller: TeacherAcademicContentAnalyticsController,
+    method: 'content',
+    permissions: [
+      'academics.academic_content.view',
+      'academics.academic_content.analytics.own.view',
+    ],
+  },
+  {
+    controller: TeacherAcademicContentAnalyticsController,
+    method: 'publication',
+    permissions: [
+      'academics.academic_content.view',
+      'academics.academic_content.analytics.own.view',
+    ],
+  },
+  {
     controller: TeacherAcademicContentWorkflowPublicationController,
     method: 'revisions',
     permissions: ['academics.academic_content.view'],
@@ -1131,9 +1149,9 @@ describe('Teacher App route permission metadata (security)', () => {
         Object.getOwnPropertyNames(controller.prototype)
           .filter((method) => method !== 'constructor')
           .filter((method) => {
-            const handler = (controller.prototype as Record<string, unknown>)[
-              method
-            ];
+            const handler = (
+              controller.prototype as unknown as Record<string, unknown>
+            )[method];
 
             return (
               typeof handler === 'function' &&
@@ -1143,8 +1161,8 @@ describe('Teacher App route permission metadata (security)', () => {
           .map((method) => `${controller.name}.${method}`),
     ).sort();
 
-    expect(discoveredRouteHandlers).toHaveLength(149);
-    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(149);
+    expect(discoveredRouteHandlers).toHaveLength(151);
+    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(151);
     expect(TEACHER_APP_DEFERRED_ACTION_CASES).toHaveLength(0);
     expect(discoveredRouteHandlers).toEqual(
       Array.from(expectedKnownHandlers).sort(),
@@ -1155,9 +1173,9 @@ describe('Teacher App route permission metadata (security)', () => {
         Object.getOwnPropertyNames(controller.prototype)
           .filter((method) => method !== 'constructor')
           .filter((method) => {
-            const handler = (controller.prototype as Record<string, unknown>)[
-              method
-            ];
+            const handler = (
+              controller.prototype as unknown as Record<string, unknown>
+            )[method];
 
             return (
               typeof handler === 'function' &&
