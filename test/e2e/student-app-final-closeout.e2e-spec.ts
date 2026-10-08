@@ -841,6 +841,7 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       'PATCH /api/v1/student/homeworks/:homeworkId/submission/attachments/:attachmentId',
       'PATCH /api/v1/student/homeworks/:homeworkId/submission/attachments/:attachmentId/reorder',
       'PATCH /api/v1/student/notifications/preferences',
+      'POST /api/v1/student/academic-content/:contentId/engagement-events',
       'POST /api/v1/student/announcements/:announcementId/read',
       'POST /api/v1/student/exams/:assessmentId/start',
       'POST /api/v1/student/exams/:assessmentId/submission/submit',

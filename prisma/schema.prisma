@@ -1661,6 +1661,7 @@ model School {
   appDeviceTokens                               AppDeviceToken[]
   dashboardTodos                                DashboardTodo[]
   academicContentEngagementEvents               AcademicContentEngagementEvent[]
+  academicContentEngagementAdmissions           AcademicContentEngagementAdmission[]
   academicContentAcknowledgements               AcademicContentAcknowledgement[]
 
   @@unique([organizationId, slug])
@@ -1887,6 +1888,7 @@ model User {
   appDeviceTokens                                AppDeviceToken[]                       @relation("AppDeviceTokensUser")
   dashboardTodos                                 DashboardTodo[]
   academicContentEngagementEvents                AcademicContentEngagementEvent[]       @relation("AcademicContentEngagementActor")
+  academicContentEngagementAdmissions            AcademicContentEngagementAdmission[]
   academicContentAcknowledgements                AcademicContentAcknowledgement[]       @relation("AcademicContentAcknowledgementActor")
 
   @@index([userType])
@@ -3485,6 +3487,24 @@ model AcademicContentRevisionLink {
   @@unique([schoolId, revisionId, sortOrder])
   @@index([schoolId, revisionId])
   @@map("academic_content_revision_links")
+}
+
+// Bounded operational admission state: one row per School/account, never event history.
+model AcademicContentEngagementAdmission {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String   @map("school_id") @db.Uuid
+  actorUserId     String   @map("actor_user_id") @db.Uuid
+  windowStartedAt DateTime @map("window_started_at")
+  requestCount    Int      @map("request_count")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  actor  User   @relation(fields: [actorUserId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@unique([schoolId, actorUserId], map: "acc_engagement_admission_actor_key")
+  @@index([actorUserId])
+  @@map("academic_content_engagement_admissions")
 }
 
 // Historical action records: no soft-delete, TTL or automatic cleanup authority.

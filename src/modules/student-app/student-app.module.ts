@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { StudentAcademicContentEngagementController } from './academic-content/controller/student-academic-content-engagement.controller';
+import { RecordStudentAcademicContentEngagementUseCase } from './academic-content/application/student-academic-content.use-cases';
 import { AcademicContentModule } from '../academics/academic-content/academic-content.module';
 import {
   GetStudentAcademicContentUseCase,
@@ -170,6 +172,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     StudentHomeworksModule,
   ],
   controllers: [
+    StudentAcademicContentEngagementController,
     StudentAcademicContentController,
     StudentHomeController,
     StudentProfileController,
@@ -192,6 +195,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     StudentRewardsController,
   ],
   providers: [
+    RecordStudentAcademicContentEngagementUseCase,
     AccessStudentAcademicContentAssetUseCase,
     ListStudentAcademicContentUseCase,
     GetStudentAcademicContentUseCase,

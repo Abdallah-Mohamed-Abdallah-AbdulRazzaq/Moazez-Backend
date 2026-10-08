@@ -847,10 +847,10 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
   it('registers the final Parent App route set and keeps unsupported routes absent', async () => {
     const routes = listRegisteredParentRoutes();
 
-    expect(routes).toHaveLength(77);
+    expect(routes).toHaveLength(78);
     expect(routes.filter((route) => route.startsWith('GET '))).toHaveLength(65);
     expect(routes.filter((route) => !route.startsWith('GET '))).toHaveLength(
-      12,
+      13,
     );
     expect(routes).toEqual([
       'DELETE /api/v1/parent/notifications/device-tokens/current',
@@ -921,6 +921,7 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
       'GET /api/v1/parent/smart-pickup/recent-calls',
       'PATCH /api/v1/parent/notifications/preferences',
       'POST /api/v1/parent/announcements/:announcementId/read',
+      'POST /api/v1/parent/children/:studentId/academic-content/:contentId/engagement-events',
       'POST /api/v1/parent/messages/conversations',
       'POST /api/v1/parent/messages/conversations/:conversationId/messages',
       'POST /api/v1/parent/messages/conversations/:conversationId/read',

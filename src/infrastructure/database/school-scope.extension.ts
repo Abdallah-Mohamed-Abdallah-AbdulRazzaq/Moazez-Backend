@@ -84,6 +84,7 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
   'AcademicContentApproval',
   'AcademicContentPublication',
   'AcademicContentEngagementEvent',
+  'AcademicContentEngagementAdmission',
   'AcademicContentAcknowledgement',
   'AcademicContentAudienceRecipient',
   'AcademicContentAudienceRecipientTarget',

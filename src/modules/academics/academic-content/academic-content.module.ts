@@ -1,3 +1,6 @@
+import { AcademicContentEngagementService } from './application/academic-content-engagement.service';
+import { AcademicContentEngagementRepository } from './infrastructure/academic-content-engagement.repository';
+import { AcademicContentEngagementExceptionFilter } from './controller/academic-content-engagement-exception.filter';
 import { AcademicContentWorkflowPublicationCapabilities } from './application/academic-content-workflow-publication-capabilities';
 import { AcademicContentReviewDecisionNotificationEnqueueService } from './application/academic-content-review-decision-notification-enqueue.service';
 import { QueueModule } from '../../../infrastructure/queue/queue.module';
@@ -112,6 +115,9 @@ import {
     AcademicContentController,
   ],
   providers: [
+    AcademicContentEngagementRepository,
+    AcademicContentEngagementService,
+    AcademicContentEngagementExceptionFilter,
     AcademicContentAuthorizedFileSigner,
     AcademicContentRecipientAssetAccessService,
     AcademicContentRecipientReadRepository,
@@ -188,6 +194,8 @@ import {
     AcademicContentAudienceResolver,
   ],
   exports: [
+    AcademicContentEngagementService,
+    AcademicContentEngagementExceptionFilter,
     AcademicContentRecipientAssetAccessService,
     AcademicContentCurrentAccessService,
     AcademicContentWorkflowPublicationCapabilities,

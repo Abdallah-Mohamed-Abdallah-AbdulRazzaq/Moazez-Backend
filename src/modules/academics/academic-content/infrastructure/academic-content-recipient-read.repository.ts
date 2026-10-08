@@ -33,7 +33,7 @@ type RecipientChildSql = Record<
   'studentId' | 'enrollmentId' | 'classroomId' | 'academicYearId' | 'termId',
   Prisma.Sql
 >;
-function childSql(
+export function childSql(
   context: AcademicContentCurrentRecipientContext,
 ): RecipientChildSql {
   return {
@@ -47,9 +47,9 @@ function childSql(
 
 // Reuses the ACC-10A matcher semantics against live relationships and immutable targets.
 // Every raw query explicitly constrains the School; no recipient snapshot is an ACL.
-function currentRecipientPublicationQuery(
+export function currentRecipientPublicationQuery(
   context: RecipientActor,
-  now: Date,
+  now: Date | Prisma.Sql,
   child: RecipientChildSql,
 ) {
   const relationship =
@@ -100,7 +100,7 @@ function currentRecipientPublicationQuery(
       AND classroom.deleted_at IS NULL AND section.deleted_at IS NULL AND grade.deleted_at IS NULL AND stage.deleted_at IS NULL`;
 }
 
-function matchingRevisionTarget(subjectId?: string) {
+export function matchingRevisionTarget(subjectId?: string) {
   return Prisma.sql`EXISTS (
     SELECT 1 FROM academic_content_revision_targets target
     WHERE target.revision_id = r.id AND target.school_id = p.school_id
