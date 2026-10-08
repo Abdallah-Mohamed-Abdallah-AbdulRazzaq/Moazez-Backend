@@ -1,3 +1,5 @@
+import { AcademicContentAcknowledgementRepository } from './infrastructure/academic-content-acknowledgement.repository';
+import { AcademicContentAcknowledgementService } from './application/academic-content-acknowledgement.service';
 import { AcademicContentEngagementService } from './application/academic-content-engagement.service';
 import { AcademicContentEngagementRepository } from './infrastructure/academic-content-engagement.repository';
 import { AcademicContentEngagementExceptionFilter } from './controller/academic-content-engagement-exception.filter';
@@ -115,6 +117,8 @@ import {
     AcademicContentController,
   ],
   providers: [
+    AcademicContentAcknowledgementRepository,
+    AcademicContentAcknowledgementService,
     AcademicContentEngagementRepository,
     AcademicContentEngagementService,
     AcademicContentEngagementExceptionFilter,
@@ -194,6 +198,7 @@ import {
     AcademicContentAudienceResolver,
   ],
   exports: [
+    AcademicContentAcknowledgementService,
     AcademicContentEngagementService,
     AcademicContentEngagementExceptionFilter,
     AcademicContentRecipientAssetAccessService,

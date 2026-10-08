@@ -1,7 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
+import { AcademicContentAcknowledgementService } from '../../../academics/academic-content/application/academic-content-acknowledgement.service';
 import { AcademicContentEngagementService } from '../../../academics/academic-content/application/academic-content-engagement.service';
 import { RecordAcademicContentEngagementDto } from '../../../academics/academic-content/dto/academic-content-engagement.dto';
-import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
+import {
+  DomainException,
+  NotFoundDomainException,
+} from '../../../../common/exceptions/domain-exception';
 import { AcademicContentCurrentAccessService } from '../../../academics/academic-content/application/academic-content-current-access.service';
 import {
   normalizeAcademicContentRecipientQuery,
@@ -38,6 +42,41 @@ function recipientContext(
     academicYearId: child.academicYearId,
     termId: child.termId,
   };
+}
+
+@Injectable()
+export class ParentAcademicContentAcknowledgementUseCase {
+  constructor(
+    private readonly access: ParentAppAccessService,
+    private readonly acknowledgement: AcademicContentAcknowledgementService,
+  ) {}
+  async execute(
+    studentId: string,
+    contentId: string,
+    expectedPublicationId: string,
+    write: boolean,
+  ) {
+    try {
+      const { context, child } =
+        await this.access.getOwnedStudentContext(studentId);
+      const recipient = recipientContext(context, child);
+      if (!recipient)
+        throw new NotFoundDomainException('Academic content not found');
+      return await this.acknowledgement.resolve(
+        recipient,
+        contentId,
+        expectedPublicationId,
+        write,
+      );
+    } catch (error) {
+      if (error instanceof DomainException) throw error;
+      throw new DomainException({
+        code: 'service_unavailable',
+        message: 'Acknowledgement temporarily unavailable',
+        httpStatus: HttpStatus.SERVICE_UNAVAILABLE,
+      });
+    }
+  }
 }
 
 @Injectable()

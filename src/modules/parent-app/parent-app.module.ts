@@ -1,4 +1,6 @@
 import { AcademicContentModule } from '../academics/academic-content/academic-content.module';
+import { ParentAcademicContentAcknowledgementController } from './academic-content/controller/parent-academic-content-acknowledgement.controller';
+import { ParentAcademicContentAcknowledgementUseCase } from './academic-content/application/parent-academic-content.use-cases';
 import { ParentAcademicContentEngagementController } from './academic-content/controller/parent-academic-content-engagement.controller';
 import { RecordParentAcademicContentEngagementUseCase } from './academic-content/application/parent-academic-content.use-cases';
 import { ParentAcademicContentController } from './academic-content/controller/parent-academic-content.controller';
@@ -152,6 +154,7 @@ import { ParentSmartPickupRecentCallsRepository } from './smart-pickup/infrastru
     StorageModule,
   ],
   controllers: [
+    ParentAcademicContentAcknowledgementController,
     ParentAcademicContentEngagementController,
     ParentAcademicContentController,
     ParentHomeController,
@@ -175,6 +178,7 @@ import { ParentSmartPickupRecentCallsRepository } from './smart-pickup/infrastru
     ParentSmartPickupController,
   ],
   providers: [
+    ParentAcademicContentAcknowledgementUseCase,
     RecordParentAcademicContentEngagementUseCase,
     AccessParentAcademicContentAssetUseCase,
     GetParentAcademicContentUseCase,
