@@ -289,7 +289,7 @@ export class AcademicContentRecipientReadRepository {
         COALESCE((SELECT jsonb_agg(jsonb_build_object('fileId', asset.file_id, 'originalName', file.original_name, 'mimeType', file.mime_type, 'sizeBytes', file.size_bytes::text, 'sortOrder', asset.sort_order) ORDER BY asset.sort_order)
           FROM academic_content_revision_assets asset JOIN files file ON file.id = asset.file_id AND file.school_id = asset.school_id
           WHERE asset.revision_id = r.id AND asset.school_id = p.school_id), '[]'::jsonb) AS assets,
-        COALESCE((SELECT jsonb_agg(jsonb_build_object('label', link.label, 'url', link.url, 'sortOrder', link.sort_order) ORDER BY link.sort_order)
+        COALESCE((SELECT jsonb_agg(jsonb_build_object('revisionLinkId', link.id, 'label', link.label, 'url', link.url, 'sortOrder', link.sort_order) ORDER BY link.sort_order)
           FROM academic_content_revision_links link WHERE link.revision_id = r.id AND link.school_id = p.school_id), '[]'::jsonb) AS links,
         COALESCE((SELECT jsonb_agg(jsonb_build_object('displayValue', tag.display_value, 'sortOrder', tag.sort_order) ORDER BY tag.sort_order)
           FROM academic_content_revision_tags tag WHERE tag.revision_id = r.id AND tag.school_id = p.school_id), '[]'::jsonb) AS tags

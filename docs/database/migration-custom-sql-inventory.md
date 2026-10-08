@@ -508,3 +508,28 @@ Applied migration SQL is immutable. Rollback must use a reviewed compatible
 forward fix or an approved isolated restore. Removing the triggers would reopen
 the stale-link race; removing the shared guard would reopen existing-reference
 data loss. This migration does not purge pre-existing corrupt references.
+
+## ACC-11A engagement and acknowledgement foundation
+
+Migration `20261008054427_academic_content_engagement_acknowledgement_foundation`
+contains Prisma-generated enums, tables, indexes and restrictive compound FKs,
+plus three PostgreSQL CHECK predicates Prisma cannot represent:
+
+| Constraint | Invariant |
+| --- | --- |
+| `acc_engagement_actor_guardian_check` | STUDENT requires null Guardian context; PARENT requires a resolved Guardian ID |
+| `acc_engagement_reference_shape_check` | CONTENT_VIEWED/JOIN_LINK_CLICKED have no File/link reference; FILE_PREVIEWED/FILE_DOWNLOADED require only File; LINK_CLICKED requires only RevisionLink |
+| `acc_engagement_request_fingerprint_check` | Request fingerprint is exactly 64 lowercase hexadecimal characters |
+
+Direct PostgreSQL rejection and migrated catalog assertions are in
+`test/integration/academic-content-engagement-foundation.integration.spec.ts`.
+The pure policy suite protects the corresponding event shapes and eligibility
+contract. All generated/custom SQL was reviewed before the migration's first
+application; no historical migration is edited. There is no function, trigger,
+backfill, TTL, physical deletion, new File FK or runtime privilege change.
+
+The RevisionAsset compound FK retains the existing File lifetime transitively.
+Acknowledgement natural uniqueness uses School/publication/child/Parent account,
+not mutable Guardian-record or enrollment identity. Live Parent/Student
+authorization and cross-row acknowledgement eligibility remain subsequent
+operational work, not CHECK-constraint guarantees.

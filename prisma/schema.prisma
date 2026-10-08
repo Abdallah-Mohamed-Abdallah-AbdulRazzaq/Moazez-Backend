@@ -1285,6 +1285,23 @@ enum AcademicContentAudienceRecipientKind {
   @@map("academic_content_audience_recipient_kind")
 }
 
+enum AcademicContentEngagementActorKind {
+  STUDENT
+  PARENT
+
+  @@map("academic_content_engagement_actor_kind")
+}
+
+enum AcademicContentEngagementEventType {
+  CONTENT_VIEWED
+  FILE_PREVIEWED
+  FILE_DOWNLOADED
+  LINK_CLICKED
+  JOIN_LINK_CLICKED
+
+  @@map("academic_content_engagement_event_type")
+}
+
 enum AcademicContentAudienceType {
   INTERNAL_STAFF
   STUDENTS
@@ -1643,6 +1660,8 @@ model School {
   communicationNotificationPreferences          CommunicationNotificationPreference[]
   appDeviceTokens                               AppDeviceToken[]
   dashboardTodos                                DashboardTodo[]
+  academicContentEngagementEvents               AcademicContentEngagementEvent[]
+  academicContentAcknowledgements               AcademicContentAcknowledgement[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -1867,6 +1886,8 @@ model User {
   schoolEmailDeliveryRecipients                  SchoolEmailDeliveryRecipient[]         @relation("SchoolEmailDeliveryRecipientsUser")
   appDeviceTokens                                AppDeviceToken[]                       @relation("AppDeviceTokensUser")
   dashboardTodos                                 DashboardTodo[]
+  academicContentEngagementEvents                AcademicContentEngagementEvent[]       @relation("AcademicContentEngagementActor")
+  academicContentAcknowledgements                AcademicContentAcknowledgement[]       @relation("AcademicContentAcknowledgementActor")
 
   @@index([userType])
   @@index([status])
@@ -3276,17 +3297,19 @@ model AcademicContentRevision {
   capturedAt              DateTime                    @default(now()) @map("captured_at")
   createdAt               DateTime                    @default(now()) @map("created_at")
 
-  school          School                          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  academicContent AcademicContent                 @relation(fields: [academicContentId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  academicYear    AcademicYear                    @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  term            Term                            @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  capturedBy      User                            @relation("AcademicContentRevisionCapturedBy", fields: [capturedByUserId], references: [id], onDelete: Restrict)
-  targets         AcademicContentRevisionTarget[]
-  assets          AcademicContentRevisionAsset[]
-  links           AcademicContentRevisionLink[]
-  tags            AcademicContentRevisionTag[]
-  approvals       AcademicContentApproval[]
-  publications    AcademicContentPublication[]
+  school           School                           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicContent  AcademicContent                  @relation(fields: [academicContentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  academicYear     AcademicYear                     @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term             Term                             @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  capturedBy       User                             @relation("AcademicContentRevisionCapturedBy", fields: [capturedByUserId], references: [id], onDelete: Restrict)
+  targets          AcademicContentRevisionTarget[]
+  assets           AcademicContentRevisionAsset[]
+  links            AcademicContentRevisionLink[]
+  tags             AcademicContentRevisionTag[]
+  approvals        AcademicContentApproval[]
+  publications     AcademicContentPublication[]
+  engagementEvents AcademicContentEngagementEvent[]
+  acknowledgements AcademicContentAcknowledgement[]
 
   @@unique([id, schoolId])
   @@unique([id, schoolId, academicContentId])
@@ -3349,14 +3372,16 @@ model AcademicContentPublication {
   createdAt                     DateTime                                      @default(now()) @map("created_at")
   updatedAt                     DateTime                                      @updatedAt @map("updated_at")
 
-  school          School                             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  academicContent AcademicContent                    @relation(fields: [academicContentId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  revision        AcademicContentRevision            @relation(fields: [revisionId, schoolId, academicContentId], references: [id, schoolId, academicContentId], onDelete: Restrict)
-  createdBy       User                               @relation("AcademicContentPublicationCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  cancelledBy     User?                              @relation("AcademicContentPublicationCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: Restrict)
-  supersedes      AcademicContentPublication?        @relation("AcademicContentPublicationSuccessor", fields: [supersedesPublicationId, schoolId, academicContentId], references: [id, schoolId, academicContentId], onDelete: Restrict, onUpdate: Restrict)
-  successors      AcademicContentPublication[]       @relation("AcademicContentPublicationSuccessor")
-  recipients      AcademicContentAudienceRecipient[]
+  school           School                             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicContent  AcademicContent                    @relation(fields: [academicContentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  revision         AcademicContentRevision            @relation(fields: [revisionId, schoolId, academicContentId], references: [id, schoolId, academicContentId], onDelete: Restrict)
+  createdBy        User                               @relation("AcademicContentPublicationCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  cancelledBy      User?                              @relation("AcademicContentPublicationCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: Restrict)
+  supersedes       AcademicContentPublication?        @relation("AcademicContentPublicationSuccessor", fields: [supersedesPublicationId, schoolId, academicContentId], references: [id, schoolId, academicContentId], onDelete: Restrict, onUpdate: Restrict)
+  successors       AcademicContentPublication[]       @relation("AcademicContentPublicationSuccessor")
+  recipients       AcademicContentAudienceRecipient[]
+  engagementEvents AcademicContentEngagementEvent[]
+  acknowledgements AcademicContentAcknowledgement[]
 
   @@unique([id, schoolId, academicContentId])
   @@unique([schoolId, supersedesPublicationId])
@@ -3431,9 +3456,10 @@ model AcademicContentRevisionAsset {
   sortOrder  Int      @map("sort_order")
   createdAt  DateTime @default(now()) @map("created_at")
 
-  school   School                  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  revision AcademicContentRevision @relation(fields: [revisionId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  file     File                    @relation(fields: [fileId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  school           School                           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  revision         AcademicContentRevision          @relation(fields: [revisionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  file             File                             @relation(fields: [fileId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  engagementEvents AcademicContentEngagementEvent[]
 
   @@unique([schoolId, revisionId, fileId])
   @@unique([schoolId, revisionId, sortOrder])
@@ -3451,12 +3477,88 @@ model AcademicContentRevisionLink {
   sortOrder  Int      @map("sort_order")
   createdAt  DateTime @default(now()) @map("created_at")
 
-  school   School                  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  revision AcademicContentRevision @relation(fields: [revisionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  school           School                           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  revision         AcademicContentRevision          @relation(fields: [revisionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  engagementEvents AcademicContentEngagementEvent[]
 
+  @@unique([id, schoolId, revisionId], map: "acc_revision_link_identity_key")
   @@unique([schoolId, revisionId, sortOrder])
   @@index([schoolId, revisionId])
   @@map("academic_content_revision_links")
+}
+
+// Historical action records: no soft-delete, TTL or automatic cleanup authority.
+model AcademicContentEngagementEvent {
+  id                 String                             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId           String                             @map("school_id") @db.Uuid
+  academicContentId  String                             @map("academic_content_id") @db.Uuid
+  publicationId      String                             @map("publication_id") @db.Uuid
+  revisionId         String                             @map("revision_id") @db.Uuid
+  actorUserId        String                             @map("actor_user_id") @db.Uuid
+  actorKind          AcademicContentEngagementActorKind @map("actor_kind")
+  studentId          String                             @map("student_id") @db.Uuid
+  enrollmentId       String                             @map("enrollment_id") @db.Uuid
+  guardianId         String?                            @map("guardian_id") @db.Uuid
+  eventType          AcademicContentEngagementEventType @map("event_type")
+  fileId             String?                            @map("file_id") @db.Uuid
+  revisionLinkId     String?                            @map("revision_link_id") @db.Uuid
+  clientRequestId    String                             @map("client_request_id") @db.Uuid
+  requestFingerprint String                             @map("request_fingerprint") @db.VarChar(64)
+  createdAt          DateTime                           @default(now()) @map("created_at")
+
+  school        School                        @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  publication   AcademicContentPublication    @relation(fields: [publicationId, schoolId, revisionId], references: [id, schoolId, revisionId], onDelete: Restrict, onUpdate: Restrict, map: "acc_engagement_publication_fkey")
+  revision      AcademicContentRevision       @relation(fields: [revisionId, schoolId, academicContentId], references: [id, schoolId, academicContentId], onDelete: Restrict, onUpdate: Restrict, map: "acc_engagement_revision_fkey")
+  actor         User                          @relation("AcademicContentEngagementActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  student       Student                       @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  enrollment    Enrollment                    @relation(fields: [enrollmentId, schoolId, studentId], references: [id, schoolId, studentId], onDelete: Restrict, onUpdate: Restrict, map: "acc_engagement_enrollment_fkey")
+  guardian      Guardian?                     @relation(fields: [guardianId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  revisionAsset AcademicContentRevisionAsset? @relation(fields: [schoolId, revisionId, fileId], references: [schoolId, revisionId, fileId], onDelete: Restrict, onUpdate: Restrict, map: "acc_engagement_revision_asset_fkey")
+  revisionLink  AcademicContentRevisionLink?  @relation(fields: [revisionLinkId, schoolId, revisionId], references: [id, schoolId, revisionId], onDelete: Restrict, onUpdate: Restrict, map: "acc_engagement_revision_link_fkey")
+
+  @@unique([schoolId, actorUserId, clientRequestId], map: "acc_engagement_actor_request_key")
+  @@index([schoolId, academicContentId, publicationId, createdAt], map: "acc_engagement_content_publication_time_idx")
+  @@index([publicationId, schoolId, revisionId], map: "acc_engagement_publication_idx")
+  @@index([revisionId, schoolId, academicContentId], map: "acc_engagement_revision_idx")
+  @@index([actorUserId])
+  @@index([studentId, schoolId])
+  @@index([enrollmentId, schoolId, studentId], map: "acc_engagement_enrollment_idx")
+  @@index([guardianId, schoolId])
+  @@index([schoolId, revisionId, fileId], map: "acc_engagement_revision_asset_idx")
+  @@index([revisionLinkId, schoolId, revisionId], map: "acc_engagement_revision_link_idx")
+  @@map("academic_content_engagement_events")
+}
+
+model AcademicContentAcknowledgement {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String   @map("school_id") @db.Uuid
+  academicContentId String   @map("academic_content_id") @db.Uuid
+  publicationId     String   @map("publication_id") @db.Uuid
+  revisionId        String   @map("revision_id") @db.Uuid
+  studentId         String   @map("student_id") @db.Uuid
+  enrollmentId      String   @map("enrollment_id") @db.Uuid
+  actorUserId       String   @map("actor_user_id") @db.Uuid
+  guardianId        String   @map("guardian_id") @db.Uuid
+  acknowledgedAt    DateTime @default(now()) @map("acknowledged_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  school      School                     @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  publication AcademicContentPublication @relation(fields: [publicationId, schoolId, revisionId], references: [id, schoolId, revisionId], onDelete: Restrict, onUpdate: Restrict, map: "acc_acknowledgement_publication_fkey")
+  revision    AcademicContentRevision    @relation(fields: [revisionId, schoolId, academicContentId], references: [id, schoolId, academicContentId], onDelete: Restrict, onUpdate: Restrict, map: "acc_acknowledgement_revision_fkey")
+  student     Student                    @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  enrollment  Enrollment                 @relation(fields: [enrollmentId, schoolId, studentId], references: [id, schoolId, studentId], onDelete: Restrict, onUpdate: Restrict, map: "acc_acknowledgement_enrollment_fkey")
+  actor       User                       @relation("AcademicContentAcknowledgementActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  guardian    Guardian                   @relation(fields: [guardianId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([schoolId, publicationId, studentId, actorUserId], map: "acc_acknowledgement_parent_child_publication_key")
+  @@index([schoolId, academicContentId, publicationId], map: "acc_acknowledgement_content_publication_idx")
+  @@index([publicationId, schoolId, revisionId], map: "acc_acknowledgement_publication_idx")
+  @@index([revisionId, schoolId, academicContentId], map: "acc_acknowledgement_revision_idx")
+  @@index([studentId, schoolId])
+  @@index([enrollmentId, schoolId, studentId], map: "acc_acknowledgement_enrollment_idx")
+  @@index([actorUserId])
+  @@index([guardianId, schoolId])
+  @@map("academic_content_acknowledgements")
 }
 
 model AcademicContentRevisionTag {
@@ -4620,6 +4722,8 @@ model Student {
   homeworkSubmissions                HomeworkSubmission[]
 
   academicContentAudienceRecipients AcademicContentAudienceRecipient[]
+  academicContentEngagementEvents   AcademicContentEngagementEvent[]
+  academicContentAcknowledgements   AcademicContentAcknowledgement[]
 
   @@unique([id, schoolId])
   @@unique([applicationId, schoolId])
@@ -4662,6 +4766,8 @@ model Guardian {
   communicationAnnouncementAudiences CommunicationAnnouncementAudience[]
 
   academicContentAudienceRecipients AcademicContentAudienceRecipient[]
+  academicContentEngagementEvents   AcademicContentEngagementEvent[]
+  academicContentAcknowledgements   AcademicContentAcknowledgement[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -4733,8 +4839,11 @@ model Enrollment {
   credentialRows             StudentCredentialRow[]       @relation("StudentCredentialRowEnrollment")
 
   academicContentAudienceRecipients AcademicContentAudienceRecipient[]
+  academicContentEngagementEvents   AcademicContentEngagementEvent[]
+  academicContentAcknowledgements   AcademicContentAcknowledgement[]
 
   @@unique([id, schoolId])
+  @@unique([id, schoolId, studentId], map: "acc_enrollment_student_identity_key")
   @@index([schoolId])
   @@index([studentId])
   @@index([academicYearId])

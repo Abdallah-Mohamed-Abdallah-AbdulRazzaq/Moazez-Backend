@@ -7,6 +7,8 @@ import {
 describe('schoolScope communication registration', () => {
   it.each([
     'AcademicContentPublication',
+    'AcademicContentEngagementEvent',
+    'AcademicContentAcknowledgement',
     'AcademicContentAudienceRecipient',
     'AcademicContentAudienceRecipientTarget',
   ])(
