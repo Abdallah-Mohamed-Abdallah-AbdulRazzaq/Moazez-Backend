@@ -64,17 +64,17 @@ export class AcademicContentCurrentAccessService {
       { actorKind: 'STUDENT' }
     >,
     contentId: string,
-    now = new Date(),
+    now?: Date,
   ) {
     const identity = await this.assertCurrentStudentContentAccess(
       context,
       contentId,
-      now,
+      now ?? new Date(),
     );
     const detail = await this.reads.findCurrentStudentDetail(
       context,
       identity,
-      now,
+      now ?? new Date(),
     );
     if (!detail)
       throw new NotFoundDomainException('Academic content not found');
