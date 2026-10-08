@@ -22,6 +22,49 @@ const context: Extract<
 const now = new Date('2026-10-07T10:00:00.000Z');
 
 describe('Core bounded immutable Student recipient reads', () => {
+  it.each([false, true])(
+    'refreshes the final default clock and preserves an explicit clock (explicit=%s)',
+    async (explicit) => {
+      jest.useFakeTimers().setSystemTime(now);
+      const later = new Date(now.getTime() + 1000);
+      try {
+        const identity = {
+          publicationId: context.studentId,
+          revisionId: context.termId,
+        };
+        const reads = {
+          findCurrentStudentPublication: jest.fn().mockImplementation(() => {
+            jest.setSystemTime(later);
+            return Promise.resolve(identity);
+          }),
+          findCurrentStudentDetail: jest.fn().mockResolvedValue(null),
+        };
+        const service = new AcademicContentCurrentAccessService(
+          reads as unknown as AcademicContentRecipientReadRepository,
+          {} as AcademicContentAudienceRepository,
+        );
+        await expect(
+          service.getCurrentStudentContent(
+            context,
+            context.studentId,
+            explicit ? now : undefined,
+          ),
+        ).rejects.toMatchObject({ code: 'not_found', httpStatus: 404 });
+        expect(reads.findCurrentStudentPublication).toHaveBeenCalledWith(
+          context,
+          context.studentId,
+          now,
+        );
+        expect(reads.findCurrentStudentDetail).toHaveBeenCalledWith(
+          context,
+          identity,
+          explicit ? now : later,
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    },
+  );
   it.each(['STUDENT', 'PARENT'] as const)(
     '%s selects canonical publication before exact live private File membership',
     async (actorKind) => {
