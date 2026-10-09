@@ -55,6 +55,7 @@ export class TeacherAcademicContentFilesUseCases {
       CreateAcademicContentUploadCommand,
       'contentId' | 'trustedOrigin'
     >,
+    origin?: string,
   ) {
     const scope = this.scope('manage');
     if (
@@ -70,7 +71,14 @@ export class TeacherAcademicContentFilesUseCases {
       )
     )
       throw new ValidationDomainException('Invalid Teacher upload intent');
-    return this.createUpload.executeForTeacher({ contentId, ...input }, scope);
+    return this.createUpload.executeForTeacher(
+      {
+        contentId,
+        ...input,
+        ...(origin === undefined ? {} : { trustedOrigin: origin }),
+      },
+      scope,
+    );
   }
   complete(contentId: string, uploadId: string) {
     return this.completeUpload.executeForTeacher(

@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Header,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -612,9 +613,14 @@ export class AcademicContentController {
   async uploadIntent(
     @Param('contentId', new ParseUUIDPipe()) contentId: string,
     @Body() dto: CreateAcademicContentUploadDto,
+    @Headers('origin') origin?: string,
   ): Promise<AcademicContentUploadIntentResponseDto> {
     return presentAcademicContentUploadIntent(
-      await this.createUpload.execute({ contentId, ...dto }),
+      await this.createUpload.execute({
+        contentId,
+        ...dto,
+        ...(origin === undefined ? {} : { trustedOrigin: origin }),
+      }),
     );
   }
 

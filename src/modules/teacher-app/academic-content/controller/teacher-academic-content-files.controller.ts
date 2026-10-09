@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Header,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -38,9 +39,10 @@ export class TeacherAcademicContentFilesController {
   async uploadIntent(
     @Param('contentId', new ParseUUIDPipe()) contentId: string,
     @Body() dto: CreateAcademicContentUploadDto,
+    @Headers('origin') origin?: string,
   ) {
     return presentAcademicContentUploadIntent(
-      await this.files.uploadIntent(contentId, dto),
+      await this.files.uploadIntent(contentId, dto, origin),
     );
   }
 

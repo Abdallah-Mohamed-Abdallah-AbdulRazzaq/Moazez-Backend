@@ -1,4 +1,5 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { FileUploadSessionStatus, FileVisibility } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import {
@@ -26,6 +27,7 @@ import type { AcademicContentTeacherWriteScope } from '../../infrastructure/acad
 import type { AcademicContentEffectiveFilePolicy } from '../domain/academic-content-file-policy';
 import { academicContentFileScope } from './academic-content-file-scope';
 import { AcademicContentFilePolicyResolver } from './academic-content-file-policy.resolver';
+import { resolveAcademicContentUploadOrigin } from './academic-content-upload-origin';
 import {
   AcademicContentFileRejection,
   AcademicContentFileVerifier,
@@ -80,6 +82,7 @@ export class CreateAcademicContentUploadUseCase {
     private readonly repository: AcademicContentFileRepository,
     private readonly policy: AcademicContentFilePolicyResolver,
     private readonly storage: StorageService,
+    private readonly configService: ConfigService = new ConfigService(),
   ) {}
 
   async execute(command: CreateAcademicContentUploadCommand) {
@@ -100,6 +103,10 @@ export class CreateAcademicContentUploadUseCase {
     scope: ReturnType<typeof academicContentFileScope>,
     teacherScope?: AcademicContentTeacherWriteScope,
   ) {
+    const trustedOrigin = resolveAcademicContentUploadOrigin(
+      command.trustedOrigin,
+      this.configService,
+    );
     if (!teacherScope) {
       const content = await this.repository.findContent(
         command.contentId,
@@ -181,7 +188,7 @@ export class CreateAcademicContentUploadUseCase {
         bucket: session.finalBucket,
         objectKey: session.finalObjectKey,
         contentType: type.mimeType,
-        origin: command.trustedOrigin,
+        origin: trustedOrigin,
       });
       sessionUrl = capability.sessionUrl;
       capabilityExpiresAt = capability.expiresAt;
