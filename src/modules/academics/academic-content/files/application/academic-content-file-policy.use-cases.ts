@@ -43,11 +43,21 @@ export class UpdateAcademicContentFilePolicyUseCase {
       'allowGuardianDownload',
       'allowInlinePreview',
     ];
-    if (!command || Object.keys(command).some((key) => !allowed.includes(key)))
+    if (
+      !command ||
+      typeof command !== 'object' ||
+      Array.isArray(command) ||
+      Object.keys(command).some((key) => !allowed.includes(key))
+    )
       throw new ValidationDomainException(
         'Invalid Academic Content file policy',
       );
-    const { maximumFileSizeBytes, ...flags } = command;
+    const { maximumFileSizeBytes, ...optionalFlags } = command;
+    const flags = Object.fromEntries(
+      Object.entries(optionalFlags).filter(([, value]) => value !== undefined),
+    ) as Partial<
+      Omit<AcademicContentEffectiveFilePolicy, 'maximumFileSizeBytes'>
+    >;
     if (Object.values(flags).some((value) => typeof value !== 'boolean'))
       throw new ValidationDomainException(
         'Invalid Academic Content file policy',
