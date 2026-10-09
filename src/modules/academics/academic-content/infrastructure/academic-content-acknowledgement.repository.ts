@@ -119,13 +119,16 @@ export class AcademicContentAcknowledgementRepository extends AcademicContentRec
         guardianId,
         required,
       );
+      let created = false;
       if (write) {
-        await tx.$executeRaw(Prisma.sql`
+        created =
+          (await tx.$executeRaw(Prisma.sql`
           INSERT INTO academic_content_acknowledgements
             (id, school_id, academic_content_id, publication_id, revision_id, student_id, enrollment_id, actor_user_id, guardian_id, acknowledged_at, created_at)
           SELECT gen_random_uuid(), ${context.schoolId}::uuid, ${contentId}::uuid, live."publicationId", live."revisionId",
             ${context.studentId}::uuid, ${context.enrollmentId}::uuid, ${context.userId}::uuid, ${guardianId}::uuid, live.at, live.at FROM (${eligible}) live
-          ON CONFLICT (school_id, publication_id, student_id, actor_user_id) DO NOTHING`);
+          ON CONFLICT (school_id, publication_id, student_id, actor_user_id) DO NOTHING`)) ===
+          1;
       }
       // Recheck even an insert winner: a conflicting transaction may roll back after expiry.
       // Historical Guardian/Enrollment never become ACLs.
@@ -146,6 +149,7 @@ export class AcademicContentAcknowledgementRepository extends AcademicContentRec
           : null;
       return {
         ...identity,
+        created,
         requiresAcknowledgement: required,
         acknowledgement: required ? (acknowledgement ?? null) : null,
       };

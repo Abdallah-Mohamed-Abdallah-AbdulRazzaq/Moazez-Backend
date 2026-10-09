@@ -1,5 +1,8 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
-import { getRequestContext } from '../../../../common/context/request-context';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import {
+  getRequestContext,
+  getCurrentRequestId,
+} from '../../../../common/context/request-context';
 import {
   DomainException,
   NotFoundDomainException,
@@ -11,11 +14,61 @@ import { AcademicContentAcknowledgementResponseDto } from '../dto/academic-conte
 
 @Injectable()
 export class AcademicContentAcknowledgementService {
+  private readonly logger = new Logger(
+    AcademicContentAcknowledgementService.name,
+  );
   constructor(
     private readonly repository: AcademicContentAcknowledgementRepository,
   ) {}
 
   async resolve(
+    context: AcademicContentCurrentRecipientContext,
+    contentId: string,
+    expectedPublicationId: string,
+    write: boolean,
+  ): Promise<AcademicContentAcknowledgementResponseDto> {
+    try {
+      return await this.resolveAuthorized(
+        context,
+        contentId,
+        expectedPublicationId,
+        write,
+      );
+    } catch (error) {
+      if (write)
+        this.signal(
+          error instanceof DomainException &&
+            error.httpStatus === HttpStatus.TOO_MANY_REQUESTS
+            ? 'rate_limited'
+            : error instanceof DomainException &&
+                error.httpStatus < HttpStatus.INTERNAL_SERVER_ERROR
+              ? 'denied'
+              : 'unavailable',
+        );
+      throw error;
+    }
+  }
+
+  private signal(
+    outcome:
+      | 'accepted'
+      | 'identical_retry'
+      | 'denied'
+      | 'rate_limited'
+      | 'unavailable',
+  ) {
+    try {
+      this.logger.log({
+        event: 'academic_content.acknowledgement',
+        outcome,
+        requestId: getCurrentRequestId(),
+      });
+    } catch {
+      // A logging sink failure must never change the authoritative operation.
+    }
+  }
+
+  private async resolveAuthorized(
     context: AcademicContentCurrentRecipientContext,
     contentId: string,
     expectedPublicationId: string,
@@ -43,6 +96,8 @@ export class AcademicContentAcknowledgementService {
         expectedPublicationId.toLowerCase(),
         write,
       );
+      // The repository promise resolves only after commit and the final eligibility recheck.
+      if (write) this.signal(result.created ? 'accepted' : 'identical_retry');
       return {
         publicationId: result.publicationId,
         revisionId: result.revisionId,
