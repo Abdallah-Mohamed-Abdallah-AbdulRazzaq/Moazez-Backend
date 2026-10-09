@@ -165,6 +165,10 @@ export class AcademicContentTeacherAnalyticsFixture extends AcademicContentAckno
     return source;
   }
   async successor(source: AnalyticsSource, targetIds = this.allocationIds) {
+    const [{ at }] = await this.prisma.$queryRaw<
+      { at: Date }[]
+    >`SELECT clock_timestamp() AS at`;
+    const visibleAt = new Date(at.getTime() - 5_000);
     await this.prisma.academicContentPublication.updateMany({
       where: { id: source.publication.id, status: 'PUBLISHED' },
       data: { status: 'EXPIRED', expiredAt: new Date() },
@@ -204,9 +208,9 @@ export class AcademicContentTeacherAnalyticsFixture extends AcademicContentAckno
         requestFingerprint: 'c'.repeat(64),
         sourceContentStatus: 'DRAFT',
         status: 'PUBLISHED',
-        publishAt: new Date(),
-        publishedAt: new Date(),
-        visibleFrom: new Date(),
+        publishAt: visibleAt,
+        publishedAt: visibleAt,
+        visibleFrom: visibleAt,
         createdByUserId: this.authorId,
         supersedesPublicationId: source.publication.id,
         changeSignificance: 'SIGNIFICANT',

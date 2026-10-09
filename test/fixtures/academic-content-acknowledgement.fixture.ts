@@ -232,7 +232,10 @@ export class AcademicContentAcknowledgementFixture extends AcademicContentEngage
               },
             },
           });
-          const now = new Date();
+          const [{ at }] = await tx.$queryRaw<
+            { at: Date }[]
+          >`SELECT clock_timestamp() AS at`;
+          const now = new Date(at.getTime() - 5_000);
           await tx.academicContentPublication.create({
             data: {
               schoolId,
