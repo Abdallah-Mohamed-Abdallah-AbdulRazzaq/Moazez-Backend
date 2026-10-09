@@ -37,6 +37,7 @@ import type { App } from 'supertest/types';
 import { REQUIRED_PERMISSIONS_METADATA } from '../../src/common/decorators/required-permissions.decorator';
 import { AppModule } from '../../src/app.module';
 import { TeacherAcademicContentController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content.controller';
+import { TeacherAcademicContentAnalyticsController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content-analytics.controller';
 import { TeacherAcademicContentAuthoringController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content-authoring.controller';
 import { TeacherAcademicContentFilesController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content-files.controller';
 import { TeacherAnnouncementsController } from '../../src/modules/teacher-app/announcements/controller/teacher-announcements.controller';
@@ -77,6 +78,7 @@ const FINAL_TEACHER_PERMISSIONS = [
   'academics.academic_content.view',
   'academics.academic_content.manage',
   'academics.academic_content.publish',
+  'academics.academic_content.analytics.own.view',
   'academics.calendar.view',
   'academics.curriculum.view',
   'academics.lesson_plans.view',
@@ -136,6 +138,7 @@ const REQUIRED_FINAL_TEACHER_APP_PERMISSIONS = [
   'academics.academic_content.view',
   'academics.academic_content.manage',
   'academics.academic_content.publish',
+  'academics.academic_content.analytics.own.view',
   'teacher.home.view',
   'teacher.classes.view',
   'teacher.classroom.view',
@@ -237,6 +240,7 @@ const TEACHER_APP_CONTROLLER_CLASSES = [
   TeacherCalendarController,
   TeacherLessonPreparationController,
   TeacherAcademicContentController,
+  TeacherAcademicContentAnalyticsController,
   TeacherAcademicContentAuthoringController,
   TeacherAcademicContentFilesController,
   TeacherAcademicContentWorkflowPublicationController,
@@ -654,9 +658,20 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       (entry) => entry.permissions,
     );
 
-    expect(routes).toHaveLength(149);
-    expect(inventory).toHaveLength(149);
-    expect(decorated).toHaveLength(149);
+    expect(routes).toHaveLength(151);
+    expect(inventory).toHaveLength(151);
+    expect(decorated).toHaveLength(151);
+    for (const handler of ['content', 'publication']) {
+      expect(
+        getHandlerPermissions(
+          TeacherAcademicContentAnalyticsController,
+          handler,
+        ),
+      ).toEqual([
+        'academics.academic_content.view',
+        'academics.academic_content.analytics.own.view',
+      ]);
+    }
     expect(undecorated).toEqual([]);
     for (const method of ['uploadIntent', 'complete', 'cancel', 'unlink']) {
       expect(
@@ -798,7 +813,7 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
   });
 
   it('verifies the final Teacher role, catalog, Parent role, and Student role state', async () => {
-    expect(await prisma.permission.count()).toBe(242);
+    expect(await prisma.permission.count()).toBe(243);
     const dashboardTodoCatalogCodes = await prisma.permission.findMany({
       where: {
         code: {
@@ -814,7 +829,7 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     ]);
 
     const teacherPermissions = await getSystemRolePermissionCodes('teacher');
-    expect(teacherPermissions).toHaveLength(57);
+    expect(teacherPermissions).toHaveLength(58);
     expect(new Set(teacherPermissions).size).toBe(teacherPermissions.length);
     expect(teacherPermissions).toEqual(
       Array.from(FINAL_TEACHER_PERMISSIONS).sort(),

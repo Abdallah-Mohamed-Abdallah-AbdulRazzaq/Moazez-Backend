@@ -567,6 +567,7 @@ describe('authorization reference-data bootstrap (integration)', () => {
           code.startsWith('academics.academic_content.'),
         ),
     ).toEqual([
+      'academics.academic_content.analytics.own.view',
       'academics.academic_content.manage',
       'academics.academic_content.publish',
       'academics.academic_content.view',

@@ -4,6 +4,7 @@ import { METHOD_METADATA } from '@nestjs/common/constants';
 import { TeacherAcademicContentController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content.controller';
 import { TeacherAcademicContentAuthoringController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content-authoring.controller';
 import { TeacherAcademicContentFilesController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content-files.controller';
+import { TeacherAcademicContentAnalyticsController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content-analytics.controller';
 import { Test, TestingModule } from '@nestjs/testing';
 import { readFileSync } from 'node:fs';
 import {
@@ -100,6 +101,7 @@ const FINAL_TEACHER_PERMISSIONS = [
   'academics.academic_content.view',
   'academics.academic_content.manage',
   'academics.academic_content.publish',
+  'academics.academic_content.analytics.own.view',
   'app.device_tokens.manage',
   'academics.calendar.view',
   'academics.curriculum.view',
@@ -231,6 +233,7 @@ const TEACHER_APP_CONTROLLER_CLASSES = [
   TeacherAcademicContentAuthoringController,
   TeacherAcademicContentFilesController,
   TeacherAcademicContentWorkflowPublicationController,
+  TeacherAcademicContentAnalyticsController,
   TeacherHomeController,
   TeacherMyClassesController,
   TeacherClassroomController,
@@ -844,6 +847,22 @@ const TEACHER_APP_DEFERRED_ACTION_CASES: TeacherAppDeferredCase[] = [];
 
 const TEACHER_APP_DECORATED_PERMISSION_CASES: TeacherAppPermissionCase[] = [
   {
+    controller: TeacherAcademicContentAnalyticsController,
+    method: 'content',
+    permissions: [
+      'academics.academic_content.view',
+      'academics.academic_content.analytics.own.view',
+    ],
+  },
+  {
+    controller: TeacherAcademicContentAnalyticsController,
+    method: 'publication',
+    permissions: [
+      'academics.academic_content.view',
+      'academics.academic_content.analytics.own.view',
+    ],
+  },
+  {
     controller: TeacherAcademicContentWorkflowPublicationController,
     method: 'revisions',
     permissions: ['academics.academic_content.view'],
@@ -1130,9 +1149,9 @@ describe('Teacher App route permission metadata (security)', () => {
         Object.getOwnPropertyNames(controller.prototype)
           .filter((method) => method !== 'constructor')
           .filter((method) => {
-            const handler = (controller.prototype as Record<string, unknown>)[
-              method
-            ];
+            const handler = (
+              controller.prototype as unknown as Record<string, unknown>
+            )[method];
 
             return (
               typeof handler === 'function' &&
@@ -1142,8 +1161,8 @@ describe('Teacher App route permission metadata (security)', () => {
           .map((method) => `${controller.name}.${method}`),
     ).sort();
 
-    expect(discoveredRouteHandlers).toHaveLength(149);
-    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(149);
+    expect(discoveredRouteHandlers).toHaveLength(151);
+    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(151);
     expect(TEACHER_APP_DEFERRED_ACTION_CASES).toHaveLength(0);
     expect(discoveredRouteHandlers).toEqual(
       Array.from(expectedKnownHandlers).sort(),
@@ -1154,9 +1173,9 @@ describe('Teacher App route permission metadata (security)', () => {
         Object.getOwnPropertyNames(controller.prototype)
           .filter((method) => method !== 'constructor')
           .filter((method) => {
-            const handler = (controller.prototype as Record<string, unknown>)[
-              method
-            ];
+            const handler = (
+              controller.prototype as unknown as Record<string, unknown>
+            )[method];
 
             return (
               typeof handler === 'function' &&
@@ -1223,7 +1242,7 @@ describe('Teacher role seed integrity (security)', () => {
       'STUDENT_PERMISSIONS',
     );
 
-    expect(catalogCodes).toHaveLength(242);
+    expect(catalogCodes).toHaveLength(243);
     expect(catalogCodeSet.size).toBe(catalogCodes.length);
     expect(catalogCodes).toEqual(
       expect.arrayContaining(Array.from(TEACHER_PERM_1A_CATALOG_ADDITIONS)),
@@ -1233,7 +1252,7 @@ describe('Teacher role seed integrity (security)', () => {
     expect(catalogCodeSet.has('teachers.records.view')).toBe(true);
     expect(catalogCodeSet.has('teachers.records.manage')).toBe(true);
 
-    expect(teacherPermissions).toHaveLength(57);
+    expect(teacherPermissions).toHaveLength(58);
     expect(new Set(teacherPermissions).size).toBe(teacherPermissions.length);
     expect(teacherPermissions).toEqual(Array.from(FINAL_TEACHER_PERMISSIONS));
     expect(teacherPermissions).not.toContain('dashboard.todos.view');
@@ -2113,7 +2132,7 @@ describe('Teacher App tenancy isolation (security)', () => {
         organizationId: organizationAId,
       }),
     );
-    expect(permissions).toHaveLength(57);
+    expect(permissions).toHaveLength(58);
     expect(new Set(permissions).size).toBe(permissions.length);
     expect(sortedStrings(permissions)).toEqual(
       sortedStrings(FINAL_TEACHER_PERMISSIONS),

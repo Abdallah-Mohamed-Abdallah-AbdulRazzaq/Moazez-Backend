@@ -140,13 +140,13 @@ function teacherRoutes() {
 }
 
 describe('ACC-9 final cross-slice exported contracts', () => {
-  it('discovers the complete Teacher route graph and preserves all four ACC controllers', () => {
+  it('discovers the complete Teacher route graph and preserves the accepted ACC controllers with own analytics', () => {
     const routes = teacherRoutes(),
       acc = routes.filter((route) =>
         route.controller.startsWith('TeacherAcademicContent'),
       );
-    expect(routes).toHaveLength(149);
-    expect(acc).toHaveLength(37);
+    expect(routes).toHaveLength(151);
+    expect(acc).toHaveLength(39);
     expect(routes.filter((route) => route.permissions.length === 0)).toEqual(
       [],
     );
@@ -156,6 +156,7 @@ describe('ACC-9 final cross-slice exported contracts', () => {
         'TeacherAcademicContentAuthoringController',
         'TeacherAcademicContentFilesController',
         'TeacherAcademicContentWorkflowPublicationController',
+        'TeacherAcademicContentAnalyticsController',
       ]),
     );
     expect(
@@ -166,6 +167,7 @@ describe('ACC-9 final cross-slice exported contracts', () => {
             'academics.academic_content.view',
             'academics.academic_content.manage',
             'academics.academic_content.publish',
+            'academics.academic_content.analytics.own.view',
           ].includes(code),
         ),
     ).toBe(true);
@@ -179,8 +181,8 @@ describe('ACC-9 final cross-slice exported contracts', () => {
     );
   });
   it('discovers permission catalogs and withholds Management approval/settings/analytics', () => {
-    expect(PERMISSIONS).toHaveLength(242);
-    expect(TEACHER_PERMISSIONS).toHaveLength(57);
+    expect(PERMISSIONS).toHaveLength(243);
+    expect(TEACHER_PERMISSIONS).toHaveLength(58);
     expect(
       TEACHER_PERMISSIONS.filter((code) =>
         code.startsWith('academics.academic_content.'),
@@ -189,6 +191,7 @@ describe('ACC-9 final cross-slice exported contracts', () => {
       'academics.academic_content.view',
       'academics.academic_content.manage',
       'academics.academic_content.publish',
+      'academics.academic_content.analytics.own.view',
     ]);
     for (const action of ['approve', 'settings.manage', 'analytics.view'])
       expect(TEACHER_PERMISSIONS).not.toContain(

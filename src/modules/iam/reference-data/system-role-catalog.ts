@@ -26,6 +26,7 @@ export const TEACHER_PERMISSIONS = [
   'academics.academic_content.view',
   'academics.academic_content.manage',
   'academics.academic_content.publish',
+  'academics.academic_content.analytics.own.view',
   // teachers.records.view/manage are intentionally excluded: this role gets
   // self-service access, never Teacher Directory management.
   'app.device_tokens.manage',

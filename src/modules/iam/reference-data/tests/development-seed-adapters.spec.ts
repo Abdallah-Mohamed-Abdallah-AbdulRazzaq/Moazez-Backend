@@ -8,9 +8,9 @@ import {
   type AuthorizationReferenceDataClient,
 } from '../infrastructure/authorization-reference-data.apply';
 
-const CURRENT_PERMISSION_COUNT = 242;
+const CURRENT_PERMISSION_COUNT = 243;
 const CURRENT_SYSTEM_ROLE_COUNT = 7;
-const CURRENT_ROLE_GRANT_COUNT = 870;
+const CURRENT_ROLE_GRANT_COUNT = 874;
 
 type PermissionFindManyInput = {
   where: { code: { in: string[] } };

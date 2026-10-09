@@ -18,7 +18,10 @@ describe('ACC-11C real PostgreSQL acknowledgement state, identity and authority'
     await fixture.create();
     source = await fixture.note();
   });
-  afterEach(async () => fixture.dispose());
+  afterEach(async () => {
+    jest.useRealTimers();
+    await fixture.dispose();
+  });
   afterAll(async () => prisma.$disconnect());
 
   it('derives PENDING and NOT_REQUIRED without acknowledgement, event, admission, notification or audit mutation', async () => {
@@ -189,66 +192,90 @@ describe('ACC-11C real PostgreSQL acknowledgement state, identity and authority'
       await Promise.all(clients.map((client) => client.$disconnect()));
     }
   });
-  it('creates a new obligation for the canonical successor and preserves predecessor history', async () => {
-    const first = await fixture.acknowledge(source);
-    await prisma.academicContentPublication.update({
-      where: { id: source.publication.id },
-      data: { status: 'EXPIRED', expiredAt: new Date() },
-    });
-    const revision = await prisma.academicContentRevision.create({
-      data: {
-        schoolId: fixture.school.schoolId,
-        academicContentId: source.content.id,
-        revisionNumber: 2,
-        snapshotContractVersion: 2,
-        academicYearId: fixture.school.yearId,
-        termId: fixture.school.termId,
-        type: 'GUARDIAN_WEEKLY_NOTE',
-        audience: 'GUARDIANS',
-        title: 'Successor',
-        sourceStatus: 'DRAFT',
-        capturedByUserId: fixture.authorId,
-        typeSpecificSnapshot: source.revision
-          .typeSpecificSnapshot as Prisma.InputJsonValue,
-        targets: {
-          create: { scopeType: 'SCHOOL', identityFingerprint: 'c'.repeat(64) },
+  it.each([0, 60_000])(
+    'creates a new obligation for the canonical successor and preserves predecessor history (Node clock +%i ms)',
+    async (clockSkewMs) => {
+      const first = await fixture.acknowledge(source);
+      jest.useFakeTimers({
+        now: Date.now() + clockSkewMs,
+        doNotFake: [
+          'hrtime',
+          'nextTick',
+          'performance',
+          'queueMicrotask',
+          'setImmediate',
+          'clearImmediate',
+          'setInterval',
+          'clearInterval',
+          'setTimeout',
+          'clearTimeout',
+        ],
+      });
+      await prisma.academicContentPublication.update({
+        where: { id: source.publication.id },
+        data: { status: 'EXPIRED', expiredAt: new Date() },
+      });
+      const revision = await prisma.academicContentRevision.create({
+        data: {
+          schoolId: fixture.school.schoolId,
+          academicContentId: source.content.id,
+          revisionNumber: 2,
+          snapshotContractVersion: 2,
+          academicYearId: fixture.school.yearId,
+          termId: fixture.school.termId,
+          type: 'GUARDIAN_WEEKLY_NOTE',
+          audience: 'GUARDIANS',
+          title: 'Successor',
+          sourceStatus: 'DRAFT',
+          capturedByUserId: fixture.authorId,
+          typeSpecificSnapshot: source.revision
+            .typeSpecificSnapshot as Prisma.InputJsonValue,
+          targets: {
+            create: {
+              scopeType: 'SCHOOL',
+              identityFingerprint: 'c'.repeat(64),
+            },
+          },
         },
-      },
-    });
-    const now = new Date();
-    const publication = await prisma.academicContentPublication.create({
-      data: {
-        schoolId: fixture.school.schoolId,
-        academicContentId: source.content.id,
-        revisionId: revision.id,
-        clientRequestId: randomUUID(),
-        requestFingerprint: 'c'.repeat(64),
-        status: 'PUBLISHED',
-        sourceContentStatus: 'DRAFT',
-        publishAt: now,
-        publishedAt: now,
-        visibleFrom: now,
-        supersedesPublicationId: source.publication.id,
-        changeSignificance: 'SIGNIFICANT',
-        createdByUserId: fixture.authorId,
-      },
-    });
-    await expect(fixture.acknowledge(source)).rejects.toMatchObject({
-      httpStatus: 404,
-    });
-    const successor = { ...source, revision, publication };
-    expect(await fixture.acknowledge(successor, false)).toMatchObject({
-      status: 'PENDING',
-    });
-    expect((await fixture.acknowledge(successor)).acknowledgementId).not.toBe(
-      first.acknowledgementId,
-    );
-    expect(
-      await prisma.academicContentAcknowledgement.count({
-        where: { schoolId: fixture.school.schoolId },
-      }),
-    ).toBe(2);
-  });
+      });
+      const [{ visibleAt: now }] = await prisma.$queryRaw<
+        { visibleAt: Date }[]
+      >`
+      SELECT clock_timestamp() - interval '5 seconds' AS "visibleAt"`;
+      const publication = await prisma.academicContentPublication.create({
+        data: {
+          schoolId: fixture.school.schoolId,
+          academicContentId: source.content.id,
+          revisionId: revision.id,
+          clientRequestId: randomUUID(),
+          requestFingerprint: 'c'.repeat(64),
+          status: 'PUBLISHED',
+          sourceContentStatus: 'DRAFT',
+          publishAt: now,
+          publishedAt: now,
+          visibleFrom: now,
+          supersedesPublicationId: source.publication.id,
+          changeSignificance: 'SIGNIFICANT',
+          createdByUserId: fixture.authorId,
+        },
+      });
+      await expect(fixture.acknowledge(source)).rejects.toMatchObject({
+        httpStatus: 404,
+      });
+      const successor = { ...source, revision, publication };
+      expect(await fixture.acknowledge(successor, false)).toMatchObject({
+        status: 'PENDING',
+      });
+      expect((await fixture.acknowledge(successor)).acknowledgementId).not.toBe(
+        first.acknowledgementId,
+      );
+      expect(
+        await prisma.academicContentAcknowledgement.count({
+          where: { schoolId: fixture.school.schoolId },
+        }),
+      ).toBe(2);
+    },
+  );
   it.each([
     'other-type',
     'malformed',
