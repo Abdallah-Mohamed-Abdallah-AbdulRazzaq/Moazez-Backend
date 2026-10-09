@@ -1,3 +1,47 @@
+import type {
+  AppDeviceTokenRegisterResponseDto,
+  AppDeviceTokenUnregisterResponseDto,
+} from '../../src/modules/app-device-tokens/dto/app-device-token.dto';
+import type { LoginResponseDto } from '../../src/modules/iam/auth/dto/login-response.dto';
+import type { MeResponseDto } from '../../src/modules/iam/auth/dto/me-response.dto';
+import type {
+  TeacherClassroomAttendanceRosterResponseDto,
+  TeacherClassroomAttendanceSessionResponseDto,
+  TeacherClassroomAttendanceTodayResponseDto,
+} from '../../src/modules/teacher-app/classroom/attendance/dto/teacher-classroom-attendance.dto';
+import type { TeacherClassroomRosterResponseDto } from '../../src/modules/teacher-app/classroom/dto/teacher-classroom.dto';
+import type {
+  TeacherClassroomAssessmentsListResponseDto,
+  TeacherClassroomAssignmentSubmissionsListResponseDto,
+  TeacherClassroomGradebookResponseDto,
+} from '../../src/modules/teacher-app/classroom/grades/dto/teacher-classroom-grades.dto';
+import type { TeacherClassroomSubmissionGradeItemSyncResponseDto } from '../../src/modules/teacher-app/classroom/grades/dto/teacher-classroom-submission-review.dto';
+import type { TeacherHomeResponseDto } from '../../src/modules/teacher-app/home/dto/teacher-home.dto';
+import type {
+  TeacherConversationMessageResponseDto,
+  TeacherConversationMessageSearchResponseDto,
+  TeacherConversationMessagesResponseDto,
+  TeacherMessageContactsResponseDto,
+  TeacherMessageConversationResponseDto,
+  TeacherMessageConversationsResponseDto,
+} from '../../src/modules/teacher-app/messages/dto/teacher-messages.dto';
+import type {
+  TeacherClassDetailResponseDto,
+  TeacherClassesListResponseDto,
+} from '../../src/modules/teacher-app/my-classes/dto/teacher-my-classes.dto';
+import type { TeacherProfileResponseDto } from '../../src/modules/teacher-app/profile/dto/teacher-profile.dto';
+import type { TeacherWeeklyScheduleResponseDto } from '../../src/modules/teacher-app/schedule/dto/teacher-schedule.dto';
+import type {
+  TeacherTaskDashboardResponseDto,
+  TeacherTaskDetailResponseDto,
+  TeacherTaskSelectorsResponseDto,
+  TeacherTasksListResponseDto,
+} from '../../src/modules/teacher-app/tasks/dto/teacher-tasks.dto';
+import type {
+  TeacherTaskReviewQueueResponseDto,
+  TeacherTaskReviewSubmissionResponseDto,
+} from '../../src/modules/teacher-app/tasks/review/dto/teacher-task-review-queue.dto';
+import type { TeacherXpDashboardResponseDto } from '../../src/modules/teacher-app/xp/dto/teacher-xp.dto';
 import { TeacherAcademicContentWorkflowPublicationController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content-workflow-publication.controller';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { METHOD_METADATA } from '@nestjs/common/constants';
@@ -46,7 +90,7 @@ import {
   XpSourceType,
 } from '@prisma/client';
 import * as argon2 from 'argon2';
-import request from 'supertest';
+import request, { type Response } from 'supertest';
 import type { App } from 'supertest/types';
 import { REQUIRED_PERMISSIONS_METADATA } from '../../src/common/decorators/required-permissions.decorator';
 import { AppModule } from '../../src/app.module';
@@ -69,6 +113,13 @@ import { TeacherSettingsController } from '../../src/modules/teacher-app/setting
 import { TeacherTasksController } from '../../src/modules/teacher-app/tasks/controller/teacher-tasks.controller';
 import { TeacherTaskReviewQueueController } from '../../src/modules/teacher-app/tasks/review/controller/teacher-task-review-queue.controller';
 import { TeacherXpController } from '../../src/modules/teacher-app/xp/controller/teacher-xp.controller';
+
+// Supertest decodes JSON without a body type; use the endpoint's existing DTO.
+type TestResponse<Body> = Omit<Response, 'body'> & { body: Body };
+
+interface ErrorResponse {
+  error: { code: string };
+}
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'TeacherApp123!';
@@ -1353,10 +1404,7 @@ describe('Teacher App tenancy isolation (security)', () => {
   let teacherAId: string;
   let teacherBId: string;
   let teacherCrossSchoolId: string;
-  let adminUserId: string;
   let parentUserId: string;
-  let studentUserId: string;
-  let teacherRoleId: string;
   let ownAllocationId: string;
   let otherTeacherAllocationId: string;
   let crossSchoolAllocationId: string;
@@ -1450,7 +1498,6 @@ describe('Teacher App tenancy isolation (security)', () => {
         findSystemRole('parent'),
         findSystemRole('student'),
       ]);
-    teacherRoleId = teacherRole.id;
 
     const orgA = await prisma.organization.create({
       data: {
@@ -1530,7 +1577,7 @@ describe('Teacher App tenancy isolation (security)', () => {
       organizationId: organizationBId,
       schoolId: schoolBId,
     });
-    adminUserId = await createUserWithMembership({
+    await createUserWithMembership({
       email: adminEmail,
       userType: UserType.SCHOOL_USER,
       roleId: schoolAdminRole.id,
@@ -1544,7 +1591,7 @@ describe('Teacher App tenancy isolation (security)', () => {
       organizationId: organizationAId,
       schoolId: schoolAId,
     });
-    studentUserId = await createUserWithMembership({
+    await createUserWithMembership({
       email: studentEmail,
       userType: UserType.STUDENT,
       roleId: studentRole.id,
@@ -2119,7 +2166,7 @@ describe('Teacher App tenancy isolation (security)', () => {
   it('/auth/me exposes the final Teacher role permissions without generic file or broad communication grants', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    const me = await request(app.getHttpServer())
+    const me: TestResponse<MeResponseDto> = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/auth/me`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
@@ -2300,7 +2347,9 @@ describe('Teacher App tenancy isolation (security)', () => {
           data: { roleId },
         });
 
-        const response = await request(app.getHttpServer())
+        const response: TestResponse<ErrorResponse> = await request(
+          app.getHttpServer(),
+        )
           .get(`${GLOBAL_PREFIX}${entry.path}`)
           .set('Authorization', `Bearer ${accessToken}`)
           .expect(403);
@@ -2407,7 +2456,7 @@ describe('Teacher App tenancy isolation (security)', () => {
           pendingRequest.send(entry.body);
         }
 
-        const response = await pendingRequest
+        const response: TestResponse<ErrorResponse> = await pendingRequest
           .set('Authorization', `Bearer ${accessToken}`)
           .expect(403);
 
@@ -2513,7 +2562,7 @@ describe('Teacher App tenancy isolation (security)', () => {
           pendingRequest.send(entry.body);
         }
 
-        const response = await pendingRequest
+        const response: TestResponse<ErrorResponse> = await pendingRequest
           .set('Authorization', `Bearer ${accessToken}`)
           .expect(403);
 
@@ -2619,7 +2668,7 @@ describe('Teacher App tenancy isolation (security)', () => {
           pendingRequest.send(entry.body);
         }
 
-        const response = await pendingRequest
+        const response: TestResponse<ErrorResponse> = await pendingRequest
           .set('Authorization', `Bearer ${accessToken}`)
           .expect(403);
 
@@ -2636,7 +2685,9 @@ describe('Teacher App tenancy isolation (security)', () => {
   it('teacher can access own Teacher Home without schoolId or raw logo exposure', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    const response = await request(app.getHttpServer())
+    const response: TestResponse<TeacherHomeResponseDto> = await request(
+      app.getHttpServer(),
+    )
       .get(`${GLOBAL_PREFIX}/teacher/home`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
@@ -2654,9 +2705,9 @@ describe('Teacher App tenancy isolation (security)', () => {
       items: [],
     });
     expect(response.body.tasks).toMatchObject({
-      activeTasksCount: expect.any(Number),
-      pendingReviewCount: expect.any(Number),
-      recentTasks: expect.any(Array),
+      activeTasksCount: expect.any(Number) as unknown,
+      pendingReviewCount: expect.any(Number) as unknown,
+      recentTasks: expect.any(Array) as unknown,
     });
     expect(response.body.xp).toMatchObject({
       studentsCount: 2,
@@ -2664,9 +2715,9 @@ describe('Teacher App tenancy isolation (security)', () => {
       averageXp: 15,
     });
     expect(response.body.messages).toMatchObject({
-      unreadConversationsCount: expect.any(Number),
-      unreadMessagesCount: expect.any(Number),
-      recentConversations: expect.any(Array),
+      unreadConversationsCount: expect.any(Number) as unknown,
+      unreadMessagesCount: expect.any(Number) as unknown,
+      recentConversations: expect.any(Array) as unknown,
     });
     expect(json).not.toContain('schoolId');
     expect(json).not.toContain('scheduleId');
@@ -2676,7 +2727,9 @@ describe('Teacher App tenancy isolation (security)', () => {
   it('teacher can read profile and employment profile safely', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    const profile = await request(app.getHttpServer())
+    const profile: TestResponse<TeacherProfileResponseDto> = await request(
+      app.getHttpServer(),
+    )
       .get(`${GLOBAL_PREFIX}/teacher/profile`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
@@ -2775,10 +2828,11 @@ describe('Teacher App tenancy isolation (security)', () => {
   it('teacher can use existing participant message conversations safely', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    const conversations = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/teacher/messages/conversations`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const conversations: TestResponse<TeacherMessageConversationsResponseDto> =
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/messages/conversations`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     const conversationsJson = JSON.stringify(conversations.body);
 
     expect(conversationsJson).toContain(ownConversationId);
@@ -2788,12 +2842,13 @@ describe('Teacher App tenancy isolation (security)', () => {
     expectSafeTeacherTaskPayload(conversations.body);
     expect(conversationsJson).not.toContain(`${testSuffix}-message-object-key`);
 
-    const detail = await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const detail: TestResponse<TeacherMessageConversationResponseDto> =
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     const detailJson = JSON.stringify(detail.body);
 
     expect(detail.body.conversation).toMatchObject({
@@ -2823,12 +2878,13 @@ describe('Teacher App tenancy isolation (security)', () => {
     expect(detailJson).not.toContain('mutedUntil');
     expect(detailJson).not.toContain(parentEmail);
 
-    const messages = await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}/messages`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const messages: TestResponse<TeacherConversationMessagesResponseDto> =
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}/messages`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     const messagesJson = JSON.stringify(messages.body);
     const visibleMessage = messages.body.messages.find(
       (message: { messageId: string }) =>
@@ -2842,6 +2898,9 @@ describe('Teacher App tenancy isolation (security)', () => {
       (message: { messageId: string }) =>
         message.messageId === ownDeletedMessageId,
     );
+    if (!visibleMessage || !hiddenMessage || !deletedMessage) {
+      throw new Error('Expected all three seeded conversation messages');
+    }
 
     expect(visibleMessage).toMatchObject({
       messageId: ownVisibleMessageId,
@@ -2849,8 +2908,8 @@ describe('Teacher App tenancy isolation (security)', () => {
       content: `${testSuffix}-own-visible-message`,
     });
     expect(visibleMessage.attachments[0]).toMatchObject({
-      fileId: expect.any(String),
-      downloadPath: expect.stringContaining('/api/v1/files/'),
+      fileId: expect.any(String) as unknown,
+      downloadPath: expect.stringContaining('/api/v1/files/') as unknown,
     });
     expect(hiddenMessage.body).toBeNull();
     expect(hiddenMessage.content).toBeNull();
@@ -2878,7 +2937,7 @@ describe('Teacher App tenancy isolation (security)', () => {
       pagination: expect.objectContaining({
         page: 1,
         limit: 10,
-      }),
+      }) as unknown,
     });
     expect(searchJson).toContain(`${testSuffix}-own-visible-message`);
     expect(searchJson).not.toContain(`${testSuffix}-own-hidden-message`);
@@ -2888,26 +2947,28 @@ describe('Teacher App tenancy isolation (security)', () => {
     expect(searchJson).not.toContain('conversation_id');
     expectSafeTeacherTaskPayload(search.body);
 
-    const hiddenSearch = await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}/search`,
-      )
-      .query({ q: `${testSuffix}-own-hidden` })
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const hiddenSearch: TestResponse<TeacherConversationMessageSearchResponseDto> =
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}/search`,
+        )
+        .query({ q: `${testSuffix}-own-hidden` })
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
 
     expect(hiddenSearch.body.messages).toEqual([]);
     expect(JSON.stringify(hiddenSearch.body)).not.toContain(
       `${testSuffix}-own-hidden-message`,
     );
 
-    const sent = await request(app.getHttpServer())
-      .post(
-        `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}/messages`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({ body: `${testSuffix}-teacher-text-reply` })
-      .expect(201);
+    const sent: TestResponse<TeacherConversationMessageResponseDto> =
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}/messages`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ body: `${testSuffix}-teacher-text-reply` })
+        .expect(201);
 
     expect(sent.body.message).toMatchObject({
       body: `${testSuffix}-teacher-text-reply`,
@@ -2928,14 +2989,15 @@ describe('Teacher App tenancy isolation (security)', () => {
 
     expect(read.body).toMatchObject({
       conversationId: ownConversationId,
-      readAt: expect.any(String),
-      markedCount: expect.any(Number),
+      readAt: expect.any(String) as unknown,
+      markedCount: expect.any(Number) as unknown,
     });
 
-    const contacts = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/teacher/messages/contacts`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const contacts: TestResponse<TeacherMessageContactsResponseDto> =
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/messages/contacts`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
 
     expect(contacts.body.contacts).toEqual(expect.any(Array));
     expectSafeTeacherTaskPayload(contacts.body);
@@ -2962,22 +3024,23 @@ describe('Teacher App tenancy isolation (security)', () => {
       })
       .expect(400);
 
-    const response = await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/teacher/notifications/device-tokens`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({
-        token,
-        platform: 'web',
-        deviceId: `${testSuffix}-teacher-device`,
-        appVersion: '1.0.0',
-        locale: 'en-US',
-        timezone: 'Africa/Cairo',
-      })
-      .expect(201);
+    const response: TestResponse<AppDeviceTokenRegisterResponseDto> =
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/teacher/notifications/device-tokens`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          token,
+          platform: 'web',
+          deviceId: `${testSuffix}-teacher-device`,
+          appVersion: '1.0.0',
+          locale: 'en-US',
+          timezone: 'Africa/Cairo',
+        })
+        .expect(201);
 
     createdAppDeviceTokenIds.push(response.body.deviceTokenId);
     expect(response.body).toMatchObject({
-      deviceTokenId: expect.any(String),
+      deviceTokenId: expect.any(String) as unknown,
       platform: 'web',
       appSurface: 'teacher',
       isActive: true,
@@ -2996,11 +3059,12 @@ describe('Teacher App tenancy isolation (security)', () => {
     expect(row.tokenCiphertext).not.toContain(token);
     expect(row.isActive).toBe(true);
 
-    const revoked = await request(app.getHttpServer())
-      .delete(`${GLOBAL_PREFIX}/teacher/notifications/device-tokens/current`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({ deviceId: `${testSuffix}-teacher-device` })
-      .expect(200);
+    const revoked: TestResponse<AppDeviceTokenUnregisterResponseDto> =
+      await request(app.getHttpServer())
+        .delete(`${GLOBAL_PREFIX}/teacher/notifications/device-tokens/current`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ deviceId: `${testSuffix}-teacher-device` })
+        .expect(200);
 
     expect(revoked.body).toMatchObject({
       deviceTokenId: response.body.deviceTokenId,
@@ -3107,7 +3171,9 @@ describe('Teacher App tenancy isolation (security)', () => {
   it('teacher can list only own allocation-backed classes', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    const response = await request(app.getHttpServer())
+    const response: TestResponse<TeacherClassesListResponseDto> = await request(
+      app.getHttpServer(),
+    )
       .get(`${GLOBAL_PREFIX}/teacher/my-classes`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
@@ -3127,7 +3193,9 @@ describe('Teacher App tenancy isolation (security)', () => {
   it('teacher can access own class detail', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    const response = await request(app.getHttpServer())
+    const response: TestResponse<TeacherClassDetailResponseDto> = await request(
+      app.getHttpServer(),
+    )
       .get(`${GLOBAL_PREFIX}/teacher/my-classes/${ownAllocationId}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
@@ -3179,10 +3247,11 @@ describe('Teacher App tenancy isolation (security)', () => {
   it('teacher can access owned classroom roster only', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    const response = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/roster`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const response: TestResponse<TeacherClassroomRosterResponseDto> =
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/roster`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     const json = JSON.stringify(response.body);
 
     expect(response.body.classId).toBe(ownAllocationId);
@@ -3258,11 +3327,12 @@ describe('Teacher App tenancy isolation (security)', () => {
   it('teacher can read own weekly schedule grouped by timetable week start', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    const response = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/teacher/schedule/week`)
-      .query({ date: '2026-09-16' })
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const response: TestResponse<TeacherWeeklyScheduleResponseDto> =
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/schedule/week`)
+        .query({ date: '2026-09-16' })
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
 
     expect(response.body.weekStartDate).toBe('2026-09-13');
     expect(response.body.weekEndDate).toBe('2026-09-19');
@@ -3315,7 +3385,7 @@ describe('Teacher App tenancy isolation (security)', () => {
       .query({ date: '2026-02-31' })
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(400)
-      .expect((response) => {
+      .expect((response: TestResponse<ErrorResponse>) => {
         expect(response.body?.error?.code).toBe('validation.failed');
       });
   });
@@ -3341,13 +3411,14 @@ describe('Teacher App tenancy isolation (security)', () => {
   it('teacher can get attendance roster for owned class without creating a session', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    const response = await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/roster`,
-      )
-      .query({ date: '2026-09-10' })
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const response: TestResponse<TeacherClassroomAttendanceRosterResponseDto> =
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/roster`,
+        )
+        .query({ date: '2026-09-10' })
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     const json = JSON.stringify(response.body);
 
     expect(response.body).toMatchObject({
@@ -3372,13 +3443,14 @@ describe('Teacher App tenancy isolation (security)', () => {
     expect(json).not.toContain('period');
     expect(json).not.toContain('timetable');
 
-    const todayResponse = await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/today`,
-      )
-      .query({ date: '2026-09-10' })
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const todayResponse: TestResponse<TeacherClassroomAttendanceTodayResponseDto> =
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/today`,
+        )
+        .query({ date: '2026-09-10' })
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     expect(todayResponse.body).toMatchObject({
       classId: ownAllocationId,
       date: '2026-09-10',
@@ -3405,13 +3477,14 @@ describe('Teacher App tenancy isolation (security)', () => {
   it('teacher can resolve, update, and submit owned classroom attendance', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    const resolved = await request(app.getHttpServer())
-      .post(
-        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/session/resolve`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({ date: '2026-09-10' })
-      .expect(201);
+    const resolved: TestResponse<TeacherClassroomAttendanceSessionResponseDto> =
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/session/resolve`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ date: '2026-09-10' })
+        .expect(201);
     const sessionId = resolved.body.session.id;
 
     expect(resolved.body).toMatchObject({
@@ -3438,18 +3511,19 @@ describe('Teacher App tenancy isolation (security)', () => {
       })
       .expect(400);
 
-    const updated = await request(app.getHttpServer())
-      .put(
-        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/sessions/${sessionId}/entries`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({
-        entries: [
-          { studentId: ownStudentIds[0], status: 'present', note: 'Arrived' },
-          { studentId: ownStudentIds[1], status: 'absent' },
-        ],
-      })
-      .expect(200);
+    const updated: TestResponse<TeacherClassroomAttendanceSessionResponseDto> =
+      await request(app.getHttpServer())
+        .put(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/sessions/${sessionId}/entries`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          entries: [
+            { studentId: ownStudentIds[0], status: 'present', note: 'Arrived' },
+            { studentId: ownStudentIds[1], status: 'absent' },
+          ],
+        })
+        .expect(200);
 
     expect(updated.body.entries).toEqual(
       expect.arrayContaining([
@@ -3482,12 +3556,13 @@ describe('Teacher App tenancy isolation (security)', () => {
       },
     });
 
-    const detail = await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/sessions/${sessionId}`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const detail: TestResponse<TeacherClassroomAttendanceSessionResponseDto> =
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/sessions/${sessionId}`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     expect(detail.body.entries).toHaveLength(2);
     expect(detail.body.entries).toEqual(
       expect.arrayContaining([
@@ -3501,13 +3576,14 @@ describe('Teacher App tenancy isolation (security)', () => {
     );
     expectSafeTeacherAttendancePayload(detail.body);
 
-    const today = await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/today`,
-      )
-      .query({ date: '2026-09-10' })
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const today: TestResponse<TeacherClassroomAttendanceTodayResponseDto> =
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/today`,
+        )
+        .query({ date: '2026-09-10' })
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     expect(today.body).toMatchObject({
       classId: ownAllocationId,
       date: '2026-09-10',
@@ -3538,12 +3614,13 @@ describe('Teacher App tenancy isolation (security)', () => {
     );
     expectSafeTeacherAttendancePayload(today.body);
 
-    const submitted = await request(app.getHttpServer())
-      .post(
-        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/sessions/${sessionId}/submit`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(201);
+    const submitted: TestResponse<TeacherClassroomAttendanceSessionResponseDto> =
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/sessions/${sessionId}/submit`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(201);
 
     expect(submitted.body.session).toMatchObject({
       id: sessionId,
@@ -3558,15 +3635,18 @@ describe('Teacher App tenancy isolation (security)', () => {
   it('teacher cannot update attendance for students outside the owned classroom', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    const resolved = await request(app.getHttpServer())
-      .post(
-        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/session/resolve`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({ date: '2026-09-11' })
-      .expect(201);
+    const resolved: TestResponse<TeacherClassroomAttendanceSessionResponseDto> =
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/session/resolve`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ date: '2026-09-11' })
+        .expect(201);
 
-    const response = await request(app.getHttpServer())
+    const response: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .put(
         `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/sessions/${resolved.body.session.id}/entries`,
       )
@@ -3582,12 +3662,13 @@ describe('Teacher App tenancy isolation (security)', () => {
   it('teacher can read owned classroom grades and assignment-like views', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    const assessments = await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/grades/assessments`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const assessments: TestResponse<TeacherClassroomAssessmentsListResponseDto> =
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/grades/assessments`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     const assessmentsJson = JSON.stringify(assessments.body);
 
     expect(assessments.body.classId).toBe(ownAllocationId);
@@ -3623,12 +3704,13 @@ describe('Teacher App tenancy isolation (security)', () => {
     expect(detailJson).not.toContain('answerKey');
     expect(detailJson).not.toContain('metadata');
 
-    const gradebook = await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/grades/gradebook`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const gradebook: TestResponse<TeacherClassroomGradebookResponseDto> =
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/grades/gradebook`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     const gradebookJson = JSON.stringify(gradebook.body);
 
     expect(gradebook.body.classId).toBe(ownAllocationId);
@@ -3660,7 +3742,7 @@ describe('Teacher App tenancy isolation (security)', () => {
           type: 'assignment',
           dueAt: null,
         }),
-      ]),
+      ]) as unknown,
     });
     expect(assignmentsJson).not.toContain('homeworkId');
     expect(assignmentsJson).not.toContain('schoolId');
@@ -3693,12 +3775,13 @@ describe('Teacher App tenancy isolation (security)', () => {
     expect(assignmentDetailJson).not.toContain('question-metadata-sentinel');
     expect(assignmentDetailJson).not.toContain('submission-metadata-sentinel');
 
-    const submissions = await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const submissions: TestResponse<TeacherClassroomAssignmentSubmissionsListResponseDto> =
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     const submissionsJson = JSON.stringify(submissions.body);
 
     expect(submissions.body).toMatchObject({
@@ -3713,7 +3796,7 @@ describe('Teacher App tenancy isolation (security)', () => {
           status: 'submitted',
           student: expect.objectContaining({
             studentId: ownStudentIds[0],
-          }),
+          }) as unknown,
           answersCount: 1,
           reviewedAnswersCount: 0,
         }),
@@ -3745,7 +3828,7 @@ describe('Teacher App tenancy isolation (security)', () => {
         },
         answers: [
           expect.objectContaining({
-            questionId: expect.any(String),
+            questionId: expect.any(String) as unknown,
             prompt: `${testSuffix} Safe assignment prompt`,
             studentAnswer: {
               text: `${testSuffix} student-visible-answer`,
@@ -3770,10 +3853,11 @@ describe('Teacher App tenancy isolation (security)', () => {
   it('teacher can read owned task dashboard, list, detail, and selectors safely', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    const dashboard = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/teacher/tasks/dashboard`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const dashboard: TestResponse<TeacherTaskDashboardResponseDto> =
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/tasks/dashboard`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     const dashboardJson = JSON.stringify(dashboard.body);
 
     expect(dashboard.body.summary).toMatchObject({
@@ -3792,7 +3876,9 @@ describe('Teacher App tenancy isolation (security)', () => {
     expect(dashboardJson).not.toContain(crossSchoolTaskId);
     expectSafeTeacherTaskPayload(dashboard.body);
 
-    const list = await request(app.getHttpServer())
+    const list: TestResponse<TeacherTasksListResponseDto> = await request(
+      app.getHttpServer(),
+    )
       .get(`${GLOBAL_PREFIX}/teacher/tasks`)
       .query({ classId: ownAllocationId, status: 'underReview' })
       .set('Authorization', `Bearer ${accessToken}`)
@@ -3807,23 +3893,26 @@ describe('Teacher App tenancy isolation (security)', () => {
         target: expect.objectContaining({
           classId: ownAllocationId,
           studentId: ownStudentIds[0],
-        }),
+        }) as unknown,
       }),
     ]);
     expect(listJson).not.toContain(otherTeacherTaskId);
     expect(listJson).not.toContain(crossSchoolTaskId);
     expectSafeTeacherTaskPayload(list.body);
 
-    const studentList = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/teacher/tasks`)
-      .query({ studentId: ownStudentIds[0] })
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const studentList: TestResponse<TeacherTasksListResponseDto> =
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/tasks`)
+        .query({ studentId: ownStudentIds[0] })
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     expect(
       studentList.body.tasks.map((task: { taskId: string }) => task.taskId),
     ).toEqual([ownTaskId]);
 
-    const detail = await request(app.getHttpServer())
+    const detail: TestResponse<TeacherTaskDetailResponseDto> = await request(
+      app.getHttpServer(),
+    )
       .get(`${GLOBAL_PREFIX}/teacher/tasks/${ownTaskId}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
@@ -3840,19 +3929,20 @@ describe('Teacher App tenancy isolation (security)', () => {
         expect.objectContaining({
           studentId: ownStudentIds[0],
           proofFile: expect.objectContaining({
-            id: expect.any(String),
-            downloadPath: expect.stringContaining('/api/v1/files/'),
-          }),
+            id: expect.any(String) as unknown,
+            downloadPath: expect.stringContaining('/api/v1/files/') as unknown,
+          }) as unknown,
         }),
       ],
     });
     expect(detailJson).toContain(`${testSuffix}-proof-text`);
     expectSafeTeacherTaskPayload(detail.body);
 
-    const selectors = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/teacher/tasks/selectors`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const selectors: TestResponse<TeacherTaskSelectorsResponseDto> =
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/tasks/selectors`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     const selectorsJson = JSON.stringify(selectors.body);
 
     expect(selectors.body.classes).toEqual([
@@ -3874,11 +3964,12 @@ describe('Teacher App tenancy isolation (security)', () => {
   it('teacher can read owned task review queue and submission detail safely', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    const queue = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/teacher/tasks/review-queue`)
-      .query({ classId: ownAllocationId, studentId: ownStudentIds[0] })
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const queue: TestResponse<TeacherTaskReviewQueueResponseDto> =
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/tasks/review-queue`)
+        .query({ classId: ownAllocationId, studentId: ownStudentIds[0] })
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     const queueJson = JSON.stringify(queue.body);
 
     expect(queue.body.items).toEqual([
@@ -3888,23 +3979,26 @@ describe('Teacher App tenancy isolation (security)', () => {
         taskTitle: `${testSuffix}-own-task`,
         class: expect.objectContaining({
           classId: ownAllocationId,
-        }),
+        }) as unknown,
         student: expect.objectContaining({
           studentId: ownStudentIds[0],
-        }),
+        }) as unknown,
         review: expect.objectContaining({
           status: 'pending',
-        }),
+        }) as unknown,
       }),
     ]);
     expect(queueJson).not.toContain(otherTeacherTaskSubmissionId);
     expect(queueJson).not.toContain(crossSchoolTaskSubmissionId);
     expectSafeTeacherTaskPayload(queue.body);
 
-    const detail = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/teacher/tasks/review-queue/${ownTaskSubmissionId}`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const detail: TestResponse<TeacherTaskReviewSubmissionResponseDto> =
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/tasks/review-queue/${ownTaskSubmissionId}`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     const detailJson = JSON.stringify(detail.body);
 
     expect(detail.body.submission).toMatchObject({
@@ -3913,16 +4007,16 @@ describe('Teacher App tenancy isolation (security)', () => {
       stage: expect.objectContaining({
         proofType: 'image',
         requiresApproval: true,
-      }),
+      }) as unknown,
       class: expect.objectContaining({
         classId: ownAllocationId,
-      }),
+      }) as unknown,
       proof: {
         text: `${testSuffix}-proof-text`,
         file: expect.objectContaining({
-          id: expect.any(String),
-          downloadPath: expect.stringContaining('/api/v1/files/'),
-        }),
+          id: expect.any(String) as unknown,
+          downloadPath: expect.stringContaining('/api/v1/files/') as unknown,
+        }) as unknown,
       },
       reviewHistory: [],
     });
@@ -3950,37 +4044,39 @@ describe('Teacher App tenancy isolation (security)', () => {
         where: { schoolId: schoolAId },
       });
 
-    const approved = await request(app.getHttpServer())
-      .post(
-        `${GLOBAL_PREFIX}/teacher/tasks/review-queue/${approveSubmissionId}/approve`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({ comment: 'Great evidence' })
-      .expect(201);
+    const approved: TestResponse<TeacherTaskReviewSubmissionResponseDto> =
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/teacher/tasks/review-queue/${approveSubmissionId}/approve`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ comment: 'Great evidence' })
+        .expect(201);
     expect(approved.body.submission).toMatchObject({
       submissionId: approveSubmissionId,
       status: 'approved',
       review: expect.objectContaining({
         status: 'approved',
         comment: 'Great evidence',
-      }),
+      }) as unknown,
     });
     expectSafeTeacherTaskPayload(approved.body);
 
-    const rejected = await request(app.getHttpServer())
-      .post(
-        `${GLOBAL_PREFIX}/teacher/tasks/review-queue/${rejectSubmissionId}/reject`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({ reason: 'Needs clearer proof' })
-      .expect(201);
+    const rejected: TestResponse<TeacherTaskReviewSubmissionResponseDto> =
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/teacher/tasks/review-queue/${rejectSubmissionId}/reject`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ reason: 'Needs clearer proof' })
+        .expect(201);
     expect(rejected.body.submission).toMatchObject({
       submissionId: rejectSubmissionId,
       status: 'rejected',
       review: expect.objectContaining({
         status: 'rejected',
         comment: 'Needs clearer proof',
-      }),
+      }) as unknown,
     });
     expectSafeTeacherTaskPayload(rejected.body);
 
@@ -3998,10 +4094,11 @@ describe('Teacher App tenancy isolation (security)', () => {
   it('teacher can read XP dashboard, class, student, and history from XP ledger only', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    const dashboard = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/teacher/xp/dashboard`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const dashboard: TestResponse<TeacherXpDashboardResponseDto> =
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/xp/dashboard`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     const dashboardJson = JSON.stringify(dashboard.body);
 
     expect(dashboard.body.summary).toMatchObject({
@@ -4031,7 +4128,7 @@ describe('Teacher App tenancy isolation (security)', () => {
       summary: expect.objectContaining({
         totalXp: 30,
         studentsCount: 2,
-      }),
+      }) as unknown,
       students: expect.arrayContaining([
         expect.objectContaining({
           studentId: ownStudentIds[0],
@@ -4040,7 +4137,7 @@ describe('Teacher App tenancy isolation (security)', () => {
           tier: null,
           level: null,
         }),
-      ]),
+      ]) as unknown,
     });
     expectSafeTeacherTaskPayload(classXp.body);
 
@@ -4079,7 +4176,7 @@ describe('Teacher App tenancy isolation (security)', () => {
       ],
       pagination: expect.objectContaining({
         total: 1,
-      }),
+      }) as unknown,
     });
     expectSafeTeacherTaskPayload(history.body);
   });
@@ -4097,7 +4194,9 @@ describe('Teacher App tenancy isolation (security)', () => {
         where: { schoolId: schoolAId },
       });
 
-    const classTask = await request(app.getHttpServer())
+    const classTask: TestResponse<TeacherTaskDetailResponseDto> = await request(
+      app.getHttpServer(),
+    )
       .post(`${GLOBAL_PREFIX}/teacher/tasks`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send(
@@ -4118,26 +4217,27 @@ describe('Teacher App tenancy isolation (security)', () => {
         type: 'class',
         classId: ownAllocationId,
         studentsCount: 2,
-      }),
+      }) as unknown,
       reward: expect.objectContaining({
         type: 'xp',
         value: 10,
-      }),
+      }) as unknown,
     });
     expectSafeTeacherTaskPayload(classTask.body);
 
-    const studentTask = await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/teacher/tasks`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send(
-        teacherTaskCreatePayload({
-          title: `${testSuffix}-created-student-task`,
-          classIds: [ownAllocationId],
-          studentIds: [ownStudentIds[1]],
-          reward: { type: 'none' },
-        }),
-      )
-      .expect(201);
+    const studentTask: TestResponse<TeacherTaskDetailResponseDto> =
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/teacher/tasks`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(
+          teacherTaskCreatePayload({
+            title: `${testSuffix}-created-student-task`,
+            classIds: [ownAllocationId],
+            studentIds: [ownStudentIds[1]],
+            reward: { type: 'none' },
+          }),
+        )
+        .expect(201);
     await trackCreatedReinforcementTaskTree(studentTask.body.task.taskId);
 
     expect(studentTask.body.task).toMatchObject({
@@ -4148,7 +4248,7 @@ describe('Teacher App tenancy isolation (security)', () => {
         classId: ownAllocationId,
         studentId: ownStudentIds[1],
         studentsCount: 1,
-      }),
+      }) as unknown,
     });
     expectSafeTeacherTaskPayload(studentTask.body);
 
@@ -4276,7 +4376,7 @@ describe('Teacher App tenancy isolation (security)', () => {
       source: 'grades_assessment',
       answer: {
         answerId: ownAssignmentAnswerId,
-        questionId: expect.any(String),
+        questionId: expect.any(String) as unknown,
         correctionStatus: 'corrected',
         score: 8,
         maxScore: 10,
@@ -4342,7 +4442,7 @@ describe('Teacher App tenancy isolation (security)', () => {
         status: 'corrected',
         score: 9,
         maxScore: 10,
-        finalizedAt: expect.any(String),
+        finalizedAt: expect.any(String) as unknown,
       },
     });
     expect(finalizedJson).not.toContain('schoolId');
@@ -4351,12 +4451,13 @@ describe('Teacher App tenancy isolation (security)', () => {
     expect(finalizedJson).not.toContain('submission-metadata-sentinel');
     expect(finalizedJson).not.toContain('reviewedById');
 
-    const synced = await request(app.getHttpServer())
-      .post(
-        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}/sync-grade-item`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(201);
+    const synced: TestResponse<TeacherClassroomSubmissionGradeItemSyncResponseDto> =
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}/sync-grade-item`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(201);
     const syncedJson = JSON.stringify(synced.body);
     createdGradeItemIds.push(synced.body.gradeItem.gradeItemId);
 
@@ -4390,7 +4491,9 @@ describe('Teacher App tenancy isolation (security)', () => {
     const { accessToken } = await login(teacherAEmail);
 
     for (const classId of [otherTeacherAllocationId, crossSchoolAllocationId]) {
-      const response = await request(app.getHttpServer())
+      const response: TestResponse<ErrorResponse> = await request(
+        app.getHttpServer(),
+      )
         .patch(
           `${GLOBAL_PREFIX}/teacher/classroom/${classId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}/answers/${ownAssignmentAnswerId}/review`,
         )
@@ -4408,7 +4511,9 @@ describe('Teacher App tenancy isolation (security)', () => {
       otherTermAssignmentId,
       crossSchoolAssessmentId,
     ]) {
-      const response = await request(app.getHttpServer())
+      const response: TestResponse<ErrorResponse> = await request(
+        app.getHttpServer(),
+      )
         .patch(
           `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${assignmentId}/submissions/${ownAssignmentSubmissionId}/answers/${ownAssignmentAnswerId}/review`,
         )
@@ -4423,7 +4528,9 @@ describe('Teacher App tenancy isolation (security)', () => {
       `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${outsideStudentSubmissionId}/review/finalize`,
       `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${crossSchoolSubmissionId}/review/finalize`,
     ]) {
-      const response = await request(app.getHttpServer())
+      const response: TestResponse<ErrorResponse> = await request(
+        app.getHttpServer(),
+      )
         .post(route)
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(404);
@@ -4435,7 +4542,9 @@ describe('Teacher App tenancy isolation (security)', () => {
       outsideStudentAnswerId,
       crossSchoolAnswerId,
     ]) {
-      const response = await request(app.getHttpServer())
+      const response: TestResponse<ErrorResponse> = await request(
+        app.getHttpServer(),
+      )
         .patch(
           `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}/answers/${answerId}/review`,
         )
@@ -4449,7 +4558,9 @@ describe('Teacher App tenancy isolation (security)', () => {
   it('teacher cannot access grade reads outside the owned classroom/subject/term', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    const sameSchoolDetail = await request(app.getHttpServer())
+    const sameSchoolDetail: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .get(
         `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/grades/assessments/${otherTeacherAssessmentId}`,
       )
@@ -4457,7 +4568,9 @@ describe('Teacher App tenancy isolation (security)', () => {
       .expect(404);
     expect(sameSchoolDetail.body?.error?.code).toBe('not_found');
 
-    const crossSchoolDetail = await request(app.getHttpServer())
+    const crossSchoolDetail: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .get(
         `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/grades/assessments/${crossSchoolAssessmentId}`,
       )
@@ -4465,7 +4578,9 @@ describe('Teacher App tenancy isolation (security)', () => {
       .expect(404);
     expect(crossSchoolDetail.body?.error?.code).toBe('not_found');
 
-    const filteredGradebook = await request(app.getHttpServer())
+    const filteredGradebook: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .get(
         `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/grades/gradebook`,
       )
@@ -4480,7 +4595,9 @@ describe('Teacher App tenancy isolation (security)', () => {
       otherTermAssignmentId,
       crossSchoolAssessmentId,
     ]) {
-      const assignmentResponse = await request(app.getHttpServer())
+      const assignmentResponse: TestResponse<ErrorResponse> = await request(
+        app.getHttpServer(),
+      )
         .get(
           `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${assignmentId}`,
         )
@@ -4489,50 +4606,59 @@ describe('Teacher App tenancy isolation (security)', () => {
       expect(assignmentResponse.body?.error?.code).toBe('not_found');
     }
 
-    const otherAssignmentSubmissionResponse = await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${otherAssignmentSubmissionId}`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(404);
+    const otherAssignmentSubmissionResponse: TestResponse<ErrorResponse> =
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${otherAssignmentSubmissionId}`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
     expect(otherAssignmentSubmissionResponse.body?.error?.code).toBe(
       'not_found',
     );
 
-    const outsideStudentSubmissionResponse = await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${outsideStudentSubmissionId}`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(404);
+    const outsideStudentSubmissionResponse: TestResponse<ErrorResponse> =
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${outsideStudentSubmissionId}`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
     expect(outsideStudentSubmissionResponse.body?.error?.code).toBe(
       'not_found',
     );
 
-    const crossSchoolSubmissionResponse = await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${crossSchoolSubmissionId}`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(404);
+    const crossSchoolSubmissionResponse: TestResponse<ErrorResponse> =
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${crossSchoolSubmissionId}`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
     expect(crossSchoolSubmissionResponse.body?.error?.code).toBe('not_found');
   });
 
   it('teacher cannot access another teacher class in the same school', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    const response = await request(app.getHttpServer())
+    const response: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .get(`${GLOBAL_PREFIX}/teacher/my-classes/${otherTeacherAllocationId}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
 
     expect(response.body?.error?.code).toBe('teacher_app.allocation.not_found');
 
-    const classroomDetailResponse = await request(app.getHttpServer())
+    const classroomDetailResponse: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .get(`${GLOBAL_PREFIX}/teacher/classroom/${otherTeacherAllocationId}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
-    const classroomRosterResponse = await request(app.getHttpServer())
+    const classroomRosterResponse: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .get(
         `${GLOBAL_PREFIX}/teacher/classroom/${otherTeacherAllocationId}/roster`,
       )
@@ -4545,27 +4671,32 @@ describe('Teacher App tenancy isolation (security)', () => {
       'teacher_app.allocation.not_found',
     );
 
-    const attendanceRosterResponse = await request(app.getHttpServer())
+    const attendanceRosterResponse: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .get(
         `${GLOBAL_PREFIX}/teacher/classroom/${otherTeacherAllocationId}/attendance/roster`,
       )
       .query({ date: '2026-09-10' })
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
-    const attendanceTodayResponse = await request(app.getHttpServer())
+    const attendanceTodayResponse: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .get(
         `${GLOBAL_PREFIX}/teacher/classroom/${otherTeacherAllocationId}/attendance/today`,
       )
       .query({ date: '2026-09-10' })
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
-    const attendanceResolveResponse = await request(app.getHttpServer())
-      .post(
-        `${GLOBAL_PREFIX}/teacher/classroom/${otherTeacherAllocationId}/attendance/session/resolve`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({ date: '2026-09-10' })
-      .expect(404);
+    const attendanceResolveResponse: TestResponse<ErrorResponse> =
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/teacher/classroom/${otherTeacherAllocationId}/attendance/session/resolve`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ date: '2026-09-10' })
+        .expect(404);
     expect(attendanceRosterResponse.body?.error?.code).toBe(
       'teacher_app.allocation.not_found',
     );
@@ -4585,7 +4716,9 @@ describe('Teacher App tenancy isolation (security)', () => {
       `/teacher/classroom/${otherTeacherAllocationId}/assignments/${ownAssignmentId}/submissions`,
       `/teacher/classroom/${otherTeacherAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}`,
     ]) {
-      const gradesResponse = await request(app.getHttpServer())
+      const gradesResponse: TestResponse<ErrorResponse> = await request(
+        app.getHttpServer(),
+      )
         .get(`${GLOBAL_PREFIX}${route}`)
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(404);
@@ -4598,14 +4731,18 @@ describe('Teacher App tenancy isolation (security)', () => {
   it('teacher cannot see or mutate same-school other-teacher review or XP targets', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    const queue = await request(app.getHttpServer())
+    const queue: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .get(`${GLOBAL_PREFIX}/teacher/tasks/review-queue`)
       .query({ classId: otherTeacherAllocationId })
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
     expect(queue.body?.error?.code).toBe('teacher_app.allocation.not_found');
 
-    const detail = await request(app.getHttpServer())
+    const detail: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .get(
         `${GLOBAL_PREFIX}/teacher/tasks/review-queue/${otherTeacherTaskSubmissionId}`,
       )
@@ -4628,17 +4765,23 @@ describe('Teacher App tenancy isolation (security)', () => {
       .send({ reason: 'Nope' })
       .expect(404);
 
-    const classXp = await request(app.getHttpServer())
+    const classXp: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .get(`${GLOBAL_PREFIX}/teacher/xp/classes/${otherTeacherAllocationId}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
     expect(classXp.body?.error?.code).toBe('teacher_app.allocation.not_found');
 
-    const studentXp = await request(app.getHttpServer())
+    const studentXp: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .get(`${GLOBAL_PREFIX}/teacher/xp/students/${otherTeacherStudentIds[0]}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
-    const history = await request(app.getHttpServer())
+    const history: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .get(
         `${GLOBAL_PREFIX}/teacher/xp/students/${otherTeacherStudentIds[0]}/history`,
       )
@@ -4651,18 +4794,24 @@ describe('Teacher App tenancy isolation (security)', () => {
   it('teacher cannot access a cross-school class id', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    const response = await request(app.getHttpServer())
+    const response: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .get(`${GLOBAL_PREFIX}/teacher/my-classes/${crossSchoolAllocationId}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
 
     expect(response.body?.error?.code).toBe('teacher_app.allocation.not_found');
 
-    const classroomDetailResponse = await request(app.getHttpServer())
+    const classroomDetailResponse: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .get(`${GLOBAL_PREFIX}/teacher/classroom/${crossSchoolAllocationId}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
-    const classroomRosterResponse = await request(app.getHttpServer())
+    const classroomRosterResponse: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .get(
         `${GLOBAL_PREFIX}/teacher/classroom/${crossSchoolAllocationId}/roster`,
       )
@@ -4675,14 +4824,18 @@ describe('Teacher App tenancy isolation (security)', () => {
       'teacher_app.allocation.not_found',
     );
 
-    const attendanceRosterResponse = await request(app.getHttpServer())
+    const attendanceRosterResponse: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .get(
         `${GLOBAL_PREFIX}/teacher/classroom/${crossSchoolAllocationId}/attendance/roster`,
       )
       .query({ date: '2026-09-10' })
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
-    const attendanceTodayResponse = await request(app.getHttpServer())
+    const attendanceTodayResponse: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .get(
         `${GLOBAL_PREFIX}/teacher/classroom/${crossSchoolAllocationId}/attendance/today`,
       )
@@ -4705,7 +4858,9 @@ describe('Teacher App tenancy isolation (security)', () => {
       `/teacher/classroom/${crossSchoolAllocationId}/assignments/${ownAssignmentId}/submissions`,
       `/teacher/classroom/${crossSchoolAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}`,
     ]) {
-      const gradesResponse = await request(app.getHttpServer())
+      const gradesResponse: TestResponse<ErrorResponse> = await request(
+        app.getHttpServer(),
+      )
         .get(`${GLOBAL_PREFIX}${route}`)
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(404);
@@ -4718,14 +4873,18 @@ describe('Teacher App tenancy isolation (security)', () => {
   it('teacher cannot see or mutate cross-school review or XP targets', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    const queue = await request(app.getHttpServer())
+    const queue: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .get(`${GLOBAL_PREFIX}/teacher/tasks/review-queue`)
       .query({ classId: crossSchoolAllocationId })
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
     expect(queue.body?.error?.code).toBe('teacher_app.allocation.not_found');
 
-    const detail = await request(app.getHttpServer())
+    const detail: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .get(
         `${GLOBAL_PREFIX}/teacher/tasks/review-queue/${crossSchoolTaskSubmissionId}`,
       )
@@ -4748,17 +4907,23 @@ describe('Teacher App tenancy isolation (security)', () => {
       .send({ reason: 'Nope' })
       .expect(404);
 
-    const classXp = await request(app.getHttpServer())
+    const classXp: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .get(`${GLOBAL_PREFIX}/teacher/xp/classes/${crossSchoolAllocationId}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
     expect(classXp.body?.error?.code).toBe('teacher_app.allocation.not_found');
 
-    const studentXp = await request(app.getHttpServer())
+    const studentXp: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .get(`${GLOBAL_PREFIX}/teacher/xp/students/${crossSchoolStudentIds[0]}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
-    const history = await request(app.getHttpServer())
+    const history: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .get(
         `${GLOBAL_PREFIX}/teacher/xp/students/${crossSchoolStudentIds[0]}/history`,
       )
@@ -4770,16 +4935,19 @@ describe('Teacher App tenancy isolation (security)', () => {
 
   it('teacher cannot read a cross-school guessed attendance session', async () => {
     const crossSchoolTeacher = await login(teacherCrossSchoolEmail);
-    const crossSchoolResolved = await request(app.getHttpServer())
-      .post(
-        `${GLOBAL_PREFIX}/teacher/classroom/${crossSchoolAllocationId}/attendance/session/resolve`,
-      )
-      .set('Authorization', `Bearer ${crossSchoolTeacher.accessToken}`)
-      .send({ date: '2026-09-10' })
-      .expect(201);
+    const crossSchoolResolved: TestResponse<TeacherClassroomAttendanceSessionResponseDto> =
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/teacher/classroom/${crossSchoolAllocationId}/attendance/session/resolve`,
+        )
+        .set('Authorization', `Bearer ${crossSchoolTeacher.accessToken}`)
+        .send({ date: '2026-09-10' })
+        .expect(201);
 
     const teacherA = await login(teacherAEmail);
-    const response = await request(app.getHttpServer())
+    const response: TestResponse<ErrorResponse> = await request(
+      app.getHttpServer(),
+    )
       .get(
         `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/sessions/${crossSchoolResolved.body.session.id}`,
       )
@@ -4791,13 +4959,14 @@ describe('Teacher App tenancy isolation (security)', () => {
 
   it('school admin, parent, and student actors are denied Teacher App routes', async () => {
     const teacherA = await login(teacherAEmail);
-    const deniedSession = await request(app.getHttpServer())
-      .post(
-        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/session/resolve`,
-      )
-      .set('Authorization', `Bearer ${teacherA.accessToken}`)
-      .send({ date: '2026-09-12' })
-      .expect(201);
+    const deniedSession: TestResponse<TeacherClassroomAttendanceSessionResponseDto> =
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/session/resolve`,
+        )
+        .set('Authorization', `Bearer ${teacherA.accessToken}`)
+        .send({ date: '2026-09-12' })
+        .expect(201);
 
     for (const email of [adminEmail, parentEmail, studentEmail]) {
       const { accessToken } = await login(email);
@@ -6286,7 +6455,9 @@ describe('Teacher App tenancy isolation (security)', () => {
   }
 
   async function login(email: string): Promise<{ accessToken: string }> {
-    const response = await request(app.getHttpServer())
+    const response: TestResponse<LoginResponseDto> = await request(
+      app.getHttpServer(),
+    )
       .post(`${GLOBAL_PREFIX}/auth/login`)
       .send({ email, password: PASSWORD })
       .expect(200);

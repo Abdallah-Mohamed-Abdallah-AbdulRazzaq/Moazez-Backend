@@ -1,3 +1,5 @@
+import type { LoginResponseDto } from '../../src/modules/iam/auth/dto/login-response.dto';
+import type { MeResponseDto } from '../../src/modules/iam/auth/dto/me-response.dto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
@@ -11,9 +13,12 @@ import {
 import * as argon2 from 'argon2';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import request from 'supertest';
+import request, { type Response } from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
+
+// Supertest decodes JSON without a body type; use the endpoint's existing DTO.
+type TestResponse<Body> = Omit<Response, 'body'> & { body: Body };
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'DismissalStaff123!';
@@ -175,7 +180,9 @@ describe('DISMISSAL-IAM-1A - user type and permission seed contract', () => {
   it('permission seed has no duplicate permission codes', () => {
     const entries = readPermissionEntries(permissionSeedSource);
     const codes = entries.map((entry) => entry.code);
-    const duplicates = codes.filter((code, index) => codes.indexOf(code) !== index);
+    const duplicates = codes.filter(
+      (code, index) => codes.indexOf(code) !== index,
+    );
 
     expect(duplicates).toEqual([]);
   });
@@ -220,16 +227,16 @@ describe('DISMISSAL-IAM-1A - user type and permission seed contract', () => {
       const permissions = readConstStringArray(systemRoleSeedSource, constName);
 
       expect(permissions).toHaveLength(expectedCount);
-      expect(permissions.filter((permission) => permission.startsWith('dismissal.'))).toEqual(
-        [],
-      );
+      expect(
+        permissions.filter((permission) => permission.startsWith('dismissal.')),
+      ).toEqual([]);
     }
   });
 
   it('keeps IAM migration limited now that dismissal runtime is implemented separately', () => {
-    expect(
-      existsSync(join(process.cwd(), 'src', 'modules', 'dismissal')),
-    ).toBe(true);
+    expect(existsSync(join(process.cwd(), 'src', 'modules', 'dismissal'))).toBe(
+      true,
+    );
   });
 });
 
@@ -380,18 +387,26 @@ describe('DISMISSAL-IAM-1A - /auth/me role permission mapping', () => {
   });
 
   it('/auth/me exposes exactly the Dismissal Staff role permissions through existing role mapping', async () => {
-    const loginResponse = await request(app.getHttpServer())
+    const loginResponse: TestResponse<LoginResponseDto> = await request(
+      app.getHttpServer(),
+    )
       .post(`${GLOBAL_PREFIX}/auth/login`)
       .send({ email: DISMISSAL_STAFF_EMAIL, password: PASSWORD })
       .expect(200);
 
-    const accessToken = loginResponse.body.accessToken as string;
+    const accessToken = loginResponse.body.accessToken;
     expect(accessToken).toBeTruthy();
 
-    const meResponse = await request(app.getHttpServer())
+    const meResponse: TestResponse<MeResponseDto> = await request(
+      app.getHttpServer(),
+    )
       .get(`${GLOBAL_PREFIX}/auth/me`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
+
+    if (meResponse.body.activeMembership === null) {
+      throw new Error('Expected the seeded dismissal staff membership');
+    }
 
     expect(meResponse.body.userType).toBe('DISMISSAL_STAFF');
     expect(meResponse.body.activeMembership.roleKey).toBe('dismissal_staff');
@@ -400,7 +415,7 @@ describe('DISMISSAL-IAM-1A - /auth/me role permission mapping', () => {
       [...EXPECTED_DISMISSAL_STAFF_PERMISSIONS].sort(),
     );
 
-    const permissions = meResponse.body.activeMembership.permissions as string[];
+    const permissions = meResponse.body.activeMembership.permissions;
     for (const permission of permissions) {
       expect(permission).not.toMatch(/^platform\./);
       expect(permission).not.toMatch(/^settings\./);
