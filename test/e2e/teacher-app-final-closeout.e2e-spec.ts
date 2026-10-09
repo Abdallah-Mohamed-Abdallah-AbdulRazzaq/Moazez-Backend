@@ -1,3 +1,27 @@
+import type { LoginResponseDto } from '../../src/modules/iam/auth/dto/login-response.dto';
+import type { TeacherClassroomAttendanceSessionResponseDto } from '../../src/modules/teacher-app/classroom/attendance/dto/teacher-classroom-attendance.dto';
+import type { TeacherHomeResponseDto } from '../../src/modules/teacher-app/home/dto/teacher-home.dto';
+import type { TeacherHomeworkAssignmentDto } from '../../src/modules/teacher-app/homeworks/dto/teacher-homeworks.dto';
+import type {
+  TeacherConversationMessageResponseDto,
+  TeacherConversationMessagesResponseDto,
+  TeacherMessageConversationResponseDto,
+  TeacherMessageConversationsResponseDto,
+} from '../../src/modules/teacher-app/messages/dto/teacher-messages.dto';
+import type {
+  TeacherTaskDashboardResponseDto,
+  TeacherTaskDetailResponseDto,
+  TeacherTaskSelectorsResponseDto,
+  TeacherTasksListResponseDto,
+} from '../../src/modules/teacher-app/tasks/dto/teacher-tasks.dto';
+import type {
+  TeacherTaskReviewQueueResponseDto,
+  TeacherTaskReviewSubmissionResponseDto,
+} from '../../src/modules/teacher-app/tasks/review/dto/teacher-task-review-queue.dto';
+import type {
+  TeacherXpClassResponseDto,
+  TeacherXpDashboardResponseDto,
+} from '../../src/modules/teacher-app/xp/dto/teacher-xp.dto';
 import { TeacherAcademicContentWorkflowPublicationController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content-workflow-publication.controller';
 import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
@@ -32,7 +56,7 @@ import {
   XpSourceType,
 } from '@prisma/client';
 import * as argon2 from 'argon2';
-import request from 'supertest';
+import request, { type Response } from 'supertest';
 import type { App } from 'supertest/types';
 import { REQUIRED_PERMISSIONS_METADATA } from '../../src/common/decorators/required-permissions.decorator';
 import { AppModule } from '../../src/app.module';
@@ -59,6 +83,13 @@ import { TeacherSettingsController } from '../../src/modules/teacher-app/setting
 import { TeacherTasksController } from '../../src/modules/teacher-app/tasks/controller/teacher-tasks.controller';
 import { TeacherTaskReviewQueueController } from '../../src/modules/teacher-app/tasks/review/controller/teacher-task-review-queue.controller';
 import { TeacherXpController } from '../../src/modules/teacher-app/xp/controller/teacher-xp.controller';
+
+// Supertest decodes JSON without a body type; use the endpoint's existing DTO.
+type TestResponse<Body> = Omit<Response, 'body'> & { body: Body };
+
+interface ErrorResponse {
+  error: { code: string };
+}
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'TeacherApp123!';
@@ -909,7 +940,9 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
   it('covers Teacher Home summaries and non-teacher denial', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    const home = await request(app.getHttpServer())
+    const home: TestResponse<TeacherHomeResponseDto> = await request(
+      app.getHttpServer(),
+    )
       .get(`${GLOBAL_PREFIX}/teacher/home`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
@@ -922,8 +955,8 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     expect(home.body.summary).toMatchObject({
       classesCount: 1,
       studentsCount: 2,
-      pendingTasksCount: expect.any(Number),
-      unreadMessagesCount: expect.any(Number),
+      pendingTasksCount: expect.any(Number) as unknown,
+      unreadMessagesCount: expect.any(Number) as unknown,
     });
     expect(home.body.schedule).toEqual({
       available: false,
@@ -942,7 +975,7 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     expect(home.body.tasks).toMatchObject({
       activeTasksCount: 2,
       pendingReviewCount: 2,
-      recentTasks: expect.any(Array),
+      recentTasks: expect.any(Array) as unknown,
     });
     expect(home.body.xp).toMatchObject({
       studentsCount: 2,
@@ -950,9 +983,9 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       averageXp: 15,
     });
     expect(home.body.messages).toMatchObject({
-      unreadConversationsCount: expect.any(Number),
-      unreadMessagesCount: expect.any(Number),
-      recentConversations: expect.any(Array),
+      unreadConversationsCount: expect.any(Number) as unknown,
+      unreadMessagesCount: expect.any(Number) as unknown,
+      recentConversations: expect.any(Array) as unknown,
     });
     expectSafeTeacherPayload(home.body);
 
@@ -966,7 +999,9 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
         '/teacher/profile',
         '/teacher/settings/about',
       ]) {
-        const response = await request(app.getHttpServer())
+        const response: TestResponse<ErrorResponse> = await request(
+          app.getHttpServer(),
+        )
           .get(`${GLOBAL_PREFIX}${route}`)
           .set('Authorization', `Bearer ${actor.accessToken}`)
           .expect(403);
@@ -981,13 +1016,14 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
   it('covers representative 1C, 1D, and 1E Teacher App action routes', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    const attendance = await request(app.getHttpServer())
-      .post(
-        `${GLOBAL_PREFIX}/teacher/classroom/${ownFixture.allocationId}/attendance/session/resolve`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({ date: '2026-09-19' })
-      .expect(201);
+    const attendance: TestResponse<TeacherClassroomAttendanceSessionResponseDto> =
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownFixture.allocationId}/attendance/session/resolve`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ date: '2026-09-19' })
+        .expect(201);
     createdAttendanceSessionIds.push(attendance.body.session.id);
     expect(attendance.body).toMatchObject({
       classId: ownFixture.allocationId,
@@ -996,13 +1032,15 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
         id: attendance.body.session.id,
         status: 'draft',
       },
-      entries: expect.any(Array),
+      entries: expect.any(Array) as unknown,
     });
     expectSafeTeacherPayload(attendance.body);
 
     const homeworkDueAt = futureIso();
     expect(Date.parse(homeworkDueAt)).toBeGreaterThan(Date.now());
-    const homework = await request(app.getHttpServer())
+    const homework: TestResponse<TeacherHomeworkAssignmentDto> = await request(
+      app.getHttpServer(),
+    )
       .post(
         `${GLOBAL_PREFIX}/teacher/homeworks/classes/${ownFixture.allocationId}/assignments`,
       )
@@ -1031,8 +1069,8 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(201);
     expect(notifications.body).toMatchObject({
-      markedCount: expect.any(Number),
-      readAt: expect.any(String),
+      markedCount: expect.any(Number) as unknown,
+      readAt: expect.any(String) as unknown,
     });
     expectSafeTeacherPayload(notifications.body);
   });
@@ -1040,10 +1078,11 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
   it('covers Teacher Tasks create/read and review queue actions without XP or behavior side effects', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    const dashboard = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/teacher/tasks/dashboard`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const dashboard: TestResponse<TeacherTaskDashboardResponseDto> =
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/tasks/dashboard`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     expect(dashboard.body.summary.totalTasks).toBe(2);
     expect(dashboard.body.summary.underReviewTasks).toBe(2);
     expect(dashboard.body.byClass).toEqual([
@@ -1055,10 +1094,11 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     ]);
     expectSafeTeacherPayload(dashboard.body);
 
-    const selectors = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/teacher/tasks/selectors`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const selectors: TestResponse<TeacherTaskSelectorsResponseDto> =
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/tasks/selectors`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     expect(selectors.body.classes).toEqual([
       expect.objectContaining({
         classId: ownFixture.allocationId,
@@ -1080,7 +1120,9 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     ]);
     expectSafeTeacherPayload(selectors.body);
 
-    const list = await request(app.getHttpServer())
+    const list: TestResponse<TeacherTasksListResponseDto> = await request(
+      app.getHttpServer(),
+    )
       .get(`${GLOBAL_PREFIX}/teacher/tasks`)
       .query({ limit: 20 })
       .set('Authorization', `Bearer ${accessToken}`)
@@ -1096,7 +1138,9 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     expect(list.body.tasks[0].target.classId).toBe(ownFixture.allocationId);
     expectSafeTeacherPayload(list.body);
 
-    const detail = await request(app.getHttpServer())
+    const detail: TestResponse<TeacherTaskDetailResponseDto> = await request(
+      app.getHttpServer(),
+    )
       .get(`${GLOBAL_PREFIX}/teacher/tasks/${ownReviewApprove.taskId}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
@@ -1117,8 +1161,10 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       submissionId: ownReviewApprove.submissionId,
       assignmentId: ownReviewApprove.assignmentId,
       proofFile: expect.objectContaining({
-        downloadPath: expect.stringMatching(/^\/api\/v1\/files\/.+\/download$/),
-      }),
+        downloadPath: expect.stringMatching(
+          /^\/api\/v1\/files\/.+\/download$/,
+        ) as unknown,
+      }) as unknown,
     });
     expectSafeTeacherPayload(detail.body);
 
@@ -1134,7 +1180,9 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
         where: { schoolId: schoolAId },
       });
 
-    const created = await request(app.getHttpServer())
+    const created: TestResponse<TeacherTaskDetailResponseDto> = await request(
+      app.getHttpServer(),
+    )
       .post(`${GLOBAL_PREFIX}/teacher/tasks`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send({
@@ -1201,11 +1249,12 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
 
-    const queue = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/teacher/tasks/review-queue`)
-      .query({ limit: 20 })
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const queue: TestResponse<TeacherTaskReviewQueueResponseDto> =
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/tasks/review-queue`)
+        .query({ limit: 20 })
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     const queueSubmissionIds = queue.body.items.map(
       (item: { submissionId: string }) => item.submissionId,
     );
@@ -1220,12 +1269,13 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     expect(queue.body.items[0].class.classId).toBe(ownFixture.allocationId);
     expectSafeTeacherPayload(queue.body);
 
-    const reviewDetail = await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/teacher/tasks/review-queue/${ownReviewApprove.submissionId}`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const reviewDetail: TestResponse<TeacherTaskReviewSubmissionResponseDto> =
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/tasks/review-queue/${ownReviewApprove.submissionId}`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     expect(reviewDetail.body.submission).toMatchObject({
       submissionId: ownReviewApprove.submissionId,
       taskId: ownReviewApprove.taskId,
@@ -1244,13 +1294,14 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
         where: { schoolId: schoolAId },
       });
 
-    const approved = await request(app.getHttpServer())
-      .post(
-        `${GLOBAL_PREFIX}/teacher/tasks/review-queue/${ownReviewApprove.submissionId}/approve`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({ comment: `${testMarker}-approved` })
-      .expect(201);
+    const approved: TestResponse<TeacherTaskReviewSubmissionResponseDto> =
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/teacher/tasks/review-queue/${ownReviewApprove.submissionId}/approve`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ comment: `${testMarker}-approved` })
+        .expect(201);
     expect(approved.body.submission).toMatchObject({
       submissionId: ownReviewApprove.submissionId,
       status: 'approved',
@@ -1261,13 +1312,14 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     });
     expectSafeTeacherPayload(approved.body);
 
-    const rejected = await request(app.getHttpServer())
-      .post(
-        `${GLOBAL_PREFIX}/teacher/tasks/review-queue/${ownReviewReject.submissionId}/reject`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({ reason: `${testMarker}-rejected` })
-      .expect(201);
+    const rejected: TestResponse<TeacherTaskReviewSubmissionResponseDto> =
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/teacher/tasks/review-queue/${ownReviewReject.submissionId}/reject`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ reason: `${testMarker}-rejected` })
+        .expect(201);
     expect(rejected.body.submission).toMatchObject({
       submissionId: ownReviewReject.submissionId,
       status: 'rejected',
@@ -1311,10 +1363,11 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       where: { schoolId: schoolAId },
     });
 
-    const dashboard = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/teacher/xp/dashboard`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const dashboard: TestResponse<TeacherXpDashboardResponseDto> =
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/xp/dashboard`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     expect(dashboard.body.summary).toMatchObject({
       studentsCount: 2,
       totalXp: 30,
@@ -1341,7 +1394,9 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     );
     expectSafeTeacherPayload(dashboard.body);
 
-    const classXp = await request(app.getHttpServer())
+    const classXp: TestResponse<TeacherXpClassResponseDto> = await request(
+      app.getHttpServer(),
+    )
       .get(`${GLOBAL_PREFIX}/teacher/xp/classes/${ownFixture.allocationId}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
@@ -1362,11 +1417,11 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
           tier: null,
           level: null,
         }),
-      ]),
+      ]) as unknown,
       summary: expect.objectContaining({
         classId: ownFixture.allocationId,
         totalXp: 30,
-      }),
+      }) as unknown,
     });
     expectSafeTeacherPayload(classXp.body);
 
@@ -1541,10 +1596,11 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
         .expect(404);
     }
 
-    const conversations = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/teacher/messages/conversations`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const conversations: TestResponse<TeacherMessageConversationsResponseDto> =
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/messages/conversations`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     const conversationIds = conversations.body.conversations.map(
       (conversation: { conversationId: string }) => conversation.conversationId,
     );
@@ -1556,12 +1612,13 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     ).toBeGreaterThanOrEqual(1);
     expectSafeTeacherPayload(conversations.body);
 
-    const conversation = await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const conversation: TestResponse<TeacherMessageConversationResponseDto> =
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     expect(conversation.body.conversation).toMatchObject({
       conversationId: ownConversationId,
       type: 'direct',
@@ -1575,16 +1632,17 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
           userId: parentUserId,
           isMe: false,
         }),
-      ]),
+      ]) as unknown,
     });
     expectSafeTeacherPayload(conversation.body);
 
-    const messages = await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}/messages`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const messages: TestResponse<TeacherConversationMessagesResponseDto> =
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}/messages`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
     expect(messages.body).toMatchObject({
       conversationId: ownConversationId,
       messages: expect.arrayContaining([
@@ -1595,11 +1653,11 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
             expect.objectContaining({
               downloadPath: expect.stringMatching(
                 /^\/api\/v1\/files\/.+\/download$/,
-              ),
+              ) as unknown,
             }),
           ],
         }),
-      ]),
+      ]) as unknown,
     });
     expectSafeTeacherPayload(messages.body);
 
@@ -1607,13 +1665,14 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       await prisma.communicationMessage.count({
         where: { conversationId: ownConversationId },
       });
-    const sent = await request(app.getHttpServer())
-      .post(
-        `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}/messages`,
-      )
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({ body: `${testMarker}-teacher-text-message` })
-      .expect(201);
+    const sent: TestResponse<TeacherConversationMessageResponseDto> =
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}/messages`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ body: `${testMarker}-teacher-text-message` })
+        .expect(201);
     createdCommunicationMessageIds.push(sent.body.message.messageId);
     expect(sent.body.message).toMatchObject({
       type: 'text',
@@ -1651,7 +1710,7 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       .expect(201);
     expect(read.body).toMatchObject({
       conversationId: ownConversationId,
-      markedCount: expect.any(Number),
+      markedCount: expect.any(Number) as unknown,
     });
 
     for (const conversationId of [
@@ -2272,7 +2331,9 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
   }
 
   async function login(email: string): Promise<{ accessToken: string }> {
-    const response = await request(app.getHttpServer())
+    const response: TestResponse<LoginResponseDto> = await request(
+      app.getHttpServer(),
+    )
       .post(`${GLOBAL_PREFIX}/auth/login`)
       .send({ email, password: PASSWORD })
       .expect(200);
@@ -2314,8 +2375,7 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
         .map(({ methodName, handler }) => ({
           controllerName: controller.name,
           methodName,
-          permissions:
-            Reflect.getMetadata(REQUIRED_PERMISSIONS_METADATA, handler) ?? [],
+          permissions: readHandlerPermissions(handler),
         })),
     ).sort((left, right) =>
       `${left.controllerName}.${left.methodName}`.localeCompare(
@@ -2328,12 +2388,26 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     controller: ControllerClass,
     methodName: string,
   ): string[] {
-    return (
-      Reflect.getMetadata(
-        REQUIRED_PERMISSIONS_METADATA,
-        getControllerHandler(controller, methodName),
-      ) ?? []
-    );
+    return readHandlerPermissions(getControllerHandler(controller, methodName));
+  }
+
+  function readHandlerPermissions(handler: unknown): string[] {
+    if (typeof handler !== 'function') {
+      throw new Error('Expected a controller handler function');
+    }
+
+    const permissions: unknown =
+      Reflect.getMetadata(REQUIRED_PERMISSIONS_METADATA, handler) ?? [];
+    if (
+      !Array.isArray(permissions) ||
+      !permissions.every(
+        (permission: unknown) => typeof permission === 'string',
+      )
+    ) {
+      throw new Error('Expected controller permissions to be a string array');
+    }
+
+    return permissions;
   }
 
   function getControllerHandler(
