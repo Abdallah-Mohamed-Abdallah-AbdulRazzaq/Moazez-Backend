@@ -6,12 +6,43 @@ import { PrismaService } from '../../src/infrastructure/database/prisma.service'
 import {
   AcademicContentTeacherAnalyticsRepository,
   teacherAcademicContentAnalyticsQuery,
+  type AcademicContentTeacherAnalyticsRow,
 } from '../../src/modules/academics/academic-content/infrastructure/academic-content-teacher-analytics.repository';
 import {
   AcademicContentTeacherAnalyticsFixture,
   type AnalyticsSource,
 } from '../fixtures/academic-content-teacher-analytics.fixture';
 import { assertDisposablePostgresTarget } from '../helpers/disposable-postgres-target';
+import { AcademicContentEngagementRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-engagement.repository';
+import { AcademicContentAcknowledgementRepository } from '../../src/modules/academics/academic-content/infrastructure/academic-content-acknowledgement.repository';
+
+function captureStatements(
+  tx: Prisma.TransactionClient,
+  statements: Prisma.Sql[],
+) {
+  const sql = (query: TemplateStringsArray | Prisma.Sql, values: unknown[]) =>
+    Array.isArray(query)
+      ? Prisma.sql(query as unknown as TemplateStringsArray, ...values)
+      : (query as Prisma.Sql);
+  return new Proxy(tx, {
+    get(target, key, receiver) {
+      if (key === '$queryRaw' || key === '$executeRaw') {
+        return (
+          query: TemplateStringsArray | Prisma.Sql,
+          ...values: unknown[]
+        ) => {
+          const statement = sql(query, values);
+          statements.push(statement);
+          return key === '$queryRaw'
+            ? target.$queryRaw(statement)
+            : target.$executeRaw(statement);
+        };
+      }
+      const value: unknown = Reflect.get(target, key, receiver);
+      return value;
+    },
+  });
+}
 
 type PlanNode = {
   'Node Type': string;
@@ -281,6 +312,12 @@ describe('ACC-11D representative scale and actual production parameterized query
         publicationId: undefined,
         range: '90d' as const,
       },
+      {
+        label: 'nonmatching-content-30d',
+        contentId: randomUUID(),
+        publicationId: undefined,
+        range: '30d' as const,
+      },
     ];
     for (const mode of modes) {
       // This is the production query factory called by repository.read, with
@@ -291,12 +328,20 @@ describe('ACC-11D representative scale and actual production parameterized query
         mode.range,
         mode.publicationId,
       );
-      const result = await reads.read(
-        fixture.scope,
-        mode.contentId,
-        mode.range,
-        mode.publicationId,
-      );
+      let result: AcademicContentTeacherAnalyticsRow | { httpStatus: number };
+      if (mode.label === 'nonmatching-content-30d') {
+        await expect(
+          reads.read(fixture.scope, mode.contentId, mode.range),
+        ).rejects.toMatchObject({ httpStatus: 404 });
+        result = { httpStatus: 404 };
+      } else {
+        result = await reads.read(
+          fixture.scope,
+          mode.contentId,
+          mode.range,
+          mode.publicationId,
+        );
+      }
       const explain = await prisma.$queryRaw<
         { 'QUERY PLAN': PlanDocument[] }[]
       >(Prisma.sql`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${sql}`);
@@ -370,5 +415,190 @@ describe('ACC-11D representative scale and actual production parameterized query
         }),
       );
     }
+  });
+  it('ACC-11E explains actual recipient authority, admission, event retry and acknowledgement statements in the large corpus', async () => {
+    const current = await fixture.ownedSource('GUARDIAN_WEEKLY_NOTE');
+    const statements: Prisma.Sql[] = [];
+    const engagement = new AcademicContentEngagementRepository(prisma);
+    const acknowledgements = new AcademicContentAcknowledgementRepository(
+      prisma,
+    );
+    const transaction = prisma.$transaction.bind(
+      prisma,
+    ) as typeof prisma.$transaction;
+    const capture = jest
+      .spyOn(prisma, '$transaction')
+      .mockImplementation(
+        (async (
+          callback: (tx: Prisma.TransactionClient) => Promise<unknown>,
+          options?: Parameters<typeof prisma.$transaction>[1],
+        ) =>
+          await transaction<unknown>(
+            (tx) => callback(captureStatements(tx, statements)),
+            options,
+          )) as typeof prisma.$transaction,
+      );
+    const context = fixture.parentContext();
+    const membershipId = fixture.parentMembershipId;
+    const command = {
+      eventType: 'CONTENT_VIEWED' as const,
+      clientRequestId: randomUUID(),
+    };
+    try {
+      await engagement.admit(context, membershipId);
+      await engagement.admit(context, membershipId);
+      const first = await engagement.record(
+        context,
+        membershipId,
+        current.content.id,
+        current.publication.id,
+        command,
+      );
+      expect(
+        await engagement.record(
+          context,
+          membershipId,
+          current.content.id,
+          current.publication.id,
+          command,
+        ),
+      ).toEqual(first);
+      const initial = await acknowledgements.resolve(
+        context,
+        membershipId,
+        current.content.id,
+        current.publication.id,
+        true,
+      );
+      expect(
+        await acknowledgements.resolve(
+          context,
+          membershipId,
+          current.content.id,
+          current.publication.id,
+          true,
+        ),
+      ).toEqual(initial);
+      for (const reference of [
+        { eventType: 'FILE_PREVIEWED' as const, fileId: current.file.id },
+        { eventType: 'LINK_CLICKED' as const, revisionLinkId: current.link.id },
+      ]) {
+        await engagement.record(
+          context,
+          membershipId,
+          current.content.id,
+          current.publication.id,
+          { ...reference, clientRequestId: randomUUID() },
+        );
+      }
+    } finally {
+      capture.mockRestore();
+    }
+    const before = await Promise.all([
+      prisma.academicContentEngagementEvent.count(),
+      prisma.academicContentAcknowledgement.count(),
+      prisma.academicContentEngagementAdmission.findFirstOrThrow({
+        where: { schoolId: context.schoolId, actorUserId: context.userId },
+      }),
+    ]);
+    const unique = [
+      ...new Map(
+        statements
+          .filter(
+            (statement) =>
+              !/^\s*(?:SET|SELECT clock_timestamp)/u.test(statement.text),
+          )
+          .map((statement) => [statement.text, statement]),
+      ).values(),
+    ];
+    expect(
+      unique.some((statement) =>
+        statement.text.includes(
+          'INSERT INTO academic_content_engagement_admissions',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      unique.some((statement) =>
+        statement.text.includes(
+          'INSERT INTO academic_content_engagement_events',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      unique.some((statement) =>
+        statement.text.includes(
+          'INSERT INTO academic_content_acknowledgements',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      unique.some((statement) =>
+        statement.text.includes(
+          'FROM academic_content_engagement_events event CROSS JOIN',
+        ),
+      ),
+    ).toBe(true);
+    const evidenceDirectory = join(
+      process.cwd(),
+      'coverage',
+      'acc11e',
+      'plans',
+      'recipient-mutations',
+    );
+    mkdirSync(evidenceDirectory, { recursive: true });
+    const rollback = new Error('ACC-11E explain-only fixture rollback');
+    for (const [index, statement] of unique.entries()) {
+      let document: PlanDocument | undefined;
+      await expect(
+        prisma.$transaction(async (tx) => {
+          await tx.$executeRaw`SET LOCAL statement_timeout = '3000ms'`;
+          const rows = await tx.$queryRaw<{ 'QUERY PLAN': PlanDocument[] }[]>(
+            Prisma.sql`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${statement}`,
+          );
+          document = rows[0]['QUERY PLAN'][0];
+          throw rollback;
+        }),
+      ).rejects.toBe(rollback);
+      if (!document) throw new Error('Missing actual statement plan');
+      writeFileSync(
+        join(
+          evidenceDirectory,
+          `statement-${index.toString().padStart(2, '0')}.json`,
+        ),
+        JSON.stringify(
+          {
+            productionSql: statement.text,
+            bindings: statement.values,
+            explain: document,
+            corpus: {
+              eligibleEventReports: 50000,
+              unrelatedEventReports: 192000,
+            },
+            replayMutation: 'ROLLED_BACK',
+          },
+          null,
+          2,
+        ),
+      );
+    }
+    expect(
+      await Promise.all([
+        prisma.academicContentEngagementEvent.count(),
+        prisma.academicContentAcknowledgement.count(),
+        prisma.academicContentEngagementAdmission.findFirstOrThrow({
+          where: { schoolId: context.schoolId, actorUserId: context.userId },
+        }),
+      ]),
+    ).toEqual(before);
+    console.log(
+      'ACC11E_RECIPIENT_MUTATION_PLANS',
+      JSON.stringify({
+        statements: unique.length,
+        eligibleEvents: 50000,
+        unrelatedEvents: 192000,
+        mutationReplay: 'ROLLED_BACK',
+      }),
+    );
   });
 });

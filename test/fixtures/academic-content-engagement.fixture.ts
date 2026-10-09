@@ -332,8 +332,11 @@ export class AcademicContentEngagementFixture {
       | 'INTERNAL_STAFF' = 'STUDENTS_AND_GUARDIANS',
     subject = false,
   ) {
-    const school = this.schools[index],
-      now = new Date(Date.now() - 5000);
+    const school = this.schools[index];
+    const [{ at }] = await this.prisma.$queryRaw<
+      { at: Date }[]
+    >`SELECT clock_timestamp() AS at`;
+    const now = new Date(at.getTime() - 5000);
     const content = await this.prisma.academicContent.create({
       data: {
         schoolId: school.schoolId,
@@ -352,8 +355,8 @@ export class AcademicContentEngagementFixture {
             state: {
               platform: 'ZOOM',
               providerName: null,
-              startAt: new Date(Date.now() - 60000).toISOString(),
-              endAt: new Date(Date.now() + 3600000).toISOString(),
+              startAt: new Date(at.getTime() - 60000).toISOString(),
+              endAt: new Date(at.getTime() + 3600000).toISOString(),
               joinUrl: 'https://example.test/private-join',
               accessCode: null,
               instructions: null,
