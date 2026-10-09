@@ -89,15 +89,16 @@ export class AcademicContentAcknowledgementService {
     }
     try {
       if (write) await this.repository.admit(context, membership.membershipId);
-      const result = await this.repository.resolve(
+      const outcome = await this.repository.resolveWithOutcome(
         context,
         membership.membershipId,
         contentId.toLowerCase(),
         expectedPublicationId.toLowerCase(),
         write,
       );
+      const result = outcome.result;
       // The repository promise resolves only after commit and the final eligibility recheck.
-      if (write) this.signal(result.created ? 'accepted' : 'identical_retry');
+      if (write) this.signal(outcome.created ? 'accepted' : 'identical_retry');
       return {
         publicationId: result.publicationId,
         revisionId: result.revisionId,

@@ -52,6 +52,8 @@ Signals use the existing Nest Logger. The event and outcome fields form a fixed 
 
 Only trusted request correlation is added. No School/user/student/guardian/content identifiers, client request keys, body/text/name, private URL/file key, SQL/bindings, arbitrary exception messages, JWT/device token or signed capability is included in these signals. GET ACK produces no accepted-write signal. Sink failure cannot alter the operation's result. Existing HTTP envelopes, retry headers, authority checks and transaction ordering remain authoritative.
 
+ACK repository `resolve` retains its existing result shape and retry equality. `resolveWithOutcome` returns a separate internal outcome envelope, populated by a per-call observer after the original resolver transaction commits; the insert affected-row count does not become an enumerable field on the legacy resolver result or a public DTO.
+
 DevOps must verify actual log level/collection includes these structured signals, apply retention/access restrictions approved by the Owner, build aggregate outcome/latency views and obtain live alert thresholds/on-call acceptance. This document supplies the application signal contract; production monitoring and alerts have not passed. Existing unrelated logger behavior and the GlobalExceptionFilter are outside this approved amendment.
 
 ## Release boundary
