@@ -109,7 +109,11 @@ The first final changed-test command accidentally used Node's default heap and e
 
 The starting deterministic plan dynamically discovered 982 active test files (992 total, 10 historical/manual) across 26 shards, with zero missing or duplicate assignments. Adding the audit does not add or exclude a test file. The unchanged workflow's expected expanded job count is 35; final actual jobs and check runs are measured from GitHub.
 
-Exact-head remote CI is pending creation of the authorized Draft PR. No remote CI pass, artifact digest or complete execution parity is claimed at this point. The final closeout requires all mandatory checks on the actual remote feature head, downloading and digest-verifying the canonical artifact, and reproducing the canonical aggregate with the unchanged implementation. The document will record the verified implementation run before final delivery.
+The implementation commit `f4e8482e8ac13c43abd5ad54757cf458395ddb24` passed the complete exact-head [CI run](https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/37939178308), attempt 1. All 35 jobs and 35 check runs succeeded. The unchanged canonical plan contained 26 shards and discovered/executed 982/982 active test files. Missing, duplicate and unexpected execution counts were all zero. Preflight, every shard, migration governance and cleanup passed; the aggregate contained no issues or failure classifications.
+
+All 31 run artifacts were downloaded and their ZIP SHA-256 digests matched the GitHub artifact metadata. Canonical aggregate artifact ID: `11620309273`; ZIP SHA-256: `bf576a075c97eed36ee18962ccd54850a06846aff2556ac8e728bfcd0fe5fa9b`; summary SHA-256: `45ff42326cfce2c650ae5d08ac53b780f723149d4a5f6cc759e8348ce217763e`. The repository's unchanged `aggregateCi` implementation reproduced the downloaded canonical summary byte for byte from the plan and every shard receipt.
+
+Evidence: `coverage/acc-phase3-lint/ci-37939178308/verification.json` and the downloaded plan, raw shard/test reports, aggregate and ZIPs. This audit-only follow-up does not change the three validated TypeScript sources. The final delivery also requires a successful exact-head CI run for the follow-up commit, verified and retained separately in task-local evidence and the delivery report; it is not inferred from the earlier run.
 
 ## Repository-wide diagnostic inventory
 
