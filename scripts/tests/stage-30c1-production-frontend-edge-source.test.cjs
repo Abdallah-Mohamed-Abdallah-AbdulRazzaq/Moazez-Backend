@@ -20,6 +20,14 @@ const EDGE_NONPROD_ROOT = 'infra/gcp/edge/environments/nonprod';
 const EDGE_MODULE = 'infra/gcp/edge/modules/edge-environment';
 const TEST_PATH =
   'scripts/tests/stage-30c1-production-frontend-edge-source.test.cjs';
+const NR11_T3A_PATHS = Object.freeze([
+  'infra/gcp/artifact-registry/README.md',
+  'infra/gcp/artifact-registry/environments/production/teacher-web.tf',
+  `${ARTIFACT_DOMAIN}/README.md`,
+  `${ARTIFACT_ROOT}/teacher-web.tf`,
+  'scripts/tests/stage-26c-production-foundation-source.test.cjs',
+  TEST_PATH,
+]);
 const HISTORICAL_STAGE28_REMEDIATION_PATH =
   'scripts/tests/stage-28a-production-migration-job-source.test.cjs';
 const HISTORICAL_STAGE29_REMEDIATION_PATH =
@@ -364,6 +372,16 @@ function assertStage30C1CandidateScope(candidateFiles) {
 }
 
 function assertCommittedStage30C1CandidateScope(candidateFiles) {
+  if (
+    candidateFiles.some((file) => file.endsWith('/production/teacher-web.tf'))
+  ) {
+    assert.deepEqual(
+      candidateFiles.filter((file) => !NR11_T3A_PATHS.includes(file)),
+      [],
+    );
+    return false;
+  }
+
   // Connection-envelope math has its own capacity contracts. It does not
   // activate frontend release orchestration or reopen historical Stage 30C1.
   const capacityContractPaths = new Set([
@@ -414,7 +432,10 @@ function isDay2D1ReleaseOrchestrationPath(file) {
 
 test('Stage 30C1 domains have exactly the governed source structure and ignore policy', () => {
   assert.equal(AUTHORIZED_STAGE30C1_PATHS.length, 34);
-  assert.deepEqual(filesInDirectory(ARTIFACT_ROOT), TERRAFORM_ROOT_FILES);
+  assert.deepEqual(
+    filesInDirectory(ARTIFACT_ROOT),
+    [...TERRAFORM_ROOT_FILES, 'teacher-web.tf'].sort(),
+  );
   assert.deepEqual(filesInDirectory(ARTIFACT_MODULE), MODULE_FILES);
   assert.deepEqual(filesInDirectory(RUNTIME_ROOT), RUNTIME_ROOT_FILES);
   assert.deepEqual(filesInDirectory(RUNTIME_MODULE), MODULE_FILES);
@@ -531,6 +552,45 @@ test('Artifact identity references the existing pool and owns exactly four indep
   assert.doesNotMatch(main, /\|\||pull_request|repository\s*==|[*]/u);
 });
 
+test('Teacher writer root adds exactly one repository member for the existing shared builder', () => {
+  const rootSource = filesInDirectory(ARTIFACT_ROOT)
+    .filter((file) => file.endsWith('.tf'))
+    .map((file) => normalizedHclSource(`${ARTIFACT_ROOT}/${file}`))
+    .join('\n');
+  assert.deepEqual(resourceAddresses(rootSource), [
+    'google_artifact_registry_repository_iam_member.teacher_web_artifact_writer',
+  ]);
+  const teacherSource = normalizedHclSource(`${ARTIFACT_ROOT}/teacher-web.tf`);
+  const writer = resourceBlock(
+    teacherSource,
+    'google_artifact_registry_repository_iam_member',
+    'teacher_web_artifact_writer',
+  );
+  for (const [key, value] of Object.entries({
+    project: '"moazez-production"',
+    location: '"me-central2"',
+    repository: '"moazez-production-teacher-web"',
+    role: '"roles/artifactregistry.writer"',
+    member:
+      '"serviceAccount:${module.frontend_artifact_identity_environment.builder_service_account_email}"',
+  })) {
+    assert.equal(assignmentExpression(writer, key), value);
+  }
+  assert.equal((writer.match(/^\s*[a-z_]+\s*=/gmu) ?? []).length, 5);
+  assert.doesNotMatch(teacherSource, /^\s*(?:module|data|import|moved)\s/mu);
+  assert.doesNotMatch(
+    rootSource,
+    /terraform_remote_state|roles\/iam[.]serviceAccountTokenCreator|roles\/(?:owner|editor)/u,
+  );
+  const moduleMain = normalizedHclSource(`${ARTIFACT_MODULE}/main.tf`);
+  assert.equal(
+    resourceAddresses(`${rootSource}\n${moduleMain}`).filter((address) =>
+      address.startsWith('google_artifact_registry_repository_iam_member.'),
+    ).length,
+    2,
+  );
+});
+
 test('Frontend WIF provider display names are exact literals within the 32-character limit', () => {
   const main = normalizedHclSource(`${ARTIFACT_MODULE}/main.tf`);
   for (const [providerName, expectedName, expectedLength] of [
@@ -557,7 +617,7 @@ test('Frontend WIF provider display names are exact literals within the 32-chara
   }
 });
 
-test('Artifact builder is protected and has only four exact WIF grants plus repository writer', () => {
+test('Artifact identity module preserves the protected builder, four exact WIF grants, and shared repository writer', () => {
   const main = normalizedHclSource(`${ARTIFACT_MODULE}/main.tf`);
   const builder = resourceBlock(
     main,
@@ -1825,6 +1885,14 @@ test('READMEs preserve source-only, build-time, and Dark pre-DNS boundaries', ()
     'moazez-teacher-app-main',
     '1412551303',
     'Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Teacher-App',
+    'moazez-production-teacher-web',
+    'does not enforce per-repository publisher',
+    'All four already-approved',
+    'zero existing',
+    'not evidence of a real Terraform Plan',
+    'never apply either automatically',
+    'service-91001421934@serverless-robot-prod.iam.gserviceaccount.com',
+    'roles/artifactregistry.reader',
   ]) {
     assert.ok(artifactReadme.includes(required), required);
   }
@@ -1942,5 +2010,22 @@ test('Candidate scope activation accepts each domain and rejects mixed or later-
     assert.throws(() => assertStage30C1CandidateScope(candidate), {
       code: 'ERR_ASSERTION',
     });
+  }
+});
+
+test('NR11-T3A scope rejects changes to existing identity, registry, and runtime resources', () => {
+  assert.equal(assertCommittedStage30C1CandidateScope(NR11_T3A_PATHS), false);
+  for (const forbidden of [
+    `${ARTIFACT_ROOT}/main.tf`,
+    `${ARTIFACT_MODULE}/main.tf`,
+    'infra/gcp/artifact-registry/modules/artifact-registry-environment/main.tf',
+    `${RUNTIME_ROOT}/main.tf`,
+    `${EDGE_ROOT}/main.tf`,
+  ]) {
+    assert.throws(
+      () =>
+        assertCommittedStage30C1CandidateScope([...NR11_T3A_PATHS, forbidden]),
+      { code: 'ERR_ASSERTION' },
+    );
   }
 });
