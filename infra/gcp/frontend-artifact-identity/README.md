@@ -1,15 +1,15 @@
 # Production frontend artifact identity Terraform source
 
 This isolated Terraform domain prepares the Production build identity used by
-the Platform Admin, School Dashboard, and Student App repositories. It is
-source-only: local validation must not initialize the real backend, run a plan
+the Platform Admin, School Dashboard, Student App, and Teacher App repositories.
+It is source-only: local validation must not initialize the real backend, run a plan
 or apply, mutate Google Cloud IAM, build a frontend image, or push an artifact.
 
 ## Ownership boundary
 
 This stack references the existing `moazez-github-production` Workload
 Identity Pool without creating, importing, or claiming it. It does not modify
-the existing Backend provider `moazez-backend-main` or allow either frontend
+the existing Backend provider `moazez-backend-main` or allow any frontend
 repository to impersonate the Production IaC deployer.
 
 It owns exactly:
@@ -20,15 +20,21 @@ It owns exactly:
   owner ID `127324203`, and `refs/heads/main`;
 - `moazez-student-app-main`, restricted to repository ID `1391516333`,
   owner ID `127324203`, and `refs/heads/main`;
+- `moazez-teacher-app-main`, restricted to repository ID `1412551303`,
+  owner ID `127324203`, and `refs/heads/main`, for
+  `Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Teacher-App`;
 - `moazez-ui-artifact-builder@moazez-production.iam.gserviceaccount.com`;
-- three repository-ID-scoped `roles/iam.workloadIdentityUser` memberships on
+- four repository-ID-scoped `roles/iam.workloadIdentityUser` memberships on
   that builder;
 - one `roles/artifactregistry.writer` membership on only
   `moazez-production-containers` in `me-central2`.
 
-These are three providers, one shared builder, and one Artifact Registry writer
+These are four providers, one shared builder, and one Artifact Registry writer
 binding. No service-account keys, runtime identity grants, or secrets are
-created here. Student Web has no staging WIF provider.
+created here. Student Web and Teacher Web have no staging WIF provider.
+
+Teacher artifact publication reuses the existing builder and repository writer.
+Teacher runtime, edge routing, and backend CORS remain separately governed.
 
 The builder receives no Cloud Run, Terraform state, Secret Manager, database,
 Redis, storage bucket, project-wide, runtime `actAs`, or service-account key

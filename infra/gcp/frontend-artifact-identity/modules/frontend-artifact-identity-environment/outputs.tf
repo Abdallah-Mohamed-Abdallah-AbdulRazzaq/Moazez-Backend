@@ -17,3 +17,8 @@ output "student_wif_provider_name" {
   description = "Full name of the Student App GitHub OIDC provider."
   value       = google_iam_workload_identity_pool_provider.student.name
 }
+
+output "teacher_wif_provider_name" {
+  description = "Full name of the Teacher App GitHub OIDC provider."
+  value       = google_iam_workload_identity_pool_provider.teacher.name
+}
