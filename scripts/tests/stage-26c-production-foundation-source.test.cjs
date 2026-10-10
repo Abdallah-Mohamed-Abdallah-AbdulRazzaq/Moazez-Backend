@@ -15,6 +15,14 @@ const TEST_PATH =
   'scripts/tests/stage-26c-production-foundation-source.test.cjs';
 const PT2_TEST_PATH =
   'scripts/tests/pt-2-backend-firebase-production-bootstrap.test.cjs';
+const NR11_T3A_PATHS = Object.freeze([
+  'infra/gcp/artifact-registry/README.md',
+  'infra/gcp/artifact-registry/environments/production/teacher-web.tf',
+  'infra/gcp/frontend-artifact-identity/README.md',
+  'infra/gcp/frontend-artifact-identity/environments/production/teacher-web.tf',
+  TEST_PATH,
+  'scripts/tests/stage-30c1-production-frontend-edge-source.test.cjs',
+]);
 const PT2_STAGE26_DELEGATED_PATHS = Object.freeze(
   [
     'infra/gcp/runtime-iam/modules/runtime-iam-environment/main.tf',
@@ -83,6 +91,14 @@ function assertCommittedStage26CandidateScope(
     ...new Set(candidateFiles.map((file) => file.replace(/\\/gu, '/'))),
   ].sort();
   if (!normalized.includes(TEST_PATH)) return false;
+
+  if (normalized.some((file) => file.endsWith('/production/teacher-web.tf'))) {
+    assert.deepEqual(
+      normalized.filter((file) => !NR11_T3A_PATHS.includes(file)),
+      [],
+    );
+    return false;
+  }
 
   const pt2DelegationActive = normalized.includes(PT2_TEST_PATH);
   if (pt2DelegationActive) {
@@ -798,8 +814,11 @@ test('all four Production roots and Staging baselines are exact', () => {
     const nonprodRoot = `${config.root}/environments/nonprod`;
     assert.deepEqual(
       fs.readdirSync(absolutePath(productionRoot)).sort(),
-      [...ROOT_FILES].sort(),
-      `${productionRoot} must contain exactly six files.`,
+      [
+        ...ROOT_FILES,
+        ...(config === DOMAINS.artifactRegistry ? ['teacher-web.tf'] : []),
+      ].sort(),
+      `${productionRoot} must contain exactly the governed files.`,
     );
 
     const main = normalizedSource(`${productionRoot}/main.tf`);
@@ -807,7 +826,12 @@ test('all four Production roots and Staging baselines are exact', () => {
     const providers = normalizedSource(`${productionRoot}/providers.tf`);
     const versions = normalizedSource(`${productionRoot}/versions.tf`);
     const rootSource = terraformFiles(productionRoot);
-    assert.equal(findResources(rootSource).length, 0);
+    assert.deepEqual(
+      findResources(rootSource).map(({ type, name }) => [type, name]),
+      config === DOMAINS.artifactRegistry
+        ? [['google_artifact_registry_repository', 'teacher_web']]
+        : [],
+    );
     assert.equal((rootSource.match(/^\s*data\s+"/gmu) ?? []).length, 0);
     assert.equal((rootSource.match(/^\s*module\s+"/gmu) ?? []).length, 1);
     const moduleCaller = extractBlock(
@@ -901,16 +925,23 @@ test('Secret Manager source owns exactly eight safe Production containers', () =
   console.log('PRODUCTION_SECRET_CONTAINER_SOURCE_COUNT=8');
 });
 
-test('Artifact Registry source owns exactly one governed Docker repository', () => {
+test('Artifact Registry source preserves the shared repository and adds only immutable Teacher Web', () => {
   const config = DOMAINS.artifactRegistry;
   const moduleMain = normalizedSource(`${config.module}/main.tf`);
   const moduleVariables = normalizedSource(`${config.module}/variables.tf`);
   const resources = findResources(terraformFiles(config.root));
   assert.deepEqual(
     resources.map(({ type, name }) => [type, name]),
-    [['google_artifact_registry_repository', 'this']],
+    [
+      ['google_artifact_registry_repository', 'teacher_web'],
+      ['google_artifact_registry_repository', 'this'],
+    ],
   );
-  const repository = resources[0].body;
+  const repository = resourceByName(
+    resources,
+    'google_artifact_registry_repository',
+    'this',
+  );
   assert.match(repository, /repository_id\s*=\s*var\.repository_id/u);
   assert.match(repository, /description\s*=\s*local\.repository_descriptions\[var\.environment\]/u);
   assert.match(moduleMain, /"Stores Moazez staging container artifacts\."/u);
@@ -927,7 +958,44 @@ test('Artifact Registry source owns exactly one governed Docker repository', () 
     moduleMain,
     /cleanup_policies|remote_repository_config|virtual_repository_config|docker_config/u,
   );
-  console.log('PRODUCTION_ARTIFACT_REPOSITORY_SOURCE_COUNT=1');
+  const teacher = resourceByName(
+    resources,
+    'google_artifact_registry_repository',
+    'teacher_web',
+  );
+  assert.deepEqual(parseSimpleAssignments(teacher), {
+    project: 'var.project_id',
+    location: 'var.location',
+    repository_id: '"moazez-production-teacher-web"',
+    description:
+      '"Stores immutable Moazez Production Teacher Web container artifacts."',
+    format: '"DOCKER"',
+    mode: '"STANDARD_REPOSITORY"',
+    deletion_policy: '"PREVENT"',
+    immutable_tags: 'true',
+    labels: '{',
+    environment: 'var.environment',
+    component: '"artifact-registry"',
+    managed_by: '"terraform"',
+    prevent_destroy: 'true',
+  });
+  assert.deepEqual(
+    parseSimpleAssignments(
+      extractBlock(teacher, /docker_config\s*\{/u, 'Teacher Docker config'),
+    ),
+    { immutable_tags: 'true' },
+  );
+  assert.deepEqual(
+    parseSimpleAssignments(
+      extractBlock(teacher, /lifecycle\s*\{/u, 'Teacher lifecycle'),
+    ),
+    { prevent_destroy: 'true' },
+  );
+  assert.doesNotMatch(
+    teacher,
+    /cleanup_policies|remote_repository_config|virtual_repository_config|count\s*=|for_each\s*=/u,
+  );
+  console.log('PRODUCTION_ARTIFACT_REPOSITORY_SOURCE_COUNT=2');
 });
 
 test('Runtime IAM owns two accounts, ten secret grants, and one Core Worker FCM project member', () => {
@@ -1290,6 +1358,23 @@ test('Stage 26C committed scope delegates only the bounded PT-2 evolution', () =
     () => assertStage26CandidateScope([TEST_PATH, PT2_TEST_PATH]),
     { code: 'ERR_ASSERTION' },
   );
+});
+
+test('NR11-T3A scope allows exactly the two additive roots, documentation, and governed tests', () => {
+  assert.equal(assertCommittedStage26CandidateScope(NR11_T3A_PATHS), false);
+  for (const forbidden of [
+    'infra/gcp/artifact-registry/environments/production/main.tf',
+    'infra/gcp/artifact-registry/modules/artifact-registry-environment/main.tf',
+    'infra/gcp/frontend-artifact-identity/modules/frontend-artifact-identity-environment/main.tf',
+    'infra/gcp/frontend-runtime/environments/production/main.tf',
+    '.github/workflows/production-teacher-image.yml',
+  ]) {
+    assert.throws(
+      () =>
+        assertCommittedStage26CandidateScope([...NR11_T3A_PATHS, forbidden]),
+      { code: 'ERR_ASSERTION' },
+    );
+  }
 });
 
 test('Stage 26C TAP has the exact active CI owner assignment', () => {

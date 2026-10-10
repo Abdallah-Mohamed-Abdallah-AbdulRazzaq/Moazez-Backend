@@ -41,13 +41,14 @@ owned by later deployment stages.
 
 ## Exact ownership boundary
 
-This Terraform domain owns exactly one managed resource and no data sources:
+The historical Stage 10B Staging root owns exactly one managed resource and no
+data sources:
 
 ```text
 module.artifact_registry_environment.google_artifact_registry_repository.this
 ```
 
-The stack does not push application images, configure Docker authentication,
+The Stage 10B stack does not push application images, configure Docker authentication,
 own IAM, own Workload Identity Federation, own service accounts, enable the
 Artifact Registry API, implement artifact promotion, implement cleanup policy,
 implement signing/provenance/SBOM policy, or create Production infrastructure.
@@ -60,10 +61,10 @@ present during Stage 10A discovery. Runtime IAM is owned by Stage 11. GitHub
 WIF and deployer authorization are owned by Stage 12. Artifact build, push, and
 deployment are owned by later deployment stages.
 
-Production Artifact Registry is not part of this root and must not be created
+Production Artifact Registry is not part of the Staging root and must not be created
 during Stage 10. PRD0-D032 remains the owner decision for the later promotion,
 staging-equivalence, and registry-policy contract. Accordingly, this source
-does not configure cleanup policies, immutable tags, vulnerability-scanning
+Stage 10B does not configure cleanup policies, immutable tags, vulnerability-scanning
 configuration, release or promotion tags, canary or soak behavior, or
 same-digest promotion automation. Future deployments must consume released
 artifacts by immutable digest, but that workflow is outside Stage 10B.
@@ -105,9 +106,9 @@ PRODUCTION_ARTIFACTS_PUSHED=NO
 PRODUCTION_RUNTIME_DEPLOYED=NO
 ```
 
-Stage 26C adds a separate Production source root without changing the
-historical Staging root. It models exactly one standard Docker repository and
-does not push an image or package, configure authentication, add cleanup/tag
+Stage 26C added a separate Production source root without changing the
+historical Staging root. That baseline modeled exactly one standard Docker
+repository and did not push an image or package, configure authentication, add cleanup/tag
 policies, or implement artifact promotion, signing, provenance, SBOM, canary,
 or soak behavior.
 
@@ -145,3 +146,73 @@ STAGE26_TERRAFORM_STATE_RESIDUE=0
 IMPORT_REQUIRED=NO
 LEGACY_RESOURCE_REUSE_REQUIRED=NO
 ```
+
+## NR11-T3A isolated immutable Teacher Web repository
+
+This source-only addition declares
+`google_artifact_registry_repository.teacher_web` directly in the Production
+root. It preserves the existing
+`module.artifact_registry_environment.google_artifact_registry_repository.this`,
+its shared `moazez-production-containers` configuration, labels, IAM, package
+paths, and state address. The shared repository's observed `immutableTags=false`
+is supplied task context, not a live check performed here. Its module receives
+no `docker_config` change; Teacher's immutable-tag publication guard must remain
+strict. The Staging root and shared module are unchanged.
+
+| Component | Teacher source value |
+| --- | --- |
+| Project | `moazez-production` |
+| Location | `me-central2` |
+| Repository ID | `moazez-production-teacher-web` |
+| Format / mode | `DOCKER` / `STANDARD_REPOSITORY` |
+| `docker_config.immutable_tags` | `true` |
+| Provider deletion policy | `PREVENT` |
+| Terraform lifecycle `prevent_destroy` | `true` |
+| Future image package | `me-central2-docker.pkg.dev/moazez-production/moazez-production-teacher-web/moazez-teacher-web` |
+
+Immutable tags are enforced by the repository. The deletion policy and lifecycle
+protect Terraform repository deletion; they do not establish publisher isolation
+or a general artifact-retention policy. No package, image, cleanup policy, or
+reader IAM grant is created by this source.
+
+### Expected future deployment scope and order
+
+These are source-derived expectations, **not evidence of a real Terraform Plan**.
+No remote-state initialization, plan, apply, import, GCP mutation, image push, or
+workflow dispatch is authorized or performed by NR11-T3A.
+
+| Production state prefix | Expected additions | Expected existing resource changes |
+| --- | --- | --- |
+| `artifact-registry/production` | 1 repository: `google_artifact_registry_repository.teacher_web` | 0 |
+| `frontend-artifact-identity/production` | 1 repository IAM membership: `google_artifact_registry_repository_iam_member.teacher_web_artifact_writer` | 0 |
+
+The eventual separately authorized saved-plan stage must independently inspect
+actual state and live resources, confirm ownership and the exact additions,
+and reject existing-resource updates, replacements, or deletions. A collision
+or drift requires review; this task supplies no import or repair authorization.
+The state bucket and both state prefixes remain unchanged.
+
+1. Review and authorize the Artifact Registry saved plan separately. Apply only
+   that approved plan, then verify the new repository's project, location, ID,
+   format, mode, immutable tags, and protection settings while confirming the
+   shared repository is unchanged.
+2. Only after repository creation and verification, review and authorize the
+   Frontend Artifact Identity saved plan separately. Apply only that approved
+   plan, then verify the existing builder's repository-scoped writer membership
+   and preservation of all existing providers, accounts, and IAM memberships.
+3. Update the Teacher App publication destination in a separate reviewed task
+   after infrastructure review and required deployment verification. This task
+   changes no Teacher App source or publication guard.
+
+Never apply either stack automatically. The separate states have no Terraform
+dependency edge; the operator must enforce this order. See the
+[shared-builder trust boundary and later Cloud Run reader prerequisites](../frontend-artifact-identity/README.md#nr11-t3a-shared-builder-trust-boundary).
+
+### Local source validation
+
+Validate each Production root independently with its own fresh external
+`TF_DATA_DIR`, outside all Git worktrees. Run `terraform fmt -check`, followed by
+`terraform init -backend=false -input=false -no-color -lockfile=readonly` and
+`terraform validate -no-color` for each root. Keep the committed provider lock
+files unchanged. These checks validate source and provider schemas without
+accessing remote Terraform State and cannot prove the future deployment scope.
