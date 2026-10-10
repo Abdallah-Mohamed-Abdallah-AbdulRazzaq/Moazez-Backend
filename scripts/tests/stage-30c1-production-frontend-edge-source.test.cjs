@@ -452,6 +452,9 @@ test('Artifact identity root locks the exact Production backend and provider', (
     '1391516333',
     'moazez-student-app-main',
     'Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Student-App',
+    '1412551303',
+    'moazez-teacher-app-main',
+    'Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Teacher-App',
     'moazez-ui-artifact-builder',
     'me-central2',
     'moazez-production-containers',
@@ -460,23 +463,26 @@ test('Artifact identity root locks the exact Production backend and provider', (
   }
 });
 
-test('Artifact identity references the existing pool and owns exactly three independent frontend providers', () => {
+test('Artifact identity references the existing pool and owns exactly four independent frontend providers', () => {
   const main = normalizedHclSource(`${ARTIFACT_MODULE}/main.tf`);
   assert.deepEqual(resourceAddresses(main), [
     'google_artifact_registry_repository_iam_member.artifact_writer',
     'google_iam_workload_identity_pool_provider.platform_admin',
     'google_iam_workload_identity_pool_provider.school_dashboard',
     'google_iam_workload_identity_pool_provider.student',
+    'google_iam_workload_identity_pool_provider.teacher',
     'google_service_account.artifact_builder',
     'google_service_account_iam_member.platform_admin_workload_identity_user',
     'google_service_account_iam_member.school_dashboard_workload_identity_user',
     'google_service_account_iam_member.student_workload_identity_user',
+    'google_service_account_iam_member.teacher_workload_identity_user',
   ]);
   assert.doesNotMatch(main, /resource\s+"google_iam_workload_identity_pool"/u);
   for (const providerName of [
     'platform_admin',
     'school_dashboard',
     'student',
+    'teacher',
   ]) {
     const provider = resourceBlock(
       main,
@@ -494,7 +500,7 @@ test('Artifact identity references the existing pool and owns exactly three inde
         /issuer_uri\s*=\s*"https:\/\/token[.]actions[.]githubusercontent[.]com"/gu,
       ) ?? []
     ).length,
-    3,
+    4,
   );
   for (const mapping of [
     '"google.subject"                = "assertion.sub"',
@@ -504,7 +510,7 @@ test('Artifact identity references the existing pool and owns exactly three inde
     '"attribute.repository_owner_id" = "assertion.repository_owner_id"',
     '"attribute.ref"                 = "assertion.ref"',
   ]) {
-    assert.equal(main.split(mapping).length - 1, 3, mapping);
+    assert.equal(main.split(mapping).length - 1, 4, mapping);
   }
   assert.match(
     main,
@@ -518,6 +524,10 @@ test('Artifact identity references the existing pool and owns exactly three inde
     main,
     /student_attribute_condition\s*=\s*format\([\s\S]*?var[.]student_repository_id,[\s\S]*?var[.]github_owner_id,[\s\S]*?var[.]github_allowed_ref,/u,
   );
+  assert.match(
+    main,
+    /teacher_attribute_condition\s*=\s*format\([\s\S]*?var[.]teacher_repository_id,[\s\S]*?var[.]github_owner_id,[\s\S]*?var[.]github_allowed_ref,/u,
+  );
   assert.doesNotMatch(main, /\|\||pull_request|repository\s*==|[*]/u);
 });
 
@@ -527,6 +537,7 @@ test('Frontend WIF provider display names are exact literals within the 32-chara
     ['platform_admin', 'MOAZEZ Platform Admin main', 26],
     ['school_dashboard', 'MOAZEZ School Dashboard main', 28],
     ['student', 'MOAZEZ Student App main', 23],
+    ['teacher', 'MOAZEZ Teacher App main', 23],
   ]) {
     const provider = resourceBlock(
       main,
@@ -546,7 +557,7 @@ test('Frontend WIF provider display names are exact literals within the 32-chara
   }
 });
 
-test('Artifact builder is protected and has only three exact WIF grants plus repository writer', () => {
+test('Artifact builder is protected and has only four exact WIF grants plus repository writer', () => {
   const main = normalizedHclSource(`${ARTIFACT_MODULE}/main.tf`);
   const builder = resourceBlock(
     main,
@@ -576,6 +587,7 @@ test('Artifact builder is protected and has only three exact WIF grants plus rep
       'school_dashboard_repository_id',
     ],
     ['student_workload_identity_user', 'student', 'student_repository_id'],
+    ['teacher_workload_identity_user', 'teacher', 'teacher_repository_id'],
   ];
   for (const [name, provider, repositoryId] of grants) {
     const grant = resourceBlock(
@@ -660,6 +672,7 @@ test('Artifact identity denies broad roles, keys, secrets, runtime actAs, and un
       'platform_admin_wif_provider_name',
       'school_dashboard_wif_provider_name',
       'student_wif_provider_name',
+      'teacher_wif_provider_name',
     ].sort(),
   );
   assert.deepEqual(
@@ -669,6 +682,7 @@ test('Artifact identity denies broad roles, keys, secrets, runtime actAs, and un
       'platform_admin_wif_provider_name',
       'school_dashboard_wif_provider_name',
       'student_wif_provider_name',
+      'teacher_wif_provider_name',
     ].sort(),
   );
 });
@@ -692,6 +706,9 @@ test('Artifact identity is fail-closed to the exact Production tuple and Backend
     '1335686453',
     '1391516333',
     'Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Student-App',
+    'moazez-teacher-app-main',
+    '1412551303',
+    'Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Teacher-App',
     '127324203',
     'refs/heads/main',
     'moazez-ui-artifact-builder',
@@ -707,17 +724,22 @@ test('Artifact identity is fail-closed to the exact Production tuple and Backend
   );
 });
 
-test('Student WIF uses the exact repository-ID condition and shared builder principal', () => {
+function assertArtifactRepositoryIdentity(
+  surface,
+  repository,
+  repositoryId,
+  providerId,
+) {
   const root = normalizedHclSource(`${ARTIFACT_ROOT}/main.tf`);
   const main = normalizedHclSource(`${ARTIFACT_MODULE}/main.tf`);
   const variables = normalizedHclSource(`${ARTIFACT_MODULE}/variables.tf`);
   for (const [name, value] of [
     [
-      'student_repository',
-      'Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Student-App',
+      `${surface}_repository`,
+      `Abdallah-Mohamed-Abdallah-AbdulRazzaq/${repository}`,
     ],
-    ['student_repository_id', '1391516333'],
-    ['student_wif_provider_id', 'moazez-student-app-main'],
+    [`${surface}_repository_id`, repositoryId],
+    [`${surface}_wif_provider_id`, providerId],
   ]) {
     assert.equal(assignmentExpression(root, name), JSON.stringify(value));
     assert.equal(
@@ -750,26 +772,37 @@ test('Student WIF uses the exact repository-ID condition and shared builder prin
   const provider = resourceBlock(
     main,
     'google_iam_workload_identity_pool_provider',
-    'student',
+    surface,
   );
   assert.equal(
     assignmentExpression(provider, 'workload_identity_pool_provider_id'),
-    'var.student_wif_provider_id',
+    `var.${surface}_wif_provider_id`,
   );
   assert.equal(
     assignmentExpression(provider, 'attribute_condition'),
-    'local.student_attribute_condition',
+    `local.${surface}_attribute_condition`,
   );
   assert.match(
     provider,
     /issuer_uri\s*=\s*"https:\/\/token[.]actions[.]githubusercontent[.]com"/u,
   );
   assert.match(provider, /condition\s*=\s*local[.]governed_contract/u);
-  const condition = assignmentExpression(main, 'student_attribute_condition');
-  assert.equal(condition, 'format(');
-  assert.match(
+  const condition = assignmentExpression(
     main,
-    /student_attribute_condition\s*=\s*format\(\s*"assertion[.]repository_id == \\"%s\\" && assertion[.]repository_owner_id == \\"%s\\" && assertion[.]ref == \\"%s\\""/u,
+    `${surface}_attribute_condition`,
+  );
+  assert.equal(condition, 'format(');
+  assert.ok(
+    main.includes(
+      [
+        `  ${surface}_attribute_condition = format(`,
+        '    "assertion.repository_id == \\"%s\\" && assertion.repository_owner_id == \\"%s\\" && assertion.ref == \\"%s\\"",',
+        `    var.${surface}_repository_id,`,
+        '    var.github_owner_id,',
+        '    var.github_allowed_ref,',
+        '  )',
+      ].join('\n'),
+    ),
   );
   assert.equal(
     (main.match(/^resource\s+"google_service_account"\s+/gmu) ?? []).length,
@@ -787,7 +820,21 @@ test('Student WIF uses the exact repository-ID condition and shared builder prin
     main,
     /^resource\s+"google_iam_workload_identity_pool"\s+/mu,
   );
-});
+}
+
+for (const [surface, repository, repositoryId, providerId] of [
+  ['student', 'Moazez-Student-App', '1391516333', 'moazez-student-app-main'],
+  ['teacher', 'Moazez-Teacher-App', '1412551303', 'moazez-teacher-app-main'],
+]) {
+  test(`${repository} WIF uses the exact repository-ID condition and shared builder principal`, () => {
+    assertArtifactRepositoryIdentity(
+      surface,
+      repository,
+      repositoryId,
+      providerId,
+    );
+  });
+}
 
 test('Frontend runtime root has only three required immutable Production image inputs', () => {
   assertRootContract(RUNTIME_ROOT, 'frontend-runtime/production', true);
@@ -1775,6 +1822,9 @@ test('READMEs preserve source-only, build-time, and Dark pre-DNS boundaries', ()
     'frontend-artifact-identity/production',
     'moazez-student-app-main',
     '1391516333',
+    'moazez-teacher-app-main',
+    '1412551303',
+    'Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Teacher-App',
   ]) {
     assert.ok(artifactReadme.includes(required), required);
   }

@@ -158,6 +158,36 @@ variable "student_wif_provider_id" {
   }
 }
 
+variable "teacher_repository" {
+  description = "Approved Teacher App GitHub repository name with owner."
+  type        = string
+
+  validation {
+    condition     = var.teacher_repository == "Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Teacher-App"
+    error_message = "teacher_repository must match the approved repository."
+  }
+}
+
+variable "teacher_repository_id" {
+  description = "Approved immutable Teacher App repository numeric ID."
+  type        = string
+
+  validation {
+    condition     = var.teacher_repository_id == "1412551303"
+    error_message = "teacher_repository_id must be 1412551303."
+  }
+}
+
+variable "teacher_wif_provider_id" {
+  description = "Production GitHub OIDC provider ID for Teacher App main."
+  type        = string
+
+  validation {
+    condition     = var.teacher_wif_provider_id == "moazez-teacher-app-main"
+    error_message = "teacher_wif_provider_id must be moazez-teacher-app-main."
+  }
+}
+
 variable "artifact_builder_service_account_id" {
   description = "Dedicated Production frontend artifact builder account ID."
   type        = string
