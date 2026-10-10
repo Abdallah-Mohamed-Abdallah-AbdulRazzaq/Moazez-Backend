@@ -1,5 +1,10 @@
-import { Injectable } from '@nestjs/common';
-import { ValidationDomainException } from '../../../../common/exceptions/domain-exception';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { performance } from 'node:perf_hooks';
+import { getCurrentRequestId } from '../../../../common/context/request-context';
+import {
+  DomainException,
+  ValidationDomainException,
+} from '../../../../common/exceptions/domain-exception';
 import { ScopeMissingException } from '../../../iam/auth/domain/auth.exceptions';
 import { TeacherAppAccessService } from '../../access/teacher-app-access.service';
 import { AcademicContentTeacherAnalyticsRepository } from '../../../academics/academic-content/infrastructure/academic-content-teacher-analytics.repository';
@@ -16,12 +21,54 @@ import type {
 
 @Injectable()
 export class TeacherAcademicContentAnalyticsUseCase {
+  private readonly logger = new Logger(
+    TeacherAcademicContentAnalyticsUseCase.name,
+  );
   constructor(
     private readonly access: TeacherAppAccessService,
     private readonly analytics: AcademicContentTeacherAnalyticsRepository,
   ) {}
 
   async execute(
+    contentId: string,
+    query: TeacherAcademicContentAnalyticsQueryDto,
+    publicationId?: string,
+  ): Promise<TeacherAcademicContentAnalyticsResponseDto> {
+    const started = performance.now();
+    try {
+      const result = await this.queryAuthorized(
+        contentId,
+        query,
+        publicationId,
+      );
+      this.signal('success', started);
+      return result;
+    } catch (error) {
+      this.signal(
+        error instanceof DomainException &&
+          error.httpStatus < HttpStatus.INTERNAL_SERVER_ERROR
+          ? 'denied'
+          : 'failed',
+        started,
+      );
+      throw error;
+    }
+  }
+
+  private signal(outcome: 'success' | 'denied' | 'failed', started: number) {
+    try {
+      this.logger.log({
+        event: 'academic_content.teacher_analytics',
+        outcome,
+        durationMs: Math.max(0, performance.now() - started),
+        requestId: getCurrentRequestId(),
+      });
+    } catch {
+      // A logging sink failure must never change the authoritative operation.
+    }
+  }
+
+  private async queryAuthorized(
     contentId: string,
     query: TeacherAcademicContentAnalyticsQueryDto,
     publicationId?: string,

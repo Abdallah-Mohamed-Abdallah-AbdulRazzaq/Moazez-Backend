@@ -1,5 +1,8 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
-import { getRequestContext } from '../../../../common/context/request-context';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import {
+  getRequestContext,
+  getCurrentRequestId,
+} from '../../../../common/context/request-context';
 import {
   DomainException,
   NotFoundDomainException,
@@ -16,11 +19,49 @@ import { AcademicContentEngagementRepository } from '../infrastructure/academic-
 
 @Injectable()
 export class AcademicContentEngagementService {
+  private readonly logger = new Logger(AcademicContentEngagementService.name);
   constructor(
     private readonly repository: AcademicContentEngagementRepository,
   ) {}
 
   async record(
+    context: AcademicContentCurrentRecipientContext,
+    contentId: string,
+    body: RecordAcademicContentEngagementDto,
+  ): Promise<AcademicContentEngagementResponseDto> {
+    try {
+      const result = await this.recordAuthorized(context, contentId, body);
+      this.signal('accepted');
+      return result;
+    } catch (error) {
+      this.signal(
+        error instanceof DomainException &&
+          error.httpStatus === HttpStatus.TOO_MANY_REQUESTS
+          ? 'rate_limited'
+          : error instanceof DomainException &&
+              error.httpStatus < HttpStatus.INTERNAL_SERVER_ERROR
+            ? 'denied'
+            : 'unavailable',
+      );
+      throw error;
+    }
+  }
+
+  private signal(
+    outcome: 'accepted' | 'denied' | 'rate_limited' | 'unavailable',
+  ) {
+    try {
+      this.logger.log({
+        event: 'academic_content.engagement',
+        outcome,
+        requestId: getCurrentRequestId(),
+      });
+    } catch {
+      // A logging sink failure must never change the authoritative operation.
+    }
+  }
+
+  private async recordAuthorized(
     context: AcademicContentCurrentRecipientContext,
     contentId: string,
     body: RecordAcademicContentEngagementDto,

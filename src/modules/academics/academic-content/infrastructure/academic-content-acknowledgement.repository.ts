@@ -97,58 +97,89 @@ export class AcademicContentAcknowledgementRepository extends AcademicContentRec
     contentId: string,
     expectedPublicationId: string,
     write: boolean,
+    observeCommittedWrite?: (created: boolean) => void,
   ) {
-    return this.prisma.$transaction(async (tx) => {
-      await this.deadlines(tx);
-      const identity = await this.lockAuthority(
-        tx,
-        context,
-        contentId,
-        membershipId,
-      );
-      if (identity.publicationId !== expectedPublicationId) missing();
-      const guardianId = await this.guardian(tx, context);
-      if (!guardianId) missing();
-      const required = await this.note(tx, context, identity, guardianId);
-      if (write && !required) missing();
-      const eligible = this.eligible(
-        context,
-        membershipId,
-        contentId,
-        expectedPublicationId,
-        guardianId,
-        required,
-      );
-      if (write) {
-        await tx.$executeRaw(Prisma.sql`
+    const { created, ...result } = await this.prisma.$transaction(
+      async (tx) => {
+        await this.deadlines(tx);
+        const identity = await this.lockAuthority(
+          tx,
+          context,
+          contentId,
+          membershipId,
+        );
+        if (identity.publicationId !== expectedPublicationId) missing();
+        const guardianId = await this.guardian(tx, context);
+        if (!guardianId) missing();
+        const required = await this.note(tx, context, identity, guardianId);
+        if (write && !required) missing();
+        const eligible = this.eligible(
+          context,
+          membershipId,
+          contentId,
+          expectedPublicationId,
+          guardianId,
+          required,
+        );
+        let created = false;
+        if (write) {
+          created =
+            (await tx.$executeRaw(Prisma.sql`
           INSERT INTO academic_content_acknowledgements
             (id, school_id, academic_content_id, publication_id, revision_id, student_id, enrollment_id, actor_user_id, guardian_id, acknowledged_at, created_at)
           SELECT gen_random_uuid(), ${context.schoolId}::uuid, ${contentId}::uuid, live."publicationId", live."revisionId",
             ${context.studentId}::uuid, ${context.enrollmentId}::uuid, ${context.userId}::uuid, ${guardianId}::uuid, live.at, live.at FROM (${eligible}) live
-          ON CONFLICT (school_id, publication_id, student_id, actor_user_id) DO NOTHING`);
-      }
-      // Recheck even an insert winner: a conflicting transaction may roll back after expiry.
-      // Historical Guardian/Enrollment never become ACLs.
-      const [status] = await tx.$queryRaw<
-        { id: string | null; acknowledgedAt: Date | null }[]
-      >(Prisma.sql`
+          ON CONFLICT (school_id, publication_id, student_id, actor_user_id) DO NOTHING`)) ===
+            1;
+        }
+        // Recheck even an insert winner: a conflicting transaction may roll back after expiry.
+        // Historical Guardian/Enrollment never become ACLs.
+        const [status] = await tx.$queryRaw<
+          { id: string | null; acknowledgedAt: Date | null }[]
+        >(Prisma.sql`
           SELECT acknowledgement.id, acknowledgement.acknowledged_at AS "acknowledgedAt" FROM (${eligible}) live
           LEFT JOIN academic_content_acknowledgements acknowledgement
             ON acknowledgement.school_id = ${context.schoolId}::uuid AND acknowledgement.publication_id = live."publicationId"
             AND acknowledgement.student_id = ${context.studentId}::uuid AND acknowledgement.actor_user_id = ${context.userId}::uuid`);
-      if (!status || (write && !status.id)) missing();
-      const acknowledgement: Recorded | null =
-        status.id && status.acknowledgedAt
-          ? {
-              id: status.id,
-              acknowledgedAt: status.acknowledgedAt,
-            }
-          : null;
-      return {
-        ...identity,
-        requiresAcknowledgement: required,
-        acknowledgement: required ? (acknowledgement ?? null) : null,
-      };
-    }, RECIPIENT_TRANSACTION_OPTIONS);
+        if (!status || (write && !status.id)) missing();
+        const acknowledgement: Recorded | null =
+          status.id && status.acknowledgedAt
+            ? {
+                id: status.id,
+                acknowledgedAt: status.acknowledgedAt,
+              }
+            : null;
+        return {
+          ...identity,
+          created,
+          requiresAcknowledgement: required,
+          acknowledgement: required ? (acknowledgement ?? null) : null,
+        };
+      },
+      RECIPIENT_TRANSACTION_OPTIONS,
+    );
+    observeCommittedWrite?.(created);
+    return result;
+  }
+
+  async resolveWithOutcome(
+    context: Context,
+    membershipId: string,
+    contentId: string,
+    expectedPublicationId: string,
+    write: boolean,
+  ) {
+    let created = false;
+    const result = await this.resolve(
+      context,
+      membershipId,
+      contentId,
+      expectedPublicationId,
+      write,
+      (committed) => {
+        created = committed;
+      },
+    );
+    return { result, created };
   }
 }
