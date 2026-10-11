@@ -92,6 +92,7 @@ test('CORS is explicit and separated by environment', () => {
       'https://schools.moazez.cloud',
       'https://admin.moazez.cloud',
       'https://student.moazez.cloud',
+      'https://teacher.moazez.cloud',
     ],
   };
   for (const [environment, expected] of Object.entries(expectedOrigins)) {

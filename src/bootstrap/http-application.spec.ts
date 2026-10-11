@@ -10,6 +10,7 @@ import { AppController } from '../app.controller';
 import { AppService } from '../app.service';
 import { RequestContextMiddleware } from '../common/context/context.middleware';
 import { GlobalExceptionFilter } from '../common/exceptions/global-exception.filter';
+import { APPROVED_PRODUCTION_APPLICATION_ORIGINS } from './application-cors.policy';
 import {
   configureHttpApplication,
   logHttpApplicationStarted,
@@ -107,6 +108,37 @@ describe('HTTP application bootstrap policy', () => {
     expect(response.body.error.traceId).toBe(requestId);
   });
 
+  it('allows credentialed Teacher HTTP requests and preflight in production', async () => {
+    const app = await createTestApplication(false, 'production');
+    for (const method of ['get', 'options'] as const) {
+      await request(app.getHttpServer())
+        [method]('/api/v1')
+        .set('Origin', 'https://teacher.moazez.cloud')
+        .set('Access-Control-Request-Method', 'GET')
+        .expect('access-control-allow-origin', 'https://teacher.moazez.cloud')
+        .expect('access-control-allow-credentials', 'true')
+        .expect(method === 'get' ? 200 : 204);
+    }
+  });
+
+  it.each([
+    '*',
+    'null',
+    'https://teacher.moazez.cloud/path',
+    'https://teacher.moazez.cloud.evil.test',
+    'http://teacher.moazez.cloud',
+  ])('does not authorize production HTTP browser origin %s', async (origin) => {
+    const app = await createTestApplication(false, 'production');
+    const response = await request(app.getHttpServer())
+      .get('/api/v1')
+      .set('Origin', origin)
+      .expect(200);
+    expect(response.headers['access-control-allow-origin']).toBeUndefined();
+    expect(
+      response.headers['access-control-allow-credentials'],
+    ).toBeUndefined();
+  });
+
   it('never reflects a malformed inbound ID in a response or error envelope', async () => {
     const app = await createTestApplication(false);
     const invalid = 'x'.repeat(129);
@@ -144,6 +176,7 @@ describe('HTTP application bootstrap policy', () => {
 
   async function createTestApplication(
     swaggerEnabled: boolean,
+    environment: 'test' | 'production' = 'test',
   ): Promise<INestApplication> {
     const moduleRef = await Test.createTestingModule({
       controllers: [AppController, BootstrapTestErrorController],
@@ -156,8 +189,11 @@ describe('HTTP application bootstrap policy', () => {
     );
     app.useGlobalFilters(new GlobalExceptionFilter());
     configureHttpApplication(app, {
-      environment: 'test',
-      corsOrigins: 'http://localhost:3001',
+      environment,
+      corsOrigins:
+        environment === 'production'
+          ? APPROVED_PRODUCTION_APPLICATION_ORIGINS.join(',')
+          : 'http://localhost:3001',
       swaggerEnabled,
     });
     await app.init();

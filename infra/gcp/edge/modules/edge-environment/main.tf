@@ -50,6 +50,26 @@ locals {
     local.student_inputs_are_exact
   )
 
+  teacher_inputs_are_null = (
+    var.teacher_hostname == null &&
+    var.teacher_service_name == null
+  )
+  teacher_inputs_are_exact = (
+    var.teacher_hostname == "teacher.moazez.cloud" &&
+    var.teacher_service_name == "moazez-production-teacher-web" &&
+    var.project_id == "moazez-production" &&
+    var.region == "me-central2"
+  )
+  teacher_contract_valid = (
+    var.environment == "production"
+    ? local.teacher_inputs_are_exact
+    : local.teacher_inputs_are_null
+  )
+  teacher_edge_enabled = (
+    var.environment == "production" &&
+    local.teacher_inputs_are_exact
+  )
+
   hostnames = {
     api     = var.api_hostname
     admin   = var.platform_admin_hostname
@@ -60,7 +80,7 @@ locals {
     api     = var.api_service_name
     admin   = var.platform_admin_service_name
     schools = var.school_dashboard_service_name
-  }, local.student_edge_enabled ? { student = var.student_service_name } : {})
+  }, local.student_edge_enabled ? { student = var.student_service_name } : {}, local.teacher_edge_enabled ? { teacher = var.teacher_service_name } : {})
 }
 
 resource "google_project_service" "certificate_manager" {
@@ -204,6 +224,15 @@ resource "google_compute_url_map" "edge" {
     }
   }
 
+  dynamic "host_rule" {
+    for_each = local.teacher_edge_enabled ? [var.teacher_hostname] : []
+
+    content {
+      hosts        = [host_rule.value]
+      path_matcher = "teacher"
+    }
+  }
+
   path_matcher {
     name            = "api"
     default_service = google_compute_backend_service.service["api"].id
@@ -243,6 +272,15 @@ resource "google_compute_url_map" "edge" {
     }
   }
 
+  dynamic "path_matcher" {
+    for_each = local.teacher_edge_enabled ? ["teacher"] : []
+
+    content {
+      name            = path_matcher.value
+      default_service = google_compute_backend_service.service["teacher"].id
+    }
+  }
+
   lifecycle {
     precondition {
       condition     = local.candidate_edge_contract_valid
@@ -252,6 +290,11 @@ resource "google_compute_url_map" "edge" {
     precondition {
       condition     = local.student_contract_valid
       error_message = "Student Edge requires the exact governed hostname and service in Production and null Student inputs in staging."
+    }
+
+    precondition {
+      condition     = local.teacher_contract_valid
+      error_message = "Teacher Edge requires teacher.moazez.cloud and moazez-production-teacher-web in moazez-production/me-central2, and null Teacher inputs in staging."
     }
   }
 }
@@ -280,6 +323,22 @@ resource "google_certificate_manager_certificate" "student" {
 
   managed {
     domains = [var.student_hostname]
+  }
+
+  depends_on = [
+    google_project_service.certificate_manager
+  ]
+}
+
+resource "google_certificate_manager_certificate" "teacher" {
+  count       = local.teacher_edge_enabled ? 1 : 0
+  project     = var.project_id
+  location    = "global"
+  name        = "${local.name_prefix}-teacher-cert"
+  description = "MOAZEZ Production Teacher Web Google-managed certificate using load balancer authorization."
+
+  managed {
+    domains = [var.teacher_hostname]
   }
 
   depends_on = [
@@ -317,6 +376,16 @@ resource "google_certificate_manager_certificate_map_entry" "student" {
   hostname     = var.student_hostname
 }
 
+resource "google_certificate_manager_certificate_map_entry" "teacher" {
+  count = local.teacher_edge_enabled ? 1 : 0
+
+  project      = var.project_id
+  name         = "${local.name_prefix}-teacher-cert-entry"
+  map          = google_certificate_manager_certificate_map.edge.name
+  certificates = [google_certificate_manager_certificate.teacher[0].id]
+  hostname     = var.teacher_hostname
+}
+
 resource "google_compute_target_https_proxy" "edge" {
   project = var.project_id
   name    = "${local.name_prefix}-edge-https-proxy"
@@ -326,7 +395,8 @@ resource "google_compute_target_https_proxy" "edge" {
 
   depends_on = [
     google_certificate_manager_certificate_map_entry.host,
-    google_certificate_manager_certificate_map_entry.student
+    google_certificate_manager_certificate_map_entry.student,
+    google_certificate_manager_certificate_map_entry.teacher
   ]
 }
 

@@ -9,6 +9,28 @@ const { ACTIVE_TAP_OWNERS, classifyTestFile } = require('../ci/plan-ci.cjs');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
 const BASE_SHA = 'd1939edc059b19c70ae6292ed64de3013ec3309c';
+const NR11_T6_PATHS = Object.freeze([
+  'docs/governance/nr11-t6-teacher-edge-cors-devops-handoff.md',
+  'infra/gcp/backend-runtime/modules/runtime-environment/main.tf',
+  'infra/gcp/edge/README.md',
+  'infra/gcp/edge/environments/nonprod/tests/candidate-route.tftest.hcl',
+  'infra/gcp/edge/environments/production/main.tf',
+  'infra/gcp/edge/environments/production/outputs.tf',
+  'infra/gcp/edge/modules/edge-environment/main.tf',
+  'infra/gcp/edge/modules/edge-environment/outputs.tf',
+  'infra/gcp/edge/modules/edge-environment/variables.tf',
+  'infra/gcp/storage/modules/storage-environment/main.tf',
+  'scripts/storage/tests/gcs-batch2-terraform-policy.test.cjs',
+  'scripts/tests/stage-28a-production-migration-job-source.test.cjs',
+  'scripts/tests/stage-29a-production-runtime-source.test.cjs',
+  'scripts/tests/stage-30c1-production-frontend-edge-source.test.cjs',
+  'src/bootstrap/application-cors.policy.spec.ts',
+  'src/bootstrap/application-cors.policy.ts',
+  'src/bootstrap/http-application.spec.ts',
+  'src/config/env.validation.spec.ts',
+  'src/infrastructure/realtime/tests/realtime.gateway.spec.ts',
+  'src/modules/academics/academic-content/files/tests/academic-content-upload-origin.spec.ts',
+]);
 const EXACT_COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/iu;
 const MODULE_ROOT = 'infra/gcp/backend-runtime/modules/runtime-environment';
 const STAGING_ROOT = 'infra/gcp/backend-runtime/environments/nonprod/runtime';
@@ -192,7 +214,7 @@ const PRODUCTION_CONTRACT = Object.freeze({
   node_environment: 'production',
   trusted_proxy_mode: 'none',
   cors_origins:
-    'https://schools.moazez.cloud,https://admin.moazez.cloud,https://student.moazez.cloud',
+    'https://schools.moazez.cloud,https://admin.moazez.cloud,https://student.moazez.cloud,https://teacher.moazez.cloud',
   image_pattern: PRODUCTION_IMAGE_PATTERN,
   storage_private_bucket: 'moazez-production-91001421934-private',
   storage_published_bucket: 'moazez-production-91001421934-published',
@@ -654,6 +676,18 @@ function assertCommittedStage29CandidateScope(
       ).map((file) => file.replace(/\\/gu, '/')),
     ),
   ].sort();
+  if (
+    normalizedMaintenance.includes(
+      'src/bootstrap/application-cors.policy.ts',
+    ) &&
+    normalizedMaintenance.includes(TEST_PATH)
+  ) {
+    assert.deepEqual(
+      normalizedMaintenance.filter((file) => !NR11_T6_PATHS.includes(file)),
+      [],
+    );
+    return false;
+  }
   const maintenanceScopeActive =
     candidateFiles === undefined || maintenanceFiles !== undefined;
   const runtimeCapacityMaintenanceActive =
@@ -2094,4 +2128,71 @@ test('Candidate scope ignores unrelated PRs and rejects every mixed Stage 29A ca
       code: 'ERR_ASSERTION',
     });
   }
+});
+
+test('NR11-T6 maintenance has an exact path boundary without reopening historical runtime scope', () => {
+  assert.equal(
+    assertCommittedStage29CandidateScope(NR11_T6_PATHS, NR11_T6_PATHS),
+    false,
+  );
+  for (const forbidden of [
+    `${MODULE_ROOT}/variables.tf`,
+    `${STAGING_ROOT}/main.tf`,
+    `${PRODUCTION_ROOT}/variables.tf`,
+    `${PRODUCTION_ROOT}/.terraform.lock.hcl`,
+    'infra/gcp/frontend-runtime/modules/frontend-runtime-environment/main.tf',
+    '.github/workflows/production-backend-image.yml',
+    'prisma/schema.prisma',
+    'prisma/migrations/unapproved/migration.sql',
+    'src/modules/iam/auth/auth.service.ts',
+  ]) {
+    assert.throws(
+      () =>
+        assertCommittedStage29CandidateScope(
+          [...NR11_T6_PATHS, forbidden],
+          [...NR11_T6_PATHS, forbidden],
+        ),
+      { code: 'ERR_ASSERTION' },
+    );
+  }
+});
+
+test('Production runtime CORS equals the exact application allowlist including Teacher', () => {
+  const policy = normalizedSource('src/bootstrap/application-cors.policy.ts');
+  const origins =
+    /APPROVED_PRODUCTION_APPLICATION_ORIGINS = Object[.]freeze\(\[([^\]]+)\]/u.exec(
+      policy,
+    );
+  assert.ok(origins);
+  const expected = [
+    'https://schools.moazez.cloud',
+    'https://admin.moazez.cloud',
+    'https://student.moazez.cloud',
+    'https://teacher.moazez.cloud',
+  ];
+  assert.deepEqual(
+    [...origins[1].matchAll(/'([^']+)'/gu)].map((match) => match[1]),
+    expected,
+  );
+  const main = normalizedSource(`${MODULE_ROOT}/main.tf`);
+  const production = environmentContractBlock(main, 'production');
+  assert.deepEqual(
+    JSON.parse(assignmentExpression(production, 'cors_origins')).split(','),
+    expected,
+  );
+  assert.equal(
+    assignmentExpression(main, 'APP_CORS_ORIGINS'),
+    'local.selected.cors_origins',
+  );
+  assert.equal(
+    assignmentExpression(main, 'STORAGE_CORS_ORIGINS'),
+    'local.selected.cors_origins',
+  );
+  assert.equal(
+    assignmentExpression(
+      environmentContractBlock(main, 'staging'),
+      'cors_origins',
+    ),
+    JSON.stringify(STAGING_CONTRACT.cors_origins),
+  );
 });

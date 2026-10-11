@@ -26,6 +26,10 @@ output "student_certificate_name" {
   value = module.edge_environment.student_certificate_name
 }
 
+output "teacher_certificate_name" {
+  value = module.edge_environment.teacher_certificate_name
+}
+
 output "certificate_map_name" {
   value = module.edge_environment.certificate_map_name
 }

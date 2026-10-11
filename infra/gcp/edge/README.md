@@ -30,6 +30,29 @@ Nullable module inputs keep Student hostname, route, NEG, backend, certificate,
 and map entry absent in staging. This source change does not mutate DNS or
 Production infrastructure.
 
+## Production Teacher Web route and TLS
+
+Production requires exactly `teacher_hostname="teacher.moazez.cloud"` and
+`teacher_service_name="moazez-production-teacher-web"` in
+`moazez-production/me-central2`. Staging keeps both inputs null and all Teacher
+resources absent. Teacher follows the Student pattern on the existing shared
+edge: `moazez-production-teacher-neg`, `moazez-production-teacher-backend`,
+path matcher `teacher`, and the shared Cloud Armor policy without the
+API-specific trusted client-IP header.
+
+The separate `moazez-production-teacher-cert` contains only
+`teacher.moazez.cloud`; `moazez-production-teacher-cert-entry` uses the existing
+certificate map. The shared and Student certificates retain their identities
+and domain sets. Existing NEG/backend outputs include Teacher; the additional
+`teacher_certificate_name` output is null in staging.
+
+The expected future Edge delta is four creates and an in-place URL map update,
+with no replacement or destruction. This is a source expectation that requires
+live state verification and a separately reviewed saved plan. No Production
+plan, apply, DNS update, or image publication belongs to this source task.
+See the [NR11-T6 DevOps handoff](../../../docs/governance/nr11-t6-teacher-edge-cors-devops-handoff.md)
+for the coordinated Backend API image/CORS dependency and deployment order.
+
 ## Optional governed candidate route
 
 The three candidate inputs are:
