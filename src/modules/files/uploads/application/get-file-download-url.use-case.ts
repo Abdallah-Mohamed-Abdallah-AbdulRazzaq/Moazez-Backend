@@ -12,13 +12,7 @@ export class GetFileDownloadUrlUseCase {
   ) {}
 
   async execute(fileId: string): Promise<string> {
-    requireFilesScope();
-
-    const file = await this.filesRepository.findScopedFileById(fileId);
-    if (!file) {
-      throw new FilesNotFoundException();
-    }
-
+    const file = await this.resolveFile(fileId);
     const capability = await this.storageService.createDownloadUrl({
       bucket: file.bucket,
       objectKey: file.objectKey,
@@ -27,5 +21,16 @@ export class GetFileDownloadUrlUseCase {
       downloadFileName: file.originalName,
     });
     return capability.url;
+  }
+
+  async resolveFile(fileId: string) {
+    requireFilesScope();
+
+    const file = await this.filesRepository.findScopedFileById(fileId);
+    if (!file) {
+      throw new FilesNotFoundException();
+    }
+
+    return file;
   }
 }

@@ -1,3 +1,10 @@
+import type { Request, Response } from 'express';
+import { Req, Res } from '@nestjs/common';
+import {
+  privateMediaContentRequest,
+  streamPrivateMediaContent,
+} from '../../../../infrastructure/storage/private-media-content.response';
+import { GetStudentRewardImageContentUseCase } from '../application/get-student-reward-image-content.use-case';
 import {
   Body,
   Controller,
@@ -30,6 +37,7 @@ import {
 @Controller('student/rewards')
 export class StudentRewardsController {
   constructor(
+    private readonly content: GetStudentRewardImageContentUseCase,
     private readonly listStudentRewardsUseCase: ListStudentRewardsUseCase,
     private readonly getStudentRewardUseCase: GetStudentRewardUseCase,
     private readonly listStudentRewardRedemptionsUseCase: ListStudentRewardRedemptionsUseCase,
@@ -80,5 +88,35 @@ export class StudentRewardsController {
     @Body() dto: RedeemStudentRewardDto,
   ): Promise<StudentRewardRedemptionResponseDto> {
     return this.redeemStudentRewardUseCase.execute({ rewardId, dto });
+  }
+  @Get(':rewardId/images/:fileId/download/content')
+  @RequiredPermissions('reinforcement.rewards.view')
+  async fileContent(
+    @Param('rewardId', new ParseUUIDPipe()) rewardId: string,
+    @Param('fileId', new ParseUUIDPipe()) fileId: string,
+    @Req() request: Request,
+    @Res() response: Response,
+  ): Promise<void> {
+    const content = await this.content.execute(
+      rewardId,
+      fileId,
+      privateMediaContentRequest(request, response, 'attachment'),
+    );
+    await streamPrivateMediaContent(content, response, 'attachment');
+  }
+  @Get('redemptions/:redemptionId/images/:fileId/download/content')
+  @RequiredPermissions('reinforcement.rewards.redemptions.view')
+  async redemptionImageContent(
+    @Param('redemptionId', new ParseUUIDPipe()) redemptionId: string,
+    @Param('fileId', new ParseUUIDPipe()) fileId: string,
+    @Req() request: Request,
+    @Res() response: Response,
+  ): Promise<void> {
+    const content = await this.content.redemption(
+      redemptionId,
+      fileId,
+      privateMediaContentRequest(request, response, 'attachment'),
+    );
+    await streamPrivateMediaContent(content, response, 'attachment');
   }
 }

@@ -1,3 +1,8 @@
+import { StorageModule } from '../../infrastructure/storage/storage.module';
+import { GetTeacherTaskProofContentUseCase } from './tasks/review/application/get-teacher-task-proof-content.use-case';
+import { GetTeacherOwnedTaskProofContentUseCase } from './tasks/application/get-teacher-owned-task-proof-content.use-case';
+import { GetTeacherMessageAttachmentContentUseCase } from './messages/application/get-teacher-message-attachment-content.use-case';
+import { GetTeacherAcademicContentAssetContentUseCase } from './academic-content/application/teacher-academic-content-asset-content.use-case';
 import { TeacherAcademicContentWorkflowPublicationController } from './academic-content/controller/teacher-academic-content-workflow-publication.controller';
 import { TeacherAcademicContentWorkflowPublicationUseCases } from './academic-content/application/teacher-academic-content-workflow-publication.use-cases';
 import { Module } from '@nestjs/common';
@@ -145,6 +150,7 @@ import {
 
 @Module({
   imports: [
+    StorageModule,
     AcademicContentModule,
     AppCalendarReadModelModule,
     LessonContentPlaybackModule,
@@ -183,6 +189,10 @@ import {
     TeacherLessonPreparationController,
   ],
   providers: [
+    GetTeacherTaskProofContentUseCase,
+    GetTeacherOwnedTaskProofContentUseCase,
+    GetTeacherMessageAttachmentContentUseCase,
+    GetTeacherAcademicContentAssetContentUseCase,
     TeacherAcademicContentAnalyticsUseCase,
     TeacherAcademicContentWorkflowPublicationUseCases,
     TeacherAcademicContentFilesUseCases,

@@ -7,12 +7,16 @@ const PARENT_TASK_PROOF_FILE_DOWNLOAD_ARGS =
   Prisma.validator<Prisma.ReinforcementSubmissionDefaultArgs>()({
     select: {
       id: true,
+      schoolId: true,
       proofFile: {
         select: {
           id: true,
+          schoolId: true,
           bucket: true,
           objectKey: true,
           originalName: true,
+          mimeType: true,
+          sizeBytes: true,
           visibility: true,
           deletedAt: true,
         },
@@ -30,6 +34,8 @@ export interface ParentDownloadableTaskProofFile {
   bucket: string;
   objectKey: string;
   originalName: string;
+  mimeType: string;
+  sizeBytes: bigint;
   visibility: NonNullable<
     ParentTaskProofFileDownloadRecord['proofFile']
   >['visibility'];
@@ -47,8 +53,8 @@ export class ParentFilesReadAdapter {
     child: ParentAppAccessibleChild;
     fileId: string;
   }): Promise<ParentDownloadableTaskProofFile | null> {
-    const submission = await this.scopedPrisma.reinforcementSubmission.findFirst(
-      {
+    const submission =
+      await this.scopedPrisma.reinforcementSubmission.findFirst({
         where: {
           proofFileId: params.fileId,
           studentId: params.child.studentId,
@@ -75,10 +81,13 @@ export class ParentFilesReadAdapter {
           },
         },
         ...PARENT_TASK_PROOF_FILE_DOWNLOAD_ARGS,
-      },
-    );
+      });
 
-    if (!submission?.proofFile || submission.proofFile.deletedAt) {
+    if (
+      !submission?.proofFile ||
+      submission.proofFile.deletedAt ||
+      submission.proofFile.schoolId !== submission.schoolId
+    ) {
       return null;
     }
 
@@ -87,6 +96,8 @@ export class ParentFilesReadAdapter {
       bucket: submission.proofFile.bucket,
       objectKey: submission.proofFile.objectKey,
       originalName: submission.proofFile.originalName,
+      mimeType: submission.proofFile.mimeType,
+      sizeBytes: submission.proofFile.sizeBytes,
       visibility: submission.proofFile.visibility,
     };
   }

@@ -1,3 +1,10 @@
+import type { Request, Response } from 'express';
+import { Req, Res } from '@nestjs/common';
+import {
+  privateMediaContentRequest,
+  streamPrivateMediaContent,
+} from '../../../../infrastructure/storage/private-media-content.response';
+import { GetParentMessageAttachmentContentUseCase } from '../application/get-parent-message-attachment-content.use-case';
 import {
   Body,
   Controller,
@@ -55,6 +62,7 @@ import {
 @Controller('parent/messages')
 export class ParentMessagesController {
   constructor(
+    private readonly content: GetParentMessageAttachmentContentUseCase,
     private readonly listParentMessageConversationsUseCase: ListParentMessageConversationsUseCase,
     private readonly getParentMessageConversationUseCase: GetParentMessageConversationUseCase,
     private readonly listParentConversationMessagesUseCase: ListParentConversationMessagesUseCase,
@@ -227,5 +235,43 @@ export class ParentMessagesController {
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
   ): Promise<ParentConversationReadResponseDto> {
     return this.markParentConversationReadUseCase.execute(conversationId);
+  }
+
+  @Get(
+    'conversations/:conversationId/messages/:messageId/attachments/:attachmentId/download/content',
+  )
+  @RequiredPermissions('communication.messages.view')
+  async downloadAttachmentContent(
+    @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
+    @Param('messageId', new ParseUUIDPipe()) messageId: string,
+    @Param('attachmentId', new ParseUUIDPipe()) attachmentId: string,
+    @Req() request: Request,
+    @Res() response: Response,
+  ): Promise<void> {
+    const disposition = 'attachment';
+    const content = await this.content.execute(
+      { conversationId, messageId, attachmentId, mode: 'download' },
+      privateMediaContentRequest(request, response, disposition),
+    );
+    await streamPrivateMediaContent(content, response, disposition);
+  }
+
+  @Get(
+    'conversations/:conversationId/messages/:messageId/attachments/:attachmentId/preview/content',
+  )
+  @RequiredPermissions('communication.messages.view')
+  async previewAttachmentContent(
+    @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
+    @Param('messageId', new ParseUUIDPipe()) messageId: string,
+    @Param('attachmentId', new ParseUUIDPipe()) attachmentId: string,
+    @Req() request: Request,
+    @Res() response: Response,
+  ): Promise<void> {
+    const disposition = 'inline';
+    const content = await this.content.execute(
+      { conversationId, messageId, attachmentId, mode: 'preview' },
+      privateMediaContentRequest(request, response, disposition),
+    );
+    await streamPrivateMediaContent(content, response, disposition);
   }
 }

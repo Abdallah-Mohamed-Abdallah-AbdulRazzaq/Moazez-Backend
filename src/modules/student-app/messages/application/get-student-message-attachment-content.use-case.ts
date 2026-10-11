@@ -3,6 +3,7 @@ import { NotFoundDomainException } from '../../../../common/exceptions/domain-ex
 import {
   PrivateMediaContentService,
   type PrivateMediaContent,
+  type PrivateMediaContentRequest,
 } from '../../../../infrastructure/storage/private-media-content.service';
 import type { CommunicationAttachmentAccessMode } from '../../../communication/application/communication-message-attachment-download.use-case';
 import { GetStudentMessageAttachmentDownloadUrlUseCase } from './get-student-message-attachment-download-url.use-case';
@@ -14,17 +15,23 @@ export class GetStudentMessageAttachmentContentUseCase {
     private readonly contentService: PrivateMediaContentService,
   ) {}
 
-  async execute(params: {
-    conversationId: string;
-    messageId: string;
-    attachmentId: string;
-    mode: CommunicationAttachmentAccessMode;
-  }): Promise<PrivateMediaContent> {
-    const file = await this.resolver.resolveFile(params);
-    return this.contentService.open(
-      file,
+  async execute(
+    params: {
+      conversationId: string;
+      messageId: string;
+      attachmentId: string;
+      mode: CommunicationAttachmentAccessMode;
+    },
+    request: PrivateMediaContentRequest = {},
+  ): Promise<PrivateMediaContent> {
+    return this.contentService.openAuthorized(
+      () => this.resolver.resolveFile(params),
       () =>
         new NotFoundDomainException('Student App message attachment not found'),
+      {
+        ...request,
+        disposition: params.mode === 'preview' ? 'inline' : 'attachment',
+      },
     );
   }
 }

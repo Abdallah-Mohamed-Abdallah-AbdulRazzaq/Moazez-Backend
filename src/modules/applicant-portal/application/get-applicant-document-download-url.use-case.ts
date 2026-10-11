@@ -31,6 +31,20 @@ export class GetApplicantDocumentDownloadUrlUseCase {
     ipAddress?: string | null;
     userAgent?: string | null;
   }): Promise<string> {
+    const authorized = await this.resolveFile(params);
+    const { document } = authorized;
+    const capability = await this.storageService.createDownloadUrl({
+      bucket: document.file.bucket,
+      objectKey: document.file.objectKey,
+      expiresInSeconds: 5 * 60,
+      disposition: 'attachment',
+      downloadFileName: document.file.originalName,
+    });
+    await this.recordDownload(authorized, params, 'signed_url_created');
+    return capability.url;
+  }
+
+  async resolveFile(params: { requestId: string; documentId: string }) {
     const applicantContext =
       await this.applicantPortalAccessService.getApplicantContext();
 
@@ -53,14 +67,17 @@ export class GetApplicantDocumentDownloadUrlUseCase {
       throw new FilesNotFoundException({ fileId: document.file.id });
     }
 
-    const capability = await this.storageService.createDownloadUrl({
-      bucket: document.file.bucket,
-      objectKey: document.file.objectKey,
-      expiresInSeconds: 5 * 60,
-      disposition: 'attachment',
-      downloadFileName: document.file.originalName,
-    });
+    return { document, applicantContext };
+  }
 
+  async recordDownload(
+    authorized: Awaited<
+      ReturnType<GetApplicantDocumentDownloadUrlUseCase['resolveFile']>
+    >,
+    params: { ipAddress?: string | null; userAgent?: string | null },
+    status: 'signed_url_created' | 'content_opened',
+  ) {
+    const { document, applicantContext } = authorized;
     await this.authRepository.createAuditLog({
       actorId: applicantContext.applicantUserId,
       userType: UserType.APPLICANT,
@@ -76,11 +93,9 @@ export class GetApplicantDocumentDownloadUrlUseCase {
       after: {
         requestId: document.requestId,
         fileId: document.file.id,
-        status: 'signed_url_created',
+        status,
       },
     });
-
-    return capability.url;
   }
 
   private isDownloadableStatus(

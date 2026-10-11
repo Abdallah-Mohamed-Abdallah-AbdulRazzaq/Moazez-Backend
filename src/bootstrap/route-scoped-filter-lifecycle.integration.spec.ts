@@ -9,6 +9,7 @@ import request from 'supertest';
 import { RequestContextMiddleware } from '../common/context/context.middleware';
 import { GlobalExceptionFilter } from '../common/exceptions/global-exception.filter';
 import { GetFileDownloadUrlUseCase } from '../modules/files/uploads/application/get-file-download-url.use-case';
+import { GetFileContentUseCase } from '../modules/files/uploads/application/get-file-content.use-case';
 import { UploadFileUseCase } from '../modules/files/uploads/application/upload-file.use-case';
 import { UploadsController } from '../modules/files/uploads/controller/uploads.controller';
 import { FILES_UPLOAD_MAX_SIZE_BYTES } from '../modules/files/uploads/domain/file-upload.constraints';
@@ -220,6 +221,7 @@ describe('route-scoped multipart filter lifecycle settlement', () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [BrandingController, UploadsController],
       providers: [
+        { provide: GetFileContentUseCase, useValue: {} },
         { provide: GetBrandingUseCase, useValue: { execute: jest.fn() } },
         { provide: UpdateBrandingUseCase, useValue: { execute: jest.fn() } },
         { provide: UploadBrandingLogoUseCase, useValue: uploadBranding },

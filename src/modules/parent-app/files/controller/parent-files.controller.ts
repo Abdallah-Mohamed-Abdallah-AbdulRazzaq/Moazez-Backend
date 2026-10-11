@@ -1,4 +1,17 @@
-import { Controller, Get, Param, ParseUUIDPipe, Redirect } from '@nestjs/common';
+import type { Request, Response } from 'express';
+import { Req, Res } from '@nestjs/common';
+import {
+  privateMediaContentRequest,
+  streamPrivateMediaContent,
+} from '../../../../infrastructure/storage/private-media-content.response';
+import { GetParentChildFileContentUseCase } from '../application/get-parent-child-file-content.use-case';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Redirect,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -18,6 +31,7 @@ import { GetParentChildFileDownloadUrlUseCase } from '../application/get-parent-
 @Controller('parent/children/:studentId/files')
 export class ParentFilesController {
   constructor(
+    private readonly content: GetParentChildFileContentUseCase,
     private readonly getParentChildFileDownloadUrlUseCase: GetParentChildFileDownloadUrlUseCase,
   ) {}
 
@@ -48,5 +62,21 @@ export class ParentFilesController {
         fileId,
       }),
     };
+  }
+
+  @Get(':fileId/download/content')
+  @RequiredPermissions('reinforcement.submissions.view')
+  async downloadChildFileContent(
+    @Param('studentId', new ParseUUIDPipe()) studentId: string,
+    @Param('fileId', new ParseUUIDPipe()) fileId: string,
+    @Req() request: Request,
+    @Res() response: Response,
+  ): Promise<void> {
+    const disposition = 'attachment';
+    const content = await this.content.execute(
+      { studentId, fileId },
+      privateMediaContentRequest(request, response, disposition),
+    );
+    await streamPrivateMediaContent(content, response, disposition);
   }
 }

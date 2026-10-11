@@ -1,3 +1,10 @@
+import type { Request, Response } from 'express';
+import { Req, Res } from '@nestjs/common';
+import {
+  privateMediaContentRequest,
+  streamPrivateMediaContent,
+} from '../../../../infrastructure/storage/private-media-content.response';
+import { GetParentAcademicContentAssetContentUseCase } from '../application/parent-academic-content-asset-content.use-case';
 import {
   Controller,
   Get,
@@ -33,6 +40,7 @@ import {
 @Controller('parent')
 export class ParentAcademicContentController {
   constructor(
+    private readonly content: GetParentAcademicContentAssetContentUseCase,
     private readonly listContent: ListParentAcademicContentUseCase,
     private readonly getContent: GetParentAcademicContentUseCase,
     private readonly accessibleChildren: ListParentAcademicContentAccessibleChildrenUseCase,
@@ -83,5 +91,28 @@ export class ParentAcademicContentController {
     @Query() query: ParentAcademicContentAssetAccessDto,
   ): Promise<{ url: string }> {
     return this.accessAsset.execute(studentId, contentId, fileId, query.mode);
+  }
+
+  @Get(
+    'children/:studentId/academic-content/:contentId/assets/:fileId/access/content',
+  )
+  @RequiredPermissions('academics.academic_content.view')
+  async assetContent(
+    @Param('studentId', new ParseUUIDPipe()) studentId: string,
+    @Param('contentId', new ParseUUIDPipe()) contentId: string,
+    @Param('fileId', new ParseUUIDPipe()) fileId: string,
+    @Query() query: ParentAcademicContentAssetAccessDto,
+    @Req() request: Request,
+    @Res() response: Response,
+  ): Promise<void> {
+    const disposition = query.mode === 'preview' ? 'inline' : 'attachment';
+    const content = await this.content.execute(
+      studentId,
+      contentId,
+      fileId,
+      query.mode,
+      privateMediaContentRequest(request, response, disposition),
+    );
+    await streamPrivateMediaContent(content, response, disposition);
   }
 }

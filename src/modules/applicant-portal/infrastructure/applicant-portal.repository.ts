@@ -231,6 +231,8 @@ const APPLICANT_ADMISSION_REQUEST_DOCUMENT_DOWNLOAD_ARGS = {
         bucket: true,
         objectKey: true,
         originalName: true,
+        mimeType: true,
+        sizeBytes: true,
         deletedAt: true,
       },
     },

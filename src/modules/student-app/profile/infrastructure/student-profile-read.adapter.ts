@@ -88,6 +88,22 @@ export class StudentProfileReadAdapter {
     return this.prisma.scoped as unknown as PrismaService;
   }
 
+  async findAuthorizedAvatar(context: StudentAppContext, fileId: string) {
+    const identity = await this.findStudentProfile(context);
+    if (identity?.avatarFile?.id !== fileId || identity.avatarFile.deletedAt)
+      return null;
+    return this.scopedPrisma.file.findFirst({
+      where: { id: fileId, schoolId: context.schoolId, deletedAt: null },
+      select: {
+        bucket: true,
+        objectKey: true,
+        originalName: true,
+        mimeType: true,
+        sizeBytes: true,
+      },
+    });
+  }
+
   findStudentProfile(
     context: StudentAppContext,
   ): Promise<StudentProfileIdentityRecord | null> {

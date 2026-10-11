@@ -322,6 +322,10 @@ export class ParentMessageAttachmentDto {
   downloadPath!: string;
   download_path!: string;
   authorizedDownloadPath?: string;
+  authorizedDownloadContentPath?: string;
+  authorized_download_content_path?: string;
+  previewContentPath?: string;
+  preview_content_path?: string;
   authorized_download_path?: string;
   previewPath?: string;
   preview_path?: string;

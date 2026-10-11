@@ -3,6 +3,7 @@ import { NotFoundDomainException } from '../../../../common/exceptions/domain-ex
 import {
   PrivateMediaContentService,
   type PrivateMediaContent,
+  type PrivateMediaContentRequest,
 } from '../../../../infrastructure/storage/private-media-content.service';
 import { GetStudentHomeworkAttachmentDownloadUrlUseCase } from './student-homeworks.use-cases';
 
@@ -16,14 +17,15 @@ export class GetStudentHomeworkAttachmentContentUseCase {
   async execute(
     homeworkId: string,
     attachmentId: string,
+    request: PrivateMediaContentRequest = {},
   ): Promise<PrivateMediaContent> {
-    const file = await this.resolver.resolveFile(homeworkId, attachmentId);
-    return this.contentService.open(
-      file,
+    return this.contentService.openAuthorized(
+      () => this.resolver.resolveFile(homeworkId, attachmentId),
       () =>
         new NotFoundDomainException(
           'Student App homework attachment not found',
         ),
+      request,
     );
   }
 }

@@ -1,3 +1,7 @@
+import { GetParentRewardImageContentUseCase } from './rewards/application/get-parent-reward-image-content.use-case';
+import { GetParentChildFileContentUseCase } from './files/application/get-parent-child-file-content.use-case';
+import { GetParentMessageAttachmentContentUseCase } from './messages/application/get-parent-message-attachment-content.use-case';
+import { GetParentAcademicContentAssetContentUseCase } from './academic-content/application/parent-academic-content-asset-content.use-case';
 import { AcademicContentModule } from '../academics/academic-content/academic-content.module';
 import { ParentAcademicContentAcknowledgementController } from './academic-content/controller/parent-academic-content-acknowledgement.controller';
 import { ParentAcademicContentAcknowledgementUseCase } from './academic-content/application/parent-academic-content.use-cases';
@@ -178,6 +182,10 @@ import { ParentSmartPickupRecentCallsRepository } from './smart-pickup/infrastru
     ParentSmartPickupController,
   ],
   providers: [
+    GetParentRewardImageContentUseCase,
+    GetParentChildFileContentUseCase,
+    GetParentMessageAttachmentContentUseCase,
+    GetParentAcademicContentAssetContentUseCase,
     ParentAcademicContentAcknowledgementUseCase,
     RecordParentAcademicContentEngagementUseCase,
     AccessParentAcademicContentAssetUseCase,

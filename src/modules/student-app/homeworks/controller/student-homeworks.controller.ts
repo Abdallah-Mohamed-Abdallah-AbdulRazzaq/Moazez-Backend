@@ -25,8 +25,12 @@ import {
   ApiTemporaryRedirectResponse,
 } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
-import type { Response } from 'express';
-import { streamPrivateMediaContent } from '../../../../infrastructure/storage/private-media-content.response';
+import type { Request, Response } from 'express';
+import { Req } from '@nestjs/common';
+import {
+  privateMediaContentRequest,
+  streamPrivateMediaContent,
+} from '../../../../infrastructure/storage/private-media-content.response';
 import { GetStudentHomeworkAttachmentContentUseCase } from '../application/get-student-homework-attachment-content.use-case';
 import {
   GetStudentHomeworkUseCase,
@@ -148,12 +152,14 @@ export class StudentHomeworksController {
   async downloadAttachmentContent(
     @Param('homeworkId', new ParseUUIDPipe()) homeworkId: string,
     @Param('attachmentId', new ParseUUIDPipe()) attachmentId: string,
+    @Req() request: Request,
     @Res() response: Response,
   ): Promise<void> {
     const content =
       await this.getStudentHomeworkAttachmentContentUseCase.execute(
         homeworkId,
         attachmentId,
+        privateMediaContentRequest(request, response, 'attachment'),
       );
     await streamPrivateMediaContent(content, response, 'attachment');
   }

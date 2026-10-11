@@ -46,6 +46,8 @@ describe('ParentFilesReadAdapter', () => {
       bucket: 'private-bucket',
       objectKey: 'schools/school-1/files/proof.pdf',
       originalName: 'proof.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 100n,
       visibility: FileVisibility.PRIVATE,
     });
   });
@@ -78,8 +80,13 @@ describe('ParentFilesReadAdapter', () => {
   });
 
   it('performs no file/task/submission mutations or platform bypass calls', async () => {
-    const { adapter, submissionMocks, fileMocks, mutationMocks, platformBypass } =
-      createAdapter();
+    const {
+      adapter,
+      submissionMocks,
+      fileMocks,
+      mutationMocks,
+      platformBypass,
+    } = createAdapter();
     submissionMocks.findFirst.mockResolvedValue(null);
 
     await adapter.findTaskProofFileForDownload({
@@ -92,6 +99,19 @@ describe('ParentFilesReadAdapter', () => {
     }
     expect(fileMocks.findFirst).not.toHaveBeenCalled();
     expect(platformBypass).not.toHaveBeenCalled();
+  });
+
+  it('rejects a proof relationship pointing to a file from another school', async () => {
+    const { adapter, submissionMocks } = createAdapter();
+    const submission = submissionFixture();
+    submission.proofFile.schoolId = 'other-school';
+    submissionMocks.findFirst.mockResolvedValue(submission);
+    await expect(
+      adapter.findTaskProofFileForDownload({
+        child: childFixture(),
+        fileId: 'file-1',
+      }),
+    ).resolves.toBeNull();
   });
 });
 
@@ -108,11 +128,15 @@ function childFixture(): ParentAppAccessibleChild {
 function submissionFixture() {
   return {
     id: 'submission-1',
+    schoolId: 'school-1',
     proofFile: {
       id: 'file-1',
+      schoolId: 'school-1',
       bucket: 'private-bucket',
       objectKey: 'schools/school-1/files/proof.pdf',
       originalName: 'proof.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 100n,
       visibility: FileVisibility.PRIVATE,
       deletedAt: null,
     },

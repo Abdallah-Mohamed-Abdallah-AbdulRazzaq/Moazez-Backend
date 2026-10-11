@@ -18,6 +18,33 @@ import {
 } from '../minio.adapter';
 
 describe('MinioAdapter bounded object listing', () => {
+  it('streams a large partial object with exact version through the SDK without a buffered prefix', async () => {
+    const adapter = createAdapter([]);
+    const client = productClientOf(adapter);
+    const source = Readable.from(Buffer.from('tail'));
+    client.getPartialObject = jest.fn().mockResolvedValue(source);
+    client.getObject = jest.fn();
+    const stream = await adapter.getObject({
+      bucket: 'private-bucket',
+      objectKey: 'private-key',
+      version: 'opaque-version',
+      range: { offset: 10 * 1024 ** 3 - 4, length: 4 },
+    });
+    expect(client.getPartialObject).toHaveBeenCalledWith(
+      'private-bucket',
+      'private-key',
+      10 * 1024 ** 3 - 4,
+      4,
+      { versionId: 'opaque-version' },
+    );
+    expect(client.getObject).not.toHaveBeenCalled();
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream as AsyncIterable<Buffer>)
+      chunks.push(chunk);
+    expect(Buffer.concat(chunks)).toEqual(Buffer.from('tail'));
+    expect(source.destroyed).toBe(true);
+  });
+
   it('stops after one look-ahead item and returns an opaque continuation cursor', async () => {
     const adapter = createAdapter([
       object('schools/a'),

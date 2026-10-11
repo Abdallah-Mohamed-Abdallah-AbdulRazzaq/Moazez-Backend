@@ -143,6 +143,26 @@ type StudentAppRoutePermissionCase = StudentAppActionPermissionCase & {
 
 const STUDENT_APP_READ_PERMISSION_CASES: StudentAppReadPermissionCase[] = [
   {
+    controller: StudentAcademicContentController,
+    method: 'assetContent',
+    permissions: ['academics.academic_content.view'],
+  },
+  {
+    controller: StudentProfileController,
+    method: 'fileContent',
+    permissions: ['student.profile.view'],
+  },
+  {
+    controller: StudentRewardsController,
+    method: 'fileContent',
+    permissions: ['reinforcement.rewards.view'],
+  },
+  {
+    controller: StudentRewardsController,
+    method: 'redemptionImageContent',
+    permissions: ['reinforcement.rewards.redemptions.view'],
+  },
+  {
     controller: StudentHomeController,
     method: 'getHome',
     permissions: ['student.home.view'],
@@ -484,179 +504,182 @@ const STUDENT_APP_READ_PERMISSION_CASES: StudentAppReadPermissionCase[] = [
   },
 ];
 
-const STUDENT_APP_HOMEWORK_EXAM_ACTION_PERMISSION_CASES: StudentAppActionPermissionCase[] = [
-  {
-    controller: StudentExamsController,
-    method: 'startExamSubmission',
-    permissions: ['grades.submissions.start'],
-  },
-  {
-    controller: StudentExamsController,
-    method: 'bulkSaveExamAnswers',
-    permissions: ['grades.submissions.save'],
-  },
-  {
-    controller: StudentExamsController,
-    method: 'saveExamAnswer',
-    permissions: ['grades.submissions.save'],
-  },
-  {
-    controller: StudentExamsController,
-    method: 'submitExamSubmission',
-    permissions: ['grades.submissions.submit'],
-  },
-  {
-    controller: StudentHomeworksController,
-    method: 'saveSubmissionDraft',
-    permissions: ['homework.submissions.save'],
-  },
-  {
-    controller: StudentHomeworksController,
-    method: 'saveSubmissionDraftAlias',
-    permissions: ['homework.submissions.save'],
-  },
-  {
-    controller: StudentHomeworksController,
-    method: 'saveSubmissionAnswers',
-    permissions: ['homework.answers.manage'],
-  },
-  {
-    controller: StudentHomeworksController,
-    method: 'saveSubmissionAnswer',
-    permissions: ['homework.answers.manage'],
-  },
-  {
-    controller: StudentHomeworksController,
-    method: 'createSubmissionAttachment',
-    permissions: ['homework.submission_attachments.manage'],
-  },
-  {
-    controller: StudentHomeworksController,
-    method: 'updateSubmissionAttachment',
-    permissions: ['homework.submission_attachments.manage'],
-  },
-  {
-    controller: StudentHomeworksController,
-    method: 'reorderSubmissionAttachment',
-    permissions: ['homework.submission_attachments.manage'],
-  },
-  {
-    controller: StudentHomeworksController,
-    method: 'deleteSubmissionAttachment',
-    permissions: ['homework.submission_attachments.manage'],
-  },
-  {
-    controller: StudentHomeworksController,
-    method: 'submitHomework',
-    permissions: ['homework.submissions.submit'],
-  },
-  {
-    controller: StudentHomeworksController,
-    method: 'submitHomeworkAlias',
-    permissions: ['homework.submissions.submit'],
-  },
-];
+const STUDENT_APP_HOMEWORK_EXAM_ACTION_PERMISSION_CASES: StudentAppActionPermissionCase[] =
+  [
+    {
+      controller: StudentExamsController,
+      method: 'startExamSubmission',
+      permissions: ['grades.submissions.start'],
+    },
+    {
+      controller: StudentExamsController,
+      method: 'bulkSaveExamAnswers',
+      permissions: ['grades.submissions.save'],
+    },
+    {
+      controller: StudentExamsController,
+      method: 'saveExamAnswer',
+      permissions: ['grades.submissions.save'],
+    },
+    {
+      controller: StudentExamsController,
+      method: 'submitExamSubmission',
+      permissions: ['grades.submissions.submit'],
+    },
+    {
+      controller: StudentHomeworksController,
+      method: 'saveSubmissionDraft',
+      permissions: ['homework.submissions.save'],
+    },
+    {
+      controller: StudentHomeworksController,
+      method: 'saveSubmissionDraftAlias',
+      permissions: ['homework.submissions.save'],
+    },
+    {
+      controller: StudentHomeworksController,
+      method: 'saveSubmissionAnswers',
+      permissions: ['homework.answers.manage'],
+    },
+    {
+      controller: StudentHomeworksController,
+      method: 'saveSubmissionAnswer',
+      permissions: ['homework.answers.manage'],
+    },
+    {
+      controller: StudentHomeworksController,
+      method: 'createSubmissionAttachment',
+      permissions: ['homework.submission_attachments.manage'],
+    },
+    {
+      controller: StudentHomeworksController,
+      method: 'updateSubmissionAttachment',
+      permissions: ['homework.submission_attachments.manage'],
+    },
+    {
+      controller: StudentHomeworksController,
+      method: 'reorderSubmissionAttachment',
+      permissions: ['homework.submission_attachments.manage'],
+    },
+    {
+      controller: StudentHomeworksController,
+      method: 'deleteSubmissionAttachment',
+      permissions: ['homework.submission_attachments.manage'],
+    },
+    {
+      controller: StudentHomeworksController,
+      method: 'submitHomework',
+      permissions: ['homework.submissions.submit'],
+    },
+    {
+      controller: StudentHomeworksController,
+      method: 'submitHomeworkAlias',
+      permissions: ['homework.submissions.submit'],
+    },
+  ];
 
-const STUDENT_APP_REINFORCEMENT_ACTION_PERMISSION_CASES: StudentAppActionPermissionCase[] = [
-  {
-    controller: StudentTasksController,
-    method: 'submitStage',
-    permissions: ['reinforcement.submissions.submit'],
-  },
-  {
-    controller: StudentRewardsController,
-    method: 'redeemReward',
-    permissions: ['reinforcement.rewards.redemptions.request'],
-  },
-  {
-    controller: StudentHeroController,
-    method: 'startMission',
-    permissions: ['reinforcement.hero.missions.start'],
-  },
-  {
-    controller: StudentHeroController,
-    method: 'completeMission',
-    permissions: ['reinforcement.hero.missions.complete'],
-  },
-  {
-    controller: StudentHeroController,
-    method: 'completeObjective',
-    permissions: ['reinforcement.hero.objectives.complete'],
-  },
-];
+const STUDENT_APP_REINFORCEMENT_ACTION_PERMISSION_CASES: StudentAppActionPermissionCase[] =
+  [
+    {
+      controller: StudentTasksController,
+      method: 'submitStage',
+      permissions: ['reinforcement.submissions.submit'],
+    },
+    {
+      controller: StudentRewardsController,
+      method: 'redeemReward',
+      permissions: ['reinforcement.rewards.redemptions.request'],
+    },
+    {
+      controller: StudentHeroController,
+      method: 'startMission',
+      permissions: ['reinforcement.hero.missions.start'],
+    },
+    {
+      controller: StudentHeroController,
+      method: 'completeMission',
+      permissions: ['reinforcement.hero.missions.complete'],
+    },
+    {
+      controller: StudentHeroController,
+      method: 'completeObjective',
+      permissions: ['reinforcement.hero.objectives.complete'],
+    },
+  ];
 
-const STUDENT_APP_COMMUNICATION_PROFILE_ACTION_PERMISSION_CASES: StudentAppActionPermissionCase[] = [
-  {
-    controller: StudentProfileController,
-    method: 'uploadAvatar',
-    permissions: ['student.profile.avatar.manage'],
-  },
-  {
-    controller: StudentProfileController,
-    method: 'deleteAvatar',
-    permissions: ['student.profile.avatar.manage'],
-  },
-  {
-    controller: StudentProfileController,
-    method: 'submitCorrectionRequest',
-    permissions: ['student.profile.correction_requests.create'],
-  },
-  {
-    controller: StudentProfileController,
-    method: 'cancelCorrectionRequest',
-    permissions: ['student.profile.correction_requests.cancel'],
-  },
-  {
-    controller: StudentMessagesController,
-    method: 'createConversation',
-    permissions: ['communication.conversations.create'],
-  },
-  {
-    controller: StudentMessagesController,
-    method: 'sendMessage',
-    permissions: ['communication.messages.send'],
-  },
-  {
-    controller: StudentMessagesController,
-    method: 'markRead',
-    permissions: ['communication.conversations.read'],
-  },
-  {
-    controller: StudentAnnouncementsController,
-    method: 'markRead',
-    permissions: ['communication.announcements.read'],
-  },
-  {
-    controller: StudentNotificationsController,
-    method: 'markAllRead',
-    permissions: ['communication.notifications.read'],
-  },
-  {
-    controller: StudentNotificationsController,
-    method: 'updatePreferences',
-    permissions: ['communication.notifications.preferences.manage'],
-  },
-  {
-    controller: StudentNotificationsController,
-    method: 'registerDeviceToken',
-    permissions: ['app.device_tokens.manage'],
-  },
-  {
-    controller: StudentNotificationsController,
-    method: 'unregisterCurrentDeviceToken',
-    permissions: ['app.device_tokens.manage'],
-  },
-  {
-    controller: StudentNotificationsController,
-    method: 'markRead',
-    permissions: ['communication.notifications.read'],
-  },
-  {
-    controller: StudentNotificationsController,
-    method: 'archive',
-    permissions: ['communication.notifications.archive'],
-  },
-];
+const STUDENT_APP_COMMUNICATION_PROFILE_ACTION_PERMISSION_CASES: StudentAppActionPermissionCase[] =
+  [
+    {
+      controller: StudentProfileController,
+      method: 'uploadAvatar',
+      permissions: ['student.profile.avatar.manage'],
+    },
+    {
+      controller: StudentProfileController,
+      method: 'deleteAvatar',
+      permissions: ['student.profile.avatar.manage'],
+    },
+    {
+      controller: StudentProfileController,
+      method: 'submitCorrectionRequest',
+      permissions: ['student.profile.correction_requests.create'],
+    },
+    {
+      controller: StudentProfileController,
+      method: 'cancelCorrectionRequest',
+      permissions: ['student.profile.correction_requests.cancel'],
+    },
+    {
+      controller: StudentMessagesController,
+      method: 'createConversation',
+      permissions: ['communication.conversations.create'],
+    },
+    {
+      controller: StudentMessagesController,
+      method: 'sendMessage',
+      permissions: ['communication.messages.send'],
+    },
+    {
+      controller: StudentMessagesController,
+      method: 'markRead',
+      permissions: ['communication.conversations.read'],
+    },
+    {
+      controller: StudentAnnouncementsController,
+      method: 'markRead',
+      permissions: ['communication.announcements.read'],
+    },
+    {
+      controller: StudentNotificationsController,
+      method: 'markAllRead',
+      permissions: ['communication.notifications.read'],
+    },
+    {
+      controller: StudentNotificationsController,
+      method: 'updatePreferences',
+      permissions: ['communication.notifications.preferences.manage'],
+    },
+    {
+      controller: StudentNotificationsController,
+      method: 'registerDeviceToken',
+      permissions: ['app.device_tokens.manage'],
+    },
+    {
+      controller: StudentNotificationsController,
+      method: 'unregisterCurrentDeviceToken',
+      permissions: ['app.device_tokens.manage'],
+    },
+    {
+      controller: StudentNotificationsController,
+      method: 'markRead',
+      permissions: ['communication.notifications.read'],
+    },
+    {
+      controller: StudentNotificationsController,
+      method: 'archive',
+      permissions: ['communication.notifications.archive'],
+    },
+  ];
 
 const STUDENT_APP_CONTROLLER_CLASSES = [
   StudentAcademicContentController as StudentAppControllerClass,
@@ -703,7 +726,7 @@ const STUDENT_APP_ROUTE_PERMISSION_CASES: StudentAppRoutePermissionCase[] = [
 
 describe('Student App read-only route permission metadata (security)', () => {
   it('declares the STU-PERM-1B read-only permission inventory', () => {
-    expect(STUDENT_APP_READ_PERMISSION_CASES).toHaveLength(68);
+    expect(STUDENT_APP_READ_PERMISSION_CASES).toHaveLength(72);
 
     for (const entry of STUDENT_APP_READ_PERMISSION_CASES) {
       const handler = (entry.controller.prototype as Record<string, unknown>)[
@@ -712,10 +735,7 @@ describe('Student App read-only route permission metadata (security)', () => {
 
       expect(typeof handler).toBe('function');
       expect(
-        Reflect.getMetadata(
-          REQUIRED_PERMISSIONS_METADATA,
-          handler as object,
-        ),
+        Reflect.getMetadata(REQUIRED_PERMISSIONS_METADATA, handler as object),
       ).toEqual(entry.permissions);
     }
   });
@@ -730,10 +750,7 @@ describe('Student App read-only route permission metadata (security)', () => {
 
       expect(typeof handler).toBe('function');
       expect(
-        Reflect.getMetadata(
-          REQUIRED_PERMISSIONS_METADATA,
-          handler as object,
-        ),
+        Reflect.getMetadata(REQUIRED_PERMISSIONS_METADATA, handler as object),
       ).toEqual(entry.permissions);
     }
   });
@@ -748,10 +765,7 @@ describe('Student App read-only route permission metadata (security)', () => {
 
       expect(typeof handler).toBe('function');
       expect(
-        Reflect.getMetadata(
-          REQUIRED_PERMISSIONS_METADATA,
-          handler as object,
-        ),
+        Reflect.getMetadata(REQUIRED_PERMISSIONS_METADATA, handler as object),
       ).toEqual(entry.permissions);
     }
   });
@@ -768,16 +782,13 @@ describe('Student App read-only route permission metadata (security)', () => {
 
       expect(typeof handler).toBe('function');
       expect(
-        Reflect.getMetadata(
-          REQUIRED_PERMISSIONS_METADATA,
-          handler as object,
-        ),
+        Reflect.getMetadata(REQUIRED_PERMISSIONS_METADATA, handler as object),
       ).toEqual(entry.permissions);
     }
   });
 
   it('declares the final STU-PERM route permission inventory for every Student App handler', () => {
-    expect(STUDENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(104);
+    expect(STUDENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(108);
 
     const expectedByHandler = new Map<string, StudentAppRoutePermissionCase>();
     for (const entry of STUDENT_APP_ROUTE_PERMISSION_CASES) {
@@ -793,10 +804,7 @@ describe('Student App read-only route permission metadata (security)', () => {
 
       expect(typeof handler).toBe('function');
       expect(
-        Reflect.getMetadata(
-          REQUIRED_PERMISSIONS_METADATA,
-          handler as object,
-        ),
+        Reflect.getMetadata(REQUIRED_PERMISSIONS_METADATA, handler as object),
       ).toEqual(entry.permissions);
     }
 
@@ -805,9 +813,9 @@ describe('Student App read-only route permission metadata (security)', () => {
         Object.getOwnPropertyNames(controller.prototype)
           .filter((method) => method !== 'constructor')
           .filter((method) => {
-            const handler = (
-              controller.prototype as Record<string, unknown>
-            )[method];
+            const handler = (controller.prototype as Record<string, unknown>)[
+              method
+            ];
 
             return (
               typeof handler === 'function' &&
@@ -3957,32 +3965,32 @@ describe('Student App Home/Profile routes (security)', () => {
     }
   });
 
-  it('delivers own message content and preview with safe headers, full-object Range behavior, and preserved redirects', async () => {
+  it('delivers own message content and preview with safe headers, exact partial Range bytes, and preserved redirects', async () => {
     const { accessToken } = await login(linkedStudentEmail);
     const { messageId, attachmentId, fileId } =
       await createStudentMessageAttachmentFixture();
     const base = `${GLOBAL_PREFIX}/student/messages/conversations/${ownConversationId}/messages/${messageId}/attachments/${attachmentId}`;
     const storage = app.get(StorageService);
-    const signing = jest
-      .spyOn(storage, 'createDownloadUrl')
-      .mockResolvedValue({
-        url: 'https://storage.example.test/native-message',
-        expiresAt: new Date(),
-      });
-    const stat = jest
-      .spyOn(storage, 'statObject')
-      .mockResolvedValue({
-        size: 42,
-        etag: 'test',
-        contentType: 'provider/type',
-        metadata: {},
-        lastModified: null,
-        generation: null,
-        version: null,
-      });
+    const signing = jest.spyOn(storage, 'createDownloadUrl').mockResolvedValue({
+      url: 'https://storage.example.test/native-message',
+      expiresAt: new Date(),
+    });
+    const stat = jest.spyOn(storage, 'statObject').mockResolvedValue({
+      size: 42,
+      etag: 'test',
+      contentType: 'provider/type',
+      metadata: {},
+      lastModified: null,
+      generation: null,
+      version: null,
+    });
     const read = jest
       .spyOn(storage, 'getObject')
-      .mockImplementation(async () => Readable.from([Buffer.alloc(42, 65)]));
+      .mockImplementation((input) =>
+        Promise.resolve(
+          Readable.from([Buffer.alloc(input.range?.length ?? 42, 65)]),
+        ),
+      );
     const fileLookup = jest.spyOn(
       app.get(FilesRepository),
       'findScopedFileById',
@@ -3996,10 +4004,10 @@ describe('Student App Home/Profile routes (security)', () => {
           .get(`${base}/${mode}/content`)
           .set('Authorization', `Bearer ${accessToken}`)
           .set('Range', 'bytes=0-3')
-          .expect(200);
-        expect(response.body).toEqual(Buffer.alloc(42, 65));
+          .expect(206);
+        expect(response.body).toEqual(Buffer.alloc(4, 65));
         expect(response.headers['content-type']).toBe('application/pdf');
-        expect(response.headers['content-length']).toBe('42');
+        expect(response.headers['content-length']).toBe('4');
         expect(response.headers['content-disposition']).toMatch(
           new RegExp(`^${disposition};`),
         );
@@ -4010,8 +4018,8 @@ describe('Student App Home/Profile routes (security)', () => {
           'no-store, private, max-age=0',
         );
         expect(response.headers['x-content-type-options']).toBe('nosniff');
-        expect(response.headers['content-range']).toBeUndefined();
-        expect(response.headers['accept-ranges']).toBeUndefined();
+        expect(response.headers['content-range']).toBe('bytes 0-3/42');
+        expect(response.headers['accept-ranges']).toBe('bytes');
         expect(response.headers.location).toBeUndefined();
       }
       expect(signing).not.toHaveBeenCalled();

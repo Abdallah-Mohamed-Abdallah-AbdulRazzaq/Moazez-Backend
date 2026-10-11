@@ -21,6 +21,26 @@ export class GetTeacherMessageAttachmentDownloadUrlUseCase {
     attachmentId: string;
     mode: CommunicationAttachmentAccessMode;
   }): Promise<string> {
+    await this.assertMessageVisible(params);
+    return this.getAttachmentDownloadUrlUseCase.execute(params);
+  }
+
+  async resolveFile(params: {
+    conversationId: string;
+    messageId: string;
+    attachmentId: string;
+    mode: CommunicationAttachmentAccessMode;
+  }) {
+    await this.assertMessageVisible(params);
+    return this.getAttachmentDownloadUrlUseCase.resolveFile(params);
+  }
+
+  private async assertMessageVisible(params: {
+    conversationId: string;
+    messageId: string;
+    attachmentId: string;
+    mode: CommunicationAttachmentAccessMode;
+  }): Promise<void> {
     const context = this.accessService.assertCurrentTeacher();
     const conversation = await this.readAdapter.findConversationForTeacher({
       conversationId: params.conversationId,
@@ -45,7 +65,5 @@ export class GetTeacherMessageAttachmentDownloadUrlUseCase {
         messageId: params.messageId,
       });
     }
-
-    return this.getAttachmentDownloadUrlUseCase.execute(params);
   }
 }

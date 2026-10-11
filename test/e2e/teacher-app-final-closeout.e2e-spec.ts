@@ -689,9 +689,9 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       (entry) => entry.permissions,
     );
 
-    expect(routes).toHaveLength(151);
-    expect(inventory).toHaveLength(151);
-    expect(decorated).toHaveLength(151);
+    expect(routes).toHaveLength(157);
+    expect(inventory).toHaveLength(157);
+    expect(decorated).toHaveLength(157);
     for (const handler of ['content', 'publication']) {
       expect(
         getHandlerPermissions(

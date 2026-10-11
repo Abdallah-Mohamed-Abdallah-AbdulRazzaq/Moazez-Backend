@@ -95,7 +95,8 @@ describe('ApplicantPortalController trusted client IP boundary', () => {
 });
 
 function useCaseMocks(): UseCaseMocks {
-  const execute = (): ExecuteMock => jest.fn().mockResolvedValue({});
+  const execute = (): ExecuteMock =>
+    jest.fn<Promise<unknown>, unknown[]>().mockResolvedValue({});
   return {
     createAccount: execute(),
     getProfile: execute(),
@@ -113,7 +114,9 @@ function useCaseMocks(): UseCaseMocks {
       .fn<Promise<unknown>, unknown[]>()
       .mockResolvedValue('https://storage.example.test/download'),
     replaceDocument: execute(),
-    deleteDocument: jest.fn().mockResolvedValue(undefined),
+    deleteDocument: jest
+      .fn<Promise<unknown>, unknown[]>()
+      .mockResolvedValue(undefined),
   };
 }
 
@@ -122,6 +125,7 @@ function buildController(
   trustedClientIpResolver: TrustedClientIpResolver,
 ): ApplicantPortalController {
   return new ApplicantPortalController(
+    { execute: jest.fn() } as never,
     { execute: useCases.createAccount } as never,
     { execute: useCases.getProfile } as never,
     { execute: useCases.listSchools } as never,

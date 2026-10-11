@@ -211,4 +211,24 @@ export class AccessParentAcademicContentAssetUseCase {
       throw new NotFoundDomainException('Academic asset not found');
     return this.assets.access(recipient, contentId, fileId, mode);
   }
+
+  async resolveFile(
+    studentId: string,
+    contentId: string,
+    fileId: string,
+    mode: AcademicContentAssetAccessMode,
+  ) {
+    const { context, child } =
+      await this.access.getOwnedStudentContext(studentId);
+    const recipient = recipientContext(context, child);
+    if (!recipient)
+      throw new NotFoundDomainException('Academic asset not found');
+    const resolved = await this.assets.resolve(
+      recipient,
+      contentId,
+      fileId,
+      mode,
+    );
+    return resolved.file;
+  }
 }

@@ -1,3 +1,6 @@
+import { GetStudentAvatarContentUseCase } from './profile/application/get-student-avatar-content.use-case';
+import { GetStudentRewardImageContentUseCase } from './rewards/application/get-student-reward-image-content.use-case';
+import { GetStudentAcademicContentAssetContentUseCase } from './academic-content/application/student-academic-content-asset-content.use-case';
 import { Module } from '@nestjs/common';
 import { StudentAcademicContentEngagementController } from './academic-content/controller/student-academic-content-engagement.controller';
 import { RecordStudentAcademicContentEngagementUseCase } from './academic-content/application/student-academic-content.use-cases';
@@ -195,6 +198,9 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     StudentRewardsController,
   ],
   providers: [
+    GetStudentAvatarContentUseCase,
+    GetStudentRewardImageContentUseCase,
+    GetStudentAcademicContentAssetContentUseCase,
     RecordStudentAcademicContentEngagementUseCase,
     AccessStudentAcademicContentAssetUseCase,
     ListStudentAcademicContentUseCase,

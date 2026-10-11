@@ -1,3 +1,4 @@
+import { GetApplicantDocumentContentUseCase } from './application/get-applicant-document-content.use-case';
 import { Module } from '@nestjs/common';
 import { TrustedClientIpModule } from '../../bootstrap/trusted-client-ip.module';
 import { StorageModule } from '../../infrastructure/storage/storage.module';
@@ -26,6 +27,7 @@ import { ApplicantPortalRepository } from './infrastructure/applicant-portal.rep
   imports: [AuthModule, StorageModule, BrandingModule, TrustedClientIpModule],
   controllers: [ApplicantPortalController],
   providers: [
+    GetApplicantDocumentContentUseCase,
     ApplicantPortalRepository,
     ApplicantPortalAccessService,
     CreateApplicantAccountUseCase,

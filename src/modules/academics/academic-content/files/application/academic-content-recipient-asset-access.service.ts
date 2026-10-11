@@ -7,6 +7,7 @@ import {
 import { AcademicContentCurrentRecipientContext } from '../../domain/academic-content-current-access.policy';
 import { AcademicContentRecipientReadRepository } from '../../infrastructure/academic-content-recipient-read.repository';
 import {
+  assertAcademicContentFilePresentation,
   AcademicContentAssetAccessMode,
   AcademicContentAuthorizedFileSigner,
 } from './academic-content-authorized-file.signer';
@@ -26,6 +27,21 @@ export class AcademicContentRecipientAssetAccessService {
     fileId: string,
     mode: AcademicContentAssetAccessMode,
   ): Promise<{ url: string }> {
+    const { file, policy } = await this.resolve(
+      context,
+      contentId,
+      fileId,
+      mode,
+    );
+    return this.signer.sign(file, mode, policy, file.visibleUntil);
+  }
+
+  async resolve(
+    context: AcademicContentCurrentRecipientContext,
+    contentId: string,
+    fileId: string,
+    mode: AcademicContentAssetAccessMode,
+  ) {
     if (mode !== 'preview' && mode !== 'download')
       throw new ValidationDomainException('Invalid asset access mode');
     const asset = await this.reads.findCurrentRecipientAsset(
@@ -47,6 +63,12 @@ export class AcademicContentRecipientAssetAccessService {
         message: 'Recipient download is unavailable',
         httpStatus: HttpStatus.FORBIDDEN,
       });
-    return this.signer.sign(asset, mode, policy, asset.visibleUntil);
+    assertAcademicContentFilePresentation(
+      asset,
+      mode,
+      policy,
+      asset.visibleUntil,
+    );
+    return { file: asset, policy };
   }
 }

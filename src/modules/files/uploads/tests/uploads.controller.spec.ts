@@ -7,6 +7,7 @@ import { RequestContextMiddleware } from '../../../../common/context/context.mid
 import { REQUIRED_PERMISSIONS_METADATA } from '../../../../common/decorators/required-permissions.decorator';
 import { SCHOOL_MANAGEMENT_ONLY_METADATA } from '../../../../common/decorators/school-management-only.decorator';
 import { GetFileDownloadUrlUseCase } from '../application/get-file-download-url.use-case';
+import { GetFileContentUseCase } from '../application/get-file-content.use-case';
 import { UploadFileUseCase } from '../application/upload-file.use-case';
 import { UploadsController } from '../controller/uploads.controller';
 import { FILES_UPLOAD_MAX_SIZE_BYTES } from '../domain/file-upload.constraints';
@@ -40,6 +41,13 @@ describe('UploadsController contract', () => {
       expect(
         Reflect.getMetadata(REQUIRED_PERMISSIONS_METADATA, uploadHandler),
       ).toEqual(['files.uploads.manage']);
+      const contentHandler = getControllerHandler('downloadFileContent');
+      expect(
+        Reflect.getMetadata(SCHOOL_MANAGEMENT_ONLY_METADATA, contentHandler),
+      ).toBe(true);
+      expect(
+        Reflect.getMetadata(REQUIRED_PERMISSIONS_METADATA, contentHandler),
+      ).toEqual(['files.downloads.view']);
     });
   });
 
@@ -78,6 +86,7 @@ describe('UploadsController contract', () => {
       const moduleRef: TestingModule = await Test.createTestingModule({
         controllers: [UploadsController],
         providers: [
+          { provide: GetFileContentUseCase, useValue: {} },
           { provide: UploadFileUseCase, useValue: uploadFileUseCase },
           {
             provide: GetFileDownloadUrlUseCase,
@@ -191,7 +200,7 @@ describe('UploadsController contract', () => {
   });
 
   function getControllerHandler(
-    methodName: 'downloadFile' | 'uploadFile',
+    methodName: 'downloadFile' | 'downloadFileContent' | 'uploadFile',
   ): object {
     const handler = Object.getOwnPropertyDescriptor(
       UploadsController.prototype,

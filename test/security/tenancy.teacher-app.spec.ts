@@ -898,6 +898,36 @@ const TEACHER_APP_DEFERRED_ACTION_CASES: TeacherAppDeferredCase[] = [];
 
 const TEACHER_APP_DECORATED_PERMISSION_CASES: TeacherAppPermissionCase[] = [
   {
+    controller: TeacherAcademicContentFilesController,
+    method: 'currentContent',
+    permissions: ['academics.academic_content.view'],
+  },
+  {
+    controller: TeacherAcademicContentFilesController,
+    method: 'revisionContent',
+    permissions: ['academics.academic_content.view'],
+  },
+  {
+    controller: TeacherMessagesController,
+    method: 'downloadAttachmentContent',
+    permissions: ['communication.messages.view'],
+  },
+  {
+    controller: TeacherMessagesController,
+    method: 'previewAttachmentContent',
+    permissions: ['communication.messages.view'],
+  },
+  {
+    controller: TeacherTaskReviewQueueController,
+    method: 'fileContent',
+    permissions: ['reinforcement.reviews.view'],
+  },
+  {
+    controller: TeacherTasksController,
+    method: 'proofFileContent',
+    permissions: ['reinforcement.tasks.view'],
+  },
+  {
     controller: TeacherAcademicContentAnalyticsController,
     method: 'content',
     permissions: [
@@ -1212,8 +1242,8 @@ describe('Teacher App route permission metadata (security)', () => {
           .map((method) => `${controller.name}.${method}`),
     ).sort();
 
-    expect(discoveredRouteHandlers).toHaveLength(151);
-    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(151);
+    expect(discoveredRouteHandlers).toHaveLength(157);
+    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(157);
     expect(TEACHER_APP_DEFERRED_ACTION_CASES).toHaveLength(0);
     expect(discoveredRouteHandlers).toEqual(
       Array.from(expectedKnownHandlers).sort(),

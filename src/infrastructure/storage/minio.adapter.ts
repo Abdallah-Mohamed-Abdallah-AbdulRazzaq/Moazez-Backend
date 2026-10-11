@@ -18,6 +18,7 @@ import {
 import { collectObjectRange } from './object-storage.range';
 import {
   assertObjectRange,
+  assertObjectStreamRange,
   assertSignedUrlTtl,
   type ObjectStorageCapabilities,
   type ObjectStorageListPage,
@@ -25,6 +26,7 @@ import {
   type ObjectStoragePutInput,
   type ObjectStoragePutResult,
   type ObjectStorageRangeInput,
+  type ObjectStorageReadInput,
   type ObjectStorageResumableUploadInput,
   type ObjectStorageResumableUploadSession,
   type ObjectStorageSignedCapability,
@@ -219,12 +221,19 @@ export class MinioAdapter implements ObjectStoragePort {
     }
   }
 
-  async getObject(input: {
-    bucket: string;
-    objectKey: string;
-  }): Promise<Readable> {
+  async getObject(input: ObjectStorageReadInput): Promise<Readable> {
+    assertObjectStreamRange(input);
     try {
-      const source = await this.client.getObject(input.bucket, input.objectKey);
+      const options = input.version ? { versionId: input.version } : undefined;
+      const source = input.range
+        ? await this.client.getPartialObject(
+            input.bucket,
+            input.objectKey,
+            input.range.offset,
+            input.range.length,
+            options,
+          )
+        : await this.client.getObject(input.bucket, input.objectKey, options);
       return normalizeObjectStorageReadStream(source, 'minio');
     } catch (error) {
       throw normalizeMinioStorageError(error);

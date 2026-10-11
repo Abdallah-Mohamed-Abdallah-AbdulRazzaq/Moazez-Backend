@@ -211,6 +211,37 @@ export class TeacherTaskReviewReadAdapter {
     return { items, total, page, limit };
   }
 
+  async findAuthorizedProof(params: {
+    teacherUserId: string;
+    schoolId: string;
+    allocations: TeacherAppAllocationRecord[];
+    submissionId: string;
+    fileId: string;
+  }) {
+    const submission =
+      await this.scopedPrisma.reinforcementSubmission.findFirst({
+        where: {
+          AND: [
+            { id: params.submissionId, proofFileId: params.fileId },
+            this.buildVisibleSubmissionWhere(params),
+          ],
+          proofFile: { is: { schoolId: params.schoolId, deletedAt: null } },
+        },
+        select: {
+          proofFile: {
+            select: {
+              bucket: true,
+              objectKey: true,
+              originalName: true,
+              mimeType: true,
+              sizeBytes: true,
+            },
+          },
+        },
+      });
+    return submission?.proofFile ?? null;
+  }
+
   findVisibleSubmissionById(params: {
     teacherUserId: string;
     allocations: TeacherAppAllocationRecord[];

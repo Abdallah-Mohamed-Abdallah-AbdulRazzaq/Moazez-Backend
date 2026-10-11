@@ -39,7 +39,7 @@ describe('PrivateMediaContentService', () => {
     const { service, storage, notFound } = setup();
     let produced = 0;
     const source = Readable.from(
-      (async function* () {
+      (function* () {
         for (let index = 0; index < 100; index++) {
           produced++;
           yield Buffer.alloc(1024, index);
@@ -70,7 +70,9 @@ describe('PrivateMediaContentService', () => {
       'mimeType',
       'originalName',
       'sizeBytes',
+      'statusCode',
       'stream',
+      'totalSizeBytes',
     ]);
     let received = 0;
     for await (const chunk of content.stream)
@@ -115,7 +117,7 @@ describe('PrivateMediaContentService', () => {
       if (stage === 'first byte')
         storage.getObject.mockResolvedValue(
           Readable.from(
-            (async function* () {
+            (function* () {
               throw raw;
               yield Buffer.from('never');
             })(),
@@ -138,7 +140,7 @@ describe('PrivateMediaContentService', () => {
     const { service, storage, notFound } = setup();
     storage.getObject.mockResolvedValue(
       Readable.from(
-        (async function* () {
+        (function* () {
           throw new ObjectStorageError('not_found');
           yield Buffer.from('never');
         })(),
@@ -173,7 +175,8 @@ describe('PrivateMediaContentService', () => {
       const content = await service.open(descriptor);
       await expect(
         (async () => {
-          for await (const _chunk of content.stream) {
+          for await (const chunk of content.stream) {
+            expect(chunk).toBeInstanceOf(Uint8Array);
             /* consume without collecting */
           }
         })(),
@@ -241,7 +244,7 @@ describe('PrivateMediaContentService', () => {
     expect(header).toContain(
       `filename*=UTF-8''${encodeURIComponent('مرفق.pdf')}`,
     );
-    expect(headers.get('Accept-Ranges')).toBeUndefined();
+    expect(headers.get('Accept-Ranges')).toBe('bytes');
     expect(headers.get('Content-Range')).toBeUndefined();
   });
 });
