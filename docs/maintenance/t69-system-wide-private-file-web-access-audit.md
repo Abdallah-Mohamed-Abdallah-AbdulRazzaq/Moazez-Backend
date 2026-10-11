@@ -2,6 +2,8 @@
 
 Source authority: current fetched main `e5b580bbceef56d1bd4589557d65c2d147fd93b3`. Implementation branch: `agent/t69-private-file-web-access-hardening-candidate`. The clean isolated candidate checkout was created from that commit; the owner's checkout and preserved infrastructure were untouched. Governance, ADRs, ACC-10D/ACC-12, Parent file and Student private-content evidence were read before implementation. Historical closeouts establish the earlier contracts; this change's tests establish the new behavior.
 
+Delivery identity: [Draft PR #207](https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/207). Its delivery receipt supplies the immutable final commit SHA, exact-head canonical CI run, required-summary artifact ID and verified SHA-256 digest. That receipt is published in the PR description and final engineering report after all jobs finish; use its exact identities rather than an earlier run or a floating branch check.
+
 ## Evidence and accounting
 
 The incident supplied Backend OPTIONS 204, Backend GET 307, GCS OPTIONS 200, final GCS GET unobserved, failing Student/Teacher browser flows and working mobile applications. It confirms those two browser compatibility gaps, but cannot establish whether redirect handling, forwarded authorization, provider CORS, response handling or browser preview support caused the failure.
