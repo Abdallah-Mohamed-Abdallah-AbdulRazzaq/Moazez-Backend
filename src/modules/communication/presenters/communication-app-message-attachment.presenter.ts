@@ -1,5 +1,8 @@
 export type CommunicationAppAttachmentAliasStyle = 'camel' | 'dual';
-export type CommunicationAppAttachmentSurface = 'parent' | 'student' | 'teacher';
+export type CommunicationAppAttachmentSurface =
+  | 'parent'
+  | 'student'
+  | 'teacher';
 
 export type CommunicationAppAttachmentMediaKind =
   | 'image'
@@ -37,8 +40,7 @@ export interface CommunicationAppAttachmentCamelResponse {
   previewContentPath?: string;
 }
 
-export interface CommunicationAppAttachmentDualResponse
-  extends CommunicationAppAttachmentCamelResponse {
+export interface CommunicationAppAttachmentDualResponse extends CommunicationAppAttachmentCamelResponse {
   attachment_id: string;
   file_id: string;
   display_name: string | null;
@@ -119,10 +121,8 @@ export function presentCommunicationAppMessageAttachment(
   if (authorizedPath) {
     camel.authorizedDownloadPath = authorizedPath.downloadPath;
     camel.previewPath = authorizedPath.previewPath;
-    if (params.authorizedRoute?.surface === 'student') {
-      camel.authorizedDownloadContentPath = `${authorizedPath.downloadPath}/content`;
-      camel.previewContentPath = `${authorizedPath.previewPath}/content`;
-    }
+    camel.authorizedDownloadContentPath = `${authorizedPath.downloadPath}/content`;
+    camel.previewContentPath = `${authorizedPath.previewPath}/content`;
   }
 
   if (params.aliasStyle === 'camel') {
@@ -185,12 +185,10 @@ export interface CommunicationAppAttachmentPresenterParams {
 export function buildCommunicationAppAttachmentAuthorizedPaths(
   attachmentId: string,
   route: CommunicationAppAttachmentPresenterParams['authorizedRoute'],
-):
-  | {
-      downloadPath: string;
-      previewPath: string;
-    }
-  | null {
+): {
+  downloadPath: string;
+  previewPath: string;
+} | null {
   if (!route) return null;
 
   const basePath =

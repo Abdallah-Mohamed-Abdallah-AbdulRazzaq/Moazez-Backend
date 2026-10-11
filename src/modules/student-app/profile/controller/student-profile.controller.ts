@@ -1,3 +1,10 @@
+import type { Request, Response } from 'express';
+import { Req, Res } from '@nestjs/common';
+import {
+  privateMediaContentRequest,
+  streamPrivateMediaContent,
+} from '../../../../infrastructure/storage/private-media-content.response';
+import { GetStudentAvatarContentUseCase } from '../application/get-student-avatar-content.use-case';
 import {
   Controller,
   Delete,
@@ -42,6 +49,7 @@ import {
 @Controller('student/profile')
 export class StudentProfileController {
   constructor(
+    private readonly content: GetStudentAvatarContentUseCase,
     private readonly getStudentProfileUseCase: GetStudentProfileUseCase,
     private readonly uploadStudentAvatarUseCase: UploadStudentAvatarUseCase,
     private readonly deleteStudentAvatarUseCase: DeleteStudentAvatarUseCase,
@@ -103,7 +111,9 @@ export class StudentProfileController {
     isArray: true,
   })
   @RequiredPermissions('student.profile.correction_requests.view')
-  listCorrectionRequests(): Promise<StudentProfileCorrectionRequestResponseDto[]> {
+  listCorrectionRequests(): Promise<
+    StudentProfileCorrectionRequestResponseDto[]
+  > {
     return this.listCorrectionRequestsUseCase.execute();
   }
 
@@ -124,5 +134,18 @@ export class StudentProfileController {
     @Param('requestId', new ParseUUIDPipe()) requestId: string,
   ): Promise<StudentProfileCorrectionRequestResponseDto> {
     return this.cancelCorrectionRequestUseCase.execute(requestId);
+  }
+  @Get('avatar/:fileId/content')
+  @RequiredPermissions('student.profile.view')
+  async fileContent(
+    @Param('fileId', new ParseUUIDPipe()) fileId: string,
+    @Req() request: Request,
+    @Res() response: Response,
+  ): Promise<void> {
+    const content = await this.content.execute(
+      fileId,
+      privateMediaContentRequest(request, response, 'inline'),
+    );
+    await streamPrivateMediaContent(content, response, 'inline');
   }
 }

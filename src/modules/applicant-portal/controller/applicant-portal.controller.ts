@@ -1,3 +1,10 @@
+import { Res } from '@nestjs/common';
+import type { Response } from 'express';
+import {
+  privateMediaContentRequest,
+  streamPrivateMediaContent,
+} from '../../../infrastructure/storage/private-media-content.response';
+import { GetApplicantDocumentContentUseCase } from '../application/get-applicant-document-content.use-case';
 import {
   Body,
   Controller,
@@ -80,6 +87,7 @@ import { UploadedMultipartFile } from '../../files/uploads/domain/uploaded-file'
 @Controller('applicant-portal')
 export class ApplicantPortalController {
   constructor(
+    private readonly content: GetApplicantDocumentContentUseCase,
     private readonly createApplicantAccountUseCase: CreateApplicantAccountUseCase,
     private readonly getApplicantProfileUseCase: GetApplicantProfileUseCase,
     private readonly listDiscoverableSchoolsUseCase: ListDiscoverableSchoolsUseCase,
@@ -334,6 +342,26 @@ export class ApplicantPortalController {
       requestId,
       documentId,
     });
+  }
+
+  @Get('requests/:requestId/documents/:documentId/download/content')
+  @AllowApplicantPortalAccess()
+  async downloadDocumentContent(
+    @Param('requestId', new ParseUUIDPipe()) requestId: string,
+    @Param('documentId', new ParseUUIDPipe()) documentId: string,
+    @Req() request: Request,
+    @Res() response: Response,
+  ): Promise<void> {
+    const content = await this.content.execute(
+      {
+        requestId,
+        documentId,
+        ipAddress: this.trustedClientIpResolver.resolve(request),
+        userAgent: request.header('user-agent') ?? null,
+      },
+      privateMediaContentRequest(request, response, 'attachment'),
+    );
+    await streamPrivateMediaContent(content, response, 'attachment');
   }
 
   @Get('requests/:requestId/documents/:documentId/download')

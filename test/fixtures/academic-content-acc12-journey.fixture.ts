@@ -17,6 +17,7 @@ import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
 import {
   OBJECT_STORAGE_PORT,
   ObjectStoragePort,
+  ObjectStorageReadInput,
   ObjectStoragePutInput,
   ObjectStorageResumableUploadInput,
   ObjectStorageSignedGetOverrides,
@@ -105,10 +106,16 @@ export class ACC12IsolatedStorageProviderContractDouble implements ObjectStorage
       object.bytes.subarray(input.offset, input.offset + input.length),
     );
   }
-  getObject(input: { objectKey: string }) {
+  getObject(input: ObjectStorageReadInput) {
+    const bytes = this.objects.get(input.objectKey)?.bytes ?? Buffer.alloc(0);
     return Promise.resolve(
       Readable.from(
-        this.objects.get(input.objectKey)?.bytes ?? Buffer.alloc(0),
+        input.range
+          ? bytes.subarray(
+              input.range.offset,
+              input.range.offset + input.range.length,
+            )
+          : bytes,
       ),
     );
   }
@@ -349,11 +356,12 @@ export class AcademicContentACC12JourneyFixture {
   }
 
   async http<T = Record<string, unknown>>(
-    method: 'get' | 'post' | 'put' | 'patch',
+    method: 'get' | 'head' | 'post' | 'put' | 'patch',
     path: string,
     actor: JourneyActor | null = 'school',
     body?: object,
     status = method === 'post' ? 201 : 200,
+    headers: Record<string, string> = {},
   ) {
     let call = request(this.api.getHttpServer() as Server)[method](
       `/api/v1/${path}`,
@@ -361,6 +369,8 @@ export class AcademicContentACC12JourneyFixture {
     if (actor)
       call = call.set('Authorization', `Bearer ${this.tokens.get(actor)}`);
     if (body) call = call.send(body);
+    for (const [name, value] of Object.entries(headers))
+      call = call.set(name, value);
     const response = await call.expect(status);
     return {
       body: response.body as T,

@@ -254,6 +254,57 @@ describe('Applicant Portal document download (e2e)', () => {
     await expect(getSideEffectSnapshot()).resolves.toEqual(before);
   });
 
+  it('streams applicant-owned document content, with exact range and one audit per body open', async () => {
+    const path =
+      GLOBAL_PREFIX +
+      '/applicant-portal/requests/' +
+      applicantRequestId +
+      '/documents/' +
+      applicantDocumentId +
+      '/download/content';
+    const auditCount = () =>
+      prisma.auditLog.count({
+        where: {
+          resourceId: applicantDocumentId,
+          action: 'applicant.document.download',
+        },
+      });
+    const before = await auditCount();
+    const full = await request(app.getHttpServer())
+      .get(path)
+      .set('Authorization', bearer(applicantAuth))
+      .expect(200);
+    expect(full.body).toEqual(Buffer.from('birth-certificate'));
+    expect(full.headers.location).toBeUndefined();
+    expect(await auditCount()).toBe(before + 1);
+    const partial = await request(app.getHttpServer())
+      .get(path)
+      .set('Authorization', bearer(applicantAuth))
+      .set('Range', 'bytes=0-4')
+      .expect(206);
+    expect(partial.body).toEqual(Buffer.from('birth'));
+    expect(await auditCount()).toBe(before + 2);
+    await request(app.getHttpServer())
+      .head(path)
+      .set('Authorization', bearer(applicantAuth))
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(path)
+      .set('Authorization', bearer(applicantAuth))
+      .set('Range', 'bytes=999-')
+      .expect(416);
+    await request(app.getHttpServer())
+      .get(path)
+      .set('Authorization', bearer(otherApplicantAuth))
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(path)
+      .set('Authorization', bearer(parentAuth))
+      .expect(403);
+    await request(app.getHttpServer()).get(path).expect(401);
+    expect(await auditCount()).toBe(before + 2);
+  });
+
   it('hides applicant document downloads across applicant request ownership boundaries', async () => {
     await request(app.getHttpServer())
       .get(
@@ -316,6 +367,17 @@ describe('Applicant Portal document download (e2e)', () => {
         )
         .set('Authorization', bearer(applicantAuth))
         .expect(404);
+      await request(app.getHttpServer())
+        .get(
+          GLOBAL_PREFIX +
+            '/applicant-portal/requests/' +
+            applicantRequestId +
+            '/documents/' +
+            applicantDocumentId +
+            '/download/content',
+        )
+        .set('Authorization', bearer(applicantAuth))
+        .expect(404);
     }
 
     await prisma.applicantAdmissionRequestDocument.update({
@@ -329,6 +391,20 @@ describe('Applicant Portal document download (e2e)', () => {
     await request(app.getHttpServer())
       .get(
         `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents/${applicantDocumentId}/download`,
+      )
+      .set('Authorization', bearer(applicantAuth))
+      .expect(404);
+  });
+
+  it('rejects the deleted applicant document through content', async () => {
+    await request(app.getHttpServer())
+      .get(
+        GLOBAL_PREFIX +
+          '/applicant-portal/requests/' +
+          applicantRequestId +
+          '/documents/' +
+          applicantDocumentId +
+          '/download/content',
       )
       .set('Authorization', bearer(applicantAuth))
       .expect(404);

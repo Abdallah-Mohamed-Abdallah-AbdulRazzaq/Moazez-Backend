@@ -1,3 +1,10 @@
+import type { Request, Response } from 'express';
+import { Req, Res } from '@nestjs/common';
+import {
+  privateMediaContentRequest,
+  streamPrivateMediaContent,
+} from '../../../../infrastructure/storage/private-media-content.response';
+import { GetFileContentUseCase } from '../application/get-file-content.use-case';
 import {
   Controller,
   Get,
@@ -36,6 +43,7 @@ import {
 @Controller('files')
 export class UploadsController {
   constructor(
+    private readonly content: GetFileContentUseCase,
     private readonly uploadFileUseCase: UploadFileUseCase,
     private readonly getFileDownloadUrlUseCase: GetFileDownloadUrlUseCase,
   ) {}
@@ -71,5 +79,21 @@ export class UploadsController {
     return {
       url: await this.getFileDownloadUrlUseCase.execute(fileId),
     };
+  }
+
+  @Get(':id/download/content')
+  @SchoolManagementOnly()
+  @RequiredPermissions('files.downloads.view')
+  async downloadFileContent(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Req() request: Request,
+    @Res() response: Response,
+  ): Promise<void> {
+    const disposition = 'attachment';
+    const content = await this.content.execute(
+      id,
+      privateMediaContentRequest(request, response, disposition),
+    );
+    await streamPrivateMediaContent(content, response, disposition);
   }
 }

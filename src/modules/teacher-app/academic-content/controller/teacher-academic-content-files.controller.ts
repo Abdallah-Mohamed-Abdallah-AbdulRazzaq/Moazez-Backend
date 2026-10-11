@@ -1,3 +1,10 @@
+import type { Request, Response } from 'express';
+import { Req, Res } from '@nestjs/common';
+import {
+  privateMediaContentRequest,
+  streamPrivateMediaContent,
+} from '../../../../infrastructure/storage/private-media-content.response';
+import { GetTeacherAcademicContentAssetContentUseCase } from '../application/teacher-academic-content-asset-content.use-case';
 import {
   Body,
   Controller,
@@ -31,7 +38,10 @@ import {
 @ApiBearerAuth()
 @Controller('teacher')
 export class TeacherAcademicContentFilesController {
-  constructor(private readonly files: TeacherAcademicContentFilesUseCases) {}
+  constructor(
+    private readonly content: GetTeacherAcademicContentAssetContentUseCase,
+    private readonly files: TeacherAcademicContentFilesUseCases,
+  ) {}
 
   @Post('academic-content/:contentId/uploads')
   @Header('Cache-Control', 'no-store, private, max-age=0')
@@ -123,5 +133,47 @@ export class TeacherAcademicContentFilesController {
     @Param('templateId', new ParseUUIDPipe()) templateId: string,
   ) {
     return this.files.templateDetail(classId, templateId);
+  }
+
+  @Get('academic-content/:contentId/assets/:assetId/access/content')
+  @RequiredPermissions('academics.academic_content.view')
+  async currentContent(
+    @Param('contentId', new ParseUUIDPipe()) contentId: string,
+    @Param('assetId', new ParseUUIDPipe()) assetId: string,
+    @Query() query: TeacherAcademicContentAssetAccessQueryDto,
+    @Req() request: Request,
+    @Res() response: Response,
+  ): Promise<void> {
+    const disposition = query.mode === 'preview' ? 'inline' : 'attachment';
+    const content = await this.content.current(
+      contentId,
+      assetId,
+      query.mode,
+      privateMediaContentRequest(request, response, disposition),
+    );
+    await streamPrivateMediaContent(content, response, disposition);
+  }
+
+  @Get(
+    'academic-content/:contentId/revisions/:revisionId/assets/:fileId/access/content',
+  )
+  @RequiredPermissions('academics.academic_content.view')
+  async revisionContent(
+    @Param('contentId', new ParseUUIDPipe()) contentId: string,
+    @Param('revisionId', new ParseUUIDPipe()) revisionId: string,
+    @Param('fileId', new ParseUUIDPipe()) fileId: string,
+    @Query() query: TeacherAcademicContentAssetAccessQueryDto,
+    @Req() request: Request,
+    @Res() response: Response,
+  ): Promise<void> {
+    const disposition = query.mode === 'preview' ? 'inline' : 'attachment';
+    const content = await this.content.revision(
+      contentId,
+      revisionId,
+      fileId,
+      query.mode,
+      privateMediaContentRequest(request, response, disposition),
+    );
+    await streamPrivateMediaContent(content, response, disposition);
   }
 }

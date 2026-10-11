@@ -12,6 +12,7 @@ import {
 import { collectObjectRange } from './object-storage.range';
 import {
   assertObjectRange,
+  assertObjectStreamRange,
   assertSignedUrlTtl,
   MAX_RESUMABLE_UPLOAD_CAPABILITY_LIFETIME_MS,
   type ObjectStorageCapabilities,
@@ -20,6 +21,7 @@ import {
   type ObjectStoragePutInput,
   type ObjectStoragePutResult,
   type ObjectStorageRangeInput,
+  type ObjectStorageReadInput,
   type ObjectStorageResumableUploadInput,
   type ObjectStorageResumableUploadSession,
   type ObjectStorageSignedCapability,
@@ -233,12 +235,24 @@ export class GcsAdapter implements ObjectStoragePort {
     }
   }
 
-  getObject(input: { bucket: string; objectKey: string }): Promise<Readable> {
+  getObject(input: ObjectStorageReadInput): Promise<Readable> {
+    assertObjectStreamRange(input);
     try {
       const source = this.runtimeClient
         .bucket(input.bucket)
-        .file(input.objectKey)
-        .createReadStream();
+        .file(
+          input.objectKey,
+          input.generation ? { generation: input.generation } : undefined,
+        )
+        .createReadStream({
+          ...(input.raw ? { decompress: false } : {}),
+          ...(input.range
+            ? {
+                start: input.range.offset,
+                end: input.range.offset + input.range.length - 1,
+              }
+            : {}),
+        });
       return Promise.resolve(normalizeObjectStorageReadStream(source, 'gcs'));
     } catch (error) {
       return Promise.reject(normalizeGcsStorageError(error));

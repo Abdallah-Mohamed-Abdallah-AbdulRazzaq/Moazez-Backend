@@ -1,3 +1,7 @@
+import { Readable } from 'node:stream';
+import { PrivateMediaContentService } from '../../src/infrastructure/storage/private-media-content.service';
+import { GetStudentAcademicContentAssetContentUseCase } from '../../src/modules/student-app/academic-content/application/student-academic-content-asset-content.use-case';
+import { GetParentAcademicContentAssetContentUseCase } from '../../src/modules/parent-app/academic-content/application/parent-academic-content-asset-content.use-case';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -57,7 +61,24 @@ describeDatabase(
     const policy = new AcademicContentFilePolicyResolver(
       new AcademicContentFileRepository(prisma),
     );
-    const storage = { createDownloadUrl: jest.fn() };
+    const fileBytes = Buffer.alloc(100, 42);
+    const storage = {
+      createDownloadUrl: jest.fn(),
+      statObject: jest.fn().mockResolvedValue({ size: 100, generation: '1' }),
+      getObject: jest.fn(
+        (input: { range?: { offset: number; length: number } }) =>
+          Promise.resolve(
+            Readable.from(
+              input.range
+                ? fileBytes.subarray(
+                    input.range.offset,
+                    input.range.offset + input.range.length,
+                  )
+                : fileBytes,
+            ),
+          ),
+      ),
+    };
     const assets = new AcademicContentRecipientAssetAccessService(
       reads,
       policy,
@@ -92,6 +113,21 @@ describeDatabase(
         assets.access(context(actorKind), contentId, fileId, 'download'),
       ).rejects.toMatchObject({ code: 'not_found', httpStatus: 404 });
       expect(storage.createDownloadUrl).not.toHaveBeenCalled();
+      const prefix =
+        actorKind === 'STUDENT'
+          ? '/api/v1/student'
+          : '/api/v1/parent/children/' + ids.student;
+      await request(app.getHttpServer())
+        .get(
+          prefix +
+            '/academic-content/' +
+            contentId +
+            '/assets/' +
+            fileId +
+            '/access/content?mode=download',
+        )
+        .expect(404);
+      expect(storage.getObject).not.toHaveBeenCalled();
     };
 
     beforeAll(async () => {
@@ -239,6 +275,14 @@ describeDatabase(
           ParentAcademicContentController,
         ],
         providers: [
+          GetStudentAcademicContentAssetContentUseCase,
+          GetParentAcademicContentAssetContentUseCase,
+          {
+            provide: PrivateMediaContentService,
+            useValue: new PrivateMediaContentService(
+              storage as unknown as StorageService,
+            ),
+          },
           {
             provide: AccessStudentAcademicContentAssetUseCase,
             useValue: new AccessStudentAcademicContentAssetUseCase(
@@ -320,6 +364,7 @@ describeDatabase(
     }
     beforeEach(async () => {
       jest.restoreAllMocks();
+      storage.getObject.mockClear();
       storage.createDownloadUrl
         .mockReset()
         .mockResolvedValue({ url: 'https://capability.invalid/short-lived' });
@@ -882,6 +927,45 @@ describeDatabase(
           }),
         ).toBe(1);
       });
+      it('HTTP content streams current bytes, Range, HEAD and validates before reading', async () => {
+        const { contentId } = await publish();
+        const prefix =
+          actorKind === 'STUDENT'
+            ? '/api/v1/student'
+            : '/api/v1/parent/children/' + ids.student;
+        const path =
+          prefix +
+          '/academic-content/' +
+          contentId +
+          '/assets/' +
+          ids.file +
+          '/access/content?mode=download';
+        const full = await request(app.getHttpServer()).get(path).expect(200);
+        expect(full.body).toEqual(fileBytes);
+        expect(full.headers.location).toBeUndefined();
+        const partial = await request(app.getHttpServer())
+          .get(path)
+          .set('Range', 'bytes=4-9')
+          .expect(206);
+        expect(partial.body).toEqual(fileBytes.subarray(4, 10));
+        expect(partial.headers['content-range']).toBe('bytes 4-9/100');
+        storage.getObject.mockClear();
+        await request(app.getHttpServer()).head(path).expect(200);
+        await request(app.getHttpServer())
+          .get(path)
+          .set('Range', 'bytes=100-')
+          .expect(416);
+        await request(app.getHttpServer())
+          .get(path)
+          .set('x-test-no-permission', '1')
+          .expect(403);
+        await request(app.getHttpServer())
+          .get(path.replace('mode=download', 'mode=invalid'))
+          .expect(400);
+        expect(storage.getObject).not.toHaveBeenCalled();
+        expect(storage.createDownloadUrl).not.toHaveBeenCalled();
+      });
+
       it('HTTP access returns a 307 private no-store redirect without storage metadata', async () => {
         const { contentId } = await publish();
         const prefix =

@@ -125,6 +125,26 @@ export class TeacherAcademicContentFilesUseCases {
     );
   }
 
+  resolveCurrentFile(
+    contentId: string,
+    assetId: string,
+    mode: AcademicContentAssetAccessMode,
+  ) {
+    return this.assetAccess
+      .resolveCurrent(this.scope('view'), contentId, assetId, mode)
+      .then((result) => result.file);
+  }
+  resolveRevisionFile(
+    contentId: string,
+    revisionId: string,
+    fileId: string,
+    mode: AcademicContentAssetAccessMode,
+  ) {
+    return this.assetAccess
+      .resolveRevision(this.scope('view'), contentId, revisionId, fileId, mode)
+      .then((result) => result.file);
+  }
+
   private async templateScope(classId: string) {
     const scope = this.scope('view');
     const allocation = await this.access.assertTeacherOwnsAllocation(classId);

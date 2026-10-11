@@ -847,8 +847,8 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
   it('registers the final Parent App route set and keeps unsupported routes absent', async () => {
     const routes = listRegisteredParentRoutes();
 
-    expect(routes).toHaveLength(80);
-    expect(routes.filter((route) => route.startsWith('GET '))).toHaveLength(66);
+    expect(routes).toHaveLength(86);
+    expect(routes.filter((route) => route.startsWith('GET '))).toHaveLength(72);
     expect(routes.filter((route) => !route.startsWith('GET '))).toHaveLength(
       14,
     );
@@ -864,6 +864,7 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
       'GET /api/v1/parent/children/:studentId/academic-content/:contentId',
       'GET /api/v1/parent/children/:studentId/academic-content/:contentId/acknowledgement',
       'GET /api/v1/parent/children/:studentId/academic-content/:contentId/assets/:fileId/access',
+      'GET /api/v1/parent/children/:studentId/academic-content/:contentId/assets/:fileId/access/content',
       'GET /api/v1/parent/children/:studentId/behavior',
       'GET /api/v1/parent/children/:studentId/behavior/:recordId',
       'GET /api/v1/parent/children/:studentId/behavior/summary',
@@ -872,6 +873,7 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
       'GET /api/v1/parent/children/:studentId/discipline',
       'GET /api/v1/parent/children/:studentId/discipline/summary',
       'GET /api/v1/parent/children/:studentId/files/:fileId/download',
+      'GET /api/v1/parent/children/:studentId/files/:fileId/download/content',
       'GET /api/v1/parent/children/:studentId/grades',
       'GET /api/v1/parent/children/:studentId/grades/assessments/:assessmentId',
       'GET /api/v1/parent/children/:studentId/grades/summary',
@@ -894,8 +896,10 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
       'GET /api/v1/parent/children/:studentId/reports/summary',
       'GET /api/v1/parent/children/:studentId/rewards',
       'GET /api/v1/parent/children/:studentId/rewards/:rewardId',
+      'GET /api/v1/parent/children/:studentId/rewards/:rewardId/images/:fileId/download/content',
       'GET /api/v1/parent/children/:studentId/rewards/redemptions',
       'GET /api/v1/parent/children/:studentId/rewards/redemptions/:redemptionId',
+      'GET /api/v1/parent/children/:studentId/rewards/redemptions/:redemptionId/images/:fileId/download/content',
       'GET /api/v1/parent/children/:studentId/schedule/today',
       'GET /api/v1/parent/children/:studentId/schedule/weekly',
       'GET /api/v1/parent/children/:studentId/tasks',
@@ -909,7 +913,9 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
       'GET /api/v1/parent/messages/conversations/:conversationId',
       'GET /api/v1/parent/messages/conversations/:conversationId/messages',
       'GET /api/v1/parent/messages/conversations/:conversationId/messages/:messageId/attachments/:attachmentId/download',
+      'GET /api/v1/parent/messages/conversations/:conversationId/messages/:messageId/attachments/:attachmentId/download/content',
       'GET /api/v1/parent/messages/conversations/:conversationId/messages/:messageId/attachments/:attachmentId/preview',
+      'GET /api/v1/parent/messages/conversations/:conversationId/messages/:messageId/attachments/:attachmentId/preview/content',
       'GET /api/v1/parent/messages/conversations/:conversationId/messages/:messageId/info',
       'GET /api/v1/parent/messages/conversations/:conversationId/messages/:messageId/readers',
       'GET /api/v1/parent/messages/conversations/:conversationId/search',

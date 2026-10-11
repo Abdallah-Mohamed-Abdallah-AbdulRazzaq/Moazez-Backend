@@ -220,6 +220,41 @@ describe('ACC-12 private file and immutable link composed journeys', () => {
         (g) => g.expiresInSeconds > 0 && g.expiresInSeconds <= 900,
       ),
     ).toBe(true);
+    for (const [actor, contentPath] of [
+      ['student', capabilityPath + '/content?mode=download'],
+      [
+        'parent',
+        f.parentPath(id) +
+          '/assets/' +
+          completed.body.file.id +
+          '/access/content?mode=download',
+      ],
+    ] as const) {
+      expect((await f.http<Buffer>('get', contentPath, actor)).body).toEqual(
+        bytes,
+      );
+      const partial = await f.http<Buffer>(
+        'get',
+        contentPath,
+        actor,
+        undefined,
+        206,
+        { Range: 'bytes=0-3' },
+      );
+      expect(partial.body).toEqual(bytes.subarray(0, 4));
+      expect(partial.headers['content-range']).toBe(
+        'bytes 0-3/' + bytes.length,
+      );
+      await f.http('head', contentPath, actor);
+      await f.http('get', contentPath, null, undefined, 401);
+    }
+    await f.http(
+      'get',
+      capabilityPath + '/content?mode=download',
+      'foreignStudent',
+      undefined,
+      404,
+    );
     const events = await f.prisma.academicContentEngagementEvent.findMany({
       where: { academicContentId: id },
     });

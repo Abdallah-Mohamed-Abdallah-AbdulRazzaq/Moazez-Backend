@@ -34,6 +34,28 @@ export type ObjectStorageRangeInput = {
   length: number;
 };
 
+export type ObjectStorageReadInput = {
+  bucket: string;
+  objectKey: string;
+  range?: { offset: number; length: number };
+  generation?: string;
+  version?: string;
+  raw?: boolean;
+};
+
+export function assertObjectStreamRange(input: ObjectStorageReadInput): void {
+  const range = input.range;
+  if (
+    range &&
+    (!Number.isSafeInteger(range.offset) ||
+      range.offset < 0 ||
+      !Number.isSafeInteger(range.length) ||
+      range.length <= 0 ||
+      range.offset > Number.MAX_SAFE_INTEGER - (range.length - 1))
+  )
+    throw new Error('storage_object_range_invalid');
+}
+
 export type ObjectStorageBody = Buffer | string | Readable;
 
 export type ObjectStoragePutInput = {
@@ -89,7 +111,7 @@ export interface ObjectStoragePort {
   ): Promise<ObjectStorageResumableUploadSession>;
   readObjectRange(input: ObjectStorageRangeInput): Promise<Buffer>;
   putObject(input: ObjectStoragePutInput): Promise<ObjectStoragePutResult>;
-  getObject(input: { bucket: string; objectKey: string }): Promise<Readable>;
+  getObject(input: ObjectStorageReadInput): Promise<Readable>;
   statObject(input: {
     bucket: string;
     objectKey: string;

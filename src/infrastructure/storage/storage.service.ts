@@ -6,6 +6,7 @@ import {
   type ObjectStorageCapabilities,
   type ObjectStoragePort,
   type ObjectStorageRangeInput,
+  type ObjectStorageReadInput,
   type ObjectStorageResumableUploadInput,
   type ObjectStorageResumableUploadSession,
   type ObjectStorageSignedCapability,
@@ -93,7 +94,7 @@ export class StorageService {
     return this.objectStorage.statObject(input);
   }
 
-  getObject(input: { bucket: string; objectKey: string }) {
+  getObject(input: ObjectStorageReadInput) {
     return this.objectStorage.getObject(input);
   }
 

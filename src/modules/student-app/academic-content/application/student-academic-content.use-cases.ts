@@ -108,4 +108,20 @@ export class AccessStudentAcademicContentAssetUseCase {
     if (!context) throw new NotFoundDomainException('Academic asset not found');
     return this.assets.access(context, contentId, fileId, mode);
   }
+
+  async resolveFile(
+    contentId: string,
+    fileId: string,
+    mode: AcademicContentAssetAccessMode,
+  ) {
+    const context = recipientContext(await this.access.getStudentAppContext());
+    if (!context) throw new NotFoundDomainException('Academic asset not found');
+    const resolved = await this.assets.resolve(
+      context,
+      contentId,
+      fileId,
+      mode,
+    );
+    return resolved.file;
+  }
 }

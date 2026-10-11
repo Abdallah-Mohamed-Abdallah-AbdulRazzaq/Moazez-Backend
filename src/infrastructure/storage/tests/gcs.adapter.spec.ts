@@ -16,6 +16,30 @@ import { MAX_OBJECT_RANGE_READ_BYTES } from '../object-storage.port';
 const NOW = new Date('2026-08-10T12:00:00.000Z');
 
 describe('GcsAdapter object operations', () => {
+  it('streams a large byte interval through the SDK with exact generation and raw bytes', async () => {
+    const harness = createHarness();
+    const source = Readable.from(Buffer.from('tail'));
+    harness.runtimeFile.createReadStream.mockReturnValue(source);
+    const stream = await harness.adapter.getObject({
+      bucket: 'private-bucket',
+      objectKey: 'private-key',
+      generation: '1234567890123456789',
+      raw: true,
+      range: { offset: 10 * 1024 ** 3 - 4, length: 4 },
+    });
+    expect(harness.runtimeBucket.file).toHaveBeenCalledWith('private-key', {
+      generation: '1234567890123456789',
+    });
+    expect(harness.runtimeFile.createReadStream).toHaveBeenCalledWith({
+      start: 10 * 1024 ** 3 - 4,
+      end: 10 * 1024 ** 3 - 1,
+      decompress: false,
+    });
+    expect(await readAll(stream)).toEqual(Buffer.from('tail'));
+    expect(harness.createSigningClient).not.toHaveBeenCalled();
+    expect(source.destroyed).toBe(true);
+  });
+
   it('reports semantic capabilities without exposing provider identity', () => {
     const harness = createHarness();
     expect(harness.adapter.getCapabilities()).toEqual({

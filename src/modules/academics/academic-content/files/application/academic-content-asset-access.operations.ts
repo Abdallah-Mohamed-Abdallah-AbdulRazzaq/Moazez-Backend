@@ -8,6 +8,7 @@ import { AcademicContentRepository } from '../../infrastructure/academic-content
 import { AcademicContentFileRepository } from '../infrastructure/academic-content-file.repository';
 import { AcademicContentFilePolicyResolver } from './academic-content-file-policy.resolver';
 import {
+  assertAcademicContentFilePresentation,
   AcademicContentAssetAccessMode,
   AcademicContentAuthorizedFileSigner,
 } from './academic-content-authorized-file.signer';
@@ -47,16 +48,43 @@ export class AcademicContentAssetAccessOperations {
     assetId: string,
     mode: AcademicContentAssetAccessMode,
   ) {
+    const resolved = await this.resolveCurrent(scope, contentId, assetId, mode);
+    return this.signer.sign(resolved.file, mode, resolved.policy);
+  }
+
+  async resolveCurrent(
+    scope: Reader,
+    contentId: string,
+    assetId: string,
+    mode: AcademicContentAssetAccessMode,
+  ) {
     await this.authorizeParent(scope, contentId, mode);
     const file = await this.files.findCurrentAssetFile({
       schoolId: scope.schoolId,
       contentId,
       assetId,
     });
-    return this.sign(scope, file, mode);
+    return this.resolve(scope, file, mode);
   }
 
   async revision(
+    scope: Reader,
+    contentId: string,
+    revisionId: string,
+    fileId: string,
+    mode: AcademicContentAssetAccessMode,
+  ) {
+    const resolved = await this.resolveRevision(
+      scope,
+      contentId,
+      revisionId,
+      fileId,
+      mode,
+    );
+    return this.signer.sign(resolved.file, mode, resolved.policy);
+  }
+
+  async resolveRevision(
     scope: Reader,
     contentId: string,
     revisionId: string,
@@ -70,10 +98,10 @@ export class AcademicContentAssetAccessOperations {
       revisionId,
       fileId,
     });
-    return this.sign(scope, file, mode);
+    return this.resolve(scope, file, mode);
   }
 
-  private async sign(
+  private async resolve(
     scope: Reader,
     file: File | null,
     mode: AcademicContentAssetAccessMode,
@@ -89,6 +117,7 @@ export class AcademicContentAssetAccessOperations {
       mode === 'preview'
         ? await this.policy.resolve(scope.schoolId)
         : { allowInlinePreview: false };
-    return this.signer.sign(file, mode, policy);
+    assertAcademicContentFilePresentation(file, mode, policy);
+    return { file, policy };
   }
 }

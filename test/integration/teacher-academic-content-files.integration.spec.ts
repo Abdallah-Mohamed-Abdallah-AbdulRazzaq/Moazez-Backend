@@ -1,3 +1,6 @@
+import { Readable } from 'node:stream';
+import { PrivateMediaContentService } from '../../src/infrastructure/storage/private-media-content.service';
+import { GetTeacherAcademicContentAssetContentUseCase } from '../../src/modules/teacher-app/academic-content/application/teacher-academic-content-asset-content.use-case';
 import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -103,6 +106,23 @@ describeDatabase(
           generation: null,
           version: null,
         };
+      },
+      getObject: (input: {
+        objectKey: string;
+        range?: { offset: number; length: number };
+      }) => {
+        const bytes = objects.get(input.objectKey);
+        if (!bytes) return Promise.reject(new ObjectStorageError('not_found'));
+        return Promise.resolve(
+          Readable.from(
+            input.range
+              ? bytes.subarray(
+                  input.range.offset,
+                  input.range.offset + input.range.length,
+                )
+              : bytes,
+          ),
+        );
       },
       readObjectRange: ({
         objectKey,
@@ -500,6 +520,11 @@ describeDatabase(
       const module = await Test.createTestingModule({
         controllers: [TeacherAcademicContentFilesController],
         providers: [
+          GetTeacherAcademicContentAssetContentUseCase,
+          {
+            provide: PrivateMediaContentService,
+            useValue: new PrivateMediaContentService(storage),
+          },
           { provide: TeacherAcademicContentFilesUseCases, useValue: files },
         ],
       }).compile();
@@ -1674,6 +1699,56 @@ describeDatabase(
         status: UploadStatus.CANCELLED,
       });
     });
+    it('HTTP current and immutable revision content streams bytes and rejects allocation changes', async () => {
+      const row = await content(),
+        linked = await asset(row.id),
+        historical = await revision(row, linked.file.id);
+      objects.set(linked.file.objectKey, pdf);
+      for (const tail of [
+        '/assets/' + linked.asset.id,
+        '/revisions/' + historical.id + '/assets/' + linked.file.id,
+      ]) {
+        const path =
+          '/api/v1/teacher/academic-content/' +
+          row.id +
+          tail +
+          '/access/content?mode=download';
+        const response = await request(app.getHttpServer())
+          .get(path)
+          .expect(200);
+        expect(response.body).toEqual(pdf);
+        expect(response.headers.location).toBeUndefined();
+        const partial = await request(app.getHttpServer())
+          .get(path)
+          .set('Range', 'bytes=0-3')
+          .expect(206);
+        expect(partial.body).toEqual(pdf.subarray(0, 4));
+        await request(app.getHttpServer()).head(path).expect(200);
+        await request(app.getHttpServer())
+          .get(path)
+          .set('x-missing', '1')
+          .expect(403);
+        await request(app.getHttpServer())
+          .get(path)
+          .set('x-actor', UserType.STUDENT)
+          .expect(403);
+      }
+      await changeOwner(ids.other);
+      try {
+        await request(app.getHttpServer())
+          .get(
+            '/api/v1/teacher/academic-content/' +
+              row.id +
+              '/assets/' +
+              linked.asset.id +
+              '/access/content?mode=download',
+          )
+          .expect(404);
+      } finally {
+        await changeOwner(ids.teacher);
+      }
+    });
+
     it('HTTP current and revision access use 307 no-store redirects, with no storage metadata body or engagement/audit write', async () => {
       const row = await content(),
         linked = await asset(row.id),

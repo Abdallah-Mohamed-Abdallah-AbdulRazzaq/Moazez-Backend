@@ -318,6 +318,8 @@ export class TeacherMessageAttachmentSummaryDto {
   sortOrder!: number;
   downloadPath!: string;
   authorizedDownloadPath?: string;
+  authorizedDownloadContentPath?: string;
+  previewContentPath?: string;
   previewPath?: string;
   createdAt!: string;
 }

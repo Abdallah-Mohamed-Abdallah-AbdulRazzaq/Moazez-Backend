@@ -358,6 +358,41 @@ export class TeacherTasksReadAdapter {
     }) as unknown as Promise<TeacherTaskRecord | null>;
   }
 
+  async findAuthorizedProof(params: {
+    teacherUserId: string;
+    schoolId: string;
+    allocations: TeacherAppAllocationRecord[];
+    taskId: string;
+    submissionId: string;
+    fileId: string;
+  }) {
+    const task = await this.findVisibleTaskById(params);
+    if (
+      !task?.submissions.some(
+        (submission) =>
+          submission.id === params.submissionId &&
+          submission.proofFileId === params.fileId &&
+          submission.proofFile?.id === params.fileId,
+      )
+    )
+      return null;
+    return this.scopedPrisma.file.findFirst({
+      where: {
+        id: params.fileId,
+        schoolId: params.schoolId,
+        deletedAt: null,
+        studentCredentialSecretArtifacts: { none: {} },
+      },
+      select: {
+        bucket: true,
+        objectKey: true,
+        originalName: true,
+        mimeType: true,
+        sizeBytes: true,
+      },
+    });
+  }
+
   private async listOwnedStudentEnrollmentRows(params: {
     allocations: TeacherAppAllocationRecord[];
     studentId?: string;

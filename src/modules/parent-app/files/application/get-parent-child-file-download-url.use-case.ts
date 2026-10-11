@@ -16,6 +16,18 @@ export class GetParentChildFileDownloadUrlUseCase {
     studentId: string;
     fileId: string;
   }): Promise<string> {
+    const file = await this.resolveFile(params);
+    const capability = await this.storageService.createDownloadUrl({
+      bucket: file.bucket,
+      objectKey: file.objectKey,
+      expiresInSeconds: 5 * 60,
+      disposition: 'attachment',
+      downloadFileName: file.originalName,
+    });
+    return capability.url;
+  }
+
+  async resolveFile(params: { studentId: string; fileId: string }) {
     const child = await this.parentAppAccessService.assertParentOwnsStudent(
       params.studentId,
     );
@@ -30,13 +42,6 @@ export class GetParentChildFileDownloadUrlUseCase {
       throw new FilesNotFoundException({ fileId: params.fileId });
     }
 
-    const capability = await this.storageService.createDownloadUrl({
-      bucket: file.bucket,
-      objectKey: file.objectKey,
-      expiresInSeconds: 5 * 60,
-      disposition: 'attachment',
-      downloadFileName: file.originalName,
-    });
-    return capability.url;
+    return file;
   }
 }

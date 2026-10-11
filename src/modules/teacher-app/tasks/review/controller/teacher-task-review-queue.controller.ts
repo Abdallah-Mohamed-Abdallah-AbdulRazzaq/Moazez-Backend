@@ -1,3 +1,10 @@
+import type { Request, Response } from 'express';
+import { Req, Res, ParseUUIDPipe } from '@nestjs/common';
+import {
+  privateMediaContentRequest,
+  streamPrivateMediaContent,
+} from '../../../../../infrastructure/storage/private-media-content.response';
+import { GetTeacherTaskProofContentUseCase } from '../application/get-teacher-task-proof-content.use-case';
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../../common/decorators/required-permissions.decorator';
@@ -19,6 +26,7 @@ import {
 @Controller('teacher/tasks/review-queue')
 export class TeacherTaskReviewQueueController {
   constructor(
+    private readonly content: GetTeacherTaskProofContentUseCase,
     private readonly listTeacherTaskReviewQueueUseCase: ListTeacherTaskReviewQueueUseCase,
     private readonly getTeacherTaskReviewSubmissionUseCase: GetTeacherTaskReviewSubmissionUseCase,
     private readonly approveTeacherTaskReviewSubmissionUseCase: ApproveTeacherTaskReviewSubmissionUseCase,
@@ -69,5 +77,20 @@ export class TeacherTaskReviewQueueController {
       params.submissionId,
       dto,
     );
+  }
+  @Get(':submissionId/files/:fileId/download/content')
+  @RequiredPermissions('reinforcement.reviews.view')
+  async fileContent(
+    @Param('submissionId', new ParseUUIDPipe()) submissionId: string,
+    @Param('fileId', new ParseUUIDPipe()) fileId: string,
+    @Req() request: Request,
+    @Res() response: Response,
+  ): Promise<void> {
+    const content = await this.content.execute(
+      submissionId,
+      fileId,
+      privateMediaContentRequest(request, response, 'attachment'),
+    );
+    await streamPrivateMediaContent(content, response, 'attachment');
   }
 }

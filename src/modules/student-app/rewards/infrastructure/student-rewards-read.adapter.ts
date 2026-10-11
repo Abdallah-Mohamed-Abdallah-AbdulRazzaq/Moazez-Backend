@@ -99,6 +99,80 @@ export class StudentRewardsReadAdapter {
     return this.prisma.scoped as unknown as PrismaService;
   }
 
+  async findAuthorizedImage(
+    context: StudentAppContext,
+    rewardId: string,
+    fileId: string,
+  ) {
+    const reward = await this.scopedPrisma.rewardCatalogItem.findFirst({
+      where: {
+        ...buildVisibleRewardWhere({ context }),
+        id: rewardId,
+        imageFileId: fileId,
+        imageFile: {
+          is: {
+            schoolId: context.schoolId,
+            deletedAt: null,
+            studentCredentialSecretArtifacts: { none: {} },
+          },
+        },
+      },
+      select: {
+        imageFile: {
+          select: {
+            bucket: true,
+            objectKey: true,
+            originalName: true,
+            mimeType: true,
+            sizeBytes: true,
+          },
+        },
+      },
+    });
+    return reward?.imageFile ?? null;
+  }
+
+  async findAuthorizedRedemptionImage(
+    context: StudentAppContext,
+    redemptionId: string,
+    fileId: string,
+  ) {
+    const redemption = await this.scopedPrisma.rewardRedemption.findFirst({
+      where: {
+        ...buildOwnRedemptionWhere(context),
+        id: redemptionId,
+        catalogItem: {
+          is: {
+            imageFileId: fileId,
+            imageFile: {
+              is: {
+                schoolId: context.schoolId,
+                deletedAt: null,
+                studentCredentialSecretArtifacts: { none: {} },
+              },
+            },
+          },
+        },
+      },
+      select: {
+        catalogItem: {
+          select: {
+            imageFile: {
+              select: {
+                bucket: true,
+                objectKey: true,
+                originalName: true,
+                mimeType: true,
+                sizeBytes: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    return redemption?.catalogItem.imageFile ?? null;
+  }
+
   async listRewards(
     context: StudentAppContext,
     query?: StudentRewardsQueryDto,
@@ -217,7 +291,10 @@ function buildVisibleRewardWhere(params: {
     status: RewardCatalogItemStatus.PUBLISHED,
     deletedAt: null,
     ...(params.type ? { type: normalizeRewardType(params.type) } : {}),
-    OR: [{ academicYearId: null }, { academicYearId: params.context.academicYearId }],
+    OR: [
+      { academicYearId: null },
+      { academicYearId: params.context.academicYearId },
+    ],
     AND: [
       {
         OR: [

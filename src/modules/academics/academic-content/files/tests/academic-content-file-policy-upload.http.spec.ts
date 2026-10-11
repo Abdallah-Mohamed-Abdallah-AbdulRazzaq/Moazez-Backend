@@ -24,6 +24,7 @@ import type { SignedUrlService } from '../../../../../infrastructure/storage/sig
 import { StorageService } from '../../../../../infrastructure/storage/storage.service';
 import type { TeacherAppAccessService } from '../../../../teacher-app/access/teacher-app-access.service';
 import { TeacherAcademicContentFilesUseCases } from '../../../../teacher-app/academic-content/application/teacher-academic-content-files.use-cases';
+import { GetTeacherAcademicContentAssetContentUseCase } from '../../../../teacher-app/academic-content/application/teacher-academic-content-asset-content.use-case';
 import { TeacherAcademicContentFilesController } from '../../../../teacher-app/academic-content/controller/teacher-academic-content-files.controller';
 import { AcademicContentController } from '../../controller/academic-content.controller';
 import { AcademicContentFilePolicyController } from '../../controller/academic-content-file-policy.controller';
@@ -168,6 +169,7 @@ describe('Academic Content partial policy and browser upload HTTP boundary', () 
         TeacherAcademicContentFilesController,
       ],
       providers: [
+        { provide: GetTeacherAcademicContentAssetContentUseCase, useValue: {} },
         ...dependencies.map((token) => ({
           provide: token,
           useValue: token === CreateAcademicContentUploadUseCase ? create : {},

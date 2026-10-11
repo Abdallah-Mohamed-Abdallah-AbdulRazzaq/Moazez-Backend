@@ -1,3 +1,4 @@
+import { GetFileContentUseCase } from './application/get-file-content.use-case';
 import { Module } from '@nestjs/common';
 import { StorageModule } from '../../../infrastructure/storage/storage.module';
 import { LearningMediaUnitOfWork } from './application/learning-media.unit-of-work';
@@ -21,6 +22,7 @@ import { PrismaLearningMediaUnitOfWork } from './infrastructure/prisma-learning-
   imports: [StorageModule],
   controllers: [UploadsController],
   providers: [
+    GetFileContentUseCase,
     FilesRepository,
     RegisterFileMetadataUseCase,
     UploadFileUseCase,

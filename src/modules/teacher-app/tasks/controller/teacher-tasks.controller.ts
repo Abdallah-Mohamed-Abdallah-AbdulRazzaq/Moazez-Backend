@@ -1,4 +1,20 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  Req,
+  Res,
+} from '@nestjs/common';
+import type { Request, Response } from 'express';
+import {
+  privateMediaContentRequest,
+  streamPrivateMediaContent,
+} from '../../../../infrastructure/storage/private-media-content.response';
+import { GetTeacherOwnedTaskProofContentUseCase } from '../application/get-teacher-owned-task-proof-content.use-case';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -26,6 +42,7 @@ import {
 @Controller('teacher/tasks')
 export class TeacherTasksController {
   constructor(
+    private readonly proofContent: GetTeacherOwnedTaskProofContentUseCase,
     private readonly getTeacherTasksDashboardUseCase: GetTeacherTasksDashboardUseCase,
     private readonly listTeacherTasksUseCase: ListTeacherTasksUseCase,
     private readonly getTeacherTaskUseCase: GetTeacherTaskUseCase,
@@ -72,5 +89,23 @@ export class TeacherTasksController {
     @Param() params: TeacherTaskParamsDto,
   ): Promise<TeacherTaskDetailResponseDto> {
     return this.getTeacherTaskUseCase.execute(params.taskId);
+  }
+
+  @Get(':taskId/submissions/:submissionId/files/:fileId/download/content')
+  @RequiredPermissions('reinforcement.tasks.view')
+  async proofFileContent(
+    @Param('taskId', ParseUUIDPipe) taskId: string,
+    @Param('submissionId', ParseUUIDPipe) submissionId: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+    @Req() request: Request,
+    @Res() response: Response,
+  ): Promise<void> {
+    const content = await this.proofContent.execute(
+      taskId,
+      submissionId,
+      fileId,
+      privateMediaContentRequest(request, response, 'attachment'),
+    );
+    await streamPrivateMediaContent(content, response, 'attachment');
   }
 }

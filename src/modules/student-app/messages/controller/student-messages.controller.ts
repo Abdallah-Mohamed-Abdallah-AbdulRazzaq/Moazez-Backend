@@ -17,8 +17,12 @@ import {
   ApiTemporaryRedirectResponse,
 } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
-import type { Response } from 'express';
-import { streamPrivateMediaContent } from '../../../../infrastructure/storage/private-media-content.response';
+import type { Request, Response } from 'express';
+import { Req } from '@nestjs/common';
+import {
+  privateMediaContentRequest,
+  streamPrivateMediaContent,
+} from '../../../../infrastructure/storage/private-media-content.response';
 import { GetStudentMessageAttachmentContentUseCase } from '../application/get-student-message-attachment-content.use-case';
 import { GetStudentMessageAttachmentDownloadUrlUseCase } from '../application/get-student-message-attachment-download-url.use-case';
 import {
@@ -82,15 +86,19 @@ export class StudentMessagesController {
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
     @Param('messageId', new ParseUUIDPipe()) messageId: string,
     @Param('attachmentId', new ParseUUIDPipe()) attachmentId: string,
+    @Req() request: Request,
     @Res() response: Response,
   ): Promise<void> {
     const content =
-      await this.getStudentMessageAttachmentContentUseCase.execute({
-        conversationId,
-        messageId,
-        attachmentId,
-        mode: 'download',
-      });
+      await this.getStudentMessageAttachmentContentUseCase.execute(
+        {
+          conversationId,
+          messageId,
+          attachmentId,
+          mode: 'download',
+        },
+        privateMediaContentRequest(request, response, 'attachment'),
+      );
     await streamPrivateMediaContent(content, response, 'attachment');
   }
 
@@ -105,15 +113,19 @@ export class StudentMessagesController {
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
     @Param('messageId', new ParseUUIDPipe()) messageId: string,
     @Param('attachmentId', new ParseUUIDPipe()) attachmentId: string,
+    @Req() request: Request,
     @Res() response: Response,
   ): Promise<void> {
     const content =
-      await this.getStudentMessageAttachmentContentUseCase.execute({
-        conversationId,
-        messageId,
-        attachmentId,
-        mode: 'preview',
-      });
+      await this.getStudentMessageAttachmentContentUseCase.execute(
+        {
+          conversationId,
+          messageId,
+          attachmentId,
+          mode: 'preview',
+        },
+        privateMediaContentRequest(request, response, 'inline'),
+      );
     await streamPrivateMediaContent(content, response, 'inline');
   }
 

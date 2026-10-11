@@ -405,6 +405,7 @@ export class AcademicContentRecipientReadRepository {
         publicationId: string;
         revisionId: string;
         visibleUntil: Date | null;
+        sizeBytes: bigint;
         bucket: string;
         objectKey: string;
         originalName: string;
@@ -419,7 +420,7 @@ export class AcademicContentRecipientReadRepository {
       )
       SELECT canonical.id AS "publicationId", canonical.revision_id AS "revisionId",
         canonical.visible_until AS "visibleUntil", file.bucket, file.object_key AS "objectKey",
-        file.original_name AS "originalName", file.mime_type AS "mimeType"
+        file.original_name AS "originalName", file.mime_type AS "mimeType", file.size_bytes AS "sizeBytes"
       FROM canonical_publication canonical
       JOIN academic_content_revision_assets asset
         ON asset.revision_id = canonical.revision_id AND asset.school_id = canonical.school_id

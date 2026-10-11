@@ -1,3 +1,10 @@
+import type { Request, Response } from 'express';
+import { Req, Res } from '@nestjs/common';
+import {
+  privateMediaContentRequest,
+  streamPrivateMediaContent,
+} from '../../../../infrastructure/storage/private-media-content.response';
+import { GetParentRewardImageContentUseCase } from '../application/get-parent-reward-image-content.use-case';
 import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
@@ -18,6 +25,7 @@ import {
 @Controller('parent/children/:studentId/rewards')
 export class ParentRewardsController {
   constructor(
+    private readonly content: GetParentRewardImageContentUseCase,
     private readonly listParentChildRewardsUseCase: ListParentChildRewardsUseCase,
     private readonly getParentChildRewardUseCase: GetParentChildRewardUseCase,
     private readonly listParentChildRewardRedemptionsUseCase: ListParentChildRewardRedemptionsUseCase,
@@ -64,5 +72,39 @@ export class ParentRewardsController {
     @Param('rewardId', new ParseUUIDPipe()) rewardId: string,
   ): Promise<ParentRewardResponseDto> {
     return this.getParentChildRewardUseCase.execute(studentId, rewardId);
+  }
+  @Get(':rewardId/images/:fileId/download/content')
+  @RequiredPermissions('reinforcement.rewards.view', 'reinforcement.xp.view')
+  async fileContent(
+    @Param('studentId', new ParseUUIDPipe()) studentId: string,
+    @Param('rewardId', new ParseUUIDPipe()) rewardId: string,
+    @Param('fileId', new ParseUUIDPipe()) fileId: string,
+    @Req() request: Request,
+    @Res() response: Response,
+  ): Promise<void> {
+    const content = await this.content.execute(
+      studentId,
+      rewardId,
+      fileId,
+      privateMediaContentRequest(request, response, 'attachment'),
+    );
+    await streamPrivateMediaContent(content, response, 'attachment');
+  }
+  @Get('redemptions/:redemptionId/images/:fileId/download/content')
+  @RequiredPermissions('reinforcement.rewards.redemptions.view')
+  async redemptionImageContent(
+    @Param('studentId', new ParseUUIDPipe()) studentId: string,
+    @Param('redemptionId', new ParseUUIDPipe()) redemptionId: string,
+    @Param('fileId', new ParseUUIDPipe()) fileId: string,
+    @Req() request: Request,
+    @Res() response: Response,
+  ): Promise<void> {
+    const content = await this.content.redemption(
+      studentId,
+      redemptionId,
+      fileId,
+      privateMediaContentRequest(request, response, 'attachment'),
+    );
+    await streamPrivateMediaContent(content, response, 'attachment');
   }
 }

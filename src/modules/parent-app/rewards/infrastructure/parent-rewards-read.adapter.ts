@@ -64,8 +64,9 @@ const PARENT_REWARD_REDEMPTION_ARGS =
 export type ParentRewardCatalogReadModel = Prisma.RewardCatalogItemGetPayload<
   typeof PARENT_REWARD_CATALOG_ARGS
 >;
-export type ParentRewardRedemptionReadModel =
-  Prisma.RewardRedemptionGetPayload<typeof PARENT_REWARD_REDEMPTION_ARGS>;
+export type ParentRewardRedemptionReadModel = Prisma.RewardRedemptionGetPayload<
+  typeof PARENT_REWARD_REDEMPTION_ARGS
+>;
 
 export interface ParentRewardsListReadModel {
   child: ParentAppAccessibleChild;
@@ -101,6 +102,82 @@ export class ParentRewardsReadAdapter {
 
   private get scopedPrisma(): PrismaService {
     return this.prisma.scoped as unknown as PrismaService;
+  }
+
+  async findAuthorizedImage(
+    child: ParentAppAccessibleChild,
+    rewardId: string,
+    fileId: string,
+    schoolId: string,
+  ) {
+    const reward = await this.scopedPrisma.rewardCatalogItem.findFirst({
+      where: {
+        ...buildVisibleRewardWhere({ child }),
+        id: rewardId,
+        imageFileId: fileId,
+        imageFile: {
+          is: {
+            schoolId,
+            deletedAt: null,
+            studentCredentialSecretArtifacts: { none: {} },
+          },
+        },
+      },
+      select: {
+        imageFile: {
+          select: {
+            bucket: true,
+            objectKey: true,
+            originalName: true,
+            mimeType: true,
+            sizeBytes: true,
+          },
+        },
+      },
+    });
+    return reward?.imageFile ?? null;
+  }
+
+  async findAuthorizedRedemptionImage(
+    child: ParentAppAccessibleChild,
+    redemptionId: string,
+    fileId: string,
+    schoolId: string,
+  ) {
+    const redemption = await this.scopedPrisma.rewardRedemption.findFirst({
+      where: {
+        ...buildChildRedemptionWhere(child),
+        id: redemptionId,
+        catalogItem: {
+          is: {
+            imageFileId: fileId,
+            imageFile: {
+              is: {
+                schoolId,
+                deletedAt: null,
+                studentCredentialSecretArtifacts: { none: {} },
+              },
+            },
+          },
+        },
+      },
+      select: {
+        catalogItem: {
+          select: {
+            imageFile: {
+              select: {
+                bucket: true,
+                objectKey: true,
+                originalName: true,
+                mimeType: true,
+                sizeBytes: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    return redemption?.catalogItem.imageFile ?? null;
   }
 
   async listRewards(

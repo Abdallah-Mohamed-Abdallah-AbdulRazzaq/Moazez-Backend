@@ -150,6 +150,42 @@ type ParentAppActionPermissionCase = {
 const PARENT_APP_READ_PERMISSION_CASES: ParentAppReadPermissionCase[] = [
   {
     controller: ParentAcademicContentController,
+    method: 'assetContent',
+    permissions: ['academics.academic_content.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentMessagesController,
+    method: 'downloadAttachmentContent',
+    permissions: ['communication.messages.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentMessagesController,
+    method: 'previewAttachmentContent',
+    permissions: ['communication.messages.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentFilesController,
+    method: 'downloadChildFileContent',
+    permissions: ['reinforcement.submissions.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentRewardsController,
+    method: 'fileContent',
+    permissions: ['reinforcement.rewards.view', 'reinforcement.xp.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentRewardsController,
+    method: 'redemptionImageContent',
+    permissions: ['reinforcement.rewards.redemptions.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentAcademicContentController,
     method: 'assetAccess',
     permissions: ['academics.academic_content.view'],
     sprint: '1B',
@@ -436,13 +472,19 @@ const PARENT_APP_READ_PERMISSION_CASES: ParentAppReadPermissionCase[] = [
   {
     controller: ParentHeroController,
     method: 'listMissions',
-    permissions: ['reinforcement.hero.view', 'reinforcement.hero.progress.view'],
+    permissions: [
+      'reinforcement.hero.view',
+      'reinforcement.hero.progress.view',
+    ],
     sprint: '1B',
   },
   {
     controller: ParentHeroController,
     method: 'getMission',
-    permissions: ['reinforcement.hero.view', 'reinforcement.hero.progress.view'],
+    permissions: [
+      'reinforcement.hero.view',
+      'reinforcement.hero.progress.view',
+    ],
     sprint: '1B',
   },
   {
@@ -747,7 +789,7 @@ const FORBIDDEN_PARENT_PERMISSIONS = [
 
 describe('Parent App route permission metadata (security)', () => {
   it('declares the PARENT-PERM-1B read-only permission inventory', () => {
-    expect(PARENT_APP_READ_PERMISSION_CASES).toHaveLength(65);
+    expect(PARENT_APP_READ_PERMISSION_CASES).toHaveLength(71);
 
     for (const entry of PARENT_APP_READ_PERMISSION_CASES) {
       const handler = (entry.controller.prototype as Record<string, unknown>)[
@@ -756,10 +798,7 @@ describe('Parent App route permission metadata (security)', () => {
 
       expect(typeof handler).toBe('function');
       expect(
-        Reflect.getMetadata(
-          REQUIRED_PERMISSIONS_METADATA,
-          handler as object,
-        ),
+        Reflect.getMetadata(REQUIRED_PERMISSIONS_METADATA, handler as object),
       ).toEqual(entry.permissions);
     }
   });
@@ -774,16 +813,13 @@ describe('Parent App route permission metadata (security)', () => {
 
       expect(typeof handler).toBe('function');
       expect(
-        Reflect.getMetadata(
-          REQUIRED_PERMISSIONS_METADATA,
-          handler as object,
-        ),
+        Reflect.getMetadata(REQUIRED_PERMISSIONS_METADATA, handler as object),
       ).toEqual(entry.permissions);
     }
   });
 
   it('keeps the complete Parent App RBAC route inventory explicit', () => {
-    expect(PARENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(77);
+    expect(PARENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(83);
 
     const expectedKnownHandlers = new Set<string>();
 
@@ -797,10 +833,7 @@ describe('Parent App route permission metadata (security)', () => {
       ];
       expect(typeof handler).toBe('function');
       expect(
-        Reflect.getMetadata(
-          REQUIRED_PERMISSIONS_METADATA,
-          handler as object,
-        ),
+        Reflect.getMetadata(REQUIRED_PERMISSIONS_METADATA, handler as object),
       ).toEqual(entry.permissions);
     }
 
@@ -809,9 +842,9 @@ describe('Parent App route permission metadata (security)', () => {
         Object.getOwnPropertyNames(controller.prototype)
           .filter((method) => method !== 'constructor')
           .filter((method) => {
-            const handler = (
-              controller.prototype as Record<string, unknown>
-            )[method];
+            const handler = (controller.prototype as Record<string, unknown>)[
+              method
+            ];
 
             return (
               typeof handler === 'function' &&
@@ -2284,8 +2317,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
               },
             ],
           },
-          expectedPermission:
-            'communication.notifications.preferences.manage',
+          expectedPermission: 'communication.notifications.preferences.manage',
         },
         {
           method: 'post',
@@ -2307,12 +2339,9 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       ];
 
       for (const actionCase of actionCases) {
-        const call = request(app.getHttpServer())[
-          actionCase.method
-        ](`${GLOBAL_PREFIX}/${actionCase.path}`).set(
-          'Authorization',
-          `Bearer ${accessToken}`,
-        );
+        const call = request(app.getHttpServer())
+          [actionCase.method](`${GLOBAL_PREFIX}/${actionCase.path}`)
+          .set('Authorization', `Bearer ${accessToken}`);
         const response = await call.send(actionCase.body ?? {}).expect(403);
 
         expect(response.body?.error?.code).toBe('auth.scope.missing');
@@ -3461,12 +3490,11 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     expect(readAll.body.readAt).toEqual(expect.any(String));
     assertNoForbiddenParentAppFields(readAll.body);
 
-    const bulkReadRow = await prisma.communicationNotification.findUniqueOrThrow(
-      {
+    const bulkReadRow =
+      await prisma.communicationNotification.findUniqueOrThrow({
         where: { id: bulkReadNotificationId },
         select: { status: true, readAt: true },
-      },
-    );
+      });
     expect(bulkReadRow.status).toBe(CommunicationNotificationStatus.READ);
     expect(bulkReadRow.readAt).toBeTruthy();
 
@@ -3517,7 +3545,8 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
         where: {
           schoolId: schoolAId,
           userId: parentUserId,
-          category: CommunicationNotificationPreferenceCategory.MESSAGE_RECEIVED,
+          category:
+            CommunicationNotificationPreferenceCategory.MESSAGE_RECEIVED,
         },
       });
     expect(preferenceRow.inAppEnabled).toBe(false);
@@ -3528,7 +3557,9 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       crossSchoolNotificationId,
     ]) {
       await request(app.getHttpServer())
-        .get(`${GLOBAL_PREFIX}/parent/notifications/${inaccessibleNotificationId}`)
+        .get(
+          `${GLOBAL_PREFIX}/parent/notifications/${inaccessibleNotificationId}`,
+        )
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(404);
       await request(app.getHttpServer())

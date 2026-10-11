@@ -36,21 +36,25 @@ describe('Files upload/download flow (e2e)', () => {
           module: 'files',
           resource: 'downloads',
           action: 'view',
-          description: 'Download private files through the secure files endpoint',
+          description:
+            'Download private files through the secure files endpoint',
         },
         create: {
           code: 'files.downloads.view',
           module: 'files',
           resource: 'downloads',
           action: 'view',
-          description: 'Download private files through the secure files endpoint',
+          description:
+            'Download private files through the secure files endpoint',
         },
         select: { id: true },
       }),
     ]);
 
     if (!schoolAdminRole) {
-      throw new Error('school_admin system role not found - run `npm run seed` first.');
+      throw new Error(
+        'school_admin system role not found - run `npm run seed` first.',
+      );
     }
 
     await prisma.rolePermission.createMany({
@@ -175,7 +179,24 @@ describe('Files upload/download flow (e2e)', () => {
     expect(downloadResponse.headers.location).toEqual(expect.any(String));
     expect(downloadResponse.headers.location).toContain('X-Amz-Expires=');
 
-    const signedDownloadResponse = await fetch(downloadResponse.headers.location);
+    const directPath =
+      GLOBAL_PREFIX + '/files/' + uploadedFileId + '/download/content';
+    const direct = await request(app.getHttpServer())
+      .get(directPath)
+      .set('Authorization', 'Bearer ' + accessToken)
+      .expect(200);
+    expect(direct.text).toBe('phase 2 secure file body');
+    expect(direct.headers.location).toBeUndefined();
+    const partial = await request(app.getHttpServer())
+      .get(directPath)
+      .set('Authorization', 'Bearer ' + accessToken)
+      .set('Range', 'bytes=0-6')
+      .expect(206);
+    expect(partial.text).toBe('phase 2');
+    expect(partial.headers['content-range']).toBe('bytes 0-6/24');
+    const signedDownloadResponse = await fetch(
+      downloadResponse.headers.location,
+    );
     expect(signedDownloadResponse.status).toBe(200);
     await expect(signedDownloadResponse.text()).resolves.toBe(
       'phase 2 secure file body',
