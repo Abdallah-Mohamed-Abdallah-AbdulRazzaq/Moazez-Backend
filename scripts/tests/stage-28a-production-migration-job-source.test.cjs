@@ -10,6 +10,28 @@ const { classifyTestFile } = require('../ci/plan-ci.cjs');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
 const BASE_SHA = 'e4cf40c47ec95ec4eb231f0ac60c2f15c869d1e6';
+const NR11_T6_PATHS = Object.freeze([
+  'docs/governance/nr11-t6-teacher-edge-cors-devops-handoff.md',
+  'infra/gcp/backend-runtime/modules/runtime-environment/main.tf',
+  'infra/gcp/edge/README.md',
+  'infra/gcp/edge/environments/nonprod/tests/candidate-route.tftest.hcl',
+  'infra/gcp/edge/environments/production/main.tf',
+  'infra/gcp/edge/environments/production/outputs.tf',
+  'infra/gcp/edge/modules/edge-environment/main.tf',
+  'infra/gcp/edge/modules/edge-environment/outputs.tf',
+  'infra/gcp/edge/modules/edge-environment/variables.tf',
+  'infra/gcp/storage/modules/storage-environment/main.tf',
+  'scripts/storage/tests/gcs-batch2-terraform-policy.test.cjs',
+  'scripts/tests/stage-28a-production-migration-job-source.test.cjs',
+  'scripts/tests/stage-29a-production-runtime-source.test.cjs',
+  'scripts/tests/stage-30c1-production-frontend-edge-source.test.cjs',
+  'src/bootstrap/application-cors.policy.spec.ts',
+  'src/bootstrap/application-cors.policy.ts',
+  'src/bootstrap/http-application.spec.ts',
+  'src/config/env.validation.spec.ts',
+  'src/infrastructure/realtime/tests/realtime.gateway.spec.ts',
+  'src/modules/academics/academic-content/files/tests/academic-content-upload-origin.spec.ts',
+]);
 const EXACT_COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/iu;
 const MODULE_ROOT =
   'infra/gcp/backend-runtime/modules/migration-job-environment';
@@ -495,6 +517,37 @@ function assertCommittedStage28CandidateScope(
   ].sort();
   const maintenanceScopeActive =
     candidateFiles === undefined || maintenanceFiles !== undefined;
+  const nr11T6Scope = maintenanceScopeActive
+    ? normalizedMaintenance
+    : normalized;
+  const nr11T6MaintenanceActive =
+    (nr11T6Scope.includes('src/bootstrap/application-cors.policy.ts') ||
+      nr11T6Scope.includes(
+        'docs/governance/nr11-t6-teacher-edge-cors-devops-handoff.md',
+      )) &&
+    [TEST_PATH, STAGE_29_TEST_PATH, STAGE_30C1_TEST_PATH].some((file) =>
+      nr11T6Scope.includes(file),
+    );
+  if (nr11T6MaintenanceActive) {
+    const requiredAnchors = [
+      'src/bootstrap/application-cors.policy.ts',
+      'infra/gcp/backend-runtime/modules/runtime-environment/main.tf',
+      'infra/gcp/edge/modules/edge-environment/main.tf',
+      'infra/gcp/edge/environments/production/main.tf',
+      TEST_PATH,
+      STAGE_29_TEST_PATH,
+      STAGE_30C1_TEST_PATH,
+    ];
+    assert.ok(
+      requiredAnchors.every((file) => nr11T6Scope.includes(file)),
+      'NR11-T6 requires its exact application, runtime, edge and governance anchors.',
+    );
+    assert.deepEqual(nr11T6Scope, NR11_T6_PATHS);
+    // The committed range must also be exact; maintenance cannot hide an
+    // operational migration change or unrelated source from delegation.
+    assert.deepEqual(normalized, NR11_T6_PATHS);
+    return false;
+  }
   const day2D1MaintenanceActive =
     maintenanceScopeActive &&
     normalizedMaintenance.includes(STAGE_29_TEST_PATH) &&
@@ -1307,6 +1360,130 @@ test('Candidate scope ignores unrelated PRs and rejects every mixed Stage 28A ca
       assertStage28CandidateScope([
         TEST_PATH,
         'scripts/tests/stage-29-production-migration-execution.test.cjs',
+      ]),
+    { code: 'ERR_ASSERTION' },
+  );
+});
+
+test('NR11-T6 delegates only the complete committed Teacher scope with matching 20-path contracts', () => {
+  assert.equal(NR11_T6_PATHS.length, 20);
+  assert.deepEqual(NR11_T6_PATHS, [...new Set(NR11_T6_PATHS)].sort());
+  for (const verifier of [STAGE_29_TEST_PATH, STAGE_30C1_TEST_PATH]) {
+    const contract =
+      /const NR11_T6_PATHS = Object[.]freeze\(\[([\s\S]*?)\]\);/u.exec(
+        normalizedSource(verifier),
+      );
+    assert.ok(contract, verifier);
+    assert.deepEqual(
+      [...contract[1].matchAll(/'([^']+)'/gu)].map((match) => match[1]),
+      NR11_T6_PATHS,
+      verifier,
+    );
+  }
+  assert.equal(assertCommittedStage28CandidateScope(NR11_T6_PATHS), false);
+  assert.equal(
+    assertCommittedStage28CandidateScope(NR11_T6_PATHS, NR11_T6_PATHS),
+    false,
+  );
+  // Use the actual committed candidate, supplied consistently by exact-head CI.
+  const committed = candidateFilesFromCommittedRange();
+  if (committed.includes('src/bootstrap/application-cors.policy.ts')) {
+    assert.deepEqual(committed, NR11_T6_PATHS);
+    assert.equal(
+      assertCommittedStage28CandidateScope(
+        committed,
+        candidateFilesFromMaintenanceRange(),
+      ),
+      false,
+    );
+  }
+});
+
+test('NR11-T6 rejects every extra path including Stage 28 operational roots', () => {
+  for (const forbidden of [
+    'src/example-unrelated-change.ts',
+    'prisma/schema.prisma',
+    'prisma/migrations/unapproved/migration.sql',
+    `${PRODUCTION_ROOT}/main.tf`,
+    `${PRODUCTION_ROOT}/variables.tf`,
+    `${STAGING_ROOT}/main.tf`,
+    `${MODULE_ROOT}/main.tf`,
+    'src/modules/iam/auth/auth.service.ts',
+    'infra/gcp/runtime-iam/modules/runtime-iam-environment/main.tf',
+    '.github/workflows/production-backend-image.yml',
+    'infra/gcp/frontend-runtime/modules/frontend-runtime-environment/main.tf',
+    PLAN_CI_PATH,
+  ]) {
+    const mixed = [...NR11_T6_PATHS, forbidden];
+    assert.throws(
+      () => assertCommittedStage28CandidateScope(mixed),
+      { code: 'ERR_ASSERTION' },
+      forbidden,
+    );
+    assert.throws(
+      () => assertCommittedStage28CandidateScope(mixed, mixed),
+      { code: 'ERR_ASSERTION' },
+      forbidden,
+    );
+    assert.throws(
+      () => assertCommittedStage28CandidateScope(mixed, NR11_T6_PATHS),
+      { code: 'ERR_ASSERTION' },
+      `${forbidden} cannot hide outside maintenance`,
+    );
+    assert.throws(
+      () => assertCommittedStage28CandidateScope(NR11_T6_PATHS, mixed),
+      { code: 'ERR_ASSERTION' },
+      `${forbidden} cannot hide outside the committed range`,
+    );
+  }
+});
+
+test('NR11-T6 fails closed if any required path or anchor is missing', () => {
+  for (const missing of NR11_T6_PATHS) {
+    const incomplete = NR11_T6_PATHS.filter((file) => file !== missing);
+    assert.throws(
+      () => assertCommittedStage28CandidateScope(incomplete),
+      { code: 'ERR_ASSERTION' },
+      missing,
+    );
+    assert.throws(
+      () => assertCommittedStage28CandidateScope(incomplete, incomplete),
+      { code: 'ERR_ASSERTION' },
+      missing,
+    );
+    assert.throws(
+      () => assertCommittedStage28CandidateScope(incomplete, NR11_T6_PATHS),
+      { code: 'ERR_ASSERTION' },
+      `${missing} is required in the committed range`,
+    );
+    assert.throws(
+      () => assertCommittedStage28CandidateScope(NR11_T6_PATHS, incomplete),
+      { code: 'ERR_ASSERTION' },
+      `${missing} is required in maintenance`,
+    );
+  }
+});
+
+test('Teacher policy changes cannot delegate incomplete or unauthorized governance maintenance', () => {
+  const policy = 'src/bootstrap/application-cors.policy.ts';
+  const partial = [
+    policy,
+    'infra/gcp/backend-runtime/modules/runtime-environment/main.tf',
+    'infra/gcp/edge/modules/edge-environment/main.tf',
+    TEST_PATH,
+    STAGE_29_TEST_PATH,
+    STAGE_30C1_TEST_PATH,
+    'src/modules/iam/auth/auth.service.ts',
+  ];
+  assert.throws(() => assertCommittedStage28CandidateScope(partial, partial), {
+    code: 'ERR_ASSERTION',
+  });
+  assert.throws(
+    () =>
+      assertCommittedStage28CandidateScope([
+        policy,
+        TEST_PATH,
+        'src/example-unrelated-change.ts',
       ]),
     { code: 'ERR_ASSERTION' },
   );

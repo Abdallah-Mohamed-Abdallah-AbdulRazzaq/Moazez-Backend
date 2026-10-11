@@ -23,6 +23,7 @@ const NR11_T6_PATHS = Object.freeze([
   'infra/gcp/edge/modules/edge-environment/variables.tf',
   'infra/gcp/storage/modules/storage-environment/main.tf',
   'scripts/storage/tests/gcs-batch2-terraform-policy.test.cjs',
+  'scripts/tests/stage-28a-production-migration-job-source.test.cjs',
   'scripts/tests/stage-29a-production-runtime-source.test.cjs',
   'scripts/tests/stage-30c1-production-frontend-edge-source.test.cjs',
   'src/bootstrap/application-cors.policy.spec.ts',
