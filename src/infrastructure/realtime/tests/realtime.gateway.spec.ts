@@ -5,7 +5,9 @@ import { GATEWAY_OPTIONS } from '@nestjs/websockets/constants';
 import { Adapter } from 'socket.io-adapter';
 import {
   applicationCorsOriginDelegate,
+  APPROVED_PRODUCTION_APPLICATION_ORIGINS,
   configureApplicationCorsOrigins,
+  parseApplicationCorsOrigins,
 } from '../../../bootstrap/application-cors.policy';
 import { ApplicationLifecycleState } from '../../../bootstrap/application-lifecycle.state';
 import { getRequestContext } from '../../../common/context/request-context';
@@ -60,6 +62,33 @@ describe('RealtimeGateway', () => {
     expect(client.join).not.toHaveBeenCalled();
     expect(client.disconnect).toHaveBeenCalledWith(true);
     expect(client.data).toEqual({});
+  });
+
+  it.each([
+    ['https://teacher.moazez.cloud', true],
+    ['https://teacher.moazez.cloud.evil.test', false],
+    ['https://teacher.moazez.cloud/path', false],
+    ['http://teacher.moazez.cloud', false],
+    ['https://staging-teacher.moazez.cloud', false],
+    ['null', false],
+    ['*', false],
+  ])('uses the production Socket.IO allowlist for %s', (origin, allowed) => {
+    configureApplicationCorsOrigins(
+      parseApplicationCorsOrigins(
+        'production',
+        APPROVED_PRODUCTION_APPLICATION_ORIGINS.join(','),
+      ),
+    );
+    const options = Reflect.getMetadata(GATEWAY_OPTIONS, RealtimeGateway) as {
+      cors: {
+        origin: typeof applicationCorsOriginDelegate;
+        credentials: boolean;
+      };
+    };
+    const decision = jest.fn();
+    expect(options.cors.credentials).toBe(true);
+    options.cors.origin(origin, decision);
+    expect(decision).toHaveBeenCalledWith(null, allowed);
   });
 
   it('joins authenticated sockets to school and user baseline rooms', async () => {

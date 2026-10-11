@@ -84,4 +84,40 @@ describe('Academic Content request Origin authority', () => {
       resolveAcademicContentUploadOrigin(origin, configuration([])),
     ).toThrow(ValidationDomainException);
   });
+
+  it('accepts Teacher only when both production allowlists approve it', () => {
+    const teacher = 'https://teacher.moazez.cloud';
+    const config = new ConfigService({
+      NODE_ENV: 'production',
+      APP_CORS_ORIGINS: APPROVED_PRODUCTION_APPLICATION_ORIGINS.join(','),
+      STORAGE_CORS_ORIGINS: [...APPROVED_PRODUCTION_APPLICATION_ORIGINS],
+    });
+    expect(resolveAcademicContentUploadOrigin(teacher, config)).toBe(teacher);
+    config.set(
+      'STORAGE_CORS_ORIGINS',
+      APPROVED_PRODUCTION_APPLICATION_ORIGINS.filter(
+        (origin) => origin !== teacher,
+      ),
+    );
+    expect(() => resolveAcademicContentUploadOrigin(teacher, config)).toThrow(
+      ValidationDomainException,
+    );
+  });
+
+  it.each([
+    '*',
+    'null',
+    'https://teacher.moazez.cloud/path',
+    'https://teacher.moazez.cloud.evil.test',
+    'http://teacher.moazez.cloud',
+  ])('denies unsafe Teacher upload origin %s', (origin) => {
+    const config = new ConfigService({
+      NODE_ENV: 'production',
+      APP_CORS_ORIGINS: APPROVED_PRODUCTION_APPLICATION_ORIGINS.join(','),
+      STORAGE_CORS_ORIGINS: [...APPROVED_PRODUCTION_APPLICATION_ORIGINS],
+    });
+    expect(() => resolveAcademicContentUploadOrigin(origin, config)).toThrow(
+      ValidationDomainException,
+    );
+  });
 });

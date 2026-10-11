@@ -10,6 +10,28 @@ const { ACTIVE_TAP_OWNERS, classifyTestFile } = require('../ci/plan-ci.cjs');
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
 const BASE_SHA = 'c4f0c0175d09279a1e4b0fb7d0b3beab8d45faaa';
 const NR11_T5A_BASE_SHA = 'e165842c1c993f0df643bbf7d2bb352012182c34';
+const NR11_T6_BASE_SHA = '833ecc2eee91164048b469f2ae0d5223aa7542a8';
+const NR11_T6_PATHS = Object.freeze([
+  'docs/governance/nr11-t6-teacher-edge-cors-devops-handoff.md',
+  'infra/gcp/backend-runtime/modules/runtime-environment/main.tf',
+  'infra/gcp/edge/README.md',
+  'infra/gcp/edge/environments/nonprod/tests/candidate-route.tftest.hcl',
+  'infra/gcp/edge/environments/production/main.tf',
+  'infra/gcp/edge/environments/production/outputs.tf',
+  'infra/gcp/edge/modules/edge-environment/main.tf',
+  'infra/gcp/edge/modules/edge-environment/outputs.tf',
+  'infra/gcp/edge/modules/edge-environment/variables.tf',
+  'infra/gcp/storage/modules/storage-environment/main.tf',
+  'scripts/storage/tests/gcs-batch2-terraform-policy.test.cjs',
+  'scripts/tests/stage-29a-production-runtime-source.test.cjs',
+  'scripts/tests/stage-30c1-production-frontend-edge-source.test.cjs',
+  'src/bootstrap/application-cors.policy.spec.ts',
+  'src/bootstrap/application-cors.policy.ts',
+  'src/bootstrap/http-application.spec.ts',
+  'src/config/env.validation.spec.ts',
+  'src/infrastructure/realtime/tests/realtime.gateway.spec.ts',
+  'src/modules/academics/academic-content/files/tests/academic-content-upload-origin.spec.ts',
+]);
 const ARTIFACT_DOMAIN = 'infra/gcp/frontend-artifact-identity';
 const ARTIFACT_ROOT = `${ARTIFACT_DOMAIN}/environments/production`;
 const ARTIFACT_MODULE = `${ARTIFACT_DOMAIN}/modules/frontend-artifact-identity-environment`;
@@ -377,6 +399,14 @@ function assertStage30C1CandidateScope(candidateFiles) {
 }
 
 function assertCommittedStage30C1CandidateScope(candidateFiles) {
+  if (candidateFiles.includes('src/bootstrap/application-cors.policy.ts')) {
+    assert.deepEqual(
+      candidateFiles.filter((file) => !NR11_T6_PATHS.includes(file)),
+      [],
+    );
+    return false;
+  }
+
   if (
     candidateFiles.some((file) => file.endsWith('/production/teacher-web.tf'))
   ) {
@@ -1472,10 +1502,12 @@ test('Production Edge root is the exact governed shared-module caller', () => {
     ['platform_admin_hostname', '"admin.moazez.cloud"'],
     ['school_dashboard_hostname', '"schools.moazez.cloud"'],
     ['student_hostname', '"student.moazez.cloud"'],
+    ['teacher_hostname', '"teacher.moazez.cloud"'],
     ['api_service_name', '"moazez-production-api"'],
     ['platform_admin_service_name', '"moazez-production-platform-admin"'],
     ['school_dashboard_service_name', '"moazez-production-school-dashboard"'],
     ['student_service_name', '"moazez-production-student-web"'],
+    ['teacher_service_name', '"moazez-production-teacher-web"'],
   ]) {
     assert.equal(assignmentExpression(main, assignment[0]), assignment[1]);
   }
@@ -1786,7 +1818,7 @@ test('Production Edge defaults disabled and supports only governed explicit Cand
         /^resource\s+"google_certificate_manager_certificate"/gmu,
       ) ?? []
     ).length,
-    2,
+    3,
   );
   assert.doesNotMatch(moduleMain, /resource\s+"google_dns_/u);
   assert.deepEqual(
@@ -1794,9 +1826,11 @@ test('Production Edge defaults disabled and supports only governed explicit Cand
     [
       'google_certificate_manager_certificate.edge',
       'google_certificate_manager_certificate.student',
+      'google_certificate_manager_certificate.teacher',
       'google_certificate_manager_certificate_map.edge',
       'google_certificate_manager_certificate_map_entry.host',
       'google_certificate_manager_certificate_map_entry.student',
+      'google_certificate_manager_certificate_map_entry.teacher',
       'google_compute_backend_service.api_candidate',
       'google_compute_backend_service.service',
       'google_compute_global_address.edge',
@@ -2053,7 +2087,7 @@ test('Student TLS uses a separate conditional certificate and existing map', () 
       main.match(/^resource "google_certificate_manager_certificate"\s+/gmu) ??
       []
     ).length,
-    2,
+    3,
   );
   assert.equal(
     assignmentExpression(
@@ -2263,4 +2297,332 @@ test('NR11-T3A scope rejects changes to existing identity, registry, and runtime
       { code: 'ERR_ASSERTION' },
     );
   }
+});
+
+test('NR11-T6 scope permits only the Teacher edge and CORS source handoff', () => {
+  assert.equal(assertCommittedStage30C1CandidateScope(NR11_T6_PATHS), false);
+  for (const forbidden of [
+    `${RUNTIME_MODULE}/main.tf`,
+    `${RUNTIME_ROOT}/variables.tf`,
+    `${EDGE_NONPROD_ROOT}/main.tf`,
+    `${EDGE_ROOT}/.terraform.lock.hcl`,
+    `${EDGE_ROOT}/versions.tf`,
+    'prisma/schema.prisma',
+    'prisma/migrations/unapproved/migration.sql',
+    '.github/workflows/production-backend-image.yml',
+    'src/infrastructure/realtime/realtime.gateway.ts',
+    'src/modules/iam/auth/auth.service.ts',
+  ]) {
+    assert.throws(
+      () =>
+        assertCommittedStage30C1CandidateScope([...NR11_T6_PATHS, forbidden]),
+      { code: 'ERR_ASSERTION' },
+    );
+  }
+});
+
+test('Teacher Edge requires the exact Production tuple and is absent in staging', () => {
+  const main = normalizedHclSource(`${EDGE_MODULE}/main.tf`);
+  const variables = normalizedHclSource(`${EDGE_MODULE}/variables.tf`);
+  const nonprod = normalizedHclSource(`${EDGE_NONPROD_ROOT}/main.tf`);
+  for (const name of ['teacher_hostname', 'teacher_service_name']) {
+    const input = variableBlock(variables, name);
+    assert.equal(assignmentExpression(input, 'type'), 'string');
+    assert.equal(assignmentExpression(input, 'default'), 'null');
+    assert.equal(assignmentExpression(input, 'nullable'), 'true');
+    assert.doesNotMatch(nonprod, new RegExp(`^\\s*${name}\\s*=`, 'mu'));
+  }
+  for (const expected of [
+    /teacher_inputs_are_null\s*=\s*\(\s*var[.]teacher_hostname\s*==\s*null\s*&&\s*var[.]teacher_service_name\s*==\s*null/u,
+    /teacher_inputs_are_exact\s*=\s*\(\s*var[.]teacher_hostname\s*==\s*"teacher[.]moazez[.]cloud"\s*&&\s*var[.]teacher_service_name\s*==\s*"moazez-production-teacher-web"\s*&&\s*var[.]project_id\s*==\s*"moazez-production"\s*&&\s*var[.]region\s*==\s*"me-central2"/u,
+    /teacher_contract_valid\s*=\s*\(\s*var[.]environment\s*==\s*"production"\s*\?\s*local[.]teacher_inputs_are_exact\s*:\s*local[.]teacher_inputs_are_null/u,
+    /teacher_edge_enabled\s*=\s*\(\s*var[.]environment\s*==\s*"production"\s*&&\s*local[.]teacher_inputs_are_exact/u,
+    /local[.]teacher_edge_enabled\s*\?\s*\{\s*teacher\s*=\s*var[.]teacher_service_name\s*\}\s*:\s*\{\}/u,
+  ])
+    assert.match(main, expected);
+  const urlMap = resourceBlock(main, 'google_compute_url_map', 'edge');
+  assert.match(urlMap, /condition\s*=\s*local[.]teacher_contract_valid/u);
+  assert.match(
+    urlMap,
+    /for_each\s*=\s*local[.]teacher_edge_enabled\s*\?\s*\[var[.]teacher_hostname\]\s*:\s*\[\]/u,
+  );
+  assert.match(
+    urlMap,
+    /hosts\s*=\s*\[host_rule[.]value\]\s*path_matcher\s*=\s*"teacher"/u,
+  );
+  assert.match(
+    urlMap,
+    /for_each\s*=\s*local[.]teacher_edge_enabled\s*\?\s*\["teacher"\]\s*:\s*\[\]/u,
+  );
+  assert.match(
+    urlMap,
+    /name\s*=\s*path_matcher[.]value\s*default_service\s*=\s*google_compute_backend_service[.]service\["teacher"\][.]id/u,
+  );
+  for (const [type, suffix] of [
+    ['google_certificate_manager_certificate', 'cert'],
+    ['google_certificate_manager_certificate_map_entry', 'cert-entry'],
+  ]) {
+    const resource = resourceBlock(main, type, 'teacher');
+    assert.equal(
+      assignmentExpression(resource, 'count'),
+      'local.teacher_edge_enabled ? 1 : 0',
+    );
+    assert.equal(assignmentExpression(resource, 'project'), 'var.project_id');
+    assert.equal(
+      assignmentExpression(resource, 'name'),
+      `"\${local.name_prefix}-teacher-${suffix}"`,
+    );
+  }
+  const certificate = resourceBlock(
+    main,
+    'google_certificate_manager_certificate',
+    'teacher',
+  );
+  assert.equal(
+    assignmentExpression(certificate, 'domains'),
+    '[var.teacher_hostname]',
+  );
+  assert.equal(assignmentExpression(certificate, 'location'), '"global"');
+  assert.match(certificate, /google_project_service[.]certificate_manager/u);
+  const entry = resourceBlock(
+    main,
+    'google_certificate_manager_certificate_map_entry',
+    'teacher',
+  );
+  assert.equal(assignmentExpression(entry, 'hostname'), 'var.teacher_hostname');
+  assert.equal(
+    assignmentExpression(entry, 'map'),
+    'google_certificate_manager_certificate_map.edge.name',
+  );
+  assert.equal(
+    assignmentExpression(entry, 'certificates'),
+    '[google_certificate_manager_certificate.teacher[0].id]',
+  );
+  assert.match(
+    resourceBlock(main, 'google_compute_target_https_proxy', 'edge'),
+    /google_certificate_manager_certificate_map_entry[.]teacher/u,
+  );
+  assert.equal(
+    assignmentExpression(
+      extractBlock(
+        normalizedHclSource(`${EDGE_MODULE}/outputs.tf`),
+        /^output "teacher_certificate_name"\s*\{/mu,
+        'Teacher certificate output',
+      ),
+      'value',
+    ),
+    'local.teacher_edge_enabled ? google_certificate_manager_certificate.teacher[0].name : null',
+  );
+  assert.equal(
+    assignmentExpression(
+      extractBlock(
+        normalizedHclSource(`${EDGE_ROOT}/outputs.tf`),
+        /^output "teacher_certificate_name"\s*\{/mu,
+        'Teacher root output',
+      ),
+      'value',
+    ),
+    'module.edge_environment.teacher_certificate_name',
+  );
+});
+
+test('NR11-T6 preserves existing edge identities, routes, certificates, candidate behavior, and completed runtime', () => {
+  const baseline = (file) => git('show', `${NR11_T6_BASE_SHA}:${file}`);
+  const main = normalizedSource(`${EDGE_MODULE}/main.tf`);
+  const oldMain = baseline(`${EDGE_MODULE}/main.tf`);
+  const compact = (source) => source.replace(/\s+/gu, ' ').trim();
+  assert.deepEqual(
+    resourceAddresses(main),
+    [
+      ...resourceAddresses(oldMain),
+      'google_certificate_manager_certificate.teacher',
+      'google_certificate_manager_certificate_map_entry.teacher',
+    ].sort(),
+  );
+  for (const address of resourceAddresses(oldMain)) {
+    const [type, name] = address.split('.');
+    if (
+      type === 'google_compute_url_map' ||
+      type === 'google_compute_target_https_proxy'
+    )
+      continue;
+    assert.equal(
+      resourceBlock(main, type, name),
+      resourceBlock(oldMain, type, name),
+      address,
+    );
+  }
+  const removeBlock = (source, pattern) => {
+    const match = pattern.exec(source);
+    assert.ok(match, pattern.source);
+    const body = extractBlockAt(source, match.index, 'Teacher addition');
+    const end = source.indexOf('{', match.index) + body.length + 2;
+    return source.slice(0, match.index) + source.slice(end);
+  };
+  let urlMap = resourceBlock(main, 'google_compute_url_map', 'edge');
+  for (const pattern of [
+    /^  dynamic "host_rule"\s*\{\s*for_each\s*=\s*local[.]teacher_edge_enabled/mu,
+    /^  dynamic "path_matcher"\s*\{\s*for_each\s*=\s*local[.]teacher_edge_enabled/mu,
+    /^    precondition\s*\{\s*condition\s*=\s*local[.]teacher_contract_valid/mu,
+  ])
+    urlMap = removeBlock(urlMap, pattern);
+  assert.equal(
+    compact(urlMap),
+    compact(resourceBlock(oldMain, 'google_compute_url_map', 'edge')),
+  );
+  const proxy = resourceBlock(
+    main,
+    'google_compute_target_https_proxy',
+    'edge',
+  ).replace(
+    /,\s*google_certificate_manager_certificate_map_entry[.]teacher/u,
+    '',
+  );
+  assert.equal(
+    compact(proxy),
+    compact(
+      resourceBlock(oldMain, 'google_compute_target_https_proxy', 'edge'),
+    ),
+  );
+  assert.equal(
+    extractBlock(
+      main,
+      /^\s*hostnames\s*=\s*\{/mu,
+      'shared certificate hostnames',
+    ),
+    extractBlock(
+      oldMain,
+      /^\s*hostnames\s*=\s*\{/mu,
+      'old shared certificate hostnames',
+    ),
+  );
+  for (const file of [
+    ...git(
+      'ls-tree',
+      '-r',
+      '--name-only',
+      NR11_T6_BASE_SHA,
+      '--',
+      RUNTIME_DOMAIN,
+    )
+      .trim()
+      .split('\n'),
+    ...[
+      'main.tf',
+      'variables.tf',
+      'providers.tf',
+      'versions.tf',
+      'outputs.tf',
+      '.terraform.lock.hcl',
+    ].flatMap((name) => [`${EDGE_NONPROD_ROOT}/${name}`]),
+    ...[
+      'providers.tf',
+      'versions.tf',
+      'variables.tf',
+      '.terraform.lock.hcl',
+    ].map((name) => `${EDGE_ROOT}/${name}`),
+    'src/bootstrap/http-application.ts',
+    'src/infrastructure/realtime/realtime.gateway.ts',
+    'src/config/env.validation.ts',
+  ])
+    assert.equal(normalizedSource(file), baseline(file), file);
+  for (const domain of ['infra/gcp/backend-runtime', 'infra/gcp/storage']) {
+    const modulePath = domain.endsWith('storage')
+      ? `${domain}/modules/storage-environment/main.tf`
+      : `${domain}/modules/runtime-environment/main.tf`;
+    for (const file of git(
+      'ls-tree',
+      '-r',
+      '--name-only',
+      NR11_T6_BASE_SHA,
+      '--',
+      domain,
+    )
+      .trim()
+      .split('\n')) {
+      if (file === modulePath) continue;
+      assert.equal(normalizedSource(file), baseline(file), file);
+    }
+    const current = normalizedSource(modulePath);
+    const withoutTeacher = domain.endsWith('storage')
+      ? current.replace(/^\s*"https:\/\/teacher[.]moazez[.]cloud",\n/mu, '')
+      : current.replace(',https://teacher.moazez.cloud', '');
+    assert.equal(
+      withoutTeacher,
+      baseline(modulePath),
+      `${domain}: only Production CORS may change`,
+    );
+  }
+});
+
+test('Production application, API runtime, and GCS share the exact four-origin contract', () => {
+  const expected = [
+    'https://schools.moazez.cloud',
+    'https://admin.moazez.cloud',
+    'https://student.moazez.cloud',
+    'https://teacher.moazez.cloud',
+  ];
+  const policy = normalizedSource('src/bootstrap/application-cors.policy.ts');
+  const application =
+    /APPROVED_PRODUCTION_APPLICATION_ORIGINS = Object[.]freeze\(\[([^\]]+)\]/u.exec(
+      policy,
+    );
+  assert.ok(application);
+  assert.deepEqual(
+    [...application[1].matchAll(/'([^']+)'/gu)].map((match) => match[1]),
+    expected,
+  );
+  const runtime = normalizedHclSource(
+    'infra/gcp/backend-runtime/modules/runtime-environment/main.tf',
+  );
+  const production = extractBlock(
+    runtime,
+    /^\s{4}production\s*=\s*\{/mu,
+    'Production runtime',
+  );
+  assert.deepEqual(
+    JSON.parse(assignmentExpression(production, 'cors_origins')).split(','),
+    expected,
+  );
+  for (const name of ['APP_CORS_ORIGINS', 'STORAGE_CORS_ORIGINS'])
+    assert.equal(
+      assignmentExpression(runtime, name),
+      'local.selected.cors_origins',
+    );
+  const storage = normalizedHclSource(
+    'infra/gcp/storage/modules/storage-environment/main.tf',
+  );
+  const storageProduction = extractBlock(
+    storage,
+    /^\s{4}production\s*=\s*\{/mu,
+    'Production storage',
+  );
+  const origins = /cors_origins\s*=\s*\[([^\]]+)\]/u.exec(storageProduction);
+  assert.ok(origins);
+  assert.deepEqual(
+    [...origins[1].matchAll(/"([^"]+)"/gu)].map((match) => match[1]),
+    expected,
+  );
+  assert.equal(
+    assignmentExpression(
+      resourceBlock(storage, 'google_storage_bucket', 'application'),
+      'origin',
+    ),
+    'local.selected.cors_origins',
+  );
+  const handoff = normalizedSource(
+    'docs/governance/nr11-t6-teacher-edge-cors-devops-handoff.md',
+  );
+  for (const phrase of [
+    'new immutable Backend API image',
+    'together',
+    'old Backend image',
+    '4 creates',
+    'URL map',
+    'in-place',
+    '136.110.222.132',
+    'source-only',
+    'not live plan verification',
+  ])
+    assert.ok(handoff.includes(phrase), phrase);
 });

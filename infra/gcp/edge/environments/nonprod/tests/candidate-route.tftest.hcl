@@ -12,6 +12,18 @@ mock_provider "google" {
       id = "https://example.invalid/networkEndpointGroups/mock-neg"
     }
   }
+
+  mock_resource "google_compute_backend_service" {
+    defaults = {
+      id = "https://example.invalid/backendServices/mock-backend"
+    }
+  }
+
+  mock_resource "google_certificate_manager_certificate" {
+    defaults = {
+      id = "projects/mock/locations/global/certificates/mock-certificate"
+    }
+  }
 }
 
 variables {
@@ -52,6 +64,16 @@ run "historical_disabled_route_omitted" {
     condition     = output.candidate_serverless_neg_name == null && output.candidate_backend_service_name == null && output.candidate_smoke_public_path == null && output.candidate_smoke_backend_path == null
     error_message = "Historical disabled mode must expose no Candidate resource or smoke-route outputs."
   }
+  assert {
+    condition     = keys(google_compute_region_network_endpoint_group.service) == ["admin", "api", "schools"] && keys(google_compute_backend_service.service) == ["admin", "api", "schools"] && length(google_certificate_manager_certificate.teacher) == 0 && length(google_certificate_manager_certificate_map_entry.teacher) == 0 && output.teacher_certificate_name == null
+    error_message = "Staging must have no Teacher NEG, backend, certificate, entry or output."
+  }
+
+  assert {
+    condition     = length(google_compute_url_map.edge.host_rule) == 3 && length(google_compute_url_map.edge.path_matcher) == 3
+    error_message = "Staging must retain exactly the API, Admin and Schools routes."
+  }
+
 }
 
 run "historical_enabled_route_omitted_targets_tagged_revision_and_reuses_security_posture" {
@@ -261,6 +283,10 @@ run "production_candidate_route_defaults_disabled_and_normal_api_neg_is_unchange
     api_service_name              = "moazez-production-api"
     platform_admin_service_name   = "moazez-production-platform-admin"
     school_dashboard_service_name = "moazez-production-school-dashboard"
+    student_hostname              = "student.moazez.cloud"
+    student_service_name          = "moazez-production-student-web"
+    teacher_hostname              = "teacher.moazez.cloud"
+    teacher_service_name          = "moazez-production-teacher-web"
   }
 
   assert {
@@ -282,6 +308,36 @@ run "production_candidate_route_defaults_disabled_and_normal_api_neg_is_unchange
     condition     = google_compute_backend_service.service["api"].name == "moazez-production-api-backend" && one(google_compute_backend_service.service["api"].backend).group == google_compute_region_network_endpoint_group.service["api"].id
     error_message = "The normal Production API backend must remain unchanged."
   }
+  assert {
+    condition     = keys(google_compute_region_network_endpoint_group.service) == ["admin", "api", "schools", "student", "teacher"] && keys(google_compute_backend_service.service) == ["admin", "api", "schools", "student", "teacher"]
+    error_message = "Production must preserve all existing surfaces and add only Teacher."
+  }
+
+  assert {
+    condition     = google_compute_region_network_endpoint_group.service["teacher"].name == "moazez-production-teacher-neg" && google_compute_region_network_endpoint_group.service["teacher"].region == "me-central2" && google_compute_region_network_endpoint_group.service["teacher"].cloud_run[0].service == "moazez-production-teacher-web" && google_compute_region_network_endpoint_group.service["teacher"].cloud_run[0].tag == null
+    error_message = "Teacher must use the exact regional service-level NEG."
+  }
+
+  assert {
+    condition     = google_compute_backend_service.service["teacher"].name == "moazez-production-teacher-backend" && google_compute_backend_service.service["teacher"].protocol == "HTTP" && google_compute_backend_service.service["teacher"].load_balancing_scheme == "EXTERNAL_MANAGED" && google_compute_backend_service.service["teacher"].security_policy == google_compute_backend_service.service["api"].security_policy && length(google_compute_backend_service.service["teacher"].custom_request_headers) == 0 && one(google_compute_backend_service.service["teacher"].backend).group == google_compute_region_network_endpoint_group.service["teacher"].id
+    error_message = "Teacher must reuse shared Armor and external managed architecture without API trusted headers."
+  }
+
+  assert {
+    condition     = length(google_compute_url_map.edge.host_rule) == 5 && length(google_compute_url_map.edge.path_matcher) == 5 && one([for rule in google_compute_url_map.edge.host_rule : rule.path_matcher if rule.hosts == toset(["teacher.moazez.cloud"])]) == "teacher" && one([for matcher in google_compute_url_map.edge.path_matcher : matcher.default_service if matcher.name == "teacher"]) == google_compute_backend_service.service["teacher"].id
+    error_message = "The existing URL map must route all Teacher paths to its backend and preserve the four original hosts."
+  }
+
+  assert {
+    condition     = length(google_certificate_manager_certificate.teacher) == 1 && google_certificate_manager_certificate.teacher[0].name == "moazez-production-teacher-cert" && tolist(google_certificate_manager_certificate.teacher[0].managed[0].domains) == tolist(["teacher.moazez.cloud"]) && sort(tolist(google_certificate_manager_certificate.edge.managed[0].domains)) == sort(["api.moazez.cloud", "admin.moazez.cloud", "schools.moazez.cloud"]) && tolist(google_certificate_manager_certificate.student[0].managed[0].domains) == tolist(["student.moazez.cloud"])
+    error_message = "Teacher must use a dedicated certificate without expanding shared or Student domains."
+  }
+
+  assert {
+    condition     = length(google_certificate_manager_certificate_map_entry.teacher) == 1 && google_certificate_manager_certificate_map_entry.teacher[0].name == "moazez-production-teacher-cert-entry" && google_certificate_manager_certificate_map_entry.teacher[0].map == google_certificate_manager_certificate_map.edge.name && google_certificate_manager_certificate_map_entry.teacher[0].hostname == "teacher.moazez.cloud" && tolist(google_certificate_manager_certificate_map_entry.teacher[0].certificates) == tolist([google_certificate_manager_certificate.teacher[0].id]) && output.teacher_certificate_name == "moazez-production-teacher-cert"
+    error_message = "Teacher must add its own entry to the existing certificate map."
+  }
+
 }
 
 run "production_candidate_route_explicit_enable_targets_exact_candidate" {
@@ -300,6 +356,10 @@ run "production_candidate_route_explicit_enable_targets_exact_candidate" {
     api_service_name              = "moazez-production-api"
     platform_admin_service_name   = "moazez-production-platform-admin"
     school_dashboard_service_name = "moazez-production-school-dashboard"
+    student_hostname              = "student.moazez.cloud"
+    student_service_name          = "moazez-production-student-web"
+    teacher_hostname              = "teacher.moazez.cloud"
+    teacher_service_name          = "moazez-production-teacher-web"
     candidate_edge_enabled        = true
     candidate_smoke_route_enabled = true
     candidate_api_tag             = "candidate-cf720dacbc04"
@@ -357,6 +417,10 @@ run "production_thirteen_digit_recovery_suffix_reaches_exact_name_boundary" {
     api_service_name              = "moazez-production-api"
     platform_admin_service_name   = "moazez-production-platform-admin"
     school_dashboard_service_name = "moazez-production-school-dashboard"
+    student_hostname              = "student.moazez.cloud"
+    student_service_name          = "moazez-production-student-web"
+    teacher_hostname              = "teacher.moazez.cloud"
+    teacher_service_name          = "moazez-production-teacher-web"
     candidate_edge_enabled        = true
     candidate_api_tag             = "candidate-cf720dacbc04-r9999999999999"
   }
@@ -388,6 +452,10 @@ run "production_fourteen_digit_recovery_suffix_fails_physical_name_guard" {
     api_service_name              = "moazez-production-api"
     platform_admin_service_name   = "moazez-production-platform-admin"
     school_dashboard_service_name = "moazez-production-school-dashboard"
+    student_hostname              = "student.moazez.cloud"
+    student_service_name          = "moazez-production-student-web"
+    teacher_hostname              = "teacher.moazez.cloud"
+    teacher_service_name          = "moazez-production-teacher-web"
     candidate_edge_enabled        = true
     candidate_api_tag             = "candidate-cf720dacbc04-r10000000000000"
   }
@@ -411,6 +479,10 @@ run "production_candidate_route_rejects_missing_tag" {
     api_service_name              = "moazez-production-api"
     platform_admin_service_name   = "moazez-production-platform-admin"
     school_dashboard_service_name = "moazez-production-school-dashboard"
+    student_hostname              = "student.moazez.cloud"
+    student_service_name          = "moazez-production-student-web"
+    teacher_hostname              = "teacher.moazez.cloud"
+    teacher_service_name          = "moazez-production-teacher-web"
     candidate_edge_enabled        = true
   }
 
@@ -433,6 +505,10 @@ run "production_disabled_candidate_route_rejects_stale_tag" {
     api_service_name              = "moazez-production-api"
     platform_admin_service_name   = "moazez-production-platform-admin"
     school_dashboard_service_name = "moazez-production-school-dashboard"
+    student_hostname              = "student.moazez.cloud"
+    student_service_name          = "moazez-production-student-web"
+    teacher_hostname              = "teacher.moazez.cloud"
+    teacher_service_name          = "moazez-production-teacher-web"
     candidate_api_tag             = "candidate-cf720dacbc04"
   }
 
@@ -455,6 +531,10 @@ run "production_candidate_route_rejects_malformed_tag" {
     api_service_name              = "moazez-production-api"
     platform_admin_service_name   = "moazez-production-platform-admin"
     school_dashboard_service_name = "moazez-production-school-dashboard"
+    student_hostname              = "student.moazez.cloud"
+    student_service_name          = "moazez-production-student-web"
+    teacher_hostname              = "teacher.moazez.cloud"
+    teacher_service_name          = "moazez-production-teacher-web"
     candidate_edge_enabled        = true
     candidate_api_tag             = "candidate-CF720DACBC04"
   }
@@ -543,5 +623,143 @@ run "disabled_candidate_route_rejects_stale_tag" {
     candidate_api_tag = "candidate-be1b01ce47ad"
   }
 
+  expect_failures = [google_compute_url_map.edge]
+}
+
+
+run "teacher_rejects_wrong_production_hostname" {
+  command = plan
+  module {
+    source = "../../modules/edge-environment"
+  }
+  variables {
+    project_id                    = "moazez-production"
+    environment                   = "production"
+    api_hostname                  = "api.moazez.cloud"
+    platform_admin_hostname       = "admin.moazez.cloud"
+    school_dashboard_hostname     = "schools.moazez.cloud"
+    api_service_name              = "moazez-production-api"
+    platform_admin_service_name   = "moazez-production-platform-admin"
+    school_dashboard_service_name = "moazez-production-school-dashboard"
+    student_hostname              = "student.moazez.cloud"
+    student_service_name          = "moazez-production-student-web"
+    teacher_hostname              = "teacher.example.test"
+    teacher_service_name          = "moazez-production-teacher-web"
+  }
+  expect_failures = [google_compute_url_map.edge]
+}
+
+
+run "teacher_rejects_wrong_production_service" {
+  command = plan
+  module {
+    source = "../../modules/edge-environment"
+  }
+  variables {
+    project_id                    = "moazez-production"
+    environment                   = "production"
+    api_hostname                  = "api.moazez.cloud"
+    platform_admin_hostname       = "admin.moazez.cloud"
+    school_dashboard_hostname     = "schools.moazez.cloud"
+    api_service_name              = "moazez-production-api"
+    platform_admin_service_name   = "moazez-production-platform-admin"
+    school_dashboard_service_name = "moazez-production-school-dashboard"
+    student_hostname              = "student.moazez.cloud"
+    student_service_name          = "moazez-production-student-web"
+    teacher_hostname              = "teacher.moazez.cloud"
+    teacher_service_name          = "moazez-production-student-web"
+  }
+  expect_failures = [google_compute_url_map.edge]
+}
+
+
+run "teacher_rejects_wrong_project" {
+  command = plan
+  module {
+    source = "../../modules/edge-environment"
+  }
+  variables {
+    project_id                    = "moazez-other-production"
+    environment                   = "production"
+    api_hostname                  = "api.moazez.cloud"
+    platform_admin_hostname       = "admin.moazez.cloud"
+    school_dashboard_hostname     = "schools.moazez.cloud"
+    api_service_name              = "moazez-production-api"
+    platform_admin_service_name   = "moazez-production-platform-admin"
+    school_dashboard_service_name = "moazez-production-school-dashboard"
+    student_hostname              = "student.moazez.cloud"
+    student_service_name          = "moazez-production-student-web"
+    teacher_hostname              = "teacher.moazez.cloud"
+    teacher_service_name          = "moazez-production-teacher-web"
+  }
+  expect_failures = [google_compute_url_map.edge]
+}
+
+
+run "teacher_rejects_wrong_region" {
+  command = plan
+  module {
+    source = "../../modules/edge-environment"
+  }
+  variables {
+    project_id                    = "moazez-production"
+    environment                   = "production"
+    api_hostname                  = "api.moazez.cloud"
+    platform_admin_hostname       = "admin.moazez.cloud"
+    school_dashboard_hostname     = "schools.moazez.cloud"
+    api_service_name              = "moazez-production-api"
+    platform_admin_service_name   = "moazez-production-platform-admin"
+    school_dashboard_service_name = "moazez-production-school-dashboard"
+    student_hostname              = "student.moazez.cloud"
+    student_service_name          = "moazez-production-student-web"
+    teacher_hostname              = "teacher.moazez.cloud"
+    teacher_service_name          = "moazez-production-teacher-web"
+    region                        = "me-central1"
+  }
+  expect_failures = [google_compute_url_map.edge]
+}
+
+
+run "teacher_rejects_missing_production_inputs" {
+  command = plan
+  module {
+    source = "../../modules/edge-environment"
+  }
+  variables {
+    project_id                    = "moazez-production"
+    environment                   = "production"
+    api_hostname                  = "api.moazez.cloud"
+    platform_admin_hostname       = "admin.moazez.cloud"
+    school_dashboard_hostname     = "schools.moazez.cloud"
+    api_service_name              = "moazez-production-api"
+    platform_admin_service_name   = "moazez-production-platform-admin"
+    school_dashboard_service_name = "moazez-production-school-dashboard"
+    student_hostname              = "student.moazez.cloud"
+    student_service_name          = "moazez-production-student-web"
+    teacher_hostname              = null
+    teacher_service_name          = null
+  }
+  expect_failures = [google_compute_url_map.edge]
+}
+
+run "teacher_rejects_staging_hostname" {
+  command = plan
+  module {
+    source = "../../modules/edge-environment"
+  }
+  variables {
+    teacher_hostname = "teacher.moazez.cloud"
+  }
+  expect_failures = [google_compute_url_map.edge]
+}
+
+run "teacher_rejects_staging_service" {
+  command = plan
+  module {
+    source = "../../modules/edge-environment"
+  }
+  variables {
+    teacher_service_name = "moazez-production-teacher-web"
+  }
   expect_failures = [google_compute_url_map.edge]
 }

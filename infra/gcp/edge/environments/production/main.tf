@@ -9,11 +9,13 @@ module "edge_environment" {
   platform_admin_hostname   = "admin.moazez.cloud"
   school_dashboard_hostname = "schools.moazez.cloud"
   student_hostname          = "student.moazez.cloud"
+  teacher_hostname          = "teacher.moazez.cloud"
 
   api_service_name              = "moazez-production-api"
   platform_admin_service_name   = "moazez-production-platform-admin"
   school_dashboard_service_name = "moazez-production-school-dashboard"
   student_service_name          = "moazez-production-student-web"
+  teacher_service_name          = "moazez-production-teacher-web"
 
   candidate_edge_enabled        = var.candidate_edge_enabled
   candidate_smoke_route_enabled = var.candidate_smoke_route_enabled

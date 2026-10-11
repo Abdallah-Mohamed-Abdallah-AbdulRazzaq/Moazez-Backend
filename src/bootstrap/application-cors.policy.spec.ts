@@ -15,7 +15,7 @@ describe('application CORS policy', () => {
     expect(
       parseApplicationCorsOrigins(
         'production',
-        'https://schools.moazez.cloud,https://admin.moazez.cloud,https://student.moazez.cloud',
+        'https://schools.moazez.cloud,https://admin.moazez.cloud,https://student.moazez.cloud,https://teacher.moazez.cloud',
       ),
     ).toEqual(APPROVED_PRODUCTION_APPLICATION_ORIGINS);
   });
@@ -38,14 +38,17 @@ describe('application CORS policy', () => {
     ).toEqual(APPROVED_STAGING_APPLICATION_ORIGINS);
   });
 
-  it('does not add the production Student origin to staging', () => {
-    expect(() =>
-      parseApplicationCorsOrigins(
-        'staging',
-        `${APPROVED_STAGING_APPLICATION_ORIGINS.join(',')},https://student.moazez.cloud`,
-      ),
-    ).toThrow(/approved staging origin set/u);
-  });
+  it.each(['student', 'teacher'])(
+    'does not add the production %s origin to staging',
+    (surface) => {
+      expect(() =>
+        parseApplicationCorsOrigins(
+          'staging',
+          `${APPROVED_STAGING_APPLICATION_ORIGINS.join(',')},https://${surface}.moazez.cloud`,
+        ),
+      ).toThrow(/approved staging origin set/u);
+    },
+  );
 
   it.each([
     ['production', undefined],
@@ -55,11 +58,15 @@ describe('application CORS policy', () => {
     ['production', 'https://schools.moazez.cloud,https://student.moazez.cloud'],
     [
       'production',
-      'https://schools.moazez.cloud,https://admin.moazez.cloud,https://student.moazez.cloud,https://extra.moazez.cloud',
+      'https://schools.moazez.cloud,https://admin.moazez.cloud,https://student.moazez.cloud',
     ],
     [
       'production',
-      'https://schools.moazez.cloud,https://admin.moazez.cloud,https://student.moazez.cloud,https://student.moazez.cloud',
+      'https://schools.moazez.cloud,https://admin.moazez.cloud,https://student.moazez.cloud,https://teacher.moazez.cloud,https://extra.moazez.cloud',
+    ],
+    [
+      'production',
+      'https://schools.moazez.cloud,https://admin.moazez.cloud,https://student.moazez.cloud,https://teacher.moazez.cloud,https://student.moazez.cloud',
     ],
     ['production', '*'],
     ['production', 'null'],
@@ -128,21 +135,39 @@ describe('application CORS policy', () => {
     expect(noOrigin).toHaveBeenCalledWith(null, true);
   });
 
-  it('allows the production Student origin through the shared HTTP delegate', () => {
-    const options = createApplicationCorsOptions(
-      parseApplicationCorsOrigins(
-        'production',
-        APPROVED_PRODUCTION_APPLICATION_ORIGINS.join(','),
-      ),
-    );
-    const allowed = jest.fn();
-    const denied = jest.fn();
+  it.each(['student', 'teacher'])(
+    'allows the production %s origin through the shared HTTP delegate',
+    (surface) => {
+      const options = createApplicationCorsOptions(
+        parseApplicationCorsOrigins(
+          'production',
+          APPROVED_PRODUCTION_APPLICATION_ORIGINS.join(','),
+        ),
+      );
+      const allowed = jest.fn();
+      const denied = jest.fn();
 
-    expect(options.origin).toBe(applicationCorsOriginDelegate);
-    applicationCorsOriginDelegate('https://student.moazez.cloud', allowed);
-    applicationCorsOriginDelegate('https://extra.moazez.cloud', denied);
+      expect(options.origin).toBe(applicationCorsOriginDelegate);
+      expect(options.credentials).toBe(true);
+      applicationCorsOriginDelegate(`https://${surface}.moazez.cloud`, allowed);
+      applicationCorsOriginDelegate('https://extra.moazez.cloud', denied);
 
-    expect(allowed).toHaveBeenCalledWith(null, true);
-    expect(denied).toHaveBeenCalledWith(null, false);
+      expect(allowed).toHaveBeenCalledWith(null, true);
+      expect(denied).toHaveBeenCalledWith(null, false);
+    },
+  );
+
+  it.each([
+    '*',
+    'null',
+    'https://teacher.moazez.cloud/path',
+    'https://teacher.moazez.cloud.evil.test',
+    'http://teacher.moazez.cloud',
+    'https://staging-teacher.moazez.cloud',
+  ])('denies unauthorized production browser origin %s', (origin) => {
+    createApplicationCorsOptions(APPROVED_PRODUCTION_APPLICATION_ORIGINS);
+    const decision = jest.fn();
+    applicationCorsOriginDelegate(origin, decision);
+    expect(decision).toHaveBeenCalledWith(null, false);
   });
 });

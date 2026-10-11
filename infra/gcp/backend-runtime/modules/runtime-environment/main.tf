@@ -86,7 +86,7 @@ locals {
 
       node_environment            = "production"
       trusted_proxy_mode          = "none"
-      cors_origins                = "https://schools.moazez.cloud,https://admin.moazez.cloud,https://student.moazez.cloud"
+      cors_origins                = "https://schools.moazez.cloud,https://admin.moazez.cloud,https://student.moazez.cloud,https://teacher.moazez.cloud"
       image_pattern               = "^me-central2-docker[.]pkg[.]dev/moazez-production/moazez-production-containers/moazez-backend@sha256:[a-f0-9]{64}$"
       storage_private_bucket      = "moazez-production-91001421934-private"
       storage_published_bucket    = "moazez-production-91001421934-published"

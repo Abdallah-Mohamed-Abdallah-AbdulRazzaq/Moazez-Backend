@@ -10,6 +10,7 @@ export const APPROVED_PRODUCTION_APPLICATION_ORIGINS = Object.freeze([
   'https://schools.moazez.cloud',
   'https://admin.moazez.cloud',
   'https://student.moazez.cloud',
+  'https://teacher.moazez.cloud',
 ]);
 
 export const APPROVED_STAGING_APPLICATION_ORIGINS = Object.freeze([

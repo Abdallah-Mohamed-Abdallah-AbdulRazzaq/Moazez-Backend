@@ -328,7 +328,7 @@ describe('bootstrap environment validation', () => {
   it('accepts only the exact approved production application origins', () => {
     const env = validateEnv(productionEnv());
     expect(env.APP_CORS_ORIGINS).toBe(
-      APPROVED_PRODUCTION_APPLICATION_ORIGINS.join(','),
+      'https://schools.moazez.cloud,https://admin.moazez.cloud,https://student.moazez.cloud,https://teacher.moazez.cloud',
     );
   });
 
@@ -348,12 +348,40 @@ describe('bootstrap environment validation', () => {
     '*',
     'null',
     'https://schools.moazez.cloud,https://admin.moazez.cloud',
-    'https://schools.moazez.cloud/path,https://admin.moazez.cloud,https://student.moazez.cloud',
-    'https://schools.moazez.cloud,https://admin.moazez.cloud,https://student.moazez.cloud,https://student.moazez.cloud',
-    'https://schools.moazez.cloud,https://admin.moazez.cloud,https://student.moazez.cloud,https://extra.moazez.cloud',
+    'https://schools.moazez.cloud,https://admin.moazez.cloud,https://student.moazez.cloud',
+    'https://schools.moazez.cloud/path,https://admin.moazez.cloud,https://student.moazez.cloud,https://teacher.moazez.cloud',
+    'https://schools.moazez.cloud,https://admin.moazez.cloud,https://student.moazez.cloud,https://teacher.moazez.cloud,https://student.moazez.cloud',
+    'https://schools.moazez.cloud,https://admin.moazez.cloud,https://student.moazez.cloud,https://teacher.moazez.cloud,https://extra.moazez.cloud',
   ])('rejects invalid production application origins: %s', (origins) => {
     expect(() =>
       validateEnv(productionEnv({ APP_CORS_ORIGINS: origins })),
+    ).toThrow(/APP_CORS_ORIGINS/u);
+  });
+
+  it.each([
+    'https://teacher.moazez.cloud/path',
+    'https://teacher.moazez.cloud.evil.test',
+    'http://teacher.moazez.cloud',
+    'null',
+    '*',
+  ])('rejects unsafe Teacher startup origin %s', (origin) => {
+    const origins = [
+      ...APPROVED_PRODUCTION_APPLICATION_ORIGINS.slice(0, -1),
+      origin,
+    ].join(',');
+    expect(() =>
+      validateEnv(productionEnv({ APP_CORS_ORIGINS: origins })),
+    ).toThrow(/APP_CORS_ORIGINS/u);
+  });
+
+  it('rejects Teacher in the staging application origins', () => {
+    expect(() =>
+      validateEnv(
+        productionEnv({
+          NODE_ENV: 'staging',
+          APP_CORS_ORIGINS: `${APPROVED_STAGING_APPLICATION_ORIGINS.join(',')},https://teacher.moazez.cloud`,
+        }),
+      ),
     ).toThrow(/APP_CORS_ORIGINS/u);
   });
 

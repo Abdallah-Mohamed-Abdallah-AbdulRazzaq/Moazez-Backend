@@ -40,6 +40,20 @@ variable "student_hostname" {
   nullable    = true
 }
 
+variable "teacher_hostname" {
+  description = "Production-only Teacher Web hostname; null in staging."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
+variable "teacher_service_name" {
+  description = "Production-only Teacher Web Cloud Run service; null in staging."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
 variable "api_service_name" {
   description = "Existing Cloud Run API service name."
   type        = string

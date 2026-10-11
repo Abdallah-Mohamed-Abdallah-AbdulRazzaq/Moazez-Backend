@@ -17,6 +17,7 @@ locals {
         "https://schools.moazez.cloud",
         "https://admin.moazez.cloud",
         "https://student.moazez.cloud",
+        "https://teacher.moazez.cloud",
       ]
     }
   }
