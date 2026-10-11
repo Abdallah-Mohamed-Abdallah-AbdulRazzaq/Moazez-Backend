@@ -93,7 +93,12 @@ export class StudentProfileReadAdapter {
     if (identity?.avatarFile?.id !== fileId || identity.avatarFile.deletedAt)
       return null;
     return this.scopedPrisma.file.findFirst({
-      where: { id: fileId, schoolId: context.schoolId, deletedAt: null },
+      where: {
+        id: fileId,
+        schoolId: context.schoolId,
+        deletedAt: null,
+        studentCredentialSecretArtifacts: { none: {} },
+      },
       select: {
         bucket: true,
         objectKey: true,

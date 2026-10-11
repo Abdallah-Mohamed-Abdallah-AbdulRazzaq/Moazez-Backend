@@ -115,7 +115,13 @@ export class ParentRewardsReadAdapter {
         ...buildVisibleRewardWhere({ child }),
         id: rewardId,
         imageFileId: fileId,
-        imageFile: { is: { schoolId, deletedAt: null } },
+        imageFile: {
+          is: {
+            schoolId,
+            deletedAt: null,
+            studentCredentialSecretArtifacts: { none: {} },
+          },
+        },
       },
       select: {
         imageFile: {
@@ -145,7 +151,13 @@ export class ParentRewardsReadAdapter {
         catalogItem: {
           is: {
             imageFileId: fileId,
-            imageFile: { is: { schoolId: schoolId, deletedAt: null } },
+            imageFile: {
+              is: {
+                schoolId,
+                deletedAt: null,
+                studentCredentialSecretArtifacts: { none: {} },
+              },
+            },
           },
         },
       },

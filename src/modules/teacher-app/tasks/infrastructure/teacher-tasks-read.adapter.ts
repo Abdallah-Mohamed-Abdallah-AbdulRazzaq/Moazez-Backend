@@ -377,7 +377,12 @@ export class TeacherTasksReadAdapter {
     )
       return null;
     return this.scopedPrisma.file.findFirst({
-      where: { id: params.fileId, schoolId: params.schoolId, deletedAt: null },
+      where: {
+        id: params.fileId,
+        schoolId: params.schoolId,
+        deletedAt: null,
+        studentCredentialSecretArtifacts: { none: {} },
+      },
       select: {
         bucket: true,
         objectKey: true,

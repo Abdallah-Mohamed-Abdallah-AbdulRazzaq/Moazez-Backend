@@ -2,6 +2,8 @@
 
 Backend direct-content transport is implemented and locally verified. Frontend adoption and live browser/GCS/Cloud Run acceptance remain required before release. The [source audit](../maintenance/t69-system-wide-private-file-web-access-audit.md) contains every transport route, additional metadata consumer, permission, resolver, tenancy boundary and verification limit. Source main is `e5b580bbceef56d1bd4589557d65c2d147fd93b3`; use the delivery Draft PR's exact head and canonical CI receipt for candidate identity.
 
+Avatar, reward catalog/history and Teacher proof content routes exclude Student credential secret artifacts, as generic Files already does. A linked image/proof/avatar ID cannot override that export boundary; treat its 404 as unavailable content and retain the privileged credential-export flow.
+
 The incident proves failing Student/Teacher browser flows through 307, with working mobile applications. Backend OPTIONS 204 and GCS OPTIONS 200, without the final GCS GET, do **not** prove GCS CORS as the root cause. Preserve a redacted browser trace of the original flow and the replacement flow. Record root cause unproven independently from compatibility fix implemented and live acceptance pending.
 
 ## Frontend route adoption

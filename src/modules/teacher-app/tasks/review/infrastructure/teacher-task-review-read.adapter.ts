@@ -225,7 +225,13 @@ export class TeacherTaskReviewReadAdapter {
             { id: params.submissionId, proofFileId: params.fileId },
             this.buildVisibleSubmissionWhere(params),
           ],
-          proofFile: { is: { schoolId: params.schoolId, deletedAt: null } },
+          proofFile: {
+            is: {
+              schoolId: params.schoolId,
+              deletedAt: null,
+              studentCredentialSecretArtifacts: { none: {} },
+            },
+          },
         },
         select: {
           proofFile: {

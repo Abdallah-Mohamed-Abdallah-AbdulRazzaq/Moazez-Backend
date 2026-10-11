@@ -448,6 +448,75 @@ describe('T6.9 private file domain content through real JWT, actor, permission a
       });
     }
   });
+  it('does not expose a credential artifact through avatar, catalog, history, task proof or generic file relationships', async () => {
+    const redemption =
+      (await f.prisma.rewardRedemption.findFirst({
+        where: {
+          schoolId: f.school.schoolId,
+          catalogItemId: rewardId,
+          studentId: f.child.studentId,
+        },
+      })) ??
+      (await f.prisma.rewardRedemption.create({
+        data: {
+          schoolId: f.school.schoolId,
+          catalogItemId: rewardId,
+          studentId: f.child.studentId,
+          enrollmentId: f.child.enrollmentId,
+          academicYearId: f.school.yearId,
+          termId: f.school.termId,
+        },
+      }));
+    const batch = await f.prisma.studentCredentialBatch.create({
+      data: {
+        schoolId: f.school.schoolId,
+        organizationId: f.school.organizationId,
+        audienceMode: 'SELECTED_STUDENTS',
+        credentialMode: 'UNIQUE_GENERATED',
+        createdById: f.prerequisites.authorId,
+        status: 'FAILED',
+        secretArtifactFileId: fileId,
+      },
+    });
+    const read = jest.spyOn(f.storage, 'getObject');
+    try {
+      for (const [actor, path] of [
+        ['student', `student/profile/avatar/${fileId}/content`],
+        [
+          'student',
+          `student/rewards/${rewardId}/images/${fileId}/download/content`,
+        ],
+        [
+          'parent',
+          `parent/children/${f.child.studentId}/rewards/${rewardId}/images/${fileId}/download/content`,
+        ],
+        [
+          'student',
+          `student/rewards/redemptions/${redemption.id}/images/${fileId}/download/content`,
+        ],
+        [
+          'parent',
+          `parent/children/${f.child.studentId}/rewards/redemptions/${redemption.id}/images/${fileId}/download/content`,
+        ],
+        [
+          'teacher',
+          `teacher/tasks/review-queue/${submissionId}/files/${fileId}/download/content`,
+        ],
+        [
+          'teacher',
+          `teacher/tasks/${taskId}/submissions/${submissionId}/files/${fileId}/download/content`,
+        ],
+        ['school', `files/${fileId}/download/content`],
+      ] as const) {
+        await f.http('get', path, actor, undefined, 404);
+      }
+      expect(read).not.toHaveBeenCalled();
+    } finally {
+      read.mockRestore();
+      await f.prisma.studentCredentialBatch.delete({ where: { id: batch.id } });
+    }
+  });
+
   it('preserves School Management generic file access and denies generic actor bypass', async () => {
     const path = `files/${fileId}/download/content`;
     expect((await f.http<Buffer>('get', path, 'school')).body).toEqual(body);

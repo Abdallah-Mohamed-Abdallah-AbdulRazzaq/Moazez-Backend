@@ -109,7 +109,13 @@ export class StudentRewardsReadAdapter {
         ...buildVisibleRewardWhere({ context }),
         id: rewardId,
         imageFileId: fileId,
-        imageFile: { is: { schoolId: context.schoolId, deletedAt: null } },
+        imageFile: {
+          is: {
+            schoolId: context.schoolId,
+            deletedAt: null,
+            studentCredentialSecretArtifacts: { none: {} },
+          },
+        },
       },
       select: {
         imageFile: {
@@ -138,7 +144,13 @@ export class StudentRewardsReadAdapter {
         catalogItem: {
           is: {
             imageFileId: fileId,
-            imageFile: { is: { schoolId: context.schoolId, deletedAt: null } },
+            imageFile: {
+              is: {
+                schoolId: context.schoolId,
+                deletedAt: null,
+                studentCredentialSecretArtifacts: { none: {} },
+              },
+            },
           },
         },
       },
