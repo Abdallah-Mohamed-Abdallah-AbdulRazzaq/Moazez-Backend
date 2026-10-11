@@ -42,3 +42,18 @@ output "student_web_service_uri" {
   description = "Provider-assigned URI of the Student Web Cloud Run service."
   value       = google_cloud_run_v2_service.student_web.uri
 }
+
+output "teacher_web_runtime_service_account_email" {
+  description = "Email of the Teacher Web runtime identity."
+  value       = google_service_account.teacher_web_runtime.email
+}
+
+output "teacher_web_service_name" {
+  description = "Name of the Teacher Web Cloud Run service."
+  value       = google_cloud_run_v2_service.teacher_web.name
+}
+
+output "teacher_web_service_uri" {
+  description = "Provider-assigned URI of the Teacher Web Cloud Run service."
+  value       = google_cloud_run_v2_service.teacher_web.uri
+}
