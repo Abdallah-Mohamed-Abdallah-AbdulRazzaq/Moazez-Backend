@@ -9,6 +9,7 @@ const { ACTIVE_TAP_OWNERS, classifyTestFile } = require('../ci/plan-ci.cjs');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
 const BASE_SHA = 'c4f0c0175d09279a1e4b0fb7d0b3beab8d45faaa';
+const NR11_T5A_BASE_SHA = 'e165842c1c993f0df643bbf7d2bb352012182c34';
 const ARTIFACT_DOMAIN = 'infra/gcp/frontend-artifact-identity';
 const ARTIFACT_ROOT = `${ARTIFACT_DOMAIN}/environments/production`;
 const ARTIFACT_MODULE = `${ARTIFACT_DOMAIN}/modules/frontend-artifact-identity-environment`;
@@ -69,6 +70,10 @@ const SCHOOL_DASHBOARD_IMAGE_PATTERN =
   '^me-central2-docker[.]pkg[.]dev/moazez-production/moazez-production-containers/moazez-school-dashboard@sha256:[a-f0-9]{64}$';
 const STUDENT_WEB_IMAGE_PATTERN =
   '^me-central2-docker[.]pkg[.]dev/moazez-production/moazez-production-containers/moazez-student-web@sha256:[a-f0-9]{64}$';
+const TEACHER_WEB_IMAGE_PATTERN =
+  '^me-central2-docker[.]pkg[.]dev/moazez-production/moazez-production-teacher-web/moazez-teacher-web@sha256:[a-f0-9]{64}$';
+const APPROVED_TEACHER_WEB_IMAGE =
+  'me-central2-docker.pkg.dev/moazez-production/moazez-production-teacher-web/moazez-teacher-web@sha256:cb15553977c1195ee15f7a0967487eb47f74ad763b66595e573b5a05a1a026da';
 
 const AUTHORIZED_STAGE30C1_PATHS = Object.freeze(
   [
@@ -896,18 +901,20 @@ for (const [surface, repository, repositoryId, providerId] of [
   });
 }
 
-test('Frontend runtime root has only three required immutable Production image inputs', () => {
+test('Frontend runtime root has only four required immutable Production image inputs', () => {
   assertRootContract(RUNTIME_ROOT, 'frontend-runtime/production', true);
   const variables = normalizedHclSource(`${RUNTIME_ROOT}/variables.tf`);
   assert.deepEqual(variableNames(variables), [
     'platform_admin_image',
     'school_dashboard_image',
     'student_web_image',
+    'teacher_web_image',
   ]);
   const expectations = [
     ['platform_admin_image', PLATFORM_ADMIN_IMAGE_PATTERN],
     ['school_dashboard_image', SCHOOL_DASHBOARD_IMAGE_PATTERN],
     ['student_web_image', STUDENT_WEB_IMAGE_PATTERN],
+    ['teacher_web_image', TEACHER_WEB_IMAGE_PATTERN],
   ];
   for (const [name, pattern] of expectations) {
     const block = variableBlock(variables, name);
@@ -932,6 +939,10 @@ test('Frontend image patterns accept only exact lowercase digest references', ()
       new RegExp(STUDENT_WEB_IMAGE_PATTERN, 'u'),
       `me-central2-docker.pkg.dev/moazez-production/moazez-production-containers/moazez-student-web@sha256:${validDigest}`,
     ],
+    [
+      new RegExp(TEACHER_WEB_IMAGE_PATTERN, 'u'),
+      `me-central2-docker.pkg.dev/moazez-production/moazez-production-teacher-web/moazez-teacher-web@sha256:${validDigest}`,
+    ],
   ];
   for (const [pattern, valid] of cases) {
     assert.equal(pattern.test(valid), true);
@@ -940,14 +951,14 @@ test('Frontend image patterns accept only exact lowercase digest references', ()
       valid.replace(/@sha256:.+$/u, ':source-sha'),
       valid.replace('moazez-production/', 'moazez-nonprod-91001421934/'),
       valid.replace(
-        'moazez-production-containers',
-        'moazez-staging-containers',
+        /\/moazez-production-(?:containers|teacher-web)\//u,
+        '/moazez-staging-containers/',
       ),
       valid.replace(/a$/u, 'A'),
       valid.slice(0, -1),
       valid.replace(
-        /moazez-(?:platform-admin|school-dashboard|student-web)/u,
-        'wrong-package',
+        /\/moazez-(?:platform-admin|school-dashboard|student-web|teacher-web)@/u,
+        '/wrong-package@',
       ),
     ]) {
       assert.equal(pattern.test(invalid), false, invalid);
@@ -968,9 +979,11 @@ test('Frontend runtime is closed to exact Production identities, services, and d
     'moazez-platform-admin-runtime',
     'moazez-school-ui-runtime',
     'moazez-student-web-runtime',
+    'moazez-teacher-web-runtime',
     'moazez-production-platform-admin',
     'moazez-production-school-dashboard',
     'moazez-production-student-web',
+    'moazez-production-teacher-web',
   ]) {
     assert.ok(rootMain.includes(`"${value}"`), value);
     assert.ok(moduleMain.includes(`"${value}"`), value);
@@ -983,12 +996,15 @@ test('Frontend runtime is closed to exact Production identities, services, and d
     'google_cloud_run_v2_service.platform_admin',
     'google_cloud_run_v2_service.school_dashboard',
     'google_cloud_run_v2_service.student_web',
+    'google_cloud_run_v2_service.teacher_web',
     'google_service_account.platform_admin_runtime',
     'google_service_account.school_dashboard_runtime',
     'google_service_account.student_web_runtime',
+    'google_service_account.teacher_web_runtime',
     'google_service_account_iam_member.platform_admin_iac_deployer_act_as',
     'google_service_account_iam_member.school_dashboard_iac_deployer_act_as',
     'google_service_account_iam_member.student_web_iac_deployer_act_as',
+    'google_service_account_iam_member.teacher_web_iac_deployer_act_as',
   ]);
 });
 
@@ -1010,6 +1026,11 @@ test('Frontend runtime identities are protected and deployer actAs is resource-l
       'var.student_web_runtime_service_account_id',
       'Moazez Student Web Runtime',
     ],
+    [
+      'teacher_web_runtime',
+      'var.teacher_web_runtime_service_account_id',
+      'Moazez Teacher Web Runtime',
+    ],
   ]) {
     const serviceAccount = resourceBlock(main, 'google_service_account', name);
     assert.equal(
@@ -1030,6 +1051,7 @@ test('Frontend runtime identities are protected and deployer actAs is resource-l
     ['platform_admin_iac_deployer_act_as', 'platform_admin_runtime'],
     ['school_dashboard_iac_deployer_act_as', 'school_dashboard_runtime'],
     ['student_web_iac_deployer_act_as', 'student_web_runtime'],
+    ['teacher_web_iac_deployer_act_as', 'teacher_web_runtime'],
   ]) {
     const grant = resourceBlock(
       main,
@@ -1052,7 +1074,7 @@ test('Frontend runtime identities are protected and deployer actAs is resource-l
   assert.doesNotMatch(main, /google_project_iam/u);
   assert.equal(
     (main.match(/roles\/iam[.]serviceAccountUser/gu) ?? []).length,
-    3,
+    4,
   );
   assert.doesNotMatch(
     main,
@@ -1101,7 +1123,7 @@ function assertFrontendService(main, options) {
   assert.equal(assignmentExpression(lifecycle, 'prevent_destroy'), 'true');
 }
 
-test('All three frontend Cloud Run services have exact Dark runtime settings and actAs dependencies', () => {
+test('All four frontend Cloud Run services have exact Dark runtime settings and actAs dependencies', () => {
   const main = normalizedHclSource(`${RUNTIME_MODULE}/main.tf`);
   assertFrontendService(main, {
     resourceName: 'platform_admin',
@@ -1123,6 +1145,13 @@ test('All three frontend Cloud Run services have exact Dark runtime settings and
     identity: 'google_service_account.student_web_runtime.email',
     image: 'var.student_web_image',
     dependency: 'student_web_iac_deployer_act_as',
+  });
+  assertFrontendService(main, {
+    resourceName: 'teacher_web',
+    serviceName: 'var.teacher_web_service_name',
+    identity: 'google_service_account.teacher_web_runtime.email',
+    image: 'var.teacher_web_image',
+    dependency: 'teacher_web_iac_deployer_act_as',
   });
   assert.doesNotMatch(main, /min_instance_count/u);
 });
@@ -1153,7 +1182,7 @@ test('Frontend runtime creates no public IAM, secret, data credential, VPC, or N
   );
 });
 
-test('Frontend runtime exposes only the nine safe service and identity outputs', () => {
+test('Frontend runtime exposes only the twelve safe service and identity outputs', () => {
   const expected = [
     'platform_admin_runtime_service_account_email',
     'school_dashboard_runtime_service_account_email',
@@ -1164,6 +1193,9 @@ test('Frontend runtime exposes only the nine safe service and identity outputs',
     'student_web_runtime_service_account_email',
     'student_web_service_name',
     'student_web_service_uri',
+    'teacher_web_runtime_service_account_email',
+    'teacher_web_service_name',
+    'teacher_web_service_uri',
   ].sort();
   assert.deepEqual(
     outputNames(normalizedHclSource(`${RUNTIME_ROOT}/outputs.tf`)).sort(),
@@ -1232,6 +1264,195 @@ test('Student runtime inputs and governed tuple bind the exact service and immut
     ),
     /student_web_image/u,
   );
+});
+
+test('Teacher runtime binds the dedicated repository, approved digest, and complete Production tuple', () => {
+  const root = normalizedHclSource(`${RUNTIME_ROOT}/main.tf`);
+  const main = normalizedHclSource(`${RUNTIME_MODULE}/main.tf`);
+  const variables = normalizedHclSource(`${RUNTIME_MODULE}/variables.tf`);
+  for (const [name, value] of [
+    ['teacher_web_runtime_service_account_id', 'moazez-teacher-web-runtime'],
+    ['teacher_web_service_name', 'moazez-production-teacher-web'],
+  ]) {
+    assert.equal(assignmentExpression(root, name), JSON.stringify(value));
+    assert.equal(
+      assignmentExpression(variableBlock(variables, name), 'condition'),
+      `var.${name} == ${JSON.stringify(value)}`,
+    );
+    for (const [contract, expression] of [
+      ['current_contract', `var.${name}`],
+      ['production_contract', JSON.stringify(value)],
+    ]) {
+      assert.equal(
+        assignmentExpression(
+          extractBlock(
+            main,
+            new RegExp(`^\\s*${contract}\\s*=\\s*\\{`, 'mu'),
+            contract,
+          ),
+          name,
+        ),
+        expression,
+      );
+    }
+  }
+  assert.equal(
+    assignmentExpression(root, 'teacher_web_image'),
+    'var.teacher_web_image',
+  );
+  for (const source of [
+    normalizedHclSource(`${RUNTIME_ROOT}/variables.tf`),
+    variables,
+  ]) {
+    const block = variableBlock(source, 'teacher_web_image');
+    assert.equal(assignmentExpression(block, 'type'), 'string');
+    assert.doesNotMatch(block, /^\s*default\s*=/mu);
+    assert.deepEqual(validationPatterns(block), [TEACHER_WEB_IMAGE_PATTERN]);
+    const approvedPins = [
+      ...block.matchAll(
+        /condition\s*=\s*var[.]teacher_web_image\s*==\s*"([^"]+)"/gu,
+      ),
+    ].map((match) => match[1]);
+    assert.deepEqual(approvedPins, [APPROVED_TEACHER_WEB_IMAGE]);
+  }
+  const imagePattern = new RegExp(TEACHER_WEB_IMAGE_PATTERN, 'u');
+  assert.equal(imagePattern.test(APPROVED_TEACHER_WEB_IMAGE), true);
+  for (const invalid of [
+    APPROVED_TEACHER_WEB_IMAGE.replace(
+      '/moazez-production-teacher-web/',
+      '/moazez-production-containers/',
+    ),
+    APPROVED_TEACHER_WEB_IMAGE.replace(
+      'me-central2-docker',
+      'us-central1-docker',
+    ),
+    APPROVED_TEACHER_WEB_IMAGE.replace(
+      '/moazez-teacher-web@',
+      '/moazez-student-web@',
+    ),
+    `${APPROVED_TEACHER_WEB_IMAGE}:latest`,
+  ])
+    assert.equal(imagePattern.test(invalid), false, invalid);
+  assert.match(main, /teacher_web_image_matches\s*=\s*can\(regex\(/u);
+  assert.ok(main.includes(`"${TEACHER_WEB_IMAGE_PATTERN}"`));
+  for (const [type, name] of [
+    ['google_service_account', 'teacher_web_runtime'],
+    ['google_service_account_iam_member', 'teacher_web_iac_deployer_act_as'],
+    ['google_cloud_run_v2_service', 'teacher_web'],
+  ]) {
+    assert.match(
+      resourceBlock(main, type, name),
+      /condition\s*=\s*local[.]governed_contract/u,
+    );
+  }
+  assert.match(
+    resourceBlock(main, 'google_cloud_run_v2_service', 'teacher_web'),
+    /condition\s*=\s*local[.]teacher_web_image_matches/u,
+  );
+  for (const [name, value] of [
+    [
+      'teacher_web_runtime_service_account_email',
+      'google_service_account.teacher_web_runtime.email',
+    ],
+    [
+      'teacher_web_service_name',
+      'google_cloud_run_v2_service.teacher_web.name',
+    ],
+    ['teacher_web_service_uri', 'google_cloud_run_v2_service.teacher_web.uri'],
+  ]) {
+    for (const [sourcePath, expectedValue] of [
+      [`${RUNTIME_MODULE}/outputs.tf`, value],
+      [
+        `${RUNTIME_ROOT}/outputs.tf`,
+        `module.frontend_runtime_environment.${name}`,
+      ],
+    ]) {
+      assert.equal(
+        assignmentExpression(
+          extractBlock(
+            normalizedHclSource(sourcePath),
+            new RegExp(`^output "${name}"\\s*\\{`, 'mu'),
+            name,
+          ),
+          'value',
+        ),
+        expectedValue,
+      );
+    }
+  }
+});
+
+test('NR11-T5A source adds exactly three Teacher resources and preserves existing frontend source', () => {
+  const baseline = (file) => git('show', `${NR11_T5A_BASE_SHA}:${file}`);
+  const baselineMain = baseline(`${RUNTIME_MODULE}/main.tf`);
+  const main = normalizedHclSource(`${RUNTIME_MODULE}/main.tf`);
+  const existingAddresses = resourceAddresses(baselineMain);
+  assert.equal(existingAddresses.length, 9);
+  assert.deepEqual(
+    resourceAddresses(main),
+    [
+      ...existingAddresses,
+      'google_service_account.teacher_web_runtime',
+      'google_service_account_iam_member.teacher_web_iac_deployer_act_as',
+      'google_cloud_run_v2_service.teacher_web',
+    ].sort(),
+  );
+  for (const address of existingAddresses) {
+    const [type, name] = address.split('.');
+    assert.equal(
+      resourceBlock(main, type, name),
+      resourceBlock(baselineMain, type, name),
+      address,
+    );
+  }
+  for (const sourcePath of [
+    `${RUNTIME_ROOT}/variables.tf`,
+    `${RUNTIME_MODULE}/variables.tf`,
+    `${RUNTIME_ROOT}/outputs.tf`,
+    `${RUNTIME_MODULE}/outputs.tf`,
+  ]) {
+    const previous = baseline(sourcePath);
+    const current = normalizedHclSource(sourcePath);
+    const blockType = sourcePath.endsWith('/variables.tf')
+      ? 'variable'
+      : 'output';
+    const names =
+      blockType === 'variable'
+        ? variableNames(previous)
+        : outputNames(previous);
+    for (const name of names) {
+      const header = new RegExp(`^${blockType} "${name}"\\s*\\{`, 'mu');
+      assert.equal(
+        extractBlock(current, header, name),
+        extractBlock(previous, header, name),
+        `${sourcePath}: ${name}`,
+      );
+    }
+  }
+  const rootPath = `${RUNTIME_ROOT}/main.tf`;
+  const previousRoot = baseline(rootPath);
+  const currentRoot = normalizedHclSource(rootPath);
+  for (const match of previousRoot.matchAll(
+    /^\s*(\w+)\s*=\s*([^\r\n]+)\s*$/gmu,
+  )) {
+    assert.equal(
+      assignmentExpression(currentRoot, match[1]),
+      match[2].trim(),
+      match[1],
+    );
+  }
+  for (const sourcePath of [
+    `${RUNTIME_DOMAIN}/.gitignore`,
+    `${RUNTIME_ROOT}/versions.tf`,
+    `${RUNTIME_ROOT}/providers.tf`,
+    `${RUNTIME_ROOT}/.terraform.lock.hcl`,
+  ])
+    assert.equal(
+      normalizedSource(sourcePath),
+      baseline(sourcePath),
+      sourcePath,
+    );
+  assert.doesNotMatch(main, /^\s*(?:data|import|moved|removed)\s+\b/mu);
 });
 
 test('Production Edge root is the exact governed shared-module caller', () => {
@@ -1904,7 +2125,11 @@ test('READMEs preserve source-only, build-time, and Dark pre-DNS boundaries', ()
     'invoker_iam_disabled=true',
     'creates no public IAM',
     'moazez-student-web',
-    'three protected runtime identities',
+    'four protected runtime identities',
+    'moazez-production-teacher-web',
+    APPROVED_TEACHER_WEB_IMAGE,
+    '3 add, 0 change, 0 destroy',
+    'not evidence of a real Terraform plan',
   ]) {
     assert.ok(runtimeReadme.includes(required), required);
   }
@@ -1945,7 +2170,10 @@ test('capacity contract maintenance does not activate frontend scope and source 
     'src/modules/academics/academic-content/example.ts',
     TEST_PATH,
   ];
-  assert.equal(assertCommittedStage30C1CandidateScope(capacityMaintenance), false);
+  assert.equal(
+    assertCommittedStage30C1CandidateScope(capacityMaintenance),
+    false,
+  );
   for (const sourcePath of [
     `${ARTIFACT_MODULE}/main.tf`,
     `${RUNTIME_ROOT}/variables.tf`,
@@ -1955,11 +2183,18 @@ test('capacity contract maintenance does not activate frontend scope and source 
     `${EDGE_ROOT}/tests/candidate-route.tftest.hcl`,
   ]) {
     assert.throws(
-      () => assertCommittedStage30C1CandidateScope([...capacityMaintenance, sourcePath]),
+      () =>
+        assertCommittedStage30C1CandidateScope([
+          ...capacityMaintenance,
+          sourcePath,
+        ]),
       { code: 'ERR_ASSERTION' },
     );
   }
-  assert.equal(assertCommittedStage30C1CandidateScope(AUTHORIZED_STAGE30C1_PATHS), true);
+  assert.equal(
+    assertCommittedStage30C1CandidateScope(AUTHORIZED_STAGE30C1_PATHS),
+    true,
+  );
 });
 
 test('Candidate scope activation accepts each domain and rejects mixed or later-stage source', () => {

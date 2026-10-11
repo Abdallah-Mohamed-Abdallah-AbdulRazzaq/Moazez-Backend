@@ -7,9 +7,11 @@ locals {
     platform_admin_runtime_service_account_id   = var.platform_admin_runtime_service_account_id
     school_dashboard_runtime_service_account_id = var.school_dashboard_runtime_service_account_id
     student_web_runtime_service_account_id      = var.student_web_runtime_service_account_id
+    teacher_web_runtime_service_account_id      = var.teacher_web_runtime_service_account_id
     platform_admin_service_name                 = var.platform_admin_service_name
     school_dashboard_service_name               = var.school_dashboard_service_name
     student_web_service_name                    = var.student_web_service_name
+    teacher_web_service_name                    = var.teacher_web_service_name
   }
 
   production_contract = {
@@ -20,9 +22,11 @@ locals {
     platform_admin_runtime_service_account_id   = "moazez-platform-admin-runtime"
     school_dashboard_runtime_service_account_id = "moazez-school-ui-runtime"
     student_web_runtime_service_account_id      = "moazez-student-web-runtime"
+    teacher_web_runtime_service_account_id      = "moazez-teacher-web-runtime"
     platform_admin_service_name                 = "moazez-production-platform-admin"
     school_dashboard_service_name               = "moazez-production-school-dashboard"
     student_web_service_name                    = "moazez-production-student-web"
+    teacher_web_service_name                    = "moazez-production-teacher-web"
   }
 
   governed_contract   = local.current_contract == local.production_contract
@@ -39,6 +43,10 @@ locals {
   student_web_image_matches = can(regex(
     "^me-central2-docker[.]pkg[.]dev/moazez-production/moazez-production-containers/moazez-student-web@sha256:[a-f0-9]{64}$",
     var.student_web_image,
+  ))
+  teacher_web_image_matches = can(regex(
+    "^me-central2-docker[.]pkg[.]dev/moazez-production/moazez-production-teacher-web/moazez-teacher-web@sha256:[a-f0-9]{64}$",
+    var.teacher_web_image,
   ))
 }
 
@@ -251,6 +259,77 @@ resource "google_cloud_run_v2_service" "student_web" {
     precondition {
       condition     = local.student_web_image_matches
       error_message = "student_web_image must use the immutable governed Production package."
+    }
+  }
+}
+
+resource "google_service_account" "teacher_web_runtime" {
+  project         = var.project_id
+  account_id      = var.teacher_web_runtime_service_account_id
+  display_name    = "Moazez Teacher Web Runtime"
+  deletion_policy = "PREVENT"
+
+  lifecycle {
+    prevent_destroy = true
+
+    precondition {
+      condition     = local.governed_contract
+      error_message = "The frontend runtime environment must match the complete governed Production tuple."
+    }
+  }
+}
+
+resource "google_service_account_iam_member" "teacher_web_iac_deployer_act_as" {
+  service_account_id = google_service_account.teacher_web_runtime.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = local.iac_deployer_member
+
+  lifecycle {
+    precondition {
+      condition     = local.governed_contract
+      error_message = "The frontend runtime environment must match the complete governed Production tuple."
+    }
+  }
+}
+
+resource "google_cloud_run_v2_service" "teacher_web" {
+  project              = var.project_id
+  location             = var.region
+  name                 = var.teacher_web_service_name
+  ingress              = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+  default_uri_disabled = true
+  invoker_iam_disabled = true
+  deletion_protection  = true
+
+  scaling {
+    max_instance_count = 100
+  }
+
+  template {
+    service_account = google_service_account.teacher_web_runtime.email
+
+    containers {
+      image = var.teacher_web_image
+
+      ports {
+        container_port = 8080
+      }
+    }
+  }
+
+  depends_on = [google_service_account_iam_member.teacher_web_iac_deployer_act_as]
+
+  lifecycle {
+    prevent_destroy = true
+
+    precondition {
+      condition     = local.governed_contract
+      error_message = "The frontend runtime environment must match the complete governed Production tuple."
+    }
+
+    precondition {
+      condition     = local.teacher_web_image_matches
+      error_message = "teacher_web_image must use the immutable governed Production package."
     }
   }
 }
