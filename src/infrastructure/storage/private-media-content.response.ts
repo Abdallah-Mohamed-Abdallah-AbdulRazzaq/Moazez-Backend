@@ -45,6 +45,10 @@ export async function streamPrivateMediaContent(
     response.setHeader('Cache-Control', 'no-store, private, max-age=0');
     response.setHeader('X-Content-Type-Options', 'nosniff');
     response.setHeader('Accept-Ranges', 'bytes');
+    response.setHeader(
+      'Access-Control-Expose-Headers',
+      'Content-Disposition,Content-Range,Accept-Ranges,ETag',
+    );
     if (content.etag) response.setHeader('ETag', content.etag);
     if (content.statusCode === 416)
       response.setHeader('Content-Range', `bytes */${content.totalSizeBytes}`);

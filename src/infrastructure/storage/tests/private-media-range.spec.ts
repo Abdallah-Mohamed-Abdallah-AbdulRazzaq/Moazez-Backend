@@ -169,15 +169,25 @@ describe('Private media streamed HTTP ranges', () => {
   it.each(APPROVED_PRODUCTION_APPLICATION_ORIGINS)(
     'exposes required headers for %s with credentials',
     async (origin) => {
-      const response = await request(app.getHttpServer())
-        .get('/api/v1/content')
-        .set('Origin', origin)
-        .expect(200);
-      expect(response.headers['access-control-allow-origin']).toBe(origin);
-      expect(response.headers['access-control-allow-credentials']).toBe('true');
-      expect(response.headers['access-control-expose-headers']).toBe(
-        'Content-Disposition,Content-Range,Accept-Ranges,ETag',
-      );
+      for (const [method, range, status] of [
+        ['get', undefined, 200],
+        ['get', 'bytes=2-4', 206],
+        ['head', undefined, 200],
+        ['get', 'bytes=10-', 416],
+      ] as const) {
+        const pending = request(app.getHttpServer())
+          [method]('/api/v1/content')
+          .set('Origin', origin);
+        if (range) pending.set('Range', range);
+        const response = await pending.expect(status);
+        expect(response.headers['access-control-allow-origin']).toBe(origin);
+        expect(response.headers['access-control-allow-credentials']).toBe(
+          'true',
+        );
+        expect(response.headers['access-control-expose-headers']).toBe(
+          'Content-Disposition,Content-Range,Accept-Ranges,ETag',
+        );
+      }
     },
   );
   it('does not expose a foreign origin', async () => {

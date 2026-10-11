@@ -48,6 +48,8 @@ The exact approved CORS origin sets are unchanged:
 
 Only Content-Disposition, Content-Range, Accept-Ranges and ETag exposure is added. Content-Length is safelisted. Credentials and strict origin checks remain. Parent web acceptance must use an approved origin; this change does not authorize a new Parent origin. Verify Range/If-Range preflight on the actual deployed route and origin.
 
+The shared content response helper exposes these headers on successful, HEAD and 416 content responses. The global CORS policy remains unchanged; error envelopes and unrelated API routes retain their existing CORS response contract.
+
 401 means authenticate/refresh using the existing session flow; retry only after successful authentication. 403 means actor/permission/policy denial; do not retry through generic Files or signed fallback to evade it. 404 includes invisible/deleted/unlinked/foreign/stale or unavailable files and must not reveal provider coordinates. 416 means re-read current authorized metadata and validate offsets. Pre-header provider failures/init timeouts are sanitized 503. A failed/truncated body after headers rejects/aborts the transfer; do not mark it successful merely because status was 200/206. Do not parse binary success bodies as JSON. Bounded redacted error envelopes can be read before delivery; never log tokens or signed URLs.
 
 For a **small, UI-bounded** download, fetch may collect a Blob and save an object URL. An application-selected 50 MiB example limit here is a frontend memory policy, not a backend upload/download cap. Check authorized HEAD Content-Length before choosing this path and account for concurrent downloads. Revoke object URLs after the browser has consumed them; cancel on navigation/component disposal.

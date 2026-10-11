@@ -75,12 +75,6 @@ export function createApplicationCorsOptions(
   return {
     origin: applicationCorsOriginDelegate,
     credentials: true,
-    exposedHeaders: [
-      'Content-Disposition',
-      'Content-Range',
-      'Accept-Ranges',
-      'ETag',
-    ],
   };
 }
 
