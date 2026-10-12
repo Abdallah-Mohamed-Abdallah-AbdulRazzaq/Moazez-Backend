@@ -11,6 +11,7 @@ const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
 const BASE_SHA = 'c4f0c0175d09279a1e4b0fb7d0b3beab8d45faaa';
 const NR11_T5A_BASE_SHA = 'e165842c1c993f0df643bbf7d2bb352012182c34';
 const NR11_T6_BASE_SHA = '833ecc2eee91164048b469f2ae0d5223aa7542a8';
+const T69_BASE_SHA = 'fe6b4b1b99478628c106b60f65370d08c10c3ceb';
 const NR11_T6_PATHS = Object.freeze([
   'docs/governance/nr11-t6-teacher-edge-cors-devops-handoff.md',
   'infra/gcp/backend-runtime/modules/runtime-environment/main.tf',
@@ -95,8 +96,10 @@ const STUDENT_WEB_IMAGE_PATTERN =
   '^me-central2-docker[.]pkg[.]dev/moazez-production/moazez-production-containers/moazez-student-web@sha256:[a-f0-9]{64}$';
 const TEACHER_WEB_IMAGE_PATTERN =
   '^me-central2-docker[.]pkg[.]dev/moazez-production/moazez-production-teacher-web/moazez-teacher-web@sha256:[a-f0-9]{64}$';
-const APPROVED_TEACHER_WEB_IMAGE =
+const HISTORICAL_NR11_TEACHER_WEB_IMAGE =
   'me-central2-docker.pkg.dev/moazez-production/moazez-production-teacher-web/moazez-teacher-web@sha256:cb15553977c1195ee15f7a0967487eb47f74ad763b66595e573b5a05a1a026da';
+const APPROVED_TEACHER_WEB_IMAGE =
+  'me-central2-docker.pkg.dev/moazez-production/moazez-production-teacher-web/moazez-teacher-web@sha256:afe190b1ea78fc2697b7bd7d3ec56b2f1ad42f5854c448842e91ac01d6a9fe9f';
 
 const AUTHORIZED_STAGE30C1_PATHS = Object.freeze(
   [
@@ -1413,6 +1416,46 @@ test('Teacher runtime binds the dedicated repository, approved digest, and compl
   }
 });
 
+test('T6.9 changes only the approved Teacher pin and preserves historical NR11 evidence', () => {
+  const baseline = (file) => git('show', `${T69_BASE_SHA}:${file}`);
+  const runtimeFiles = trackedFilesAtRevision(T69_BASE_SHA, RUNTIME_DOMAIN);
+  assert.deepEqual(
+    trackedFilesAtRevision('HEAD', RUNTIME_DOMAIN),
+    runtimeFiles,
+  );
+  for (const file of runtimeFiles) {
+    if (file === `${RUNTIME_DOMAIN}/README.md`) continue;
+    const previous = baseline(file);
+    const expected = [
+      `${RUNTIME_ROOT}/variables.tf`,
+      `${RUNTIME_MODULE}/variables.tf`,
+    ].includes(file)
+      ? previous
+          .replace(
+            HISTORICAL_NR11_TEACHER_WEB_IMAGE,
+            APPROVED_TEACHER_WEB_IMAGE,
+          )
+          .replace(
+            'approved NR11-T5A immutable digest.',
+            'approved T6.9 immutable digest.',
+          )
+      : previous;
+    assert.equal(normalizedSource(file), expected, file);
+  }
+  const readme = normalizedSource(`${RUNTIME_DOMAIN}/README.md`);
+  const previousReadme = baseline(`${RUNTIME_DOMAIN}/README.md`);
+  const historicalRecord = previousReadme.slice(
+    previousReadme.indexOf('Teacher Web extends this existing state domain'),
+  );
+  assert.ok(readme.endsWith(historicalRecord));
+  assert.ok(readme.includes('approved T6.9 image'));
+  assert.ok(readme.includes('e13699b5044205bf3854859c6ffa9e10230d826d'));
+  assert.ok(readme.includes(HISTORICAL_NR11_TEACHER_WEB_IMAGE));
+  const handoff = 'docs/governance/nr11-t6-teacher-edge-cors-devops-handoff.md';
+  assert.equal(normalizedSource(handoff), baseline(handoff));
+  assert.ok(baseline(handoff).includes(HISTORICAL_NR11_TEACHER_WEB_IMAGE));
+});
+
 test('NR11-T5A source adds exactly three Teacher resources and preserves existing frontend source', () => {
   const baseline = (file) => git('show', `${NR11_T5A_BASE_SHA}:${file}`);
   const baselineMain = baseline(`${RUNTIME_MODULE}/main.tf`);
@@ -2427,7 +2470,7 @@ test('Teacher Edge requires the exact Production tuple and is absent in staging'
   );
 });
 
-test('NR11-T6 preserves existing edge identities, routes, certificates, candidate behavior, and completed runtime', () => {
+test('NR11-T6 preserves existing edge identities, routes, certificates, candidate behavior, and historical completed runtime', () => {
   const baseline = (file) => git('show', `${NR11_T6_BASE_SHA}:${file}`);
   const main = normalizedSource(`${EDGE_MODULE}/main.tf`);
   const oldMain = baseline(`${EDGE_MODULE}/main.tf`);
@@ -2497,17 +2540,11 @@ test('NR11-T6 preserves existing edge identities, routes, certificates, candidat
       'old shared certificate hostnames',
     ),
   );
+  // Freeze the completed NR11 runtime evidence before T6.9. The T6.9 test
+  // separately checks every current runtime source file against that snapshot.
+  for (const file of trackedFilesAtRevision(NR11_T6_BASE_SHA, RUNTIME_DOMAIN))
+    assert.equal(git('show', `${T69_BASE_SHA}:${file}`), baseline(file), file);
   for (const file of [
-    ...git(
-      'ls-tree',
-      '-r',
-      '--name-only',
-      NR11_T6_BASE_SHA,
-      '--',
-      RUNTIME_DOMAIN,
-    )
-      .trim()
-      .split('\n'),
     ...[
       'main.tf',
       'variables.tf',
