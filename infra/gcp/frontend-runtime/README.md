@@ -23,15 +23,18 @@ are rejected. Browser-facing `NEXT_PUBLIC_*` configuration belongs to the
 immutable frontend image build and is never supplied as Cloud Run runtime
 environment configuration here.
 
-The Teacher Web input is additionally locked to the approved NR11-T5A image
-in both the Production root and shared module:
+The Teacher Web input is additionally locked to the approved T6.9 image
+in both the Production root and shared module. Its Teacher source commit is
+`e13699b5044205bf3854859c6ffa9e10230d826d`:
 
 ```text
-teacher_web_image=me-central2-docker.pkg.dev/moazez-production/moazez-production-teacher-web/moazez-teacher-web@sha256:cb15553977c1195ee15f7a0967487eb47f74ad763b66595e573b5a05a1a026da
+teacher_web_image=me-central2-docker.pkg.dev/moazez-production/moazez-production-teacher-web/moazez-teacher-web@sha256:afe190b1ea78fc2697b7bd7d3ec56b2f1ad42f5854c448842e91ac01d6a9fe9f
 ```
 
 A future Teacher image change requires source review of this release pin.
 The other three image inputs and their validation remain unchanged.
+Student Web's new immutable digest is supplied at separately authorized
+Terraform planning time; this source update does not pin it.
 
 ## Runtime and identity boundary
 
@@ -67,7 +70,16 @@ REMOTE_STATE_PREFIX=frontend-runtime/production
 The state bucket is externally owned. Local validation uses backend-disabled,
 read-only-lock initialization and must not contact the real backend.
 
-## NR11-T5A source delta and local validation
+## Historical NR11-T5A source delta and local validation
+
+The historical NR11 Teacher image was:
+
+```text
+teacher_web_image=me-central2-docker.pkg.dev/moazez-production/moazez-production-teacher-web/moazez-teacher-web@sha256:cb15553977c1195ee15f7a0967487eb47f74ad763b66595e573b5a05a1a026da
+```
+
+The following NR11 record is preserved as historical evidence. The T6.9 source
+update changes only the approved Teacher image pin and creates no resources.
 
 Teacher Web extends this existing state domain with exactly three resource
 addresses under `module.frontend_runtime_environment`:

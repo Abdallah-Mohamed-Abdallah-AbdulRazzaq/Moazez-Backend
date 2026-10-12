@@ -170,7 +170,7 @@ variable "teacher_web_image" {
   }
 
   validation {
-    condition     = var.teacher_web_image == "me-central2-docker.pkg.dev/moazez-production/moazez-production-teacher-web/moazez-teacher-web@sha256:cb15553977c1195ee15f7a0967487eb47f74ad763b66595e573b5a05a1a026da"
-    error_message = "teacher_web_image must match the approved NR11-T5A immutable digest."
+    condition     = var.teacher_web_image == "me-central2-docker.pkg.dev/moazez-production/moazez-production-teacher-web/moazez-teacher-web@sha256:afe190b1ea78fc2697b7bd7d3ec56b2f1ad42f5854c448842e91ac01d6a9fe9f"
+    error_message = "teacher_web_image must match the approved T6.9 immutable digest."
   }
 }
