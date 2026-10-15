@@ -12,6 +12,7 @@ const BASE_SHA = 'c4f0c0175d09279a1e4b0fb7d0b3beab8d45faaa';
 const NR11_T5A_BASE_SHA = 'e165842c1c993f0df643bbf7d2bb352012182c34';
 const NR11_T6_BASE_SHA = '833ecc2eee91164048b469f2ae0d5223aa7542a8';
 const T69_BASE_SHA = 'fe6b4b1b99478628c106b60f65370d08c10c3ceb';
+const FR07B_BASE_SHA = '1225cb0107dbcbadfae5cd51d89747a480cc9d62';
 const NR11_T6_PATHS = Object.freeze([
   'docs/governance/nr11-t6-teacher-edge-cors-devops-handoff.md',
   'infra/gcp/backend-runtime/modules/runtime-environment/main.tf',
@@ -45,6 +46,10 @@ const EDGE_NONPROD_ROOT = 'infra/gcp/edge/environments/nonprod';
 const EDGE_MODULE = 'infra/gcp/edge/modules/edge-environment';
 const TEST_PATH =
   'scripts/tests/stage-30c1-production-frontend-edge-source.test.cjs';
+const FR07B_PIN_PATHS = Object.freeze([
+  `${RUNTIME_ROOT}/variables.tf`,
+  `${RUNTIME_MODULE}/variables.tf`,
+]);
 const NR11_T3A_PATHS = Object.freeze([
   'infra/gcp/artifact-registry/README.md',
   'infra/gcp/artifact-registry/environments/production/teacher-web.tf',
@@ -98,8 +103,10 @@ const TEACHER_WEB_IMAGE_PATTERN =
   '^me-central2-docker[.]pkg[.]dev/moazez-production/moazez-production-teacher-web/moazez-teacher-web@sha256:[a-f0-9]{64}$';
 const HISTORICAL_NR11_TEACHER_WEB_IMAGE =
   'me-central2-docker.pkg.dev/moazez-production/moazez-production-teacher-web/moazez-teacher-web@sha256:cb15553977c1195ee15f7a0967487eb47f74ad763b66595e573b5a05a1a026da';
-const APPROVED_TEACHER_WEB_IMAGE =
+const HISTORICAL_T69_TEACHER_WEB_IMAGE =
   'me-central2-docker.pkg.dev/moazez-production/moazez-production-teacher-web/moazez-teacher-web@sha256:afe190b1ea78fc2697b7bd7d3ec56b2f1ad42f5854c448842e91ac01d6a9fe9f';
+const APPROVED_TEACHER_WEB_IMAGE =
+  'me-central2-docker.pkg.dev/moazez-production/moazez-production-teacher-web/moazez-teacher-web@sha256:0f4538281e940a59dfa2a9bccc89ce3626653bf30392f2073f6a2a247209d04c';
 
 const AUTHORIZED_STAGE30C1_PATHS = Object.freeze(
   [
@@ -293,6 +300,41 @@ function variableBlock(source, name) {
 
 function validationPatterns(block) {
   return [...block.matchAll(/regex\(\s*"([^"]+)"/gu)].map((match) => match[1]);
+}
+
+function assertFr07bTeacherPin(source) {
+  const block = variableBlock(source, 'teacher_web_image');
+  assert.equal(assignmentExpression(block, 'type'), 'string');
+  assert.doesNotMatch(block, /^\s*default\s*=/mu);
+  assert.deepEqual(validationPatterns(block), [TEACHER_WEB_IMAGE_PATTERN]);
+  const validations = [...block.matchAll(/^\s*validation\s*\{/gmu)].map(
+    (match) => extractBlockAt(block, match.index, 'Teacher image validation'),
+  );
+  assert.equal(validations.length, 2);
+  const formatCondition =
+    /condition\s*=\s*([\s\S]+?)\s+error_message\s*=/u.exec(validations[0]);
+  assert.ok(formatCondition);
+  assert.equal(
+    formatCondition[1].replace(/\s+/gu, ''),
+    `can(regex("${TEACHER_WEB_IMAGE_PATTERN}",var.teacher_web_image,))`,
+  );
+  const equality = assignmentExpression(validations[1], 'condition');
+  assert.equal(
+    equality,
+    `var.teacher_web_image == "${APPROVED_TEACHER_WEB_IMAGE}"`,
+  );
+  assert.equal(
+    assignmentExpression(validations[1], 'error_message'),
+    '"teacher_web_image must match the approved FR-07B immutable digest."',
+  );
+  const pattern = new RegExp(validationPatterns(block)[0], 'u');
+  const pin = JSON.parse(equality.slice(equality.indexOf('==') + 2).trim());
+  return (image) => pattern.test(image) && image === pin;
+}
+
+function assertFr07bTeacherPins(sources) {
+  assert.equal(sources.length, FR07B_PIN_PATHS.length);
+  return sources.map(assertFr07bTeacherPin);
 }
 
 function resourceBlock(source, type, name) {
@@ -1418,9 +1460,10 @@ test('Teacher runtime binds the dedicated repository, approved digest, and compl
 
 test('T6.9 changes only the approved Teacher pin and preserves historical NR11 evidence', () => {
   const baseline = (file) => git('show', `${T69_BASE_SHA}:${file}`);
+  const checkpoint = (file) => git('show', `${FR07B_BASE_SHA}:${file}`);
   const runtimeFiles = trackedFilesAtRevision(T69_BASE_SHA, RUNTIME_DOMAIN);
   assert.deepEqual(
-    trackedFilesAtRevision('HEAD', RUNTIME_DOMAIN),
+    trackedFilesAtRevision(FR07B_BASE_SHA, RUNTIME_DOMAIN),
     runtimeFiles,
   );
   for (const file of runtimeFiles) {
@@ -1433,16 +1476,16 @@ test('T6.9 changes only the approved Teacher pin and preserves historical NR11 e
       ? previous
           .replace(
             HISTORICAL_NR11_TEACHER_WEB_IMAGE,
-            APPROVED_TEACHER_WEB_IMAGE,
+            HISTORICAL_T69_TEACHER_WEB_IMAGE,
           )
           .replace(
             'approved NR11-T5A immutable digest.',
             'approved T6.9 immutable digest.',
           )
       : previous;
-    assert.equal(normalizedSource(file), expected, file);
+    assert.equal(checkpoint(file), expected, file);
   }
-  const readme = normalizedSource(`${RUNTIME_DOMAIN}/README.md`);
+  const readme = checkpoint(`${RUNTIME_DOMAIN}/README.md`);
   const previousReadme = baseline(`${RUNTIME_DOMAIN}/README.md`);
   const historicalRecord = previousReadme.slice(
     previousReadme.indexOf('Teacher Web extends this existing state domain'),
@@ -1450,10 +1493,131 @@ test('T6.9 changes only the approved Teacher pin and preserves historical NR11 e
   assert.ok(readme.endsWith(historicalRecord));
   assert.ok(readme.includes('approved T6.9 image'));
   assert.ok(readme.includes('e13699b5044205bf3854859c6ffa9e10230d826d'));
+  assert.ok(readme.includes(HISTORICAL_T69_TEACHER_WEB_IMAGE));
   assert.ok(readme.includes(HISTORICAL_NR11_TEACHER_WEB_IMAGE));
   const handoff = 'docs/governance/nr11-t6-teacher-edge-cors-devops-handoff.md';
   assert.equal(normalizedSource(handoff), baseline(handoff));
   assert.ok(baseline(handoff).includes(HISTORICAL_NR11_TEACHER_WEB_IMAGE));
+});
+
+test('FR-07B changes only the two approved Teacher constraints and runtime documentation', () => {
+  const runtimeFiles = trackedFilesAtRevision(FR07B_BASE_SHA, RUNTIME_DOMAIN);
+  assert.deepEqual(
+    trackedFilesAtRevision('HEAD', RUNTIME_DOMAIN),
+    runtimeFiles,
+  );
+  for (const file of runtimeFiles) {
+    if (file === `${RUNTIME_DOMAIN}/README.md`) continue;
+    const previous = git('show', `${FR07B_BASE_SHA}:${file}`);
+    const expected = FR07B_PIN_PATHS.includes(file)
+      ? previous
+          .replace(HISTORICAL_T69_TEACHER_WEB_IMAGE, APPROVED_TEACHER_WEB_IMAGE)
+          .replace(
+            'approved T6.9 immutable digest.',
+            'approved FR-07B immutable digest.',
+          )
+      : previous;
+    assert.equal(normalizedSource(file), expected, file);
+  }
+  // This also freezes all other Terraform resources, addresses, image inputs,
+  // provider locks, backends, IAM, capacity, ingress, Edge, TLS and DNS source.
+  assert.deepEqual(
+    git('diff', '--name-only', FR07B_BASE_SHA, '--', 'infra/gcp')
+      .trim()
+      .split('\n')
+      .sort(),
+    [...FR07B_PIN_PATHS, `${RUNTIME_DOMAIN}/README.md`].sort(),
+  );
+  const readme = normalizedSource(`${RUNTIME_DOMAIN}/README.md`);
+  for (const required of [
+    'approved FR-07B image',
+    '52156b1dea0614259ed7485d80e14079ab74596b',
+    'actions/runs/38708086837',
+    APPROVED_TEACHER_WEB_IMAGE,
+    'Historical T6.9 approved image',
+    'e13699b5044205bf3854859c6ffa9e10230d826d',
+    HISTORICAL_T69_TEACHER_WEB_IMAGE,
+    HISTORICAL_NR11_TEACHER_WEB_IMAGE,
+    T69_BASE_SHA,
+    FR07B_BASE_SHA,
+    'not current Terraform State',
+    'not update Cloud Run or verify its running image',
+  ])
+    assert.ok(readme.includes(required), required);
+  const previousReadme = git(
+    'show',
+    `${FR07B_BASE_SHA}:${RUNTIME_DOMAIN}/README.md`,
+  );
+  assert.ok(
+    readme.endsWith(
+      previousReadme.slice(
+        previousReadme.indexOf(
+          'Teacher Web extends this existing state domain',
+        ),
+      ),
+    ),
+  );
+});
+
+test('FR-07B root and module accept only the exact current immutable Teacher image', () => {
+  const validators = assertFr07bTeacherPins(
+    FR07B_PIN_PATHS.map(normalizedHclSource),
+  );
+  for (const accepts of validators) {
+    assert.equal(accepts(APPROVED_TEACHER_WEB_IMAGE), true);
+    for (const invalid of [
+      HISTORICAL_T69_TEACHER_WEB_IMAGE,
+      HISTORICAL_NR11_TEACHER_WEB_IMAGE,
+      APPROVED_TEACHER_WEB_IMAGE.replace(
+        '/moazez-production-teacher-web/',
+        '/moazez-production-containers/',
+      ),
+      APPROVED_TEACHER_WEB_IMAGE.replace(
+        'me-central2-docker',
+        'us-central1-docker',
+      ),
+      APPROVED_TEACHER_WEB_IMAGE.replace(
+        '/moazez-teacher-web@',
+        '/moazez-student-web@',
+      ),
+      APPROVED_TEACHER_WEB_IMAGE.replace(/@sha256:.+$/u, ':latest'),
+      APPROVED_TEACHER_WEB_IMAGE.replace(/@sha256:.+$/u, ':source-sha'),
+      APPROVED_TEACHER_WEB_IMAGE.replace(/.$/u, 'C'),
+      APPROVED_TEACHER_WEB_IMAGE.slice(0, -1),
+      APPROVED_TEACHER_WEB_IMAGE.replace(
+        /@sha256:.+$/u,
+        `@sha256:${'a'.repeat(64)}`,
+      ),
+    ])
+      assert.equal(accepts(invalid), false, invalid);
+  }
+});
+
+test('FR-07B governance rejects independent pin drift and format-only or bypassed approval', () => {
+  const sources = FR07B_PIN_PATHS.map(normalizedHclSource);
+  for (const index of [0, 1]) {
+    for (const replacement of [
+      HISTORICAL_T69_TEACHER_WEB_IMAGE,
+      APPROVED_TEACHER_WEB_IMAGE.replace(/.$/u, '0'),
+    ]) {
+      const changed = [...sources];
+      changed[index] = changed[index].replace(
+        APPROVED_TEACHER_WEB_IMAGE,
+        replacement,
+      );
+      assert.throws(() => assertFr07bTeacherPins(changed), {
+        code: 'ERR_ASSERTION',
+      });
+    }
+    const equality = `var.teacher_web_image == "${APPROVED_TEACHER_WEB_IMAGE}"`;
+    for (const condition of ['true', `${equality} || true`]) {
+      const changed = [...sources];
+      changed[index] = changed[index].replace(equality, condition);
+      assert.throws(() => assertFr07bTeacherPins(changed), {
+        code: 'ERR_ASSERTION',
+      });
+    }
+  }
 });
 
 test('NR11-T5A source adds exactly three Teacher resources and preserves existing frontend source', () => {
@@ -2540,8 +2704,8 @@ test('NR11-T6 preserves existing edge identities, routes, certificates, candidat
       'old shared certificate hostnames',
     ),
   );
-  // Freeze the completed NR11 runtime evidence before T6.9. The T6.9 test
-  // separately checks every current runtime source file against that snapshot.
+  // Freeze the completed NR11 runtime evidence before T6.9. T6.9 checks the
+  // immutable FR-07B starting checkpoint; FR-07B separately checks current source.
   for (const file of trackedFilesAtRevision(NR11_T6_BASE_SHA, RUNTIME_DOMAIN))
     assert.equal(git('show', `${T69_BASE_SHA}:${file}`), baseline(file), file);
   for (const file of [
