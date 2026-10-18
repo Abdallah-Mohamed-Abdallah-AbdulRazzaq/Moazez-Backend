@@ -7,8 +7,57 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
+// CI proves synthetic regression contracts, never the private historical bytes.
+// Offline operator use: MOAZEZ_RUN_RETAINED_RELEASE_PROOFS=1 node --test <this file>.
+// The opt-in lane is forbidden in CI and requires every original byte binding.
+const retainedProofFlag = process.env.MOAZEZ_RUN_RETAINED_RELEASE_PROOFS;
+const runRetainedReleaseProofs = retainedProofFlag === '1';
+if (
+  retainedProofFlag !== undefined &&
+  !['0', '1'].includes(retainedProofFlag)
+) {
+  throw Object.assign(new Error('The retained proof opt-in must be 0 or 1.'), {
+    code: 'RETAINED_RELEASE_PROOF_FLAG_INVALID',
+  });
+}
+if (
+  runRetainedReleaseProofs &&
+  (process.env.CI || process.env.GITHUB_ACTIONS)
+) {
+  throw Object.assign(
+    new Error('Real-byte historical proofs are offline operator-only.'),
+    {
+      code: 'RETAINED_RELEASE_PROOFS_FORBIDDEN_IN_CI',
+    },
+  );
+}
+console.log(
+  'CI_RELEASE_LANE=' +
+    (runRetainedReleaseProofs
+      ? 'OFFLINE_OPERATOR_REAL_BYTES'
+      : 'HERMETIC_SYNTHETIC'),
+);
+console.log(
+  'HISTORICAL_RETAINED_REAL_BYTE_PROOFS=' +
+    (runRetainedReleaseProofs
+      ? 'REQUESTED_OUTCOMES_IN_TAP'
+      : 'NOT_EXECUTED_IN_CI'),
+);
+console.log(
+  'CI_RELEASE_EVIDENCE_LANES=' +
+    JSON.stringify({
+      CI_HERMETIC_PROOF: runRetainedReleaseProofs
+        ? 'ALSO_REGISTERED'
+        : 'MANDATORY',
+      HISTORICAL_REAL_BYTES_ATTESTATION: runRetainedReleaseProofs
+        ? 'OPERATOR_REQUESTED_NOT_YET_ATTESTED'
+        : 'NOT_RUN',
+      syntheticFixturesAuthenticateOriginalFiles: false,
+    }),
+);
+
 const { loadHistoricalModule } = require('../../tests/helpers/staging-retirement-source-policy.cjs');
-// These release executions are historical synthetic proofs, never current authority.
+// This immutable historical snapshot is test-only and never current release authority.
 const control = loadHistoricalModule('scripts/deployment-control/runtime-release-control.cjs');
 const capacity = loadHistoricalModule('scripts/deployment-control/runtime-capacity-control.cjs');
 
@@ -1187,9 +1236,45 @@ function retainedFailedApplyArtifactPaths() {
   };
 }
 
-function retainedFailedApplyArtifactsAvailable() {
+function requireRetainedArtifactBytes(reference, expectedSha256) {
+  if (!fs.statSync(reference, { throwIfNoEntry: false })?.isFile()) {
+    throw Object.assign(
+      new Error('Required original retained release artifact is unavailable.'),
+      {
+        code: 'RETAINED_RELEASE_ARTIFACT_MISSING',
+      },
+    );
+  }
+  if (hashText(fs.readFileSync(reference)) !== expectedSha256) {
+    throw Object.assign(
+      new Error(
+        'Retained artifact differs from its original historical SHA-256.',
+      ),
+      {
+        code: 'RETAINED_RELEASE_ARTIFACT_HASH_MISMATCH',
+      },
+    );
+  }
+}
+
+function requireRetainedFailedApplyArtifacts() {
   const paths = retainedFailedApplyArtifactPaths();
-  return Object.values(paths).every((value) => fs.existsSync(value));
+  const profile = control.FAILED_EDGE_APPLY_STATE11_PROFILE;
+  for (const prefix of [
+    'failedManifest',
+    'failedSavedPlan',
+    'failedPlanJson',
+    'failedReviewEvidence',
+    'failedPreApplyEvidence',
+    'applyStdout',
+    'applyStderr',
+    'state11ReconciliationEvidence',
+  ]) {
+    requireRetainedArtifactBytes(
+      paths[prefix + 'Ref'],
+      profile[prefix + 'Sha256'],
+    );
+  }
 }
 
 function makeRetainedFailedApplyRecoveryContext(temporaryRoot) {
@@ -3622,9 +3707,10 @@ test('v4 registration fails closed without exact review inputs or with tampered 
   });
 });
 
+if (runRetainedReleaseProofs) {
+  requireRetainedFailedApplyArtifacts();
 test(
   'v5 exact retained State11 authority builds only the governed non-replay remainder',
-  { skip: !retainedFailedApplyArtifactsAvailable() },
   () => {
     withTemporaryRoot((temporaryRoot) => {
       const manifest = control.buildManifest(
@@ -3748,11 +3834,12 @@ test(
       assert.doesNotThrow(() => control.validateManifest(manifest));
     });
   },
-);
+)
+};
 
+if (runRetainedReleaseProofs) {
 test(
   'v5 exact retained State11 authority completes the controller lifecycle with explicit successor Edge verification',
-  { skip: !retainedFailedApplyArtifactsAvailable() },
   () => {
     withTemporaryRoot((temporaryRoot) => {
       const manifest = control.buildManifest(
@@ -3806,11 +3893,12 @@ test(
       assert.doesNotThrow(() => control.validateManifest(manifest));
     });
   },
-);
+)
+};
 
+if (runRetainedReleaseProofs) {
 test(
   'v5 fails closed on changed State11 live semantics and invalidates a newly failed successor plan once',
-  { skip: !retainedFailedApplyArtifactsAvailable() },
   () => {
     withTemporaryRoot((temporaryRoot) => {
       const cases = [
@@ -3926,7 +4014,8 @@ test(
       assert.doesNotThrow(() => control.validateManifest(manifest));
     });
   },
-);
+)
+};
 
 test('recovery manifest v2 derives deterministic attempts and contains only the API-first window', () => {
   withTemporaryRoot((temporaryRoot) => {
@@ -7121,12 +7210,13 @@ test('Release V6 Maintenance rejects every API service and revision capacity pat
   });
 });
 
+if (runRetainedReleaseProofs) {
 const GOVERNED_V5_MANIFEST_PATH =
   'C:\\Users\\Abdal\\AppData\\Local\\Moazez\\release-control\\day2-d1\\d2-v5-edge-20260915011016-manifest.json';
+requireRetainedArtifactBytes(GOVERNED_V5_MANIFEST_PATH, control.GOVERNED_V5_PREDECESSOR.manifestSha256);
 
 test(
   'post-Edge source continuation imports exact historical authority and keeps provider defaults unmanaged',
-  { skip: !fs.existsSync(GOVERNED_V5_MANIFEST_PATH) },
   () => {
     withTemporaryRoot((temporaryRoot) => {
       const managed = capacity.baselineCapacitySpec('staging');
@@ -7237,4 +7327,561 @@ test(
       );
     });
   },
-);
+)
+};
+
+
+// These are regression proofs with disposable synthetic inputs. In particular,
+// V5 review is not V5 real-byte authority; the shared lifecycle below uses V3.
+test('hermetic State11 metadata and reconciliation reject incident hash changes and replay authority', () => {
+  const metadata = makeFailedApplyRecoveryMetadataFixture();
+  assert.deepEqual(
+    control.validateFailedEdgeApplyStateSuccessorRecoveryMetadata(
+      metadata,
+      control.currentSourceSha(),
+    ),
+    metadata,
+  );
+  for (const field of Object.keys(metadata).filter((key) =>
+    key.endsWith('Sha256'),
+  )) {
+    const changed = { ...metadata, [field]: '0'.repeat(64) };
+    assert.throws(
+      () =>
+        control.validateFailedEdgeApplyStateSuccessorRecoveryMetadata(
+          changed,
+          control.currentSourceSha(),
+        ),
+      { code: 'FAILED_EDGE_APPLY_INCIDENT_BINDING_INVALID' },
+      field,
+    );
+  }
+  for (const field of [
+    'sourceRemediationSha',
+    'failedSourceSha',
+    'failedReleaseExecutionId',
+  ]) {
+    const changed = {
+      ...metadata,
+      [field]: field.endsWith('Sha') ? '0'.repeat(40) : 'other-incident',
+    };
+    assert.throws(
+      () =>
+        control.validateFailedEdgeApplyStateSuccessorRecoveryMetadata(
+          changed,
+          control.currentSourceSha(),
+        ),
+      { code: 'FAILED_EDGE_APPLY_INCIDENT_BINDING_INVALID' },
+      field,
+    );
+  }
+  const fixture = makeFailedApplyState11ValidatorFixture();
+  const validate = (value) =>
+    control.validateFailedApplyState11ReconciliationEvidence(
+      value.evidence,
+      value.metadata,
+      value.failedManifest,
+      value.edgeOperation,
+      value.live,
+    );
+  assert.deepEqual(validate(fixture), fixture.evidence);
+  for (const field of [
+    'failedSavedPlanReusable',
+    'terraformApplyRetryAuthorized',
+    'terraformPlanAuthorized',
+  ]) {
+    const changed = structuredClone(fixture);
+    changed.evidence.authority[field] = true;
+    assert.throws(
+      () => validate(changed),
+      { code: 'FAILED_EDGE_APPLY_STATE11_RECONCILIATION_INVALID' },
+      field,
+    );
+  }
+});
+
+test('hermetic V5 reviewer enforces safe successor rotation without claiming original artifact authority', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const manifest = makeSyntheticV5ReviewerManifest(temporaryRoot);
+    const options = {
+      gateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      operationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+    };
+    const review = control.reviewTerraformPlanJson(
+      safeRotationPlanFixture(),
+      manifest,
+      options,
+    );
+    assert.equal(review.status, 'passed');
+    assert.equal(review.nonNoopResourceChangeCount, 2);
+    assert.equal(review.urlMapMutation, false);
+    const unsafe = safeRotationPlanFixture();
+    unsafe.resource_changes.find(
+      (record) =>
+        record.address ===
+        control.EDGE_CANDIDATE_RECONCILIATION_RESOURCE_ADDRESSES[0],
+    ).change.actions = ['delete', 'create'];
+    assert.throws(
+      () => control.reviewTerraformPlanJson(unsafe, manifest, options),
+      { code: 'PLAN_ACTION_MISMATCH' },
+    );
+  });
+});
+
+test('hermetic shared successor lifecycle orders review apply verification and final traffic using synthetic V3 authority', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const manifest = control.buildManifest(
+      makeSuccessfulContinuationContext(temporaryRoot).context,
+    );
+    assert.equal(manifest.manifestVersion, 3);
+    const gateId = control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID;
+    const operationId = control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID;
+    assert.deepEqual(
+      manifest.gates.map((gate) => gate.id),
+      [...control.SUCCESSFUL_CONTINUATION_GATE_IDS],
+    );
+    const original = structuredClone(manifest);
+    assert.throws(
+      () =>
+        control.recordApply(manifest, {
+          gateId,
+          operationId,
+          result: 'succeeded',
+          recordedAt: RECORDED_AT,
+          evidenceRef: 'synthetic:unapproved',
+        }),
+      { code: 'PLAN_APPLY_REUSE_FORBIDDEN' },
+    );
+    assert.deepEqual(manifest, original);
+    assert.throws(
+      () =>
+        control.recordVerification(manifest, {
+          gateId: 'traffic-promotion',
+          operationId: 'api-traffic-promotion',
+          result: 'passed',
+          recordedAt: RECORDED_AT,
+          evidenceRef: 'synthetic:out-of-order',
+        }),
+      { code: 'OUT_OF_ORDER_GATE' },
+    );
+    applyAndVerifyTerraform(
+      manifest,
+      gateId,
+      operationId,
+      'synthetic-shared-edge',
+      {
+        observedCandidateTag: manifest.candidate.tag,
+        observedPublicPath: control.SMOKE_PUBLIC_PATH,
+        observedBackendPath: control.SMOKE_BACKEND_PATH,
+      },
+    );
+    passThroughMaintenance(manifest);
+    passThroughProtectedSmoke(manifest);
+    applyAndVerifyTerraform(
+      manifest,
+      'traffic-promotion',
+      'api-traffic-promotion',
+      'synthetic-shared-traffic',
+      {
+        observedImage: manifest.candidate.imageReference,
+        observedRevision: manifest.candidate.revision,
+        observedCandidateTag: manifest.candidate.tag,
+        observedStablePercent: 0,
+        observedCandidatePercent: 100,
+      },
+    );
+    assert.equal(manifest.releaseStatus, 'complete');
+    assert.equal(
+      manifest.gates.every((gate) => gate.status === 'passed'),
+      true,
+    );
+    assert.doesNotThrow(() => control.validateManifest(manifest));
+  });
+});
+
+test('hermetic State11 live contradictions fail closed and a synthetic successor apply is invalidated once', () => {
+  const fixture = makeFailedApplyState11ValidatorFixture();
+  const cases = [
+    [
+      'lineage',
+      (v) => {
+        v.live.edgeState.lineage = 'other';
+      },
+    ],
+    [
+      'serial',
+      (v) => {
+        v.live.edgeState.serial += 1;
+      },
+    ],
+    [
+      'NEG tag',
+      (v) => {
+        v.live.liveDiscovery.candidateEdgeResources.neg.cloudRunTag = 'other';
+      },
+    ],
+    [
+      'NEG identity',
+      (v) => {
+        v.live.liveDiscovery.candidateEdgeResources.neg.name = 'other';
+      },
+    ],
+    [
+      'backend identity',
+      (v) => {
+        v.live.liveDiscovery.candidateEdgeResources.backend.name = 'other';
+      },
+    ],
+    [
+      'backend group',
+      (v) => {
+        v.live.liveDiscovery.candidateEdgeResources.backend.negName = 'other';
+      },
+    ],
+    [
+      'zero candidate traffic',
+      (v) => {
+        v.evidence.live.candidateTrafficPercent = 1;
+      },
+    ],
+    [
+      'serving traffic',
+      (v) => {
+        v.evidence.live.servingTrafficPercent = 99;
+      },
+    ],
+    [
+      'security policy',
+      (v) => {
+        v.live.liveDiscovery.candidateEdgeResources.backend.securityPolicyMatchesPrimaryApi = false;
+      },
+    ],
+    [
+      'trusted header',
+      (v) => {
+        v.live.liveDiscovery.candidateEdgeResources.backend.customRequestHeaders =
+          [];
+      },
+    ],
+    [
+      'route',
+      (v) => {
+        v.live.liveDiscovery.candidateEdgeResources.smokeRoute.backendPath =
+          '/other';
+      },
+    ],
+  ];
+  for (const [name, mutate] of cases) {
+    const changed = structuredClone(fixture);
+    mutate(changed);
+    assert.throws(
+      () =>
+        control.validateFailedApplyState11ReconciliationEvidence(
+          changed.evidence,
+          changed.metadata,
+          changed.failedManifest,
+          changed.edgeOperation,
+          changed.live,
+        ),
+      { code: 'FAILED_EDGE_APPLY_STATE11_RECONCILIATION_INVALID' },
+      name,
+    );
+  }
+  withTemporaryRoot((temporaryRoot) => {
+    const manifest = control.buildManifest(
+      makeSuccessfulContinuationContext(temporaryRoot).context,
+    );
+    const gateId = control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID;
+    const operationId = control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID;
+    const edge = registerAndApprove(
+      manifest,
+      gateId,
+      operationId,
+      'synthetic-failed-once',
+    );
+    control.recordApply(manifest, {
+      gateId,
+      operationId,
+      result: 'failed',
+      evidenceRef: 'synthetic:failed-once',
+      recordedAt: RECORDED_AT,
+    });
+    assert.equal(edge.apply.attempted, true);
+    assert.equal(
+      edge.singleConsumptionStatus,
+      'invalidated-after-failed-attempt',
+    );
+    assert.equal(manifest.releaseStatus, 'failed');
+    assert.equal(
+      manifest.gates.slice(1).every((gate) => gate.status === 'blocked'),
+      true,
+    );
+    const failed = structuredClone(manifest);
+    assert.throws(
+      () =>
+        control.recordApply(manifest, {
+          gateId,
+          operationId,
+          result: 'succeeded',
+          evidenceRef: 'synthetic:forbidden-retry',
+          recordedAt: RECORDED_AT,
+        }),
+      { code: 'STOP_AFTER_FIRST_FAILURE' },
+    );
+    assert.deepEqual(manifest, failed);
+  });
+});
+
+function makeMissingHistoricalContext(temporaryRoot, version) {
+  if (version === 5) {
+    const metadata = makeFailedApplyRecoveryMetadataFixture();
+    for (const field of Object.keys(metadata).filter((key) =>
+      key.endsWith('Ref'),
+    )) {
+      metadata[field] = path.join(
+        temporaryRoot,
+        path.basename(metadata[field]),
+      );
+    }
+    return {
+      executionMode: control.FAILED_EDGE_APPLY_STATE_SUCCESSOR_RECOVERY_MODE,
+      executionId: 'hermetic-missing-state11-original',
+      repository: control.REPOSITORY,
+      sourceSha: control.currentSourceSha(),
+      environment: 'staging',
+      resumeGateId: control.SUCCESSFUL_CONTINUATION_RESUME_GATE_ID,
+      resumeOperationId: control.SUCCESSFUL_CONTINUATION_RESUME_OPERATION_ID,
+      failedEdgeApplyStateSuccessorRecovery: metadata,
+      liveDiscovery: {},
+      externalTfDataRoot: path.join(temporaryRoot, 'tfdata'),
+      externalSavedPlanRoot: path.join(temporaryRoot, 'plans'),
+    };
+  }
+  return {
+    executionMode: control.POST_EDGE_SOURCE_CONTINUATION_MODE,
+    executionId: 'hermetic-missing-v5-predecessor',
+    repository: control.REPOSITORY,
+    sourceSha: control.currentSourceSha(),
+    environment: 'staging',
+    resumeGateId: control.POST_EDGE_SOURCE_CONTINUATION_RESUME_GATE_ID,
+    resumeOperationId:
+      control.POST_EDGE_SOURCE_CONTINUATION_RESUME_OPERATION_ID,
+    predecessorManifestPath: path.join(
+      temporaryRoot,
+      'absent-original-v5.json',
+    ),
+    liveDiscovery: {},
+    externalTfDataRoot: path.join(temporaryRoot, 'tfdata'),
+    externalSavedPlanRoot: path.join(temporaryRoot, 'plans'),
+  };
+}
+
+test('hermetic missing and counterfeit historical bytes are refused by unchanged V5 and V6 SHA authority', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    for (const [version, missingCode, mismatchCode] of [
+      [
+        5,
+        'EDGE_SUCCESSOR_ARTIFACT_INVALID',
+        'EDGE_SUCCESSOR_ARTIFACT_HASH_MISMATCH',
+      ],
+      [6, 'V6_PREDECESSOR_EVIDENCE_INVALID', 'V6_PREDECESSOR_EVIDENCE_INVALID'],
+    ]) {
+      const context = makeMissingHistoricalContext(temporaryRoot, version);
+      const before = structuredClone(context);
+      assert.throws(() => control.buildManifest(context), {
+        code: missingCode,
+      });
+      assert.deepEqual(context, before);
+      const file =
+        version === 5
+          ? context.failedEdgeApplyStateSuccessorRecovery.failedManifestRef
+          : context.predecessorManifestPath;
+      fs.writeFileSync(
+        file,
+        'SYNTHETIC_COUNTERFEIT_NOT_ORIGINAL_INCIDENT_BYTES',
+      );
+      assert.throws(() => control.buildManifest(context), {
+        code: mismatchCode,
+      });
+      assert.deepEqual(context, before);
+    }
+  });
+});
+
+test('hermetic V6 capacity and provider defaults stay unchanged while stale plan state and inherited-image changes are refused', () => {
+  withTemporaryRoot((temporaryRoot) => {
+    const context = makeV6CapacityAwareContext(temporaryRoot);
+    const manifest = control.buildManifest(context);
+    assert.deepEqual(
+      manifest.capacityPreservationSpec,
+      context.capacityPreservationSpec,
+    );
+    const maintenance = operation(
+      manifest,
+      'maintenance-scheduler-promotion',
+      'maintenance-scheduler-runtime',
+    );
+    // Capacity-aware V6 explicitly sizes a new candidate. The serving API's
+    // unmanaged provider defaults remain separate from those candidate inputs.
+    assert.equal(
+      manifest.capacityPreservationSpec.api.revision.maxInstances,
+      null,
+    );
+    assert.equal(
+      manifest.observedEffectiveCapacity.api.revision.maxInstances,
+      100,
+    );
+    assert.equal(maintenance.requiredVariables.api_revision_max_instances, 4);
+    const reviewerManifest = structuredClone(manifest);
+    reviewerManifest.executionMode = control.POST_EDGE_SOURCE_CONTINUATION_MODE;
+    const options = {
+      gateId: 'maintenance-scheduler-promotion',
+      operationId: 'maintenance-scheduler-runtime',
+    };
+    const snapshot = structuredClone(reviewerManifest);
+    assert.equal(
+      control.reviewV6RuntimePlanJson(
+        v6MaintenancePlan(),
+        reviewerManifest,
+        options,
+      ).status,
+      'passed',
+    );
+    assert.deepEqual(reviewerManifest, snapshot);
+    const apiDefaults = {
+      address: control.RUNTIME_RESOURCE_ADDRESSES.api,
+      mode: 'managed',
+      type: 'google_cloud_run_v2_service',
+      provider_name: 'registry.terraform.io/hashicorp/google',
+      change: {
+        actions: ['no-op'],
+        before: {
+          template: [
+            {
+              scaling: [{ max_instance_count: 100 }],
+              timeout: '300s',
+              session_affinity: false,
+            },
+          ],
+        },
+        after: {
+          template: [
+            {
+              scaling: [{ max_instance_count: 100 }],
+              timeout: '300s',
+              session_affinity: false,
+            },
+          ],
+        },
+        after_unknown: {},
+      },
+    };
+    assert.equal(
+      control.reviewV6RuntimePlanJson(
+        v6MaintenancePlan([apiDefaults]),
+        reviewerManifest,
+        options,
+      ).status,
+      'passed',
+    );
+    const apiMutation = structuredClone(apiDefaults);
+    apiMutation.change.actions = ['update'];
+    apiMutation.change.after.template[0].scaling[0].max_instance_count = 4;
+    assert.throws(
+      () =>
+        control.reviewV6RuntimePlanJson(
+          v6MaintenancePlan([apiMutation]),
+          reviewerManifest,
+          options,
+        ),
+      { code: 'PLAN_RESOURCE_CHANGE_SET_MISMATCH' },
+    );
+    const changed = v6MaintenancePlan();
+    changed.resource_changes[0].change.after.template[0].containers[0].image =
+      CANDIDATE_IMAGE;
+    assert.throws(
+      () => control.reviewV6RuntimePlanJson(changed, reviewerManifest, options),
+      { code: 'PLAN_SEMANTIC_CHANGE_UNAPPROVED' },
+    );
+    const first = operation(
+      manifest,
+      'core-worker-promotion',
+      'core-worker-runtime',
+    );
+    fs.mkdirSync(path.dirname(first.savedPlanPath), { recursive: true });
+    fs.writeFileSync(first.savedPlanPath, 'synthetic-stale-state-plan');
+    for (const state of [
+      { lineage: 'other', serial: first.statePrecondition.serial },
+      {
+        lineage: first.statePrecondition.lineage,
+        serial: first.statePrecondition.serial + 1,
+      },
+    ]) {
+      assert.throws(
+        () =>
+          control.registerPlan(manifest, {
+            gateId: 'core-worker-promotion',
+            operationId: 'core-worker-runtime',
+            planPath: first.savedPlanPath,
+            sourceSha: manifest.sourceSha,
+            environment: manifest.environment,
+            terraformRoot: first.terraformRoot,
+            ...state,
+            recordedAt: RECORDED_AT,
+          }),
+        { code: 'PLAN_BINDING_MISMATCH' },
+      );
+    }
+    assert.deepEqual(
+      manifest.capacityPreservationSpec,
+      context.capacityPreservationSpec,
+    );
+  });
+});
+
+test('hermetic operator opt-in refuses CI and missing or counterfeit original material without skipping', () => {
+  const { spawnSync } = require('node:child_process');
+  withTemporaryRoot((temporaryRoot) => {
+    const environment = {
+      ...process.env,
+      LOCALAPPDATA: temporaryRoot,
+      MOAZEZ_RUN_RETAINED_RELEASE_PROOFS: '1',
+    };
+    delete environment.CI;
+    delete environment.GITHUB_ACTIONS;
+    // A subprocess must start a real independent Node test runner.
+    delete environment.NODE_TEST_CONTEXT;
+    const run = (env, code) => {
+      const result = spawnSync(process.execPath, ['--test', __filename], {
+        cwd: REPOSITORY_ROOT,
+        env,
+        encoding: 'utf8',
+        timeout: 30000,
+        windowsHide: true,
+      });
+      assert.equal(result.error, undefined);
+      assert.equal(result.status, 1);
+      assert.match(result.stdout + result.stderr, new RegExp(code, 'u'));
+      assert.doesNotMatch(result.stdout + result.stderr, /# SKIP|# TODO/u);
+    };
+    run(
+      { ...environment, CI: 'true' },
+      'RETAINED_RELEASE_PROOFS_FORBIDDEN_IN_CI',
+    );
+    run(environment, 'RETAINED_RELEASE_ARTIFACT_MISSING');
+    const counterfeit = path.join(
+      temporaryRoot,
+      'Moazez',
+      'release-control',
+      'day2-d1',
+      control.FAILED_EDGE_APPLY_STATE11_PROFILE.failedReleaseExecutionId +
+        '-manifest.json',
+    );
+    fs.mkdirSync(path.dirname(counterfeit), { recursive: true });
+    fs.writeFileSync(
+      counterfeit,
+      'SYNTHETIC_COUNTERFEIT_NOT_A_HISTORICAL_ATTESTATION',
+    );
+    run(environment, 'RETAINED_RELEASE_ARTIFACT_HASH_MISMATCH');
+  });
+});
