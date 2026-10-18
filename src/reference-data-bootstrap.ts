@@ -191,6 +191,9 @@ export async function runReferenceDataBootstrapCli(
 
   try {
     argumentsValue = parseReferenceDataBootstrapArguments(argv);
+    if (argumentsValue.environment !== 'production') {
+      throw new ReferenceDataBootstrapCliError('UNSUPPORTED_ENVIRONMENT');
+    }
   } catch (error) {
     const output = classifyCliError(error);
     writeOutput(formatReferenceDataBootstrapOutput(output));
@@ -198,11 +201,14 @@ export async function runReferenceDataBootstrapCli(
   }
 
   try {
-    const assertEnvironment =
-      dependencies.assertEnvironment ?? assertPlatformAdminBootstrapEnvironment;
-    assertEnvironment(
+    const rawEnvironment = dependencies.rawEnvironment ?? process.env;
+    assertPlatformAdminBootstrapEnvironment(
       argumentsValue.environment,
-      dependencies.rawEnvironment ?? process.env,
+      rawEnvironment,
+    );
+    dependencies.assertEnvironment?.(
+      argumentsValue.environment,
+      rawEnvironment,
     );
   } catch {
     const output: ReferenceDataBootstrapOutput = {

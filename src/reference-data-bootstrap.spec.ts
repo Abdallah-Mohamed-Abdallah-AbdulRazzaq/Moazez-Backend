@@ -161,7 +161,7 @@ describe('authorization reference-data bootstrap operator CLI', () => {
     expect(exitCode).toBe(2);
     expect(createApplicationContext).not.toHaveBeenCalled();
     expect(outputs).toEqual([
-      'REFERENCE_BOOTSTRAP_STATUS=BLOCKED\nREASON=ENVIRONMENT_MISMATCH',
+      'REFERENCE_BOOTSTRAP_STATUS=BLOCKED\nREASON=UNSUPPORTED_ENVIRONMENT',
     ]);
     expect(outputs[0]).not.toContain(SYNTHETIC_SECRET);
     expect(outputs[0]).not.toContain('DATABASE_URL');
@@ -181,9 +181,27 @@ describe('authorization reference-data bootstrap operator CLI', () => {
   ] as const)(
     'runs the governed $name guard before context startup and emits stable PASS evidence last',
     async ({ environment, argv }) => {
+      if (environment === 'staging') {
+        const assertEnvironment = jest.fn(() => 'staging');
+        const createApplicationContext = jest.fn();
+        const outputs: string[] = [];
+        expect(
+          await runReferenceDataBootstrapCli(argv, {
+            assertEnvironment,
+            createApplicationContext,
+            writeOutput: (value) => outputs.push(value),
+          }),
+        ).toBe(2);
+        expect(assertEnvironment).not.toHaveBeenCalled();
+        expect(createApplicationContext).not.toHaveBeenCalled();
+        expect(outputs).toEqual([
+          'REFERENCE_BOOTSTRAP_STATUS=BLOCKED\nREASON=UNSUPPORTED_ENVIRONMENT',
+        ]);
+        return;
+      }
       const calls: string[] = [];
       const outputs: string[] = [];
-      const rawEnvironment = { NODE_ENV: environment };
+      const rawEnvironment = productionEnvironment();
       const assertEnvironment = jest.fn(
         (
           requestedEnvironment: string,
@@ -276,13 +294,10 @@ describe('authorization reference-data bootstrap operator CLI', () => {
     );
 
     expect(exitCode).toBe(2);
-    expect(assertEnvironment).toHaveBeenCalledWith(
-      'production',
-      rawEnvironment,
-    );
+    expect(assertEnvironment).not.toHaveBeenCalled();
     expect(createApplicationContext).not.toHaveBeenCalled();
     expect(execute).not.toHaveBeenCalled();
-    expect(calls).toEqual(['environment', 'output']);
+    expect(calls).toEqual(['output']);
     expect(outputs).toEqual([
       'REFERENCE_BOOTSTRAP_STATUS=BLOCKED\nREASON=ENVIRONMENT_MISMATCH',
     ]);
@@ -302,9 +317,10 @@ describe('authorization reference-data bootstrap operator CLI', () => {
     );
 
     const exitCode = await runReferenceDataBootstrapCli(
-      VALID_STAGING_ARGUMENTS,
+      VALID_PRODUCTION_ARGUMENTS,
       {
-        assertEnvironment: () => 'staging',
+        rawEnvironment: productionEnvironment(),
+        assertEnvironment: () => 'production',
         createApplicationContext: () => Promise.resolve(context),
         writeOutput: (output) => outputs.push(output),
       },
@@ -332,9 +348,10 @@ describe('authorization reference-data bootstrap operator CLI', () => {
     ]) {
       const outputs: string[] = [];
       const exitCode = await runReferenceDataBootstrapCli(
-        VALID_STAGING_ARGUMENTS,
+        VALID_PRODUCTION_ARGUMENTS,
         {
-          assertEnvironment: () => 'staging',
+          rawEnvironment: productionEnvironment(),
+          assertEnvironment: () => 'production',
           createApplicationContext: () => Promise.resolve(context),
           writeOutput: (output) => outputs.push(output),
         },
@@ -377,11 +394,30 @@ describe('authorization reference-data bootstrap operator CLI', () => {
     expect(processResult.signal).toBeNull();
     expect(processResult.status).toBe(2);
     expect(processResult.stdout.trim()).toBe(
-      'REFERENCE_BOOTSTRAP_STATUS=BLOCKED\nREASON=ENVIRONMENT_MISMATCH',
+      'REFERENCE_BOOTSTRAP_STATUS=BLOCKED\nREASON=UNSUPPORTED_ENVIRONMENT',
     );
     expect(`${processResult.stdout}\n${processResult.stderr}`).not.toContain(
       SYNTHETIC_SECRET,
     );
+  });
+
+  it('rejects retired raw identity before an accepting injected validator', async () => {
+    const assertEnvironment = jest.fn(() => 'production');
+    const createApplicationContext = jest.fn();
+    const outputs: string[] = [];
+    expect(
+      await runReferenceDataBootstrapCli(VALID_PRODUCTION_ARGUMENTS, {
+        rawEnvironment: { ...productionEnvironment(), NODE_ENV: 'staging' },
+        assertEnvironment,
+        createApplicationContext,
+        writeOutput: (value) => outputs.push(value),
+      }),
+    ).toBe(2);
+    expect(assertEnvironment).not.toHaveBeenCalled();
+    expect(createApplicationContext).not.toHaveBeenCalled();
+    expect(outputs).toEqual([
+      'REFERENCE_BOOTSTRAP_STATUS=BLOCKED\nREASON=ENVIRONMENT_MISMATCH',
+    ]);
   });
 
   it('does not pass through an unrecognized refusal reason', () => {
@@ -417,5 +453,18 @@ function applicationContext(
       return executor;
     },
     close,
+  };
+}
+
+function productionEnvironment(): NodeJS.ProcessEnv {
+  return {
+    NODE_ENV: 'production',
+    APP_URL: 'https://api.moazez.cloud',
+    GCP_PROJECT_ID: 'moazez-production',
+    DATABASE_RUNTIME_ROLE: 'api',
+    DATABASE_URL: `postgresql://moazez_api:${SYNTHETIC_SECRET}@127.0.0.1:1/moazez?sslmode=require`,
+    DATABASE_CONNECTION_LIMIT: '5',
+    DATABASE_POOL_TIMEOUT_SECONDS: '5',
+    DATABASE_CONNECT_TIMEOUT_SECONDS: '5',
   };
 }

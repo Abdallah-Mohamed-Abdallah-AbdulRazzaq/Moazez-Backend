@@ -7,13 +7,13 @@ const test = require('node:test');
 const {
   LOCKED_ENVIRONMENTS,
   assertEvidenceSafe,
-  executeGuardedObjectProof,
   findEvidenceSafetyRejection,
-  readIamProofConfiguration,
-  readObjectProofConfiguration,
   summarizeSignedUrl,
   validateRunId,
 } = require('../gcs-batch2-proof-policy.cjs');
+
+const { loadHistoricalModule } = require('../../tests/helpers/staging-retirement-source-policy.cjs');
+const { executeGuardedObjectProof, readIamProofConfiguration, readObjectProofConfiguration } = loadHistoricalModule('scripts/storage/gcs-batch2-proof-policy.cjs');
 
 const repositoryRoot = path.resolve(__dirname, '..', '..', '..');
 

@@ -1,14 +1,16 @@
 [CmdletBinding()]
 param(
+  [object]$Environment,
   [string]$ClassifyErrorText,
-  [string]$ClassifyCustomRoleErrorText,
-  [string]$CaptureFixtureCommandPath,
-  [string[]]$CaptureFixtureArguments = @()
+  [string]$ClassifyCustomRoleErrorText
 )
+
+if ($Environment -isnot [string] -or $Environment -cne 'production') {
+  throw 'PREFLIGHT_ENVIRONMENT_INVALID'
+}
 
 $ErrorActionPreference = 'Stop'
 $ProductionProject = 'moazez-production'
-$NonprodProject = 'moazez-nonprod-91001421934'
 $BootstrapRequiredApi = 'serviceusage.googleapis.com'
 $TerraformManagedApis = @(
   'storage.googleapis.com',
@@ -31,24 +33,11 @@ $ApprovedTargets = @{
       'moazez-production-91001421934-published'
     )
   }
-  'moazez-nonprod-91001421934' = @{
-    buckets = @(
-      'moazez-nonprod-91001421934-private',
-      'moazez-nonprod-91001421934-published'
-    )
-  }
 }
 $script:GcloudCommandPath = $null
 
 function Resolve-GcloudCommandPath {
-  param([string]$FixturePath)
-
-  if (-not [string]::IsNullOrWhiteSpace($FixturePath)) {
-    if (-not (Test-Path -LiteralPath $FixturePath -PathType Leaf)) {
-      throw 'GCLOUD_CAPTURE_FIXTURE_NOT_FOUND'
-    }
-    return (Resolve-Path -LiteralPath $FixturePath).Path
-  }
+  if ($Environment -isnot [string] -or $Environment -cne 'production') { throw 'PREFLIGHT_ENVIRONMENT_INVALID' }
   $command = Get-Command gcloud.cmd -CommandType Application -ErrorAction SilentlyContinue |
     Select-Object -First 1
   if ($null -eq $command -or [string]::IsNullOrWhiteSpace($command.Source)) {
@@ -59,6 +48,19 @@ function Resolve-GcloudCommandPath {
 
 function Invoke-GcloudCapture {
   param([Parameter(Mandatory)][string[]]$Arguments)
+
+  if ($Environment -isnot [string] -or $Environment -cne 'production') { throw 'PREFLIGHT_ENVIRONMENT_INVALID' }
+  $signature = $Arguments -join [char]31
+  $allowed = @(
+    (@('auth', 'list', '--filter=status:ACTIVE', '--format=value(account)') -join [char]31)
+    (@('projects', 'describe', 'moazez-production', '--format=json') -join [char]31)
+    (@('billing', 'projects', 'describe', 'moazez-production', '--format=json') -join [char]31)
+    (@('services', 'list', '--enabled', '--project=moazez-production', '--format=json(config.name)') -join [char]31)
+    (@('storage', 'buckets', 'list', '--project=moazez-production', '--format=json(name,location,storageClass)') -join [char]31)
+    (@('iam', 'service-accounts', 'list', '--project=moazez-production', '--format=json(email,name)') -join [char]31)
+    (@('iam', 'roles', 'describe', 'moazezStorageBucketMetadataReader', '--project=moazez-production', '--format=json(name,stage)') -join [char]31)
+  )
+  if ($allowed -cnotcontains $signature) { throw 'PREFLIGHT_READONLY_TARGET_INVALID' }
 
   if ([string]::IsNullOrWhiteSpace($script:GcloudCommandPath)) {
     throw 'GCLOUD_COMMAND_PATH_UNAVAILABLE'
@@ -145,15 +147,10 @@ if ($PSBoundParameters.ContainsKey('ClassifyCustomRoleErrorText')) {
   exit 0
 }
 
-$script:GcloudCommandPath = Resolve-GcloudCommandPath $CaptureFixtureCommandPath
+$script:GcloudCommandPath = Resolve-GcloudCommandPath
 if ([string]::IsNullOrWhiteSpace($script:GcloudCommandPath)) {
-  Write-Error 'GCLOUD_CLI=UNAVAILABLE'
+  Write-Error 'GCLOUD_CLI=UNAVAILABLE' -ErrorAction Continue
   exit 2
-}
-
-if ($PSBoundParameters.ContainsKey('CaptureFixtureCommandPath')) {
-  Invoke-GcloudCapture $CaptureFixtureArguments | ConvertTo-Json -Compress
-  exit 0
 }
 
 function ConvertFrom-SafeJson {
@@ -202,6 +199,8 @@ function New-UnresolvedTargetReport {
 
 function Get-ProjectReport {
   param([Parameter(Mandatory)][string]$ProjectId)
+
+  if ($Environment -isnot [string] -or $Environment -cne 'production' -or $ProjectId -cne 'moazez-production') { throw 'PREFLIGHT_ENVIRONMENT_INVALID' }
 
   $describe = Invoke-GcloudCapture @(
     'projects', 'describe', $ProjectId, '--format=json'
@@ -365,61 +364,29 @@ $accountAuthenticationStatus = if ($accountResult.ExitCode -eq 0) {
 }
 
 $production = Get-ProjectReport $ProductionProject
-$nonprod = Get-ProjectReport $NonprodProject
-$nonprodAccess = switch ($nonprod.visibility) {
-  'VISIBLE' { 'RESOLVED_VISIBLE' }
-  'ACCESS_DENIED' { 'ACCESS_DENIED' }
-  'NOT_FOUND' { 'NOT_FOUND' }
-  default { 'UNRESOLVED' }
-}
-$nonprodServiceUsage = @($nonprod.requiredApis | Where-Object {
-  $_.name -eq $BootstrapRequiredApi
-})[0]
 $authenticationStatus = if (
   $accountAuthenticationStatus -eq 'FAILED' -or
-  $production.authenticationStatus -eq 'FAILED' -or
-  $nonprod.authenticationStatus -eq 'FAILED'
-) {
-  'FAILED'
-} elseif ($accountAuthenticationStatus -eq 'UNRESOLVED') {
+  $production.authenticationStatus -eq 'FAILED'
+) { 'FAILED' } elseif ($accountAuthenticationStatus -eq 'UNRESOLVED') {
   'UNRESOLVED'
-} else {
-  'PASS'
-}
-$ready = (
+} else { 'PASS' }
+$inspectionComplete = (
   -not [string]::IsNullOrWhiteSpace($activeAccount) -and
   $authenticationStatus -eq 'PASS' -and
-  $nonprod.visibility -eq 'VISIBLE' -and
-  $nonprod.lifecycleState -eq 'ACTIVE' -and
-  $nonprod.billingEnabled -eq $true -and
-  -not [string]::IsNullOrWhiteSpace($nonprod.projectNumber) -and
-  $nonprodServiceUsage.enabled -eq $true -and
-  $nonprod.EXISTING_TARGET_RESOURCES -eq 'NONE'
+  $production.visibility -eq 'VISIBLE' -and
+  $production.apiQueryStatus -eq 'RESOLVED' -and
+  $null -ne $production.billingEnabled -and
+  $production.EXISTING_TARGET_RESOURCES -ne 'UNRESOLVED'
 )
-
 $report = [ordered]@{
-  schemaVersion = 1
+  schemaVersion = 2
+  environment = 'production'
   checkedAt = [DateTimeOffset]::UtcNow.ToString('o')
   activeGcloudAccount = $activeAccount
   AUTHENTICATION_STATUS = $authenticationStatus
+  INSPECTION_STATUS = if ($inspectionComplete) { 'PASS' } else { 'UNRESOLVED' }
   production = $production
-  nonprod = $nonprod
-  BOOTSTRAP_REQUIRED_API = [ordered]@{
-    name = $BootstrapRequiredApi
-    enabled = $nonprodServiceUsage.enabled
-  }
-  SERVICE_USAGE_API_ENABLED = if ($nonprodServiceUsage.enabled -eq $true) {
-    'YES'
-  } elseif ($nonprodServiceUsage.enabled -eq $false) {
-    'NO'
-  } else {
-    'UNRESOLVED'
-  }
-  TERRAFORM_MANAGED_APIS = $TerraformManagedApis
-  NONPROD_PROJECT_ACCESS = $nonprodAccess
-  EXISTING_TARGET_RESOURCES = $nonprod.EXISTING_TARGET_RESOURCES
-  READY_FOR_NONPROD_TERRAFORM_PLAN = if ($ready) { 'YES' } else { 'NO' }
+  READY_FOR_NONPROD_TERRAFORM_PLAN = 'NO'
 }
-
 $report | ConvertTo-Json -Depth 8
-if (-not $ready) { exit 3 }
+if (-not $inspectionComplete) { exit 3 }

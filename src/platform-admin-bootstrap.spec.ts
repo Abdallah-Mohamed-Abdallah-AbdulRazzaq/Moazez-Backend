@@ -110,11 +110,11 @@ describe('Platform Administrator bootstrap operator CLI', () => {
     });
 
     expect(exitCode).toBe(2);
-    expect(calls).toEqual(['environment']);
+    expect(calls).toEqual([]);
     expect(readPassword).not.toHaveBeenCalled();
     expect(createApplicationContext).not.toHaveBeenCalled();
     expect(outputs).toEqual([
-      'BOOTSTRAP_STATUS=BLOCKED\nREASON=ENVIRONMENT_MISMATCH',
+      'BOOTSTRAP_STATUS=BLOCKED\nREASON=UNSUPPORTED_ENVIRONMENT',
     ]);
   });
 
@@ -146,7 +146,7 @@ describe('Platform Administrator bootstrap operator CLI', () => {
     expect(processResult.signal).toBeNull();
     expect(processResult.status).toBe(2);
     expect(processResult.stdout.trim()).toBe(
-      'BOOTSTRAP_STATUS=BLOCKED\nREASON=ENVIRONMENT_MISMATCH',
+      'BOOTSTRAP_STATUS=BLOCKED\nREASON=UNSUPPORTED_ENVIRONMENT',
     );
     expect(processResult.stdout).not.toContain(PASSWORD);
     expect(processResult.stderr).not.toContain(PASSWORD);
@@ -189,6 +189,27 @@ describe('Platform Administrator bootstrap operator CLI', () => {
   it.each(['staging', 'production'] as const)(
     'carries the validated %s environment and emits bounded PASS evidence only after close',
     async (environment) => {
+      if (environment === 'staging') {
+        const assertEnvironment = jest.fn(() => 'staging');
+        const readPassword = jest.fn();
+        const createApplicationContext = jest.fn();
+        const output: string[] = [];
+        expect(
+          await runPlatformAdminBootstrapCli(VALID_ARGUMENTS, {
+            assertEnvironment,
+            readPassword,
+            createApplicationContext,
+            writeOutput: (value) => output.push(value),
+          }),
+        ).toBe(2);
+        expect(output).toEqual([
+          'BOOTSTRAP_STATUS=BLOCKED\nREASON=UNSUPPORTED_ENVIRONMENT',
+        ]);
+        expect(assertEnvironment).not.toHaveBeenCalled();
+        expect(readPassword).not.toHaveBeenCalled();
+        expect(createApplicationContext).not.toHaveBeenCalled();
+        return;
+      }
       const argumentsForEnvironment = VALID_ARGUMENTS.map((argument) =>
         argument === '--environment=staging'
           ? `--environment=${environment}`
@@ -222,7 +243,7 @@ describe('Platform Administrator bootstrap operator CLI', () => {
       const exitCode = await runPlatformAdminBootstrapCli(
         argumentsForEnvironment,
         {
-          rawEnvironment: { NODE_ENV: environment },
+          rawEnvironment: productionEnvironment(),
           assertEnvironment: (requestedEnvironment, rawEnvironment) => {
             calls.push('environment');
             expect(requestedEnvironment).toBe(environment);
@@ -280,8 +301,9 @@ describe('Platform Administrator bootstrap operator CLI', () => {
       close,
     );
 
-    const exitCode = await runPlatformAdminBootstrapCli(VALID_ARGUMENTS, {
-      assertEnvironment: () => 'staging',
+    const exitCode = await runPlatformAdminBootstrapCli(PRODUCTION_ARGUMENTS, {
+      rawEnvironment: productionEnvironment(),
+      assertEnvironment: () => 'production',
       readPassword: () => Promise.resolve(PASSWORD),
       createApplicationContext: () => Promise.resolve(context),
       writeOutput: (output) => outputs.push(output),
@@ -308,8 +330,9 @@ describe('Platform Administrator bootstrap operator CLI', () => {
       close,
     );
 
-    const exitCode = await runPlatformAdminBootstrapCli(VALID_ARGUMENTS, {
-      assertEnvironment: () => 'staging',
+    const exitCode = await runPlatformAdminBootstrapCli(PRODUCTION_ARGUMENTS, {
+      rawEnvironment: productionEnvironment(),
+      assertEnvironment: () => 'production',
       readPassword: () => Promise.resolve(PASSWORD),
       createApplicationContext: () => Promise.resolve(context),
       writeOutput: (output) => outputs.push(output),
@@ -320,6 +343,28 @@ describe('Platform Administrator bootstrap operator CLI', () => {
     expect(outputs).toEqual(['BOOTSTRAP_STATUS=FAIL\nREASON=INTERNAL_ERROR']);
     expect(outputs[0]).not.toContain(PASSWORD);
     expect(outputs[0]).not.toContain(PASSWORD_HASH);
+  });
+
+  it('rejects a retired raw identity before an accepting injected validator', async () => {
+    const assertEnvironment = jest.fn(() => 'production');
+    const readPassword = jest.fn();
+    const createApplicationContext = jest.fn();
+    const outputs: string[] = [];
+    expect(
+      await runPlatformAdminBootstrapCli(PRODUCTION_ARGUMENTS, {
+        rawEnvironment: { ...productionEnvironment(), NODE_ENV: 'staging' },
+        assertEnvironment,
+        readPassword,
+        createApplicationContext,
+        writeOutput: (value) => outputs.push(value),
+      }),
+    ).toBe(2);
+    expect(assertEnvironment).not.toHaveBeenCalled();
+    expect(readPassword).not.toHaveBeenCalled();
+    expect(createApplicationContext).not.toHaveBeenCalled();
+    expect(outputs).toEqual([
+      'BOOTSTRAP_STATUS=BLOCKED\nREASON=ENVIRONMENT_MISMATCH',
+    ]);
   });
 
   it('does not pass through an unrecognized refusal reason', () => {
@@ -363,5 +408,18 @@ function applicationContext(
       return executor;
     },
     close,
+  };
+}
+
+function productionEnvironment(): NodeJS.ProcessEnv {
+  return {
+    NODE_ENV: 'production',
+    APP_URL: 'https://api.moazez.cloud',
+    GCP_PROJECT_ID: 'moazez-production',
+    DATABASE_RUNTIME_ROLE: 'api',
+    DATABASE_URL: `postgresql://moazez_api:${PASSWORD}@127.0.0.1:1/moazez?sslmode=require`,
+    DATABASE_CONNECTION_LIMIT: '5',
+    DATABASE_POOL_TIMEOUT_SECONDS: '5',
+    DATABASE_CONNECT_TIMEOUT_SECONDS: '5',
   };
 }

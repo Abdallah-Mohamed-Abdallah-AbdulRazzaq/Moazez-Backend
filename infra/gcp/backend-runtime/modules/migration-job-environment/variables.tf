@@ -1,6 +1,11 @@
 variable "project_id" {
   description = "GCP project that owns the governed Migration Job."
   type        = string
+
+  validation {
+    condition     = var.project_id != "moazez-nonprod-91001421934"
+    error_message = "The retired Staging project is permanently prohibited."
+  }
 }
 
 variable "region" {
@@ -31,6 +36,12 @@ variable "migration_service_account" {
 variable "migration_job_environment" {
   description = "Stable environment identifier persisted on the governed Migration Job."
   type        = string
+  nullable    = false
+
+  validation {
+    condition     = var.migration_job_environment == "production"
+    error_message = "migration_job_environment must be production; staging is retired."
+  }
 }
 
 variable "migration_database_secret_id" {

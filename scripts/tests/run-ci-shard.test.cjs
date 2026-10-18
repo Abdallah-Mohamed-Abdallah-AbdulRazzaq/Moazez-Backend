@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { readHistoricalSource } = require('./helpers/staging-retirement-source-policy.cjs');
 
 const {
   CleanupManager,
@@ -777,8 +778,6 @@ test('all workflow actions are immutable official pins and historical Phase 3 is
     'ci.yml',
     'phase-3-production-readiness.yml',
     'production-backend-image.yml',
-    'staging-backend-image.yml',
-    'staging-wif-auth-proof.yml',
   ]);
   const expectedPins = new Set([
     'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
@@ -788,8 +787,9 @@ test('all workflow actions are immutable official pins and historical Phase 3 is
     'google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093',
     'google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db',
   ]);
-  for (const file of files) {
-    const source = fs.readFileSync(path.join(workflowDirectory, file), 'utf8');
+  for (const retired of ['staging-backend-image.yml', 'staging-wif-auth-proof.yml']) assert.equal(fs.existsSync(path.join(workflowDirectory, retired)), false);
+  for (const file of [...files, 'staging-backend-image.yml', 'staging-wif-auth-proof.yml']) {
+    const source = file.startsWith('staging-') ? readHistoricalSource('.github/workflows/' + file) : fs.readFileSync(path.join(workflowDirectory, file), 'utf8');
     const uses = [...source.matchAll(/^\s*uses:\s*(\S+)/gmu)].map(
       (match) => match[1],
     );
@@ -812,10 +812,7 @@ test('all workflow actions are immutable official pins and historical Phase 3 is
   assert.match(historical, /^\s*workflow_dispatch:\s*$/mu);
   assert.doesNotMatch(historical, /^\s*(?:pull_request|push):/mu);
 
-  const stagingWif = fs.readFileSync(
-    path.join(workflowDirectory, 'staging-wif-auth-proof.yml'),
-    'utf8',
-  );
+  const stagingWif = readHistoricalSource('.github/workflows/staging-wif-auth-proof.yml');
   assert.match(stagingWif, /^\s*workflow_dispatch:\s*$/mu);
   assert.doesNotMatch(stagingWif, /^\s*(?:pull_request|push):/mu);
 
@@ -849,15 +846,7 @@ test('all workflow actions are immutable official pins and historical Phase 3 is
 });
 
 test('the staging backend image workflow is manual, least-privileged, and immutably pinned', () => {
-  const workflow = fs.readFileSync(
-    path.join(
-      REPOSITORY_ROOT,
-      '.github',
-      'workflows',
-      'staging-backend-image.yml',
-    ),
-    'utf8',
-  );
+  const workflow = readHistoricalSource('.github/workflows/staging-backend-image.yml');
 
   assert.match(
     workflow,

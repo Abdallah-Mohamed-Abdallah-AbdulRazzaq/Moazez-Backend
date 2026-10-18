@@ -6,6 +6,8 @@ const { GoogleAuth, Impersonated } = require('google-auth-library');
 const {
   RUNTIME_SERVICE_ACCOUNT_IDS,
   assertEvidenceSafe,
+  assertProductionIamConfiguration,
+  assertProductionIamRequest,
   readIamProofConfiguration,
   safeFailureCode,
 } = require('./gcs-batch2-proof-policy.cjs');
@@ -30,7 +32,7 @@ const FAILURE_IDENTITY_BY_RUNTIME_ROLE = Object.freeze({
 async function main() {
   if (process.argv.includes('--help')) {
     process.stdout.write(
-      'Usage: node scripts/storage/gcs-batch2-iam-proof.cjs --environment nonprod|production [--run-id ID]\n',
+      'Usage: node scripts/storage/gcs-batch2-iam-proof.cjs --environment production [--run-id ID]\n',
     );
     return;
   }
@@ -48,6 +50,8 @@ async function main() {
 }
 
 async function runIamProof(configuration, dependencyOverrides = {}) {
+  assertProductionIamConfiguration(configuration);
+
   const evidence = {
     schemaVersion: 1,
     proof: 'PRD5A-G03_IAM_ALLOW_DENY',
@@ -362,6 +366,8 @@ async function checkOperatorImpersonationPrerequisites(
   configuration,
   permissionTester = testPermissions,
 ) {
+  assertProductionIamConfiguration(configuration);
+
   const targets = {
     api: `moazez-api-runtime@${configuration.projectId}.iam.gserviceaccount.com`,
     core: `moazez-core-worker@${configuration.projectId}.iam.gserviceaccount.com`,
@@ -401,6 +407,7 @@ async function assertPermissionContract(input) {
   const requested = [...new Set([...input.expected, ...input.prohibited])];
   assertPermissionResourceScope(input.resourceKind, requested);
   const request = permissionRequestForResource(input);
+  assertProductionIamRequest(request.url, request.method);
   const granted = new Set(
     await (input.testPermissions ?? testPermissions)(
       input.auth,
@@ -478,6 +485,8 @@ function permissionRequestForResource(input) {
 }
 
 async function testPermissions(auth, resource, permissions, method = 'GET') {
+  assertProductionIamRequest(resource, method);
+
   const response = await auth.request(
     buildTestPermissionsRequest(resource, permissions, method),
   );

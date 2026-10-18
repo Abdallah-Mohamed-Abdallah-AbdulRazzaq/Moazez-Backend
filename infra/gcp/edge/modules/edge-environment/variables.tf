@@ -1,6 +1,11 @@
 variable "project_id" {
   description = "Google Cloud project ID."
   type        = string
+
+  validation {
+    condition     = var.project_id != "moazez-nonprod-91001421934"
+    error_message = "The retired Staging project is permanently prohibited."
+  }
 }
 
 variable "region" {
@@ -11,10 +16,11 @@ variable "region" {
 variable "environment" {
   description = "Environment name used in resource names."
   type        = string
+  nullable    = false
 
   validation {
-    condition     = contains(["staging", "production"], var.environment)
-    error_message = "environment must be either staging or production."
+    condition     = var.environment == "production"
+    error_message = "environment must be production; staging is retired."
   }
 }
 

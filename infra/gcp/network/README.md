@@ -1,5 +1,9 @@
 # Network foundation infrastructure
 
+> Current source authority: [ADR-0016 Staging retirement](../../../adr/ADR-0016-staging-retirement-and-production-preservation.md). Staging/nonprod deployment and bootstrap recipes below are historical evidence and cannot be executed. Historical proofs use immutable commit `8449769bcb453dd3ac8436d2b71c133e6369f6fa` only in isolated synthetic tests. Production application/data contracts remain governed by their existing authorities.
+>
+> `gcs-batch2-readonly-proof.ps1` is historical-only and permanently refuses every target with `LEGACY_STORAGE_PROOF_RETIRED`. Its empty-bucket condition is superseded by ADR-0006 and the unchanged `IN_PLACE_LIVE_PRODUCTION` preservation contract: never clear, move, copy or reseed Production data to satisfy an old proof. `gcs-batch2-preflight.ps1 -Environment production` provides limited read-only inspection and does not replace the retired IAM/CORS compliance proof. No omitted, retired or unknown selector falls back to Production.
+
 This directory owns governed Terraform source for the Staging and Production
 network foundations. Both executable roots reuse
 `modules/network-environment`; neither root creates resources outside that

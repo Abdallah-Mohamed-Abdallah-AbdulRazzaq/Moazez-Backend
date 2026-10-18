@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { readHistoricalSource, readCurrentSource, variableBlock } = require('./helpers/staging-retirement-source-policy.cjs');
 const {
   NODE_ENGINE,
   NODE_IMAGE,
@@ -23,19 +24,8 @@ test('the repository satisfies the supported runtime policy', () => {
 });
 
 test('the staging API Terraform edge contract remains canonical', () => {
-  const stagingRuntimeCaller = fs.readFileSync(
-    path.join(
-      REPOSITORY_ROOT,
-      'infra',
-      'gcp',
-      'backend-runtime',
-      'environments',
-      'nonprod',
-      'runtime',
-      'main.tf',
-    ),
-    'utf8',
-  );
+  const stagingRuntimeCaller = readHistoricalSource('infra/gcp/backend-runtime/environments/nonprod/runtime/main.tf');
+  assert.match(variableBlock(readCurrentSource('infra/gcp/backend-runtime/modules/runtime-environment/variables.tf'), 'environment'), /var\.environment == "production"/u);
   const sharedRuntimeModule = fs.readFileSync(
     path.join(
       REPOSITORY_ROOT,

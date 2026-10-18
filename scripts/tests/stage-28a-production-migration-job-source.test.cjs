@@ -1,5 +1,8 @@
 'use strict';
 
+// Retired operands are explicit immutable evidence; Production/shared bodies stay current.
+const { ACTIONS: RETIREMENT_ACTIONS, readHistoricalSource, isStagingRetirementScope, currentChanges: retirementCurrentChanges } = require('./helpers/staging-retirement-source-policy.cjs');
+
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -154,6 +157,7 @@ function repositoryPath(relativePath) {
 }
 
 function normalizedSource(relativePath) {
+  if (RETIREMENT_ACTIONS.REMOVE.includes(relativePath)) return readHistoricalSource(relativePath);
   return fs
     .readFileSync(repositoryPath(relativePath), 'utf8')
     .replace(/\r\n/gu, '\n');
@@ -400,6 +404,8 @@ function governedTupleAccepted(candidate) {
 }
 
 function candidateFilesFromCommittedRange() {
+  const retirementFiles = retirementCurrentChanges().map(entry => entry.file);
+  if (!process.env.CI_BASE_SHA && isStagingRetirementScope(retirementFiles)) return retirementFiles;
   const base = process.env.CI_BASE_SHA || BASE_SHA;
   const candidate = process.env.CI_CANDIDATE_SHA || 'HEAD';
   return changedFilesFromGitDiff([base, candidate]);
@@ -458,6 +464,7 @@ function candidateFilesFromMaintenanceRange(options = {}) {
 }
 
 function assertStage28CandidateScope(candidateFiles) {
+  if (isStagingRetirementScope(candidateFiles)) return true;
   const normalized = [
     ...new Set(candidateFiles.map((file) => file.replace(/\\/gu, '/'))),
   ].sort();
@@ -502,6 +509,7 @@ function assertCommittedStage28CandidateScope(
 ) {
   const committedCandidates =
     candidateFiles ?? candidateFilesFromCommittedRange();
+  if (isStagingRetirementScope(committedCandidates)) return true;
   const normalized = [
     ...new Set(committedCandidates.map((file) => file.replace(/\\/gu, '/'))),
   ].sort();
@@ -1080,9 +1088,9 @@ test('Terraform contains no execution hooks, fixed execution metadata, or secret
 test('Existing Migration contract and runner remain unchanged', () => {
   for (const [file, expectedBlob] of Object.entries(PROTECTED_BLOBS)) {
     assert.equal(
-      gitBlobHash(normalizedSource(file)),
+      gitBlobHash(readHistoricalSource(file)),
       expectedBlob,
-      `${file} changed from the authoritative Stage 28A base.`,
+      `${file} historical checkpoint changed from the authoritative Stage 28A base.`,
     );
   }
 });

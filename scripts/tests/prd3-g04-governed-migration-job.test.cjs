@@ -6,6 +6,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const test = require('node:test');
+const { loadHistoricalModule } = require('./helpers/staging-retirement-source-policy.cjs');
+const historicalMigration = loadHistoricalModule('scripts/migrations/run-governed-migration-job.cjs');
 const {
   buildManifest,
   MigrationManifestError,
@@ -914,7 +916,7 @@ test('requires staging and production governance references to bind the executio
     'production',
   );
   assert.equal(
-    validateEnvironment(
+    historicalMigration.validateEnvironment(
       productionEnvironment({ MIGRATION_JOB_ENVIRONMENT: 'staging' }),
     ).environment,
     'staging',
@@ -1442,12 +1444,19 @@ historicalTest(
       [
         'diff',
         '--quiet',
-        'HEAD',
+        '8449769bcb453dd3ac8436d2b71c133e6369f6fa',
         '--',
         'prisma/schema.prisma',
         'prisma/migrations',
         'package-lock.json',
         'src',
+        // The six approved bootstrap source/test transitions have separate current refusal gates.
+        ':(exclude)src/modules/platform-admin/bootstrap/platform-admin-bootstrap.environment.ts',
+        ':(exclude)src/modules/platform-admin/bootstrap/tests/platform-admin-bootstrap.environment.spec.ts',
+        ':(exclude)src/platform-admin-bootstrap.ts',
+        ':(exclude)src/platform-admin-bootstrap.spec.ts',
+        ':(exclude)src/reference-data-bootstrap.ts',
+        ':(exclude)src/reference-data-bootstrap.spec.ts',
       ],
       { cwd: REPOSITORY_ROOT, windowsHide: true },
     );
@@ -1490,4 +1499,18 @@ test('current G04 contract retains deterministic manifest and serial release enf
       ),
     ),
   );
+});
+
+test('retired and invalid migration targets refuse before manifest, executor or subprocess work', async () => {
+  for (const environment of ['staging', 'nonprod', undefined, null, '', 'unknown', 'preview', 'constructor', '__proto__', 'Production', ' production ']) {
+    let manifestCalls = 0; let executorCalls = 0; let subprocessCalls = 0;
+    const env = productionEnvironment({ MIGRATION_JOB_ENVIRONMENT: environment });
+    assert.throws(() => validateEnvironment(env), { code: 'migration_environment_contract_invalid' });
+    await assert.rejects(() => runGovernedMigrationJob({ environment: env, logger() {},
+      verifyManifest: () => { manifestCalls += 1; },
+      createExecutor: () => { executorCalls += 1; throw new Error('unexpected executor'); },
+      executePrisma: async () => { subprocessCalls += 1; }
+    }), { code: 'migration_environment_contract_invalid' });
+    assert.equal(manifestCalls, 0); assert.equal(executorCalls, 0); assert.equal(subprocessCalls, 0);
+  }
 });

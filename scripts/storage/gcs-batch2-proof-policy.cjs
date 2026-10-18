@@ -79,8 +79,8 @@ function expectedRuntimeServiceAccount(environment, runtimeRole) {
 function readObjectProofConfiguration(options) {
   const values = parseArguments(options.args);
   const environmentName = values.environment;
+  assertObjectProofTarget({ environmentName, projectId: options.env?.GCP_PROJECT_ID });
   const environment = LOCKED_ENVIRONMENTS[environmentName];
-  if (!environment) throw new Error('proof_environment_invalid');
 
   // This guard must execute before a provider module or client is created.
   if (environmentName === 'production') {
@@ -151,8 +151,9 @@ function readObjectProofConfiguration(options) {
 function readIamProofConfiguration(options) {
   const values = parseArguments(options.args);
   const environmentName = values.environment;
+  if (environmentName === 'staging' || environmentName === 'nonprod' || options.env?.GCP_PROJECT_ID === 'moazez-nonprod-91001421934') throw new Error('retired_staging_environment');
+  if (environmentName !== 'production' || !Object.hasOwn(LOCKED_ENVIRONMENTS, environmentName)) throw new Error('proof_environment_invalid');
   const environment = LOCKED_ENVIRONMENTS[environmentName];
-  if (!environment) throw new Error('proof_environment_invalid');
   if (values['runtime-role']) throw new Error('proof_argument_invalid');
   const runId = validateRunId(values['run-id'] ?? createRunId());
   requireExact(
@@ -353,11 +354,47 @@ function safeFailureCode(error) {
   return 'proof_failed';
 }
 
+
+function assertObjectProofTarget(configuration) {
+  const environment = configuration?.environmentName;
+  if (environment === 'staging' || environment === 'nonprod' || configuration?.projectId === 'moazez-nonprod-91001421934') {
+    throw new Error('retired_staging_environment');
+  }
+  if (environment === 'production') throw new Error('production_object_writes_prohibited');
+  throw new Error('proof_environment_invalid');
+}
+function assertProductionIamConfiguration(configuration) {
+  if (configuration?.environmentName === 'staging' || configuration?.environmentName === 'nonprod' || configuration?.projectId === 'moazez-nonprod-91001421934') {
+    throw new Error('retired_staging_environment');
+  }
+  if (configuration?.environmentName !== 'production') throw new Error('proof_environment_invalid');
+  const expected = LOCKED_ENVIRONMENTS.production;
+  for (const key of ['projectId', 'privateBucket', 'publishedBucket', 'signerServiceAccount']) {
+    if (configuration[key] !== expected[key]) throw new Error('iam_production_target_invalid');
+  }
+  return configuration;
+}
+function assertProductionIamRequest(resource, method) {
+  const production = LOCKED_ENVIRONMENTS.production;
+  const buckets = [production.privateBucket, production.publishedBucket].map((bucket) =>
+    'https://storage.googleapis.com/storage/v1/b/' + encodeURIComponent(bucket) + '/iam/testPermissions');
+  const serviceAccounts = ['moazez-api-runtime', 'moazez-core-worker', 'moazez-media-worker', 'moazez-gcs-signer', 'moazez-iac-deployer'].map((account) =>
+    'https://iam.googleapis.com/v1/projects/' + encodeURIComponent(production.projectId) + '/serviceAccounts/' + encodeURIComponent(account + '@' + production.projectId + '.iam.gserviceaccount.com') + ':testIamPermissions');
+  const project = 'https://cloudresourcemanager.googleapis.com/v3/projects/' + encodeURIComponent(production.projectId) + ':testIamPermissions';
+  if (typeof resource !== 'string' || !((method === 'GET' && buckets.includes(resource)) || (method === 'POST' && (resource === project || serviceAccounts.includes(resource))))) {
+    throw new Error('iam_production_target_invalid');
+  }
+  return resource;
+}
+
 function requireExact(actual, expected, errorCode) {
   if (actual !== expected) throw new Error(errorCode);
 }
 
 module.exports = {
+  assertObjectProofTarget,
+  assertProductionIamConfiguration,
+  assertProductionIamRequest,
   LOCKED_ENVIRONMENTS,
   RUNTIME_SERVICE_ACCOUNT_IDS,
   assertEvidenceSafe,

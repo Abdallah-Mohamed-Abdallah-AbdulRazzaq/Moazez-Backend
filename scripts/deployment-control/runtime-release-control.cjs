@@ -5362,6 +5362,8 @@ function buildCapacityAwareReleaseGates(context) {
 }
 
 function buildCapacityAwareReleaseManifestV6(input) {
+  throw new DeploymentControlError('STAGING_ENVIRONMENT_RETIRED', 'Staging release authority is permanently retired.');
+
   requireExactKeys(
     input,
     [
@@ -5886,6 +5888,8 @@ function buildV6PostEdgeContinuationGates(context) {
 }
 
 function buildPostEdgeSourceContinuationManifestV6(input) {
+  throw new DeploymentControlError('STAGING_ENVIRONMENT_RETIRED', 'Staging release authority is permanently retired.');
+
   requireExactKeys(
     input,
     [
@@ -6048,6 +6052,8 @@ function buildPostEdgeSourceContinuationManifestV6(input) {
 }
 
 function buildManifest(input) {
+  throw new DeploymentControlError('STAGING_ENVIRONMENT_RETIRED', 'Staging release authority is permanently retired.');
+
   const context = requireObject(input, 'context');
   if (!Object.hasOwn(context, 'executionMode')) {
     return buildManifestV1(context);
@@ -8926,6 +8932,8 @@ function validateCapacityAwareReleaseManifestV6(manifest) {
 }
 
 function validateManifest(manifest) {
+  throw new DeploymentControlError('STAGING_ENVIRONMENT_RETIRED', 'Staging release authority is permanently retired.');
+
   const candidate = requireObject(manifest, 'manifest');
   if (candidate.manifestVersion === 1) {
     return validateManifestV1(candidate);
@@ -10368,6 +10376,8 @@ function reviewPlanFiles(options) {
 }
 
 function registerPlan(manifest, options) {
+  throw new DeploymentControlError('STAGING_ENVIRONMENT_RETIRED', 'Staging release authority is permanently retired.');
+
   validateManifest(manifest);
   assertSourceBinding(manifest);
   const { gate, operation } = findOperation(
@@ -10571,6 +10581,8 @@ function registerPlan(manifest, options) {
 }
 
 function approvePlan(manifest, options) {
+  throw new DeploymentControlError('STAGING_ENVIRONMENT_RETIRED', 'Staging release authority is permanently retired.');
+
   validateManifest(manifest);
   assertSourceBinding(manifest);
   const { gate, operation } = findOperation(
@@ -10621,6 +10633,8 @@ function stopRelease(manifest, gate, operation, evidenceRef, recordedAt) {
 }
 
 function recordApply(manifest, options) {
+  throw new DeploymentControlError('STAGING_ENVIRONMENT_RETIRED', 'Staging release authority is permanently retired.');
+
   validateManifest(manifest);
   assertSourceBinding(manifest);
   const { gate, operation } = findOperation(
@@ -10809,6 +10823,8 @@ function bindSuccessorState(manifest, operation) {
 }
 
 function recordVerification(manifest, options) {
+  throw new DeploymentControlError('STAGING_ENVIRONMENT_RETIRED', 'Staging release authority is permanently retired.');
+
   validateManifest(manifest);
   assertSourceBinding(manifest);
   const { gate, operation } = findOperation(
@@ -10878,6 +10894,8 @@ function recordVerification(manifest, options) {
 }
 
 function writeJsonAtomic(filePath, value) {
+  throw new DeploymentControlError('STAGING_ENVIRONMENT_RETIRED', 'Staging release authority is permanently retired.');
+
   const resolved = requireExternalAbsolutePath(filePath, 'manifestPath');
   fs.mkdirSync(path.dirname(resolved), { recursive: true });
   const temporary = `${resolved}.tmp-${process.pid}`;
@@ -10934,6 +10952,8 @@ function loadManifestForUpdate(options) {
 }
 
 function runCli(argv = process.argv.slice(2)) {
+  throw new DeploymentControlError('STAGING_ENVIRONMENT_RETIRED', 'Staging release authority is permanently retired.');
+
   const { command, options } = parseCliArguments(argv);
   if (command === 'create-spec') {
     const inputPath = path.resolve(requireCliOption(options, 'input'));

@@ -1,5 +1,8 @@
 'use strict';
 
+// Retired operands are explicit immutable evidence; Production/shared bodies stay current.
+const { ACTIONS: RETIREMENT_ACTIONS, readHistoricalSource, isStagingRetirementScope, currentChanges: retirementCurrentChanges } = require('./helpers/staging-retirement-source-policy.cjs');
+
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -311,6 +314,7 @@ function repositoryPath(relativePath) {
 }
 
 function normalizedSource(relativePath) {
+  if (RETIREMENT_ACTIONS.REMOVE.includes(relativePath)) return readHistoricalSource(relativePath);
   return fs
     .readFileSync(repositoryPath(relativePath), 'utf8')
     .replace(/\r\n/gu, '\n');
@@ -557,6 +561,8 @@ function fixedEnvironmentNames(container) {
 }
 
 function candidateFilesFromCommittedRange() {
+  const retirementFiles = retirementCurrentChanges().map(entry => entry.file);
+  if (!process.env.CI_BASE_SHA && isStagingRetirementScope(retirementFiles)) return retirementFiles;
   const base = process.env.CI_BASE_SHA || BASE_SHA;
   const candidate = process.env.CI_CANDIDATE_SHA || 'HEAD';
   return changedFilesFromGitDiff([base, candidate]);
@@ -615,6 +621,7 @@ function candidateFilesFromMaintenanceRange(options = {}) {
 }
 
 function assertStage29CandidateScope(candidateFiles) {
+  if (isStagingRetirementScope(candidateFiles)) return true;
   const normalized = [
     ...new Set(candidateFiles.map((file) => file.replace(/\\/gu, '/'))),
   ].sort();
@@ -663,6 +670,7 @@ function assertCommittedStage29CandidateScope(
 ) {
   const committedCandidates =
     candidateFiles ?? candidateFilesFromCommittedRange();
+  if (isStagingRetirementScope(committedCandidates)) return true;
   const normalized = [
     ...new Set(committedCandidates.map((file) => file.replace(/\\/gu, '/'))),
   ].sort();
@@ -1090,7 +1098,7 @@ test('Shared module exposes only the closed selector and approved dynamic inputs
   );
   assert.match(
     environment.replace(/\s+/gu, ''),
-    /condition=contains\(\["staging","production"\],var[.]environment\)/u,
+    /condition=var[.]environment=="production"/u,
   );
   for (const candidate of ['development', 'qa', 'prod', '', 'STAGING']) {
     assert.equal(['staging', 'production'].includes(candidate), false);

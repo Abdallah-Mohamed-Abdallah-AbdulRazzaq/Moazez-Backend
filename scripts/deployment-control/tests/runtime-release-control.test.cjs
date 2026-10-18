@@ -7,8 +7,10 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const control = require('../runtime-release-control.cjs');
-const capacity = require('../runtime-capacity-control.cjs');
+const { loadHistoricalModule } = require('../../tests/helpers/staging-retirement-source-policy.cjs');
+// These release executions are historical synthetic proofs, never current authority.
+const control = loadHistoricalModule('scripts/deployment-control/runtime-release-control.cjs');
+const capacity = loadHistoricalModule('scripts/deployment-control/runtime-capacity-control.cjs');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..', '..');
 const CANDIDATE_IMAGE =

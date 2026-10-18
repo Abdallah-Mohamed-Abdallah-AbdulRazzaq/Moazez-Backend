@@ -6,27 +6,21 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const test = require('node:test');
-const {
-  assertPermissionContract,
-  bucketPermissionUrl,
-  checkOperatorImpersonationPrerequisites,
-  projectPermissionUrl,
-  runIamProof,
-  serviceAccountPermissionUrl,
-  testPermissions,
-} = require('../gcs-batch2-iam-proof.cjs');
+const { readHistoricalSource, readVerifiedHistoricalSourceAtCommit, loadHistoricalModule } = require('../../tests/helpers/staging-retirement-source-policy.cjs');
+const { bucketPermissionUrl, projectPermissionUrl, serviceAccountPermissionUrl } = require('../gcs-batch2-iam-proof.cjs');
+// Historical nonprod execution assertions use fixed source with injected synthetic dependencies.
+const { assertPermissionContract, checkOperatorImpersonationPrerequisites, runIamProof, testPermissions } = loadHistoricalModule('scripts/storage/gcs-batch2-iam-proof.cjs');
 const { assertEvidenceSafe } = require('../gcs-batch2-proof-policy.cjs');
-const {
-  assertAvailable,
-  executeProofStage,
-} = require('../gcs-batch2-proof.cjs');
+const { executeProofStage } = require('../gcs-batch2-proof.cjs');
+const { assertAvailable } = loadHistoricalModule('scripts/storage/gcs-batch2-proof.cjs');
 
 const repositoryRoot = path.resolve(__dirname, '..', '..', '..');
 const preflight = read('scripts/storage/gcs-batch2-preflight.ps1');
-const readOnlyProof = read('scripts/storage/gcs-batch2-readonly-proof.ps1');
+const readOnlyProof = readHistoricalSource('scripts/storage/gcs-batch2-readonly-proof.ps1');
+const historicalPreflight = readHistoricalSource('scripts/storage/gcs-batch2-preflight.ps1');
 const objectProof = read('scripts/storage/gcs-batch2-proof.cjs');
 const iamProof = read('scripts/storage/gcs-batch2-iam-proof.cjs');
-const runbook = read(
+const runbook = readHistoricalSource(
   'docs/production-readiness/phase-5a/01-gcs-iac-and-real-proof-runbook.md',
 );
 
@@ -49,9 +43,14 @@ test('preflight is read-only, fail-closed, and distinguishes visibility failures
     'BOOTSTRAP_REQUIRED_API',
     'TERRAFORM_MANAGED_APIS',
   ]) {
-    assert.match(preflight, new RegExp(required, 'u'));
+    assert.match(historicalPreflight, new RegExp(required, 'u'));
+    if (!['NONPROD_PROJECT_ACCESS', 'BOOTSTRAP_REQUIRED_API', 'TERRAFORM_MANAGED_APIS'].includes(required)) assert.match(preflight, new RegExp(required, 'u'));
   }
-  assert.match(preflight, /if \(-not \$ready\) \{ exit 3 \}/u);
+  assert.match(historicalPreflight, /if \(-not \$ready\) \{ exit 3 \}/u);
+  assert.match(preflight, /schemaVersion = 2/u);
+  assert.match(preflight, /if \(-not \$inspectionComplete\) \{ exit 3 \}/u);
+  assert.match(preflight, /READY_FOR_NONPROD_TERRAFORM_PLAN = 'NO'/u);
+  assert.doesNotMatch(preflight, /moazez-nonprod-91001421934|CaptureFixtureCommandPath/u);
   assert.match(preflight, /Get-Command gcloud\.cmd -CommandType Application/u);
   assert.doesNotMatch(preflight, /&\s+gcloud\b|Get-Command gcloud\s/u);
   assert.doesNotMatch(
@@ -169,10 +168,10 @@ test('preflight separates Service Usage bootstrap and approved target collisions
     'moazez-gcs-signer',
     'moazez-iac-deployer',
   ]) {
-    assert.match(preflight, new RegExp(escapeRegex(target), 'u'));
+    assert.match(target.includes('nonprod') ? historicalPreflight : preflight, new RegExp(escapeRegex(target), 'u'));
   }
   assert.match(
-    preflight,
+    historicalPreflight,
     /\$nonprodServiceUsage\.enabled -eq \$true[\s\S]*\$nonprod\.EXISTING_TARGET_RESOURCES -eq 'NONE'/u,
   );
 });
@@ -760,7 +759,16 @@ test('runbook preserves promotion order and production write prohibition', () =>
     );
     prerequisitePrevious = index;
   }
-  assert.match(runbook, /BATCH_2_READY_FOR_OPERATOR_EXECUTION=NO/u);
+  const preCloseoutRunbook = readVerifiedHistoricalSourceAtCommit(
+    'docs/production-readiness/phase-5a/01-gcs-iac-and-real-proof-runbook.md',
+    '8e497dc51b592b3d417621b0232853a5c2a31d26',
+    '33f530150544f6bdc7295354a78a47e2518753f3',
+  );
+  {
+    // Only B001-A763 names the pre-closeout operand; its expression is exact.
+    const runbook = preCloseoutRunbook;
+    assert.match(runbook, /BATCH_2_READY_FOR_OPERATOR_EXECUTION=NO/u);
+  }
 });
 
 test('generated proof artifacts and local Terraform state are ignored', () => {
@@ -905,6 +913,8 @@ function runPreflightMode(parameterName, value) {
         'storage',
         'gcs-batch2-preflight.ps1',
       ),
+      '-Environment',
+      'production',
       parameterName,
       value,
     ],
@@ -916,27 +926,12 @@ function runPreflightMode(parameterName, value) {
 
 function captureGcloudFixture(commandPath, scenario) {
   const executable = process.platform === 'win32' ? 'powershell.exe' : 'pwsh';
-  const result = spawnSync(
-    executable,
-    [
-      '-NoProfile',
-      '-File',
-      path.join(
-        repositoryRoot,
-        'scripts',
-        'storage',
-        'gcs-batch2-preflight.ps1',
-      ),
-      '-CaptureFixtureCommandPath',
-      commandPath,
-      '-CaptureFixtureArguments',
-      scenario,
-    ],
-    { encoding: 'utf8' },
-  );
-  const capture = result.stdout.trim()
-    ? JSON.parse(result.stdout.trim())
-    : null;
+  const captureFunction = preflight.match(/^function Invoke-GcloudCapture \{[\s\S]*?^\}/mu)?.[0];
+  assert.ok(captureFunction, 'current capture function must be extracted explicitly');
+  const quotedPath = commandPath.replace(/'/gu, "''");
+  const command = '& { $Environment = \'production\'; $script:GcloudCommandPath = \'' + quotedPath + '\';\n' + captureFunction + '\nInvoke-GcloudCapture @(\'auth\', \'list\', \'--filter=status:ACTIVE\', \'--format=value(account)\') | ConvertTo-Json -Compress\n}';
+  const result = spawnSync(executable, ['-NoProfile', '-NonInteractive', '-Command', command], { encoding: 'utf8', env: { ...process.env, MOAZEZ_CAPTURE_SCENARIO: scenario }, timeout: 20000 });
+  const capture = result.stdout.trim() ? JSON.parse(result.stdout.trim()) : null;
   return { capture, result };
 }
 
@@ -952,9 +947,9 @@ function createGcloudFixture() {
   const content = windows
     ? [
         '@echo off',
-        'if "%~1"=="success" goto success',
-        'if "%~1"=="not-found" goto not_found',
-        'if "%~1"=="authentication-failure" goto authentication_failure',
+        'if "%MOAZEZ_CAPTURE_SCENARIO%"=="success" goto success',
+        'if "%MOAZEZ_CAPTURE_SCENARIO%"=="not-found" goto not_found',
+        'if "%MOAZEZ_CAPTURE_SCENARIO%"=="authentication-failure" goto authentication_failure',
         'exit /b 9',
         ':success',
         'echo fixture-success-stdout',
@@ -970,7 +965,7 @@ function createGcloudFixture() {
       ].join('\r\n')
     : [
         '#!/bin/sh',
-        'case "$1" in',
+        'case "$MOAZEZ_CAPTURE_SCENARIO" in',
         '  success)',
         "    printf '%s\\n' 'fixture-success-stdout'",
         "    printf '%s\\n' 'fixture-success-stderr' >&2",
@@ -996,4 +991,93 @@ function createGcloudFixture() {
       fs.rmSync(directory, { force: true, recursive: true });
     },
   };
+}
+
+test('B001-H03 immutable historical object counts use a fake JSON response queue and exact vectors', (t) => {
+  const output = runHistoricalPowerShellFunctions(t, ['Get-ProductionObjectCounts'], `$script:responses = New-Object 'System.Collections.Generic.Queue[object]'
+$script:calls = New-Object 'System.Collections.Generic.List[string]'
+function Invoke-GcloudJson {
+ param([string[]]$Arguments)
+ $script:calls.Add(($Arguments -join [char]31))
+ if ($script:responses.Count -eq 0) { throw 'unexpected_synthetic_query' }
+ return $script:responses.Dequeue()
+}
+$expected = @(
+ (@('storage','ls','gs://synthetic-bucket/**','--json') -join [char]31)
+ (@('storage','ls','--all-versions','gs://synthetic-bucket/**','--json') -join [char]31)
+ (@('storage','ls','--soft-deleted','--exhaustive','gs://synthetic-bucket/**','--json') -join [char]31)
+)
+foreach ($counts in @(@(0,0,0),@(1,1,0),@(0,1,0),@(0,0,1),@(1,0,0))) {
+ $script:responses.Clear(); $script:calls.Clear()
+ foreach ($count in $counts) {
+  $objects = @(); for ($i = 0; $i -lt $count; $i++) { $objects += [pscustomobject]@{ name = 'synthetic-object' } }
+  $script:responses.Enqueue($objects)
+ }
+ $message = ''; $result = $null
+ try { $result = Get-ProductionObjectCounts 'synthetic-bucket' } catch { $message = $_.Exception.Message }
+ if ($counts[1] -lt $counts[0]) { $required = 'noncurrent_object_count_invalid' }
+ elseif ($counts[0] -gt 0 -or $counts[1] -gt 0 -or $counts[2] -gt 0) { $required = 'production_bucket_not_clean_start' }
+ else { $required = '' }
+ if ($message -cne $required) { throw ('historical_count_contract_mismatch:' + $message) }
+ if ($script:calls.Count -ne 3 -or $script:responses.Count -ne 0) { throw 'historical_query_count_invalid' }
+ for ($i = 0; $i -lt 3; $i++) { if ($script:calls[$i] -cne $expected[$i]) { throw 'historical_query_vector_invalid' } }
+ if ($required -eq '') {
+  if (($result.Keys -join ',') -cne 'bucket,LIVE_OBJECTS,NONCURRENT_OBJECTS,SOFT_DELETED_OBJECTS' -or $result.bucket -cne 'synthetic-bucket' -or $result.LIVE_OBJECTS -ne 0 -or $result.NONCURRENT_OBJECTS -ne 0 -or $result.SOFT_DELETED_OBJECTS -ne 0) { throw 'historical_zero_shape_invalid' }
+ }
+}
+'HISTORICAL_SYNTHETIC_COUNTS_PASS'`);
+  assert.equal(output, 'HISTORICAL_SYNTHETIC_COUNTS_PASS');
+});
+
+test('B001-H03 immutable JSON reader retains the exact gcloud_read_failed contract', (t) => {
+  const output = runHistoricalPowerShellFunctions(t, ['Invoke-GcloudJson'], `$script:calls = 0
+function Invoke-GcloudCapture {
+ param([string[]]$Arguments)
+ $script:calls += 1
+ if (($Arguments -join ',') -cne 'synthetic-read') { throw 'unexpected_capture_arguments' }
+ return [pscustomobject]@{ ExitCode = 7; Stdout = ''; Stderr = 'synthetic-permission-failure' }
+}
+$message = ''
+try { Invoke-GcloudJson @('synthetic-read') | Out-Null } catch { $message = $_.Exception.Message }
+if ($message -cne 'gcloud_read_failed' -or $script:calls -ne 1) { throw ('historical_read_contract_mismatch:' + $message) }
+'HISTORICAL_SYNTHETIC_READ_FAILURE_PASS'`);
+  assert.equal(output, 'HISTORICAL_SYNTHETIC_READ_FAILURE_PASS');
+});
+
+test('B003 pre-closeout runbook snapshot preserves the original not-ready marker', () => {
+ const preCloseout = readVerifiedHistoricalSourceAtCommit(
+   'docs/production-readiness/phase-5a/01-gcs-iac-and-real-proof-runbook.md', '8e497dc51b592b3d417621b0232853a5c2a31d26', '33f530150544f6bdc7295354a78a47e2518753f3');
+ assert.match(preCloseout, /BATCH_2_READY_FOR_OPERATOR_EXECUTION=NO/u);
+ assert.doesNotMatch(preCloseout, /BATCH_2=CLOSED/u);
+});
+test('B003 post-closeout runbook snapshot preserves closure and lacks the earlier marker', () => {
+ const postCloseout = readVerifiedHistoricalSourceAtCommit(
+   'docs/production-readiness/phase-5a/01-gcs-iac-and-real-proof-runbook.md', '8449769bcb453dd3ac8436d2b71c133e6369f6fa', 'be7c0589d07ac7b3685965dd8d2135bc7bccad5f');
+ assert.equal(runbook, postCloseout);
+ assert.match(runbook, /BATCH_2=CLOSED/u);
+ assert.doesNotMatch(runbook, /BATCH_2_READY_FOR_OPERATOR_EXECUTION=NO/u);
+});
+test('B003 immutable runbook reader refuses aliases, foreign paths and mismatched identities', () => {
+ for (const [file, commit, blob] of [
+   ['docs/production-readiness/phase-5a/01-gcs-iac-and-real-proof-runbook.md', 'HEAD', '33f530150544f6bdc7295354a78a47e2518753f3'],
+   ['docs/production-readiness/phase-5a/01-gcs-iac-and-real-proof-runbook.md', '8e497dc', '33f530150544f6bdc7295354a78a47e2518753f3'],
+   ['docs/production-readiness/phase-5a/01-gcs-iac-and-real-proof-runbook.md', '8449769bcb453dd3ac8436d2b71c133e6369f6fa', '33f530150544f6bdc7295354a78a47e2518753f3'],
+   ['docs/production-readiness/phase-5a/01-gcs-iac-and-real-proof-runbook.md', '0'.repeat(40), '33f530150544f6bdc7295354a78a47e2518753f3'],
+   ['README.md', '8e497dc51b592b3d417621b0232853a5c2a31d26', '33f530150544f6bdc7295354a78a47e2518753f3'],
+ ]) assert.throws(() => readVerifiedHistoricalSourceAtCommit(file, commit, blob));
+});
+
+function runHistoricalPowerShellFunctions(t, names, harness) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moazez-historical-counts-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const historicalPath = path.join(root, 'immutable-source.ps1');
+  fs.writeFileSync(historicalPath, readOnlyProof);
+  const extraction = "$tokens = $null; $errors = $null\n$ast = [System.Management.Automation.Language.Parser]::ParseFile('__SOURCE__', [ref]$tokens, [ref]$errors)\nif ($errors.Count) { throw 'historical_parse_failure' }\n$functionHashes = @{\n 'Get-ProductionObjectCounts' = '04f7941e93930ef89b20626ea89b33ef80f01bf356b349be8e29a4402a6e844f'\n 'Invoke-GcloudJson' = '4b2560eb04345a63177ed78c6ab6e9126908e424742a83d754e5daf73db1e00d'\n}\nforeach ($name in @(__NAMES__)) {\n $definitions = @($ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name }, $true))\n if ($definitions.Count -ne 1) { throw 'historical_function_ambiguous' }\n $definition = $definitions[0].Extent.Text.Replace(\"`r`n\", \"`n\")\n $sha = [Security.Cryptography.SHA256]::Create()\n try { $actualHash = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($definition)))).Replace('-', '').ToLowerInvariant() } finally { $sha.Dispose() }\n if ($actualHash -cne $functionHashes[$name]) { throw 'historical_function_hash_mismatch' }\n . ([ScriptBlock]::Create($definition))\n}"
+    .replace('__SOURCE__', historicalPath.replace(/'/gu, "''"))
+    .replace('__NAMES__', names.map(name => "'" + name + "'").join(','));
+  const result = spawnSync(process.platform === 'win32' ? 'powershell.exe' : 'pwsh',
+    ['-NoProfile', '-NonInteractive', '-Command', '& {\n' + extraction + '\n' + harness + '\n}'],
+    { encoding: 'utf8', timeout: 20000, input: '', windowsHide: true, env: { ...process.env, CLOUDSDK_CONFIG: root, GOOGLE_APPLICATION_CREDENTIALS: path.join(root, 'absent.json') } });
+  assert.equal(result.status, 0, result.stderr || result.error?.message);
+  return result.stdout.trim();
 }

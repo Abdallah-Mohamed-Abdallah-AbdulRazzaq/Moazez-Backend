@@ -9,6 +9,7 @@ const { ConfigService } = require('@nestjs/config');
 const { GoogleAuth } = require('google-auth-library');
 const {
   assertEvidenceSafe,
+  assertObjectProofTarget,
   executeGuardedObjectProof,
   safeFailureCode,
   summarizeSignedUrl,
@@ -20,7 +21,7 @@ const SYNTHETIC_CONTENT_TYPE = 'application/octet-stream';
 async function main() {
   if (process.argv.includes('--help')) {
     process.stdout.write(
-      'Usage: node scripts/storage/gcs-batch2-proof.cjs --environment nonprod --runtime-role api|core-worker|media-worker [--run-id ID]\n',
+      'Object proof is retired; Production object writes remain prohibited.\n',
     );
     return;
   }
@@ -35,7 +36,9 @@ async function main() {
   });
 }
 
-async function resolveActiveAdcIdentity() {
+async function resolveActiveAdcIdentity(configuration) {
+  assertObjectProofTarget(configuration);
+
   try {
     const auth = new GoogleAuth({
       scopes: ['https://www.googleapis.com/auth/cloud-platform'],
@@ -47,6 +50,8 @@ async function resolveActiveAdcIdentity() {
 }
 
 function createActualGcsAdapter(configuration) {
+  assertObjectProofTarget(configuration);
+
   const {
     GcsAdapter,
   } = require('../../src/infrastructure/storage/gcs.adapter');
@@ -61,6 +66,8 @@ function createActualGcsAdapter(configuration) {
 }
 
 async function runProof(configuration, adapter) {
+  assertObjectProofTarget(configuration);
+
   const startedAt = new Date();
   const objectKeys = [
     `${configuration.prefix}buffer.bin`,
@@ -270,6 +277,8 @@ async function runProof(configuration, adapter) {
 }
 
 async function assertAvailable(adapter, configuration, evidence) {
+  assertObjectProofTarget(configuration);
+
   await requireBucketAvailable(
     adapter,
     configuration.privateBucket,

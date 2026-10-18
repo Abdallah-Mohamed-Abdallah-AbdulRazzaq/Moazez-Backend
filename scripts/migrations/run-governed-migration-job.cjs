@@ -27,7 +27,7 @@ const REQUIRED_ENVIRONMENT_KEYS = Object.freeze([
   'MIGRATION_JOB_BACKUP_CHECKPOINT',
   'MIGRATION_JOB_DATA_AUTHORITY',
 ]);
-const ALLOWED_ENVIRONMENTS = Object.freeze(['disposable', 'staging', 'production']);
+const ALLOWED_ENVIRONMENTS = Object.freeze(['disposable', 'production']);
 const ARTIFACT_DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/u;
 const EXECUTION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const OPAQUE_REFERENCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/u;
@@ -223,6 +223,7 @@ function createPrismaExecutor(options = {}) {
 
   return function executePrisma(args, remainingMs, environment) {
     return new Promise((resolve) => {
+      validateEnvironment(environment);
       if (remainingMs <= 0) {
         resolve({ exitCode: null, stdout: '', stderr: '', timedOut: true, interrupted: false });
         return;

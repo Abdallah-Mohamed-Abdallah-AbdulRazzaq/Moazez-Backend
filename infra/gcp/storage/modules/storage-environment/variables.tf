@@ -1,10 +1,11 @@
 variable "environment" {
   description = "Locked Moazez cloud environment represented by this module instance."
   type        = string
+  nullable    = false
 
   validation {
-    condition     = contains(["nonprod", "production"], var.environment)
-    error_message = "environment must be nonprod or production."
+    condition     = var.environment == "production"
+    error_message = "environment must be production; staging is retired."
   }
 }
 
@@ -18,5 +19,10 @@ variable "project_id" {
       "moazez-production",
     ], var.project_id)
     error_message = "project_id must be one of the two Owner-approved projects."
+  }
+
+  validation {
+    condition     = var.project_id != "moazez-nonprod-91001421934"
+    error_message = "The retired Staging project is permanently prohibited."
   }
 }

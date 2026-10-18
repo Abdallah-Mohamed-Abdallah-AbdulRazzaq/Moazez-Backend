@@ -286,6 +286,9 @@ export async function runPlatformAdminBootstrapCli(
 
   try {
     argumentsValue = parsePlatformAdminBootstrapArguments(argv);
+    if (argumentsValue.environment !== 'production') {
+      throw new PlatformAdminBootstrapCliError('UNSUPPORTED_ENVIRONMENT');
+    }
   } catch (error) {
     const output = classifyCliError(error);
     writeOutput(formatPlatformAdminBootstrapOutput(output));
@@ -293,11 +296,14 @@ export async function runPlatformAdminBootstrapCli(
   }
 
   try {
-    const assertEnvironment =
-      dependencies.assertEnvironment ?? assertPlatformAdminBootstrapEnvironment;
-    assertEnvironment(
+    const rawEnvironment = dependencies.rawEnvironment ?? process.env;
+    assertPlatformAdminBootstrapEnvironment(
       argumentsValue.environment,
-      dependencies.rawEnvironment ?? process.env,
+      rawEnvironment,
+    );
+    dependencies.assertEnvironment?.(
+      argumentsValue.environment,
+      rawEnvironment,
     );
   } catch {
     const output: PlatformAdminBootstrapOutput = {

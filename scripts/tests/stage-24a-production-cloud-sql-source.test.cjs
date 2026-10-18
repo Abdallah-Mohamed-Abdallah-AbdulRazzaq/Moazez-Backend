@@ -1,5 +1,8 @@
 'use strict';
 
+// Retired operands are explicit immutable evidence; Production/shared bodies stay current.
+const { ACTIONS: RETIREMENT_ACTIONS, readHistoricalSource, isStagingRetirementScope, currentChanges: retirementCurrentChanges } = require('./helpers/staging-retirement-source-policy.cjs');
+
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -103,7 +106,7 @@ const STAGING_BASELINE_BLOBS = Object.freeze({
 const VARIABLE_VALIDATION_CONDITIONS = Object.freeze({
   project_id:
     'contains(["moazez-nonprod-91001421934","moazez-production"],var.project_id)',
-  environment: 'contains(["staging","production"],var.environment)',
+  environment: 'var.environment=="production"',
   region: 'var.region=="me-central2"',
   instance_name:
     'contains(["moazez-staging-postgres-me-central2","moazez-production-postgres-me-central2"],var.instance_name)',
@@ -143,6 +146,7 @@ function absolutePath(relativePath) {
 }
 
 function readSource(relativePath) {
+  if (RETIREMENT_ACTIONS.REMOVE.includes(relativePath)) return readHistoricalSource(relativePath);
   return fs.readFileSync(absolutePath(relativePath), 'utf8');
 }
 
@@ -877,9 +881,7 @@ test('Lifecycle guard is an exact Staging-or-Production tuple gate', () => {
 });
 
 test('Production lockfile and README retain temporary source-only governance', () => {
-  const nonprodLock = fs.readFileSync(
-    absolutePath(`${NONPROD_ROOT}/.terraform.lock.hcl`),
-  );
+  const nonprodLock = Buffer.from(readHistoricalSource(`${NONPROD_ROOT}/.terraform.lock.hcl`));
   const productionLock = fs.readFileSync(
     absolutePath(`${PRODUCTION_ROOT}/.terraform.lock.hcl`),
   );
