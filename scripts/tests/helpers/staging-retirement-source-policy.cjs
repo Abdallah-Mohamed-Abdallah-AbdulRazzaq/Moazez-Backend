@@ -302,13 +302,69 @@ function loadHistoricalModule(relativePath) {
 function expectedActions() {
   return new Map(Object.entries(ACTIONS).flatMap(([kind, files]) => files.map((file) => [file, kind === 'REMOVE' ? 'D' : kind === 'ADD' ? 'A' : 'M'])));
 }
+const CI_RUNTIME_PATHS = Object.freeze([
+  'artifacts/ci/plan/ci-plan.json',
+  'artifacts/ci/evidence/runtime-governance-1-of-1.json',
+  'artifacts/ci/minio-fixture/minio-image.tar',
+]);
+// These are outputs of the unchanged canonical CI workflow, never source ADDs.
+// Dependency injection keeps negative coverage isolated from the real checkout.
+function classifyCiRuntimeFiles({ untracked, environment, headSha, trackedChanges, readJson, stat, createPlan }) {
+  if (!untracked.some((file) => CI_RUNTIME_PATHS.includes(file))) return [];
+  assert.equal(environment.CI, 'true', 'CI runtime data requires CI provenance');
+  assert.equal(environment.GITHUB_ACTIONS, 'true', 'CI runtime data requires GitHub Actions');
+  assert.equal(environment.GITHUB_REPOSITORY, 'Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend');
+  assert.equal(environment.GITHUB_REPOSITORY_ID, '1217512033');
+  assert.equal(environment.GITHUB_WORKFLOW, 'CI');
+  assert.equal(environment.GITHUB_JOB, 'regression');
+  for (const key of ['GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT']) assert.match(environment[key] ?? '', /^[1-9][0-9]*$/u, key);
+  assert.match(headSha, /^[a-f0-9]{40}$/u);
+  assert.equal(environment.CI_CANDIDATE_SHA, headSha, 'CI runtime candidate must be actual HEAD');
+  assert.equal(environment.CI_BASE_SHA, BASELINE_SHA, 'CI runtime base must be approved');
+  assert.deepEqual(trackedChanges, [], 'CI runtime classification requires an immutable tracked checkout');
+  for (const file of CI_RUNTIME_PATHS) {
+    assert.ok(untracked.includes(file), 'incomplete CI runtime outputs: ' + file);
+    const metadata = stat(file);
+    assert.ok(metadata.isFile() && !metadata.isSymbolicLink() && metadata.size > 0, 'invalid CI runtime file: ' + file);
+  }
+  const plan = readJson(CI_RUNTIME_PATHS[0]);
+  assert.deepEqual(plan, createPlan({ candidateSha: headSha, baseSha: BASELINE_SHA }), 'CI plan must match canonical committed-source plan');
+  const shards = plan.shards.filter((shard) => shard.id === 'runtime-governance-1-of-1');
+  assert.equal(shards.length, 1);
+  const shard = shards[0];
+  assert.equal(shard.profile, 'runtime-governance');
+  assert.equal(shard.category, 'invariant');
+  assert.ok(shard.files.includes('scripts/tests/staging-retirement-source.test.cjs'));
+  const evidence = readJson(CI_RUNTIME_PATHS[1]);
+  for (const [key, value] of Object.entries({
+    schemaVersion: 1, candidateSha: headSha, baseSha: BASELINE_SHA,
+    jobId: shard.id, category: shard.category, profile: shard.profile,
+    shardIndex: shard.index, shardTotal: shard.total, testFileCount: shard.files.length,
+    status: 'RUNNING', cleanupStatus: 'PENDING', classification: null, finishedAt: null,
+  })) assert.equal(evidence[key], value, 'CI runtime evidence ' + key);
+  assert.deepEqual(evidence.testFiles, shard.files);
+  assert.deepEqual(evidence.executedTestFiles, []);
+  // The opaque tar is already loaded/verified by CI; this guard reads no binary.
+  return [...CI_RUNTIME_PATHS];
+}
 function currentChanges() {
   const changes = git(['diff', '--name-status', '--no-renames', BASELINE_SHA, '--']).trim().split(/\r?\n/u).filter(Boolean).map((line) => {
     const [action, file, ...extra] = line.split('\t');
     assert.deepEqual(extra, [], 'rename/copy is not authorized');
     return { action, file };
   });
-  for (const file of git(['ls-files', '--others', '--exclude-standard']).trim().split(/\r?\n/u).filter(Boolean)) changes.push({ action: 'A', file });
+  const untracked = git(['ls-files', '--others', '--exclude-standard']).trim().split(/\r?\n/u).filter(Boolean);
+  let runtimeFiles = [];
+  if (untracked.some((file) => CI_RUNTIME_PATHS.includes(file))) {
+    runtimeFiles = classifyCiRuntimeFiles({
+      untracked, environment: process.env, headSha: git(['rev-parse', 'HEAD']).trim(),
+      trackedChanges: git(['diff', '--name-only', 'HEAD', '--']).trim().split(/\r?\n/u).filter(Boolean),
+      stat: (file) => fs.lstatSync(path.join(REPOSITORY_ROOT, file)),
+      readJson: (file) => JSON.parse(readCurrentSource(file)),
+      createPlan: (options) => require('../../ci/plan-ci.cjs').createCiPlan({ repositoryRoot: REPOSITORY_ROOT, ...options }),
+    });
+  }
+  for (const file of untracked.filter((file) => !runtimeFiles.includes(file))) changes.push({ action: 'A', file });
   return changes;
 }
 function assertApprovedActions(changes = currentChanges(), { complete = true } = {}) {
@@ -429,7 +485,7 @@ function prepareTerraformFixtures(outputDirectory) {
 module.exports = Object.freeze({
   BASELINE_SHA, REPOSITORY_ROOT, ACTIONS, SELECTORS, HISTORICAL_MODULES,
   readHistoricalSource, readVerifiedHistoricalSourceAtCommit, readCurrentSource, loadHistoricalModule, expectedActions,
-  currentChanges, assertApprovedActions, isStagingRetirementScope, variableBlock,
+  CI_RUNTIME_PATHS, classifyCiRuntimeFiles, currentChanges, assertApprovedActions, isStagingRetirementScope, variableBlock,
   prepareTerraformFixtures,
 });
 if (require.main === module) {

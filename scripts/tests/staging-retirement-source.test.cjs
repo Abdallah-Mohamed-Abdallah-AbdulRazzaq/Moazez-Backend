@@ -60,6 +60,86 @@ test('retirement has the exact approved paths and actions, with no implicit scop
   for (const file of ACTIONS.REMOVE) assert.equal(fs.existsSync(path.join(REPOSITORY_ROOT, file)), false, file);
   assert.equal(git(['ls-tree', '-r', '--name-only', BASELINE_SHA]).trim().split(/\r?\n/u).length, 4098);
 });
+function ciRuntimeFixture() {
+  const headSha = git(['rev-parse', 'HEAD']).trim();
+  const canonical = planner.createCiPlan({ repositoryRoot: REPOSITORY_ROOT, candidateSha: headSha, baseSha: BASELINE_SHA });
+  const shard = canonical.shards.find((item) => item.id === 'runtime-governance-1-of-1');
+  const documents = {
+    [policy.CI_RUNTIME_PATHS[0]]: structuredClone(canonical),
+    [policy.CI_RUNTIME_PATHS[1]]: {
+      schemaVersion: 1, candidateSha: headSha, baseSha: BASELINE_SHA, jobId: shard.id,
+      category: shard.category, profile: shard.profile, shardIndex: shard.index, shardTotal: shard.total,
+      testFiles: [...shard.files], executedTestFiles: [], testFileCount: shard.files.length,
+      status: 'RUNNING', cleanupStatus: 'PENDING', classification: null, finishedAt: null,
+    },
+  };
+  const reads = [];
+  return {
+    documents, reads,
+    options: {
+      untracked: [...policy.CI_RUNTIME_PATHS], headSha, trackedChanges: [],
+      environment: {
+        CI: 'true', GITHUB_ACTIONS: 'true', GITHUB_REPOSITORY: 'Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend',
+        GITHUB_REPOSITORY_ID: '1217512033', GITHUB_WORKFLOW: 'CI', GITHUB_JOB: 'regression',
+        GITHUB_RUN_ID: '123456', GITHUB_RUN_ATTEMPT: '1', CI_CANDIDATE_SHA: headSha, CI_BASE_SHA: BASELINE_SHA,
+      },
+      stat: () => ({ isFile: () => true, isSymbolicLink: () => false, size: 100 }),
+      readJson: (file) => { reads.push(file); assert.ok(Object.hasOwn(documents, file), 'binary/unexpected file read'); return documents[file]; },
+      createPlan: (options) => { assert.deepEqual(options, { candidateSha: headSha, baseSha: BASELINE_SHA }); return canonical; },
+    },
+  };
+}
+test('CI runtime ownership requires the canonical exact-head plan and never reads the fixture binary', () => {
+  const fixture = ciRuntimeFixture();
+  assert.deepEqual(policy.classifyCiRuntimeFiles(fixture.options), policy.CI_RUNTIME_PATHS);
+  assert.deepEqual(fixture.reads, policy.CI_RUNTIME_PATHS.slice(0, 2));
+  assert.deepEqual(policy.classifyCiRuntimeFiles({ untracked: ACTIONS.ADD }), []);
+});
+test('CI runtime ownership rejects omitted, forged or mismatched provenance before file access', () => {
+  const fixture = ciRuntimeFixture();
+  for (const key of Object.keys(fixture.options.environment)) {
+    for (const value of [undefined, 'wrong']) {
+      const options = { ...fixture.options, environment: { ...fixture.options.environment, [key]: value } };
+      assert.throws(() => policy.classifyCiRuntimeFiles(options), undefined, key);
+    }
+  }
+  assert.throws(() => policy.classifyCiRuntimeFiles({ ...fixture.options, headSha: 'wrong' }));
+  assert.throws(() => policy.classifyCiRuntimeFiles({ ...fixture.options, trackedChanges: ['src/main.ts'] }));
+  assert.deepEqual(fixture.reads, []);
+});
+test('CI runtime ownership rejects incomplete files, symlinks, malformed plans and foreign shard evidence', () => {
+  const fixture = ciRuntimeFixture();
+  for (const file of policy.CI_RUNTIME_PATHS) {
+    assert.throws(() => policy.classifyCiRuntimeFiles({ ...fixture.options, untracked: policy.CI_RUNTIME_PATHS.filter((item) => item !== file) }));
+  }
+  for (const stat of [
+    () => ({ isFile: () => false, isSymbolicLink: () => false, size: 100 }),
+    () => ({ isFile: () => true, isSymbolicLink: () => true, size: 100 }),
+    () => ({ isFile: () => true, isSymbolicLink: () => false, size: 0 }),
+  ]) assert.throws(() => policy.classifyCiRuntimeFiles({ ...fixture.options, stat }));
+  assert.throws(() => policy.classifyCiRuntimeFiles({ ...fixture.options, readJson: () => JSON.parse('{') }));
+  fixture.documents[policy.CI_RUNTIME_PATHS[0]].inventory.active -= 1;
+  assert.throws(() => policy.classifyCiRuntimeFiles(fixture.options), /canonical committed-source plan/u);
+  const evidenceFixture = ciRuntimeFixture();
+  const evidence = evidenceFixture.documents[policy.CI_RUNTIME_PATHS[1]];
+  for (const key of Object.keys(evidence)) {
+    const original = evidence[key];
+    evidence[key] = key === 'executedTestFiles' ? ['foreign.test.cjs'] : undefined;
+    assert.throws(() => policy.classifyCiRuntimeFiles(evidenceFixture.options), undefined, key);
+    evidence[key] = original;
+  }
+});
+test('CI runtime classification never authorizes tracked artifacts or any extra source path', () => {
+  const fixture = ciRuntimeFixture();
+  const unexpected = ['artifacts/ci/extra.json', 'artifacts/ci/evidence/foreign.json', 'artifacts/ci/hidden.test.cjs', 'src/unapproved.ts'];
+  const untracked = [...policy.CI_RUNTIME_PATHS, ...unexpected];
+  const runtime = policy.classifyCiRuntimeFiles({ ...fixture.options, untracked });
+  assert.deepEqual(untracked.filter((file) => !runtime.includes(file)), unexpected);
+  for (const file of [...policy.CI_RUNTIME_PATHS, ...unexpected]) {
+    assert.throws(() => policy.assertApprovedActions([{ action: 'A', file }], { complete: false }), /unapproved path\/action/u);
+    assert.throws(() => policy.classifyCiRuntimeFiles({ ...fixture.options, trackedChanges: [file] }));
+  }
+});
 test('all eleven selectors fail closed and all other shared Terraform inputs remain equivalent', () => {
   assert.equal(SELECTORS.length, 11);
   for (const { path: file, selector } of SELECTORS) {
