@@ -9,15 +9,21 @@ variable "project_id" {
     ], var.project_id)
     error_message = "project_id must be a governed Staging or Production project."
   }
+
+  validation {
+    condition     = var.project_id != "moazez-nonprod-91001421934"
+    error_message = "The retired Staging project is permanently prohibited."
+  }
 }
 
 variable "environment" {
   description = "Governed deployment environment represented by this module instance."
   type        = string
+  nullable    = false
 
   validation {
-    condition     = contains(["staging", "production"], var.environment)
-    error_message = "environment must be staging or production."
+    condition     = var.environment == "production"
+    error_message = "environment must be production; staging is retired."
   }
 }
 

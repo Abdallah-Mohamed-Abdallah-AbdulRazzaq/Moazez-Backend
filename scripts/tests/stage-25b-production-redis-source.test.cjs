@@ -1,5 +1,8 @@
 'use strict';
 
+// Retired operands are explicit immutable evidence; Production/shared bodies stay current.
+const { ACTIONS: RETIREMENT_ACTIONS, readHistoricalSource, isStagingRetirementScope, currentChanges: retirementCurrentChanges } = require('./helpers/staging-retirement-source-policy.cjs');
+
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -172,7 +175,7 @@ const STAGING_BASELINE_BLOBS = Object.freeze({
 const VARIABLE_VALIDATION_CONDITIONS = Object.freeze({
   project_id:
     'contains(["moazez-nonprod-91001421934","moazez-production"],var.project_id)',
-  environment: 'contains(["staging","production"],var.environment)',
+  environment: 'var.environment=="production"',
   region: 'var.region=="me-central2"',
   queue_instance_name:
     'contains(["moazez-staging-queue-me-central2","moazez-production-queue-me-central2"],var.queue_instance_name)',
@@ -200,6 +203,7 @@ function absolutePath(relativePath) {
 }
 
 function readSource(relativePath) {
+  if (RETIREMENT_ACTIONS.REMOVE.includes(relativePath)) return readHistoricalSource(relativePath);
   return fs.readFileSync(absolutePath(relativePath), 'utf8');
 }
 
@@ -479,7 +483,8 @@ test('Shared module owns only the two governed Redis resources', () => {
   const moduleCalls = [
     ...allRedisTerraform.matchAll(/^module\s+"([^"]+)"\s*\{/gmu),
   ].map((match) => match[1]);
-  assert.deepEqual(moduleCalls, ['redis_environment', 'redis_environment']);
+  assert.deepEqual(moduleCalls, ['redis_environment']);
+  assert.deepEqual([...readHistoricalSource(`${NONPROD_ROOT}/main.tf`).matchAll(/^module\s+"([^"]+)"\s*\{/gmu)].map(match => match[1]), ['redis_environment']);
   assert.doesNotMatch(allRedisTerraform, /google_redis_cluster/u);
   assert.doesNotMatch(allRedisTerraform, /resource\s+"(?:terraform_data|null_resource)"/u);
 
@@ -622,9 +627,7 @@ test('Backend, provider, lockfile, and safe outputs are exact', () => {
   assert.match(versions, /source\s*=\s*"hashicorp\/google"/u);
   assert.match(versions, /version\s*=\s*">= 7\.40\.0, < 8\.0\.0"/u);
 
-  const nonprodLock = fs.readFileSync(
-    absolutePath(`${NONPROD_ROOT}/.terraform.lock.hcl`),
-  );
+  const nonprodLock = Buffer.from(readHistoricalSource(`${NONPROD_ROOT}/.terraform.lock.hcl`));
   const productionLock = fs.readFileSync(
     absolutePath(`${PRODUCTION_ROOT}/.terraform.lock.hcl`),
   );

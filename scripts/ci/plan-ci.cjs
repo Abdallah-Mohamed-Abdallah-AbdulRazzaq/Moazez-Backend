@@ -47,6 +47,12 @@ const MEDIA_RUNTIME_JEST_FILES = new Set([
 ]);
 
 const ACTIVE_TAP_OWNERS = Object.freeze({
+  'scripts/tests/staging-retirement-source.test.cjs': Object.freeze({
+    owner: 'staging-retirement-source-governance', profile: 'runtime-governance',
+  }),
+  'scripts/deployment-control/tests/staging-retirement-control.test.cjs': Object.freeze({
+    owner: 'staging-retirement-operational-governance', profile: 'runtime-governance',
+  }),
   'scripts/deployment-control/tests/runtime-capacity-control.test.cjs':
     Object.freeze({
       owner: 'runtime-capacity-governance',

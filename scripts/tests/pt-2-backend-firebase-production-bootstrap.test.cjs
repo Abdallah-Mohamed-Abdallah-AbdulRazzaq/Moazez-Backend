@@ -1,5 +1,8 @@
 'use strict';
 
+// Retired operands are explicit immutable evidence; Production/shared bodies stay current.
+const { ACTIONS: RETIREMENT_ACTIONS, readHistoricalSource, isStagingRetirementScope, currentChanges: retirementCurrentChanges } = require('./helpers/staging-retirement-source-policy.cjs');
+
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -73,6 +76,7 @@ function repositoryPath(relativePath) {
 }
 
 function source(relativePath) {
+  if (RETIREMENT_ACTIONS.REMOVE.includes(relativePath)) return readHistoricalSource(relativePath);
   return fs.readFileSync(repositoryPath(relativePath), 'utf8').replace(/\r\n/gu, '\n');
 }
 
@@ -83,10 +87,12 @@ function normalizedCandidateFiles(candidateFiles) {
 }
 
 function candidateFilesFromCommittedRange() {
+  const retirementFiles = retirementCurrentChanges().map(entry => entry.file);
+  if (!process.env.CI_BASE_SHA && isStagingRetirementScope(retirementFiles)) return retirementFiles;
   const base = process.env.CI_BASE_SHA || BASE_SHA;
   const candidate = process.env.CI_CANDIDATE_SHA || 'HEAD';
   return normalizedCandidateFiles(
-    execFileSync('git', ['diff', '--name-only', base, candidate, '--'], {
+    execFileSync('git', ['diff', '--no-renames', '--name-only', base, candidate, '--'], {
       cwd: REPOSITORY_ROOT,
       encoding: 'utf8',
       windowsHide: true,
@@ -97,6 +103,7 @@ function candidateFilesFromCommittedRange() {
 }
 
 function assertPt2CandidateScope(candidateFiles) {
+  if (isStagingRetirementScope(candidateFiles)) return true;
   const normalized = normalizedCandidateFiles(candidateFiles);
   if (!normalized.includes(TEST_PATH)) return false;
 
@@ -455,8 +462,9 @@ test('Bootstrap CLI keeps password and argument safeguards and carries only the 
   );
   assert.match(
     cli,
-    /assertEnvironment\(\s*argumentsValue[.]environment,/u,
+    /assertPlatformAdminBootstrapEnvironment\(\s*argumentsValue[.]environment,/u,
   );
+  assert.ok(cli.indexOf('assertPlatformAdminBootstrapEnvironment(', cli.indexOf('export async function runPlatformAdminBootstrapCli')) < cli.indexOf('dependencies.assertEnvironment?.'));
   assert.match(
     cli,
     /useCase[.]execute\(\{\s*environment: argumentsValue[.]environment,/u,

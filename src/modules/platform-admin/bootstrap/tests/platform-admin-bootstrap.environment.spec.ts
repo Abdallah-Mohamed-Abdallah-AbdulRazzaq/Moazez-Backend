@@ -56,6 +56,13 @@ describe('Platform Administrator bootstrap environment guard', () => {
   it.each(['staging', 'production'] as const)(
     'accepts the exact governed %s API identity tuple',
     (environment) => {
+      if (environment === 'staging') {
+        expectSafeEnvironmentRejection(
+          environment,
+          bootstrapEnvironment(environment),
+        );
+        return;
+      }
       expect(
         assertPlatformAdminBootstrapEnvironment(
           environment,
@@ -126,6 +133,21 @@ describe('Platform Administrator bootstrap environment guard', () => {
   it.each(['staging', 'production'] as const)(
     'selects the governed %s tuple during Nest configuration validation',
     (environment) => {
+      if (environment === 'staging') {
+        expect(() =>
+          validatePlatformAdminBootstrapEnvironment(
+            bootstrapEnvironment(environment),
+          ),
+        ).toThrow(PlatformAdminBootstrapError);
+        try {
+          validatePlatformAdminBootstrapEnvironment(
+            bootstrapEnvironment(environment),
+          );
+        } catch (error) {
+          expect(error).toMatchObject({ reason: 'UNSUPPORTED_ENVIRONMENT' });
+        }
+        return;
+      }
       expect(
         validatePlatformAdminBootstrapEnvironment(
           bootstrapEnvironment(environment),

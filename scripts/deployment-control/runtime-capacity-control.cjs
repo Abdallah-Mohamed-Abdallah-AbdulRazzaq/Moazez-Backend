@@ -327,11 +327,14 @@ function validateCandidateRevisionCapacitySpec(
 }
 
 function environmentAuthority(environment) {
-  const authority = CAPACITY_ENVIRONMENTS[environment];
+  if (environment === 'staging' || environment === 'nonprod') {
+    fail('CAPACITY_ENVIRONMENT_RETIRED', 'Staging capacity authority is permanently retired.');
+  }
+  const authority = environment === 'production' ? CAPACITY_ENVIRONMENTS.production : undefined;
   if (!authority) {
     fail(
       'CAPACITY_ENVIRONMENT_UNSUPPORTED',
-      'environment must be exactly staging or production.',
+      'environment must be exactly production.',
     );
   }
   return structuredClone(authority);
@@ -969,6 +972,8 @@ function capacityAwareCandidateIdentity(artifactDigest, revisionValue) {
 }
 
 function loadPromotionStabilityEvidence(value, environment) {
+  environmentAuthority(environment);
+
   const loaded = readHashBoundEvidence(
     value,
     'promotionStabilityEvidence',
@@ -1269,6 +1274,8 @@ function initialPreApplyAuthority() {
 }
 
 function buildCapacityExecution(input) {
+  environmentAuthority(input?.environment);
+
   const context = requireExactKeys(
     input,
     [
@@ -1407,6 +1414,11 @@ function buildCapacityExecution(input) {
 }
 
 function validateCapacityExecution(value) {
+  const selectedAuthority = environmentAuthority(value?.environment);
+  if (!isDeepStrictEqual(value?.environmentAuthority, selectedAuthority)) {
+    fail('CAPACITY_ENVIRONMENT_IDENTITY_MISMATCH', 'capacity environment resource identity does not match its allowlist.');
+  }
+
   const execution = requireExactKeys(
     value,
     [
@@ -2427,6 +2439,8 @@ function readJson(filePath, label) {
 }
 
 function writeJsonAtomic(filePath, value) {
+  validateCapacityExecution(value);
+
   const resolved = path.resolve(filePath);
   fs.mkdirSync(path.dirname(resolved), { recursive: true });
   const temporary = `${resolved}.tmp-${process.pid}-${crypto.randomUUID()}`;

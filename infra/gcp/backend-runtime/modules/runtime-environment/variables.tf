@@ -1,10 +1,11 @@
 variable "environment" {
   description = "Closed runtime environment selector."
   type        = string
+  nullable    = false
 
   validation {
-    condition     = contains(["staging", "production"], var.environment)
-    error_message = "environment must be either staging or production."
+    condition     = var.environment == "production"
+    error_message = "environment must be production; staging is retired."
   }
 }
 

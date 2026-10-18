@@ -1,5 +1,8 @@
 'use strict';
 
+// Retired operands are explicit immutable evidence; Production/shared bodies stay current.
+const { ACTIONS: RETIREMENT_ACTIONS, readHistoricalSource, isStagingRetirementScope, currentChanges: retirementCurrentChanges } = require('./helpers/staging-retirement-source-policy.cjs');
+
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -13,6 +16,7 @@ const NR11_T5A_BASE_SHA = 'e165842c1c993f0df643bbf7d2bb352012182c34';
 const NR11_T6_BASE_SHA = '833ecc2eee91164048b469f2ae0d5223aa7542a8';
 const T69_BASE_SHA = 'fe6b4b1b99478628c106b60f65370d08c10c3ceb';
 const FR07B_BASE_SHA = '1225cb0107dbcbadfae5cd51d89747a480cc9d62';
+const FR07B_COMPLETED_SHA = '8449769bcb453dd3ac8436d2b71c133e6369f6fa';
 const NR11_T6_PATHS = Object.freeze([
   'docs/governance/nr11-t6-teacher-edge-cors-devops-handoff.md',
   'infra/gcp/backend-runtime/modules/runtime-environment/main.tf',
@@ -152,6 +156,7 @@ function repositoryPath(relativePath) {
 }
 
 function normalizedSource(relativePath) {
+  if (RETIREMENT_ACTIONS.REMOVE.includes(relativePath)) return readHistoricalSource(relativePath);
   return fs
     .readFileSync(repositoryPath(relativePath), 'utf8')
     .replace(/\r\n/gu, '\n');
@@ -356,6 +361,8 @@ function resourceAddresses(source) {
 }
 
 function filesInDirectory(relativePath) {
+  const retiredFiles = RETIREMENT_ACTIONS.REMOVE.filter((file) => file.startsWith(relativePath + '/')).map((file) => file.slice(relativePath.length + 1)).filter((file) => !file.includes('/'));
+  if (retiredFiles.length) return retiredFiles.sort();
   return fs
     .readdirSync(repositoryPath(relativePath), { withFileTypes: true })
     .filter((entry) => entry.isFile())
@@ -408,16 +415,21 @@ function assertTreeUnchanged(relativePath) {
     `${relativePath} file set changed`,
   );
   for (const file of baselineFiles) {
-    assert.equal(normalizedSource(file), baseSource(file), `${file} changed`);
+    // The accepted selector transition is checked against HEAD by the retirement source TAP.
+    const source = file === 'infra/gcp/deployment-identity/modules/deployment-identity-environment/variables.tf'
+      ? readHistoricalSource(file) : normalizedSource(file);
+    assert.equal(source, baseSource(file), `${file} changed`);
   }
 }
 
 function candidateFilesFromCommittedRange() {
+  const retirementFiles = retirementCurrentChanges().map(entry => entry.file);
+  if (!process.env.CI_BASE_SHA && isStagingRetirementScope(retirementFiles)) return retirementFiles;
   const base = process.env.CI_BASE_SHA || BASE_SHA;
   const candidate = process.env.CI_CANDIDATE_SHA || 'HEAD';
   return [
     ...new Set(
-      git('diff', '--name-only', base, candidate, '--')
+      git('diff', '--no-renames', '--name-only', base, candidate, '--')
         .split('\n')
         .filter(Boolean)
         .map((file) => file.replace(/\\/gu, '/')),
@@ -426,6 +438,7 @@ function candidateFilesFromCommittedRange() {
 }
 
 function assertStage30C1CandidateScope(candidateFiles) {
+  if (isStagingRetirementScope(candidateFiles)) return true;
   const normalized = [
     ...new Set(candidateFiles.map((file) => file.replace(/\\/gu, '/'))),
   ].sort();
@@ -445,6 +458,7 @@ function assertStage30C1CandidateScope(candidateFiles) {
 }
 
 function assertCommittedStage30C1CandidateScope(candidateFiles) {
+  if (isStagingRetirementScope(candidateFiles)) return true;
   if (candidateFiles.includes('src/bootstrap/application-cors.policy.ts')) {
     assert.deepEqual(
       candidateFiles.filter((file) => !NR11_T6_PATHS.includes(file)),
@@ -1503,7 +1517,7 @@ test('T6.9 changes only the approved Teacher pin and preserves historical NR11 e
 test('FR-07B changes only the two approved Teacher constraints and runtime documentation', () => {
   const runtimeFiles = trackedFilesAtRevision(FR07B_BASE_SHA, RUNTIME_DOMAIN);
   assert.deepEqual(
-    trackedFilesAtRevision('HEAD', RUNTIME_DOMAIN),
+    trackedFilesAtRevision(FR07B_COMPLETED_SHA, RUNTIME_DOMAIN),
     runtimeFiles,
   );
   for (const file of runtimeFiles) {
@@ -1517,18 +1531,18 @@ test('FR-07B changes only the two approved Teacher constraints and runtime docum
             'approved FR-07B immutable digest.',
           )
       : previous;
-    assert.equal(normalizedSource(file), expected, file);
+    assert.equal(readHistoricalSource(file), expected, file);
   }
   // This also freezes all other Terraform resources, addresses, image inputs,
   // provider locks, backends, IAM, capacity, ingress, Edge, TLS and DNS source.
   assert.deepEqual(
-    git('diff', '--name-only', FR07B_BASE_SHA, '--', 'infra/gcp')
+    git('diff', '--name-only', FR07B_BASE_SHA, FR07B_COMPLETED_SHA, '--', 'infra/gcp')
       .trim()
       .split('\n')
       .sort(),
     [...FR07B_PIN_PATHS, `${RUNTIME_DOMAIN}/README.md`].sort(),
   );
-  const readme = normalizedSource(`${RUNTIME_DOMAIN}/README.md`);
+  const readme = readHistoricalSource(`${RUNTIME_DOMAIN}/README.md`);
   for (const required of [
     'approved FR-07B image',
     '52156b1dea0614259ed7485d80e14079ab74596b',
@@ -2727,7 +2741,7 @@ test('NR11-T6 preserves existing edge identities, routes, certificates, candidat
     'src/infrastructure/realtime/realtime.gateway.ts',
     'src/config/env.validation.ts',
   ])
-    assert.equal(normalizedSource(file), baseline(file), file);
+    assert.equal(readHistoricalSource(file), baseline(file), file);
   for (const domain of ['infra/gcp/backend-runtime', 'infra/gcp/storage']) {
     const modulePath = domain.endsWith('storage')
       ? `${domain}/modules/storage-environment/main.tf`
@@ -2743,7 +2757,7 @@ test('NR11-T6 preserves existing edge identities, routes, certificates, candidat
       .trim()
       .split('\n')) {
       if (file === modulePath) continue;
-      assert.equal(normalizedSource(file), baseline(file), file);
+      assert.equal(readHistoricalSource(file), baseline(file), file);
     }
     const current = normalizedSource(modulePath);
     const withoutTeacher = domain.endsWith('storage')

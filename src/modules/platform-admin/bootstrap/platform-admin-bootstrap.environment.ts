@@ -3,10 +3,7 @@ import {
   createDatabaseRuntimeEnvironmentShape,
   refineDatabaseRuntimeEnvironment,
 } from '../../../infrastructure/database/database-runtime-env.validation';
-import {
-  isPlatformAdminBootstrapEnvironment,
-  type PlatformAdminBootstrapEnvironment,
-} from './platform-admin-bootstrap.constants';
+import { type PlatformAdminBootstrapEnvironment } from './platform-admin-bootstrap.constants';
 import { PlatformAdminBootstrapError } from './platform-admin-bootstrap.errors';
 
 const PLATFORM_ADMIN_BOOTSTRAP_ENVIRONMENT_CONTRACT = Object.freeze({
@@ -78,7 +75,7 @@ export function assertPlatformAdminBootstrapEnvironment(
   requestedEnvironment: string,
   rawEnvironment: NodeJS.ProcessEnv,
 ): PlatformAdminBootstrapRuntimeEnvironment {
-  if (!isPlatformAdminBootstrapEnvironment(requestedEnvironment)) {
+  if (requestedEnvironment !== 'production') {
     throw new PlatformAdminBootstrapError('UNSUPPORTED_ENVIRONMENT');
   }
 
@@ -95,7 +92,7 @@ export function validatePlatformAdminBootstrapEnvironment(
   rawEnvironment: Record<string, unknown>,
 ): PlatformAdminBootstrapRuntimeEnvironment {
   const requestedEnvironment = rawEnvironment.NODE_ENV;
-  if (!isPlatformAdminBootstrapEnvironment(requestedEnvironment)) {
+  if (requestedEnvironment !== 'production') {
     throw new PlatformAdminBootstrapError('UNSUPPORTED_ENVIRONMENT');
   }
 

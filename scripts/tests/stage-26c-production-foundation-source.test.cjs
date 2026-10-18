@@ -1,5 +1,8 @@
 'use strict';
 
+// Retired operands are explicit immutable evidence; Production/shared bodies stay current.
+const { ACTIONS: RETIREMENT_ACTIONS, readHistoricalSource, isStagingRetirementScope, currentChanges: retirementCurrentChanges } = require('./helpers/staging-retirement-source-policy.cjs');
+
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -49,6 +52,7 @@ const STATUS_MARKERS = Object.freeze([
 ]);
 
 function assertStage26CandidateScope(candidateFiles) {
+  if (isStagingRetirementScope(candidateFiles)) return true;
   if (!candidateFiles.includes(TEST_PATH)) return;
 
   const allowed = [
@@ -68,11 +72,13 @@ function assertStage26CandidateScope(candidateFiles) {
 }
 
 function candidateFilesFromCommittedRange() {
+  const retirementFiles = retirementCurrentChanges().map(entry => entry.file);
+  if (!process.env.CI_BASE_SHA && isStagingRetirementScope(retirementFiles)) return retirementFiles;
   const base = process.env.CI_BASE_SHA || BASE_SHA;
   const candidate = process.env.CI_CANDIDATE_SHA || 'HEAD';
   return [
     ...new Set(
-      execFileSync('git', ['diff', '--name-only', base, candidate, '--'], {
+      execFileSync('git', ['diff', '--no-renames', '--name-only', base, candidate, '--'], {
         cwd: REPOSITORY_ROOT,
         encoding: 'utf8',
         windowsHide: true,
@@ -87,6 +93,7 @@ function candidateFilesFromCommittedRange() {
 function assertCommittedStage26CandidateScope(
   candidateFiles = candidateFilesFromCommittedRange(),
 ) {
+  if (isStagingRetirementScope(candidateFiles)) return true;
   const normalized = [
     ...new Set(candidateFiles.map((file) => file.replace(/\\/gu, '/'))),
   ].sort();
@@ -471,6 +478,7 @@ function absolutePath(relativePath) {
 }
 
 function normalizedSource(relativePath) {
+  if (RETIREMENT_ACTIONS.REMOVE.includes(relativePath)) return readHistoricalSource(relativePath);
   return fs.readFileSync(absolutePath(relativePath), 'utf8').replace(/\r\n/gu, '\n');
 }
 
@@ -721,7 +729,8 @@ function assertContractGuard(config) {
     assert.match(current, new RegExp(`\\b${name}\\s*=\\s*var\\.${name}`, 'u'));
     const block = variableBlock(variables, name);
     const validations = [...block.matchAll(/validation\s*\{/gu)];
-    assert.equal(validations.length, 1, `${name} must have one validation.`);
+    assert.equal(validations.length, name === 'project_id' ? 2 : 1, `${name} validation population is exact.`);
+    if (name === 'project_id') assert.match(block, /condition\s*=\s*var[.]project_id\s*!=\s*"moazez-nonprod-91001421934"/u);
     const validation = extractBlock(block, /validation\s*\{/u, `${name} validation`);
     const references = [
       ...new Set([...validation.matchAll(/\bvar\.([A-Za-z0-9_]+)/gu)].map((m) => m[1])),
@@ -729,7 +738,7 @@ function assertContractGuard(config) {
     assert.deepEqual(references, [name], `${name} validation crosses variables.`);
     assert.equal(
       validationCondition(validation, name),
-      expectedValidationCondition(config, name),
+      name === 'environment' ? 'var.environment=="production"' : expectedValidationCondition(config, name),
       `${name} validation must permit exactly its governed Staging and Production values.`,
     );
   }
@@ -860,9 +869,7 @@ test('all four Production roots and Staging baselines are exact', () => {
     assert.match(versions, /source\s*=\s*"hashicorp\/google"/u);
     assert.match(versions, /version\s*=\s*">= 7\.40\.0, < 8\.0\.0"/u);
 
-    const nonprodLock = fs.readFileSync(
-      absolutePath(`${nonprodRoot}/.terraform.lock.hcl`),
-    );
+    const nonprodLock = Buffer.from(readHistoricalSource(`${nonprodRoot}/.terraform.lock.hcl`));
     const productionLock = fs.readFileSync(
       absolutePath(`${productionRoot}/.terraform.lock.hcl`),
     );

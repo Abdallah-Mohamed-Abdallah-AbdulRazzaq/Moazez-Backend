@@ -5,13 +5,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
+const { ACTIONS, readHistoricalSource } = require('../../tests/helpers/staging-retirement-source-policy.cjs');
+
 const repositoryRoot = path.resolve(__dirname, '..', '..', '..');
 const terraformRoot = path.join(repositoryRoot, 'infra', 'gcp', 'storage');
-const terraformFiles = walk(terraformRoot).filter((file) =>
-  file.endsWith('.tf'),
-);
+// Historical root inventory is immutable; current shared and Production bodies remain HEAD.
+const terraformFiles = [...new Set([...walk(terraformRoot).filter((file) => file.endsWith('.tf')), ...ACTIONS.REMOVE.filter((file) => file.startsWith('infra/gcp/storage/') && file.endsWith('.tf')).map((file) => path.join(repositoryRoot, file))])];
 const terraform = terraformFiles
-  .map((file) => fs.readFileSync(file, 'utf8'))
+  .map((file) => read(path.relative(repositoryRoot, file).replaceAll('\\', '/')))
   .join('\n');
 const moduleMain = read(
   'infra/gcp/storage/modules/storage-environment/main.tf',
@@ -246,7 +247,7 @@ test('API-dependent resources explicitly wait for service activation', () => {
 test('outputs contain identifiers only', () => {
   const outputs = terraformFiles
     .filter((file) => file.endsWith(`${path.sep}outputs.tf`))
-    .map((file) => fs.readFileSync(file, 'utf8'))
+    .map((file) => read(path.relative(repositoryRoot, file).replaceAll('\\', '/')))
     .join('\n');
   assert.doesNotMatch(outputs, /token|credential|private_key|signed_url/iu);
   for (const name of [
@@ -264,6 +265,7 @@ test('outputs contain identifiers only', () => {
 });
 
 function read(relativePath) {
+  if (ACTIONS.REMOVE.includes(relativePath)) return readHistoricalSource(relativePath);
   return fs.readFileSync(path.join(repositoryRoot, relativePath), 'utf8');
 }
 

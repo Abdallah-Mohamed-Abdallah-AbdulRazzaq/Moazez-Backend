@@ -616,3 +616,22 @@ function git(repositoryRoot, ...args) {
     windowsHide: true,
   }).trim();
 }
+
+test('retirement TAP files have unique active runtime governance owners', () => {
+  const repositoryRoot = path.resolve(__dirname, '..', '..');
+  const files = discoverTestFiles(listRepositoryFiles({ repositoryRoot }));
+  const assignments = assignTests(files);
+  for (const [file, owner] of [
+    ['scripts/tests/staging-retirement-source.test.cjs', 'staging-retirement-source-governance'],
+    ['scripts/deployment-control/tests/staging-retirement-control.test.cjs', 'staging-retirement-operational-governance'],
+  ]) {
+    const matches = assignments.filter(item => item.file === file);
+    assert.equal(matches.length, 1);
+    assert.equal(matches[0].owner, owner);
+    assert.equal(matches[0].profile, 'runtime-governance');
+    assert.equal(matches[0].execution, 'pull-request');
+  }
+  assert.equal(files.length, 1001);
+  assert.equal(assignments.filter(item => item.execution === 'pull-request').length, 991);
+  assert.equal(assignments.filter(item => item.execution === 'manual').length, 10);
+});
