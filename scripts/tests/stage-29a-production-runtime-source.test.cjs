@@ -565,7 +565,7 @@ function candidateFilesFromCommittedRange() {
   if (!process.env.CI_BASE_SHA && isStagingRetirementScope(retirementFiles)) return retirementFiles;
   const base = process.env.CI_BASE_SHA || BASE_SHA;
   const candidate = process.env.CI_CANDIDATE_SHA || 'HEAD';
-  return changedFilesFromGitDiff([base, candidate]);
+  return changedFilesFromGitDiff(['--no-renames', base, candidate]);
 }
 
 function changedFilesFromGitDiff(revisions, gitRunner = execFileSync) {

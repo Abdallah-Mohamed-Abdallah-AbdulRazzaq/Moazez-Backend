@@ -92,7 +92,7 @@ function candidateFilesFromCommittedRange() {
   const base = process.env.CI_BASE_SHA || BASE_SHA;
   const candidate = process.env.CI_CANDIDATE_SHA || 'HEAD';
   return normalizedCandidateFiles(
-    execFileSync('git', ['diff', '--name-only', base, candidate, '--'], {
+    execFileSync('git', ['diff', '--no-renames', '--name-only', base, candidate, '--'], {
       cwd: REPOSITORY_ROOT,
       encoding: 'utf8',
       windowsHide: true,

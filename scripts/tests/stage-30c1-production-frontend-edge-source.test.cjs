@@ -429,7 +429,7 @@ function candidateFilesFromCommittedRange() {
   const candidate = process.env.CI_CANDIDATE_SHA || 'HEAD';
   return [
     ...new Set(
-      git('diff', '--name-only', base, candidate, '--')
+      git('diff', '--no-renames', '--name-only', base, candidate, '--')
         .split('\n')
         .filter(Boolean)
         .map((file) => file.replace(/\\/gu, '/')),

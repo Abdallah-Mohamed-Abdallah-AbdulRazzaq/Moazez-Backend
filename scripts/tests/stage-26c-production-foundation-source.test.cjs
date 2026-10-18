@@ -78,7 +78,7 @@ function candidateFilesFromCommittedRange() {
   const candidate = process.env.CI_CANDIDATE_SHA || 'HEAD';
   return [
     ...new Set(
-      execFileSync('git', ['diff', '--name-only', base, candidate, '--'], {
+      execFileSync('git', ['diff', '--no-renames', '--name-only', base, candidate, '--'], {
         cwd: REPOSITORY_ROOT,
         encoding: 'utf8',
         windowsHide: true,
