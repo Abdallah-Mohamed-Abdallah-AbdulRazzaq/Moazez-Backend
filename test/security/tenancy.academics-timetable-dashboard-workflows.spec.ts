@@ -353,6 +353,133 @@ describe('Academics timetable dashboard tenancy isolation (security)', () => {
       .expect(403);
   });
 
+  it('enforces authentication view permission and user-type boundaries for exact validation', async () => {
+    const before = await snapshotExactValidationRecords();
+    const query = {
+      termId: fixtureA.termId,
+      timetableConfigId: fixtureA.configId,
+    };
+    const unauthenticated = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/academics/timetable/validate`)
+      .query(query)
+      .expect(401);
+    expect(
+      (unauthenticated.body as unknown as { error: { code: string } }).error
+        .code,
+    ).toBe('auth.token.invalid');
+    for (const auth of [
+      noPermissionAuth,
+      manageOnlyAuth,
+      teacherAuth,
+      studentAuth,
+      parentAuth,
+    ]) {
+      const response = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/academics/timetable/validate`)
+        .query(query)
+        .set('Authorization', bearer(auth))
+        .expect(403);
+      expectSafeTimetablePayload(response.body);
+    }
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/academics/timetable/validate`)
+      .query(query)
+      .set('Authorization', bearer(viewOnlyAuth))
+      .expect(200);
+    expect(response.body).toMatchObject({
+      timetableConfigId: fixtureA.configId,
+      termId: fixtureA.termId,
+    });
+    expectSafeTimetablePayload(response.body);
+    expect(await snapshotExactValidationRecords()).toEqual(before);
+  });
+
+  it('masks unknown foreign-school wrong-term and inconsistent-year configurations identically without writes', async () => {
+    const alternateYear = await prisma.academicYear.create({
+      data: {
+        schoolId: schoolAId,
+        nameAr: `${marker}-tt101-year-ar`,
+        nameEn: `${marker}-tt101-year`,
+        startDate: new Date('2028-01-01T00:00:00.000Z'),
+        endDate: new Date('2028-12-31T00:00:00.000Z'),
+        isActive: false,
+      },
+      select: { id: true },
+    });
+    let inconsistentConfigId = '';
+    try {
+      const inconsistent = await prisma.timetableConfig.create({
+        data: {
+          schoolId: schoolAId,
+          academicYearId: alternateYear.id,
+          termId: fixtureA.termId,
+          name: `${marker}-tt101-inconsistent`,
+          scopeType: TimetableScopeType.STAGE,
+          scopeKey: `stage:${fixtureA.stageId}`,
+          stageId: fixtureA.stageId,
+          activeDays: [0, 1, 2, 3, 4],
+          status: TimetableConfigStatus.DRAFT,
+        },
+        select: { id: true },
+      });
+      inconsistentConfigId = inconsistent.id;
+      const before = await snapshotExactValidationRecords();
+      for (const timetableConfigId of [
+        randomUUID(),
+        fixtureB.configId,
+        fixtureA.closedConfigId,
+        inconsistent.id,
+      ]) {
+        const response = await request(app.getHttpServer())
+          .get(`${GLOBAL_PREFIX}/academics/timetable/validate`)
+          .query({ termId: fixtureA.termId, timetableConfigId })
+          .set('Authorization', bearer(adminAAuth))
+          .expect(404);
+        const body = response.body as unknown as {
+          error: {
+            code: string;
+            message: string;
+            details: { timetableConfigId: string };
+          };
+        };
+        expect(body.error).toMatchObject({
+          code: 'academics.timetable.config_not_found',
+          message: 'Timetable config was not found',
+          details: { timetableConfigId },
+        });
+        expectSafeTimetablePayload(body);
+        for (const foreignId of [
+          schoolBId,
+          organizationBId,
+          fixtureB.stageId,
+          fixtureB.gradeId,
+          fixtureB.classroomId,
+        ]) {
+          expect(JSON.stringify(body)).not.toContain(foreignId);
+        }
+      }
+      const foreignTerm = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/academics/timetable/validate`)
+        .query({
+          termId: fixtureB.termId,
+          timetableConfigId: fixtureA.configId,
+        })
+        .set('Authorization', bearer(adminAAuth))
+        .expect(404);
+      expect(
+        (foreignTerm.body as unknown as { error: { code: string } }).error.code,
+      ).toBe('not_found');
+      expectSafeTimetablePayload(foreignTerm.body);
+      expect(await snapshotExactValidationRecords()).toEqual(before);
+    } finally {
+      if (inconsistentConfigId)
+        await prisma.timetableConfig.delete({
+          where: { id: inconsistentConfigId },
+        });
+      await prisma.academicYear.delete({ where: { id: alternateYear.id } });
+    }
+  });
+
   it('rejects cross-school term, classroom, period, teacher allocation, and room ids', async () => {
     await expectNonSuccess(
       request(app.getHttpServer())
@@ -1262,6 +1389,17 @@ describe('Academics timetable dashboard tenancy isolation (security)', () => {
         },
       ],
     };
+  }
+
+  function snapshotExactValidationRecords() {
+    const where = { schoolId: { in: [schoolAId, schoolBId] } };
+    return Promise.all([
+      prisma.timetableConfig.findMany({ where, orderBy: { id: 'asc' } }),
+      prisma.timetableEntry.findMany({ where, orderBy: { id: 'asc' } }),
+      prisma.timetablePeriod.findMany({ where, orderBy: { id: 'asc' } }),
+      prisma.timetablePublication.findMany({ where, orderBy: { id: 'asc' } }),
+      prisma.timetableConflict.findMany({ where, orderBy: { id: 'asc' } }),
+    ]);
   }
 
   async function expectNonSuccess(pendingRequest: request.Test): Promise<void> {

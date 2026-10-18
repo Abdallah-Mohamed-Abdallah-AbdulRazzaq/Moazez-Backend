@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { BadRequestException, ValidationPipe } from '@nestjs/common';
 import {
   TimetableConfigStatus,
   TimetableConflictSeverity,
@@ -40,6 +41,7 @@ import { UpsertTimetableConfigUseCase } from '../application/upsert-timetable-co
 import { ValidateTimetableUseCase } from '../application/validate-timetable.use-case';
 import { computeTimetableConflicts } from '../domain/timetable-conflicts';
 import { TimetableTeacherConflictException } from '../domain/timetable.exceptions';
+import { ValidateTimetableQueryDto } from '../dto/timetable.dto';
 import {
   SerializedTimetableWriteResult,
   TimetableRepository,
@@ -2925,6 +2927,700 @@ describe('Timetable use cases', () => {
       });
       expect(writeRepository.bulkUpsertEntries).not.toHaveBeenCalled();
     });
+  });
+
+  describe('configuration-specific validation', () => {
+    const configId = '11111111-1111-4111-8111-111111111111';
+    const otherConfigId = '22222222-2222-4222-8222-222222222222';
+
+    function exactConfig(
+      scopeType: TimetableScopeType = TimetableScopeType.TERM,
+      overrides: Partial<NonNullable<ConfigRecord>> = {},
+    ): NonNullable<ConfigRecord> {
+      const scopeIds = {
+        TERM: 'term-1',
+        STAGE: 'stage-1',
+        GRADE: 'grade-1',
+        SECTION: 'section-1',
+        CLASSROOM: 'classroom-1',
+      };
+      return seedConfig({
+        id: configId,
+        scopeType,
+        scopeKey: `${scopeType.toLowerCase()}:${scopeIds[scopeType]}`,
+        stageId: scopeType === TimetableScopeType.TERM ? null : 'stage-1',
+        gradeId: ['GRADE', 'SECTION', 'CLASSROOM'].includes(scopeType)
+          ? 'grade-1'
+          : null,
+        sectionId: ['SECTION', 'CLASSROOM'].includes(scopeType)
+          ? 'section-1'
+          : null,
+        classroomId:
+          scopeType === TimetableScopeType.CLASSROOM ? 'classroom-1' : null,
+        ...overrides,
+      });
+    }
+
+    function exactEntry(overrides: Partial<EntryRecord> = {}): EntryRecord {
+      return seedEntry({ timetableConfigId: configId, ...overrides });
+    }
+
+    function assertNoValidationWrites(repository: TimetableRepository): void {
+      for (const method of [
+        'createEntry',
+        'updateEntry',
+        'deleteEntry',
+        'bulkUpsertEntries',
+        'createConfig',
+        'updateConfig',
+        'createPeriod',
+        'updatePeriod',
+        'deletePeriod',
+        'publishConfig',
+        'unpublishConfigs',
+        'withSerializedTermWrite',
+      ] as const) {
+        expect(jest.spyOn(repository, method)).not.toHaveBeenCalled();
+      }
+    }
+
+    it.each([
+      [TimetableScopeType.TERM, TimetableScopeType.STAGE],
+      [TimetableScopeType.STAGE, TimetableScopeType.TERM],
+    ])(
+      'isolates %s demand from overlapping %s lessons and preserves legacy counts',
+      async (selectedScope, otherScope) => {
+        const repository = createRepository({
+          configs: [
+            exactConfig(selectedScope),
+            exactConfig(otherScope, { id: otherConfigId }),
+          ],
+          entries: [
+            ...[0, 1].map((dayOfWeek) =>
+              exactEntry({ id: `selected-${dayOfWeek}`, dayOfWeek }),
+            ),
+            ...[2, 3, 4].map((dayOfWeek) =>
+              exactEntry({
+                id: `other-${dayOfWeek}`,
+                timetableConfigId: otherConfigId,
+                dayOfWeek,
+              }),
+            ),
+            exactEntry({
+              id: 'cancelled',
+              status: TimetableEntryStatus.CANCELLED,
+            }),
+          ],
+          subjectAllocations: [seedSubjectAllocation({ weeklyHours: 5 })],
+          allocations: [
+            seedAllocation(),
+            seedAllocation({ id: 'allocation-2', teacherUserId: 'teacher-2' }),
+          ],
+        });
+        await withScope(async () => {
+          const useCase = new ValidateTimetableUseCase(repository);
+          const exact = await useCase.execute({
+            termId: 'term-1',
+            timetableConfigId: configId,
+          });
+          expect(exact.timetableConfigId).toBe(configId);
+          expect(exact.summary).toMatchObject({
+            classroomsChecked: 1,
+            expectedWeeklySlots: 5,
+            actualScheduledSlots: 2,
+            underScheduledSubjects: 1,
+            overScheduledSubjects: 0,
+          });
+          expect(exact.items).toHaveLength(1);
+          expect(exact.items[0]).toMatchObject({
+            classroomId: 'classroom-1',
+            expectedWeeklyHours: 5,
+            scheduledWeeklyHours: 2,
+            status: 'under_scheduled',
+          });
+          expect(
+            jest.spyOn(repository, 'listEntriesForConfig'),
+          ).toHaveBeenCalledWith(configId);
+          for (const filters of [
+            {},
+            { gradeId: 'grade-1' },
+            { classroomId: 'classroom-1' },
+          ]) {
+            const legacy = await useCase.execute({
+              termId: 'term-1',
+              ...filters,
+            });
+            expect(legacy).not.toHaveProperty('timetableConfigId');
+            expect(legacy.summary).toMatchObject({
+              expectedWeeklySlots: 5,
+              actualScheduledSlots: 5,
+              underScheduledSubjects: 0,
+            });
+          }
+          assertNoValidationWrites(repository);
+        });
+      },
+    );
+
+    it.each([
+      [TimetableScopeType.TERM, ['classroom-1', 'b', 'c', 'd']],
+      [TimetableScopeType.STAGE, ['classroom-1', 'b', 'c']],
+      [TimetableScopeType.GRADE, ['classroom-1', 'b']],
+      [TimetableScopeType.SECTION, ['classroom-1']],
+      [TimetableScopeType.CLASSROOM, ['classroom-1']],
+    ])(
+      'expands the canonical %s scope including unscheduled classrooms',
+      async (scopeType, expectedIds) => {
+        const classrooms = [
+          seedClassroom(),
+          seedClassroom({
+            id: 'b',
+            sectionId: 'section-2',
+            section: {
+              id: 'section-2',
+              gradeId: 'grade-1',
+              grade: { id: 'grade-1', stageId: 'stage-1' },
+            },
+          }),
+          seedClassroom({
+            id: 'c',
+            sectionId: 'section-3',
+            section: {
+              id: 'section-3',
+              gradeId: 'grade-2',
+              grade: { id: 'grade-2', stageId: 'stage-1' },
+            },
+          }),
+          seedClassroom({
+            id: 'd',
+            sectionId: 'section-4',
+            section: {
+              id: 'section-4',
+              gradeId: 'grade-3',
+              grade: { id: 'grade-3', stageId: 'stage-2' },
+            },
+          }),
+        ];
+        const repository = createRepository({
+          configs: [exactConfig(scopeType)],
+          classrooms,
+          grades: [
+            seedGrade(),
+            seedGrade({ id: 'grade-2' }),
+            seedGrade({ id: 'grade-3', stageId: 'stage-2' }),
+          ],
+          subjectAllocations: ['grade-1', 'grade-2', 'grade-3'].map((gradeId) =>
+            seedSubjectAllocation({ gradeId }),
+          ),
+          entries: [exactEntry()],
+        });
+        jest.spyOn(repository, 'findSectionById').mockResolvedValue({
+          id: 'section-1',
+          schoolId: 'school-1',
+          gradeId: 'grade-1',
+          grade: { id: 'grade-1', stageId: 'stage-1' },
+        });
+        await withScope(async () => {
+          const response = await new ValidateTimetableUseCase(
+            repository,
+          ).execute({ termId: 'term-1', timetableConfigId: configId });
+          expect(response.items.map((item) => item.classroomId).sort()).toEqual(
+            [...expectedIds].sort(),
+          );
+          expect(response.summary).toMatchObject({
+            classroomsChecked: expectedIds.length,
+            expectedWeeklySlots: expectedIds.length,
+            actualScheduledSlots: 1,
+          });
+          expect(
+            response.items.filter((item) => item.scheduledWeeklyHours === 0),
+          ).toHaveLength(expectedIds.length - 1);
+          assertNoValidationWrites(repository);
+        });
+      },
+    );
+
+    it('isolates multiple STAGE configurations in one term', async () => {
+      const thirdConfigId = '33333333-3333-4333-8333-333333333333';
+      const configIds = [configId, otherConfigId, thirdConfigId];
+      const classrooms = [1, 2, 3].map((index) =>
+        seedClassroom({
+          id: `class-${index}`,
+          sectionId: `section-${index}`,
+          section: {
+            id: `section-${index}`,
+            gradeId: `grade-${index}`,
+            grade: { id: `grade-${index}`, stageId: `stage-${index}` },
+          },
+        }),
+      );
+      const repository = createRepository({
+        configs: configIds.map((id, index) =>
+          exactConfig(TimetableScopeType.STAGE, {
+            id,
+            stageId: `stage-${index + 1}`,
+            scopeKey: `stage:stage-${index + 1}`,
+          }),
+        ),
+        classrooms,
+        grades: [1, 2, 3].map((index) =>
+          seedGrade({ id: `grade-${index}`, stageId: `stage-${index}` }),
+        ),
+        subjectAllocations: [1, 2, 3].map((index) =>
+          seedSubjectAllocation({ gradeId: `grade-${index}`, weeklyHours: 2 }),
+        ),
+        allocations: [1, 2, 3].map((index) =>
+          seedAllocation({
+            id: `allocation-${index}`,
+            classroomId: `class-${index}`,
+            teacherUserId: `teacher-${index}`,
+          }),
+        ),
+        entries: configIds.flatMap((id, index) =>
+          Array.from({ length: index + 1 }, (_, dayOfWeek) =>
+            exactEntry({
+              id: `${id}-${dayOfWeek}`,
+              timetableConfigId: id,
+              classroomId: `class-${index + 1}`,
+              sectionId: `section-${index + 1}`,
+              gradeId: `grade-${index + 1}`,
+              teacherUserId: `teacher-${index + 1}`,
+              teacherSubjectAllocationId: `allocation-${index + 1}`,
+              dayOfWeek,
+            }),
+          ),
+        ),
+      });
+      jest
+        .spyOn(repository, 'findStageById')
+        .mockImplementation((id) =>
+          Promise.resolve({ id, schoolId: 'school-1' }),
+        );
+      await withScope(async () => {
+        for (const [index, id] of configIds.entries()) {
+          const response = await new ValidateTimetableUseCase(
+            repository,
+          ).execute({ termId: 'term-1', timetableConfigId: id });
+          expect(response.timetableConfigId).toBe(id);
+          expect(response.summary).toMatchObject({
+            classroomsChecked: 1,
+            expectedWeeklySlots: 2,
+            actualScheduledSlots: index + 1,
+          });
+          expect(response.items.map((item) => item.classroomId)).toEqual([
+            `class-${index + 1}`,
+          ]);
+        }
+        assertNoValidationWrites(repository);
+      });
+    });
+
+    it.each([TimetableConfigStatus.DRAFT, TimetableConfigStatus.ACTIVE])(
+      'reads %s configs in closed terms without publishability gates',
+      async (status) => {
+        const repository = createRepository({
+          configs: [exactConfig(TimetableScopeType.STAGE, { status })],
+          classrooms: [],
+          entries: [],
+          subjectAllocations: [],
+          termActive: false,
+        });
+        await withScope(async () => {
+          const response = await new ValidateTimetableUseCase(
+            repository,
+          ).execute({ termId: 'term-1', timetableConfigId: configId });
+          expect(response.timetableConfigId).toBe(configId);
+          expect(response.summary).toMatchObject({
+            classroomsChecked: 0,
+            expectedWeeklySlots: 0,
+            actualScheduledSlots: 0,
+          });
+          expect(response.items).toEqual([]);
+          assertNoValidationWrites(repository);
+        });
+      },
+    );
+
+    it.each([
+      ['unknown', null],
+      ['foreign school', { schoolId: 'school-2' }],
+      ['wrong term', { termId: 'term-2' }],
+      ['wrong year', { academicYearId: 'year-2' }],
+    ] as const)(
+      'masks an %s configuration with the same 404 contract',
+      async (_case, overrides) => {
+        const repository = createRepository({
+          configs: overrides
+            ? [exactConfig(TimetableScopeType.TERM, overrides)]
+            : [],
+        });
+        await withScope(async () => {
+          await expect(
+            new ValidateTimetableUseCase(repository).execute({
+              termId: 'term-1',
+              timetableConfigId: configId,
+            }),
+          ).rejects.toMatchObject({
+            code: 'academics.timetable.config_not_found',
+            httpStatus: 404,
+            details: { timetableConfigId: configId },
+          });
+          expect(
+            jest.spyOn(repository, 'listEntriesForConfig'),
+          ).not.toHaveBeenCalled();
+          assertNoValidationWrites(repository);
+        });
+      },
+    );
+
+    it.each([
+      { scopeKey: 'stage:wrong' },
+      {
+        scopeType: TimetableScopeType.TERM,
+        scopeKey: 'term:term-1',
+        stageId: 'stage-1',
+      },
+    ])('rejects corrupted persisted scope fields', async (overrides) => {
+      const repository = createRepository({
+        configs: [exactConfig(TimetableScopeType.STAGE, overrides)],
+      });
+      await withScope(async () => {
+        await expect(
+          new ValidateTimetableUseCase(repository).execute({
+            termId: 'term-1',
+            timetableConfigId: configId,
+          }),
+        ).rejects.toMatchObject({ code: 'validation.failed', httpStatus: 400 });
+        assertNoValidationWrites(repository);
+      });
+    });
+
+    it.each([
+      [
+        { classroomId: 'outside' },
+        'academics.timetable.classroom_not_found',
+        404,
+      ],
+      [
+        { gradeId: 'other-grade' },
+        'academics.timetable.classroom_scope_mismatch',
+        422,
+      ],
+      [
+        { sectionId: 'other-section' },
+        'academics.timetable.classroom_scope_mismatch',
+        422,
+      ],
+      [{ termId: 'other-term' }, 'validation.failed', 400],
+      [{ academicYearId: 'other-year' }, 'validation.failed', 400],
+      [{ schoolId: 'other-school' }, 'validation.failed', 400],
+      [{ timetableConfigId: otherConfigId }, 'validation.failed', 400],
+    ] as const)(
+      'rejects an invalid saved entry %j without hiding it',
+      async (overrides, code, httpStatus) => {
+        const repository = createRepository({
+          configs: [exactConfig(TimetableScopeType.CLASSROOM)],
+        });
+        jest
+          .spyOn(repository, 'listEntriesForConfig')
+          .mockResolvedValue([exactEntry(overrides)]);
+        await withScope(async () => {
+          await expect(
+            new ValidateTimetableUseCase(repository).execute({
+              termId: 'term-1',
+              timetableConfigId: configId,
+            }),
+          ).rejects.toMatchObject({ code, httpStatus });
+          assertNoValidationWrites(repository);
+        });
+      },
+    );
+
+    it('rejects a saved classroom outside a valid STAGE scope', async () => {
+      const outside = seedClassroom({
+        id: 'outside',
+        sectionId: 'other-section',
+        section: {
+          id: 'other-section',
+          gradeId: 'other-grade',
+          grade: { id: 'other-grade', stageId: 'other-stage' },
+        },
+      });
+      const repository = createRepository({
+        configs: [exactConfig(TimetableScopeType.STAGE)],
+        classrooms: [seedClassroom(), outside],
+        entries: [
+          exactEntry({
+            classroomId: 'outside',
+            sectionId: 'other-section',
+            gradeId: 'other-grade',
+          }),
+        ],
+      });
+      await withScope(async () => {
+        await expect(
+          new ValidateTimetableUseCase(repository).execute({
+            termId: 'term-1',
+            timetableConfigId: configId,
+          }),
+        ).rejects.toMatchObject({
+          code: 'academics.timetable.classroom_scope_mismatch',
+          httpStatus: 422,
+        });
+        assertNoValidationWrites(repository);
+      });
+    });
+
+    it.each(['teacher', 'classroom', 'room'] as const)(
+      'preserves a cross-draft %s partial overlap without borrowing weekly counts',
+      async (kind) => {
+        const classroomTwo = seedClassroom({
+          id: 'classroom-2',
+          sectionId: 'section-2',
+          section: {
+            id: 'section-2',
+            gradeId: 'grade-1',
+            grade: { id: 'grade-1', stageId: 'stage-1' },
+          },
+        });
+        const repository = createRepository({
+          configs: [
+            exactConfig(TimetableScopeType.CLASSROOM),
+            exactConfig(TimetableScopeType.TERM, { id: otherConfigId }),
+          ],
+          classrooms: [seedClassroom(), classroomTwo],
+          entries: [
+            exactEntry({ roomId: kind === 'room' ? 'room-1' : null }),
+            exactEntry({
+              id: 'other-entry',
+              timetableConfigId: otherConfigId,
+              classroomId: kind === 'classroom' ? 'classroom-1' : 'classroom-2',
+              sectionId: kind === 'classroom' ? 'section-1' : 'section-2',
+              teacherUserId: kind === 'teacher' ? 'teacher-1' : 'teacher-2',
+              roomId: kind === 'room' ? 'room-1' : null,
+              periodId: 'overlap',
+              period: {
+                ...seedPeriod(),
+                id: 'overlap',
+                startTime: '08:30',
+                endTime: '09:15',
+              },
+            }),
+          ],
+        });
+        await withScope(async () => {
+          const response = await new ValidateTimetableUseCase(
+            repository,
+          ).execute({ termId: 'term-1', timetableConfigId: configId });
+          expect(response.summary).toMatchObject({
+            actualScheduledSlots: 1,
+            teacherConflicts: kind === 'teacher' ? 1 : 0,
+            classroomConflicts: kind === 'classroom' ? 1 : 0,
+            roomConflicts: kind === 'room' ? 1 : 0,
+          });
+          assertNoValidationWrites(repository);
+        });
+      },
+    );
+
+    it('detects internal teacher classroom and room collisions', async () => {
+      const repository = createRepository({
+        configs: [exactConfig()],
+        entries: [
+          exactEntry({ roomId: 'room-1' }),
+          exactEntry({ id: 'duplicate', roomId: 'room-1' }),
+        ],
+      });
+      await withScope(async () => {
+        const response = await new ValidateTimetableUseCase(repository).execute(
+          { termId: 'term-1', timetableConfigId: configId },
+        );
+        expect(response.summary).toMatchObject({
+          actualScheduledSlots: 2,
+          teacherConflicts: 1,
+          classroomConflicts: 1,
+          roomConflicts: 1,
+        });
+        assertNoValidationWrites(repository);
+      });
+    });
+
+    it('excludes cancelled adjacent and wholly unrelated conflicts', async () => {
+      const period = seedPeriod({ startTime: '08:00', endTime: '08:45' });
+      const repository = createRepository({
+        configs: [exactConfig()],
+        entries: [
+          exactEntry({ period }),
+          exactEntry({
+            id: 'cancelled',
+            status: TimetableEntryStatus.CANCELLED,
+            period,
+          }),
+          exactEntry({
+            id: 'adjacent',
+            timetableConfigId: otherConfigId,
+            period: { ...period, startTime: '08:45', endTime: '09:30' },
+          }),
+          ...['unrelated-a', 'unrelated-b'].map((id) =>
+            exactEntry({
+              id,
+              timetableConfigId: otherConfigId,
+              period: { ...period, startTime: '10:00', endTime: '10:45' },
+            }),
+          ),
+        ],
+      });
+      await withScope(async () => {
+        const response = await new ValidateTimetableUseCase(repository).execute(
+          { termId: 'term-1', timetableConfigId: configId },
+        );
+        expect(response.summary).toMatchObject({
+          actualScheduledSlots: 1,
+          teacherConflicts: 0,
+          classroomConflicts: 0,
+          roomConflicts: 0,
+        });
+        assertNoValidationWrites(repository);
+      });
+    });
+
+    it.each([
+      ['missing', [], 'room_not_found'],
+      ['inactive', [seedRoom({ isActive: false })], 'room_inactive'],
+      [
+        'undersized',
+        [seedRoom({ capacity: 29 })],
+        'room_capacity_insufficient',
+      ],
+    ] as const)(
+      'preserves %s room integrity issues',
+      async (_case, rooms, code) => {
+        const repository = createRepository({
+          configs: [exactConfig()],
+          classrooms: [seedClassroom({ capacity: 30 })],
+          rooms: [...rooms],
+          entries: [
+            exactEntry({
+              roomId: 'room-1',
+              classroom: {
+                id: 'classroom-1',
+                nameAr: 'Class',
+                nameEn: 'Class',
+                capacity: 30,
+              },
+            }),
+          ],
+        });
+        await withScope(async () => {
+          const response = await new ValidateTimetableUseCase(
+            repository,
+          ).execute({ termId: 'term-1', timetableConfigId: configId });
+          expect(response.items[0].issues.map((issue) => issue.code)).toContain(
+            code,
+          );
+          assertNoValidationWrites(repository);
+        });
+      },
+    );
+
+    it.each([
+      ['zero hours', [seedSubjectAllocation({ weeklyHours: 0 })], [], 0, 0],
+      ['missing or deleted curriculum', [], [], 0, 1],
+      [
+        'stale zero-hour entry',
+        [seedSubjectAllocation({ weeklyHours: 0 })],
+        [exactEntry()],
+        0,
+        1,
+      ],
+    ] as const)(
+      'preserves %s curriculum semantics',
+      async (
+        _case,
+        subjectAllocations,
+        entries,
+        expectedWeeklySlots,
+        missingSubjectAllocationRows,
+      ) => {
+        const repository = createRepository({
+          configs: [exactConfig()],
+          subjectAllocations: [...subjectAllocations],
+          entries: [...entries],
+        });
+        await withScope(async () => {
+          const response = await new ValidateTimetableUseCase(
+            repository,
+          ).execute({ termId: 'term-1', timetableConfigId: configId });
+          expect(response.summary).toMatchObject({
+            expectedWeeklySlots,
+            actualScheduledSlots: entries.length,
+            missingSubjectAllocationRows,
+          });
+          assertNoValidationWrites(repository);
+        });
+      },
+    );
+
+    it.each([null, '', [], [configId], 42, {}, 'not-a-uuid'])(
+      'rejects invalid selector %j at the HTTP validation pipe',
+      async (selector: unknown) => {
+        const pipe = new ValidationPipe({
+          whitelist: true,
+          forbidNonWhitelisted: true,
+          transform: true,
+          transformOptions: { enableImplicitConversion: false },
+        });
+        await expect(
+          pipe.transform(
+            { termId: configId, timetableConfigId: selector },
+            { type: 'query', metatype: ValidateTimetableQueryDto },
+          ),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      },
+    );
+
+    it('requires termId and accepts an omitted selector in the HTTP validation pipe', async () => {
+      const pipe = new ValidationPipe({ transform: true });
+      await expect(
+        pipe.transform(
+          { timetableConfigId: configId },
+          { type: 'query', metatype: ValidateTimetableQueryDto },
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      const legacy: unknown = await pipe.transform(
+        { termId: configId },
+        { type: 'query', metatype: ValidateTimetableQueryDto },
+      );
+      expect(legacy).toMatchObject({ termId: configId });
+    });
+
+    it.each([
+      { gradeId: 'grade-1' },
+      { classroomId: 'classroom-1' },
+      { gradeId: null },
+      { classroomId: null },
+    ])(
+      'rejects exact selector combined with %j before loading data',
+      async (filters) => {
+        const repository = createRepository();
+        await withScope(async () => {
+          await expect(
+            new ValidateTimetableUseCase(repository).execute({
+              termId: 'term-1',
+              timetableConfigId: configId,
+              ...filters,
+            } as ValidateTimetableQueryDto),
+          ).rejects.toMatchObject({
+            code: 'validation.failed',
+            httpStatus: 400,
+          });
+          expect(
+            jest.spyOn(repository, 'findConfigById'),
+          ).not.toHaveBeenCalled();
+          assertNoValidationWrites(repository);
+        });
+      },
+    );
   });
 
   it('validates weekly hours and missing teacher allocations', async () => {

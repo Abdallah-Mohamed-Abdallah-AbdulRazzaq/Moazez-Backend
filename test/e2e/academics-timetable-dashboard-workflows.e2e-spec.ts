@@ -25,6 +25,7 @@ import {
   setActor,
 } from '../../src/common/context/request-context';
 import { TimetableRepository } from '../../src/modules/academics/timetable/infrastructure/timetable.repository';
+import { TimetableValidationResponseDto } from '../../src/modules/academics/timetable/dto/timetable-response.dto';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'Sprint22DTimetable123!';
@@ -399,6 +400,231 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
       ]),
     );
     expectSafeTimetablePayload(response.body);
+  });
+
+  it('validates exactly one STAGE without borrowing TERM lessons or losing draft conflicts', async () => {
+    const selected = await prisma.timetableConfig.create({
+      data: {
+        schoolId,
+        academicYearId: academic.academicYearId,
+        termId: academic.termId,
+        name: `${marker}-tt101-stage`,
+        scopeType: TimetableScopeType.STAGE,
+        scopeKey: `stage:${academic.stageId}`,
+        stageId: academic.stageId,
+        activeDays: [0, 1, 2, 3, 4],
+        status: TimetableConfigStatus.DRAFT,
+      },
+    });
+    try {
+      const periodId = await createTimetablePeriod({
+        configId: selected.id,
+        index: 1,
+        label: 'TT101 overlap',
+        startTime: '08:30',
+        endTime: '09:15',
+      });
+      await createTimetableEntryDirect({
+        termId: academic.termId,
+        configId: selected.id,
+        periodId,
+        dayOfWeek: 2,
+        classroomId: academic.classroomAId,
+        allocationId: mathAllocationAId,
+        status: TimetableEntryStatus.DRAFT,
+      });
+      const before = await snapshotValidationRecords();
+      const exact = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/academics/timetable/validate`)
+        .query({ termId: academic.termId, timetableConfigId: selected.id })
+        .set('Authorization', bearer(adminAuth))
+        .expect(200);
+      const body = exact.body as unknown as TimetableValidationResponseDto;
+      expect(body.timetableConfigId).toBe(selected.id);
+      expect(body.summary).toMatchObject({
+        classroomsChecked: 2,
+        expectedWeeklySlots: 6,
+        actualScheduledSlots: 1,
+        teacherConflicts: 0,
+        classroomConflicts: 0,
+        roomConflicts: 0,
+      });
+      expect(
+        [...new Set(body.items.map((item) => item.classroomId))].sort(),
+      ).toEqual([academic.classroomAId, academic.classroomBId].sort());
+      expect(
+        body.items.find(
+          (item) =>
+            item.classroomId === academic.classroomAId &&
+            item.subjectId === mathSubjectId,
+        ),
+      ).toMatchObject({
+        expectedWeeklyHours: 2,
+        scheduledWeeklyHours: 1,
+        status: 'under_scheduled',
+      });
+      expect(
+        body.items
+          .filter((item) => item.classroomId === academic.classroomBId)
+          .every((item) => item.scheduledWeeklyHours === 0),
+      ).toBe(true);
+      const legacy = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/academics/timetable/validate`)
+        .query({ termId: academic.termId })
+        .set('Authorization', bearer(adminAuth))
+        .expect(200);
+      expect(legacy.body).not.toHaveProperty('timetableConfigId');
+      expect(
+        (legacy.body as unknown as TimetableValidationResponseDto).summary
+          .actualScheduledSlots,
+      ).toBe(3);
+      expect(await snapshotValidationRecords()).toEqual(before);
+
+      const overlapEntryId = await createTimetableEntryDirect({
+        termId: academic.termId,
+        configId: selected.id,
+        periodId,
+        dayOfWeek: 0,
+        classroomId: academic.classroomAId,
+        allocationId: mathAllocationAId,
+        status: TimetableEntryStatus.DRAFT,
+      });
+      await prisma.timetableEntry.update({
+        where: { id: overlapEntryId },
+        data: { roomId: roomAId },
+      });
+      const conflictingBefore = await snapshotValidationRecords();
+      const conflicting = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/academics/timetable/validate`)
+        .query({ termId: academic.termId, timetableConfigId: selected.id })
+        .set('Authorization', bearer(adminAuth))
+        .expect(200);
+      expect(
+        (conflicting.body as unknown as TimetableValidationResponseDto).summary,
+      ).toMatchObject({
+        actualScheduledSlots: 2,
+        teacherConflicts: 2,
+        classroomConflicts: 2,
+        roomConflicts: 1,
+      });
+      expect(await snapshotValidationRecords()).toEqual(conflictingBefore);
+
+      await prisma.timetableConfig.update({
+        where: { id: selected.id },
+        data: { status: TimetableConfigStatus.ACTIVE },
+      });
+      await prisma.timetableEntry.updateMany({
+        where: { timetableConfigId: selected.id },
+        data: { status: TimetableEntryStatus.ACTIVE },
+      });
+      await prisma.timetablePublication.create({
+        data: {
+          schoolId,
+          academicYearId: academic.academicYearId,
+          termId: academic.termId,
+          timetableConfigId: selected.id,
+          revision: 1,
+          status: TimetablePublicationStatus.PUBLISHED,
+          publishedAt: new Date(),
+        },
+      });
+      const publishedBefore = await snapshotValidationRecords();
+      const published = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/academics/timetable/validate`)
+        .query({ termId: academic.termId, timetableConfigId: selected.id })
+        .set('Authorization', bearer(adminAuth))
+        .expect(200);
+      expect(
+        (published.body as unknown as TimetableValidationResponseDto)
+          .timetableConfigId,
+      ).toBe(selected.id);
+      expect(
+        (published.body as unknown as TimetableValidationResponseDto).summary
+          .actualScheduledSlots,
+      ).toBe(2);
+      expect(await snapshotValidationRecords()).toEqual(publishedBefore);
+    } finally {
+      await prisma.timetablePublication.deleteMany({
+        where: { schoolId, timetableConfigId: selected.id },
+      });
+      await prisma.timetableEntry.deleteMany({
+        where: { schoolId, timetableConfigId: selected.id },
+      });
+      await prisma.timetablePeriod.deleteMany({
+        where: { schoolId, timetableConfigId: selected.id },
+      });
+      await prisma.timetableConfig.delete({ where: { id: selected.id } });
+    }
+  });
+
+  it.each([
+    'timetableConfigId=',
+    'timetableConfigId=null',
+    'timetableConfigId=42',
+    'timetableConfigId=not-a-uuid',
+    `timetableConfigId=${randomUUID()}&timetableConfigId=${randomUUID()}`,
+  ])(
+    'rejects malformed exact query %s without database writes',
+    async (query) => {
+      const before = await snapshotValidationRecords();
+      const response = await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/academics/timetable/validate?termId=${academic.termId}&${query}`,
+        )
+        .set('Authorization', bearer(adminAuth))
+        .expect(400);
+      expect(
+        (response.body as unknown as { error: { code: string } }).error.code,
+      ).toBe('validation.failed');
+      expect(await snapshotValidationRecords()).toEqual(before);
+    },
+  );
+
+  it.each(['gradeId', 'classroomId'] as const)(
+    'rejects exact validation combined with %s',
+    async (filter) => {
+      const before = await snapshotValidationRecords();
+      const response = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/academics/timetable/validate`)
+        .query({
+          termId: academic.termId,
+          timetableConfigId: configId,
+          [filter]:
+            filter === 'gradeId' ? academic.gradeId : academic.classroomAId,
+        })
+        .set('Authorization', bearer(adminAuth))
+        .expect(400);
+      expect(
+        (response.body as unknown as { error: { code: string } }).error.code,
+      ).toBe('validation.failed');
+      expect(await snapshotValidationRecords()).toEqual(before);
+    },
+  );
+
+  it('requires termId and keeps closed-term exact validation readable', async () => {
+    const before = await snapshotValidationRecords();
+    const missingTerm = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/academics/timetable/validate`)
+      .query({ timetableConfigId: configId })
+      .set('Authorization', bearer(adminAuth))
+      .expect(400);
+    expect(
+      (missingTerm.body as unknown as { error: { code: string } }).error.code,
+    ).toBe('validation.failed');
+    const closed = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/academics/timetable/validate`)
+      .query({
+        termId: academic.closedTermId,
+        timetableConfigId: closedConfigId,
+      })
+      .set('Authorization', bearer(adminAuth))
+      .expect(200);
+    expect(closed.body).toMatchObject({
+      timetableConfigId: closedConfigId,
+      termId: academic.closedTermId,
+      summary: { actualScheduledSlots: 1 },
+    });
+    expect(await snapshotValidationRecords()).toEqual(before);
   });
 
   it('keeps preview, publication, and blocked publish in parity without database mutations', async () => {
@@ -1917,6 +2143,31 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
       await prisma.timetableConfig.delete({ where: { id: atomicConfig.id } });
     }
   });
+
+  function snapshotValidationRecords() {
+    return Promise.all([
+      prisma.timetableConfig.findMany({
+        where: { schoolId },
+        orderBy: { id: 'asc' },
+      }),
+      prisma.timetableEntry.findMany({
+        where: { schoolId },
+        orderBy: { id: 'asc' },
+      }),
+      prisma.timetablePeriod.findMany({
+        where: { schoolId },
+        orderBy: { id: 'asc' },
+      }),
+      prisma.timetablePublication.findMany({
+        where: { schoolId },
+        orderBy: { id: 'asc' },
+      }),
+      prisma.timetableConflict.findMany({
+        where: { schoolId },
+        orderBy: { id: 'asc' },
+      }),
+    ]);
+  }
 
   async function findSystemRole(key: string): Promise<{ id: string }> {
     const role = await prisma.role.findFirst({

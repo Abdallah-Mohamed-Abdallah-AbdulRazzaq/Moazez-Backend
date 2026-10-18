@@ -58,6 +58,7 @@ import {
   UpdateTimetableEntryDto,
   UpdateTimetablePeriodDto,
   UpsertTimetableConfigDto,
+  ValidateTimetableQueryDto,
 } from '../dto/timetable.dto';
 import {
   DeleteTimetableEntryResponseDto,
@@ -318,10 +319,14 @@ export class TimetableController {
 
   @Get('validate')
   @RequiredPermissions('academics.structure.view')
-  @ApiOperation({ summary: 'Validate timetable completeness and weekly hours' })
+  @ApiOperation({
+    summary: 'Validate timetable completeness and weekly hours',
+    description:
+      'Optionally select exactly one timetableConfigId within the required term. The exact selector cannot be combined with gradeId or classroomId. Without it, legacy term/grade/classroom validation is preserved.',
+  })
   @ApiOkResponse({ type: TimetableValidationResponseDto })
   validate(
-    @Query() query: TimetableDashboardQueryDto,
+    @Query() query: ValidateTimetableQueryDto,
   ): Promise<TimetableValidationResponseDto> {
     return this.validateTimetableUseCase.execute(query);
   }
