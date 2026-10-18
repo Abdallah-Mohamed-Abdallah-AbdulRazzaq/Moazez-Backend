@@ -1424,6 +1424,68 @@ async function runTapFiles(context, files) {
   );
 }
 
+function validateRuntimeGovernanceDispatch(plan, shard, submittedFiles) {
+  const reject = () => {
+    throw commandFailure('Runtime Governance dispatch ownership mismatch', 'GOVERNANCE_INVARIANT_FAILURE');
+  };
+  const assignments = plan.assignments.filter((entry) =>
+    entry.profile === 'runtime-governance' && entry.execution === 'pull-request');
+  const expected = assignments.map((entry) => entry.file).sort(compareText);
+  if (shard.profile !== 'runtime-governance' ||
+      new Set(expected).size !== expected.length ||
+      JSON.stringify(expected) !== JSON.stringify(shard.files) ||
+      JSON.stringify(submittedFiles) !== JSON.stringify(expected)) reject();
+  for (const file of submittedFiles) {
+    const owners = plan.assignments.filter((entry) => entry.file === file);
+    if (owners.length !== 1 || owners[0].kind !== 'node-tap' ||
+        owners[0].execution !== 'pull-request' || owners[0].profile !== shard.profile ||
+        owners[0].category !== shard.category || typeof owners[0].owner !== 'string' ||
+        owners[0].owner.length === 0) reject();
+  }
+  return [...submittedFiles];
+}
+
+function readPassingTapCounts(output) {
+  const counts = {};
+  for (const name of ['tests', 'pass', 'fail', 'cancelled', 'skipped', 'todo']) {
+    const matches = [...String(output ?? '').matchAll(new RegExp('^# ' + name + ' ([0-9]+)\\r?$', 'gmu'))];
+    if (matches.length !== 1) throw commandFailure('Incomplete Runtime Governance TAP summary', 'GOVERNANCE_INVARIANT_FAILURE');
+    counts[name] = Number(matches[0][1]);
+  }
+  if (!Number.isSafeInteger(counts.tests) || counts.tests <= 0 || counts.pass !== counts.tests ||
+      ['fail', 'cancelled', 'skipped', 'todo'].some((name) => counts[name] !== 0) ||
+      !/^# duration_ms [0-9]+(?:\.[0-9]+)?\r?$/mu.test(String(output))) {
+    throw commandFailure('Runtime Governance TAP must prove real tests and zero failures/skips', 'GOVERNANCE_INVARIANT_FAILURE');
+  }
+  return counts;
+}
+
+async function runRuntimeGovernanceTap(context, files) {
+  const args = Object.freeze(['--require', 'ts-node/register', '--test', ...files]);
+  const submitted = validateRuntimeGovernanceDispatch(context.plan, context.shard, args.slice(3));
+  const dispatch = { command: process.execPath, args: [...args], submittedTestFiles: submitted, status: 'SUBMITTED' };
+  context.evidence.runtimeGovernanceDispatch = dispatch;
+  process.stdout.write('CI_RUNTIME_GOVERNANCE_DISPATCH=' + JSON.stringify(dispatch) + '\n');
+  try {
+    const outcome = await runStage(context, nodeStage('node-tap', args, 'GOVERNANCE_INVARIANT_FAILURE', {
+      timeoutMs: 12 * 60 * 1000, env: context.testEnvironment ?? context.environment,
+    }));
+    if (outcome.exitCode !== 0 || outcome.timedOut !== false || outcome.signal) {
+      throw commandFailure('Runtime Governance TAP process did not complete successfully', 'GOVERNANCE_INVARIANT_FAILURE');
+    }
+    const counts = readPassingTapCounts(outcome.outputTail);
+    const executed = validateRuntimeGovernanceDispatch(context.plan, context.shard, args.slice(3));
+    Object.assign(dispatch, { status: 'PASS', counts });
+    context.evidence.testCount = counts.tests;
+    context.evidence.skippedTestCount = counts.skipped;
+    context.evidence.executedTestFiles = executed;
+  } catch (error) {
+    dispatch.status = 'FAIL';
+    failStagePostcondition(context, 'node-tap', error.classification ?? 'GOVERNANCE_INVARIANT_FAILURE');
+    throw error;
+  }
+}
+
 async function runPreflight(context) {
   const head = await context.execute(
     'git',
@@ -1828,6 +1890,9 @@ async function cleanupHealthResources(context) {
 }
 
 async function runRegression(context) {
+  const runtimeFiles = context.shard.profile === 'runtime-governance'
+    ? validateRuntimeGovernanceDispatch(context.plan, context.shard, context.shard.files)
+    : null;
   await installDependencies(context);
   await generatePrisma(context);
   const profile = context.shard.profile;
@@ -1879,7 +1944,10 @@ async function runRegression(context) {
         },
       ),
     );
-  } else if (profile === 'runtime-governance' || profile === 'orchestrator') {
+  } else if (profile === 'runtime-governance') {
+    await runRuntimeGovernanceTap(context, runtimeFiles);
+    return;
+  } else if (profile === 'orchestrator') {
     await runTapFiles(context, tapFiles);
   } else {
     const needsServices = SERVICE_PROFILES.has(profile);
@@ -2118,6 +2186,8 @@ module.exports = {
   removeAndVerify,
   runProcess,
   runShard,
+  validateRuntimeGovernanceDispatch,
+  readPassingTapCounts,
   safeHostEnvironment,
   sanitizeEvidence,
   validateShard,

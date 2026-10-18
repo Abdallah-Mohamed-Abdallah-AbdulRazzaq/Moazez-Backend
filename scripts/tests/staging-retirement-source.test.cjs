@@ -51,7 +51,8 @@ function parsedTests(file, text) {
 }
 test('retirement has the exact approved paths and actions, with no implicit scope', () => {
   assert.equal(ACTIONS.REMOVE.length, 71);
-  assert.equal(ACTIONS.MODIFY.length, 56);
+  assert.equal(ACTIONS.MODIFY.length, 57);
+  assert.equal(ACTIONS.MODIFY.filter((file) => file === 'scripts/ci/run-ci-shard.cjs').length, 1);
   assert.equal(ACTIONS.ADD.length, 6);
   assert.equal(policy.assertApprovedActions(), true);
   assert.equal(policy.isStagingRetirementScope([...policy.expectedActions().keys()]), true);

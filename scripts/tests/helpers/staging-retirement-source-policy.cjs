@@ -110,6 +110,7 @@ const ACTIONS = {
     "infra/gcp/storage/README.md",
     "README.md",
     "scripts/ci/plan-ci.cjs",
+    "scripts/ci/run-ci-shard.cjs",
     "scripts/deployment-control/README.md",
     "scripts/deployment-control/runtime-capacity-control.cjs",
     "scripts/deployment-control/runtime-release-control.cjs",

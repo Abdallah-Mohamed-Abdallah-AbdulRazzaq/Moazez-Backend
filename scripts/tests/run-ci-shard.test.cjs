@@ -24,6 +24,9 @@ const {
   requireMinioFixture,
   removeAndVerify,
   runProcess,
+  runShard,
+  validateRuntimeGovernanceDispatch,
+  readPassingTapCounts,
   safeHostEnvironment,
   sanitizeEvidence,
   validateShard,
@@ -87,6 +90,147 @@ function temporaryRepository() {
   fs.writeFileSync(path.join(root, 'src', 'example.spec.ts'), 'export {};\n');
   return root;
 }
+
+const CI001_OPERATIONAL_FILES = [
+  'scripts/deployment-control/tests/runtime-capacity-control.test.cjs',
+  'scripts/deployment-control/tests/runtime-release-control.test.cjs',
+  'scripts/deployment-control/tests/staging-retirement-control.test.cjs',
+];
+function passingTap(count = 15, overrides = {}) {
+  const counts = { tests: count, pass: count, fail: 0, cancelled: 0, skipped: 0, todo: 0, ...overrides };
+  return 'TAP version 13\n1..' + count + '\n' + Object.entries(counts).map(([key, value]) => '# ' + key + ' ' + value).join('\n') + '\n# duration_ms 1\n';
+}
+function governanceFixture(profile = 'runtime-governance') {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moazez-ci001-'));
+  const files = (profile === 'runtime-governance'
+    ? [...CI001_OPERATIONAL_FILES, ...Array.from({ length: 12 }, (_, index) => 'scripts/tests/ci001-' + String(index).padStart(2, '0') + '.test.cjs')]
+    : ['scripts/tests/orchestrator.test.cjs']).sort();
+  for (const file of files) {
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.writeFileSync(path.join(root, file), '// Isolated dispatch fixture; never executed.\n');
+  }
+  const shard = { id: profile + '-1-of-1', label: profile, category: 'invariant', profile, index: 1, total: 1, files, timeoutMinutes: 15 };
+  const plan = samplePlan({
+    assignments: files.map((file) => ({ file, execution: 'pull-request', kind: 'node-tap', category: 'invariant', owner: 'ci001-fixture', profile })),
+    shards: [shard],
+  });
+  const calls = [];
+  return {
+    root, files, shard, plan, calls,
+    options: {
+      repositoryRoot: root, plan, shardId: shard.id, evidencePath: path.join(root, 'evidence.json'),
+      environment: { CI_CANDIDATE_SHA: CANDIDATE, CI_BASE_SHA: BASE, GITHUB_RUN_ID: '1234', GITHUB_RUN_ATTEMPT: '1' },
+      execute: async (command, args) => {
+        calls.push({ command, args: [...args] });
+        return { ok: true, exitCode: 0, timedOut: false, signal: null, outputTail: args.includes('--test') ? passingTap() : '' };
+      },
+    },
+    dispose: () => fs.rmSync(root, { recursive: true, force: true }),
+  };
+}
+test('CI001 dispatches all fifteen authoritative TAP files and attests only successful argv', async () => {
+  const fixture = governanceFixture();
+  try {
+    const evidence = await runShard(fixture.options);
+    const calls = fixture.calls.filter((call) => call.args.includes('--test'));
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].args, ['--require', 'ts-node/register', '--test', ...fixture.files]);
+    assert.equal(calls[0].command, process.execPath);
+    for (const file of CI001_OPERATIONAL_FILES) assert.ok(calls[0].args.includes(file));
+    assert.equal(new Set(calls[0].args.slice(3)).size, 15);
+    assert.deepEqual(evidence.executedTestFiles, calls[0].args.slice(3));
+    assert.deepEqual(evidence.runtimeGovernanceDispatch.args, calls[0].args);
+    assert.equal(evidence.runtimeGovernanceDispatch.status, 'PASS');
+    assert.equal(evidence.status, 'PASS');
+    assert.equal(evidence.cleanupStatus, 'PASS');
+    assert.equal(evidence.testCount, 15);
+    assert.equal(evidence.skippedTestCount, 0);
+    assert.equal(fixture.calls.length, 3); // npm/prisma/test are injected, never launched.
+  } finally { fixture.dispose(); }
+});
+test('CI001 rejects the original twelve-of-fifteen argv, duplicates and foreign submissions', () => {
+  const fixture = governanceFixture();
+  try {
+    const omitted = fixture.files.filter((file) => file.startsWith('scripts/tests/'));
+    assert.equal(omitted.length, 12);
+    for (const files of [omitted, [...fixture.files, fixture.files[0]], [...fixture.files.slice(1), 'scripts/tests/foreign.test.cjs']]) {
+      assert.throws(() => validateRuntimeGovernanceDispatch(fixture.plan, fixture.shard, files), /dispatch ownership mismatch/u);
+    }
+    assert.deepEqual(fixture.calls, []);
+  } finally { fixture.dispose(); }
+});
+test('CI001 refuses missing, duplicate, foreign and mixed-kind ownership before executor work', async () => {
+  const mutations = [
+    (f) => { f.plan.assignments.shift(); },
+    (f) => { f.plan.assignments.push({ ...f.plan.assignments[0] }); },
+    (f) => { f.plan.assignments.push({ ...f.plan.assignments[0], execution: 'manual' }); },
+    (f) => { f.plan.assignments[0].kind = 'jest'; },
+    (f) => { f.plan.assignments[0].kind = 'unknown'; },
+    (f) => { f.plan.assignments[0].profile = 'orchestrator'; },
+    (f) => { f.plan.assignments[0].execution = 'manual'; },
+    (f) => { f.plan.assignments[0].category = 'unit'; },
+    (f) => { f.plan.assignments[0].owner = ''; },
+    (f) => { f.plan.assignments.push({ ...f.plan.assignments[0], file: 'scripts/tests/foreign.test.cjs' }); },
+    (f) => { fs.unlinkSync(path.join(f.root, f.files[0])); },
+    (f) => { f.shard.files.push(f.files[0]); },
+  ];
+  for (const mutate of mutations) {
+    const fixture = governanceFixture();
+    try {
+      mutate(fixture);
+      await assert.rejects(runShard(fixture.options));
+      assert.deepEqual(fixture.calls, []);
+      if (fs.existsSync(fixture.options.evidencePath)) {
+        const evidence = JSON.parse(fs.readFileSync(fixture.options.evidencePath, 'utf8'));
+        assert.equal(evidence.status, 'FAIL');
+        assert.deepEqual(evidence.executedTestFiles, []);
+      }
+    } finally { fixture.dispose(); }
+  }
+});
+test('CI001 cannot attest process failure, timeout, signal, skips or incomplete TAP as executions', async () => {
+  const outcomes = [
+    { ok: false, exitCode: 1 },
+    { ok: false, exitCode: 1, timedOut: true },
+    { exitCode: 9 },
+    { signal: 'SIGTERM' },
+    { outputTail: passingTap(15, { pass: 14, skipped: 1 }) },
+    { outputTail: passingTap(15, { pass: 14, fail: 1 }) },
+    { outputTail: passingTap(15, { pass: 14, cancelled: 1 }) },
+    { outputTail: passingTap(15, { pass: 14, todo: 1 }) },
+    { outputTail: passingTap(0) },
+    { outputTail: '' },
+    { outputTail: passingTap() + '# tests 15\n' },
+    { outputTail: passingTap().replace('# duration_ms 1\n', '') },
+  ];
+  for (const outcome of outcomes) {
+    const fixture = governanceFixture();
+    const execute = fixture.options.execute;
+    fixture.options.execute = async (command, args) => ({ ...await execute(command, args), ...(args.includes('--test') ? outcome : {}) });
+    try {
+      await assert.rejects(runShard(fixture.options), (error) => {
+        assert.equal(error.evidence.status, 'FAIL');
+        assert.equal(error.evidence.cleanupStatus, 'PASS');
+        assert.deepEqual(error.evidence.executedTestFiles, []);
+        assert.equal(error.evidence.runtimeGovernanceDispatch.status, 'FAIL');
+        assert.equal(error.evidence.stages.at(-1).status, 'FAIL');
+        if (outcome.timedOut) assert.equal(error.evidence.classification, 'TIMEOUT');
+        return true;
+      });
+    } finally { fixture.dispose(); }
+  }
+  assert.equal(readPassingTapCounts(passingTap(344)).tests, 344);
+});
+test('CI001 preserves Orchestrator dispatch and does not apply Runtime attestation to other profiles', async () => {
+  const fixture = governanceFixture('orchestrator');
+  try {
+    const evidence = await runShard(fixture.options);
+    assert.deepEqual(fixture.calls.at(-1).args, ['--require', 'ts-node/register', '--test', ...fixture.files]);
+    assert.equal(evidence.status, 'PASS');
+    assert.equal(Object.hasOwn(evidence, 'runtimeGovernanceDispatch'), false);
+    assert.deepEqual(evidence.executedTestFiles, fixture.files);
+  } finally { fixture.dispose(); }
+});
 
 test('the failure taxonomy contains every stable machine classification exactly once', () => {
   assert.equal(
