@@ -392,7 +392,29 @@ export interface TimetableWriteRepository {
   ): Promise<BulkSaveTimetableEntriesResult>;
 }
 
-export interface SerializedTimetableWriteRepository extends TimetableWriteRepository {
+export type TimetablePublicationReadRepository = Pick<
+  TimetableRepository,
+  | 'findAcademicYearById'
+  | 'findTermById'
+  | 'listPeriods'
+  | 'listEntriesForConfig'
+  | 'listClassrooms'
+  | 'listSubjectAllocationsForTerm'
+  | 'listTeacherAllocationsByTerm'
+  | 'listEntriesByTerm'
+  | 'listGradesByIds'
+  | 'findRoomsByIds'
+>;
+
+export interface SerializedTimetableWriteRepository
+  extends TimetableWriteRepository, TimetablePublicationReadRepository {
+  findStageById(stageId: string): Promise<TimetableStageRecord | null>;
+  findSectionById(sectionId: string): Promise<TimetableSectionRecord | null>;
+  listConfigsByTerm(termId: string): Promise<TimetableConfigRecord[]>;
+  findLatestPublicationByConfigId: TimetableRepository['findLatestPublicationByConfigId'];
+  findLatestPublicationsByConfigIds: TimetableRepository['findLatestPublicationsByConfigIds'];
+  publishConfig: TimetableRepository['publishConfig'];
+  unpublishConfigs: TimetableRepository['unpublishConfigs'];
   lockTeacherAllocations(
     allocationIds: readonly string[],
   ): Promise<TimetableTeacherAllocationRecord[]>;
@@ -614,7 +636,11 @@ export class TimetableRepository implements TimetableWriteRepository {
   }
 
   async withSerializedTermWrite<T>(
-    input: { termId: string; timetableConfigIds?: string[] },
+    input: {
+      termId: string;
+      timetableConfigIds?: string[];
+      lockAllTermConfigs?: boolean;
+    },
     operation: (repository: SerializedTimetableWriteRepository) => Promise<T>,
   ): Promise<SerializedTimetableWriteResult<T>> {
     return this.runSerializedTermWrite(input, (tx, schoolId) =>
@@ -630,7 +656,11 @@ export class TimetableRepository implements TimetableWriteRepository {
   }
 
   private async runSerializedTermWrite<T>(
-    input: { termId: string; timetableConfigIds?: string[] },
+    input: {
+      termId: string;
+      timetableConfigIds?: string[];
+      lockAllTermConfigs?: boolean;
+    },
     operation: (tx: Prisma.TransactionClient, schoolId: string) => Promise<T>,
   ): Promise<SerializedTimetableWriteResult<T>> {
     const schoolId = this.getCurrentSchoolId();
@@ -651,15 +681,21 @@ export class TimetableRepository implements TimetableWriteRepository {
         if (!lockedTerms[0]) return { status: 'not_found' as const };
 
         const configIds = uniqueStrings(input.timetableConfigIds ?? []);
-        if (configIds.length > 0) {
+        if (input.lockAllTermConfigs || configIds.length > 0) {
           await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
             SELECT "id"
             FROM "timetable_configs"
             WHERE "school_id" = ${schoolId}::uuid
               AND "term_id" = ${input.termId}::uuid
-              AND "id" IN (${Prisma.join(
-                configIds.map((configId) => Prisma.sql`${configId}::uuid`),
-              )})
+              ${
+                input.lockAllTermConfigs
+                  ? Prisma.empty
+                  : Prisma.sql`AND "id" IN (${Prisma.join(
+                      configIds.map(
+                        (configId) => Prisma.sql`${configId}::uuid`,
+                      ),
+                    )})`
+              }
             ORDER BY "id" ASC
             FOR UPDATE
           `);
@@ -958,6 +994,14 @@ export class TimetableRepository implements TimetableWriteRepository {
       where: { id: timetableConfigId },
       ...TIMETABLE_CONFIG_ARGS,
     });
+  }
+
+  async findConfigTermId(timetableConfigId: string): Promise<string | null> {
+    const locator = await this.scopedPrisma.timetableConfig.findFirst({
+      where: { id: timetableConfigId },
+      select: { termId: true },
+    });
+    return locator?.termId ?? null;
   }
 
   listConfigsByTerm(termId: string): Promise<TimetableConfigRecord[]> {
@@ -1466,9 +1510,258 @@ class TransactionTimetableWriteRepository implements SerializedTimetableWriteRep
     timetableConfigId: string,
   ): Promise<TimetableConfigRecord | null> {
     return this.tx.timetableConfig.findFirst({
-      where: { id: timetableConfigId, schoolId: this.schoolId },
+      where: {
+        id: timetableConfigId,
+        schoolId: this.schoolId,
+        termId: this.termId,
+      },
       ...TIMETABLE_CONFIG_ARGS,
     });
+  }
+
+  findAcademicYearById(
+    academicYearId: string,
+  ): Promise<TimetableAcademicYearRecord | null> {
+    return this.tx.academicYear.findFirst({
+      where: { id: academicYearId, schoolId: this.schoolId, deletedAt: null },
+      ...ACADEMIC_YEAR_ARGS,
+    });
+  }
+
+  findStageById(stageId: string): Promise<TimetableStageRecord | null> {
+    return this.tx.stage.findFirst({
+      where: { id: stageId, schoolId: this.schoolId, deletedAt: null },
+      ...STAGE_ARGS,
+    });
+  }
+
+  findSectionById(sectionId: string): Promise<TimetableSectionRecord | null> {
+    return this.tx.section.findFirst({
+      where: { id: sectionId, schoolId: this.schoolId, deletedAt: null },
+      ...SECTION_ARGS,
+    });
+  }
+
+  listConfigsByTerm(termId: string): Promise<TimetableConfigRecord[]> {
+    assertLockedTerm(termId, this.termId);
+    return this.tx.timetableConfig.findMany({
+      where: { schoolId: this.schoolId, termId },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      ...TIMETABLE_CONFIG_ARGS,
+    });
+  }
+
+  listPeriods(timetableConfigId: string): Promise<TimetablePeriodRecord[]> {
+    return this.tx.timetablePeriod.findMany({
+      where: {
+        schoolId: this.schoolId,
+        timetableConfigId,
+        timetableConfig: { schoolId: this.schoolId, termId: this.termId },
+      },
+      orderBy: [{ periodIndex: 'asc' }],
+      ...TIMETABLE_PERIOD_ARGS,
+    });
+  }
+
+  listEntriesForConfig(
+    timetableConfigId: string,
+  ): Promise<TimetableEntryRecord[]> {
+    return this.tx.timetableEntry.findMany({
+      where: {
+        schoolId: this.schoolId,
+        termId: this.termId,
+        timetableConfigId,
+      },
+      orderBy: [
+        { classroomId: 'asc' },
+        { dayOfWeek: 'asc' },
+        { period: { periodIndex: 'asc' } },
+        { createdAt: 'asc' },
+      ],
+      ...TIMETABLE_ENTRY_ARGS,
+    });
+  }
+
+  listClassrooms(): Promise<TimetableClassroomRecord[]> {
+    return this.tx.classroom.findMany({
+      where: {
+        schoolId: this.schoolId,
+        deletedAt: null,
+        section: {
+          is: { deletedAt: null, grade: { is: { deletedAt: null } } },
+        },
+      },
+      orderBy: [{ nameEn: 'asc' }, { nameAr: 'asc' }],
+      ...CLASSROOM_ARGS,
+    });
+  }
+
+  listGradesByIds(gradeIds: string[]): Promise<TimetableGradeRecord[]> {
+    if (gradeIds.length === 0) return Promise.resolve([]);
+    return this.tx.grade.findMany({
+      where: { schoolId: this.schoolId, id: { in: gradeIds }, deletedAt: null },
+      ...GRADE_ARGS,
+    });
+  }
+
+  findRoomsByIds(roomIds: string[]): Promise<TimetableRoomRecord[]> {
+    if (roomIds.length === 0) return Promise.resolve([]);
+    return this.tx.room.findMany({
+      where: { schoolId: this.schoolId, id: { in: roomIds }, deletedAt: null },
+      ...ROOM_ARGS,
+    });
+  }
+
+  listSubjectAllocationsForTerm(filters: {
+    termId: string;
+    gradeId?: string;
+  }): Promise<TimetableSubjectAllocationRecord[]> {
+    assertLockedTerm(filters.termId, this.termId);
+    return this.tx.subjectAllocation.findMany({
+      where: {
+        schoolId: this.schoolId,
+        termId: this.termId,
+        deletedAt: null,
+        ...(filters.gradeId ? { gradeId: filters.gradeId } : {}),
+        grade: { is: { deletedAt: null } },
+        subject: { is: { deletedAt: null } },
+      },
+      orderBy: [{ gradeId: 'asc' }, { subjectId: 'asc' }],
+      ...SUBJECT_ALLOCATION_ARGS,
+    });
+  }
+
+  listTeacherAllocationsByTerm(filters: {
+    termId: string;
+    gradeId?: string;
+    classroomId?: string;
+  }): Promise<TimetableTeacherAllocationRecord[]> {
+    assertLockedTerm(filters.termId, this.termId);
+    return this.tx.teacherSubjectAllocation.findMany({
+      where: {
+        schoolId: this.schoolId,
+        termId: this.termId,
+        ...(filters.classroomId ? { classroomId: filters.classroomId } : {}),
+        ...(filters.gradeId
+          ? {
+              classroom: {
+                is: { section: { is: { gradeId: filters.gradeId } } },
+              },
+            }
+          : {}),
+      },
+      ...TEACHER_ALLOCATION_ARGS,
+    });
+  }
+
+  findLatestPublicationByConfigId(
+    timetableConfigId: string,
+  ): Promise<TimetablePublicationRecord | null> {
+    return this.tx.timetablePublication.findFirst({
+      where: {
+        schoolId: this.schoolId,
+        termId: this.termId,
+        timetableConfigId,
+      },
+      orderBy: [{ revision: 'desc' }, { createdAt: 'desc' }],
+      ...TIMETABLE_PUBLICATION_ARGS,
+    });
+  }
+
+  findLatestPublicationsByConfigIds(
+    timetableConfigIds: string[],
+  ): Promise<TimetablePublicationRecord[]> {
+    if (timetableConfigIds.length === 0) return Promise.resolve([]);
+    return this.tx.timetablePublication.findMany({
+      where: {
+        schoolId: this.schoolId,
+        termId: this.termId,
+        timetableConfigId: { in: timetableConfigIds },
+      },
+      orderBy: [{ revision: 'desc' }, { createdAt: 'desc' }],
+      ...TIMETABLE_PUBLICATION_ARGS,
+    });
+  }
+
+  async publishConfig(
+    input: Parameters<TimetableRepository['publishConfig']>[0],
+  ): ReturnType<TimetableRepository['publishConfig']> {
+    assertWriteSchool(input.config.schoolId, this.schoolId);
+    assertLockedTerm(input.config.termId, this.termId);
+    const publication = await this.tx.timetablePublication.create({
+      data: {
+        schoolId: this.schoolId,
+        termId: this.termId,
+        academicYearId: input.config.academicYearId,
+        timetableConfigId: input.config.id,
+        status: TimetablePublicationStatus.PUBLISHED,
+        publishedAt: input.publishedAt,
+        publishedByUserId: input.publishedByUserId,
+        revision: input.revision,
+      },
+      ...TIMETABLE_PUBLICATION_ARGS,
+    });
+    const config = await this.tx.timetableConfig.update({
+      where: {
+        id_schoolId: { id: input.config.id, schoolId: this.schoolId },
+        termId: this.termId,
+        status: TimetableConfigStatus.DRAFT,
+      },
+      data: { status: TimetableConfigStatus.ACTIVE },
+      ...TIMETABLE_CONFIG_ARGS,
+    });
+    const activatedEntries = await this.tx.timetableEntry.updateMany({
+      where: {
+        schoolId: this.schoolId,
+        termId: this.termId,
+        timetableConfigId: config.id,
+        status: TimetableEntryStatus.DRAFT,
+      },
+      data: { status: TimetableEntryStatus.ACTIVE },
+    });
+    return {
+      publication,
+      config,
+      activatedEntriesCount: activatedEntries.count,
+    };
+  }
+
+  async unpublishConfigs(
+    timetableConfigIds: string[],
+  ): Promise<UnpublishTimetableResult> {
+    if (timetableConfigIds.length === 0)
+      return { unpublishedCount: 0, entriesReturnedToDraft: 0 };
+    const publications = await this.tx.timetablePublication.updateMany({
+      where: {
+        schoolId: this.schoolId,
+        termId: this.termId,
+        timetableConfigId: { in: timetableConfigIds },
+        status: TimetablePublicationStatus.PUBLISHED,
+      },
+      data: { status: TimetablePublicationStatus.SUPERSEDED },
+    });
+    await this.tx.timetableConfig.updateMany({
+      where: {
+        schoolId: this.schoolId,
+        termId: this.termId,
+        id: { in: timetableConfigIds },
+        status: TimetableConfigStatus.ACTIVE,
+      },
+      data: { status: TimetableConfigStatus.DRAFT },
+    });
+    const entries = await this.tx.timetableEntry.updateMany({
+      where: {
+        schoolId: this.schoolId,
+        termId: this.termId,
+        timetableConfigId: { in: timetableConfigIds },
+        status: TimetableEntryStatus.ACTIVE,
+      },
+      data: { status: TimetableEntryStatus.DRAFT },
+    });
+    return {
+      unpublishedCount: publications.count,
+      entriesReturnedToDraft: entries.count,
+    };
   }
 
   findPeriodById(periodId: string): Promise<TimetablePeriodRecord | null> {

@@ -12,7 +12,7 @@ import {
   TimetableConfigRecord,
   TimetableEntryRecord,
   TimetablePeriodRecord,
-  TimetableRepository,
+  TimetablePublicationReadRepository,
   TimetableRoomRecord,
   TimetableSubjectAllocationRecord,
   TimetableTeacherAllocationRecord,
@@ -64,7 +64,7 @@ export interface TimetablePublishReadiness {
 }
 
 export async function loadTimetablePublicationDataset(
-  repository: TimetableRepository,
+  repository: TimetablePublicationReadRepository,
   config: TimetableConfigRecord,
 ): Promise<TimetablePublicationDataset> {
   const [

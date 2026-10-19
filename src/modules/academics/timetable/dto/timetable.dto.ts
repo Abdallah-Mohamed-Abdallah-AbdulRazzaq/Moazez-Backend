@@ -173,6 +173,10 @@ export class UnpublishTimetableDto {
   @IsOptional()
   @IsUUID()
   classroomId?: string;
+
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsUUID()
+  timetableConfigId?: string;
 }
 
 export class CreateTimetablePeriodDto {

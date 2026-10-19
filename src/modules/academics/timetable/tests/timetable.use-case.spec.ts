@@ -41,11 +41,15 @@ import { UpsertTimetableConfigUseCase } from '../application/upsert-timetable-co
 import { ValidateTimetableUseCase } from '../application/validate-timetable.use-case';
 import { computeTimetableConflicts } from '../domain/timetable-conflicts';
 import { TimetableTeacherConflictException } from '../domain/timetable.exceptions';
-import { ValidateTimetableQueryDto } from '../dto/timetable.dto';
+import {
+  UnpublishTimetableDto,
+  ValidateTimetableQueryDto,
+} from '../dto/timetable.dto';
 import {
   SerializedTimetableWriteResult,
   TimetableRepository,
   TimetableWriteRepository,
+  SerializedTimetableWriteRepository,
 } from '../infrastructure/timetable.repository';
 
 type ConfigRecord = Awaited<
@@ -187,6 +191,13 @@ describe('Timetable use cases', () => {
     }
 
     const repository = {
+      findConfigTermId: jest
+        .fn()
+        .mockImplementation((id: string) =>
+          Promise.resolve(
+            configs.find((config) => config.id === id)?.termId ?? null,
+          ),
+        ),
       findAcademicYearById: jest
         .fn()
         .mockImplementation(async (id: string) =>
@@ -4632,6 +4643,360 @@ describe('Timetable use cases', () => {
       });
     },
   );
+
+  describe('TT-102 exact unpublish and locked publication decisions', () => {
+    const exactId = '11111111-1111-4111-8111-111111111102';
+
+    it('unpublishes only STAGE A, preserves unrelated records and non-active entries, and is idempotent', async () => {
+      const a = seedConfig({
+        id: exactId,
+        scopeType: TimetableScopeType.STAGE,
+        scopeKey: 'stage:stage-1',
+        stageId: 'stage-1',
+        status: TimetableConfigStatus.ACTIVE,
+      });
+      const others = ['b', 'c', 'term'].map((id) =>
+        seedConfig({ id, status: TimetableConfigStatus.ACTIVE }),
+      );
+      const configs = [a, ...others];
+      const entries = [
+        seedEntry({
+          id: 'active',
+          timetableConfigId: exactId,
+          status: TimetableEntryStatus.ACTIVE,
+        }),
+        seedEntry({
+          id: 'draft',
+          timetableConfigId: exactId,
+          status: TimetableEntryStatus.DRAFT,
+        }),
+        seedEntry({
+          id: 'cancelled',
+          timetableConfigId: exactId,
+          status: TimetableEntryStatus.CANCELLED,
+        }),
+        ...others.map((c) =>
+          seedEntry({
+            id: c.id,
+            timetableConfigId: c.id,
+            status: TimetableEntryStatus.ACTIVE,
+          }),
+        ),
+      ];
+      const publications = configs.map((c, i) =>
+        seedPublication({ id: `pub-${i}`, timetableConfigId: c.id }),
+      );
+      const historical = seedPublication({
+        id: 'historical',
+        timetableConfigId: exactId,
+        revision: 0,
+        status: TimetablePublicationStatus.SUPERSEDED,
+      });
+      publications.push(historical);
+      const beforeOthers = structuredClone({
+        configs: others,
+        entries: entries.slice(1),
+        publications: publications.slice(1),
+      });
+      const beforeHistory = structuredClone(historical);
+      const publicationIdentity = { ...publications[0] };
+      const repository = createRepository({ configs, entries, publications });
+      await withScope(async () => {
+        const useCase = new UnpublishTimetableUseCase(repository);
+        await expect(
+          useCase.execute({ termId: 'term-1', timetableConfigId: exactId }),
+        ).resolves.toEqual({
+          termId: 'term-1',
+          academicYearId: 'year-1',
+          summary: {
+            configsChecked: 1,
+            unpublishedCount: 1,
+            entriesReturnedToDraft: 1,
+          },
+        });
+        expect(a.status).toBe(TimetableConfigStatus.DRAFT);
+        expect(entries[0].status).toBe(TimetableEntryStatus.DRAFT);
+        expect(publications[0]).toMatchObject({
+          ...publicationIdentity,
+          status: TimetablePublicationStatus.SUPERSEDED,
+        });
+        expect({
+          configs: others,
+          entries: entries.slice(1),
+          publications: publications.slice(1),
+        }).toEqual(beforeOthers);
+        expect(historical).toEqual(beforeHistory);
+        await expect(
+          useCase.execute({ termId: 'term-1', timetableConfigId: exactId }),
+        ).resolves.toMatchObject({
+          summary: {
+            configsChecked: 1,
+            unpublishedCount: 0,
+            entriesReturnedToDraft: 0,
+          },
+        });
+        expect(
+          jest.spyOn(repository, 'listConfigsByTerm'),
+        ).not.toHaveBeenCalled();
+        expect(
+          jest.spyOn(repository, 'withSerializedTermWrite'),
+        ).toHaveBeenCalledWith(
+          { termId: 'term-1', timetableConfigIds: [exactId] },
+          expect.any(Function),
+        );
+      });
+    });
+
+    it.each([null, '', 'bad', [], [exactId]])(
+      'rejects invalid exact selector %j without entering a transaction',
+      async (value) => {
+        const repository = createRepository();
+        await withScope(async () => {
+          await expect(
+            new UnpublishTimetableUseCase(repository).execute({
+              termId: 'term-1',
+              timetableConfigId: value,
+            } as unknown as UnpublishTimetableDto),
+          ).rejects.toMatchObject({
+            code: 'validation.failed',
+            httpStatus: 400,
+          });
+          expect(
+            jest.spyOn(repository, 'withSerializedTermWrite'),
+          ).not.toHaveBeenCalled();
+          expect(
+            jest.spyOn(repository, 'unpublishConfigs'),
+          ).not.toHaveBeenCalled();
+        });
+      },
+    );
+
+    it.each([
+      { gradeId: 'grade-1' },
+      { gradeId: null },
+      { classroomId: 'classroom-1' },
+      { classroomId: null },
+    ])(
+      'rejects an explicitly mixed selector %j before mutation',
+      async (selector) => {
+        const repository = createRepository();
+        await withScope(async () => {
+          await expect(
+            new UnpublishTimetableUseCase(repository).execute({
+              termId: 'term-1',
+              timetableConfigId: exactId,
+              ...selector,
+            } as UnpublishTimetableDto),
+          ).rejects.toMatchObject({
+            code: 'validation.failed',
+            httpStatus: 400,
+          });
+          expect(
+            jest.spyOn(repository, 'withSerializedTermWrite'),
+          ).not.toHaveBeenCalled();
+        });
+      },
+    );
+
+    it.each([
+      {},
+      { schoolId: 'foreign' },
+      { termId: 'other-term' },
+      { academicYearId: 'other-year' },
+      { scopeKey: 'stage:forged' },
+      { gradeId: 'grade-1' },
+    ])(
+      'masks missing or inconsistent exact configuration %j without bulk fallback',
+      async (overrides) => {
+        const config = seedConfig({
+          id: exactId,
+          scopeType: TimetableScopeType.STAGE,
+          scopeKey: 'stage:stage-1',
+          stageId: 'stage-1',
+          ...overrides,
+        });
+        const repository = createRepository({
+          configs: Object.keys(overrides).length ? [config] : [],
+        });
+        await withScope(async () => {
+          await expect(
+            new UnpublishTimetableUseCase(repository).execute({
+              termId: 'term-1',
+              timetableConfigId: exactId,
+            }),
+          ).rejects.toMatchObject({
+            code: 'academics.timetable.config_not_found',
+            httpStatus: 404,
+          });
+          expect(
+            jest.spyOn(repository, 'listConfigsByTerm'),
+          ).not.toHaveBeenCalled();
+          expect(
+            jest.spyOn(repository, 'unpublishConfigs'),
+          ).not.toHaveBeenCalled();
+        });
+      },
+    );
+
+    it('retains publication-row count semantics when multiple published rows belong to one selected configuration', async () => {
+      const repository = createRepository({
+        configs: [
+          seedConfig({ id: exactId, status: TimetableConfigStatus.ACTIVE }),
+        ],
+        publications: [
+          seedPublication({ timetableConfigId: exactId }),
+          seedPublication({
+            id: 'pub-2',
+            timetableConfigId: exactId,
+            revision: 2,
+          }),
+        ],
+      });
+      await withScope(async () => {
+        await expect(
+          new UnpublishTimetableUseCase(repository).execute({
+            termId: 'term-1',
+            timetableConfigId: exactId,
+          }),
+        ).resolves.toMatchObject({
+          summary: {
+            configsChecked: 1,
+            unpublishedCount: 2,
+            entriesReturnedToDraft: 0,
+          },
+        });
+      });
+    });
+
+    it('rejects a publisher that becomes active before the term lock and performs no ordinary authoritative reads', async () => {
+      const outer = createRepository({ configs: [seedConfig()] });
+      const locked = createRepository({
+        configs: [seedConfig({ status: TimetableConfigStatus.ACTIVE })],
+      });
+      jest
+        .spyOn(outer, 'withSerializedTermWrite')
+        .mockImplementation(async (_input, operation) => ({
+          status: 'completed',
+          value: await operation(
+            locked as unknown as SerializedTimetableWriteRepository,
+          ),
+        }));
+      await withScope(async () => {
+        await expect(
+          new PublishTimetableUseCase(outer).execute({
+            timetableConfigId: 'config-1',
+          }),
+        ).rejects.toMatchObject({
+          code: 'academics.timetable.not_draft',
+          httpStatus: 409,
+        });
+        expect(jest.spyOn(outer, 'findConfigById')).not.toHaveBeenCalled();
+        expect(jest.spyOn(outer, 'findTermById')).not.toHaveBeenCalled();
+        expect(
+          jest.spyOn(outer, 'findLatestPublicationByConfigId'),
+        ).not.toHaveBeenCalled();
+        expect(jest.spyOn(outer, 'publishConfig')).not.toHaveBeenCalled();
+        expect(jest.spyOn(locked, 'publishConfig')).not.toHaveBeenCalled();
+      });
+    });
+
+    it('computes readiness and next revision exclusively from the locked repository', async () => {
+      const outer = createRepository({ configs: [seedConfig()] });
+      const locked = createRepository({
+        configs: [seedConfig()],
+        periods: [seedPeriod()],
+        entries: [seedEntry()],
+        publications: [
+          seedPublication({
+            revision: 7,
+            status: TimetablePublicationStatus.SUPERSEDED,
+          }),
+        ],
+      });
+      jest
+        .spyOn(outer, 'withSerializedTermWrite')
+        .mockImplementation(async (_input, operation) => ({
+          status: 'completed',
+          value: await operation(
+            locked as unknown as SerializedTimetableWriteRepository,
+          ),
+        }));
+      await withScope(async () => {
+        await expect(
+          new PublishTimetableUseCase(outer).execute({
+            timetableConfigId: 'config-1',
+          }),
+        ).resolves.toMatchObject({ revision: 8, status: 'published' });
+        expect(jest.spyOn(outer, 'listEntriesByTerm')).not.toHaveBeenCalled();
+        expect(jest.spyOn(outer, 'listPeriods')).not.toHaveBeenCalled();
+        expect(
+          jest.spyOn(outer, 'findLatestPublicationByConfigId'),
+        ).not.toHaveBeenCalled();
+        expect(jest.spyOn(outer, 'publishConfig')).not.toHaveBeenCalled();
+        expect(jest.spyOn(locked, 'publishConfig')).toHaveBeenCalledWith(
+          expect.objectContaining({ revision: 8, publishedByUserId: 'user-1' }),
+        );
+      });
+    });
+
+    it('selects legacy bulk targets and their latest publication state after acquiring the term lock', async () => {
+      const outer = createRepository();
+      const locked = createRepository({
+        configs: [seedConfig({ status: TimetableConfigStatus.ACTIVE })],
+        publications: [seedPublication()],
+      });
+      jest
+        .spyOn(outer, 'withSerializedTermWrite')
+        .mockImplementation(async (_input, operation) => ({
+          status: 'completed',
+          value: await operation(
+            locked as unknown as SerializedTimetableWriteRepository,
+          ),
+        }));
+      await withScope(async () => {
+        await expect(
+          new UnpublishTimetableUseCase(outer).execute({ termId: 'term-1' }),
+        ).resolves.toMatchObject({
+          summary: { configsChecked: 1, unpublishedCount: 1 },
+        });
+        expect(
+          jest.spyOn(outer, 'withSerializedTermWrite'),
+        ).toHaveBeenCalledWith(
+          { termId: 'term-1', lockAllTermConfigs: true },
+          expect.any(Function),
+        );
+        expect(jest.spyOn(outer, 'findTermById')).not.toHaveBeenCalled();
+        expect(jest.spyOn(outer, 'listConfigsByTerm')).not.toHaveBeenCalled();
+        expect(
+          jest.spyOn(outer, 'findLatestPublicationsByConfigIds'),
+        ).not.toHaveBeenCalled();
+        expect(jest.spyOn(outer, 'unpublishConfigs')).not.toHaveBeenCalled();
+      });
+    });
+
+    it.each([null, '', 'bad', [], [exactId]])(
+      'rejects invalid DTO selector %j while preserving optional absence',
+      async (timetableConfigId) => {
+        const pipe = new ValidationPipe({
+          transform: true,
+          whitelist: true,
+          forbidNonWhitelisted: true,
+        });
+        await expect(
+          pipe.transform(
+            { termId: exactId, timetableConfigId },
+            { type: 'body', metatype: UnpublishTimetableDto },
+          ),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        await expect(
+          pipe.transform(
+            { termId: exactId },
+            { type: 'body', metatype: UnpublishTimetableDto },
+          ),
+        ).resolves.toMatchObject({ termId: exactId });
+      },
+    );
+  });
 
   it('unpublishes idempotently without deleting entries', async () => {
     const repository = createRepository({

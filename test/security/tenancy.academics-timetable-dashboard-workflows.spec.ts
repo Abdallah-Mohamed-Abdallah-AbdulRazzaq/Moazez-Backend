@@ -9,6 +9,7 @@ import {
   TimetableConfigStatus,
   TimetableEntryStatus,
   TimetablePeriodType,
+  TimetablePublicationStatus,
   TimetableScopeType,
   UserStatus,
   UserType,
@@ -353,6 +354,155 @@ describe('Academics timetable dashboard tenancy isolation (security)', () => {
       .expect(403);
   });
 
+  it('TT-102 enforces authentication, manage permission, actor type and tenancy for exact unpublish without writes', async () => {
+    const before = await snapshotExactValidationRecords();
+    const body = {
+      termId: fixtureA.termId,
+      timetableConfigId: fixtureA.configId,
+    };
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/timetable/unpublish`)
+      .send(body)
+      .expect(401);
+    for (const auth of [
+      noPermissionAuth,
+      viewOnlyAuth,
+      teacherAuth,
+      studentAuth,
+      parentAuth,
+    ]) {
+      const rejected = await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/academics/timetable/unpublish`)
+        .set('Authorization', bearer(auth))
+        .send(body)
+        .expect(403);
+      expectSafeTimetablePayload(rejected.body);
+      expect(await snapshotExactValidationRecords()).toEqual(before);
+    }
+    const foreign = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/timetable/unpublish`)
+      .set('Authorization', bearer(adminBAuth))
+      .send(body)
+      .expect(404);
+    expect(foreign.body).toMatchObject({
+      error: { code: 'academics.timetable.config_not_found' },
+    });
+    expectSafeTimetablePayload(foreign.body);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/timetable/unpublish`)
+      .set('Authorization', bearer(manageOnlyAuth))
+      .send(body)
+      .expect(200)
+      .expect((response) =>
+        expect(
+          (response.body as unknown as { summary: unknown }).summary,
+        ).toEqual({
+          configsChecked: 1,
+          unpublishedCount: 0,
+          entriesReturnedToDraft: 0,
+        }),
+      );
+    expect(await snapshotExactValidationRecords()).toEqual(before);
+  });
+
+  it('TT-102 rejects missing, malformed and explicitly mixed exact selectors without mutation or bulk fallback', async () => {
+    const before = await snapshotExactValidationRecords();
+    const bodies: Record<string, unknown>[] = [
+      { timetableConfigId: fixtureA.configId },
+      ...[null, '', 'bad', [], [fixtureA.termId]].map((termId) => ({
+        termId,
+        timetableConfigId: fixtureA.configId,
+      })),
+      ...[null, '', 'bad', [], [fixtureA.configId]].map(
+        (timetableConfigId) => ({ termId: fixtureA.termId, timetableConfigId }),
+      ),
+      ...[
+        { gradeId: fixtureA.gradeId },
+        { classroomId: fixtureA.classroomId },
+        { gradeId: null },
+        { classroomId: null },
+      ].map((extra) => ({
+        termId: fixtureA.termId,
+        timetableConfigId: fixtureA.configId,
+        ...extra,
+      })),
+    ];
+    for (const body of bodies) {
+      const rejected = await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/academics/timetable/unpublish`)
+        .set('Authorization', bearer(adminAAuth))
+        .send(body)
+        .expect(400);
+      expect(rejected.body).toMatchObject({
+        error: { code: 'validation.failed' },
+      });
+      expect(await snapshotExactValidationRecords()).toEqual(before);
+    }
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/timetable/unpublish`)
+      .set('Authorization', bearer(adminAAuth))
+      .send({
+        termId: fixtureA.closedTermId,
+        timetableConfigId: fixtureA.closedConfigId,
+      })
+      .expect(409)
+      .expect((response) =>
+        expect(response.body).toMatchObject({
+          error: { code: 'academics.timetable.closed_term' },
+        }),
+      );
+    expect(await snapshotExactValidationRecords()).toEqual(before);
+  });
+
+  it('TT-102 masks inconsistent persisted scope as config-not-found and preserves its publication', async () => {
+    const config = await prisma.timetableConfig.create({
+      data: {
+        schoolId: schoolAId,
+        academicYearId: fixtureA.academicYearId,
+        termId: fixtureA.termId,
+        name: `${marker}-tt102-invalid-scope`,
+        scopeType: TimetableScopeType.STAGE,
+        scopeKey: `stage:forged-${randomUUID()}`,
+        stageId: fixtureA.stageId,
+        activeDays: [0, 1, 2, 3, 4],
+        status: TimetableConfigStatus.ACTIVE,
+      },
+    });
+    try {
+      await prisma.timetablePublication.create({
+        data: {
+          schoolId: schoolAId,
+          academicYearId: fixtureA.academicYearId,
+          termId: fixtureA.termId,
+          timetableConfigId: config.id,
+          status: TimetablePublicationStatus.PUBLISHED,
+          revision: 1,
+          publishedAt: new Date(),
+        },
+      });
+      const before = await snapshotExactValidationRecords();
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/academics/timetable/unpublish`)
+        .set('Authorization', bearer(adminAAuth))
+        .send({ termId: fixtureA.termId, timetableConfigId: config.id })
+        .expect(404)
+        .expect((response) =>
+          expect(response.body).toMatchObject({
+            error: {
+              code: 'academics.timetable.config_not_found',
+              details: { timetableConfigId: config.id },
+            },
+          }),
+        );
+      expect(await snapshotExactValidationRecords()).toEqual(before);
+    } finally {
+      await prisma.timetablePublication.deleteMany({
+        where: { schoolId: schoolAId, timetableConfigId: config.id },
+      });
+      await prisma.timetableConfig.delete({ where: { id: config.id } });
+    }
+  });
+
   it('enforces authentication view permission and user-type boundaries for exact validation', async () => {
     const before = await snapshotExactValidationRecords();
     const query = {
@@ -448,6 +598,14 @@ describe('Academics timetable dashboard tenancy isolation (security)', () => {
           details: { timetableConfigId },
         });
         expectSafeTimetablePayload(body);
+        const unpublish = await request(app.getHttpServer())
+          .post(`${GLOBAL_PREFIX}/academics/timetable/unpublish`)
+          .set('Authorization', bearer(adminAAuth))
+          .send({ termId: fixtureA.termId, timetableConfigId })
+          .expect(404);
+        expect(unpublish.body).toMatchObject({ error: body.error });
+        expectSafeTimetablePayload(unpublish.body);
+        expect(await snapshotExactValidationRecords()).toEqual(before);
         for (const foreignId of [
           schoolBId,
           organizationBId,
@@ -470,6 +628,16 @@ describe('Academics timetable dashboard tenancy isolation (security)', () => {
         (foreignTerm.body as unknown as { error: { code: string } }).error.code,
       ).toBe('not_found');
       expectSafeTimetablePayload(foreignTerm.body);
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/academics/timetable/unpublish`)
+        .set('Authorization', bearer(adminAAuth))
+        .send({ termId: fixtureB.termId, timetableConfigId: fixtureA.configId })
+        .expect(404)
+        .expect((response) =>
+          expect(response.body).toMatchObject({
+            error: { code: 'academics.timetable.config_not_found' },
+          }),
+        );
       expect(await snapshotExactValidationRecords()).toEqual(before);
     } finally {
       if (inconsistentConfigId)

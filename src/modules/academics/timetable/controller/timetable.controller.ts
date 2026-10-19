@@ -308,7 +308,11 @@ export class TimetableController {
   @Post('unpublish')
   @HttpCode(HttpStatus.OK)
   @RequiredPermissions('academics.structure.manage')
-  @ApiOperation({ summary: 'Unpublish timetable configs for a term scope' })
+  @ApiOperation({
+    summary: 'Unpublish timetable configs for a term scope',
+    description:
+      'Optionally select exactly one timetableConfigId within the required term. The exact selector cannot be combined with gradeId or classroomId. Without it, legacy term/grade/classroom bulk selection is preserved.',
+  })
   @ApiBody({ type: UnpublishTimetableDto })
   @ApiOkResponse({ type: TimetableUnpublishResponseDto })
   unpublish(
