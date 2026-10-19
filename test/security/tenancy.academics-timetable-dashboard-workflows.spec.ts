@@ -603,7 +603,17 @@ describe('Academics timetable dashboard tenancy isolation (security)', () => {
           .set('Authorization', bearer(adminAAuth))
           .send({ termId: fixtureA.termId, timetableConfigId })
           .expect(404);
-        expect(unpublish.body).toMatchObject({ error: body.error });
+        expect(unpublish.body).toMatchObject({
+          error: {
+            code: body.error.code,
+            message: body.error.message,
+            details: body.error.details,
+          },
+        });
+        expect(unpublish.body).toHaveProperty(
+          'error.traceId',
+          expect.any(String),
+        );
         expectSafeTimetablePayload(unpublish.body);
         expect(await snapshotExactValidationRecords()).toEqual(before);
         for (const foreignId of [
