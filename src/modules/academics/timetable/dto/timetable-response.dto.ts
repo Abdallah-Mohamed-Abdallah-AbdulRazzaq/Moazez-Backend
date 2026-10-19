@@ -269,6 +269,7 @@ export class TimetableValidationItemDto {
 export class TimetableValidationResponseDto {
   termId!: string;
   academicYearId!: string;
+  timetableConfigId?: string;
   summary!: {
     classroomsChecked: number;
     expectedWeeklySlots: number;

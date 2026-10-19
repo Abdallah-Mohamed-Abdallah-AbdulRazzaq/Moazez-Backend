@@ -13,6 +13,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import {
@@ -107,6 +108,23 @@ export class TimetableDashboardQueryDto {
   @IsOptional()
   @IsUUID()
   classroomId?: string;
+}
+
+export class ValidateTimetableQueryDto {
+  @IsUUID()
+  termId!: string;
+
+  @IsOptional()
+  @IsUUID()
+  gradeId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  classroomId?: string;
+
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsUUID()
+  timetableConfigId?: string;
 }
 
 export class TimetableBulkEntryItemDto {
