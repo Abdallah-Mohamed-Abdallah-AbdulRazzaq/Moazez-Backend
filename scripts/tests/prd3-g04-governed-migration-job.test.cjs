@@ -6,8 +6,12 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const test = require('node:test');
-const { loadHistoricalModule } = require('./helpers/staging-retirement-source-policy.cjs');
-const historicalMigration = loadHistoricalModule('scripts/migrations/run-governed-migration-job.cjs');
+const {
+  loadHistoricalModule,
+} = require('./helpers/staging-retirement-source-policy.cjs');
+const historicalMigration = loadHistoricalModule(
+  'scripts/migrations/run-governed-migration-job.cjs',
+);
 const {
   buildManifest,
   MigrationManifestError,
@@ -164,8 +168,16 @@ function assertExactKeys(value, expectedKeys, label) {
 
 function assertPortableManifestPath(value, label) {
   assert.equal(typeof value, 'string', `${label} must be a string`);
-  assert.equal(path.win32.isAbsolute(value), false, `${label} must be relative`);
-  assert.equal(path.posix.isAbsolute(value), false, `${label} must be relative`);
+  assert.equal(
+    path.win32.isAbsolute(value),
+    false,
+    `${label} must be relative`,
+  );
+  assert.equal(
+    path.posix.isAbsolute(value),
+    false,
+    `${label} must be relative`,
+  );
   assert.doesNotMatch(value, /\\/u, `${label} must use portable separators`);
   assert.doesNotMatch(
     value,
@@ -1439,43 +1451,198 @@ test('retains the accepted G01 DML-only runtime role policy and migration allowa
 historicalTest(
   'historical G04 scope protects schema, migrations, dependencies, lockfile, APIs, and runtime ownership',
   () => {
-    const protectedDiff = spawnSync(
-      'git',
-      [
-        'diff',
-        '--quiet',
-        '8449769bcb453dd3ac8436d2b71c133e6369f6fa',
-        '--',
-        'prisma/schema.prisma',
-        'prisma/migrations',
-        'package-lock.json',
-        'src',
-        // The six approved bootstrap source/test transitions have separate current refusal gates.
-        ':(exclude)src/modules/platform-admin/bootstrap/platform-admin-bootstrap.environment.ts',
-        ':(exclude)src/modules/platform-admin/bootstrap/tests/platform-admin-bootstrap.environment.spec.ts',
-        ':(exclude)src/platform-admin-bootstrap.ts',
-        ':(exclude)src/platform-admin-bootstrap.spec.ts',
-        ':(exclude)src/reference-data-bootstrap.ts',
-        ':(exclude)src/reference-data-bootstrap.spec.ts',
-      ],
-      { cwd: REPOSITORY_ROOT, windowsHide: true },
-    );
-    assert.equal(protectedDiff.status, 0);
-    const baselinePackage = JSON.parse(
-      spawnSync('git', ['show', 'HEAD:package.json'], {
+    const preRetirementBase = '8449769bcb453dd3ac8436d2b71c133e6369f6fa';
+    const retirementCloseout = '35428c6c35d3035b7c410c4472de6a930d31f4f0';
+    const protectedPaths = [
+      'prisma/schema.prisma',
+      'prisma/migrations',
+      'package-lock.json',
+      'src',
+      // The six approved bootstrap source/test transitions have separate current refusal gates.
+      ':(exclude)src/modules/platform-admin/bootstrap/platform-admin-bootstrap.environment.ts',
+      ':(exclude)src/modules/platform-admin/bootstrap/tests/platform-admin-bootstrap.environment.spec.ts',
+      ':(exclude)src/platform-admin-bootstrap.ts',
+      ':(exclude)src/platform-admin-bootstrap.spec.ts',
+      ':(exclude)src/reference-data-bootstrap.ts',
+      ':(exclude)src/reference-data-bootstrap.spec.ts',
+    ];
+    const git = (args, allowedStatuses = [0], invoke = spawnSync) => {
+      const result = invoke('git', args, {
         cwd: REPOSITORY_ROOT,
         encoding: 'utf8',
         windowsHide: true,
-      }).stdout,
-    );
-    const candidatePackage = json('package.json');
+        timeout: 30000,
+      });
+      assert.ifError(result.error);
+      assert.equal(result.signal, null, 'Git process interrupted');
+      assert.ok(
+        allowedStatuses.includes(result.status),
+        `Git invocation failed (${result.status}): ${result.stderr}`,
+      );
+      return result;
+    };
+    const verifyCommit = (revision, invoke = spawnSync) => {
+      assert.match(revision, /^[a-f0-9]{40}$/u, 'immutable commit required');
+      assert.equal(
+        git(
+          ['rev-parse', '--verify', `${revision}^{commit}`],
+          [0],
+          invoke,
+        ).stdout.trim(),
+        revision,
+        'immutable commit identity mismatch',
+      );
+    };
+    const assertHistoricalScope = (invoke = spawnSync) => {
+      verifyCommit(preRetirementBase, invoke);
+      verifyCommit(retirementCloseout, invoke);
+      git(
+        ['merge-base', '--is-ancestor', preRetirementBase, retirementCloseout],
+        [0],
+        invoke,
+      );
+      const protectedDiff = git(
+        [
+          'diff',
+          '--quiet',
+          preRetirementBase,
+          retirementCloseout,
+          '--',
+          ...protectedPaths,
+        ],
+        [0, 1],
+        invoke,
+      );
+      assert.equal(
+        protectedDiff.status,
+        0,
+        'historical protected paths changed',
+      );
+      const baselinePackage = JSON.parse(
+        git(['show', `${preRetirementBase}:package.json`], [0], invoke).stdout,
+      );
+      const closeoutPackage = JSON.parse(
+        git(['show', `${retirementCloseout}:package.json`], [0], invoke).stdout,
+      );
+      assert.deepEqual(
+        closeoutPackage.dependencies,
+        baselinePackage.dependencies,
+        'historical dependencies changed',
+      );
+      assert.deepEqual(
+        closeoutPackage.devDependencies,
+        baselinePackage.devDependencies,
+        'historical devDependencies changed',
+      );
+    };
+    assertHistoricalScope();
+
+    // Each original exemption is necessary for this immutable historical range.
+    const exemptions = protectedPaths.slice(4);
+    assert.equal(exemptions.length, 6);
     assert.deepEqual(
-      candidatePackage.dependencies,
-      baselinePackage.dependencies,
+      git([
+        'diff',
+        '--name-only',
+        preRetirementBase,
+        retirementCloseout,
+        '--',
+        'src',
+      ])
+        .stdout.trim()
+        .split(/\r?\n/u)
+        .sort(),
+      exemptions.map((entry) => entry.slice(':(exclude)'.length)).sort(),
     );
+    for (const exemption of exemptions) {
+      assert.equal(
+        git(
+          [
+            'diff',
+            '--quiet',
+            preRetirementBase,
+            retirementCloseout,
+            '--',
+            ...protectedPaths.filter((entry) => entry !== exemption),
+          ],
+          [0, 1],
+        ).status,
+        1,
+        `protected change must be detected without ${exemption}`,
+      );
+    }
+
+    // Synthetic Git outcomes distinguish a content regression from a failed invocation.
+    const withDiffOutcome = (outcome) => (command, args, options) =>
+      args[0] === 'diff'
+        ? { stdout: '', stderr: '', signal: null, ...outcome }
+        : spawnSync(command, args, options);
+    assert.throws(
+      () => assertHistoricalScope(withDiffOutcome({ status: 1 })),
+      /historical protected paths changed/u,
+    );
+    assert.throws(
+      () => assertHistoricalScope(withDiffOutcome({ status: 128 })),
+      /Git invocation failed/u,
+    );
+    assert.throws(
+      () =>
+        assertHistoricalScope(
+          withDiffOutcome({
+            status: null,
+            error: new Error('synthetic spawn failure'),
+          }),
+        ),
+      /synthetic spawn failure/u,
+    );
+    assert.throws(
+      () =>
+        assertHistoricalScope(
+          withDiffOutcome({ status: null, signal: 'SIGTERM' }),
+        ),
+      /Git process interrupted/u,
+    );
+    assert.throws(() => verifyCommit('HEAD'), /immutable commit required/u);
+    assert.throws(() => verifyCommit('0'.repeat(40)), /Git invocation failed/u);
+    assert.throws(
+      () =>
+        verifyCommit(preRetirementBase, () => ({
+          status: 0,
+          signal: null,
+          stdout: retirementCloseout,
+        })),
+      /immutable commit identity mismatch/u,
+    );
+    for (const field of ['dependencies', 'devDependencies']) {
+      assert.throws(
+        () =>
+          assertHistoricalScope((command, args, options) => {
+            const result = spawnSync(command, args, options);
+            if (
+              args[0] === 'show' &&
+              args[1] === `${retirementCloseout}:package.json` &&
+              result.status === 0
+            ) {
+              const manifest = JSON.parse(result.stdout);
+              manifest[field] = {
+                ...manifest[field],
+                'synthetic-protected-change': '1.0.0',
+              };
+              return { ...result, stdout: JSON.stringify(manifest) };
+            }
+            return result;
+          }),
+        new RegExp(`historical ${field} changed`, 'u'),
+      );
+    }
+
+    // Separate current integrity check: this is not the historical baseline.
+    const headPackage = JSON.parse(git(['show', 'HEAD:package.json']).stdout);
+    const candidatePackage = json('package.json');
+    assert.deepEqual(candidatePackage.dependencies, headPackage.dependencies);
     assert.deepEqual(
       candidatePackage.devDependencies,
-      baselinePackage.devDependencies,
+      headPackage.devDependencies,
     );
   },
 );
@@ -1502,15 +1669,48 @@ test('current G04 contract retains deterministic manifest and serial release enf
 });
 
 test('retired and invalid migration targets refuse before manifest, executor or subprocess work', async () => {
-  for (const environment of ['staging', 'nonprod', undefined, null, '', 'unknown', 'preview', 'constructor', '__proto__', 'Production', ' production ']) {
-    let manifestCalls = 0; let executorCalls = 0; let subprocessCalls = 0;
-    const env = productionEnvironment({ MIGRATION_JOB_ENVIRONMENT: environment });
-    assert.throws(() => validateEnvironment(env), { code: 'migration_environment_contract_invalid' });
-    await assert.rejects(() => runGovernedMigrationJob({ environment: env, logger() {},
-      verifyManifest: () => { manifestCalls += 1; },
-      createExecutor: () => { executorCalls += 1; throw new Error('unexpected executor'); },
-      executePrisma: async () => { subprocessCalls += 1; }
-    }), { code: 'migration_environment_contract_invalid' });
-    assert.equal(manifestCalls, 0); assert.equal(executorCalls, 0); assert.equal(subprocessCalls, 0);
+  for (const environment of [
+    'staging',
+    'nonprod',
+    undefined,
+    null,
+    '',
+    'unknown',
+    'preview',
+    'constructor',
+    '__proto__',
+    'Production',
+    ' production ',
+  ]) {
+    let manifestCalls = 0;
+    let executorCalls = 0;
+    let subprocessCalls = 0;
+    const env = productionEnvironment({
+      MIGRATION_JOB_ENVIRONMENT: environment,
+    });
+    assert.throws(() => validateEnvironment(env), {
+      code: 'migration_environment_contract_invalid',
+    });
+    await assert.rejects(
+      () =>
+        runGovernedMigrationJob({
+          environment: env,
+          logger() {},
+          verifyManifest: () => {
+            manifestCalls += 1;
+          },
+          createExecutor: () => {
+            executorCalls += 1;
+            throw new Error('unexpected executor');
+          },
+          executePrisma: async () => {
+            subprocessCalls += 1;
+          },
+        }),
+      { code: 'migration_environment_contract_invalid' },
+    );
+    assert.equal(manifestCalls, 0);
+    assert.equal(executorCalls, 0);
+    assert.equal(subprocessCalls, 0);
   }
 });
