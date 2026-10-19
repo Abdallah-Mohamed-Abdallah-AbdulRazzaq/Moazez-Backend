@@ -1078,7 +1078,37 @@ describe('Sprint 12F Schedule/Timetable final closeout (e2e)', () => {
       otherStageEntryId,
     );
 
-    await unpublishConfig(timetableConfigId);
+    const ancestorsBeforeExactUnpublish =
+      await prisma.timetablePublication.findMany({
+        where: {
+          timetableConfigId: {
+            in: [sectionConfigId, gradeConfigId, stageConfigId, termConfigId],
+          },
+        },
+        orderBy: { id: 'asc' },
+      });
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/timetable/unpublish`)
+      .set('Authorization', bearer(adminAuth))
+      .send({ termId: academicA.termId, timetableConfigId })
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          termId: academicA.termId,
+          academicYearId: academicA.academicYearId,
+          summary: { configsChecked: 1, unpublishedCount: 1 },
+        });
+      });
+    await expect(
+      prisma.timetablePublication.findMany({
+        where: {
+          timetableConfigId: {
+            in: [sectionConfigId, gradeConfigId, stageConfigId, termConfigId],
+          },
+        },
+        orderBy: { id: 'asc' },
+      }),
+    ).resolves.toEqual(ancestorsBeforeExactUnpublish);
     const sectionMonday = await readEffectiveScheduleEntryIds(TODAY);
     expect(sectionMonday.student).toEqual([draftConfigEntryId]);
     expect(sectionMonday.parent).toEqual([draftConfigEntryId]);

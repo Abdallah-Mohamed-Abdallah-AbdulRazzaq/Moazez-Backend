@@ -5,6 +5,7 @@ import {
   MembershipStatus,
   OrganizationStatus,
   PrismaClient,
+  Prisma,
   SchoolStatus,
   TimetableConfigStatus,
   TimetableEntryStatus,
@@ -25,7 +26,10 @@ import {
   setActor,
 } from '../../src/common/context/request-context';
 import { TimetableRepository } from '../../src/modules/academics/timetable/infrastructure/timetable.repository';
-import { TimetableValidationResponseDto } from '../../src/modules/academics/timetable/dto/timetable-response.dto';
+import {
+  TimetableValidationResponseDto,
+  TimetableUnpublishResponseDto,
+} from '../../src/modules/academics/timetable/dto/timetable-response.dto';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'Sprint22DTimetable123!';
@@ -2169,6 +2173,834 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
     ]);
   }
 
+  describe('TT-102 exact unpublish and real PostgreSQL publication serialization', () => {
+    const unpublish = (termId: string, timetableConfigId: string) =>
+      request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/academics/timetable/unpublish`)
+        .set('Authorization', bearer(adminAuth))
+        .send({ termId, timetableConfigId });
+    const publish = (timetableConfigId: string) =>
+      request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/academics/timetable/publish`)
+        .set('Authorization', bearer(adminAuth))
+        .send({ timetableConfigId });
+
+    it('unpublishes exactly STAGE A, preserves B/C/TERM and history, is idempotent, and republishes the next revision', async () => {
+      const fixture = await createPublicationFixture();
+      try {
+        const unrelated = [fixture.b.id, fixture.c.id, fixture.term.id];
+        const otherBefore = await snapshotPublicationConfigs(unrelated);
+        const before = await snapshotPublicationConfigs([fixture.a.id]);
+        await unpublish(fixture.termId, fixture.a.id)
+          .expect(200)
+          .expect((response) => {
+            expect(response.body).toEqual({
+              termId: fixture.termId,
+              academicYearId: academic.academicYearId,
+              summary: {
+                configsChecked: 1,
+                unpublishedCount: 1,
+                entriesReturnedToDraft: 2,
+              },
+            });
+          });
+        const after = await snapshotPublicationConfigs([fixture.a.id]);
+        expect(after.configs[0].status).toBe(TimetableConfigStatus.DRAFT);
+        expect(after.periods).toEqual(before.periods);
+        expect(after.publications).toHaveLength(2);
+        for (const previous of before.publications) {
+          const current = after.publications.find(
+            (row) => row.id === previous.id,
+          )!;
+          expect(current).toMatchObject({
+            id: previous.id,
+            revision: previous.revision,
+            publishedAt: previous.publishedAt,
+            publishedByUserId: previous.publishedByUserId,
+            createdAt: previous.createdAt,
+            status: TimetablePublicationStatus.SUPERSEDED,
+          });
+          if (previous.status === TimetablePublicationStatus.SUPERSEDED)
+            expect(current).toEqual(previous);
+        }
+        for (const previous of before.entries) {
+          const current = after.entries.find((row) => row.id === previous.id)!;
+          if (previous.status !== TimetableEntryStatus.ACTIVE)
+            expect(current).toEqual(previous);
+          else
+            expect(current).toMatchObject({
+              ...previous,
+              updatedAt: current.updatedAt,
+              status: TimetableEntryStatus.DRAFT,
+            });
+        }
+        await unpublish(fixture.termId, fixture.a.id)
+          .expect(200)
+          .expect((response) => {
+            expect(
+              (response.body as unknown as TimetableUnpublishResponseDto)
+                .summary,
+            ).toEqual({
+              configsChecked: 1,
+              unpublishedCount: 0,
+              entriesReturnedToDraft: 0,
+            });
+          });
+        expect(await snapshotPublicationConfigs([fixture.a.id])).toEqual(after);
+        await publish(fixture.a.id)
+          .expect(200)
+          .expect((response) =>
+            expect(response.body).toMatchObject({
+              revision: 3,
+              status: 'published',
+            }),
+          );
+        const republished = await snapshotPublicationConfigs([fixture.a.id]);
+        expect(
+          republished.publications.map((row) => row.revision).sort(),
+        ).toEqual([1, 2, 3]);
+        expect(
+          republished.publications.filter(
+            (row) => row.status === TimetablePublicationStatus.PUBLISHED,
+          ),
+        ).toHaveLength(1);
+        expect(
+          republished.entries.filter(
+            (row) => row.status === TimetableEntryStatus.ACTIVE,
+          ),
+        ).toHaveLength(3);
+        expect(
+          republished.entries.find(
+            (row) => row.status === TimetableEntryStatus.CANCELLED,
+          ),
+        ).toEqual(
+          before.entries.find(
+            (row) => row.status === TimetableEntryStatus.CANCELLED,
+          ),
+        );
+        expect(await snapshotPublicationConfigs(unrelated)).toEqual(
+          otherBefore,
+        );
+      } finally {
+        await fixture.cleanup();
+      }
+    });
+
+    it.each([
+      'publish/publish',
+      'unpublish/unpublish',
+      'publish/unpublish',
+      'unpublish/publish',
+    ] as const)(
+      'serializes %s with deterministic PostgreSQL lock ordering and authoritative re-reads',
+      async (kind) => {
+        const fixture = await createPublicationFixture();
+        try {
+          if (kind.startsWith('publish/'))
+            await unpublish(fixture.termId, fixture.a.id).expect(200);
+          const others = await snapshotPublicationConfigs([
+            fixture.b.id,
+            fixture.c.id,
+            fixture.term.id,
+          ]);
+          const first = () =>
+            kind.startsWith('publish/')
+              ? publish(fixture.a.id)
+              : unpublish(fixture.termId, fixture.a.id);
+          const second = () =>
+            kind.endsWith('/publish')
+              ? publish(fixture.a.id)
+              : unpublish(fixture.termId, fixture.a.id);
+          const [left, right] = await racePublicationRequests(first, second);
+          expect([left.status, right.status]).toEqual(
+            kind === 'publish/publish' ? [200, 409] : [200, 200],
+          );
+          if (kind === 'publish/publish')
+            expect(right.body).toMatchObject({
+              error: { code: 'academics.timetable.not_draft' },
+            });
+          if (kind === 'unpublish/unpublish') {
+            expect(
+              (left.body as unknown as TimetableUnpublishResponseDto).summary,
+            ).toEqual({
+              configsChecked: 1,
+              unpublishedCount: 1,
+              entriesReturnedToDraft: 2,
+            });
+            expect(
+              (right.body as unknown as TimetableUnpublishResponseDto).summary,
+            ).toEqual({
+              configsChecked: 1,
+              unpublishedCount: 0,
+              entriesReturnedToDraft: 0,
+            });
+          }
+          const state = await snapshotPublicationConfigs([fixture.a.id]);
+          const active = kind.endsWith('/publish');
+          expect(state.configs[0].status).toBe(
+            active ? TimetableConfigStatus.ACTIVE : TimetableConfigStatus.DRAFT,
+          );
+          expect(
+            state.publications.filter(
+              (row) => row.status === TimetablePublicationStatus.PUBLISHED,
+            ),
+          ).toHaveLength(active ? 1 : 0);
+          expect(state.publications.map((row) => row.revision).sort()).toEqual(
+            kind === 'unpublish/unpublish' ? [1, 2] : [1, 2, 3],
+          );
+          expect(
+            state.entries.filter(
+              (row) => row.status === TimetableEntryStatus.ACTIVE,
+            ),
+          ).toHaveLength(active ? 3 : 0);
+          expect(
+            await snapshotPublicationConfigs([
+              fixture.b.id,
+              fixture.c.id,
+              fixture.term.id,
+            ]),
+          ).toEqual(others);
+        } finally {
+          await fixture.cleanup();
+        }
+      },
+    );
+
+    it('serializes different configurations in the same term without expanding either exact target', async () => {
+      const fixture = await createPublicationFixture();
+      try {
+        const untouched = await snapshotPublicationConfigs([
+          fixture.c.id,
+          fixture.term.id,
+        ]);
+        const responses = await racePublicationRequests(
+          () => unpublish(fixture.termId, fixture.a.id),
+          () => unpublish(fixture.termId, fixture.b.id),
+        );
+        for (const response of responses) {
+          expect(response.status).toBe(200);
+          expect(
+            (response.body as unknown as TimetableUnpublishResponseDto).summary,
+          ).toEqual({
+            configsChecked: 1,
+            unpublishedCount: 1,
+            entriesReturnedToDraft: 2,
+          });
+        }
+        const state = await snapshotPublicationConfigs([
+          fixture.a.id,
+          fixture.b.id,
+        ]);
+        expect(
+          state.configs.every(
+            (config) => config.status === TimetableConfigStatus.DRAFT,
+          ),
+        ).toBe(true);
+        expect(
+          state.publications.every(
+            (row) => row.status === TimetablePublicationStatus.SUPERSEDED,
+          ),
+        ).toBe(true);
+        expect(
+          await snapshotPublicationConfigs([fixture.c.id, fixture.term.id]),
+        ).toEqual(untouched);
+      } finally {
+        await fixture.cleanup();
+      }
+    });
+
+    it.each(['publisher-first', 'generator-first'] as const)(
+      'shares the generation term lock with publication (%s)',
+      async (ordering) => {
+        const fixture = await createPublicationFixture();
+        let held: HeldDatabaseRowLock | null = null;
+        const pending: Array<Promise<request.Response>> = [];
+        try {
+          await unpublish(fixture.termId, fixture.a.id).expect(200);
+          const generate = () =>
+            request(app.getHttpServer())
+              .post(`${GLOBAL_PREFIX}/academics/timetable/generate`)
+              .set('Authorization', bearer(adminAuth))
+              .send({ timetableConfigId: fixture.a.id });
+          if (ordering === 'publisher-first') {
+            const [published, generated] = await racePublicationRequests(
+              () => publish(fixture.a.id),
+              generate,
+            );
+            expect([published.status, generated.status]).toEqual([200, 409]);
+            expect(generated.body).toMatchObject({
+              error: { code: 'academics.timetable.published_locked' },
+            });
+          } else {
+            await prisma.timetableEntry.delete({
+              where: { id: fixture.scienceEntryId },
+            });
+            held = await holdDatabaseRowLock({
+              kind: 'allocation',
+              id: fixture.mathAllocationId,
+            });
+            pending.push(generate().then((response) => response));
+            await waitForBlockedDatabaseConnections(1);
+            pending.push(publish(fixture.a.id).then((response) => response));
+            await waitForBlockedDatabaseConnections(2);
+            held.release();
+            await held.done;
+            held = null;
+            const [generated, published] = await Promise.all(pending);
+            expect([generated.status, published.status]).toEqual([200, 200]);
+            expect(generated.body).toMatchObject({
+              createdCount: 1,
+              remainingDemandCount: 0,
+              complete: true,
+            });
+          }
+          const state = await snapshotPublicationConfigs([fixture.a.id]);
+          expect(state.configs[0].status).toBe(TimetableConfigStatus.ACTIVE);
+          expect(
+            state.entries.filter(
+              (row) => row.status === TimetableEntryStatus.ACTIVE,
+            ),
+          ).toHaveLength(3);
+          expect(state.publications.map((row) => row.revision).sort()).toEqual([
+            1, 2, 3,
+          ]);
+        } finally {
+          if (held) {
+            held.release();
+            await held.done;
+          }
+          await Promise.allSettled(pending);
+          await fixture.cleanup();
+        }
+      },
+    );
+
+    it.each(['publish', 'unpublish'] as const)(
+      'rolls back every publication/configuration/entry write after a real PostgreSQL failure during %s',
+      async (kind) => {
+        const fixture = await createPublicationFixture();
+        const repository = app.get(TimetableRepository);
+        const serialized = repository.withSerializedTermWrite.bind(
+          repository,
+        ) as TimetableRepository['withSerializedTermWrite'];
+        let mutationCompleted = false;
+        let databaseFailureCode: unknown;
+        let spy: jest.SpyInstance | undefined;
+        try {
+          if (kind === 'publish')
+            await unpublish(fixture.termId, fixture.a.id).expect(200);
+          const before = await snapshotPublicationConfigs([
+            fixture.a.id,
+            fixture.b.id,
+            fixture.c.id,
+            fixture.term.id,
+          ]);
+          spy = jest
+            .spyOn(repository, 'withSerializedTermWrite')
+            .mockImplementation((input, operation) =>
+              serialized(input, async (locked) => {
+                const tx = (
+                  locked as unknown as { tx: Prisma.TransactionClient }
+                ).tx;
+                const failAfterInitialWrite = async () => {
+                  const publications = await tx.timetablePublication.findMany({
+                    where: {
+                      schoolId,
+                      termId: fixture.termId,
+                      timetableConfigId: fixture.a.id,
+                    },
+                  });
+                  expect(
+                    publications.some(
+                      (row) =>
+                        row.revision === (kind === 'publish' ? 3 : 2) &&
+                        row.status ===
+                          (kind === 'publish'
+                            ? TimetablePublicationStatus.PUBLISHED
+                            : TimetablePublicationStatus.SUPERSEDED),
+                    ),
+                  ).toBe(true);
+                  mutationCompleted = true;
+                  try {
+                    await tx.$queryRaw`SELECT 1 / 0`;
+                  } catch (error: unknown) {
+                    databaseFailureCode =
+                      error && typeof error === 'object' && 'code' in error
+                        ? error.code
+                        : undefined;
+                    throw error;
+                  }
+                };
+                // Intercept the second write on this transaction instance, after the real publication write.
+                const configDelegate = new Proxy(tx.timetableConfig, {
+                  get(target, key, receiver): unknown {
+                    return key === 'update' || key === 'updateMany'
+                      ? failAfterInitialWrite
+                      : (Reflect.get(target, key, receiver) as unknown);
+                  },
+                });
+                const faultClient = new Proxy(tx, {
+                  get(target, key, receiver): unknown {
+                    return key === 'timetableConfig'
+                      ? configDelegate
+                      : (Reflect.get(target, key, receiver) as unknown);
+                  },
+                });
+                Object.defineProperty(locked, 'tx', { value: faultClient });
+                return operation(locked);
+              }),
+            );
+          await (
+            kind === 'publish'
+              ? publish(fixture.a.id)
+              : unpublish(fixture.termId, fixture.a.id)
+          ).expect(500);
+          expect(mutationCompleted).toBe(true);
+          expect(databaseFailureCode).toBe('P2010');
+          expect(
+            await snapshotPublicationConfigs([
+              fixture.a.id,
+              fixture.b.id,
+              fixture.c.id,
+              fixture.term.id,
+            ]),
+          ).toEqual(before);
+        } finally {
+          spy?.mockRestore();
+          await fixture.cleanup();
+        }
+      },
+    );
+
+    it.each(['term', 'grade', 'classroom'] as const)(
+      'retains legacy %s bulk unpublish selection and summary semantics',
+      async (mode) => {
+        const fixture = await createPublicationFixture(true);
+        try {
+          const targetIds =
+            mode === 'term'
+              ? fixture.allConfigIds
+              : mode === 'grade'
+                ? fixture.childConfigIds
+                : [fixture.childConfigIds[1]];
+          const unrelated = fixture.allConfigIds.filter(
+            (id) => !targetIds.includes(id),
+          );
+          const before = await snapshotPublicationConfigs(unrelated);
+          const activeCount = await prisma.timetableEntry.count({
+            where: {
+              timetableConfigId: { in: targetIds },
+              status: TimetableEntryStatus.ACTIVE,
+            },
+          });
+          await request(app.getHttpServer())
+            .post(`${GLOBAL_PREFIX}/academics/timetable/unpublish`)
+            .set('Authorization', bearer(adminAuth))
+            .send({
+              termId: fixture.termId,
+              ...(mode === 'grade'
+                ? { gradeId: fixture.gradeId }
+                : mode === 'classroom'
+                  ? { classroomId: fixture.classroomId }
+                  : {}),
+            })
+            .expect(200)
+            .expect((response) =>
+              expect(
+                (response.body as unknown as TimetableUnpublishResponseDto)
+                  .summary,
+              ).toEqual({
+                configsChecked: targetIds.length,
+                unpublishedCount: targetIds.length,
+                entriesReturnedToDraft: activeCount,
+              }),
+            );
+          const changed = await snapshotPublicationConfigs(targetIds);
+          expect(
+            changed.configs.every(
+              (config) => config.status === TimetableConfigStatus.DRAFT,
+            ),
+          ).toBe(true);
+          expect(
+            changed.publications.every(
+              (row) => row.status === TimetablePublicationStatus.SUPERSEDED,
+            ),
+          ).toBe(true);
+          expect(await snapshotPublicationConfigs(unrelated)).toEqual(before);
+        } finally {
+          await fixture.cleanup();
+        }
+      },
+    );
+  });
+
+  async function racePublicationRequests(
+    first: () => request.Test,
+    second: () => request.Test,
+  ): Promise<request.Response[]> {
+    const repository = app.get(TimetableRepository);
+    const serialized = repository.withSerializedTermWrite.bind(
+      repository,
+    ) as TimetableRepository['withSerializedTermWrite'];
+    let signal!: () => void;
+    let release!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      signal = resolve;
+    });
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const pending: Array<Promise<request.Response>> = [];
+    let callbacks = 0;
+    const spy = jest
+      .spyOn(repository, 'withSerializedTermWrite')
+      .mockImplementation((input, operation) =>
+        serialized(input, async (locked) => {
+          callbacks += 1;
+          if (callbacks === 1) {
+            signal();
+            await released;
+          }
+          return operation(locked);
+        }),
+      );
+    try {
+      pending.push(first().then((response) => response));
+      await Promise.race([
+        entered,
+        pending[0].then(() => {
+          throw new Error(
+            'First request completed before acquiring its publication lock',
+          );
+        }),
+      ]);
+      pending.push(second().then((response) => response));
+      await waitForBlockedDatabaseConnections(1);
+      expect(callbacks).toBe(1);
+      release();
+      return await Promise.all(pending);
+    } finally {
+      release();
+      await Promise.allSettled(pending);
+      spy.mockRestore();
+    }
+  }
+
+  function snapshotPublicationConfigs(ids: string[]) {
+    return Promise.all([
+      prisma.timetableConfig.findMany({
+        where: { schoolId, id: { in: ids } },
+        orderBy: { id: 'asc' },
+      }),
+      prisma.timetablePeriod.findMany({
+        where: { schoolId, timetableConfigId: { in: ids } },
+        orderBy: { id: 'asc' },
+      }),
+      prisma.timetableEntry.findMany({
+        where: { schoolId, timetableConfigId: { in: ids } },
+        orderBy: { id: 'asc' },
+      }),
+      prisma.timetablePublication.findMany({
+        where: { schoolId, timetableConfigId: { in: ids } },
+        orderBy: [{ revision: 'asc' }, { id: 'asc' }],
+      }),
+    ]).then(([configs, periods, entries, publications]) => ({
+      configs,
+      periods,
+      entries,
+      publications,
+    }));
+  }
+
+  async function createPublicationFixture(includeChildren = false) {
+    const token = randomUUID().slice(0, 8);
+    const stageIds: string[] = [],
+      gradeIds: string[] = [],
+      sectionIds: string[] = [],
+      classroomIds: string[] = [],
+      configIds: string[] = [];
+    let termId = '';
+    const cleanup = async () => {
+      await prisma.timetablePublication.deleteMany({
+        where: { schoolId, timetableConfigId: { in: configIds } },
+      });
+      await prisma.timetableEntry.deleteMany({
+        where: { schoolId, timetableConfigId: { in: configIds } },
+      });
+      await prisma.timetablePeriod.deleteMany({
+        where: { schoolId, timetableConfigId: { in: configIds } },
+      });
+      await prisma.timetableConfig.deleteMany({
+        where: { schoolId, id: { in: configIds } },
+      });
+      if (termId) {
+        await prisma.teacherSubjectAllocation.deleteMany({
+          where: { schoolId, termId },
+        });
+        await prisma.subjectAllocation.deleteMany({
+          where: { schoolId, termId },
+        });
+        await prisma.term.delete({ where: { id: termId } });
+      }
+      await prisma.classroom.deleteMany({
+        where: { schoolId, id: { in: classroomIds } },
+      });
+      await prisma.section.deleteMany({
+        where: { schoolId, id: { in: sectionIds } },
+      });
+      await prisma.grade.deleteMany({
+        where: { schoolId, id: { in: gradeIds } },
+      });
+      await prisma.stage.deleteMany({
+        where: { schoolId, id: { in: stageIds } },
+      });
+    };
+    try {
+      const term = await prisma.term.create({
+        data: {
+          schoolId,
+          academicYearId: academic.academicYearId,
+          nameAr: `${marker}-${token}-publication-ar`,
+          nameEn: `${marker}-${token}-publication`,
+          startDate: new Date('2026-09-01T00:00:00.000Z'),
+          endDate: new Date('2026-12-31T00:00:00.000Z'),
+          isActive: true,
+        },
+      });
+      termId = term.id;
+      const admin = await prisma.user.findUniqueOrThrow({
+        where: { email: adminEmail },
+        select: { id: true },
+      });
+      const createConfig = async (scope: {
+        scopeType: TimetableScopeType;
+        scopeKey: string;
+        stageId?: string;
+        gradeId?: string;
+        sectionId?: string;
+        classroomId?: string;
+      }) => {
+        const config = await prisma.timetableConfig.create({
+          data: {
+            schoolId,
+            academicYearId: academic.academicYearId,
+            termId,
+            name: `${marker}-${token}-${scope.scopeType}`,
+            activeDays: [0, 1, 2, 3, 4],
+            weekStartDay: 0,
+            ...scope,
+            status: TimetableConfigStatus.ACTIVE,
+          },
+        });
+        configIds.push(config.id);
+        for (const revision of [1, 2])
+          await prisma.timetablePublication.create({
+            data: {
+              schoolId,
+              academicYearId: academic.academicYearId,
+              termId,
+              timetableConfigId: config.id,
+              revision,
+              status:
+                revision === 1
+                  ? TimetablePublicationStatus.SUPERSEDED
+                  : TimetablePublicationStatus.PUBLISHED,
+              publishedAt: new Date(`2026-09-0${revision}T10:00:00.000Z`),
+              publishedByUserId: admin.id,
+            },
+          });
+        return config;
+      };
+      const configs: Awaited<ReturnType<typeof createConfig>>[] = [];
+      let mathAllocationId = '',
+        scienceEntryId = '';
+      for (let index = 0; index < 3; index++) {
+        const label = `${marker}-${token}-${index}`;
+        const stage = await prisma.stage.create({
+          data: {
+            schoolId,
+            nameAr: `${label}-ar`,
+            nameEn: label,
+            sortOrder: index + 20,
+          },
+        });
+        stageIds.push(stage.id);
+        const grade = await prisma.grade.create({
+          data: {
+            schoolId,
+            stageId: stage.id,
+            nameAr: `${label}-ar`,
+            nameEn: label,
+            sortOrder: 1,
+          },
+        });
+        gradeIds.push(grade.id);
+        const section = await prisma.section.create({
+          data: {
+            schoolId,
+            gradeId: grade.id,
+            nameAr: `${label}-ar`,
+            nameEn: label,
+            sortOrder: 1,
+          },
+        });
+        sectionIds.push(section.id);
+        const classroom = await prisma.classroom.create({
+          data: {
+            schoolId,
+            sectionId: section.id,
+            nameAr: `${label}-ar`,
+            nameEn: label,
+            sortOrder: 1,
+            capacity: 30,
+          },
+        });
+        classroomIds.push(classroom.id);
+        await prisma.subjectAllocation.create({
+          data: {
+            schoolId,
+            academicYearId: academic.academicYearId,
+            termId,
+            gradeId: grade.id,
+            subjectId: mathSubjectId,
+            weeklyHours: 2,
+          },
+        });
+        const allocation = await createTeacherAllocation({
+          termId,
+          classroomId: classroom.id,
+          subjectId: mathSubjectId,
+        });
+        const config = await createConfig({
+          scopeType: TimetableScopeType.STAGE,
+          scopeKey: `stage:${stage.id}`,
+          stageId: stage.id,
+        });
+        configs.push(config);
+        const periods: string[] = [];
+        for (let slot = 0; slot < (index === 0 ? 3 : 2); slot++) {
+          const hour = 8 + index * 3 + slot;
+          periods.push(
+            await createTimetablePeriod({
+              configId: config.id,
+              index: slot + 1,
+              label: `TT102 ${slot}`,
+              startTime: `${hour}:00`.padStart(5, '0'),
+              endTime: `${hour}:45`.padStart(5, '0'),
+            }),
+          );
+        }
+        for (let slot = 0; slot < 2; slot++)
+          await createTimetableEntryDirect({
+            termId,
+            configId: config.id,
+            periodId: periods[slot],
+            dayOfWeek: 0,
+            classroomId: classroom.id,
+            allocationId: allocation,
+            status: TimetableEntryStatus.ACTIVE,
+          });
+        if (index === 0) {
+          mathAllocationId = allocation;
+          await prisma.subjectAllocation.create({
+            data: {
+              schoolId,
+              academicYearId: academic.academicYearId,
+              termId,
+              gradeId: grade.id,
+              subjectId: scienceSubjectId,
+              weeklyHours: 1,
+            },
+          });
+          const scienceAllocation = await createTeacherAllocation({
+            termId,
+            classroomId: classroom.id,
+            subjectId: scienceSubjectId,
+          });
+          scienceEntryId = await createTimetableEntryDirect({
+            termId,
+            configId: config.id,
+            periodId: periods[2],
+            dayOfWeek: 0,
+            classroomId: classroom.id,
+            allocationId: scienceAllocation,
+            status: TimetableEntryStatus.DRAFT,
+          });
+          await createTimetableEntryDirect({
+            termId,
+            configId: config.id,
+            periodId: periods[0],
+            dayOfWeek: 4,
+            classroomId: classroom.id,
+            allocationId: allocation,
+            status: TimetableEntryStatus.CANCELLED,
+          });
+        }
+      }
+      const termConfig = await createConfig({
+        scopeType: TimetableScopeType.TERM,
+        scopeKey: `term:${termId}`,
+      });
+      const childConfigIds: string[] = [];
+      for (const config of [
+        termConfig,
+        ...(includeChildren
+          ? [
+              await createConfig({
+                scopeType: TimetableScopeType.GRADE,
+                scopeKey: `grade:${gradeIds[0]}`,
+                stageId: stageIds[0],
+                gradeId: gradeIds[0],
+              }),
+              await createConfig({
+                scopeType: TimetableScopeType.CLASSROOM,
+                scopeKey: `classroom:${classroomIds[0]}`,
+                stageId: stageIds[0],
+                gradeId: gradeIds[0],
+                sectionId: sectionIds[0],
+                classroomId: classroomIds[0],
+              }),
+            ]
+          : []),
+      ]) {
+        if (config.id !== termConfig.id) childConfigIds.push(config.id);
+        const period = await createTimetablePeriod({
+          configId: config.id,
+          index: 1,
+          label: 'TT102 fallback',
+          startTime: '18:00',
+          endTime: '18:45',
+        });
+        await createTimetableEntryDirect({
+          termId,
+          configId: config.id,
+          periodId: period,
+          dayOfWeek: 2,
+          classroomId: classroomIds[0],
+          allocationId: mathAllocationId,
+          status: TimetableEntryStatus.ACTIVE,
+        });
+      }
+      return {
+        termId,
+        a: configs[0],
+        b: configs[1],
+        c: configs[2],
+        term: termConfig,
+        mathAllocationId,
+        scienceEntryId,
+        gradeId: gradeIds[0],
+        classroomId: classroomIds[0],
+        allConfigIds: configIds,
+        childConfigIds,
+        cleanup,
+      };
+    } catch (error) {
+      await cleanup();
+      throw error;
+    }
+  }
+
   async function findSystemRole(key: string): Promise<{ id: string }> {
     const role = await prisma.role.findFirst({
       where: { key, schoolId: null, isSystem: true, deletedAt: null },
@@ -2179,7 +3011,10 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
   }
 
   async function holdDatabaseRowLock(
-    target: { kind: 'entry'; id: string } | { kind: 'room'; id: string },
+    target:
+      | { kind: 'entry'; id: string }
+      | { kind: 'room'; id: string }
+      | { kind: 'allocation'; id: string },
   ): Promise<HeldDatabaseRowLock> {
     let release!: () => void;
     let locked!: () => void;
@@ -2199,6 +3034,12 @@ describe('Academics timetable dashboard workflows (e2e)', () => {
               SELECT "id"
               FROM "timetable_entries"
               WHERE "id" = ${target.id}::uuid
+              FOR UPDATE
+            `;
+          } else if (target.kind === 'allocation') {
+            await tx.$queryRaw`
+              SELECT "id" FROM "teacher_subject_allocations"
+              WHERE "id" = ${target.id}::uuid AND "school_id" = ${schoolId}::uuid
               FOR UPDATE
             `;
           } else {

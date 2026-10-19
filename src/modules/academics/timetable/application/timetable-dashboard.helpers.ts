@@ -1,4 +1,4 @@
-import { TimetableEntryStatus } from '@prisma/client';
+import { TimetableEntryStatus, TimetableScopeType } from '@prisma/client';
 import { RoomSchedulingEligibility } from '../../rooms/domain/room-scheduling.policy';
 import { isActiveCurriculumRequirement } from '../../subject-allocation/domain/active-curriculum.policy';
 import { SubjectNotTaughtException } from '../../subject-allocation/domain/subject-allocation.exceptions';
@@ -32,6 +32,7 @@ import {
   TimetableRoomInactiveException,
   TimetableRoomNotFoundException,
   TimetableTeacherConflictException,
+  TimetableConfigNotFoundException,
 } from '../domain/timetable.exceptions';
 import { evaluateTimetableRoomScheduling } from '../domain/timetable-room-scheduling';
 import {
@@ -45,11 +46,118 @@ import {
   TimetableSubjectAllocationRecord,
   TimetableTeacherAllocationRecord,
   TimetableTermRecord,
+  SerializedTimetableWriteRepository,
 } from '../infrastructure/timetable.repository';
 import { TimetableBulkEntryItemDto } from '../dto/timetable.dto';
 import { TimetableConflictCheckItemDto } from '../dto/timetable-response.dto';
 
 export const MAX_TIMETABLE_BULK_ITEMS = 1000;
+
+export async function assertTimetableConfigPublicationIdentity(
+  repository: Pick<
+    SerializedTimetableWriteRepository,
+    | 'findAcademicYearById'
+    | 'findStageById'
+    | 'findGradeById'
+    | 'findSectionById'
+    | 'findClassroomById'
+  >,
+  config: TimetableConfigRecord,
+  term: TimetableTermRecord,
+  schoolId: string,
+): Promise<void> {
+  const invalid = () =>
+    new TimetableConfigNotFoundException({ timetableConfigId: config.id });
+  if (
+    config.schoolId !== schoolId ||
+    term.schoolId !== schoolId ||
+    config.termId !== term.id ||
+    config.academicYearId !== term.academicYearId
+  )
+    throw invalid();
+  const academicYear = await repository.findAcademicYearById(
+    config.academicYearId,
+  );
+  if (!academicYear || academicYear.schoolId !== schoolId) throw invalid();
+
+  let stageId: string | null = null;
+  let gradeId: string | null = null;
+  let sectionId: string | null = null;
+  let classroomId: string | null = null;
+  let scopeKey: string;
+  switch (config.scopeType) {
+    case TimetableScopeType.TERM:
+      scopeKey = `term:${term.id}`;
+      break;
+    case TimetableScopeType.STAGE:
+      stageId = config.stageId;
+      scopeKey = `stage:${stageId}`;
+      if (!stageId) throw invalid();
+      break;
+    case TimetableScopeType.GRADE: {
+      const grade = config.gradeId
+        ? await repository.findGradeById(config.gradeId)
+        : null;
+      if (!grade || grade.schoolId !== schoolId) throw invalid();
+      gradeId = grade.id;
+      stageId = grade.stageId;
+      scopeKey = `grade:${grade.id}`;
+      break;
+    }
+    case TimetableScopeType.SECTION: {
+      const section = config.sectionId
+        ? await repository.findSectionById(config.sectionId)
+        : null;
+      if (!section || section.schoolId !== schoolId) throw invalid();
+      sectionId = section.id;
+      gradeId = section.gradeId;
+      stageId = section.grade.stageId;
+      scopeKey = `section:${section.id}`;
+      break;
+    }
+    case TimetableScopeType.CLASSROOM: {
+      const classroom = config.classroomId
+        ? await repository.findClassroomById(config.classroomId)
+        : null;
+      if (!classroom || classroom.schoolId !== schoolId) throw invalid();
+      classroomId = classroom.id;
+      sectionId = classroom.sectionId;
+      gradeId = classroom.section.gradeId;
+      stageId = classroom.section.grade.stageId;
+      scopeKey = `classroom:${classroom.id}`;
+      break;
+    }
+    default:
+      throw invalid();
+  }
+  if (stageId) {
+    const stage = await repository.findStageById(stageId);
+    if (!stage || stage.schoolId !== schoolId) throw invalid();
+  }
+  if (gradeId) {
+    const grade = await repository.findGradeById(gradeId);
+    if (!grade || grade.schoolId !== schoolId || grade.stageId !== stageId)
+      throw invalid();
+  }
+  if (sectionId) {
+    const section = await repository.findSectionById(sectionId);
+    if (
+      !section ||
+      section.schoolId !== schoolId ||
+      section.gradeId !== gradeId ||
+      section.grade.stageId !== stageId
+    )
+      throw invalid();
+  }
+  if (
+    config.scopeKey !== scopeKey ||
+    config.stageId !== stageId ||
+    config.gradeId !== gradeId ||
+    config.sectionId !== sectionId ||
+    config.classroomId !== classroomId
+  )
+    throw invalid();
+}
 
 export interface ResolvedTimetableBulkItem extends BulkTimetableEntryInput {
   index: number;

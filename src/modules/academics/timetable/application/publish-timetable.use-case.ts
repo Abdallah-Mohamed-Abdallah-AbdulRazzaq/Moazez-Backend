@@ -26,57 +26,84 @@ export class PublishTimetableUseCase {
     command: PublishTimetableDto,
   ): Promise<TimetablePublicationResponseDto> {
     const scope = requireAcademicsScope();
-    const config = await this.timetableRepository.findConfigById(
+    const termId = await this.timetableRepository.findConfigTermId(
       command.timetableConfigId,
     );
-    if (!config) {
+    if (!termId) {
       throw new TimetableConfigNotFoundException({
         timetableConfigId: command.timetableConfigId,
       });
     }
 
-    if (config.status !== TimetableConfigStatus.DRAFT) {
-      throw new TimetableNotDraftException({
-        timetableConfigId: config.id,
-        status: config.status,
+    const serialized = await this.timetableRepository.withSerializedTermWrite(
+      { termId, timetableConfigIds: [command.timetableConfigId] },
+      async (repository) => {
+        const config = await repository.findConfigById(
+          command.timetableConfigId,
+        );
+        if (
+          !config ||
+          config.schoolId !== scope.schoolId ||
+          config.termId !== termId
+        ) {
+          throw new TimetableConfigNotFoundException({
+            timetableConfigId: command.timetableConfigId,
+          });
+        }
+        if (config.status !== TimetableConfigStatus.DRAFT) {
+          throw new TimetableNotDraftException({
+            timetableConfigId: config.id,
+            status: config.status,
+          });
+        }
+
+        const term = await repository.findTermById(termId);
+        if (!term || term.schoolId !== scope.schoolId)
+          throw new TimetableConfigNotFoundException({
+            timetableConfigId: config.id,
+          });
+        assertTermWritable(term);
+
+        const dataset = await loadTimetablePublicationDataset(
+          repository,
+          config,
+        );
+        const readiness = buildTimetablePublishReadiness(dataset);
+        if (!readiness.canPublish) {
+          throwReadinessException(config.id, readiness.blockingReasons);
+        }
+
+        const latestPublication =
+          await repository.findLatestPublicationByConfigId(config.id);
+        const result = await repository.publishConfig({
+          config,
+          revision: (latestPublication?.revision ?? 0) + 1,
+          publishedAt: new Date(),
+          publishedByUserId: scope.actorId,
+        });
+        const refreshedReadiness = buildTimetablePublishReadiness({
+          ...dataset,
+          config: result.config,
+          entries: dataset.entries.map((entry) =>
+            entry.status === TimetableEntryStatus.DRAFT
+              ? { ...entry, status: TimetableEntryStatus.ACTIVE }
+              : entry,
+          ),
+        });
+
+        return presentTimetablePublication({
+          config: result.config,
+          publication: result.publication,
+          readiness: refreshedReadiness,
+        });
+      },
+    );
+    if (serialized.status === 'not_found') {
+      throw new TimetableConfigNotFoundException({
+        timetableConfigId: command.timetableConfigId,
       });
     }
-
-    const term = await this.timetableRepository.findTermById(config.termId);
-    if (term) assertTermWritable(term);
-
-    const dataset = await loadTimetablePublicationDataset(
-      this.timetableRepository,
-      config,
-    );
-    const readiness = buildTimetablePublishReadiness(dataset);
-    if (!readiness.canPublish) {
-      throwReadinessException(config.id, readiness.blockingReasons);
-    }
-
-    const latestPublication =
-      await this.timetableRepository.findLatestPublicationByConfigId(config.id);
-    const result = await this.timetableRepository.publishConfig({
-      config,
-      revision: (latestPublication?.revision ?? 0) + 1,
-      publishedAt: new Date(),
-      publishedByUserId: scope.actorId,
-    });
-    const refreshedReadiness = buildTimetablePublishReadiness({
-      ...dataset,
-      config: result.config,
-      entries: dataset.entries.map((entry) =>
-        entry.status === TimetableEntryStatus.DRAFT
-          ? { ...entry, status: TimetableEntryStatus.ACTIVE }
-          : entry,
-      ),
-    });
-
-    return presentTimetablePublication({
-      config: result.config,
-      publication: result.publication,
-      readiness: refreshedReadiness,
-    });
+    return serialized.value;
   }
 }
 
