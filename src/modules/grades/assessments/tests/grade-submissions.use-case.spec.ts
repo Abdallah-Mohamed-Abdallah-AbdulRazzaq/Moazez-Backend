@@ -906,14 +906,10 @@ describe('grade submissions use cases', () => {
     ).rejects.toMatchObject({ code: 'not_found', httpStatus: 404 });
 
     expect(transaction.gradeSubmission.findFirst).toHaveBeenCalledTimes(2);
-    expect(transaction.gradeSubmission.findFirst).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        where: expect.objectContaining({
-          AND: expect.arrayContaining([{ id: 'submission-2' }]),
-        }),
-      }),
-    );
+    expect(transaction.gradeSubmission.findFirst).toHaveBeenNthCalledWith(2, {
+      where: { AND: [{ id: 'submission-2' }, {}] },
+      select: { id: true },
+    });
     expect(transaction.gradeSubmissionAnswer.upsert).not.toHaveBeenCalled();
     expect(
       transaction.gradeSubmissionAnswerOption.deleteMany,
