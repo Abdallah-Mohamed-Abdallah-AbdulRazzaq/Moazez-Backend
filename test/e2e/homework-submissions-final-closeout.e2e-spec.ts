@@ -1196,6 +1196,76 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
     ).toBe('DRAFT');
   });
 
+  it('ST01 rejects a stale submit without taking a terminal submission lock held by review', async () => {
+    const fixture = await createFileSubmission();
+    const repository = app.get<HomeworkRepository>(HomeworkRepository);
+    const submit = repository.submitSubmission.bind(
+      repository,
+    ) as HomeworkRepository['submitSubmission'];
+    const spy = jest
+      .spyOn(repository, 'submitSubmission')
+      .mockImplementationOnce(async (input) => {
+        // Another submit commits after the HTTP use case read its draft snapshot.
+        await submit(input);
+        let started!: () => void;
+        let release!: () => void;
+        const ready = new Promise<void>((resolve) => {
+          started = resolve;
+        });
+        const released = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        // Teacher review updates submission before target; retain that real row lock.
+        const reviewing = prisma.$transaction(
+          async (tx) => {
+            await tx.homeworkSubmission.update({
+              where: { id: fixture.submissionId },
+              data: { status: 'REVIEWED' },
+            });
+            started();
+            await released;
+            await tx.homeworkTarget.update({
+              where: { id: fixture.targetId },
+              data: { status: 'REVIEWED' },
+            });
+          },
+          { timeout: 10000 },
+        );
+        await ready;
+        let deadline: ReturnType<typeof setTimeout> | undefined;
+        try {
+          return await Promise.race([
+            submit(input),
+            new Promise<never>((resolve, reject) => {
+              deadline = setTimeout(
+                () =>
+                  reject(
+                    new Error('Stale submit waited on a terminal review lock'),
+                  ),
+                3000,
+              );
+            }),
+          ]);
+        } finally {
+          if (deadline) clearTimeout(deadline);
+          release();
+          await reviewing;
+        }
+      });
+    try {
+      await submitFile(fixture.homeworkId, {}, 409);
+      expect(
+        (
+          await prisma.homeworkSubmission.findUniqueOrThrow({
+            where: { id: fixture.submissionId },
+          })
+        ).status,
+      ).toBe('REVIEWED');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('ST01 destroys an actual storage stream when the HTTP client disconnects', async () => {
     const fixture = await createFileSubmission();
     const bytes = Buffer.concat([fileBytes, Buffer.alloc(2 * 1024 * 1024, 65)]);

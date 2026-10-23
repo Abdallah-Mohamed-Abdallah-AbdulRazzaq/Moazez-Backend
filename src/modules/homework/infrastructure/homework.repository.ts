@@ -698,7 +698,7 @@ export class HomeworkRepository {
     if (rows.length)
       await tx.$queryRaw`SELECT id FROM homework_submissions
       WHERE homework_target_id = ${input.homeworkTargetId}::uuid
-        AND school_id = ${scope.schoolId}::uuid FOR UPDATE`;
+        AND school_id = ${scope.schoolId}::uuid AND status = 'DRAFT' FOR UPDATE`;
     const target = rows.length
       ? await tx.homeworkTarget.findFirst({
           where: {
