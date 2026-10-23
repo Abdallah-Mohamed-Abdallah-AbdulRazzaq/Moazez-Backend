@@ -168,7 +168,7 @@ export class SubmitHomeworkSubmissionUseCase {
       refreshedTarget.submissions[0] ?? answerSubmission ?? null;
     const questions = refreshedTarget.homeworkAssignment.questions;
     const bodyText =
-      questions.length === 0
+      questions.length === 0 && !currentSubmission?.attachments.length
         ? normalizeRequiredBodyText(
             command.bodyText ?? currentSubmission?.bodyText ?? null,
           )
@@ -202,6 +202,37 @@ export class SubmitHomeworkSubmissionUseCase {
       submissionStatus,
       targetStatus,
       submittedAt,
+      validateCurrent: (currentTarget, hasEligibleAttachment) => {
+        assertSubmissionIsEditable(currentTarget);
+        const current = currentTarget.submissions[0];
+        const currentQuestions = currentTarget.homeworkAssignment.questions;
+        validateRequiredHomeworkAnswers({
+          questions: currentQuestions,
+          answers: current?.answers ?? [],
+        });
+        const finalBodyText =
+          currentQuestions.length === 0 && !hasEligibleAttachment
+            ? normalizeRequiredBodyText(
+                command.bodyText ?? current?.bodyText ?? null,
+              )
+            : normalizeOptionalBodyText(
+                command.bodyText ?? current?.bodyText ?? null,
+              );
+        const finalizedAt = new Date();
+        const late =
+          currentTarget.homeworkAssignment.dueAt.getTime() <
+          finalizedAt.getTime();
+        return {
+          bodyText: finalBodyText,
+          submittedAt: finalizedAt,
+          submissionStatus: late
+            ? HomeworkSubmissionStatus.LATE
+            : HomeworkSubmissionStatus.SUBMITTED,
+          targetStatus: late
+            ? HomeworkTargetStatus.LATE
+            : HomeworkTargetStatus.SUBMITTED,
+        };
+      },
     });
 
     if (result.outcome === 'already_submitted') {

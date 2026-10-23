@@ -898,6 +898,16 @@ const TEACHER_APP_DEFERRED_ACTION_CASES: TeacherAppDeferredCase[] = [];
 
 const TEACHER_APP_DECORATED_PERMISSION_CASES: TeacherAppPermissionCase[] = [
   {
+    controller: TeacherHomeworksController,
+    method: 'previewSubmissionAttachment',
+    permissions: ['homework.submissions.view'],
+  },
+  {
+    controller: TeacherHomeworksController,
+    method: 'downloadSubmissionAttachment',
+    permissions: ['homework.submissions.view'],
+  },
+  {
     controller: TeacherAcademicContentFilesController,
     method: 'currentContent',
     permissions: ['academics.academic_content.view'],
@@ -1242,8 +1252,8 @@ describe('Teacher App route permission metadata (security)', () => {
           .map((method) => `${controller.name}.${method}`),
     ).sort();
 
-    expect(discoveredRouteHandlers).toHaveLength(157);
-    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(157);
+    expect(discoveredRouteHandlers).toHaveLength(159);
+    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(159);
     expect(TEACHER_APP_DEFERRED_ACTION_CASES).toHaveLength(0);
     expect(discoveredRouteHandlers).toEqual(
       Array.from(expectedKnownHandlers).sort(),

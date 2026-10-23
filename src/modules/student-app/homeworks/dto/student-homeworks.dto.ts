@@ -267,9 +267,8 @@ export class StudentHomeworkSubmitBodyDto {
   @IsOptional()
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
-  @IsNotEmpty()
   @MaxLength(STUDENT_HOMEWORK_SUBMISSION_BODY_TEXT_MAX_LENGTH)
-  bodyText?: string;
+  bodyText?: string | null;
 
   @IsOptional()
   @IsArray()
