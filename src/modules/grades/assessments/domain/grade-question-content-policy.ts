@@ -3,7 +3,7 @@ import { classifyPersistedUrl } from '../../../../infrastructure/storage/provide
 
 const URL_FIELD = /(?:url|uri|href|src|link|endpoint)$/i;
 const URL_TOKEN =
-  /(?:\b[a-z][a-z0-9+.-]*:\/\/|\b(?:https?|gs|s3):(?=[a-z0-9/\[])|\b(?:javascript|vbscript|data|file|blob|mailto):|(?<!:)\/\/)[^\s<>"']+/gi;
+  /(?:\b[a-z][a-z0-9+.-]*:\/\/|\b(?:https?|gs|s3):(?=[a-z0-9/]|\[)|\b(?:javascript|vbscript|data|file|blob|mailto):|(?<!:)\/\/)[^\s<>"']+/gi;
 const PRIVATE_FIELD =
   /^(?:answerkey|correct.*|iscorrect|acceptedanswers?(?:ar|en)?|sampleanswer(?:ar|en)?|explanation(?:ar|en)?|bucket|objectkey|storagekey|signedurl|credentials?|token|authorization|.*metadata|storage)$/i;
 const STORAGE_FIELD =

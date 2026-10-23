@@ -33,7 +33,7 @@ const TYPES = {
 >;
 
 export function presentGradeQuestionContract(
-  type: GradeQuestionType | string,
+  type: string,
 ): GradeQuestionContractDto {
   if (!Object.prototype.hasOwnProperty.call(TYPES, type)) {
     return {

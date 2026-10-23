@@ -243,8 +243,7 @@ describe('ST-02 canonical exams contract', () => {
     (canonicalType, type, selectionMode) => {
       const fixture = examDetailResultFixture();
       const assessment = fixture.exam;
-      (assessment.questions[0] as { type: string }).type =
-        canonicalType as string;
+      (assessment.questions[0] as { type: string }).type = canonicalType;
       const result = StudentExamsPresenter.presentDetail(fixture);
       const question = result.stages[0].questions[0];
       expect(question).toMatchObject({

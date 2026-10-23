@@ -365,8 +365,7 @@ describe('ST-02 canonical grades contract', () => {
     (canonicalType, type, selectionMode) => {
       const fixture = assessmentDetailFixture();
       const assessment = fixture.assessment;
-      (assessment.questions[0] as { type: string }).type =
-        canonicalType as string;
+      (assessment.questions[0] as { type: string }).type = canonicalType;
       const result =
         StudentGradesPresenter.presentAssessmentGradeDetail(fixture);
       const question = result.questions[0];

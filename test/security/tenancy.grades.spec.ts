@@ -1,4 +1,10 @@
 import {
+  GradeAssessmentQuestionResponseDto,
+  GradeAssessmentQuestionsListResponseDto,
+} from '../../src/modules/grades/assessments/dto/grade-assessment-question.dto';
+import { GradeSubmissionsListResponseDto } from '../../src/modules/grades/assessments/dto/grade-submission.dto';
+import { GradebookResponseDto } from '../../src/modules/grades/gradebook/dto/get-gradebook-query.dto';
+import {
   createRequestContext,
   runWithRequestContext,
 } from '../../src/common/context/request-context';
@@ -4997,7 +5003,7 @@ describe('Grades tenancy isolation (security)', () => {
           .set('Authorization', 'Bearer ' + token),
     });
     try {
-      let token = (await login(teacher.email!, VIEW_ONLY_PASSWORD)).accessToken;
+      let token = (await login(teacher.email, VIEW_ONLY_PASSWORD)).accessToken;
       let ownedSubmissionId = '';
       let foreignSubmissionId = '';
       let ownedAnswerId = '';
@@ -5098,9 +5104,11 @@ describe('Grades tenancy isolation (security)', () => {
         const list = await call(token)
           .get('/grades/assessments/' + assessment.id + '/submissions')
           .expect(200);
-        expect(list.body.items.map((item: { id: string }) => item.id)).toEqual([
-          owned.id,
-        ]);
+        expect(
+          (list.body as GradeSubmissionsListResponseDto).items.map(
+            (item: { id: string }) => item.id,
+          ),
+        ).toEqual([owned.id]);
         await call(token)
           .get('/grades/submissions/' + owned.id)
           .expect(200);
@@ -5169,21 +5177,27 @@ describe('Grades tenancy isolation (security)', () => {
           subjectId: wrongSubject.id,
         })
         .expect(200);
-      expect(wrongGradebook.body.rows).toEqual([]);
+      expect((wrongGradebook.body as GradebookResponseDto).rows).toEqual([]);
 
       // Explicit authoring permission still requires exact live allocation ownership.
       await prisma.membership.update({
         where: { id: membership.id },
         data: { roleId: authorRole.id },
       });
-      token = (await login(teacher.email!, VIEW_ONLY_PASSWORD)).accessToken;
+      token = (await login(teacher.email, VIEW_ONLY_PASSWORD)).accessToken;
       const author = await call(token)
         .get('/grades/assessments/' + assessmentIds[0] + '/questions')
         .expect(200);
-      expect(author.body.questions[0].answerKey).toEqual({
+      expect(
+        (author.body as GradeAssessmentQuestionsListResponseDto).questions[0]
+          .answerKey,
+      ).toEqual({
         secret: 'ST02_AUTHOR_ONLY',
       });
-      expect(author.body.questions[0].options[0].isCorrect).toBe(true);
+      expect(
+        (author.body as GradeAssessmentQuestionsListResponseDto).questions[0]
+          .options[0].isCorrect,
+      ).toBe(true);
       await call(token)
         .post(
           '/grades/assessments/' + assessmentIds[0] + '/submissions/resolve',
@@ -5217,7 +5231,7 @@ describe('Grades tenancy isolation (security)', () => {
           metadata: { mediaUrl: 'https://example.com/media' },
         })
         .expect(201);
-      const qid = created.body.id;
+      const qid = (created.body as GradeAssessmentQuestionResponseDto).id;
       await call(token)
         .patch('/grades/questions/' + qid)
         .send({ prompt: 'Revised' })
@@ -5234,6 +5248,71 @@ describe('Grades tenancy isolation (security)', () => {
         .patch('/grades/questions/' + qid)
         .send({ metadata: { nested: [{ href: 'http://example.com/unsafe' }] } })
         .expect(400);
+      await call(token)
+        .post('/grades/assessments/' + draft.id + '/questions')
+        .send({
+          type: 'ESSAY',
+          prompt: 'Rejected nested media',
+          points: 5,
+          metadata: { assets: [{ href: 'javascript:(alert(1))' }] },
+        })
+        .expect(400);
+      await call(token)
+        .post('/grades/assessments/' + draft.id + '/questions')
+        .send({
+          type: 'MCQ_SINGLE',
+          prompt: 'Rejected option media',
+          points: 5,
+          options: [
+            {
+              label: 'A',
+              isCorrect: true,
+              metadata: { sourceUrl: 'http://example.com/unsafe' },
+            },
+            { label: 'B', isCorrect: false },
+          ],
+        })
+        .expect(400);
+      // A legacy row can predate validation; reads redact it and publication must reject it.
+      await prisma.gradeAssessmentQuestion.update({
+        where: { id: qid },
+        data: {
+          metadata: {
+            nested: [
+              {
+                href: 'https://storage.googleapis.com/test-only/legacy-question-media',
+              },
+            ],
+          },
+        },
+      });
+      const historical = await call(token)
+        .get('/grades/assessments/' + draft.id + '/questions')
+        .expect(200);
+      expect(JSON.stringify(historical.body)).not.toContain(
+        'storage.googleapis.com',
+      );
+      const { accessToken: publishToken } = await login(
+        DEMO_ADMIN_EMAIL,
+        DEMO_ADMIN_PASSWORD,
+      );
+      const rejectedPublish = await call(publishToken)
+        .post('/grades/assessments/' + draft.id + '/publish')
+        .expect(400);
+      expect(
+        (rejectedPublish.body as { error: { code: string } }).error.code,
+      ).toBe('validation.failed');
+      expect(
+        (
+          await prisma.gradeAssessment.findUniqueOrThrow({
+            where: { id: draft.id },
+          })
+        ).approvalStatus,
+      ).toBe(GradeAssessmentApprovalStatus.DRAFT);
+      await call(token)
+        .patch('/grades/questions/' + qid)
+        .send({ metadata: { mediaUrl: 'https://example.com/media' } })
+        .expect(200);
       for (const change of [
         { subjectId: wrongSubject.id },
         { subjectId: demoSubjectId, classroomId: otherClass.id },
