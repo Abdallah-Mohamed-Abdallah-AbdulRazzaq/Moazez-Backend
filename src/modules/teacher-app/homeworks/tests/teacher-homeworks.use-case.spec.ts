@@ -3,6 +3,7 @@ import {
   HomeworkSubmissionStatus,
   HomeworkTargetMode,
 } from '@prisma/client';
+import { GetTeacherHomeworkSubmissionAttachmentContentUseCase } from '../application/get-teacher-homework-submission-attachment-content.use-case';
 import {
   HomeworkAssignmentNotMutableException,
   HomeworkAssignmentScheduleMismatchException,
@@ -25,6 +26,52 @@ import {
 } from '../application/teacher-homeworks.use-cases';
 
 describe('Teacher Homeworks use cases', () => {
+  it('rechecks homework ownership and exact attachment scope on every content resolution', async () => {
+    const ownership = ownershipMock();
+    const descriptor = {
+      bucket: 'owned-fixture',
+      objectKey: 'fixture',
+      originalName: 'answer.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 10n,
+    };
+    const readAdapter = {
+      findSubmissionAttachmentContent: jest.fn().mockResolvedValue(descriptor),
+    };
+    const contentService = {
+      openAuthorized: jest.fn(async (resolve: () => Promise<unknown>) => {
+        await resolve();
+        readAdapter.findSubmissionAttachmentContent.mockResolvedValueOnce(null);
+        return resolve();
+      }),
+    };
+    const useCase = new GetTeacherHomeworkSubmissionAttachmentContentUseCase(
+      ownership as never,
+      readAdapter as never,
+      contentService as never,
+    );
+    await expect(
+      useCase.execute({
+        classId: 'allocation-1',
+        homeworkId: 'homework-1',
+        submissionId: 'submission-1',
+        attachmentId: 'attachment-1',
+      }),
+    ).rejects.toMatchObject({
+      code: 'homework.submission_attachment.not_found',
+    });
+    expect(ownership.resolveOwnedHomework).toHaveBeenCalledTimes(2);
+    expect(
+      readAdapter.findSubmissionAttachmentContent,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        teacherUserId: 'teacher-1',
+        submissionId: 'submission-1',
+        attachmentId: 'attachment-1',
+      }),
+    );
+  });
+
   it('lists only the owned class through Core Homework filters', async () => {
     const ownership = ownershipMock();
     const coreList = {

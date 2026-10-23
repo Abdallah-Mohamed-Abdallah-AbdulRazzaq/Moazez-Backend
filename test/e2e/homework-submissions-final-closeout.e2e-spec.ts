@@ -1,4 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { get as httpGet, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { Transform } from 'node:stream';
+import { setTimeout as delay } from 'node:timers/promises';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
@@ -21,6 +25,8 @@ import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
+import { StorageService } from '../../src/infrastructure/storage/storage.service';
+import { HomeworkRepository } from '../../src/modules/homework/infrastructure/homework.repository';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'Sprint14E123!';
@@ -112,6 +118,11 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
   const createdHomeworkAssignmentIds: string[] = [];
   const createdHomeworkTargetIds: string[] = [];
   const createdHomeworkSubmissionIds: string[] = [];
+  const createdFileIds: string[] = [];
+  const storedObjects: { bucket: string; objectKey: string }[] = [];
+  const fileBytes = Buffer.from(
+    '%PDF-1.4\nST01 owned private storage fixture\n',
+  );
 
   beforeAll(async () => {
     prisma = new PrismaClient();
@@ -229,6 +240,9 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
 
   afterAll(async () => {
     try {
+      if (app)
+        for (const object of storedObjects)
+          await app.get<StorageService>(StorageService).deleteObject(object);
       if (app) await app.close();
       await cleanupCloseoutData();
     } finally {
@@ -689,6 +703,661 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
     });
   });
 
+  it.each([undefined, null, '   '])(
+    'ST01 submits a real file without body text (%p), rejects replay and terminal edits',
+    async (bodyText) => {
+      const fixture = await createFileSubmission();
+      const submitted = await submitFile(fixture.homeworkId, { bodyText });
+      expect(submitted.body.submission).toMatchObject({
+        status: 'submitted',
+        bodyText: null,
+      });
+      await submitFile(fixture.homeworkId, {}, 409);
+      await request(app.getHttpServer())
+        .delete(studentAttachmentPath(fixture))
+        .set('Authorization', bearer(studentAuth))
+        .expect(409);
+      await request(app.getHttpServer())
+        .patch(studentAttachmentPath(fixture))
+        .set('Authorization', bearer(studentAuth))
+        .send({ title: 'Too late' })
+        .expect(409);
+    },
+  );
+
+  it('ST01 streams real private bytes to the allocated teacher with HEAD, ranges, secure headers and no generic file grant', async () => {
+    const fixture = await createFileSubmission();
+    await submitFile(fixture.homeworkId);
+    for (const mode of ['preview', 'download']) {
+      const path = teacherFilePath(fixture, mode);
+      const response = await request(app.getHttpServer())
+        .get(path)
+        .set('Authorization', bearer(teacherAuth))
+        .expect(200);
+      expect(response.body).toEqual(fileBytes);
+      expect(response.headers['content-disposition']).toMatch(
+        mode === 'preview' ? /^inline;/ : /^attachment;/,
+      );
+      expect(response.headers['content-disposition']).not.toMatch(/[\r\n]/);
+      expect(response.headers['cache-control']).toBe(
+        'no-store, private, max-age=0',
+      );
+      expect(response.headers['x-content-type-options']).toBe('nosniff');
+      expect(response.headers['accept-ranges']).toBe('bytes');
+      expect(response.headers.location).toBeUndefined();
+      const head = await request(app.getHttpServer())
+        .head(path)
+        .set('Authorization', bearer(teacherAuth))
+        .set('Range', 'bytes=0-3')
+        .expect(200);
+      expect(Number(head.headers['content-length'])).toBe(fileBytes.length);
+      expect(head.text).toBeUndefined();
+      const partial = await request(app.getHttpServer())
+        .get(path)
+        .set('Authorization', bearer(teacherAuth))
+        .set('Range', 'bytes=0-3')
+        .expect(206);
+      expect(partial.body).toEqual(fileBytes.subarray(0, 4));
+      expect(partial.headers['content-range']).toBe(
+        `bytes 0-3/${fileBytes.length}`,
+      );
+      for (const range of ['bytes=999999-', 'bytes=no', 'bytes=0-1,4-5']) {
+        const invalid = await request(app.getHttpServer())
+          .get(path)
+          .set('Authorization', bearer(teacherAuth))
+          .set('Range', range)
+          .expect(416);
+        expect(invalid.headers['content-range']).toBe(
+          `bytes */${fileBytes.length}`,
+        );
+      }
+      const full = await request(app.getHttpServer())
+        .get(path)
+        .set('Authorization', bearer(teacherAuth))
+        .set('Range', 'bytes=0-3')
+        .set('If-Range', '"stale"')
+        .expect(200);
+      expect(full.body).toEqual(fileBytes);
+    }
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/files/${fixture.fileId}/download`)
+      .set('Authorization', bearer(teacherAuth))
+      .expect(403);
+    // Assignment attachments retain their existing student redirect and content API.
+    const assignmentAttachment =
+      await prisma.homeworkAssignmentAttachment.create({
+        data: {
+          schoolId,
+          homeworkAssignmentId: fixture.homeworkId,
+          fileId: fixture.fileId,
+          createdByUserId: teacherUserId,
+        },
+      });
+    const studentPath = `${GLOBAL_PREFIX}/student/homeworks/${fixture.homeworkId}/attachments/${assignmentAttachment.id}/download`;
+    await request(app.getHttpServer())
+      .get(studentPath)
+      .set('Authorization', bearer(studentAuth))
+      .expect(307);
+    const studentContent = await request(app.getHttpServer())
+      .get(studentPath + '/content')
+      .set('Authorization', bearer(studentAuth))
+      .expect(200);
+    expect(studentContent.body).toEqual(fileBytes);
+    await request(app.getHttpServer())
+      .get(
+        teacherFilePath(
+          { ...fixture, attachmentId: assignmentAttachment.id },
+          'download',
+        ),
+      )
+      .set('Authorization', bearer(teacherAuth))
+      .expect(404);
+  });
+
+  it('ST01 denies unrelated actors, allocations and mismatched resources without file coordinates', async () => {
+    const fixture = await createFileSubmission();
+    await request(app.getHttpServer())
+      .get(teacherFilePath(fixture, 'download'))
+      .set('Authorization', bearer(teacherAuth))
+      .expect(404);
+    await submitFile(fixture.homeworkId);
+    for (const auth of [studentAuth, parentAuth, adminAuth]) {
+      await request(app.getHttpServer())
+        .get(teacherFilePath(fixture, 'download'))
+        .set('Authorization', bearer(auth))
+        .expect(403);
+    }
+    for (const patch of [
+      { homeworkId: randomUUID() },
+      { submissionId: randomUUID() },
+      { attachmentId: randomUUID() },
+    ]) {
+      const denied = await request(app.getHttpServer())
+        .get(teacherFilePath({ ...fixture, ...patch }, 'download'))
+        .set('Authorization', bearer(teacherAuth))
+        .expect(404);
+      expect(JSON.stringify(denied.body)).not.toMatch(
+        /objectKey|bucket|X-Amz|storageAccessKey/i,
+      );
+    }
+    const otherEmail = `${marker}-other-teacher@example.test`;
+    const otherTeacher = await createUserWithMembership({
+      email: otherEmail,
+      firstName: 'Other',
+      lastName: 'Teacher',
+      userType: UserType.TEACHER,
+      roleId: (await findSystemRole('teacher')).id,
+    });
+    const otherAuth = await login(otherEmail);
+    await request(app.getHttpServer())
+      .get(teacherFilePath(fixture, 'download'))
+      .set('Authorization', bearer(otherAuth))
+      .expect(404);
+    const otherPlacement = await createClassroomPlacement({
+      schoolId,
+      academic,
+      teacherUserId,
+    });
+    await request(app.getHttpServer())
+      .get(
+        teacherFilePath(fixture, 'download').replace(
+          placement.allocationId,
+          otherPlacement.allocationId,
+        ),
+      )
+      .set('Authorization', bearer(teacherAuth))
+      .expect(404);
+    await prisma.teacherSubjectAllocation.update({
+      where: { id: placement.allocationId },
+      data: { teacherUserId: otherTeacher },
+    });
+    try {
+      await request(app.getHttpServer())
+        .get(teacherFilePath(fixture, 'download'))
+        .set('Authorization', bearer(teacherAuth))
+        .expect(404);
+    } finally {
+      await prisma.teacherSubjectAllocation.update({
+        where: { id: placement.allocationId },
+        data: { teacherUserId },
+      });
+    }
+  });
+
+  it.each(['attachment', 'file', 'allocation', 'enrollment'] as const)(
+    'ST01 rechecks %s revocation after real object stat and before bytes',
+    async (resource) => {
+      const fixture = await createFileSubmission();
+      await submitFile(fixture.homeworkId);
+      const storage = app.get<StorageService>(StorageService);
+      const stat = storage.statObject.bind(
+        storage,
+      ) as StorageService['statObject'];
+      const get = jest.spyOn(storage, 'getObject');
+      const spy = jest
+        .spyOn(storage, 'statObject')
+        .mockImplementationOnce(async (input) => {
+          const result = await stat(input);
+          if (resource === 'attachment')
+            await prisma.homeworkSubmissionAttachment.update({
+              where: { id: fixture.attachmentId },
+              data: { deletedAt: new Date() },
+            });
+          if (resource === 'file')
+            await prisma.file.update({
+              where: { id: fixture.fileId },
+              data: { deletedAt: new Date() },
+            });
+          if (resource === 'allocation')
+            await prisma.teacherSubjectAllocation.update({
+              where: { id: placement.allocationId },
+              data: { teacherUserId: studentUserId },
+            });
+          if (resource === 'enrollment')
+            await prisma.enrollment.update({
+              where: { id: enrollmentId },
+              data: { endedAt: new Date() },
+            });
+          return result;
+        });
+      try {
+        const denied = await request(app.getHttpServer())
+          .get(teacherFilePath(fixture, 'download'))
+          .set('Authorization', bearer(teacherAuth))
+          .expect(404);
+        expect(denied.headers['content-disposition']).toBeUndefined();
+        for (const opened of get.mock.results) {
+          const source = await (opened.value as Promise<{
+            destroyed: boolean;
+          }>);
+          expect(source.destroyed).toBe(true);
+        }
+      } finally {
+        spy.mockRestore();
+        get.mockRestore();
+        await prisma.teacherSubjectAllocation.update({
+          where: { id: placement.allocationId },
+          data: { teacherUserId },
+        });
+        await prisma.enrollment.update({
+          where: { id: enrollmentId },
+          data: { endedAt: null },
+        });
+      }
+    },
+  );
+
+  it('ST01 rejects untrusted inline MIME while preserving attachment download and missing-object 404', async () => {
+    const fixture = await createFileSubmission();
+    await submitFile(fixture.homeworkId);
+    await prisma.file.update({
+      where: { id: fixture.fileId },
+      data: { mimeType: 'text/html' },
+    });
+    await request(app.getHttpServer())
+      .get(teacherFilePath(fixture, 'preview'))
+      .set('Authorization', bearer(teacherAuth))
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(teacherFilePath(fixture, 'download'))
+      .set('Authorization', bearer(teacherAuth))
+      .expect(200);
+    await app.get<StorageService>(StorageService).deleteObject(fixture.object);
+    await request(app.getHttpServer())
+      .get(teacherFilePath(fixture, 'download'))
+      .set('Authorization', bearer(teacherAuth))
+      .expect(404);
+  });
+
+  it.each([
+    'attachment',
+    'file',
+    'uploader',
+    'visibility',
+    'target',
+    'enrollment',
+    'status',
+  ] as const)(
+    'ST01 rejects stale file-only eligibility when %s changes before the final transaction',
+    async (resource) => {
+      const fixture = await createFileSubmission();
+      const repository = app.get<HomeworkRepository>(HomeworkRepository);
+      const submit = repository.submitSubmission.bind(
+        repository,
+      ) as HomeworkRepository['submitSubmission'];
+      const spy = jest
+        .spyOn(repository, 'submitSubmission')
+        .mockImplementationOnce(async (input) => {
+          if (resource === 'attachment')
+            await prisma.homeworkSubmissionAttachment.update({
+              where: { id: fixture.attachmentId },
+              data: { deletedAt: new Date() },
+            });
+          if (resource === 'file')
+            await prisma.file.update({
+              where: { id: fixture.fileId },
+              data: { deletedAt: new Date() },
+            });
+          if (resource === 'uploader')
+            await prisma.file.update({
+              where: { id: fixture.fileId },
+              data: { uploaderId: teacherUserId },
+            });
+          if (resource === 'visibility')
+            await prisma.file.update({
+              where: { id: fixture.fileId },
+              data: { visibility: 'PUBLIC' },
+            });
+          if (resource === 'target')
+            await prisma.homeworkSubmissionAttachment.update({
+              where: { id: fixture.attachmentId },
+              data: { homeworkTargetId: lateTargetId },
+            });
+          if (resource === 'enrollment')
+            await prisma.enrollment.update({
+              where: { id: enrollmentId },
+              data: { endedAt: new Date() },
+            });
+          if (resource === 'status')
+            await prisma.homeworkSubmission.update({
+              where: { id: fixture.submissionId },
+              data: { status: 'REVIEWED' },
+            });
+          return submit(input);
+        });
+      try {
+        await submitFile(
+          fixture.homeworkId,
+          {},
+          resource === 'enrollment' ? 404 : resource === 'status' ? 409 : 400,
+        );
+        const target = await prisma.homeworkTarget.findUniqueOrThrow({
+          where: { id: fixture.targetId },
+        });
+        expect(target.status).toBe('ASSIGNED');
+        expect(target.submittedAt).toBeNull();
+      } finally {
+        spy.mockRestore();
+        await prisma.enrollment.update({
+          where: { id: enrollmentId },
+          data: { endedAt: null },
+        });
+      }
+    },
+  );
+
+  it('ST01 allows one concurrent submit, rejects empty and required-answer omissions, and preserves late status', async () => {
+    const fixture = await createFileSubmission();
+    const responses = await Promise.all([
+      submitFile(fixture.homeworkId, {}, null),
+      submitFile(fixture.homeworkId, {}, null),
+    ]);
+    expect(responses.map((response) => response.status).sort()).toEqual([
+      200, 409,
+    ]);
+    expect(
+      await prisma.homeworkSubmission.count({
+        where: { homeworkTargetId: fixture.targetId },
+      }),
+    ).toBe(1);
+    const empty = await createPublishedHomework({
+      marker: 'empty',
+      dueAt: new Date('2030-01-01'),
+      isGraded: false,
+      totalMarks: null,
+    });
+    await submitFile(empty.homeworkId, {}, 400);
+    const required = await createFileSubmission(true);
+    await submitFile(required.homeworkId, {}, 422);
+    const late = await createFileSubmission();
+    await prisma.homeworkAssignment.update({
+      where: { id: late.homeworkId },
+      data: { dueAt: new Date('2020-01-01') },
+    });
+    expect((await submitFile(late.homeworkId)).body.submission.status).toBe(
+      'late',
+    );
+  });
+
+  it('ST01 denies cross-school teachers, foreign files and inconsistent student identities', async () => {
+    const fixture = await createFileSubmission();
+    await submitFile(fixture.homeworkId);
+    const foreignSchoolId = await createSchool(organizationId);
+    const teacherRole = await findSystemRole('teacher');
+    const foreignEmail = `${marker}-foreign-teacher@example.test`;
+    await createUserWithMembership({
+      email: foreignEmail,
+      firstName: 'Foreign',
+      lastName: 'Teacher',
+      userType: UserType.TEACHER,
+      roleId: teacherRole.id,
+      schoolId: foreignSchoolId,
+    });
+    const foreignAuth = await login(foreignEmail);
+    await request(app.getHttpServer())
+      .get(teacherFilePath(fixture, 'download'))
+      .set('Authorization', bearer(foreignAuth))
+      .expect(404);
+    await prisma.file.update({
+      where: { id: fixture.fileId },
+      data: { schoolId: foreignSchoolId },
+    });
+    await request(app.getHttpServer())
+      .get(teacherFilePath(fixture, 'download'))
+      .set('Authorization', bearer(teacherAuth))
+      .expect(404);
+    await prisma.file.update({
+      where: { id: fixture.fileId },
+      data: { schoolId },
+    });
+
+    const otherEmail = `${marker}-other-student@example.test`;
+    const otherUserId = await createUserWithMembership({
+      email: otherEmail,
+      firstName: 'Other',
+      lastName: 'Student',
+      userType: UserType.STUDENT,
+      roleId: (await findSystemRole('student')).id,
+    });
+    const otherStudent = await createStudentWithEnrollment({
+      schoolId,
+      organizationId,
+      academic,
+      classroomId: placement.classroomId,
+      studentUserId: otherUserId,
+    });
+    const otherAuth = await login(otherEmail);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/student/homeworks/${fixture.homeworkId}/submit`)
+      .set('Authorization', bearer(otherAuth))
+      .send({})
+      .expect(404);
+    await prisma.homeworkSubmission.update({
+      where: { id: fixture.submissionId },
+      data: {
+        studentId: otherStudent.studentId,
+        enrollmentId: otherStudent.enrollmentId,
+      },
+    });
+    await request(app.getHttpServer())
+      .get(teacherFilePath(fixture, 'download'))
+      .set('Authorization', bearer(teacherAuth))
+      .expect(404);
+    await prisma.homeworkSubmission.update({
+      where: { id: fixture.submissionId },
+      data: { studentId, enrollmentId },
+    });
+    await prisma.file.update({
+      where: { id: fixture.fileId },
+      data: { uploaderId: otherUserId },
+    });
+    await request(app.getHttpServer())
+      .get(teacherFilePath(fixture, 'download'))
+      .set('Authorization', bearer(teacherAuth))
+      .expect(404);
+  });
+
+  it('ST01 waits for a concurrent File update and rejects the deleted file at the mutation boundary', async () => {
+    const fixture = await createFileSubmission();
+    let pending: ReturnType<typeof submitFile> | undefined;
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM files WHERE id = ${fixture.fileId}::uuid FOR UPDATE`;
+        pending = submitFile(fixture.homeworkId, {}, null);
+        let blocked = false;
+        const deadline = Date.now() + 3000;
+        while (Date.now() < deadline) {
+          const waiting = await prisma.$queryRaw<
+            { count: bigint }[]
+          >`SELECT count(*) AS count FROM pg_stat_activity
+          WHERE datname = current_database() AND wait_event_type = 'Lock'
+            AND query LIKE '%homework_submission_attachments%'`;
+          if (Number(waiting[0].count) > 0) {
+            blocked = true;
+            break;
+          }
+          await delay(20);
+        }
+        expect(blocked).toBe(true);
+        await tx.file.update({
+          where: { id: fixture.fileId },
+          data: { deletedAt: new Date() },
+        });
+      },
+      { timeout: 10000 },
+    );
+    expect((await pending)?.status).toBe(400);
+    expect(
+      (
+        await prisma.homeworkSubmission.findUniqueOrThrow({
+          where: { id: fixture.submissionId },
+        })
+      ).status,
+    ).toBe('DRAFT');
+  });
+
+  it('ST01 destroys an actual storage stream when the HTTP client disconnects', async () => {
+    const fixture = await createFileSubmission();
+    const bytes = Buffer.concat([fileBytes, Buffer.alloc(2 * 1024 * 1024, 65)]);
+    const storage = app.get<StorageService>(StorageService);
+    await storage.saveObject({
+      ...fixture.object,
+      body: bytes,
+      contentType: 'application/pdf',
+    });
+    await prisma.file.update({
+      where: { id: fixture.fileId },
+      data: { sizeBytes: BigInt(bytes.length) },
+    });
+    await submitFile(fixture.homeworkId);
+    const original = storage.getObject.bind(
+      storage,
+    ) as StorageService['getObject'];
+    let sourceClosed: Promise<void> | undefined;
+    const spy = jest
+      .spyOn(storage, 'getObject')
+      .mockImplementationOnce(async (input) => {
+        const source = await original(input);
+        sourceClosed = new Promise<void>((resolve) =>
+          source.once('close', resolve),
+        );
+        // Bytes still come from MinIO; throttle the consumer to make disconnect deterministic.
+        const consumer = new Transform({
+          transform(chunk, encoding, callback) {
+            setTimeout(() => callback(null, chunk), 15);
+          },
+        });
+        source.on('error', (error: Error) => consumer.destroy(error));
+        consumer.once('close', () => source.destroy());
+        return source.pipe(consumer);
+      });
+    const server = app.getHttpServer() as Server;
+    await new Promise<void>((resolve) =>
+      server.listen(0, '127.0.0.1', resolve),
+    );
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const operation = httpGet(
+          {
+            hostname: '127.0.0.1',
+            port: (server.address() as AddressInfo).port,
+            path: teacherFilePath(fixture, 'download'),
+            headers: { Authorization: bearer(teacherAuth) },
+          },
+          (response) => {
+            response.once('data', (chunk: Buffer) => {
+              expect(chunk.subarray(0, fileBytes.length)).toEqual(fileBytes);
+              response.destroy();
+              resolve();
+            });
+          },
+        );
+        operation.on('error', reject);
+      });
+      expect(sourceClosed).toBeDefined();
+      await Promise.race([
+        sourceClosed,
+        new Promise((resolve, reject) => {
+          const deadline = setTimeout(
+            () =>
+              reject(new Error('Storage stream did not close on disconnect')),
+            5000,
+          );
+          void sourceClosed?.then(() => {
+            clearTimeout(deadline);
+            resolve(undefined);
+          });
+        }),
+      ]);
+    } finally {
+      spy.mockRestore();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  type FileSubmissionFixture = Awaited<ReturnType<typeof createFileSubmission>>;
+  const studentAttachmentPath = (fixture: FileSubmissionFixture) =>
+    `${GLOBAL_PREFIX}/student/homeworks/${fixture.homeworkId}/submission/attachments/${fixture.attachmentId}`;
+  const teacherFilePath = (
+    fixture: Pick<
+      FileSubmissionFixture,
+      'homeworkId' | 'submissionId' | 'attachmentId'
+    >,
+    mode: string,
+  ) =>
+    `${GLOBAL_PREFIX}/teacher/homeworks/classes/${placement.allocationId}/assignments/${fixture.homeworkId}/submissions/${fixture.submissionId}/attachments/${fixture.attachmentId}/${mode}`;
+
+  async function submitFile(
+    homeworkId: string,
+    body: { bodyText?: string | null } = {},
+    expected: number | null = 200,
+  ) {
+    const operation = request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/student/homeworks/${homeworkId}/submit`)
+      .set('Authorization', bearer(studentAuth))
+      .send(body);
+    const response = await (expected === null
+      ? operation
+      : operation.expect(expected));
+    return {
+      status: response.status,
+      body: response.body as {
+        submission: { status: string; bodyText: string | null };
+      },
+    };
+  }
+
+  async function createFileSubmission(includeQuestion = false) {
+    const homework = await createPublishedHomework({
+      marker: `file-${randomUUID()}`,
+      dueAt: new Date('2030-01-01'),
+      isGraded: false,
+      totalMarks: null,
+      includeQuestion,
+    });
+    const objectKey = `${marker}/${randomUUID()}`;
+    const { bucket } = await app
+      .get<StorageService>(StorageService)
+      .saveObject({
+        objectKey,
+        body: fileBytes,
+        contentType: 'application/pdf',
+        visibility: 'PRIVATE',
+      });
+    const object = { bucket, objectKey };
+    storedObjects.push(object);
+    const file = await prisma.file.create({
+      data: {
+        schoolId,
+        organizationId,
+        uploaderId: studentUserId,
+        ...object,
+        originalName: 'إجابة.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: BigInt(fileBytes.length),
+        visibility: 'PRIVATE',
+      },
+    });
+    createdFileIds.push(file.id);
+    const linked = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/student/homeworks/${homework.homeworkId}/submission/attachments`,
+      )
+      .set('Authorization', bearer(studentAuth))
+      .send({ fileId: file.id })
+      .expect(201);
+    const linkedBody = linked.body as {
+      attachment: { submissionId: string; attachmentId: string };
+    };
+    return {
+      ...homework,
+      fileId: file.id,
+      object,
+      submissionId: linkedBody.attachment.submissionId,
+      attachmentId: linkedBody.attachment.attachmentId,
+    };
+  }
+
   async function findSystemRole(key: string): Promise<{ id: string }> {
     const role = await prisma.role.findFirst({
       where: { key, schoolId: null, isSystem: true, deletedAt: null },
@@ -712,10 +1381,11 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
   }
 
   async function createSchool(inputOrganizationId: string): Promise<string> {
+    const schoolMarker = `${marker}-${randomUUID().slice(0, 8)}`;
     const school = await prisma.school.create({
       data: {
         organizationId: inputOrganizationId,
-        slug: `${marker}-school`,
+        slug: `${schoolMarker}-school`,
         name: `Sprint 14E School ${suffix}`,
         status: SchoolStatus.ACTIVE,
       },
@@ -731,6 +1401,7 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
     lastName: string;
     userType: UserType;
     roleId: string;
+    schoolId?: string;
   }): Promise<string> {
     const user = await prisma.user.create({
       data: {
@@ -749,7 +1420,7 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
       data: {
         userId: user.id,
         organizationId,
-        schoolId,
+        schoolId: params.schoolId ?? schoolId,
         roleId: params.roleId,
         userType: params.userType,
         status: MembershipStatus.ACTIVE,
@@ -829,12 +1500,13 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
     academic: AcademicBase;
     teacherUserId: string;
   }): Promise<ClassroomPlacement> {
+    const placementMarker = `${marker}-${randomUUID().slice(0, 8)}`;
     const classroom = await prisma.classroom.create({
       data: {
         schoolId: params.schoolId,
         sectionId: params.academic.sectionId,
-        nameAr: `${marker}-classroom-ar`,
-        nameEn: `${marker}-classroom`,
+        nameAr: `${placementMarker}-classroom-ar`,
+        nameEn: `${placementMarker}-classroom`,
         sortOrder: 1,
       },
       select: { id: true },
@@ -842,9 +1514,9 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
     const subject = await prisma.subject.create({
       data: {
         schoolId: params.schoolId,
-        nameAr: `${marker}-subject-ar`,
-        nameEn: `${marker}-subject`,
-        code: `S14E-${suffix}`,
+        nameAr: `${placementMarker}-subject-ar`,
+        nameEn: `${placementMarker}-subject`,
+        code: `S14E-${placementMarker}`,
         isActive: true,
       },
       select: { id: true },
@@ -1180,6 +1852,13 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
     await prisma.homeworkSubmissionAnswer.deleteMany({
       where: { schoolId: { in: createdSchoolIds } },
     });
+    await prisma.homeworkSubmissionAttachment.deleteMany({
+      where: { schoolId: { in: createdSchoolIds } },
+    });
+    await prisma.homeworkAssignmentAttachment.deleteMany({
+      where: { schoolId: { in: createdSchoolIds } },
+    });
+    await prisma.file.deleteMany({ where: { id: { in: createdFileIds } } });
     await prisma.homeworkSubmission.deleteMany({
       where: {
         OR: [

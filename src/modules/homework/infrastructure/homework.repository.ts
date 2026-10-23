@@ -13,6 +13,17 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
 import { TeacherAllocationOperationalWriteGate } from '../../academics/teacher-allocation/application/teacher-allocation-operational-write-gate';
+import { requireHomeworkScope } from '../homework-context';
+import {
+  HomeworkSubmissionAlreadySubmittedException,
+  HomeworkSubmissionNotSubmittableException,
+  HomeworkSubmissionTargetNotFoundException,
+} from '../domain/homework.exceptions';
+import {
+  HomeworkSubmissionAttachmentFileNotFoundException,
+  HomeworkSubmissionAttachmentReadOnlyException,
+} from '../domain/homework-submission-attachment.exceptions';
+import { HomeworkAnswerReadOnlyException } from '../domain/homework-answer.exceptions';
 
 const REVIEWABLE_SUBMISSION_STATUSES: HomeworkSubmissionStatus[] = [
   HomeworkSubmissionStatus.SUBMITTED,
@@ -647,6 +658,164 @@ export class HomeworkRepository {
     return this.prisma.scoped as unknown as PrismaService;
   }
 
+  private async lockEditableStudentTarget(
+    tx: Prisma.TransactionClient,
+    input: {
+      schoolId: string;
+      homeworkAssignmentId: string;
+      homeworkTargetId: string;
+      studentId?: string;
+      enrollmentId?: string;
+    },
+    readOnlyError?: () => Error,
+    allowExistingSubmitted = false,
+  ): Promise<HomeworkTargetForSubmissionRecord> {
+    const scope = requireHomeworkScope();
+    if (scope.schoolId !== input.schoolId) {
+      throw new HomeworkSubmissionTargetNotFoundException();
+    }
+    // Every student writer locks the assignment before the target. The target
+    // serializes even the first submission, when no submission row exists yet.
+    await tx.$queryRaw`
+      SELECT id FROM homework_assignments
+      WHERE id = ${input.homeworkAssignmentId}::uuid
+        AND school_id = ${scope.schoolId}::uuid FOR SHARE
+    `;
+    const rows = await tx.$queryRaw<{ id: string }[]>`
+      SELECT t.id FROM homework_targets t
+      JOIN homework_assignments a ON a.id = t.homework_assignment_id AND a.school_id = t.school_id
+      JOIN students s ON s.id = t.student_id AND s.school_id = t.school_id
+      JOIN student_enrollments e ON e.id = t.enrollment_id AND e.school_id = t.school_id AND e.student_id = s.id
+      WHERE t.id = ${input.homeworkTargetId}::uuid AND t.school_id = ${scope.schoolId}::uuid
+        AND a.id = ${input.homeworkAssignmentId}::uuid AND a.deleted_at IS NULL
+        AND s.deleted_at IS NULL AND s.status = 'ACTIVE'
+        AND e.deleted_at IS NULL AND e.ended_at IS NULL AND e.status = 'ACTIVE'
+        AND e.classroom_id = a.classroom_id AND e.academic_year_id = a.academic_year_id
+        AND (e.term_id IS NULL OR e.term_id = a.term_id)
+        ${scope.userType === 'STUDENT' ? Prisma.sql`AND s.user_id = ${scope.actorId}::uuid` : Prisma.empty}
+      FOR UPDATE OF t FOR SHARE OF s, e
+    `;
+    if (rows.length)
+      await tx.$queryRaw`SELECT id FROM homework_submissions
+      WHERE homework_target_id = ${input.homeworkTargetId}::uuid
+        AND school_id = ${scope.schoolId}::uuid FOR UPDATE`;
+    const target = rows.length
+      ? await tx.homeworkTarget.findFirst({
+          where: {
+            id: input.homeworkTargetId,
+            schoolId: scope.schoolId,
+            homeworkAssignmentId: input.homeworkAssignmentId,
+            studentId: input.studentId,
+            enrollmentId: input.enrollmentId,
+          },
+          ...HOMEWORK_TARGET_FOR_SUBMISSION_ARGS,
+        })
+      : null;
+    if (!target) throw new HomeworkSubmissionTargetNotFoundException();
+    const current = target.submissions[0];
+    if (
+      current &&
+      (current.homeworkAssignmentId !== target.homeworkAssignmentId ||
+        current.studentId !== target.studentId ||
+        current.enrollmentId !== target.enrollmentId)
+    )
+      throw new HomeworkSubmissionTargetNotFoundException();
+    if (
+      ['SUBMITTED', 'LATE', 'REVIEWED'].includes(target.status) ||
+      (current && current.status !== 'DRAFT')
+    ) {
+      if (allowExistingSubmitted && current && current.status !== 'DRAFT')
+        return target;
+      throw (
+        readOnlyError?.() ?? new HomeworkSubmissionAlreadySubmittedException()
+      );
+    }
+    if (
+      target.homeworkAssignment.status !== 'PUBLISHED' ||
+      ['MISSING', 'EXCUSED'].includes(target.status)
+    ) {
+      throw (
+        readOnlyError?.() ?? new HomeworkSubmissionNotSubmittableException()
+      );
+    }
+    return target;
+  }
+
+  private async lockEditableSubmission(
+    tx: Prisma.TransactionClient,
+    submissionId: string,
+    homeworkAssignmentId: string,
+    readOnlyError: () => Error,
+  ): Promise<HomeworkTargetForSubmissionRecord> {
+    const scope = requireHomeworkScope();
+    const submission = await tx.homeworkSubmission.findFirst({
+      where: {
+        id: submissionId,
+        homeworkAssignmentId,
+        schoolId: scope.schoolId,
+      },
+      select: { homeworkTargetId: true },
+    });
+    if (!submission) throw new HomeworkSubmissionTargetNotFoundException();
+    const target = await this.lockEditableStudentTarget(
+      tx,
+      {
+        schoolId: scope.schoolId,
+        homeworkAssignmentId,
+        homeworkTargetId: submission.homeworkTargetId,
+      },
+      readOnlyError,
+    );
+    if (target.submissions[0]?.id !== submissionId)
+      throw new HomeworkSubmissionTargetNotFoundException();
+    return target;
+  }
+
+  private async eligibleSubmissionAttachments(
+    tx: Prisma.TransactionClient,
+    target: HomeworkTargetForSubmissionRecord,
+  ): Promise<boolean> {
+    const submission = target.submissions[0];
+    if (!submission) return false;
+    // Hold both records stable through commit, including against File soft deletion.
+    await tx.$queryRaw`
+      SELECT sa.id FROM homework_submission_attachments sa
+      JOIN files f ON f.id = sa.file_id
+      WHERE sa.school_id = ${target.schoolId}::uuid
+        AND sa.homework_submission_id = ${submission.id}::uuid
+      ORDER BY sa.id FOR SHARE OF sa, f
+    `;
+    const student = await tx.student.findFirst({
+      where: { id: target.studentId, schoolId: target.schoolId },
+      select: { userId: true },
+    });
+    if (!student?.userId) return false;
+    const attachment = await tx.homeworkSubmissionAttachment.findFirst({
+      where: {
+        schoolId: target.schoolId,
+        homeworkSubmissionId: submission.id,
+        homeworkAssignmentId: target.homeworkAssignmentId,
+        homeworkTargetId: target.id,
+        createdByUserId: student.userId,
+        deletedAt: null,
+        file: {
+          is: {
+            schoolId: target.schoolId,
+            uploaderId: student.userId,
+            visibility: 'PRIVATE',
+            deletedAt: null,
+            sizeBytes: { gt: 0 },
+            bucket: { not: '' },
+            objectKey: { not: '' },
+            studentCredentialSecretArtifacts: { none: {} },
+          },
+        },
+      },
+      select: { id: true },
+    });
+    return !!attachment;
+  }
+
   async listAssignments(
     filters: ListHomeworkAssignmentsFilters,
   ): Promise<ListHomeworkAssignmentsResult> {
@@ -1183,6 +1352,7 @@ export class HomeworkRepository {
     bodyText?: string | null;
   }): Promise<SaveHomeworkSubmissionDraftResult> {
     return this.scopedPrisma.$transaction(async (tx) => {
+      await this.lockEditableStudentTarget(tx, input, undefined, true);
       const existing = await tx.homeworkSubmission.findUnique({
         where: {
           schoolId_homeworkTargetId: {
@@ -1233,6 +1403,12 @@ export class HomeworkRepository {
     update: UpdateHomeworkSubmissionAnswerData;
   }): Promise<HomeworkSubmissionAnswerRecord> {
     const answer = await this.scopedPrisma.$transaction(async (tx) => {
+      await this.lockEditableSubmission(
+        tx,
+        String(input.data.homeworkSubmissionId),
+        String(input.data.homeworkAssignmentId),
+        () => new HomeworkAnswerReadOnlyException(),
+      );
       const existing = await tx.homeworkSubmissionAnswer.findFirst({
         where: {
           homeworkSubmissionId: String(input.data.homeworkSubmissionId),
@@ -1302,12 +1478,49 @@ export class HomeworkRepository {
     return (result._max.sortOrder ?? -1) + 1;
   }
 
-  createSubmissionAttachment(
+  async createSubmissionAttachment(
     data: CreateHomeworkSubmissionAttachmentData,
   ): Promise<HomeworkSubmissionAttachmentRecord> {
-    return this.scopedPrisma.homeworkSubmissionAttachment.create({
-      data,
-      select: HOMEWORK_SUBMISSION_ATTACHMENT_SELECT,
+    return this.scopedPrisma.$transaction(async (tx) => {
+      const target = await this.lockEditableSubmission(
+        tx,
+        String(data.homeworkSubmissionId),
+        String(data.homeworkAssignmentId),
+        () => new HomeworkSubmissionAttachmentReadOnlyException(),
+      );
+      const scope = requireHomeworkScope();
+      const lockedFiles = await tx.$queryRaw<
+        { id: string }[]
+      >`SELECT id FROM files
+        WHERE id = ${String(data.fileId)}::uuid AND school_id = ${scope.schoolId}::uuid FOR SHARE`;
+      if (!lockedFiles.length)
+        throw new HomeworkSubmissionAttachmentFileNotFoundException();
+      const file = await tx.file.findFirst({
+        where: {
+          id: String(data.fileId),
+          schoolId: scope.schoolId,
+          uploaderId: scope.actorId,
+          visibility: 'PRIVATE',
+          deletedAt: null,
+          sizeBytes: { gt: 0 },
+          bucket: { not: '' },
+          objectKey: { not: '' },
+          studentCredentialSecretArtifacts: { none: {} },
+        },
+        select: { id: true },
+      });
+      if (
+        !file ||
+        data.homeworkTargetId !== target.id ||
+        data.schoolId !== target.schoolId ||
+        data.createdByUserId !== scope.actorId
+      ) {
+        throw new HomeworkSubmissionAttachmentFileNotFoundException();
+      }
+      return tx.homeworkSubmissionAttachment.create({
+        data,
+        select: HOMEWORK_SUBMISSION_ATTACHMENT_SELECT,
+      });
     });
   }
 
@@ -1317,22 +1530,38 @@ export class HomeworkRepository {
     attachmentId: string;
     data: UpdateHomeworkSubmissionAttachmentData;
   }): Promise<HomeworkSubmissionAttachmentRecord> {
-    await this.scopedPrisma.homeworkSubmissionAttachment.updateMany({
-      where: {
-        id: input.attachmentId,
-        homeworkAssignmentId: input.homeworkAssignmentId,
-        homeworkSubmissionId: input.submissionId,
-        deletedAt: null,
-      },
-      data: input.data as Prisma.HomeworkSubmissionAttachmentUncheckedUpdateManyInput,
+    return this.scopedPrisma.$transaction(async (tx) => {
+      await this.lockEditableSubmission(
+        tx,
+        input.submissionId,
+        input.homeworkAssignmentId,
+        () => new HomeworkSubmissionAttachmentReadOnlyException(),
+      );
+      await tx.homeworkSubmissionAttachment.updateMany({
+        where: {
+          id: input.attachmentId,
+          homeworkAssignmentId: input.homeworkAssignmentId,
+          homeworkSubmissionId: input.submissionId,
+          deletedAt: null,
+        },
+        data: input.data as Prisma.HomeworkSubmissionAttachmentUncheckedUpdateManyInput,
+      });
+
+      const attachment = await tx.homeworkSubmissionAttachment.findFirst({
+        where: {
+          id: input.attachmentId,
+          homeworkSubmissionId: input.submissionId,
+          homeworkAssignmentId: input.homeworkAssignmentId,
+          deletedAt: null,
+        },
+        select: HOMEWORK_SUBMISSION_ATTACHMENT_SELECT,
+      });
+      if (!attachment) {
+        throw new Error('Updated homework submission attachment was not found');
+      }
+
+      return attachment;
     });
-
-    const attachment = await this.findSubmissionAttachmentById(input);
-    if (!attachment) {
-      throw new Error('Updated homework submission attachment was not found');
-    }
-
-    return attachment;
   }
 
   async softDeleteSubmissionAttachment(input: {
@@ -1340,14 +1569,22 @@ export class HomeworkRepository {
     submissionId: string;
     attachmentId: string;
   }): Promise<void> {
-    await this.scopedPrisma.homeworkSubmissionAttachment.updateMany({
-      where: {
-        id: input.attachmentId,
-        homeworkAssignmentId: input.homeworkAssignmentId,
-        homeworkSubmissionId: input.submissionId,
-        deletedAt: null,
-      },
-      data: { deletedAt: new Date() },
+    await this.scopedPrisma.$transaction(async (tx) => {
+      await this.lockEditableSubmission(
+        tx,
+        input.submissionId,
+        input.homeworkAssignmentId,
+        () => new HomeworkSubmissionAttachmentReadOnlyException(),
+      );
+      await tx.homeworkSubmissionAttachment.updateMany({
+        where: {
+          id: input.attachmentId,
+          homeworkAssignmentId: input.homeworkAssignmentId,
+          homeworkSubmissionId: input.submissionId,
+          deletedAt: null,
+        },
+        data: { deletedAt: new Date() },
+      });
     });
   }
 
@@ -1545,6 +1782,7 @@ export class HomeworkRepository {
     bodyText: string | null;
   }): Promise<SaveHomeworkSubmissionDraftResult> {
     return this.scopedPrisma.$transaction(async (tx) => {
+      await this.lockEditableStudentTarget(tx, input);
       const existing = await tx.homeworkSubmission.findUnique({
         where: {
           schoolId_homeworkTargetId: {
@@ -1592,8 +1830,31 @@ export class HomeworkRepository {
     submissionStatus: HomeworkSubmissionStatus;
     targetStatus: HomeworkTargetStatus;
     submittedAt: Date;
+    validateCurrent: (
+      target: HomeworkTargetForSubmissionRecord,
+      hasEligibleAttachment: boolean,
+    ) => {
+      bodyText: string | null;
+      submittedAt: Date;
+      submissionStatus: HomeworkSubmissionStatus;
+      targetStatus: HomeworkTargetStatus;
+    };
   }): Promise<SubmitHomeworkSubmissionResult> {
     return this.scopedPrisma.$transaction(async (tx) => {
+      let target = await this.lockEditableStudentTarget(tx, input);
+      await tx.$queryRaw`SELECT id FROM homework_questions
+        WHERE homework_assignment_id = ${input.homeworkAssignmentId}::uuid
+          AND school_id = ${input.schoolId}::uuid ORDER BY id FOR SHARE`;
+      target = await tx.homeworkTarget.findFirstOrThrow({
+        where: { id: target.id, schoolId: target.schoolId },
+        ...HOMEWORK_TARGET_FOR_SUBMISSION_ARGS,
+      });
+      const hasEligibleAttachment = await this.eligibleSubmissionAttachments(
+        tx,
+        target,
+      );
+      const { bodyText, submittedAt, submissionStatus, targetStatus } =
+        input.validateCurrent(target, hasEligibleAttachment);
       const existing = await tx.homeworkSubmission.findUnique({
         where: {
           schoolId_homeworkTargetId: {
@@ -1612,9 +1873,9 @@ export class HomeworkRepository {
         ? await tx.homeworkSubmission.update({
             where: { id: existing.id },
             data: {
-              status: input.submissionStatus,
-              bodyText: input.bodyText,
-              submittedAt: input.submittedAt,
+              status: submissionStatus,
+              bodyText,
+              submittedAt,
             },
             ...HOMEWORK_SUBMISSION_ARGS,
           })
@@ -1625,9 +1886,9 @@ export class HomeworkRepository {
               homeworkTargetId: input.homeworkTargetId,
               studentId: input.studentId,
               enrollmentId: input.enrollmentId,
-              status: input.submissionStatus,
-              bodyText: input.bodyText,
-              submittedAt: input.submittedAt,
+              status: submissionStatus,
+              bodyText,
+              submittedAt,
             },
             ...HOMEWORK_SUBMISSION_ARGS,
           });
@@ -1641,8 +1902,8 @@ export class HomeworkRepository {
           enrollmentId: input.enrollmentId,
         },
         data: {
-          status: input.targetStatus,
-          submittedAt: input.submittedAt,
+          status: targetStatus,
+          submittedAt,
         },
       });
 

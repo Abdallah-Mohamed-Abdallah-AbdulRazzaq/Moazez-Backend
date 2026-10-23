@@ -28,7 +28,11 @@ import {
   SubmitHomeworkSubmissionUseCase,
 } from '../application/homework-submissions.use-cases';
 import { HomeworkSubmissionsController } from '../controller/homework-submissions.controller';
-import { HomeworkRepository } from '../infrastructure/homework.repository';
+import {
+  HomeworkRepository,
+  type HomeworkTargetForSubmissionRecord,
+  type HomeworkSubmissionRecord,
+} from '../infrastructure/homework.repository';
 
 describe('Homework submission use cases', () => {
   async function withStudentScope<T>(testFn: () => Promise<T>): Promise<T> {
@@ -353,6 +357,62 @@ describe('Homework submission use cases', () => {
     });
     expect(repository.submitSubmission).not.toHaveBeenCalled();
   });
+
+  it.each([undefined, null, '   '])(
+    'accepts file-only body %p only when the final transaction confirms eligibility',
+    async (bodyText) => {
+      const target = seedTarget({
+        submissions: [
+          seedSubmission({
+            bodyText: null,
+            attachments: [{ id: 'attachment-1' }],
+          }),
+        ],
+      }) as HomeworkTargetForSubmissionRecord;
+      const repository = createRepository({
+        findStudentTargetForSubmission: jest.fn().mockResolvedValue(target),
+      }) as jest.Mocked<HomeworkRepository>;
+      repository.submitSubmission.mockImplementation(
+        (input: Parameters<HomeworkRepository['submitSubmission']>[0]) =>
+          Promise.resolve({
+            outcome: 'submitted' as const,
+            submission: seedSubmission({
+              bodyText: input.validateCurrent(target, true).bodyText,
+              status: 'SUBMITTED',
+            }) as HomeworkSubmissionRecord,
+          }),
+      );
+      const useCase = new SubmitHomeworkSubmissionUseCase(
+        repository,
+        createAuthRepository() as never,
+      );
+      const result = await withStudentScope(() =>
+        useCase.execute({
+          homeworkId: 'homework-1',
+          studentId: 'student-1',
+          enrollmentId: 'enrollment-1',
+          bodyText,
+        }),
+      );
+      expect(result.bodyText).toBeNull();
+      repository.submitSubmission.mockImplementation(
+        (input: Parameters<HomeworkRepository['submitSubmission']>[0]) => {
+          input.validateCurrent(target, false);
+          throw new Error('Expected missing eligible attachment rejection');
+        },
+      );
+      await expect(
+        withStudentScope(() =>
+          useCase.execute({
+            homeworkId: 'homework-1',
+            studentId: 'student-1',
+            enrollmentId: 'enrollment-1',
+            bodyText,
+          }),
+        ),
+      ).rejects.toMatchObject({ code: 'validation.failed' });
+    },
+  );
 
   it('rejects blank final body text and performs no side effects', async () => {
     const repository = createRepository();

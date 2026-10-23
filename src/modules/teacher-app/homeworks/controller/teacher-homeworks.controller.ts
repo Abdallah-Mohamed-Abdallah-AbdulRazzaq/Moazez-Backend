@@ -10,7 +10,15 @@ import {
   Post,
   Put,
   Query,
+  Req,
+  Res,
 } from '@nestjs/common';
+import type { Request, Response } from 'express';
+import {
+  privateMediaContentRequest,
+  streamPrivateMediaContent,
+} from '../../../../infrastructure/storage/private-media-content.response';
+import { GetTeacherHomeworkSubmissionAttachmentContentUseCase } from '../application/get-teacher-homework-submission-attachment-content.use-case';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -106,6 +114,7 @@ import {
   TeacherHomeworkQuestionParamsDto,
   TeacherHomeworkSubmissionAnswerParamsDto,
   TeacherHomeworkSubmissionParamsDto,
+  TeacherHomeworkSubmissionAttachmentParamsDto,
   TeacherHomeworkSubmissionResponseDto,
   TeacherHomeworkSubmissionReviewDto,
   TeacherHomeworkSubmissionsListResponseDto,
@@ -149,6 +158,7 @@ export class TeacherHomeworksController {
     private readonly reviewSubmissionAnswerUseCase: ReviewTeacherHomeworkSubmissionAnswerUseCase,
     private readonly bulkReviewSubmissionAnswersUseCase: BulkReviewTeacherHomeworkSubmissionAnswersUseCase,
     private readonly listSubmissionAttachmentsUseCase: ListTeacherHomeworkSubmissionAttachmentsUseCase,
+    private readonly submissionAttachmentContentUseCase: GetTeacherHomeworkSubmissionAttachmentContentUseCase,
     private readonly reviewSubmissionUseCase: ReviewTeacherHomeworkSubmissionUseCase,
     private readonly getGradeSyncStatusUseCase: GetTeacherHomeworkGradeSyncStatusUseCase,
     private readonly syncAssignmentToGradesUseCase: SyncTeacherHomeworkAssignmentToGradesUseCase,
@@ -783,6 +793,50 @@ export class TeacherHomeworksController {
       params.homeworkId,
       params.submissionId,
     );
+  }
+
+  @Get(
+    'classes/:classId/assignments/:homeworkId/submissions/:submissionId/attachments/:attachmentId/preview',
+  )
+  @RequiredPermissions('homework.submissions.view')
+  @ApiOperation({
+    summary: 'Preview a submitted student attachment in an owned homework',
+  })
+  @ApiOkResponse({
+    description: 'Private inline bytes; supports HEAD and byte Range.',
+  })
+  async previewSubmissionAttachment(
+    @Param() params: TeacherHomeworkSubmissionAttachmentParamsDto,
+    @Req() request: Request,
+    @Res() response: Response,
+  ): Promise<void> {
+    const content = await this.submissionAttachmentContentUseCase.execute(
+      params,
+      privateMediaContentRequest(request, response, 'inline'),
+    );
+    await streamPrivateMediaContent(content, response, 'inline');
+  }
+
+  @Get(
+    'classes/:classId/assignments/:homeworkId/submissions/:submissionId/attachments/:attachmentId/download',
+  )
+  @RequiredPermissions('homework.submissions.view')
+  @ApiOperation({
+    summary: 'Download a submitted student attachment in an owned homework',
+  })
+  @ApiOkResponse({
+    description: 'Private attachment bytes; supports HEAD and byte Range.',
+  })
+  async downloadSubmissionAttachment(
+    @Param() params: TeacherHomeworkSubmissionAttachmentParamsDto,
+    @Req() request: Request,
+    @Res() response: Response,
+  ): Promise<void> {
+    const content = await this.submissionAttachmentContentUseCase.execute(
+      params,
+      privateMediaContentRequest(request, response, 'attachment'),
+    );
+    await streamPrivateMediaContent(content, response, 'attachment');
   }
 
   @Post(

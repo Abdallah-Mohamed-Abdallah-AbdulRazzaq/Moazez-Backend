@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
+import { StorageModule } from '../../../infrastructure/storage/storage.module';
 import { HomeworkModule } from '../../homework/homework.module';
 import { TeacherAppAccessService } from '../access/teacher-app-access.service';
 import { TeacherAppAllocationReadAdapter } from '../access/teacher-app-allocation-read.adapter';
 import { TeacherHomeworkOwnershipService } from './application/teacher-homework-ownership.service';
+import { GetTeacherHomeworkSubmissionAttachmentContentUseCase } from './application/get-teacher-homework-submission-attachment-content.use-case';
 import {
   BulkReviewTeacherHomeworkSubmissionAnswersUseCase,
   CancelTeacherHomeworkAssignmentUseCase,
@@ -44,13 +46,14 @@ import { TeacherHomeworksController } from './controller/teacher-homeworks.contr
 import { TeacherHomeworksReadAdapter } from './infrastructure/teacher-homeworks-read.adapter';
 
 @Module({
-  imports: [HomeworkModule],
+  imports: [HomeworkModule, StorageModule],
   controllers: [TeacherHomeworksController],
   providers: [
     TeacherAppAccessService,
     TeacherAppAllocationReadAdapter,
     TeacherHomeworksReadAdapter,
     TeacherHomeworkOwnershipService,
+    GetTeacherHomeworkSubmissionAttachmentContentUseCase,
     GetTeacherHomeworksDashboardUseCase,
     ListTeacherHomeworkAssignmentsUseCase,
     CreateTeacherHomeworkAssignmentUseCase,
