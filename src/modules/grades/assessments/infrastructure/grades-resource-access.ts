@@ -273,13 +273,51 @@ export async function gradeEnrollmentAccessWhere(
   };
 }
 
-/** GradeItem and submission ownership use identical academic/student relations. */
+/** GradeItem ownership uses live enrollments, not its optional historical link. */
 export async function gradeItemAccessWhere(
   client: Client,
 ): Promise<Prisma.GradeItemWhereInput> {
-  return (await gradeSubmissionAccessWhere(
-    client,
-  )) as Prisma.GradeItemWhereInput;
+  const { userType, actorId } = requireGradesScope();
+  if (
+    userType === UserType.SCHOOL_USER ||
+    userType === UserType.ORGANIZATION_USER
+  )
+    return {};
+  const student = { deletedAt: null, status: StudentStatus.ACTIVE };
+  const enrollment = {
+    deletedAt: null,
+    status: StudentEnrollmentStatus.ACTIVE,
+    endedAt: null,
+  };
+  if (userType === UserType.STUDENT) {
+    return {
+      student: {
+        ...student,
+        userId: actorId,
+        enrollments: { some: enrollment },
+      },
+      assessment: { deletedAt: null },
+    };
+  }
+  if (userType !== UserType.TEACHER) return { id: { in: [] } };
+  const allocations = await teacherScopes(client);
+  if (allocations.length === 0) return { id: { in: [] } };
+  return {
+    student,
+    OR: allocations.map((allocation) => ({
+      assessment: assessmentScope(allocation),
+      student: {
+        enrollments: {
+          some: {
+            ...enrollment,
+            classroomId: allocation.classroomId,
+            academicYearId: allocation.term.academicYearId,
+            OR: [{ termId: allocation.termId }, { termId: null }],
+          },
+        },
+      },
+    })),
+  };
 }
 
 export async function assertGradeItemWriteAccess(

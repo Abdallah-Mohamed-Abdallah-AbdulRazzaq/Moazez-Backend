@@ -622,6 +622,11 @@ export class GradesSubmissionsRepository {
     if (inputs.length === 0) return [];
 
     const answerIds = await this.scopedPrisma.$transaction(async (tx) => {
+      for (const submissionId of new Set(
+        inputs.map((input) => input.submissionId),
+      )) {
+        await assertGradeSubmissionAccess(tx, submissionId);
+      }
       const savedAnswerIds: string[] = [];
 
       for (const input of inputs) {
