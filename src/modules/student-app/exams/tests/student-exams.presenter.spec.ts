@@ -6,7 +6,9 @@ import type {
 
 describe('StudentExamsPresenter', () => {
   it('presents safe exam detail without answer keys or correct options', () => {
-    const result = StudentExamsPresenter.presentDetail(examDetailResultFixture());
+    const result = StudentExamsPresenter.presentDetail(
+      examDetailResultFixture(),
+    );
     const serialized = JSON.stringify(result);
 
     expect(result).toMatchObject({
@@ -225,3 +227,54 @@ function examFixture() {
     ],
   };
 }
+
+describe('ST-02 canonical exams contract', () => {
+  it.each([
+    ['MCQ_SINGLE', 'multiple_choice', 'single'],
+    ['MCQ_MULTI', 'multiple_choice', 'multiple'],
+    ['TRUE_FALSE', 'true_false', 'single'],
+    ['SHORT_ANSWER', 'essay', null],
+    ['ESSAY', 'essay', null],
+    ['FILL_IN_BLANK', 'fill_blanks', null],
+    ['MATCHING', 'matching', null],
+    ['MEDIA', 'media', null],
+  ])(
+    'preserves legacy %s and adds exact interaction',
+    (canonicalType, type, selectionMode) => {
+      const fixture = examDetailResultFixture();
+      const assessment = fixture.exam;
+      (assessment.questions[0] as { type: string }).type =
+        canonicalType as string;
+      const result = StudentExamsPresenter.presentDetail(fixture);
+      const question = result.stages[0].questions[0];
+      expect(question).toMatchObject({
+        type,
+        canonicalType,
+        interaction: { selectionMode, supported: true },
+      });
+      expect(JSON.stringify(question)).not.toMatch(
+        /answerKey|isCorrect|metadata/,
+      );
+    },
+  );
+  it('marks unknown types unsupported without inventing a canonical enum', () => {
+    const fixture = examDetailResultFixture();
+    const assessment = fixture.exam;
+    (assessment.questions[0] as { type: string }).type = 'FUTURE_TYPE';
+    const result = StudentExamsPresenter.presentDetail(fixture);
+    expect(result.stages[0].questions[0]).toMatchObject({
+      type: 'future_type',
+      canonicalType: null,
+      interaction: { supported: false, kind: 'unsupported' },
+    });
+  });
+  it('does not advertise score-only assessments as supporting question submissions', () => {
+    const fixture = examDetailResultFixture();
+    (fixture.exam as { deliveryMode: string }).deliveryMode = 'SCORE_ONLY';
+    const result = StudentExamsPresenter.presentDetail(fixture);
+    expect(result).toMatchObject({
+      deliveryMode: 'score_only',
+      supportsQuestionSubmission: false,
+    });
+  });
+});

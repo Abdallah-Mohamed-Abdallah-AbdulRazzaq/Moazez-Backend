@@ -1,3 +1,9 @@
+import {
+  assertGradeQuestionStructureWrite,
+  assertGradeQuestionAccess,
+  gradeAssessmentAccessWhere,
+  gradeQuestionAccessWhere,
+} from './grades-resource-access';
 import { Injectable } from '@nestjs/common';
 import { GradeQuestionType, Prisma } from '@prisma/client';
 import { withSoftDeleted } from '../../../../common/context/request-context';
@@ -153,44 +159,59 @@ export class GradesAssessmentQuestionsRepository {
     return this.prisma.scoped as unknown as PrismaService;
   }
 
-  findAssessmentForQuestionManagement(
+  async findAssessmentForQuestionManagement(
     assessmentId: string,
   ): Promise<GradeAssessmentForQuestionManagementRecord | null> {
     return this.scopedPrisma.gradeAssessment.findFirst({
-      where: { id: assessmentId },
+      where: {
+        AND: [
+          { id: assessmentId },
+          await gradeAssessmentAccessWhere(this.scopedPrisma),
+        ],
+      },
       ...ASSESSMENT_FOR_QUESTION_MANAGEMENT_ARGS,
     });
   }
 
-  listQuestions(
+  async listQuestions(
     assessmentId: string,
   ): Promise<GradeAssessmentQuestionRecord[]> {
     return this.scopedPrisma.gradeAssessmentQuestion.findMany({
-      where: { assessmentId },
+      where: {
+        AND: [
+          { assessmentId },
+          await gradeQuestionAccessWhere(this.scopedPrisma),
+        ],
+      },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
       ...QUESTION_WITH_OPTIONS_ARGS,
     });
   }
 
-  findQuestionByIdWithAssessment(
+  async findQuestionByIdWithAssessment(
     questionId: string,
   ): Promise<GradeAssessmentQuestionWithAssessmentRecord | null> {
     return this.scopedPrisma.gradeAssessmentQuestion.findFirst({
       where: {
         id: questionId,
-        assessment: { deletedAt: null },
+        AND: [await gradeQuestionAccessWhere(this.scopedPrisma)],
       },
       ...QUESTION_WITH_ASSESSMENT_ARGS,
     });
   }
 
-  listQuestionsByIds(
+  async listQuestionsByIds(
     questionIds: string[],
   ): Promise<GradeAssessmentQuestionOwnershipRecord[]> {
     if (questionIds.length === 0) return Promise.resolve([]);
 
     return this.scopedPrisma.gradeAssessmentQuestion.findMany({
-      where: { id: { in: questionIds } },
+      where: {
+        AND: [
+          { id: { in: questionIds } },
+          await gradeQuestionAccessWhere(this.scopedPrisma),
+        ],
+      },
       ...QUESTION_ID_OWNERSHIP_ARGS,
     });
   }
@@ -237,6 +258,7 @@ export class GradesAssessmentQuestionsRepository {
     input: CreateQuestionWithOptionsInput,
   ): Promise<GradeAssessmentQuestionRecord> {
     const created = await this.scopedPrisma.$transaction(async (tx) => {
+      await assertGradeQuestionStructureWrite(tx, input.assessmentId);
       const question = await tx.gradeAssessmentQuestion.create({
         data: {
           schoolId: input.schoolId,
@@ -273,6 +295,7 @@ export class GradesAssessmentQuestionsRepository {
     input: UpdateQuestionAndReplaceOptionsInput,
   ): Promise<GradeAssessmentQuestionRecord> {
     await this.scopedPrisma.$transaction(async (tx) => {
+      await assertGradeQuestionAccess(tx, questionId);
       if (Object.keys(input.data).length > 0) {
         await tx.gradeAssessmentQuestion.updateMany({
           where: { id: questionId },
@@ -309,6 +332,7 @@ export class GradesAssessmentQuestionsRepository {
     assessmentId: string;
   }): Promise<GradeAssessmentQuestionRecord[]> {
     await this.scopedPrisma.$transaction(async (tx) => {
+      await assertGradeQuestionAccess(tx, params.questionId);
       const now = new Date();
       const nextRetiredSortOrder =
         (await this.getMaxQuestionSortOrder(tx, params.assessmentId)) + 1;
@@ -343,6 +367,7 @@ export class GradesAssessmentQuestionsRepository {
     questionIds: string[];
   }): Promise<GradeAssessmentQuestionRecord[]> {
     await this.scopedPrisma.$transaction(async (tx) => {
+      await assertGradeQuestionStructureWrite(tx, params.assessmentId);
       await this.rewriteQuestionSortOrders(tx, {
         assessmentId: params.assessmentId,
         orderedQuestionIds: params.questionIds,
@@ -356,17 +381,18 @@ export class GradesAssessmentQuestionsRepository {
     assessmentId: string;
     items: Array<{ questionId: string; points: number }>;
   }): Promise<GradeAssessmentQuestionRecord[]> {
-    await this.scopedPrisma.$transaction(
-      params.items.map((item) =>
-        this.scopedPrisma.gradeAssessmentQuestion.updateMany({
+    await this.scopedPrisma.$transaction(async (tx) => {
+      await assertGradeQuestionStructureWrite(tx, params.assessmentId);
+      for (const item of params.items) {
+        await tx.gradeAssessmentQuestion.updateMany({
           where: {
             id: item.questionId,
             assessmentId: params.assessmentId,
           },
           data: { points: new Prisma.Decimal(item.points) },
-        }),
-      ),
-    );
+        });
+      }
+    });
 
     return this.listQuestions(params.assessmentId);
   }

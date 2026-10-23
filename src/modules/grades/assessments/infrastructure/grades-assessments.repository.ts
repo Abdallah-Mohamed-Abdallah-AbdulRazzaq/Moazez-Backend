@@ -1,3 +1,7 @@
+import {
+  gradeAssessmentAccessWhere,
+  assertGradeAssessmentAccess,
+} from './grades-resource-access';
 import { Injectable } from '@nestjs/common';
 import {
   GradeAssessmentApprovalStatus,
@@ -58,6 +62,10 @@ const GRADE_ASSESSMENT_ARGS =
   });
 
 const QUESTION_OPTION_FOR_PUBLISH_SELECT = {
+  metadata: true,
+  value: true,
+  label: true,
+  labelAr: true,
   id: true,
   isCorrect: true,
   deletedAt: true,
@@ -69,6 +77,10 @@ const QUESTION_FOR_PUBLISH_ARGS =
       id: true,
       type: true,
       points: true,
+      prompt: true,
+      promptAr: true,
+      explanation: true,
+      explanationAr: true,
       answerKey: true,
       metadata: true,
       deletedAt: true,
@@ -222,31 +234,45 @@ export class GradesAssessmentsRepository {
     return this.prisma.scoped as unknown as PrismaService;
   }
 
-  listAssessments(
+  async listAssessments(
     filters: ListGradeAssessmentsFilters,
   ): Promise<GradeAssessmentRecord[]> {
     return this.scopedPrisma.gradeAssessment.findMany({
-      where: this.buildListWhere(filters),
+      where: {
+        AND: [
+          this.buildListWhere(filters),
+          await gradeAssessmentAccessWhere(this.scopedPrisma),
+        ],
+      },
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }, { id: 'asc' }],
       ...GRADE_ASSESSMENT_ARGS,
     });
   }
 
-  findAssessmentById(
+  async findAssessmentById(
     assessmentId: string,
   ): Promise<GradeAssessmentRecord | null> {
     return this.scopedPrisma.gradeAssessment.findFirst({
-      where: { id: assessmentId },
+      where: {
+        AND: [
+          { id: assessmentId },
+          await gradeAssessmentAccessWhere(this.scopedPrisma),
+        ],
+      },
       ...GRADE_ASSESSMENT_ARGS,
     });
   }
 
-  createAssessment(
+  async createAssessment(
     data: CreateGradeAssessmentData,
   ): Promise<GradeAssessmentRecord> {
-    return this.scopedPrisma.gradeAssessment.create({
-      data,
-      ...GRADE_ASSESSMENT_ARGS,
+    return this.scopedPrisma.$transaction(async (tx) => {
+      const assessment = await tx.gradeAssessment.create({
+        data,
+        ...GRADE_ASSESSMENT_ARGS,
+      });
+      await assertGradeAssessmentAccess(tx, assessment.id);
+      return assessment;
     });
   }
 
@@ -254,11 +280,15 @@ export class GradesAssessmentsRepository {
     assessmentId: string,
     data: UpdateGradeAssessmentData,
   ): Promise<GradeAssessmentRecord> {
-    await this.scopedPrisma.gradeAssessment.updateMany({
-      where: { id: assessmentId },
-      data: data as Prisma.GradeAssessmentUncheckedUpdateManyInput,
-    });
+    await this.scopedPrisma.$transaction(async (tx) => {
+      await assertGradeAssessmentAccess(tx, assessmentId);
+      await tx.gradeAssessment.updateMany({
+        where: { id: assessmentId },
+        data: data as Prisma.GradeAssessmentUncheckedUpdateManyInput,
+      });
 
+      await assertGradeAssessmentAccess(tx, assessmentId);
+    });
     return this.findMutationResult(assessmentId);
   }
 
@@ -266,11 +296,13 @@ export class GradesAssessmentsRepository {
     assessmentId: string,
     data: PublishGradeAssessmentData,
   ): Promise<GradeAssessmentRecord> {
-    await this.scopedPrisma.gradeAssessment.updateMany({
-      where: { id: assessmentId, deletedAt: null },
-      data: data as Prisma.GradeAssessmentUncheckedUpdateManyInput,
+    await this.scopedPrisma.$transaction(async (tx) => {
+      await assertGradeAssessmentAccess(tx, assessmentId);
+      await tx.gradeAssessment.updateMany({
+        where: { id: assessmentId, deletedAt: null },
+        data: data as Prisma.GradeAssessmentUncheckedUpdateManyInput,
+      });
     });
-
     return this.findMutationResult(assessmentId);
   }
 
@@ -278,11 +310,13 @@ export class GradesAssessmentsRepository {
     assessmentId: string,
     data: ApproveGradeAssessmentData,
   ): Promise<GradeAssessmentRecord> {
-    await this.scopedPrisma.gradeAssessment.updateMany({
-      where: { id: assessmentId, deletedAt: null },
-      data: data as Prisma.GradeAssessmentUncheckedUpdateManyInput,
+    await this.scopedPrisma.$transaction(async (tx) => {
+      await assertGradeAssessmentAccess(tx, assessmentId);
+      await tx.gradeAssessment.updateMany({
+        where: { id: assessmentId, deletedAt: null },
+        data: data as Prisma.GradeAssessmentUncheckedUpdateManyInput,
+      });
     });
-
     return this.findMutationResult(assessmentId);
   }
 
@@ -290,22 +324,26 @@ export class GradesAssessmentsRepository {
     assessmentId: string,
     data: LockGradeAssessmentData,
   ): Promise<GradeAssessmentRecord> {
-    await this.scopedPrisma.gradeAssessment.updateMany({
-      where: { id: assessmentId, deletedAt: null },
-      data: data as Prisma.GradeAssessmentUncheckedUpdateManyInput,
+    await this.scopedPrisma.$transaction(async (tx) => {
+      await assertGradeAssessmentAccess(tx, assessmentId);
+      await tx.gradeAssessment.updateMany({
+        where: { id: assessmentId, deletedAt: null },
+        data: data as Prisma.GradeAssessmentUncheckedUpdateManyInput,
+      });
     });
-
     return this.findMutationResult(assessmentId);
   }
 
   async softDeleteAssessment(
     assessmentId: string,
   ): Promise<GradeAssessmentRecord> {
-    await this.scopedPrisma.gradeAssessment.updateMany({
-      where: { id: assessmentId },
-      data: { deletedAt: new Date() },
+    await this.scopedPrisma.$transaction(async (tx) => {
+      await assertGradeAssessmentAccess(tx, assessmentId);
+      await tx.gradeAssessment.updateMany({
+        where: { id: assessmentId },
+        data: { deletedAt: new Date() },
+      });
     });
-
     return this.findMutationResult(assessmentId, { includeSoftDeleted: true });
   }
 

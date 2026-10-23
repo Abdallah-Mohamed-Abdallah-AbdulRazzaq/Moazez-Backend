@@ -1,8 +1,9 @@
+import { presentGradeQuestionContract } from '../../../grades/shared/presenters/grade-question-contract';
+import { sanitizeGradeQuestionContent } from '../../../grades/assessments/domain/grade-question-content-policy';
 import {
   GradeAssessmentApprovalStatus,
   GradeAssessmentDeliveryMode,
   GradeItemStatus,
-  GradeQuestionType,
 } from '@prisma/client';
 import {
   StudentAssessmentGradeDetailResponseDto,
@@ -118,6 +119,9 @@ export class StudentGradesPresenter {
         type: lowerEnum(assessment.type),
         status: presentAssessmentStatus(assessment),
         deliveryMode: lowerEnum(assessment.deliveryMode),
+        supportsQuestionSubmission:
+          assessment.deliveryMode ===
+          GradeAssessmentDeliveryMode.QUESTION_BASED,
         date: assessment.date.toISOString().slice(0, 10),
         maxScore,
         weight: decimalToNumber(assessment.weight) ?? 0,
@@ -128,7 +132,8 @@ export class StudentGradesPresenter {
       submission: result.submission
         ? presentSubmission(
             result.submission,
-            assessment.deliveryMode === GradeAssessmentDeliveryMode.QUESTION_BASED,
+            assessment.deliveryMode ===
+              GradeAssessmentDeliveryMode.QUESTION_BASED,
           )
         : null,
       questions: presentQuestions(assessment),
@@ -146,20 +151,25 @@ function presentQuestions(
   return assessment.questions.map((question) => ({
     id: question.id,
     questionId: question.id,
-    type: presentQuestionType(question.type),
-    title: question.prompt,
-    body: question.promptAr ?? question.prompt,
+    ...presentGradeQuestionContract(question.type),
+    title:
+      (sanitizeGradeQuestionContent(question.prompt) as string | null) ?? '',
+    body:
+      (sanitizeGradeQuestionContent(question.promptAr ?? question.prompt) as
+        | string
+        | null) ?? '',
     points: decimalToNumber(question.points) ?? 0,
     required: question.required,
     sortOrder: question.sortOrder,
     options: question.options.map((option) => ({
       id: option.id,
       optionId: option.id,
-      text: option.label,
-      textAr: option.labelAr,
-      label: option.label,
-      labelAr: option.labelAr,
-      value: option.value,
+      text: (sanitizeGradeQuestionContent(option.label) as string | null) ?? '',
+      textAr: sanitizeGradeQuestionContent(option.labelAr) as string | null,
+      label:
+        (sanitizeGradeQuestionContent(option.label) as string | null) ?? '',
+      labelAr: sanitizeGradeQuestionContent(option.labelAr) as string | null,
+      value: sanitizeGradeQuestionContent(option.value) as string | null,
       sortOrder: option.sortOrder,
     })),
   }));
@@ -181,12 +191,22 @@ function presentSubmission(
           answerId: answer.id,
           questionId: answer.questionId,
           answerText: answer.answerText,
-          answerJson: sanitizeAnswerJson(answer.answerJson),
+          answerJson: sanitizeGradeQuestionContent(
+            sanitizeAnswerJson(answer.answerJson),
+            true,
+          ),
           selectedOptions: answer.selectedOptions.map((selected) => ({
             optionId: selected.optionId,
-            label: selected.option.label,
-            labelAr: selected.option.labelAr,
-            value: selected.option.value,
+            label:
+              (sanitizeGradeQuestionContent(selected.option.label) as
+                | string
+                | null) ?? '',
+            labelAr: sanitizeGradeQuestionContent(selected.option.labelAr) as
+              | string
+              | null,
+            value: sanitizeGradeQuestionContent(selected.option.value) as
+              | string
+              | null,
           })),
           correctionStatus: lowerEnum(answer.correctionStatus),
           awardedPoints: decimalToNumber(answer.awardedPoints),
@@ -217,6 +237,9 @@ function presentAssessmentItems(
       subjectName: displayName(assessment.subject),
       title: assessmentTitle(assessment),
       type: lowerEnum(assessment.type),
+      deliveryMode: lowerEnum(assessment.deliveryMode),
+      supportsQuestionSubmission:
+        assessment.deliveryMode === GradeAssessmentDeliveryMode.QUESTION_BASED,
       status: presentAssessmentStatus(assessment),
       date: assessment.date.toISOString().slice(0, 10),
       score,
@@ -447,27 +470,6 @@ function presentAssessmentStatus(assessment: {
   return lowerEnum(assessment.approvalStatus) as 'published' | 'approved';
 }
 
-function presentQuestionType(type: GradeQuestionType | string): string {
-  switch (type) {
-    case GradeQuestionType.MCQ_SINGLE:
-    case GradeQuestionType.MCQ_MULTI:
-      return 'multiple_choice';
-    case GradeQuestionType.TRUE_FALSE:
-      return 'true_false';
-    case GradeQuestionType.FILL_IN_BLANK:
-      return 'fill_blanks';
-    case GradeQuestionType.SHORT_ANSWER:
-    case GradeQuestionType.ESSAY:
-      return 'essay';
-    case GradeQuestionType.MATCHING:
-      return 'matching';
-    case GradeQuestionType.MEDIA:
-      return 'media';
-    default:
-      return lowerEnum(String(type));
-  }
-}
-
 function assessmentTitle(assessment: {
   titleEn: string | null;
   titleAr: string | null;
@@ -521,7 +523,8 @@ function roundTwo(value: number): number {
 }
 
 function sanitizeAnswerJson(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map((item) => sanitizeAnswerJson(item));
+  if (Array.isArray(value))
+    return value.map((item) => sanitizeAnswerJson(item));
   if (!value || typeof value !== 'object') return value ?? null;
 
   const forbiddenKeys = new Set([

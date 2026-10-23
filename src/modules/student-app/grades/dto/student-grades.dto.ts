@@ -1,3 +1,4 @@
+import { GradeQuestionContractDto } from '../../../grades/shared/presenters/grade-question-contract';
 import { Transform, Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 
@@ -144,6 +145,8 @@ export class StudentGradeSubjectDto {
 }
 
 export class StudentGradeAssessmentItemDto {
+  deliveryMode!: string;
+  supportsQuestionSubmission!: boolean;
   assessmentId!: string;
   subjectId!: string;
   subjectName!: string;
@@ -213,6 +216,7 @@ export class StudentAssessmentGradeAssessmentDto {
   type!: string;
   status!: StudentGradeAssessmentStatus;
   deliveryMode!: string;
+  supportsQuestionSubmission!: boolean;
   date!: string;
   maxScore!: number;
   weight!: number;
@@ -272,10 +276,9 @@ export class StudentAssessmentGradeQuestionOptionDto {
   sortOrder!: number;
 }
 
-export class StudentAssessmentGradeQuestionDto {
+export class StudentAssessmentGradeQuestionDto extends GradeQuestionContractDto {
   id!: string;
   questionId!: string;
-  type!: string;
   title!: string;
   body!: string;
   points!: number;

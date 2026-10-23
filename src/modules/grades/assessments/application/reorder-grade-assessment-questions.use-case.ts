@@ -57,6 +57,10 @@ export class ReorderGradeAssessmentQuestionsUseCase {
       }),
     );
 
-    return presentGradeAssessmentQuestions({ assessment, questions });
+    return presentGradeAssessmentQuestions({
+      authoring: true,
+      assessment,
+      questions,
+    });
   }
 }

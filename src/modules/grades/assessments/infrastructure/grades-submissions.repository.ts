@@ -1,3 +1,10 @@
+import {
+  assertGradeSubmissionAccess,
+  gradeAssessmentAccessWhere,
+  gradeSubmissionAccessWhere,
+  gradeStudentAccessWhere,
+  gradeEnrollmentAccessWhere,
+} from './grades-resource-access';
 import { Injectable } from '@nestjs/common';
 import {
   GradeAnswerCorrectionStatus,
@@ -340,25 +347,34 @@ export class GradesSubmissionsRepository {
     return this.prisma.scoped as unknown as PrismaService;
   }
 
-  findAssessmentForSubmission(
+  async findAssessmentForSubmission(
     assessmentId: string,
   ): Promise<GradeSubmissionAssessmentRecord | null> {
     return this.scopedPrisma.gradeAssessment.findFirst({
-      where: { id: assessmentId },
+      where: {
+        AND: [
+          { id: assessmentId },
+          await gradeAssessmentAccessWhere(this.scopedPrisma, true),
+        ],
+      },
       ...ASSESSMENT_FOR_SUBMISSION_ARGS,
     });
   }
 
-  findStudentForSubmission(
+  async findStudentForSubmission(
     studentId: string,
   ): Promise<GradeSubmissionStudentRecord | null> {
     return this.scopedPrisma.student.findFirst({
-      where: { id: studentId, status: StudentStatus.ACTIVE },
+      where: {
+        id: studentId,
+        status: StudentStatus.ACTIVE,
+        ...gradeStudentAccessWhere(),
+      },
       select: STUDENT_SUMMARY_SELECT,
     });
   }
 
-  findEnrollmentForSubmission(params: {
+  async findEnrollmentForSubmission(params: {
     assessment: SubmissionAssessmentLike;
     studentId: string;
     enrollmentId?: string | null;
@@ -370,13 +386,19 @@ export class GradesSubmissionsRepository {
           studentId: params.studentId,
         }),
         ...(params.enrollmentId ? { id: params.enrollmentId } : {}),
+        AND: [
+          await gradeEnrollmentAccessWhere(
+            this.scopedPrisma,
+            params.assessment.id,
+          ),
+        ],
       },
       orderBy: [{ enrolledAt: 'desc' }, { createdAt: 'desc' }],
       ...ENROLLMENT_SUMMARY_ARGS,
     });
   }
 
-  findExistingSubmission(params: {
+  async findExistingSubmission(params: {
     assessmentId: string;
     studentId: string;
   }): Promise<GradeSubmissionDetailRecord | null> {
@@ -385,12 +407,13 @@ export class GradesSubmissionsRepository {
         assessmentId: params.assessmentId,
         studentId: params.studentId,
         assessment: { deletedAt: null },
+        AND: [await gradeSubmissionAccessWhere(this.scopedPrisma)],
       },
       ...SUBMISSION_DETAIL_ARGS,
     });
   }
 
-  findExistingSubmissionForEnrollment(params: {
+  async findExistingSubmissionForEnrollment(params: {
     assessmentId: string;
     studentId: string;
     enrollmentId: string;
@@ -401,6 +424,7 @@ export class GradesSubmissionsRepository {
         studentId: params.studentId,
         enrollmentId: params.enrollmentId,
         assessment: { deletedAt: null },
+        AND: [await gradeSubmissionAccessWhere(this.scopedPrisma)],
       },
       ...SUBMISSION_DETAIL_ARGS,
     });
@@ -409,39 +433,52 @@ export class GradesSubmissionsRepository {
   async createSubmission(
     input: CreateSubmissionInput,
   ): Promise<GradeSubmissionDetailRecord> {
-    const created = await this.scopedPrisma.gradeSubmission.create({
-      data: {
-        schoolId: input.schoolId,
-        assessmentId: input.assessmentId,
-        termId: input.termId,
-        studentId: input.studentId,
-        enrollmentId: input.enrollmentId,
-        status: GradeSubmissionStatus.IN_PROGRESS,
-        startedAt: new Date(),
-        maxScore: input.maxScore,
-      },
-      select: { id: true },
-    });
+    const created = await this.scopedPrisma.$transaction(async (tx) => {
+      const created = await tx.gradeSubmission.create({
+        data: {
+          schoolId: input.schoolId,
+          assessmentId: input.assessmentId,
+          termId: input.termId,
+          studentId: input.studentId,
+          enrollmentId: input.enrollmentId,
+          status: GradeSubmissionStatus.IN_PROGRESS,
+          startedAt: new Date(),
+          maxScore: input.maxScore,
+        },
+        select: { id: true },
+      });
 
+      await assertGradeSubmissionAccess(tx, created.id);
+      return created;
+    });
     return this.findSubmissionDetailResult(created.id);
   }
 
-  listSubmissions(params: {
+  async listSubmissions(params: {
     assessmentId: string;
     filters?: ListGradeSubmissionsFilters;
   }): Promise<GradeSubmissionListRecord[]> {
     return this.scopedPrisma.gradeSubmission.findMany({
-      where: this.buildSubmissionListWhere(params.assessmentId, params.filters),
+      where: {
+        AND: [
+          this.buildSubmissionListWhere(params.assessmentId, params.filters),
+          await gradeSubmissionAccessWhere(this.scopedPrisma),
+        ],
+      },
       orderBy: [{ startedAt: 'desc' }, { id: 'asc' }],
       ...SUBMISSION_LIST_ARGS,
     });
   }
 
-  findSubmissionDetail(
+  async findSubmissionDetail(
     submissionId: string,
   ): Promise<GradeSubmissionDetailRecord | null> {
     return this.scopedPrisma.gradeSubmission.findFirst({
-      where: { id: submissionId, assessment: { deletedAt: null } },
+      where: {
+        id: submissionId,
+        assessment: { deletedAt: null },
+        AND: [await gradeSubmissionAccessWhere(this.scopedPrisma)],
+      },
       ...SUBMISSION_DETAIL_ARGS,
     });
   }
@@ -461,22 +498,28 @@ export class GradesSubmissionsRepository {
     });
   }
 
-  findAnswerForReview(
+  async findAnswerForReview(
     answerId: string,
   ): Promise<GradeSubmissionAnswerRecord | null> {
     return this.scopedPrisma.gradeSubmissionAnswer.findFirst({
-      where: { id: answerId },
+      where: {
+        id: answerId,
+        submission: await gradeSubmissionAccessWhere(this.scopedPrisma),
+      },
       ...ANSWER_WITH_OPTIONS_ARGS,
     });
   }
 
-  findAnswersForBulkReview(
+  async findAnswersForBulkReview(
     answerIds: string[],
   ): Promise<GradeSubmissionAnswerRecord[]> {
     if (answerIds.length === 0) return Promise.resolve([]);
 
     return this.scopedPrisma.gradeSubmissionAnswer.findMany({
-      where: { id: { in: answerIds } },
+      where: {
+        id: { in: answerIds },
+        submission: await gradeSubmissionAccessWhere(this.scopedPrisma),
+      },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       ...ANSWER_WITH_OPTIONS_ARGS,
     });
@@ -498,11 +541,14 @@ export class GradesSubmissionsRepository {
     return this.findQuestionsForSubmission(assessmentId);
   }
 
-  listAnswersForSubmission(
+  async listAnswersForSubmission(
     submissionId: string,
   ): Promise<GradeSubmissionAnswerRecord[]> {
     return this.scopedPrisma.gradeSubmissionAnswer.findMany({
-      where: { submissionId },
+      where: {
+        submissionId,
+        submission: await gradeSubmissionAccessWhere(this.scopedPrisma),
+      },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       ...ANSWER_WITH_OPTIONS_ARGS,
     });
@@ -544,6 +590,7 @@ export class GradesSubmissionsRepository {
     input: AnswerSaveInput,
   ): Promise<GradeSubmissionAnswerRecord> {
     const answerId = await this.scopedPrisma.$transaction(async (tx) => {
+      await assertGradeSubmissionAccess(tx, input.submissionId);
       const answer = await tx.gradeSubmissionAnswer.upsert({
         where: {
           schoolId_submissionId_questionId: {
@@ -603,7 +650,10 @@ export class GradesSubmissionsRepository {
     });
 
     return this.scopedPrisma.gradeSubmissionAnswer.findMany({
-      where: { id: { in: answerIds } },
+      where: {
+        id: { in: answerIds },
+        submission: await gradeSubmissionAccessWhere(this.scopedPrisma),
+      },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       ...ANSWER_WITH_OPTIONS_ARGS,
     });
@@ -612,19 +662,22 @@ export class GradesSubmissionsRepository {
   async updateAnswerReview(
     input: AnswerReviewUpdateInput,
   ): Promise<GradeSubmissionAnswerRecord> {
-    await this.scopedPrisma.gradeSubmissionAnswer.updateMany({
-      where: {
-        id: input.answerId,
-        submissionId: input.submissionId,
-      },
-      data: {
-        awardedPoints: input.awardedPoints,
-        correctionStatus: input.correctionStatus,
-        reviewerComment: input.reviewerComment,
-        reviewerCommentAr: input.reviewerCommentAr,
-        reviewedById: input.reviewedById,
-        reviewedAt: input.reviewedAt,
-      },
+    await this.scopedPrisma.$transaction(async (tx) => {
+      await assertGradeSubmissionAccess(tx, input.submissionId);
+      await tx.gradeSubmissionAnswer.updateMany({
+        where: {
+          id: input.answerId,
+          submissionId: input.submissionId,
+        },
+        data: {
+          awardedPoints: input.awardedPoints,
+          correctionStatus: input.correctionStatus,
+          reviewerComment: input.reviewerComment,
+          reviewerCommentAr: input.reviewerCommentAr,
+          reviewedById: input.reviewedById,
+          reviewedAt: input.reviewedAt,
+        },
+      });
     });
 
     return this.findAnswerResult(input.answerId);
@@ -639,6 +692,7 @@ export class GradesSubmissionsRepository {
       const updatedAnswerIds: string[] = [];
 
       for (const input of inputs) {
+        await assertGradeSubmissionAccess(tx, input.submissionId);
         await tx.gradeSubmissionAnswer.updateMany({
           where: {
             id: input.answerId,
@@ -660,7 +714,10 @@ export class GradesSubmissionsRepository {
     });
 
     return this.scopedPrisma.gradeSubmissionAnswer.findMany({
-      where: { id: { in: answerIds } },
+      where: {
+        id: { in: answerIds },
+        submission: await gradeSubmissionAccessWhere(this.scopedPrisma),
+      },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       ...ANSWER_WITH_OPTIONS_ARGS,
     });
@@ -669,12 +726,15 @@ export class GradesSubmissionsRepository {
   async submitSubmission(
     submissionId: string,
   ): Promise<GradeSubmissionDetailRecord> {
-    await this.scopedPrisma.gradeSubmission.updateMany({
-      where: { id: submissionId, status: GradeSubmissionStatus.IN_PROGRESS },
-      data: {
-        status: GradeSubmissionStatus.SUBMITTED,
-        submittedAt: new Date(),
-      },
+    await this.scopedPrisma.$transaction(async (tx) => {
+      await assertGradeSubmissionAccess(tx, submissionId);
+      await tx.gradeSubmission.updateMany({
+        where: { id: submissionId, status: GradeSubmissionStatus.IN_PROGRESS },
+        data: {
+          status: GradeSubmissionStatus.SUBMITTED,
+          submittedAt: new Date(),
+        },
+      });
     });
 
     return this.findSubmissionDetailResult(submissionId);
@@ -683,18 +743,21 @@ export class GradesSubmissionsRepository {
   async finalizeSubmission(
     input: FinalizeSubmissionInput,
   ): Promise<GradeSubmissionDetailRecord> {
-    await this.scopedPrisma.gradeSubmission.updateMany({
-      where: {
-        id: input.submissionId,
-        status: GradeSubmissionStatus.SUBMITTED,
-      },
-      data: {
-        status: input.status,
-        correctedAt: input.correctedAt,
-        reviewedById: input.reviewedById,
-        totalScore: input.totalScore,
-        maxScore: input.maxScore,
-      },
+    await this.scopedPrisma.$transaction(async (tx) => {
+      await assertGradeSubmissionAccess(tx, input.submissionId);
+      await tx.gradeSubmission.updateMany({
+        where: {
+          id: input.submissionId,
+          status: GradeSubmissionStatus.SUBMITTED,
+        },
+        data: {
+          status: input.status,
+          correctedAt: input.correctedAt,
+          reviewedById: input.reviewedById,
+          totalScore: input.totalScore,
+          maxScore: input.maxScore,
+        },
+      });
     });
 
     return this.findSubmissionDetailResult(input.submissionId);

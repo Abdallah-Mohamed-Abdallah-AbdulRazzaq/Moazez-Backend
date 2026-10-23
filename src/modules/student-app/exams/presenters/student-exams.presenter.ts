@@ -1,4 +1,6 @@
-import { GradeQuestionType, GradeSubmissionStatus } from '@prisma/client';
+import { presentGradeQuestionContract } from '../../../grades/shared/presenters/grade-question-contract';
+import { sanitizeGradeQuestionContent } from '../../../grades/assessments/domain/grade-question-content-policy';
+import { GradeSubmissionStatus } from '@prisma/client';
 import {
   StudentExamCardDto,
   StudentExamDetailResponseDto,
@@ -29,7 +31,9 @@ const EXAM_MAPPING = {
 };
 
 export class StudentExamsPresenter {
-  static presentList(result: StudentExamsReadResult): StudentExamsListResponseDto {
+  static presentList(
+    result: StudentExamsReadResult,
+  ): StudentExamsListResponseDto {
     const groups = new Map<string, StudentExamCardRecord[]>();
 
     for (const exam of result.exams) {
@@ -50,8 +54,7 @@ export class StudentExamsPresenter {
           exams: exams.map((exam) =>
             presentExamCard({
               exam,
-              submission:
-                result.submissionsByAssessmentId.get(exam.id) ?? null,
+              submission: result.submissionsByAssessmentId.get(exam.id) ?? null,
             }),
           ),
         };
@@ -75,14 +78,19 @@ export class StudentExamsPresenter {
     const questions = result.exam.questions.map((question) => ({
       id: question.id,
       questionId: question.id,
-      type: presentQuestionType(question.type),
-      title: question.prompt,
-      body: question.promptAr ?? question.prompt,
+      ...presentGradeQuestionContract(question.type),
+      title:
+        (sanitizeGradeQuestionContent(question.prompt) as string | null) ?? '',
+      body:
+        (sanitizeGradeQuestionContent(question.promptAr ?? question.prompt) as
+          | string
+          | null) ?? '',
       options: question.options.map((option) => ({
         optionId: option.id,
-        label: option.label,
-        labelAr: option.labelAr,
-        value: option.value,
+        label:
+          (sanitizeGradeQuestionContent(option.label) as string | null) ?? '',
+        labelAr: sanitizeGradeQuestionContent(option.labelAr) as string | null,
+        value: sanitizeGradeQuestionContent(option.value) as string | null,
       })),
       answer: null,
       points: decimalToNumber(question.points) ?? 0,
@@ -106,6 +114,8 @@ export class StudentExamsPresenter {
       type: lowerEnum(result.exam.type),
       date: result.exam.date.toISOString().slice(0, 10),
       maxScore: decimalToNumber(result.exam.maxScore) ?? 0,
+      deliveryMode: lowerEnum(result.exam.deliveryMode),
+      supportsQuestionSubmission: result.exam.deliveryMode === 'QUESTION_BASED',
       stages: [
         {
           id: result.exam.id,
@@ -155,6 +165,8 @@ function presentExamCard(params: {
     type: lowerEnum(params.exam.type),
     date: params.exam.date.toISOString().slice(0, 10),
     maxScore: decimalToNumber(params.exam.maxScore) ?? 0,
+    deliveryMode: lowerEnum(params.exam.deliveryMode),
+    supportsQuestionSubmission: params.exam.deliveryMode === 'QUESTION_BASED',
   };
 }
 
@@ -177,16 +189,26 @@ function presentSubmission(
     answers: submission.answers.map((answer) => ({
       answerId: answer.id,
       questionId: answer.questionId,
-      type: presentQuestionType(
+      ...presentGradeQuestionContract(
         questionTypeById.get(answer.questionId) ?? answer.question.type,
       ),
       answerText: answer.answerText,
-      answerJson: sanitizeAnswerJson(answer.answerJson),
+      answerJson: sanitizeGradeQuestionContent(
+        sanitizeAnswerJson(answer.answerJson),
+        true,
+      ),
       selectedOptions: answer.selectedOptions.map((selected) => ({
         optionId: selected.optionId,
-        label: selected.option.label,
-        labelAr: selected.option.labelAr,
-        value: selected.option.value,
+        label:
+          (sanitizeGradeQuestionContent(selected.option.label) as
+            | string
+            | null) ?? '',
+        labelAr: sanitizeGradeQuestionContent(selected.option.labelAr) as
+          | string
+          | null,
+        value: sanitizeGradeQuestionContent(selected.option.value) as
+          | string
+          | null,
       })),
       correctionStatus: lowerEnum(answer.correctionStatus),
       score: decimalToNumber(answer.awardedPoints),
@@ -208,27 +230,6 @@ function presentSubmissionStatus(
       return 'completed';
     case null:
       return 'not_started';
-  }
-}
-
-function presentQuestionType(type: GradeQuestionType | string): string {
-  switch (type) {
-    case GradeQuestionType.MCQ_SINGLE:
-    case GradeQuestionType.MCQ_MULTI:
-      return 'multiple_choice';
-    case GradeQuestionType.TRUE_FALSE:
-      return 'true_false';
-    case GradeQuestionType.FILL_IN_BLANK:
-      return 'fill_blanks';
-    case GradeQuestionType.SHORT_ANSWER:
-    case GradeQuestionType.ESSAY:
-      return 'essay';
-    case GradeQuestionType.MATCHING:
-      return 'matching';
-    case GradeQuestionType.MEDIA:
-      return 'media';
-    default:
-      return lowerEnum(String(type));
   }
 }
 
@@ -267,7 +268,8 @@ function decimalToNumber(value: PresentableDecimal): number | null {
 }
 
 function sanitizeAnswerJson(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map((item) => sanitizeAnswerJson(item));
+  if (Array.isArray(value))
+    return value.map((item) => sanitizeAnswerJson(item));
   if (!value || typeof value !== 'object') return value ?? null;
 
   const forbiddenKeys = new Set([

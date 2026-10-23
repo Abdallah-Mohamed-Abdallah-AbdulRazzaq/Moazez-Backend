@@ -1,3 +1,8 @@
+import {
+  gradeSubmissionAccessWhere,
+  gradeItemAccessWhere,
+  assertGradeItemWriteAccess,
+} from './grades-resource-access';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
@@ -90,19 +95,20 @@ export class GradesSubmissionGradeItemSyncRepository {
     return this.prisma.scoped as unknown as PrismaService;
   }
 
-  findSubmissionForGradeItemSync(
+  async findSubmissionForGradeItemSync(
     submissionId: string,
   ): Promise<GradeSubmissionForGradeItemSyncRecord | null> {
     return this.scopedPrisma.gradeSubmission.findFirst({
       where: {
         id: submissionId,
         assessment: { deletedAt: null },
+        AND: [await gradeSubmissionAccessWhere(this.scopedPrisma)],
       },
       ...SUBMISSION_FOR_GRADE_ITEM_SYNC_ARGS,
     });
   }
 
-  findGradeItemForSubmission(params: {
+  async findGradeItemForSubmission(params: {
     assessmentId: string;
     studentId: string;
   }): Promise<GradeItemSyncRecord | null> {
@@ -110,25 +116,29 @@ export class GradesSubmissionGradeItemSyncRepository {
       where: {
         assessmentId: params.assessmentId,
         studentId: params.studentId,
+        AND: [await gradeItemAccessWhere(this.scopedPrisma)],
       },
       ...GRADE_ITEM_SYNC_ARGS,
     });
   }
 
-  upsertGradeItemFromSubmission(
+  async upsertGradeItemFromSubmission(
     input: GradeItemUpsertPayload,
   ): Promise<GradeItemSyncRecord> {
-    return this.scopedPrisma.gradeItem.upsert({
-      where: {
-        schoolId_assessmentId_studentId: {
-          schoolId: input.schoolId,
-          assessmentId: input.assessmentId,
-          studentId: input.studentId,
+    return this.scopedPrisma.$transaction(async (tx) => {
+      await assertGradeItemWriteAccess(tx, input);
+      return tx.gradeItem.upsert({
+        where: {
+          schoolId_assessmentId_studentId: {
+            schoolId: input.schoolId,
+            assessmentId: input.assessmentId,
+            studentId: input.studentId,
+          },
         },
-      },
-      create: this.buildGradeItemCreateInput(input),
-      update: this.buildGradeItemUpdateInput(input),
-      ...GRADE_ITEM_SYNC_ARGS,
+        create: this.buildGradeItemCreateInput(input),
+        update: this.buildGradeItemUpdateInput(input),
+        ...GRADE_ITEM_SYNC_ARGS,
+      });
     });
   }
 

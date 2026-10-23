@@ -1,3 +1,4 @@
+import { sanitizeGradeQuestionContent } from '../domain/grade-question-content-policy';
 import { GradeQuestionType } from '@prisma/client';
 import { presentDecimal } from '../../shared/presenters/grades.presenter';
 import {
@@ -15,21 +16,33 @@ type QuestionOptionRecord = GradeAssessmentQuestionRecord['options'][number];
 
 export function presentGradeAssessmentQuestion(
   question: GradeAssessmentQuestionRecord,
+  authoring = false,
 ): GradeAssessmentQuestionResponseDto {
   return {
     id: question.id,
     assessmentId: question.assessmentId,
     type: presentQuestionType(question.type),
-    prompt: question.prompt,
-    promptAr: question.promptAr,
-    explanation: question.explanation,
-    explanationAr: question.explanationAr,
+    prompt:
+      (sanitizeGradeQuestionContent(question.prompt) as string | null) ?? '',
+    promptAr: sanitizeGradeQuestionContent(question.promptAr) as string | null,
+    explanation: authoring
+      ? (sanitizeGradeQuestionContent(question.explanation) as string | null)
+      : null,
+    explanationAr: authoring
+      ? (sanitizeGradeQuestionContent(question.explanationAr) as string | null)
+      : null,
     points: presentDecimal(question.points) ?? 0,
     sortOrder: question.sortOrder,
     required: question.required,
-    answerKey: question.answerKey ?? null,
-    metadata: question.metadata ?? null,
-    options: question.options.map((option) => presentQuestionOption(option)),
+    ...(authoring
+      ? { answerKey: sanitizeGradeQuestionContent(question.answerKey) }
+      : {}),
+    metadata: authoring
+      ? sanitizeGradeQuestionContent(question.metadata)
+      : presentReviewMetadata(question.metadata),
+    options: question.options.map((option) =>
+      presentQuestionOption(option, authoring),
+    ),
     createdAt: question.createdAt.toISOString(),
     updatedAt: question.updatedAt.toISOString(),
   };
@@ -41,6 +54,7 @@ export function presentGradeAssessmentQuestions(params: {
     'id' | 'maxScore'
   >;
   questions: GradeAssessmentQuestionRecord[];
+  authoring?: boolean;
 }): GradeAssessmentQuestionsListResponseDto {
   const totalPoints = params.questions.reduce(
     (sum, question) => sum + (presentDecimal(question.points) ?? 0),
@@ -56,25 +70,51 @@ export function presentGradeAssessmentQuestions(params: {
       maxScore: params.assessment.maxScore,
     }),
     questions: params.questions.map((question) =>
-      presentGradeAssessmentQuestion(question),
+      presentGradeAssessmentQuestion(question, params.authoring ?? false),
     ),
   };
 }
 
 function presentQuestionOption(
   option: QuestionOptionRecord,
+  authoring: boolean,
 ): GradeQuestionOptionResponseDto {
   return {
     id: option.id,
-    label: option.label,
-    labelAr: option.labelAr,
-    value: option.value,
-    isCorrect: option.isCorrect,
+    label: (sanitizeGradeQuestionContent(option.label) as string | null) ?? '',
+    labelAr: sanitizeGradeQuestionContent(option.labelAr) as string | null,
+    value: sanitizeGradeQuestionContent(option.value) as string | null,
+    ...(authoring ? { isCorrect: option.isCorrect } : {}),
     sortOrder: option.sortOrder,
-    metadata: option.metadata ?? null,
+    metadata: authoring ? sanitizeGradeQuestionContent(option.metadata) : null,
   };
 }
 
 function presentQuestionType(type: GradeQuestionType | string): string {
   return String(type).trim().toLowerCase();
+}
+
+function presentReviewMetadata(metadata: unknown): unknown {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata))
+    return null;
+  const allowed = new Set([
+    'mediaMode',
+    'mediaTitle',
+    'mediaUrl',
+    'mediaFileName',
+    'mediaMimeType',
+    'mediaSize',
+  ]);
+  const projection = Object.fromEntries(
+    Object.entries(metadata).filter(
+      ([key, value]) =>
+        allowed.has(key) &&
+        (value === null ||
+          typeof value === 'string' ||
+          typeof value === 'number'),
+    ),
+  );
+  return Object.keys(projection).length
+    ? sanitizeGradeQuestionContent(projection, true)
+    : null;
 }

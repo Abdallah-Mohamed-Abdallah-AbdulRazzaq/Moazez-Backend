@@ -1,3 +1,4 @@
+import { validateGradeQuestionContent } from './grade-question-content-policy';
 import { HttpStatus } from '@nestjs/common';
 import {
   GradeAssessmentApprovalStatus,
@@ -301,6 +302,7 @@ export function normalizeQuestionPayload(
       : [];
   }
 
+  validateGradeQuestionContent(payload);
   return payload;
 }
 

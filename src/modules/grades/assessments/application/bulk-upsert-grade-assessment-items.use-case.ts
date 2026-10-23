@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { AuditOutcome } from '@prisma/client';
+import { AuditOutcome, UserType } from '@prisma/client';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { GradesScope, requireGradesScope } from '../../grades-context';
@@ -70,6 +70,8 @@ export class BulkUpsertGradeAssessmentItemsUseCase {
     const payloads = normalizedItems.map((item) => {
       const enrollment = enrollmentByStudentId.get(item.studentId);
       if (!enrollment) {
+        if (scope.userType === UserType.TEACHER)
+          throw new NotFoundDomainException('Student not found');
         throw new GradebookNoEnrollmentException({
           assessmentId: assessment.id,
           studentId: item.studentId,

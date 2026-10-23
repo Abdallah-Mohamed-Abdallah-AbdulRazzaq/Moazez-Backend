@@ -65,6 +65,10 @@ export class BulkUpdateGradeAssessmentQuestionPointsUseCase {
       }),
     );
 
-    return presentGradeAssessmentQuestions({ assessment, questions });
+    return presentGradeAssessmentQuestions({
+      authoring: true,
+      assessment,
+      questions,
+    });
   }
 }

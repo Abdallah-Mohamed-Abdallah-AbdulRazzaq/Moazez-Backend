@@ -1,3 +1,9 @@
+import {
+  gradeAssessmentAccessWhere,
+  gradeItemAccessWhere,
+  gradeEnrollmentAccessWhere,
+  assertGradeItemWriteAccess,
+} from './grades-resource-access';
 import { Injectable } from '@nestjs/common';
 import {
   GradeItemStatus,
@@ -152,27 +158,37 @@ export class GradesAssessmentItemsRepository {
     return this.prisma.scoped as unknown as PrismaService;
   }
 
-  findAssessmentForItems(
+  async findAssessmentForItems(
     assessmentId: string,
   ): Promise<GradeAssessmentForGradeItemsRecord | null> {
     return this.scopedPrisma.gradeAssessment.findFirst({
-      where: { id: assessmentId },
+      where: {
+        AND: [
+          { id: assessmentId },
+          await gradeAssessmentAccessWhere(this.scopedPrisma),
+        ],
+      },
       ...GRADE_ASSESSMENT_FOR_ITEMS_ARGS,
     });
   }
 
-  listAssessmentItems(params: {
+  async listAssessmentItems(params: {
     assessmentId: string;
     filters?: ListAssessmentItemsFilters;
   }): Promise<GradeItemRecord[]> {
     return this.scopedPrisma.gradeItem.findMany({
-      where: this.buildGradeItemWhere(params.assessmentId, params.filters),
+      where: {
+        AND: [
+          this.buildGradeItemWhere(params.assessmentId, params.filters),
+          await gradeItemAccessWhere(this.scopedPrisma),
+        ],
+      },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       ...GRADE_ITEM_RECORD_ARGS,
     });
   }
 
-  listStudentsInAssessmentScope(params: {
+  async listStudentsInAssessmentScope(params: {
     assessment: GradeAssessmentForGradeItemsRecord;
     filters?: Pick<
       ListAssessmentItemsFilters,
@@ -181,6 +197,12 @@ export class GradesAssessmentItemsRepository {
   }): Promise<GradeItemEnrollmentRecord[]> {
     return this.scopedPrisma.enrollment.findMany({
       where: {
+        AND: [
+          await gradeEnrollmentAccessWhere(
+            this.scopedPrisma,
+            params.assessment.id,
+          ),
+        ],
         academicYearId: params.assessment.academicYearId,
         status: StudentEnrollmentStatus.ACTIVE,
         OR: [{ termId: params.assessment.termId }, { termId: null }],
@@ -217,37 +239,54 @@ export class GradesAssessmentItemsRepository {
     });
   }
 
-  findStudentEnrollmentForAssessmentScope(params: {
+  async findStudentEnrollmentForAssessmentScope(params: {
     assessment: GradeAssessmentForGradeItemsRecord;
     studentId: string;
   }): Promise<GradeItemEnrollmentRecord | null> {
     return this.scopedPrisma.enrollment.findFirst({
-      where: this.buildEnrollmentScopeWhere({
-        assessment: params.assessment,
-        studentIds: [params.studentId],
-      }),
+      where: {
+        AND: [
+          this.buildEnrollmentScopeWhere({
+            assessment: params.assessment,
+            studentIds: [params.studentId],
+          }),
+          await gradeEnrollmentAccessWhere(
+            this.scopedPrisma,
+            params.assessment.id,
+          ),
+        ],
+      },
       orderBy: [{ enrolledAt: 'desc' }, { createdAt: 'desc' }],
       ...GRADE_ITEM_ENROLLMENT_ARGS,
     });
   }
 
-  findStudentEnrollmentsForAssessmentScope(params: {
+  async findStudentEnrollmentsForAssessmentScope(params: {
     assessment: GradeAssessmentForGradeItemsRecord;
     studentIds: string[];
   }): Promise<GradeItemEnrollmentRecord[]> {
     return this.scopedPrisma.enrollment.findMany({
-      where: this.buildEnrollmentScopeWhere(params),
+      where: {
+        AND: [
+          this.buildEnrollmentScopeWhere(params),
+          await gradeEnrollmentAccessWhere(
+            this.scopedPrisma,
+            params.assessment.id,
+          ),
+        ],
+      },
       orderBy: [{ enrolledAt: 'desc' }, { createdAt: 'desc' }],
       ...GRADE_ITEM_ENROLLMENT_ARGS,
     });
   }
 
-  findGradeItemByAssessmentAndStudent(params: {
+  async findGradeItemByAssessmentAndStudent(params: {
     assessmentId: string;
     studentId: string;
   }): Promise<GradeItemRecord | null> {
     return this.scopedPrisma.gradeItem.findFirst({
       where: {
+        AND: [await gradeItemAccessWhere(this.scopedPrisma)],
         assessmentId: params.assessmentId,
         studentId: params.studentId,
       },
@@ -255,7 +294,7 @@ export class GradesAssessmentItemsRepository {
     });
   }
 
-  findGradeItemsByAssessmentAndStudents(params: {
+  async findGradeItemsByAssessmentAndStudents(params: {
     assessmentId: string;
     studentIds: string[];
   }): Promise<GradeItemRecord[]> {
@@ -263,45 +302,56 @@ export class GradesAssessmentItemsRepository {
       where: {
         assessmentId: params.assessmentId,
         studentId: { in: params.studentIds },
+        AND: [await gradeItemAccessWhere(this.scopedPrisma)],
       },
       ...GRADE_ITEM_RECORD_ARGS,
     });
   }
 
-  upsertGradeItem(input: GradeItemUpsertPayload): Promise<GradeItemRecord> {
-    return this.scopedPrisma.gradeItem.upsert({
-      where: {
-        schoolId_assessmentId_studentId: {
-          schoolId: input.schoolId,
-          assessmentId: input.assessmentId,
-          studentId: input.studentId,
+  async upsertGradeItem(
+    input: GradeItemUpsertPayload,
+  ): Promise<GradeItemRecord> {
+    return this.scopedPrisma.$transaction(async (tx) => {
+      await assertGradeItemWriteAccess(tx, input);
+      return tx.gradeItem.upsert({
+        where: {
+          schoolId_assessmentId_studentId: {
+            schoolId: input.schoolId,
+            assessmentId: input.assessmentId,
+            studentId: input.studentId,
+          },
         },
-      },
-      create: this.buildGradeItemCreateInput(input),
-      update: this.buildGradeItemUpdateInput(input),
-      ...GRADE_ITEM_RECORD_ARGS,
+        create: this.buildGradeItemCreateInput(input),
+        update: this.buildGradeItemUpdateInput(input),
+        ...GRADE_ITEM_RECORD_ARGS,
+      });
     });
   }
 
   bulkUpsertGradeItems(
     inputs: GradeItemUpsertPayload[],
   ): Promise<GradeItemRecord[]> {
-    return this.scopedPrisma.$transaction(
-      inputs.map((input) =>
-        this.scopedPrisma.gradeItem.upsert({
-          where: {
-            schoolId_assessmentId_studentId: {
-              schoolId: input.schoolId,
-              assessmentId: input.assessmentId,
-              studentId: input.studentId,
+    return this.scopedPrisma.$transaction(async (tx) => {
+      const items: GradeItemRecord[] = [];
+      for (const input of inputs) {
+        await assertGradeItemWriteAccess(tx, input);
+        items.push(
+          await tx.gradeItem.upsert({
+            where: {
+              schoolId_assessmentId_studentId: {
+                schoolId: input.schoolId,
+                assessmentId: input.assessmentId,
+                studentId: input.studentId,
+              },
             },
-          },
-          create: this.buildGradeItemCreateInput(input),
-          update: this.buildGradeItemUpdateInput(input),
-          ...GRADE_ITEM_RECORD_ARGS,
-        }),
-      ),
-    );
+            create: this.buildGradeItemCreateInput(input),
+            update: this.buildGradeItemUpdateInput(input),
+            ...GRADE_ITEM_RECORD_ARGS,
+          }),
+        );
+      }
+      return items;
+    });
   }
 
   private buildGradeItemWhere(
