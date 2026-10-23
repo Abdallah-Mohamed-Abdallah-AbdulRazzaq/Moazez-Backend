@@ -145,7 +145,7 @@ describe('ACC-9 final cross-slice exported contracts', () => {
       acc = routes.filter((route) =>
         route.controller.startsWith('TeacherAcademicContent'),
       );
-    expect(routes).toHaveLength(157);
+    expect(routes).toHaveLength(159);
     expect(acc).toHaveLength(41);
     expect(routes.filter((route) => route.permissions.length === 0)).toEqual(
       [],
