@@ -384,7 +384,7 @@ export class GradeQuestionOptionResponseDto {
   label!: string;
   labelAr!: string | null;
   value!: string | null;
-  isCorrect!: boolean;
+  isCorrect?: boolean;
   sortOrder!: number;
   metadata!: unknown;
 }
@@ -400,7 +400,7 @@ export class GradeAssessmentQuestionResponseDto {
   points!: number;
   sortOrder!: number;
   required!: boolean;
-  answerKey!: unknown;
+  answerKey?: unknown;
   metadata!: unknown;
   options!: GradeQuestionOptionResponseDto[];
   createdAt!: string;

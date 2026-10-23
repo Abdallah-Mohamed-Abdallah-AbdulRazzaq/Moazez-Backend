@@ -1,3 +1,4 @@
+import { GradeQuestionContractDto } from '../../../grades/shared/presenters/grade-question-contract';
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -82,6 +83,8 @@ export class StudentExamCardDto {
   type!: string;
   date!: string;
   maxScore!: number;
+  deliveryMode!: string;
+  supportsQuestionSubmission!: boolean;
 }
 
 export class StudentExamSubjectGroupDto {
@@ -117,10 +120,9 @@ export class StudentExamOptionDto {
   value!: string | null;
 }
 
-export class StudentExamQuestionDto {
+export class StudentExamQuestionDto extends GradeQuestionContractDto {
   id!: string;
   questionId!: string;
-  type!: string;
   title!: string;
   body!: string;
   options!: StudentExamOptionDto[];
@@ -155,6 +157,8 @@ export class StudentExamDetailResponseDto {
   type!: string;
   date!: string;
   maxScore!: number;
+  deliveryMode!: string;
+  supportsQuestionSubmission!: boolean;
   stages!: StudentExamStageDto[];
 }
 
@@ -165,10 +169,9 @@ export class StudentExamSubmissionSelectedOptionDto {
   value!: string | null;
 }
 
-export class StudentExamSubmissionAnswerDto {
+export class StudentExamSubmissionAnswerDto extends GradeQuestionContractDto {
   answerId!: string;
   questionId!: string;
-  type!: string;
   answerText!: string | null;
   answerJson!: unknown;
   selectedOptions!: StudentExamSubmissionSelectedOptionDto[];

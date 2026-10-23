@@ -1,3 +1,4 @@
+import { sanitizeGradeQuestionContent } from '../domain/grade-question-content-policy';
 import {
   GradeAnswerCorrectionStatus,
   GradeQuestionType,
@@ -12,9 +13,7 @@ import {
   calculateSubmissionAnswerProgress,
   SubmissionAnswerProgress,
 } from '../domain/grade-submission-domain';
-import {
-  BulkReviewGradeSubmissionAnswersResponseDto,
-} from '../dto/grade-submission-review.dto';
+import { BulkReviewGradeSubmissionAnswersResponseDto } from '../dto/grade-submission-review.dto';
 import {
   BulkSaveGradeSubmissionAnswersResponseDto,
   GradeSubmissionAnswerResponseDto,
@@ -97,7 +96,7 @@ export function presentGradeSubmissionAnswer(
     questionId: answer.questionId,
     type: presentQuestionType(answer.question.type),
     answerText: answer.answerText,
-    answerJson: answer.answerJson ?? null,
+    answerJson: sanitizeGradeQuestionContent(answer.answerJson, true),
     correctionStatus: presentAnswerCorrectionStatus(answer.correctionStatus),
     awardedPoints: presentDecimal(answer.awardedPoints),
     maxPoints: presentDecimal(answer.maxPoints),
@@ -167,8 +166,12 @@ function presentSubmissionQuestion(params: {
   return {
     id: params.question.id,
     type: presentQuestionType(params.question.type),
-    prompt: params.question.prompt,
-    promptAr: params.question.promptAr,
+    prompt:
+      (sanitizeGradeQuestionContent(params.question.prompt) as string | null) ??
+      '',
+    promptAr: sanitizeGradeQuestionContent(params.question.promptAr) as
+      | string
+      | null,
     points: presentDecimal(params.question.points) ?? 0,
     sortOrder: params.question.sortOrder,
     required: params.question.required,
@@ -242,9 +245,13 @@ function presentSelectedOption(
 ): GradeSubmissionSelectedOptionResponseDto {
   return {
     optionId: selected.optionId,
-    label: selected.option.label,
-    labelAr: selected.option.labelAr,
-    value: selected.option.value,
+    label:
+      (sanitizeGradeQuestionContent(selected.option.label) as string | null) ??
+      '',
+    labelAr: sanitizeGradeQuestionContent(selected.option.labelAr) as
+      | string
+      | null,
+    value: sanitizeGradeQuestionContent(selected.option.value) as string | null,
   };
 }
 

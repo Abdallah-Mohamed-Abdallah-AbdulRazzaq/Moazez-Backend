@@ -15,6 +15,7 @@ import {
   setActor,
 } from '../../../../common/context/request-context';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
+import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import { BulkSaveGradeSubmissionAnswersUseCase } from '../application/bulk-save-grade-submission-answers.use-case';
 import { GetGradeSubmissionUseCase } from '../application/get-grade-submission.use-case';
 import { ListGradeSubmissionsUseCase } from '../application/list-grade-submissions.use-case';
@@ -865,5 +866,53 @@ describe('grade submissions use cases', () => {
     await withGradesScope(() => useCase.execute(SUBMISSION_ID));
 
     expect(repository.countGradeItemsForAssessment).not.toHaveBeenCalled();
+  });
+
+  it('bulk repository validates distinct submissions before the first answer write', async () => {
+    const transaction = {
+      gradeSubmission: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValueOnce({ id: SUBMISSION_ID })
+          .mockResolvedValueOnce(null),
+      },
+      gradeSubmissionAnswer: { upsert: jest.fn() },
+      gradeSubmissionAnswerOption: { deleteMany: jest.fn() },
+    };
+    const repository = new GradesSubmissionsRepository({
+      scoped: {
+        $transaction: (action: (tx: typeof transaction) => Promise<unknown>) =>
+          action(transaction),
+      },
+    } as unknown as PrismaService);
+    const input = {
+      schoolId: SCHOOL_ID,
+      assessmentId: ASSESSMENT_ID,
+      submissionId: SUBMISSION_ID,
+      studentId: STUDENT_ID,
+      questionId: QUESTION_ID,
+      maxPoints: new Prisma.Decimal(5),
+      payload: { answerText: null, answerJson: null, selectedOptionIds: [] },
+    };
+
+    await expect(
+      withGradesScope(() =>
+        repository.bulkUpsertAnswersWithSelectedOptions([
+          input,
+          { ...input, questionId: QUESTION_TWO_ID },
+          { ...input, submissionId: 'submission-2' },
+        ]),
+      ),
+    ).rejects.toMatchObject({ code: 'not_found', httpStatus: 404 });
+
+    expect(transaction.gradeSubmission.findFirst).toHaveBeenCalledTimes(2);
+    expect(transaction.gradeSubmission.findFirst).toHaveBeenNthCalledWith(2, {
+      where: { AND: [{ id: 'submission-2' }, {}] },
+      select: { id: true },
+    });
+    expect(transaction.gradeSubmissionAnswer.upsert).not.toHaveBeenCalled();
+    expect(
+      transaction.gradeSubmissionAnswerOption.deleteMany,
+    ).not.toHaveBeenCalled();
   });
 });

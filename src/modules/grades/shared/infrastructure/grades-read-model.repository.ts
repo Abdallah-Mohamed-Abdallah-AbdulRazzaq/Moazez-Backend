@@ -1,3 +1,8 @@
+import {
+  gradeAssessmentAccessWhere,
+  gradeItemAccessWhere,
+  gradeRosterAccessWhere,
+} from '../../assessments/infrastructure/grades-resource-access';
 import { Injectable } from '@nestjs/common';
 import {
   GradeAssessmentApprovalStatus,
@@ -211,9 +216,7 @@ export type GradesReadRuleRecord = Prisma.GradeRuleGetPayload<
 export type GradesReadAcademicYearRecord = Prisma.AcademicYearGetPayload<
   typeof ACADEMIC_YEAR_READ_ARGS
 >;
-export type GradesReadTermRecord = Prisma.TermGetPayload<
-  typeof TERM_READ_ARGS
->;
+export type GradesReadTermRecord = Prisma.TermGetPayload<typeof TERM_READ_ARGS>;
 export type GradesReadStageReference = Prisma.StageGetPayload<
   typeof STAGE_REFERENCE_ARGS
 >;
@@ -307,23 +310,31 @@ export class GradesReadModelRepository {
     });
   }
 
-  findStudentById(
+  async findStudentById(
     studentId: string,
   ): Promise<GradesReadStudentRecord | null> {
+    const rosterAccess = await gradeRosterAccessWhere(this.scopedPrisma);
     return this.scopedPrisma.student.findFirst({
-      where: { id: studentId },
+      where: {
+        id: studentId,
+        ...(Object.keys(rosterAccess).length
+          ? { enrollments: { some: rosterAccess } }
+          : {}),
+      },
       select: STUDENT_READ_SELECT,
     });
   }
 
-  listEnrollmentsForScope(params: {
+  async listEnrollmentsForScope(params: {
     academicYearId: string;
     termId: string;
     scope: GradesReadScope;
+    subjectId?: string;
     search?: string;
   }): Promise<GradesReadEnrollmentRecord[]> {
     return this.scopedPrisma.enrollment.findMany({
       where: {
+        AND: [await gradeRosterAccessWhere(this.scopedPrisma, params)],
         academicYearId: params.academicYearId,
         status: StudentEnrollmentStatus.ACTIVE,
         OR: [{ termId: params.termId }, { termId: null }],
@@ -344,7 +355,7 @@ export class GradesReadModelRepository {
     });
   }
 
-  findActiveEnrollmentForStudent(params: {
+  async findActiveEnrollmentForStudent(params: {
     studentId: string;
     academicYearId: string;
     termId: string;
@@ -352,6 +363,7 @@ export class GradesReadModelRepository {
     return this.scopedPrisma.enrollment.findFirst({
       where: {
         studentId: params.studentId,
+        AND: [await gradeRosterAccessWhere(this.scopedPrisma, params)],
         academicYearId: params.academicYearId,
         status: StudentEnrollmentStatus.ACTIVE,
         OR: [{ termId: params.termId }, { termId: null }],
@@ -360,18 +372,23 @@ export class GradesReadModelRepository {
           deletedAt: null,
         },
       },
-      orderBy: [{ termId: 'desc' }, { enrolledAt: 'desc' }, { createdAt: 'desc' }],
+      orderBy: [
+        { termId: 'desc' },
+        { enrolledAt: 'desc' },
+        { createdAt: 'desc' },
+      ],
       ...ENROLLMENT_READ_ARGS,
     });
   }
 
-  listAssessmentsForScope(
+  async listAssessmentsForScope(
     params: GradesReadAssessmentFilters,
   ): Promise<GradesReadAssessmentRecord[]> {
     return this.scopedPrisma.gradeAssessment.findMany({
       where: {
         academicYearId: params.academicYearId,
         termId: params.termId,
+        AND: [await gradeAssessmentAccessWhere(this.scopedPrisma)],
         deliveryMode: {
           in: [
             GradeAssessmentDeliveryMode.SCORE_ONLY,
@@ -392,7 +409,7 @@ export class GradesReadModelRepository {
     });
   }
 
-  listGradeItems(params: {
+  async listGradeItems(params: {
     assessmentIds: string[];
     studentIds: string[];
   }): Promise<GradesReadGradeItemRecord[]> {
@@ -402,6 +419,7 @@ export class GradesReadModelRepository {
 
     return this.scopedPrisma.gradeItem.findMany({
       where: {
+        AND: [await gradeItemAccessWhere(this.scopedPrisma)],
         assessmentId: { in: params.assessmentIds },
         studentId: { in: params.studentIds },
       },

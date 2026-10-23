@@ -188,6 +188,7 @@ export async function buildGradesGradebookModel(params: {
       termId,
       scope,
       search: params.query.search,
+      ...(params.query.subjectId ? { subjectId: params.query.subjectId } : {}),
     }),
     params.repository.listAssessmentsForScope({
       academicYearId,
@@ -381,7 +382,11 @@ export async function resolveGradesReadScope(params: {
       }
 
       assertOptionalParent('gradeId', params.input.gradeId, section.gradeId);
-      assertOptionalParent('stageId', params.input.stageId, section.grade.stageId);
+      assertOptionalParent(
+        'stageId',
+        params.input.stageId,
+        section.grade.stageId,
+      );
       return {
         scopeType,
         scopeKey: section.id,
@@ -779,10 +784,7 @@ function requireMatchingScopeId(
 }
 
 function assertOptionalParent(
-  field: keyof Pick<
-    GradesReadQueryInput,
-    'stageId' | 'gradeId' | 'sectionId'
-  >,
+  field: keyof Pick<GradesReadQueryInput, 'stageId' | 'gradeId' | 'sectionId'>,
   provided: string | null | undefined,
   actual: string,
 ): void {
@@ -802,7 +804,6 @@ function average(values: number[]): number | null {
   if (values.length === 0) return null;
 
   return (
-    values.reduce((sum, value) => sum + value, 0) /
-    Math.max(values.length, 1)
+    values.reduce((sum, value) => sum + value, 0) / Math.max(values.length, 1)
   );
 }

@@ -1,3 +1,4 @@
+import { validateGradeQuestionContent } from '../domain/grade-question-content-policy';
 import { Injectable } from '@nestjs/common';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { requireGradesScope } from '../../grades-context';
@@ -42,6 +43,13 @@ export class UpdateGradeAssessmentQuestionUseCase {
     const nextMetadata =
       payload.metadata === undefined ? existing.metadata : payload.metadata;
     const options = this.resolveOptionsForValidation(existing, payload);
+    validateGradeQuestionContent({
+      ...existing,
+      ...payload,
+      metadata: nextMetadata,
+      answerKey: nextAnswerKey,
+      options,
+    });
     const normalizedOptions =
       payload.options !== undefined
         ? validateQuestionOptionsForType({
@@ -93,7 +101,7 @@ export class UpdateGradeAssessmentQuestionUseCase {
       }),
     );
 
-    return presentGradeAssessmentQuestion(updated);
+    return presentGradeAssessmentQuestion(updated, true);
   }
 
   private resolveOptionsForValidation(

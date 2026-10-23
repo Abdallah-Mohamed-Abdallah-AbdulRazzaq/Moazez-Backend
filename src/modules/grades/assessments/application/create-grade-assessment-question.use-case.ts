@@ -71,6 +71,6 @@ export class CreateGradeAssessmentQuestionUseCase {
       }),
     );
 
-    return presentGradeAssessmentQuestion(question);
+    return presentGradeAssessmentQuestion(question, true);
   }
 }

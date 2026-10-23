@@ -1,5 +1,6 @@
+import { ownedAllocationWhere } from '../../academics/teacher-allocation/domain/owned-allocation';
 import { Injectable } from '@nestjs/common';
-import { Prisma, UserType } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
 import type {
   TeacherAppAllocationRecord,
@@ -170,50 +171,6 @@ export class TeacherAppAllocationReadAdapter {
       ...TEACHER_APP_ALLOCATION_ARGS,
     });
   }
-}
-
-function ownedAllocationWhere(
-  teacherUserId: string,
-): Prisma.TeacherSubjectAllocationWhereInput {
-  return {
-    teacherUserId,
-    teacherUser: {
-      is: {
-        userType: UserType.TEACHER,
-        deletedAt: null,
-      },
-    },
-    subject: {
-      is: {
-        deletedAt: null,
-      },
-    },
-    classroom: {
-      is: {
-        deletedAt: null,
-        section: {
-          is: {
-            deletedAt: null,
-            grade: {
-              is: {
-                deletedAt: null,
-                stage: {
-                  is: {
-                    deletedAt: null,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-    term: {
-      is: {
-        deletedAt: null,
-      },
-    },
-  };
 }
 
 function buildOwnedAllocationListWhere(params: {

@@ -1,3 +1,4 @@
+import { canReadGradeAuthoring } from '../infrastructure/grades-resource-access';
 import { Injectable } from '@nestjs/common';
 import { requireGradesScope } from '../../grades-context';
 import { ListGradeAssessmentQuestionsQueryDto } from '../dto/grade-assessment-question.dto';
@@ -24,6 +25,10 @@ export class ListGradeAssessmentQuestionsUseCase {
       assessment.id,
     );
 
-    return presentGradeAssessmentQuestions({ assessment, questions });
+    return presentGradeAssessmentQuestions({
+      assessment,
+      questions,
+      authoring: canReadGradeAuthoring(),
+    });
   }
 }

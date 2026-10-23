@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, UserType } from '@prisma/client';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { requireGradesScope } from '../../grades-context';
@@ -47,6 +47,8 @@ export class ResolveGradeSubmissionUseCase {
         enrollmentId: command.enrollmentId,
       });
     if (!enrollment) {
+      if (scope.userType === UserType.TEACHER)
+        throw new NotFoundDomainException('Student not found');
       if (command.enrollmentId) {
         throw new NotFoundDomainException('Enrollment not found', {
           enrollmentId: command.enrollmentId,

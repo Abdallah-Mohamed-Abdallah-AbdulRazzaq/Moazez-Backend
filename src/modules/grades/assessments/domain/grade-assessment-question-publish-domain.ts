@@ -1,3 +1,4 @@
+import { validateGradeQuestionContent } from './grade-question-content-policy';
 import { HttpStatus } from '@nestjs/common';
 import {
   GradeAssessmentApprovalStatus,
@@ -38,6 +39,10 @@ export interface QuestionPublishAssessmentLike {
 export interface QuestionPublishOptionLike {
   id?: string;
   isCorrect: boolean;
+  metadata?: unknown;
+  value?: string | null;
+  label?: string;
+  labelAr?: string | null;
   deletedAt?: Date | string | null;
 }
 
@@ -45,6 +50,10 @@ export interface QuestionPublishQuestionLike {
   id: string;
   type: GradeQuestionType | string;
   points: unknown;
+  prompt?: string;
+  promptAr?: string | null;
+  explanation?: string | null;
+  explanationAr?: string | null;
   answerKey?: unknown;
   metadata?: unknown;
   deletedAt?: Date | string | null;
@@ -194,6 +203,7 @@ export function assertQuestionPointsMatchAssessmentMaxScore(params: {
 export function validateQuestionForPublish(
   question: QuestionPublishQuestionLike,
 ): void {
+  validateGradeQuestionContent(question);
   requirePositiveQuestionPoints(question);
   assertQuestionOptionsValidForPublish(question);
 }

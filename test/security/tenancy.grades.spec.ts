@@ -1,3 +1,17 @@
+import {
+  GradeAssessmentQuestionResponseDto,
+  GradeAssessmentQuestionsListResponseDto,
+} from '../../src/modules/grades/assessments/dto/grade-assessment-question.dto';
+import { GradeSubmissionsListResponseDto } from '../../src/modules/grades/assessments/dto/grade-submission.dto';
+import { GradebookResponseDto } from '../../src/modules/grades/gradebook/dto/get-gradebook-query.dto';
+import {
+  createRequestContext,
+  runWithRequestContext,
+} from '../../src/common/context/request-context';
+import { GradesSubmissionsRepository } from '../../src/modules/grades/assessments/infrastructure/grades-submissions.repository';
+import { GradesAssessmentItemsRepository } from '../../src/modules/grades/assessments/infrastructure/grades-assessment-items.repository';
+import { GradesReadModelRepository } from '../../src/modules/grades/shared/infrastructure/grades-read-model.repository';
+import { GetGradesGradebookUseCase } from '../../src/modules/grades/gradebook/application/get-grades-gradebook.use-case';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
@@ -13,6 +27,7 @@ import {
   GradeSubmissionStatus,
   MembershipStatus,
   OrganizationStatus,
+  Prisma,
   PrismaClient,
   SchoolStatus,
   StudentEnrollmentStatus,
@@ -2388,7 +2403,9 @@ describe('Grades tenancy isolation (security)', () => {
     });
 
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/grades/submissions/${submissionId}/sync-grade-item`)
+      .post(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/sync-grade-item`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(403)
       .expect(({ body }) => {
@@ -2442,7 +2459,9 @@ describe('Grades tenancy isolation (security)', () => {
       .expect(200);
 
     const syncResponse = await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/grades/submissions/${submissionId}/sync-grade-item`)
+      .post(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/sync-grade-item`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(201);
 
@@ -2471,7 +2490,9 @@ describe('Grades tenancy isolation (security)', () => {
 
     const gradeItemId = syncResponse.body.gradeItem.id as string;
     const secondSyncResponse = await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/grades/submissions/${submissionId}/sync-grade-item`)
+      .post(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/sync-grade-item`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(201);
 
@@ -2488,7 +2509,10 @@ describe('Grades tenancy isolation (security)', () => {
     const [gradeItemCount, submissionsAfter, answersAfter, questionsAfter] =
       await Promise.all([
         prisma.gradeItem.count({
-          where: { assessmentId: fixture.assessmentId, studentId: demoStudentId },
+          where: {
+            assessmentId: fixture.assessmentId,
+            studentId: demoStudentId,
+          },
         }),
         prisma.gradeSubmission.count({
           where: { assessmentId: fixture.assessmentId },
@@ -2604,7 +2628,9 @@ describe('Grades tenancy isolation (security)', () => {
     });
 
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/grades/submissions/${submissionId}/sync-grade-item`)
+      .post(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/sync-grade-item`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(409)
       .expect(({ body }) => {
@@ -2623,7 +2649,9 @@ describe('Grades tenancy isolation (security)', () => {
     });
 
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/grades/submissions/${submissionId}/sync-grade-item`)
+      .post(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/sync-grade-item`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(409)
       .expect(({ body }) => {
@@ -2645,7 +2673,9 @@ describe('Grades tenancy isolation (security)', () => {
     });
 
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/grades/submissions/${submissionId}/sync-grade-item`)
+      .post(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/sync-grade-item`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(409)
       .expect(({ body }) => {
@@ -2877,7 +2907,8 @@ describe('Grades tenancy isolation (security)', () => {
       },
       select: { id: true },
     });
-    const tenantBQuestionFixture = await createTenantBQuestionSubmissionFixture();
+    const tenantBQuestionFixture =
+      await createTenantBQuestionSubmissionFixture();
     const tenantBQuestionItem = await prisma.gradeItem.create({
       data: {
         schoolId: tenantBSchoolId,
@@ -2932,38 +2963,48 @@ describe('Grades tenancy isolation (security)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
 
-    expect(response.body.academicYears.map((year: { id: string }) => year.id))
-      .toContain(demoYearId);
-    expect(response.body.academicYears.map((year: { id: string }) => year.id))
-      .not.toContain(tenantBYearId);
-    expect(response.body.terms.map((term: { id: string }) => term.id)).toContain(
-      demoTermId,
-    );
-    expect(response.body.terms.map((term: { id: string }) => term.id)).not.toContain(
-      tenantBTermId,
-    );
-    expect(response.body.stages.map((stage: { id: string }) => stage.id))
-      .toContain(demoStageId);
-    expect(response.body.stages.map((stage: { id: string }) => stage.id))
-      .not.toContain(tenantBStageId);
-    expect(response.body.grades.map((grade: { id: string }) => grade.id))
-      .toContain(demoGradeId);
-    expect(response.body.grades.map((grade: { id: string }) => grade.id))
-      .not.toContain(tenantBGradeId);
-    expect(response.body.sections.map((section: { id: string }) => section.id))
-      .toContain(demoSectionId);
-    expect(response.body.sections.map((section: { id: string }) => section.id))
-      .not.toContain(tenantBSectionId);
+    expect(
+      response.body.academicYears.map((year: { id: string }) => year.id),
+    ).toContain(demoYearId);
+    expect(
+      response.body.academicYears.map((year: { id: string }) => year.id),
+    ).not.toContain(tenantBYearId);
+    expect(
+      response.body.terms.map((term: { id: string }) => term.id),
+    ).toContain(demoTermId);
+    expect(
+      response.body.terms.map((term: { id: string }) => term.id),
+    ).not.toContain(tenantBTermId);
+    expect(
+      response.body.stages.map((stage: { id: string }) => stage.id),
+    ).toContain(demoStageId);
+    expect(
+      response.body.stages.map((stage: { id: string }) => stage.id),
+    ).not.toContain(tenantBStageId);
+    expect(
+      response.body.grades.map((grade: { id: string }) => grade.id),
+    ).toContain(demoGradeId);
+    expect(
+      response.body.grades.map((grade: { id: string }) => grade.id),
+    ).not.toContain(tenantBGradeId);
+    expect(
+      response.body.sections.map((section: { id: string }) => section.id),
+    ).toContain(demoSectionId);
+    expect(
+      response.body.sections.map((section: { id: string }) => section.id),
+    ).not.toContain(tenantBSectionId);
     expect(
       response.body.classrooms.map((classroom: { id: string }) => classroom.id),
     ).toContain(demoClassroomId);
     expect(
       response.body.classrooms.map((classroom: { id: string }) => classroom.id),
     ).not.toContain(tenantBClassroomId);
-    expect(response.body.subjects.map((subject: { id: string }) => subject.id))
-      .toContain(demoSubjectId);
-    expect(response.body.subjects.map((subject: { id: string }) => subject.id))
-      .not.toContain(tenantBSubjectId);
+    expect(
+      response.body.subjects.map((subject: { id: string }) => subject.id),
+    ).toContain(demoSubjectId);
+    expect(
+      response.body.subjects.map((subject: { id: string }) => subject.id),
+    ).not.toContain(tenantBSubjectId);
     expect(response.body.supportedScopes).toEqual([
       'school',
       'stage',
@@ -4842,6 +4883,1128 @@ describe('Grades tenancy isolation (security)', () => {
       ruleId: demoGradeRuleId,
       scopeType: 'grade',
       gradeId: demoGradeId,
+    });
+  });
+
+  it('ST-02 enforces live teacher allocations, broader rosters, author projections and transactional writes over HTTP', async () => {
+    const suffix = 'st02-' + Date.now();
+    const teacherRole = await prisma.role.findFirstOrThrow({
+      where: { key: 'teacher', isSystem: true, schoolId: null },
+    });
+    const authorRole = await prisma.role.create({
+      data: {
+        schoolId: demoSchoolId,
+        name: suffix,
+        key: suffix,
+        isSystem: false,
+      },
+    });
+    const permissions = await prisma.permission.findMany({
+      where: {
+        code: {
+          in: [
+            'grades.questions.view',
+            'grades.questions.manage',
+            'grades.submissions.view',
+            'grades.submissions.submit',
+            'grades.submissions.review',
+            'grades.assessments.view',
+          ],
+        },
+      },
+    });
+    await prisma.rolePermission.createMany({
+      data: permissions.map((permission) => ({
+        roleId: authorRole.id,
+        permissionId: permission.id,
+      })),
+    });
+    const teacher = await prisma.user.create({
+      data: {
+        email: suffix + '@security.moazez.local',
+        firstName: 'ST02',
+        lastName: 'Teacher',
+        userType: UserType.TEACHER,
+        status: UserStatus.ACTIVE,
+        passwordHash: await argon2.hash(VIEW_ONLY_PASSWORD, ARGON2_OPTIONS),
+      },
+    });
+    const membership = await prisma.membership.create({
+      data: {
+        userId: teacher.id,
+        userType: UserType.TEACHER,
+        organizationId: demoOrganizationId,
+        schoolId: demoSchoolId,
+        roleId: teacherRole.id,
+        status: MembershipStatus.ACTIVE,
+      },
+    });
+    const otherClass = await prisma.classroom.create({
+      data: {
+        schoolId: demoSchoolId,
+        sectionId: demoSectionId,
+        nameEn: suffix,
+        nameAr: suffix,
+      },
+    });
+    const otherStudent = await prisma.student.create({
+      data: {
+        schoolId: demoSchoolId,
+        organizationId: demoOrganizationId,
+        firstName: 'Other',
+        lastName: suffix,
+      },
+    });
+    const otherEnrollment = await prisma.enrollment.create({
+      data: {
+        schoolId: demoSchoolId,
+        studentId: otherStudent.id,
+        academicYearId: demoYearId,
+        termId: demoTermId,
+        classroomId: otherClass.id,
+        enrolledAt: new Date('2026-09-01'),
+      },
+    });
+    const wrongSubject = await prisma.subject.create({
+      data: {
+        schoolId: demoSchoolId,
+        nameEn: suffix,
+        nameAr: suffix,
+        code: suffix,
+      },
+    });
+    let allocation = await prisma.teacherSubjectAllocation.create({
+      data: {
+        schoolId: demoSchoolId,
+        teacherUserId: teacher.id,
+        subjectId: demoSubjectId,
+        classroomId: demoClassroomId,
+        termId: demoTermId,
+      },
+    });
+    const assessmentIds: string[] = [];
+    const call = (token: string) => ({
+      get: (path: string) =>
+        request(app.getHttpServer())
+          .get(GLOBAL_PREFIX + path)
+          .set('Authorization', 'Bearer ' + token),
+      post: (path: string) =>
+        request(app.getHttpServer())
+          .post(GLOBAL_PREFIX + path)
+          .set('Authorization', 'Bearer ' + token),
+      patch: (path: string) =>
+        request(app.getHttpServer())
+          .patch(GLOBAL_PREFIX + path)
+          .set('Authorization', 'Bearer ' + token),
+      put: (path: string) =>
+        request(app.getHttpServer())
+          .put(GLOBAL_PREFIX + path)
+          .set('Authorization', 'Bearer ' + token),
+      delete: (path: string) =>
+        request(app.getHttpServer())
+          .delete(GLOBAL_PREFIX + path)
+          .set('Authorization', 'Bearer ' + token),
+    });
+    try {
+      let token = (await login(teacher.email, VIEW_ONLY_PASSWORD)).accessToken;
+      let ownedSubmissionId = '';
+      let foreignSubmissionId = '';
+      let ownedAnswerId = '';
+      let foreignAnswerId = '';
+      for (const [scopeType, scopeKey] of [
+        [GradeScopeType.SCHOOL, demoSchoolId],
+        [GradeScopeType.STAGE, demoStageId],
+        [GradeScopeType.GRADE, demoGradeId],
+        [GradeScopeType.SECTION, demoSectionId],
+        [GradeScopeType.CLASSROOM, demoClassroomId],
+      ] as const) {
+        const assessment = await prisma.gradeAssessment.create({
+          data: {
+            schoolId: demoSchoolId,
+            academicYearId: demoYearId,
+            termId: demoTermId,
+            subjectId: demoSubjectId,
+            scopeType,
+            scopeKey,
+            deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+            approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+            type: GradeAssessmentType.QUIZ,
+            titleEn: suffix,
+            date: new Date('2026-09-20'),
+            maxScore: 5,
+            weight: 0,
+          },
+        });
+        assessmentIds.push(assessment.id);
+        const question = await prisma.gradeAssessmentQuestion.create({
+          data: {
+            schoolId: demoSchoolId,
+            assessmentId: assessment.id,
+            type: GradeQuestionType.MCQ_SINGLE,
+            prompt: 'Explain',
+            points: 5,
+            sortOrder: 1,
+            answerKey: { secret: 'ST02_AUTHOR_ONLY' },
+            metadata: { nested: [{ answerKey: 'ST02_METADATA_SECRET' }] },
+          },
+        });
+        await prisma.gradeAssessmentQuestionOption.createMany({
+          data: [true, false].map((isCorrect, index) => ({
+            schoolId: demoSchoolId,
+            assessmentId: assessment.id,
+            questionId: question.id,
+            label: index === 0 ? 'A' : 'B',
+            value: index === 0 ? 'a' : 'b',
+            isCorrect,
+            sortOrder: index + 1,
+          })),
+        });
+        const owned = await prisma.gradeSubmission.create({
+          data: {
+            schoolId: demoSchoolId,
+            assessmentId: assessment.id,
+            termId: demoTermId,
+            studentId: demoStudentId,
+            enrollmentId: demoEnrollmentId,
+            status: GradeSubmissionStatus.SUBMITTED,
+            maxScore: 5,
+          },
+        });
+        const foreign = await prisma.gradeSubmission.create({
+          data: {
+            schoolId: demoSchoolId,
+            assessmentId: assessment.id,
+            termId: demoTermId,
+            studentId: otherStudent.id,
+            enrollmentId: otherEnrollment.id,
+            status: GradeSubmissionStatus.SUBMITTED,
+            maxScore: 5,
+          },
+        });
+        for (const submission of [owned, foreign]) {
+          const answer = await prisma.gradeSubmissionAnswer.create({
+            data: {
+              schoolId: demoSchoolId,
+              assessmentId: assessment.id,
+              submissionId: submission.id,
+              studentId: submission.studentId,
+              questionId: question.id,
+              answerText: 'An answer',
+              maxPoints: 5,
+            },
+          });
+          if (submission.id === owned.id) ownedAnswerId = answer.id;
+          else foreignAnswerId = answer.id;
+        }
+        ownedSubmissionId = owned.id;
+        foreignSubmissionId = foreign.id;
+        const questions = await call(token)
+          .get('/grades/assessments/' + assessment.id + '/questions')
+          .expect(200);
+        expect(JSON.stringify(questions.body)).not.toMatch(
+          /answerKey|isCorrect|ST02_AUTHOR_ONLY|ST02_METADATA_SECRET/,
+        );
+        const list = await call(token)
+          .get('/grades/assessments/' + assessment.id + '/submissions')
+          .expect(200);
+        expect(
+          (list.body as GradeSubmissionsListResponseDto).items.map(
+            (item: { id: string }) => item.id,
+          ),
+        ).toEqual([owned.id]);
+        await call(token)
+          .get('/grades/submissions/' + owned.id)
+          .expect(200);
+        await call(token)
+          .get('/grades/submissions/' + foreign.id)
+          .expect(404);
+        await call(token)
+          .patch(
+            '/grades/submissions/' +
+              foreign.id +
+              '/answers/' +
+              foreignAnswerId +
+              '/review',
+          )
+          .send({ awardedPoints: 3 })
+          .expect(404);
+      }
+      await call(token)
+        .get(
+          '/grades/assessments/' + tenantBQuestionAssessmentId + '/questions',
+        )
+        .expect(404);
+      await call(token)
+        .patch(
+          '/grades/submissions/' +
+            ownedSubmissionId +
+            '/answers/' +
+            ownedAnswerId +
+            '/review',
+        )
+        .send({ awardedPoints: 4 })
+        .expect(200);
+      await call(token)
+        .put('/grades/submissions/' + foreignSubmissionId + '/answers/review')
+        .send({ reviews: [{ answerId: foreignAnswerId, awardedPoints: 3 }] })
+        .expect(404);
+      await call(token)
+        .post('/grades/submissions/' + foreignSubmissionId + '/review/finalize')
+        .expect(404);
+      await call(token)
+        .post('/grades/submissions/' + foreignSubmissionId + '/sync-grade-item')
+        .expect(404);
+      await call(token)
+        .post('/grades/submissions/' + ownedSubmissionId + '/review/finalize')
+        .expect(201);
+      await call(token)
+        .post('/grades/submissions/' + ownedSubmissionId + '/sync-grade-item')
+        .expect(201);
+      const gradebook = await call(token)
+        .get('/grades/gradebook')
+        .query({
+          yearId: demoYearId,
+          termId: demoTermId,
+          scopeType: 'school',
+          subjectId: demoSubjectId,
+        })
+        .expect(200);
+      expect(JSON.stringify(gradebook.body)).toContain(demoStudentId);
+      expect(JSON.stringify(gradebook.body)).not.toContain(otherStudent.id);
+      const wrongGradebook = await call(token)
+        .get('/grades/gradebook')
+        .query({
+          yearId: demoYearId,
+          termId: demoTermId,
+          scopeType: 'school',
+          subjectId: wrongSubject.id,
+        })
+        .expect(200);
+      expect((wrongGradebook.body as GradebookResponseDto).rows).toEqual([]);
+
+      // Explicit authoring permission still requires exact live allocation ownership.
+      await prisma.membership.update({
+        where: { id: membership.id },
+        data: { roleId: authorRole.id },
+      });
+      token = (await login(teacher.email, VIEW_ONLY_PASSWORD)).accessToken;
+      const author = await call(token)
+        .get('/grades/assessments/' + assessmentIds[0] + '/questions')
+        .expect(200);
+      expect(
+        (author.body as GradeAssessmentQuestionsListResponseDto).questions[0]
+          .answerKey,
+      ).toEqual({
+        secret: 'ST02_AUTHOR_ONLY',
+      });
+      expect(
+        (author.body as GradeAssessmentQuestionsListResponseDto).questions[0]
+          .options[0].isCorrect,
+      ).toBe(true);
+      await call(token)
+        .post(
+          '/grades/assessments/' + assessmentIds[0] + '/submissions/resolve',
+        )
+        .send({ studentId: otherStudent.id })
+        .expect(404);
+      const draft = await prisma.gradeAssessment.create({
+        data: {
+          schoolId: demoSchoolId,
+          academicYearId: demoYearId,
+          termId: demoTermId,
+          subjectId: demoSubjectId,
+          scopeType: GradeScopeType.CLASSROOM,
+          scopeKey: demoClassroomId,
+          classroomId: demoClassroomId,
+          deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+          type: GradeAssessmentType.QUIZ,
+          titleEn: suffix,
+          date: new Date('2026-09-20'),
+          maxScore: 5,
+          weight: 0,
+        },
+      });
+      assessmentIds.push(draft.id);
+      const created = await call(token)
+        .post('/grades/assessments/' + draft.id + '/questions')
+        .send({
+          type: 'ESSAY',
+          prompt: 'Explain',
+          points: 5,
+          metadata: { mediaUrl: 'https://example.com/media' },
+        })
+        .expect(201);
+      const qid = (created.body as GradeAssessmentQuestionResponseDto).id;
+      await call(token)
+        .patch('/grades/questions/' + qid)
+        .send({ prompt: 'Revised' })
+        .expect(200);
+      await call(token)
+        .post('/grades/assessments/' + draft.id + '/questions/reorder')
+        .send({ questionIds: [qid] })
+        .expect(201);
+      await call(token)
+        .post('/grades/assessments/' + draft.id + '/questions/points/bulk')
+        .send({ items: [{ questionId: qid, points: 5 }] })
+        .expect(201);
+      await call(token)
+        .patch('/grades/questions/' + qid)
+        .send({ metadata: { nested: [{ href: 'http://example.com/unsafe' }] } })
+        .expect(400);
+      await call(token)
+        .post('/grades/assessments/' + draft.id + '/questions')
+        .send({
+          type: 'ESSAY',
+          prompt: 'Rejected nested media',
+          points: 5,
+          metadata: { assets: [{ href: 'javascript:(alert(1))' }] },
+        })
+        .expect(400);
+      await call(token)
+        .post('/grades/assessments/' + draft.id + '/questions')
+        .send({
+          type: 'MCQ_SINGLE',
+          prompt: 'Rejected option media',
+          points: 5,
+          options: [
+            {
+              label: 'A',
+              isCorrect: true,
+              metadata: { sourceUrl: 'http://example.com/unsafe' },
+            },
+            { label: 'B', isCorrect: false },
+          ],
+        })
+        .expect(400);
+      // A legacy row can predate validation; reads redact it and publication must reject it.
+      await prisma.gradeAssessmentQuestion.update({
+        where: { id: qid },
+        data: {
+          metadata: {
+            nested: [
+              {
+                href: 'https://storage.googleapis.com/test-only/legacy-question-media',
+              },
+            ],
+          },
+        },
+      });
+      const historical = await call(token)
+        .get('/grades/assessments/' + draft.id + '/questions')
+        .expect(200);
+      expect(JSON.stringify(historical.body)).not.toContain(
+        'storage.googleapis.com',
+      );
+      const { accessToken: publishToken } = await login(
+        DEMO_ADMIN_EMAIL,
+        DEMO_ADMIN_PASSWORD,
+      );
+      const rejectedPublish = await call(publishToken)
+        .post('/grades/assessments/' + draft.id + '/publish')
+        .expect(400);
+      expect(
+        (rejectedPublish.body as { error: { code: string } }).error.code,
+      ).toBe('validation.failed');
+      expect(
+        (
+          await prisma.gradeAssessment.findUniqueOrThrow({
+            where: { id: draft.id },
+          })
+        ).approvalStatus,
+      ).toBe(GradeAssessmentApprovalStatus.DRAFT);
+      await call(token)
+        .patch('/grades/questions/' + qid)
+        .send({ metadata: { mediaUrl: 'https://example.com/media' } })
+        .expect(200);
+      for (const change of [
+        { subjectId: wrongSubject.id },
+        { subjectId: demoSubjectId, classroomId: otherClass.id },
+      ]) {
+        allocation = await prisma.teacherSubjectAllocation.update({
+          where: { id: allocation.id },
+          data: change,
+        });
+        await call(token)
+          .get('/grades/assessments/' + draft.id + '/questions')
+          .expect(404);
+        await call(token)
+          .post('/grades/assessments/' + draft.id + '/questions')
+          .send({ type: 'ESSAY', prompt: 'Denied', points: 5 })
+          .expect(404);
+        await call(token)
+          .patch('/grades/questions/' + qid)
+          .send({ prompt: 'Denied' })
+          .expect(404);
+        await call(token)
+          .delete('/grades/questions/' + qid)
+          .expect(404);
+        await call(token)
+          .post('/grades/assessments/' + draft.id + '/questions/reorder')
+          .send({ questionIds: [qid] })
+          .expect(404);
+        await call(token)
+          .get('/grades/submissions/' + ownedSubmissionId)
+          .expect(404);
+        await call(token)
+          .patch(
+            '/grades/submissions/' +
+              ownedSubmissionId +
+              '/answers/' +
+              ownedAnswerId +
+              '/review',
+          )
+          .send({ awardedPoints: 0 })
+          .expect(404);
+      }
+      await prisma.teacherSubjectAllocation.delete({
+        where: { id: allocation.id },
+      });
+      await call(token)
+        .get('/grades/assessments/' + draft.id + '/questions')
+        .expect(404);
+      // Revalidate inside the real mutation transaction even after a prior successful resource read.
+      const context = createRequestContext();
+      context.actor = { id: teacher.id, userType: UserType.TEACHER };
+      context.activeMembership = {
+        membershipId: membership.id,
+        schoolId: demoSchoolId,
+        organizationId: demoOrganizationId,
+        roleId: authorRole.id,
+        permissions: permissions.map((permission) => permission.code),
+      };
+      await runWithRequestContext(context, async () => {
+        await expect(
+          app.get(GradesSubmissionsRepository).updateAnswerReview({
+            answerId: ownedAnswerId,
+            submissionId: ownedSubmissionId,
+            awardedPoints: new Prisma.Decimal(0),
+            correctionStatus: GradeAnswerCorrectionStatus.CORRECTED,
+            reviewerComment: null,
+            reviewerCommentAr: null,
+            reviewedById: teacher.id,
+            reviewedAt: new Date(),
+          }),
+        ).rejects.toMatchObject({ code: 'not_found', httpStatus: 404 });
+      });
+      expect(
+        (
+          await prisma.gradeSubmissionAnswer.findUniqueOrThrow({
+            where: { id: ownedAnswerId },
+          })
+        ).awardedPoints?.toString(),
+      ).toBe('4');
+      expect(
+        await prisma.gradeAssessmentQuestion.findUnique({
+          where: { id: qid },
+          select: { prompt: true },
+        }),
+      ).toEqual({ prompt: 'Revised' });
+      const { accessToken: adminToken } = await login(
+        DEMO_ADMIN_EMAIL,
+        DEMO_ADMIN_PASSWORD,
+      );
+      await call(adminToken)
+        .delete('/grades/questions/' + qid)
+        .expect(200);
+    } finally {
+      await prisma.auditLog.deleteMany({ where: { actorId: teacher.id } });
+      await prisma.gradeItem.deleteMany({
+        where: { assessmentId: { in: assessmentIds } },
+      });
+      await prisma.gradeSubmissionAnswerOption.deleteMany({
+        where: { answer: { assessmentId: { in: assessmentIds } } },
+      });
+      await prisma.gradeSubmissionAnswer.deleteMany({
+        where: { assessmentId: { in: assessmentIds } },
+      });
+      await prisma.gradeSubmission.deleteMany({
+        where: { assessmentId: { in: assessmentIds } },
+      });
+      await prisma.gradeAssessmentQuestionOption.deleteMany({
+        where: { assessmentId: { in: assessmentIds } },
+      });
+      const questionIds = await prisma.gradeAssessmentQuestion.findMany({
+        where: { assessmentId: { in: assessmentIds } },
+        select: { id: true },
+      });
+      await prisma.auditLog.deleteMany({
+        where: {
+          resourceId: {
+            in: [
+              ...assessmentIds,
+              ...questionIds.map((question) => question.id),
+            ],
+          },
+        },
+      });
+      await prisma.gradeAssessmentQuestion.deleteMany({
+        where: { assessmentId: { in: assessmentIds } },
+      });
+      await prisma.gradeAssessment.deleteMany({
+        where: { id: { in: assessmentIds } },
+      });
+      await prisma.teacherSubjectAllocation.deleteMany({
+        where: { teacherUserId: teacher.id },
+      });
+      await prisma.enrollment.delete({ where: { id: otherEnrollment.id } });
+      await prisma.student.delete({ where: { id: otherStudent.id } });
+      await prisma.classroom.delete({ where: { id: otherClass.id } });
+      await prisma.subject.delete({ where: { id: wrongSubject.id } });
+      await prisma.session.deleteMany({ where: { userId: teacher.id } });
+      await prisma.membership.delete({ where: { id: membership.id } });
+      await prisma.user.delete({ where: { id: teacher.id } });
+      await prisma.rolePermission.deleteMany({
+        where: { roleId: authorRole.id },
+      });
+      await prisma.role.delete({ where: { id: authorRole.id } });
+    }
+  }, 60000);
+
+  async function withRemediationFixture(
+    test: (
+      fixture: Awaited<ReturnType<typeof createRemediationFixture>>,
+    ) => Promise<void>,
+  ) {
+    const fixture = await createRemediationFixture();
+    try {
+      await test(fixture);
+    } finally {
+      await prisma.gradeItem.deleteMany({
+        where: { assessmentId: { in: fixture.assessmentIds } },
+      });
+      await prisma.gradeSubmissionAnswerOption.deleteMany({
+        where: { answer: { assessmentId: { in: fixture.assessmentIds } } },
+      });
+      await prisma.gradeSubmissionAnswer.deleteMany({
+        where: { assessmentId: { in: fixture.assessmentIds } },
+      });
+      await prisma.gradeSubmission.deleteMany({
+        where: { assessmentId: { in: fixture.assessmentIds } },
+      });
+      await prisma.gradeAssessmentQuestionOption.deleteMany({
+        where: { assessmentId: { in: fixture.assessmentIds } },
+      });
+      await prisma.gradeAssessmentQuestion.deleteMany({
+        where: { assessmentId: { in: fixture.assessmentIds } },
+      });
+      await prisma.gradeAssessment.deleteMany({
+        where: { id: { in: fixture.assessmentIds } },
+      });
+      await prisma.teacherSubjectAllocation.deleteMany({
+        where: { teacherUserId: fixture.teacher.id },
+      });
+      await prisma.enrollment.deleteMany({
+        where: {
+          studentId: { in: fixture.students.map((student) => student.id) },
+        },
+      });
+      await prisma.student.deleteMany({
+        where: { id: { in: fixture.students.map((student) => student.id) } },
+      });
+      await prisma.classroom.delete({ where: { id: fixture.otherClass.id } });
+      await prisma.subject.delete({ where: { id: fixture.otherSubject.id } });
+      await prisma.membership.deleteMany({
+        where: { userId: { in: [fixture.teacher.id, fixture.studentUser.id] } },
+      });
+      await prisma.user.deleteMany({
+        where: { id: { in: [fixture.teacher.id, fixture.studentUser.id] } },
+      });
+    }
+  }
+
+  async function createRemediationFixture() {
+    const suffix = 'st02-remediation-' + Date.now();
+    const teacher = await prisma.user.create({
+      data: {
+        email: suffix + '-teacher@security.moazez.local',
+        firstName: 'Remediation',
+        lastName: 'Teacher',
+        userType: UserType.TEACHER,
+        status: UserStatus.ACTIVE,
+      },
+    });
+    const studentUser = await prisma.user.create({
+      data: {
+        email: suffix + '-student@security.moazez.local',
+        firstName: 'Remediation',
+        lastName: 'Student',
+        userType: UserType.STUDENT,
+        status: UserStatus.ACTIVE,
+      },
+    });
+    for (const [user, roleKey] of [
+      [teacher, 'teacher'],
+      [studentUser, 'student'],
+    ] as const) {
+      const role = await prisma.role.findFirstOrThrow({
+        where: { key: roleKey, isSystem: true, schoolId: null },
+      });
+      await prisma.membership.create({
+        data: {
+          userId: user.id,
+          userType: user.userType,
+          roleId: role.id,
+          schoolId: demoSchoolId,
+          organizationId: demoOrganizationId,
+          status: MembershipStatus.ACTIVE,
+        },
+      });
+    }
+    const otherClass = await prisma.classroom.create({
+      data: {
+        schoolId: demoSchoolId,
+        sectionId: demoSectionId,
+        nameEn: suffix,
+        nameAr: suffix,
+      },
+    });
+    const otherSubject = await prisma.subject.create({
+      data: {
+        schoolId: demoSchoolId,
+        code: suffix,
+        nameEn: suffix,
+        nameAr: suffix,
+      },
+    });
+    const students = await Promise.all(
+      [0, 1].map((index) =>
+        prisma.student.create({
+          data: {
+            schoolId: demoSchoolId,
+            organizationId: demoOrganizationId,
+            firstName: suffix,
+            lastName: String(index),
+            userId: index === 0 ? studentUser.id : null,
+            status: StudentStatus.ACTIVE,
+          },
+        }),
+      ),
+    );
+    const enrollments = await Promise.all(
+      students.map((student, index) =>
+        prisma.enrollment.create({
+          data: {
+            schoolId: demoSchoolId,
+            studentId: student.id,
+            classroomId: index === 0 ? demoClassroomId : otherClass.id,
+            academicYearId: demoYearId,
+            termId: demoTermId,
+            enrolledAt: new Date('2026-09-01'),
+          },
+        }),
+      ),
+    );
+    const allocation = await prisma.teacherSubjectAllocation.create({
+      data: {
+        schoolId: demoSchoolId,
+        teacherUserId: teacher.id,
+        subjectId: demoSubjectId,
+        classroomId: demoClassroomId,
+        termId: demoTermId,
+      },
+    });
+    const assessmentIds: string[] = [];
+    async function assessment(
+      scopeType: GradeScopeType = GradeScopeType.SCHOOL,
+      scopeKey = demoSchoolId,
+    ) {
+      const record = await prisma.gradeAssessment.create({
+        data: {
+          schoolId: demoSchoolId,
+          academicYearId: demoYearId,
+          termId: demoTermId,
+          subjectId: demoSubjectId,
+          scopeType,
+          scopeKey,
+          titleEn: suffix,
+          date: new Date('2026-09-20'),
+          maxScore: 5,
+          weight: 0,
+          type: GradeAssessmentType.QUIZ,
+          approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+          deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+        },
+      });
+      assessmentIds.push(record.id);
+      return record;
+    }
+    async function asActor<T>(
+      actor: { id: string; userType: UserType },
+      action: () => Promise<T>,
+    ) {
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: {
+          userId: actor.id,
+          schoolId: demoSchoolId,
+          status: MembershipStatus.ACTIVE,
+        },
+      });
+      const context = createRequestContext();
+      context.actor = actor;
+      context.activeMembership = {
+        membershipId: membership.id,
+        schoolId: demoSchoolId,
+        organizationId: demoOrganizationId,
+        roleId: membership.roleId,
+        permissions: [],
+      };
+      return runWithRequestContext(context, action);
+    }
+    return {
+      teacher,
+      studentUser,
+      students,
+      enrollments,
+      otherClass,
+      otherSubject,
+      allocation,
+      assessmentIds,
+      assessment,
+      asActor,
+    };
+  }
+
+  it('ST02-R01 bulk answers recheck every submission after a successful read and leave answers/options unchanged on denial', async () => {
+    await withRemediationFixture(async (fixture) => {
+      const { teacher, students, enrollments, otherClass, asActor } = fixture;
+      const assessment = await fixture.assessment();
+      await prisma.teacherSubjectAllocation.create({
+        data: {
+          schoolId: demoSchoolId,
+          teacherUserId: teacher.id,
+          subjectId: demoSubjectId,
+          classroomId: otherClass.id,
+          termId: demoTermId,
+        },
+      });
+      const question = await prisma.gradeAssessmentQuestion.create({
+        data: {
+          schoolId: demoSchoolId,
+          assessmentId: assessment.id,
+          type: GradeQuestionType.MCQ_SINGLE,
+          prompt: 'Bulk authorization',
+          points: 5,
+          sortOrder: 1,
+        },
+      });
+      const options = await Promise.all(
+        [1, 2].map((sortOrder) =>
+          prisma.gradeAssessmentQuestionOption.create({
+            data: {
+              schoolId: demoSchoolId,
+              assessmentId: assessment.id,
+              questionId: question.id,
+              label: String(sortOrder),
+              sortOrder,
+            },
+          }),
+        ),
+      );
+      const submissions = await Promise.all(
+        students.map((student, index) =>
+          prisma.gradeSubmission.create({
+            data: {
+              schoolId: demoSchoolId,
+              assessmentId: assessment.id,
+              studentId: student.id,
+              enrollmentId: enrollments[index].id,
+              termId: demoTermId,
+              maxScore: 5,
+            },
+          }),
+        ),
+      );
+      const repository = app.get(GradesSubmissionsRepository);
+      const inputs = submissions.map((submission) => ({
+        schoolId: demoSchoolId,
+        assessmentId: assessment.id,
+        submissionId: submission.id,
+        studentId: submission.studentId,
+        questionId: question.id,
+        maxPoints: new Prisma.Decimal(5),
+        payload: {
+          answerText: null,
+          answerJson: null,
+          selectedOptionIds: [options[0].id],
+        },
+      }));
+      await asActor(teacher, async () => {
+        const saved =
+          await repository.bulkUpsertAnswersWithSelectedOptions(inputs);
+        expect(saved).toHaveLength(2);
+        for (const submission of submissions)
+          expect(
+            await repository.findSubmissionDetail(submission.id),
+          ).not.toBeNull();
+      });
+      const snapshot = () =>
+        prisma.gradeSubmissionAnswer.findMany({
+          where: { assessmentId: assessment.id },
+          orderBy: { id: 'asc' },
+          include: { selectedOptions: { orderBy: { optionId: 'asc' } } },
+        });
+      const before = await snapshot();
+      const changed = inputs.map((input) => ({
+        ...input,
+        payload: { ...input.payload, selectedOptionIds: [options[1].id] },
+      }));
+      // Only the second submission loses access, after both reads succeeded.
+      await prisma.enrollment.update({
+        where: { id: enrollments[1].id },
+        data: { endedAt: new Date() },
+      });
+      await asActor(teacher, async () => {
+        expect(
+          await repository.findSubmissionDetail(submissions[0].id),
+        ).not.toBeNull();
+        await expect(
+          repository.bulkUpsertAnswersWithSelectedOptions(changed),
+        ).rejects.toMatchObject({ code: 'not_found', httpStatus: 404 });
+      });
+      expect(await snapshot()).toEqual(before);
+      await prisma.enrollment.update({
+        where: { id: enrollments[1].id },
+        data: { endedAt: null },
+      });
+      // Allocation revocation is also checked inside the bulk mutation transaction.
+      await asActor(teacher, async () => {
+        expect(
+          await repository.findSubmissionDetail(submissions[1].id),
+        ).not.toBeNull();
+        await prisma.teacherSubjectAllocation.deleteMany({
+          where: { teacherUserId: teacher.id, classroomId: otherClass.id },
+        });
+        await expect(
+          repository.bulkUpsertAnswersWithSelectedOptions(changed),
+        ).rejects.toMatchObject({ code: 'not_found', httpStatus: 404 });
+      });
+      expect(await snapshot()).toEqual(before);
+      await asActor(teacher, async () => {
+        const [saved] = await repository.bulkUpsertAnswersWithSelectedOptions([
+          changed[0],
+        ]);
+        expect(saved.selectedOptions.map((option) => option.optionId)).toEqual([
+          options[1].id,
+        ]);
+        // Single-answer behavior still replaces selected options normally.
+        const single = await repository.upsertAnswerWithSelectedOptions(
+          inputs[0],
+        );
+        expect(single.selectedOptions.map((option) => option.optionId)).toEqual(
+          [options[0].id],
+        );
+      });
+    });
+  });
+
+  it('ST02-R02 nullable legacy GradeItems use live student enrollment across item and gradebook reads without exposing unrelated records', async () => {
+    await withRemediationFixture(async (fixture) => {
+      const {
+        teacher,
+        studentUser,
+        students,
+        enrollments,
+        allocation,
+        asActor,
+      } = fixture;
+      const items = app.get(GradesAssessmentItemsRepository);
+      const readModel = app.get(GradesReadModelRepository);
+      const ownedItems: string[] = [];
+      for (const [scopeType, scopeKey] of [
+        [GradeScopeType.SCHOOL, demoSchoolId],
+        [GradeScopeType.STAGE, demoStageId],
+        [GradeScopeType.GRADE, demoGradeId],
+        [GradeScopeType.SECTION, demoSectionId],
+        [GradeScopeType.CLASSROOM, demoClassroomId],
+      ] as const) {
+        const assessment = await fixture.assessment(scopeType, scopeKey);
+        const records = await Promise.all(
+          students.map((student) =>
+            prisma.gradeItem.create({
+              data: {
+                schoolId: demoSchoolId,
+                assessmentId: assessment.id,
+                termId: demoTermId,
+                studentId: student.id,
+                enrollmentId: null,
+                score: 4,
+                status: GradeItemStatus.ENTERED,
+              },
+            }),
+          ),
+        );
+        ownedItems.push(records[0].id);
+        await asActor(teacher, async () => {
+          expect(
+            (
+              await items.listAssessmentItems({ assessmentId: assessment.id })
+            ).map((item) => item.id),
+          ).toEqual([records[0].id]);
+          expect(
+            (
+              await items.findGradeItemByAssessmentAndStudent({
+                assessmentId: assessment.id,
+                studentId: students[0].id,
+              })
+            )?.id,
+          ).toBe(records[0].id);
+          expect(
+            await items.findGradeItemByAssessmentAndStudent({
+              assessmentId: assessment.id,
+              studentId: students[1].id,
+            }),
+          ).toBeNull();
+          expect(
+            (
+              await items.findGradeItemsByAssessmentAndStudents({
+                assessmentId: assessment.id,
+                studentIds: students.map((student) => student.id),
+              })
+            ).map((item) => item.id),
+          ).toEqual([records[0].id]);
+          expect(
+            (
+              await readModel.listGradeItems({
+                assessmentIds: [assessment.id],
+                studentIds: students.map((student) => student.id),
+              })
+            ).map((item) => item.id),
+          ).toEqual([records[0].id]);
+        });
+        await asActor(studentUser, async () => {
+          expect(
+            (
+              await items.listAssessmentItems({ assessmentId: assessment.id })
+            ).map((item) => item.id),
+          ).toEqual([records[0].id]);
+          expect(
+            (
+              await readModel.listGradeItems({
+                assessmentIds: [assessment.id],
+                studentIds: students.map((student) => student.id),
+              })
+            ).map((item) => item.id),
+          ).toEqual([records[0].id]);
+          expect(
+            await items.findGradeItemByAssessmentAndStudent({
+              assessmentId: assessment.id,
+              studentId: students[1].id,
+            }),
+          ).toBeNull();
+        });
+        await asActor(
+          { id: manageOnlyUserId, userType: UserType.SCHOOL_USER },
+          async () => {
+            expect(
+              (await items.listAssessmentItems({ assessmentId: assessment.id }))
+                .map((item) => item.id)
+                .sort(),
+            ).toEqual(records.map((item) => item.id).sort());
+          },
+        );
+      }
+      const virtualMissingAssessment = await fixture.assessment();
+      const gradebookQuery = {
+        yearId: demoYearId,
+        termId: demoTermId,
+        subjectId: demoSubjectId,
+        scopeType: 'classroom',
+        classroomId: demoClassroomId,
+      };
+      await asActor(teacher, async () => {
+        const gradebook = await app
+          .get(GetGradesGradebookUseCase)
+          .execute(gradebookQuery);
+        const row = gradebook.rows.find(
+          (record) => record.studentId === students[0].id,
+        );
+        expect(row).toBeDefined();
+        for (const itemId of ownedItems)
+          expect(row?.cells).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                itemId,
+                score: 4,
+                isVirtualMissing: false,
+              }),
+            ]),
+          );
+        expect(
+          gradebook.rows.some((record) => record.studentId === students[1].id),
+        ).toBe(false);
+        expect(
+          row?.cells.some(
+            (cell) =>
+              cell.assessmentId === virtualMissingAssessment.id &&
+              cell.isVirtualMissing &&
+              cell.itemId === null,
+          ),
+        ).toBe(true);
+        expect(
+          await readModel.listGradeItems({
+            assessmentIds: [tenantBAssessmentId],
+            studentIds: [tenantBStudentId],
+          }),
+        ).toEqual([]);
+      });
+      for (const change of [
+        { endedAt: new Date() },
+        { endedAt: null, termId: demoClosedTermId },
+      ]) {
+        await prisma.enrollment.update({
+          where: { id: enrollments[0].id },
+          data: change,
+        });
+        await asActor(teacher, async () => {
+          expect(
+            await readModel.listGradeItems({
+              assessmentIds: fixture.assessmentIds,
+              studentIds: [students[0].id],
+            }),
+          ).toEqual([]);
+        });
+      }
+      // Year-wide enrollment remains applicable; no legacy item backfill is needed.
+      await prisma.enrollment.update({
+        where: { id: enrollments[0].id },
+        data: { endedAt: null, termId: null },
+      });
+      await asActor(teacher, async () => {
+        expect(
+          await readModel.listGradeItems({
+            assessmentIds: fixture.assessmentIds,
+            studentIds: [students[0].id],
+          }),
+        ).toHaveLength(5);
+      });
+      for (const change of [
+        { subjectId: fixture.otherSubject.id },
+        { subjectId: demoSubjectId, classroomId: fixture.otherClass.id },
+      ]) {
+        await prisma.teacherSubjectAllocation.update({
+          where: { id: allocation.id },
+          data: change,
+        });
+        await asActor(teacher, async () => {
+          expect(
+            await items.findGradeItemsByAssessmentAndStudents({
+              assessmentId: fixture.assessmentIds[0],
+              studentIds: [students[0].id],
+            }),
+          ).toEqual([]);
+          expect(
+            await readModel.listGradeItems({
+              assessmentIds: fixture.assessmentIds,
+              studentIds: [students[0].id],
+            }),
+          ).toEqual([]);
+        });
+      }
+      expect(
+        await prisma.gradeItem.count({
+          where: { id: { in: ownedItems }, enrollmentId: null },
+        }),
+      ).toBe(5);
     });
   });
 });

@@ -48,7 +48,7 @@ describe('grade assessment question presenter', () => {
   }
 
   it('maps question shape and numeric values', () => {
-    const result = presentGradeAssessmentQuestion(questionRecord());
+    const result = presentGradeAssessmentQuestion(questionRecord(), true);
 
     expect(result).toEqual({
       id: 'question-1',
