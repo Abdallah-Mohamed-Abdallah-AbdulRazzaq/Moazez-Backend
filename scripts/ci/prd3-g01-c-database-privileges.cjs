@@ -1045,7 +1045,7 @@ function verifyOwnershipAndPrivileges(context) {
   assert.equal(
     queryScalar(
       context,
-      `SELECT count(*) = 2 AND count(DISTINCT procedure.proname) = 2 AND bool_and(
+      `SELECT count(*) = 3 AND count(DISTINCT procedure.proname) = 3 AND bool_and(
          CASE procedure.proname
            WHEN 'normalize_learning_media_original_name' THEN
              procedure.provolatile = 'i'
@@ -1062,6 +1062,15 @@ function verifyOwnershipAndPrivileges(context) {
              AND procedure.proparallel = 'u'
              AND COALESCE(procedure.proconfig = ARRAY['search_path=pg_catalog']::text[], false)
              AND language.lanname = 'plpgsql'
+           WHEN 'enforce_assessment_upload_contract' THEN
+             procedure.pronargs = 0
+             AND procedure.prorettype = 'trigger'::regtype
+             AND procedure.provolatile = 'v'
+             AND NOT procedure.proisstrict
+             AND NOT procedure.prosecdef
+             AND procedure.proparallel = 'u'
+             AND COALESCE(procedure.proconfig = ARRAY['search_path=public, pg_temp']::text[], false)
+             AND language.lanname = 'plpgsql'
            ELSE false
          END
        )
@@ -1073,6 +1082,22 @@ function verifyOwnershipAndPrivileges(context) {
     't',
   );
   for (const { login } of Object.values(RUNTIME_ROLES)) {
+    assert.equal(
+      queryScalar(
+        context,
+        `SELECT NOT has_function_privilege(${sqlLiteral(login)}, 'public.enforce_assessment_upload_contract()', 'EXECUTE')
+           AND NOT EXISTS (
+             SELECT 1
+             FROM pg_catalog.pg_proc procedure
+             JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
+             JOIN pg_catalog.pg_roles grantee ON grantee.rolname = ${sqlLiteral(login)}
+             CROSS JOIN LATERAL aclexplode(COALESCE(procedure.proacl, acldefault('f', procedure.proowner))) acl
+             WHERE namespace.nspname = 'public' AND procedure.proname = 'enforce_assessment_upload_contract'
+               AND acl.grantee IN (0, grantee.oid)
+           )`,
+      ),
+      't',
+    );
     assert.equal(
       queryScalar(
         context,
