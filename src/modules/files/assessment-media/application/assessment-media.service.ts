@@ -182,9 +182,17 @@ export class AssessmentMediaService {
         actorId: owner.actorId,
         reason,
       });
-      await this.repository
-        .fail(owner, uploadId, reason, claim.claimId)
-        .catch(() => undefined);
+      try {
+        await claim.compensate(reason);
+      } catch {
+        this.logger.error({
+          event: 'assessment_media.verification.compensation_failed',
+          schoolId: owner.schoolId,
+          actorId: owner.actorId,
+          uploadId,
+          reason,
+        });
+      }
       if (error instanceof DomainException) throw error;
       throw new AssessmentMediaException('verification_failed');
     }

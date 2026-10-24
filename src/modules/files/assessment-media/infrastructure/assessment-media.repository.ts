@@ -50,6 +50,15 @@ type ClaimResult =
       claimId: string;
       policy: EffectiveAssessmentMediaPolicy;
     };
+type VerificationTarget = Readonly<
+  Pick<
+    AssessmentMediaOwner,
+    'schoolId' | 'organizationId' | 'actorId' | 'purpose' | 'contextId'
+  > & {
+    uploadId: string;
+    claimId: string;
+  }
+>;
 
 @Injectable()
 export class AssessmentMediaRepository {
@@ -172,44 +181,50 @@ export class AssessmentMediaRepository {
     owner: AssessmentMediaOwner,
     data: ReservedUpload,
   ): Promise<{ created: boolean; session: FileUploadSession }> {
-    return this.transaction(owner, async (tx, policy) => {
-      const existing = await tx.fileUploadSession.findFirst({
-        where: {
-          createdByUserId: owner.actorId,
-          purpose: owner.purpose,
-          clientRequestId: data.clientRequestId,
-        },
-      });
-      if (existing) {
-        if (
-          existing.purposeContextId !== owner.contextId ||
-          existing.originalName !== data.originalName ||
-          existing.expectedMimeType !== data.expectedMimeType ||
-          existing.expectedSizeBytes !== data.expectedSizeBytes
-        )
-          throw new AssessmentMediaException('idempotency_conflict');
-        if (existing.status === 'READY')
-          await this.assertReadyRelationship(tx, existing);
-        return { created: false, session: existing };
-      }
-      assertAssessmentUploadPolicy(
-        policy,
-        owner,
-        data.expectedMimeType,
-        data.expectedSizeBytes,
-      );
-      const now = new Date();
-      // Aggregate in PostgreSQL: retained history must not require unbounded
-      // application buffering. The school mutex makes reservation checks atomic.
-      const [usage] = await tx.$queryRaw<
-        Array<{
-          resourceCount: bigint;
-          resourceBytes: bigint;
-          physicalBytes: bigint;
-          concurrentCount: bigint;
-          hourlyCount: bigint;
-        }>
-      >`
+    return this.transaction(
+      owner,
+      async (tx, policy) => {
+        const existing = await tx.fileUploadSession.findFirst({
+          where: {
+            createdByUserId: owner.actorId,
+            purpose: owner.purpose,
+            clientRequestId: data.clientRequestId,
+          },
+        });
+        if (existing) {
+          if (
+            existing.purposeContextId !== owner.contextId ||
+            existing.originalName !== data.originalName ||
+            existing.expectedMimeType !== data.expectedMimeType ||
+            existing.expectedSizeBytes !== data.expectedSizeBytes
+          )
+            throw new AssessmentMediaException('idempotency_conflict');
+          if (existing.status === 'READY') {
+            await this.assertReadyRelationship(tx, existing);
+            return { created: false, session: existing };
+          }
+          await this.authorize(tx, owner, false);
+          return { created: false, session: existing };
+        }
+        await this.authorize(tx, owner, false);
+        assertAssessmentUploadPolicy(
+          policy,
+          owner,
+          data.expectedMimeType,
+          data.expectedSizeBytes,
+        );
+        const now = new Date();
+        // Aggregate in PostgreSQL: retained history must not require unbounded
+        // application buffering. The school mutex makes reservation checks atomic.
+        const [usage] = await tx.$queryRaw<
+          Array<{
+            resourceCount: bigint;
+            resourceBytes: bigint;
+            physicalBytes: bigint;
+            concurrentCount: bigint;
+            hourlyCount: bigint;
+          }>
+        >`
         WITH reserved AS (
           SELECT *, (latest_upload_url_expires_at > ${now}
             OR (status IN ('CREATED', 'UPLOADING', 'VERIFYING') AND expires_at > ${now})) AS active
@@ -229,30 +244,32 @@ export class AssessmentMediaRepository {
           count(*) FILTER (WHERE created_by_user_id = ${owner.actorId}::uuid
             AND created_at > ${new Date(now.getTime() - 3_600_000)}) AS "hourlyCount"
         FROM reserved`;
-      if (
-        usage.resourceCount >= BigInt(policy.maximumFilesPerResource) ||
-        usage.resourceBytes + data.expectedSizeBytes >
-          policy.maximumResourceBytes ||
-        usage.physicalBytes + 2n * data.expectedSizeBytes >
-          policy.maximumSchoolBytes ||
-        usage.concurrentCount >= BigInt(policy.maximumConcurrentUploads)
-      )
-        throw new AssessmentMediaException('quota_exceeded');
-      if (usage.hourlyCount >= BigInt(policy.maximumUploadsPerHour))
-        throw new AssessmentMediaException('rate_exceeded');
-      const session = await tx.fileUploadSession.create({
-        data: {
-          ...data,
-          schoolId: owner.schoolId,
-          organizationId: owner.organizationId,
-          createdByUserId: owner.actorId,
-          purpose: owner.purpose,
-          purposeContextId: owner.contextId,
-        },
-      });
-      await this.audit(tx, owner, session, 'created');
-      return { created: true, session };
-    });
+        if (
+          usage.resourceCount >= BigInt(policy.maximumFilesPerResource) ||
+          usage.resourceBytes + data.expectedSizeBytes >
+            policy.maximumResourceBytes ||
+          usage.physicalBytes + 2n * data.expectedSizeBytes >
+            policy.maximumSchoolBytes ||
+          usage.concurrentCount >= BigInt(policy.maximumConcurrentUploads)
+        )
+          throw new AssessmentMediaException('quota_exceeded');
+        if (usage.hourlyCount >= BigInt(policy.maximumUploadsPerHour))
+          throw new AssessmentMediaException('rate_exceeded');
+        const session = await tx.fileUploadSession.create({
+          data: {
+            ...data,
+            schoolId: owner.schoolId,
+            organizationId: owner.organizationId,
+            createdByUserId: owner.actorId,
+            purpose: owner.purpose,
+            purposeContextId: owner.contextId,
+          },
+        });
+        await this.audit(tx, owner, session, 'created');
+        return { created: true, session };
+      },
+      true,
+    );
   }
 
   async publishCapability(
@@ -287,45 +304,102 @@ export class AssessmentMediaRepository {
     });
   }
 
-  async claim(
-    owner: AssessmentMediaOwner,
-    uploadId: string,
-  ): Promise<ClaimResult> {
-    return this.transaction(owner, async (tx, policy): Promise<ClaimResult> => {
-      const session = await this.lock(tx, owner, uploadId);
-      assertAssessmentUploadPolicy(
-        policy,
-        owner,
-        session.expectedMimeType,
-        session.expectedSizeBytes,
-      );
-      if (session.status === 'READY') {
-        await this.assertReadyRelationship(tx, session);
-        return { kind: 'ready', session };
-      }
-      if (session.expiresAt <= new Date()) {
-        if (['CREATED', 'UPLOADING', 'VERIFYING'].includes(session.status))
-          await tx.fileUploadSession.update({
-            where: { id: uploadId },
-            data: { status: 'EXPIRED', assessmentVerificationClaimId: null },
-          });
-        return { kind: 'expired' };
-      }
-      if (session.status === 'VERIFYING')
-        throw new AssessmentMediaException('verification_in_progress');
-      assertAssessmentTransition(
-        session.status,
-        FileUploadSessionStatus.VERIFYING,
-      );
-      if (session.status !== 'UPLOADING')
-        throw new AssessmentMediaException('state_conflict');
-      const claimId = randomUUID();
-      const claimed = await tx.fileUploadSession.update({
-        where: { id: uploadId },
-        data: { status: 'VERIFYING', assessmentVerificationClaimId: claimId },
-      });
-      return { kind: 'claimed', session: claimed, claimId, policy };
+  async claim(owner: AssessmentMediaOwner, uploadId: string) {
+    const claim = await this.transaction(
+      owner,
+      async (tx, policy): Promise<ClaimResult> => {
+        const session = await this.lock(tx, owner, uploadId);
+        if (session.status === 'READY') {
+          await this.assertReadyRelationship(tx, session);
+          return { kind: 'ready', session };
+        }
+        await this.authorize(tx, owner, false);
+        assertAssessmentUploadPolicy(
+          policy,
+          owner,
+          session.expectedMimeType,
+          session.expectedSizeBytes,
+        );
+        if (session.expiresAt <= new Date()) {
+          if (['CREATED', 'UPLOADING', 'VERIFYING'].includes(session.status))
+            await tx.fileUploadSession.update({
+              where: { id: uploadId },
+              data: { status: 'EXPIRED', assessmentVerificationClaimId: null },
+            });
+          return { kind: 'expired' };
+        }
+        if (session.status === 'VERIFYING')
+          throw new AssessmentMediaException('verification_in_progress');
+        assertAssessmentTransition(
+          session.status,
+          FileUploadSessionStatus.VERIFYING,
+        );
+        if (session.status !== 'UPLOADING')
+          throw new AssessmentMediaException('state_conflict');
+        const claimId = randomUUID();
+        const claimed = await tx.fileUploadSession.update({
+          where: { id: uploadId },
+          data: { status: 'VERIFYING', assessmentVerificationClaimId: claimId },
+        });
+        return { kind: 'claimed', session: claimed, claimId, policy };
+      },
+      true,
+    );
+    if (claim.kind !== 'claimed') return claim;
+    // Only a committed, authorized claim issues this internal compensation handle.
+    // Capture persisted identity now; neither the service nor verifier selects its target.
+    const target: VerificationTarget = Object.freeze({
+      uploadId: claim.session.id,
+      schoolId: claim.session.schoolId,
+      organizationId: claim.session.organizationId,
+      actorId: claim.session.createdByUserId,
+      purpose: claim.session.purpose as AssessmentMediaOwner['purpose'],
+      contextId: claim.session.purposeContextId!,
+      claimId: claim.claimId,
     });
+    return {
+      ...claim,
+      compensate: (reason: AssessmentMediaReason) =>
+        this.compensateVerification(target, reason),
+    };
+  }
+
+  private async compensateVerification(
+    target: VerificationTarget,
+    reason: AssessmentMediaReason,
+  ): Promise<void> {
+    // No live actor authorization: it may have been revoked since claim issuance.
+    // This bounded raw transition has no caller-selected scope or target and grants
+    // no other operation. The claim predicate serializes with cancel/expiry/finish.
+    await this.prisma.$transaction(
+      async (tx) => {
+        const now = new Date();
+        const [terminal] = await tx.$queryRaw<
+          Array<{ id: string; status: string }>
+        >`
+        UPDATE file_upload_sessions
+        SET status = CASE WHEN expires_at <= ${now} THEN 'EXPIRED'::file_upload_session_status
+                         ELSE 'FAILED'::file_upload_session_status END,
+            failed_at = CASE WHEN expires_at <= ${now} THEN NULL ELSE ${now} END,
+            failure_reason = CASE WHEN expires_at <= ${now} THEN NULL ELSE ${reason} END,
+            assessment_verification_claim_id = NULL, updated_at = ${now}
+        WHERE id = ${target.uploadId}::uuid AND school_id = ${target.schoolId}::uuid
+          AND organization_id = ${target.organizationId}::uuid
+          AND created_by_user_id = ${target.actorId}::uuid AND purpose::text = ${target.purpose}
+          AND purpose_context_id = ${target.contextId}::uuid
+          AND assessment_verification_claim_id = ${target.claimId}::uuid AND status = 'VERIFYING'
+        RETURNING id, status`;
+        if (!terminal) return;
+        await this.audit(
+          tx,
+          target,
+          { id: terminal.id, fileId: null },
+          terminal.status === 'EXPIRED' ? 'expired' : 'failed',
+          reason,
+        );
+      },
+      { maxWait: 5000, timeout: 15_000 },
+    );
   }
 
   async finish(
@@ -550,8 +624,11 @@ export class AssessmentMediaRepository {
 
   private async audit(
     tx: Prisma.TransactionClient,
-    owner: AssessmentMediaOwner,
-    session: FileUploadSession,
+    owner: Pick<
+      AssessmentMediaOwner,
+      'actorId' | 'organizationId' | 'schoolId' | 'purpose' | 'contextId'
+    >,
+    session: Pick<FileUploadSession, 'id' | 'fileId'>,
     action: string,
     reason?: AssessmentMediaReason,
   ): Promise<void> {

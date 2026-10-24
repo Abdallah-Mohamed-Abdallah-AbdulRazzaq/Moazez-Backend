@@ -43,6 +43,219 @@ describe('ST-03 real PostgreSQL and bounded private storage lifecycle', () => {
       await prisma.file.count({ where: { schoolId: fixture.school.schoolId } }),
     ).toBe(0);
 
+  it.each(['published', 'locked', 'disabled', 'mime-removed'] as const)(
+    'replays READY Complete and identical Create after %s without new storage or verification',
+    async (change) => {
+      const grade = change === 'locked';
+      const resource = grade
+        ? await fixture.assessment()
+        : await fixture.homework();
+      const selectedPurpose = grade ? 'GRADE_ASSESSMENT_MEDIA' : purpose;
+      const uploaded = await asTeacher(() =>
+        fixture.upload(resource.id, undefined, selectedPurpose),
+      );
+      const ready = await asTeacher(() =>
+        fixture.service.complete(
+          selectedPurpose,
+          resource.id,
+          uploaded.intent.uploadId,
+        ),
+      );
+      if (change === 'published')
+        await prisma.homeworkAssignment.update({
+          where: { id: resource.id },
+          data: { status: 'PUBLISHED', publishedAt: new Date() },
+        });
+      if (change === 'locked')
+        await prisma.gradeAssessment.update({
+          where: { id: resource.id },
+          data: { lockedAt: new Date() },
+        });
+      if (change === 'disabled' || change === 'mime-removed')
+        await prisma.schoolAssessmentMediaPolicy.update({
+          where: { schoolId: fixture.school.schoolId },
+          data:
+            change === 'disabled'
+              ? { uploadsEnabled: false }
+              : { allowedMimeTypes: [] },
+        });
+      const issue = jest.spyOn(
+        fixture.storage,
+        'createBoundedUploadCapability',
+      );
+      const write = jest.spyOn(fixture.storage, 'saveObject');
+      const read = jest.spyOn(fixture.storage, 'getObject');
+      const calls = fixture.security.calls;
+      const create = (input = uploaded.command) =>
+        grade
+          ? fixture.service.createGradeAssessmentUpload(resource.id, input)
+          : fixture.service.createHomeworkAssignmentUpload(resource.id, input);
+      expect(
+        await asTeacher(() =>
+          fixture.service.complete(
+            selectedPurpose,
+            resource.id,
+            ready.uploadId,
+          ),
+        ),
+      ).toEqual(ready);
+      expect(await asTeacher(() => create())).toEqual(ready);
+      await expect(
+        asTeacher(() =>
+          create({ ...uploaded.command, clientRequestId: randomUUID() }),
+        ),
+      ).rejects.toMatchObject({
+        httpStatus: change === 'published' ? 404 : 409,
+      });
+      expect(fixture.security.calls).toBe(calls);
+      expect(issue).not.toHaveBeenCalled();
+      expect(write).not.toHaveBeenCalled();
+      expect(read).not.toHaveBeenCalled();
+      expect(
+        await prisma.file.count({
+          where: { schoolId: fixture.school.schoolId },
+        }),
+      ).toBe(1);
+      expect(
+        await prisma.auditLog.count({
+          where: { resourceId: ready.uploadId, action: 'upload.ready' },
+        }),
+      ).toBe(1);
+    },
+  );
+
+  it('binds compensation to its issued immutable identity despite mutation of returned claim data', async () => {
+    const homework = await fixture.homework();
+    const first = await asTeacher(() => fixture.upload(homework.id));
+    const second = await asTeacher(() => fixture.upload(homework.id));
+    const owner = await fixture.owner('teacher', purpose, homework.id);
+    const claim = await asTeacher(() =>
+      fixture.repository.claim(owner, first.intent.uploadId),
+    );
+    const other = await asTeacher(() =>
+      fixture.repository.claim(owner, second.intent.uploadId),
+    );
+    if (claim.kind !== 'claimed' || other.kind !== 'claimed')
+      throw new Error('Expected committed claims');
+    Object.assign(claim.session, other.session, {
+      schoolId: fixture.schools[1].schoolId,
+      purposeContextId: randomUUID(),
+    });
+    claim.claimId = other.claimId;
+    await prisma.membership.update({
+      where: { id: fixture.actors.teacher.membershipId },
+      data: { status: 'SUSPENDED' },
+    });
+    await claim.compensate('verification_failed'); // independent of current request context
+    await claim.compensate('verification_failed');
+    expect(await row(first.intent.uploadId)).toMatchObject({
+      status: 'FAILED',
+      fileId: null,
+      assessmentVerificationClaimId: null,
+      failureReason: 'verification_failed',
+      stagingObjectDeletedAt: null,
+      finalObjectDeletedAt: null,
+    });
+    expect((await row(first.intent.uploadId)).failedAt).toBeInstanceOf(Date);
+    expect(await row(second.intent.uploadId)).toMatchObject({
+      status: 'VERIFYING',
+      assessmentVerificationClaimId: other.claimId,
+      fileId: null,
+    });
+    expect(
+      await prisma.auditLog.count({
+        where: { resourceId: first.intent.uploadId, action: 'upload.failed' },
+      }),
+    ).toBe(1);
+    await other.compensate('verification_failed');
+    await noFiles();
+  });
+
+  it.each(['cancel', 'expire'] as const)(
+    'preserves concurrent %s terminal state against repeated compensation',
+    async (action) => {
+      const homework = await fixture.homework();
+      const uploaded = await asTeacher(() => fixture.upload(homework.id));
+      const reached = deferred(),
+        release = deferred();
+      fixture.security.beforeAttest = async () => {
+        reached.resolve();
+        await release.promise;
+      };
+      const claimed = jest.spyOn(fixture.repository, 'claim');
+      const completing = asTeacher(() =>
+        fixture.service.complete(
+          purpose,
+          homework.id,
+          uploaded.intent.uploadId,
+        ),
+      );
+      const rejected = expect(completing).rejects.toMatchObject({
+        reason: 'state_conflict',
+      });
+      await Promise.race([
+        reached.promise,
+        completing.then(() => {
+          throw new Error('Early complete');
+        }),
+      ]);
+      const owner = await fixture.owner('teacher', purpose, homework.id);
+      const terminal = await asTeacher(() =>
+        action === 'cancel'
+          ? fixture.repository.cancel(owner, uploaded.intent.uploadId)
+          : fixture.repository.find(
+              owner,
+              uploaded.intent.uploadId,
+              new Date(uploaded.session.expiresAt.getTime() + 1),
+            ),
+      );
+      release.resolve();
+      await rejected;
+      const result = claimed.mock.results[0];
+      if (result.type !== 'return') throw new Error('Expected returned claim');
+      const claim = await result.value;
+      if (claim.kind !== 'claimed') throw new Error('Expected committed claim');
+      await claim.compensate('verification_failed');
+      expect(await row(uploaded.intent.uploadId)).toEqual(terminal);
+      expect(terminal).toMatchObject({
+        status: action === 'cancel' ? 'CANCELLED' : 'EXPIRED',
+        assessmentVerificationClaimId: null,
+        fileId: null,
+        completedAt: null,
+        verifiedAt: null,
+        verificationVersion: null,
+        assessmentSecurityEvidence: null,
+        failedAt: null,
+        failureReason: null,
+        stagingObjectDeletedAt: null,
+        finalObjectDeletedAt: null,
+      });
+      await prisma.schoolAssessmentMediaPolicy.update({
+        where: { schoolId: fixture.school.schoolId },
+        data: {
+          maximumSchoolBytes: 4n * uploaded.session.expectedSizeBytes - 1n,
+        },
+      });
+      await expect(
+        asTeacher(() =>
+          fixture.service.createHomeworkAssignmentUpload(
+            homework.id,
+            uploaded.command,
+          ),
+        ),
+      ).resolves.toMatchObject({ status: terminal.status, fileId: null });
+      await expect(
+        asTeacher(() =>
+          fixture.service.createHomeworkAssignmentUpload(homework.id, {
+            ...uploaded.command,
+            clientRequestId: randomUUID(),
+          }),
+        ),
+      ).rejects.toMatchObject({ reason: 'quota_exceeded' });
+      await noFiles();
+    },
+  );
+
   it('streams actual uploaded bytes to an immutable final object and creates exactly one attested File', async () => {
     const homework = await fixture.homework();
     const uploaded = await asTeacher(() => fixture.upload(homework.id));
@@ -633,6 +846,11 @@ describe('ST-03 real PostgreSQL and bounded private storage lifecycle', () => {
             homework.id,
             uploaded.command,
           ),
+        ),
+      ).rejects.toMatchObject({ reason: 'ready_relationship_invalid' });
+      await expect(
+        asTeacher(() =>
+          fixture.service.complete(purpose, homework.id, ready.uploadId),
         ),
       ).rejects.toMatchObject({ reason: 'ready_relationship_invalid' });
       expect(

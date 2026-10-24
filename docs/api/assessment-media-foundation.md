@@ -10,7 +10,7 @@ The existing Generic Files 10 MiB upload contract remains independent.
 `AssessmentMediaModule` exports `AssessmentMediaService`. A future authorized
 domain consumer must select a fixed purpose-specific creation method; the
 request body cannot supply actor/school/owner/storage coordinates or escalate
-purpose. Every operation resolves request context, live membership/permission,
+purpose. Actor-facing operations resolve request context, live membership/permission,
 and actual resource ownership inside the mutation transaction.
 
 | Creation method | Actual owner context | Eligible actor and existing permission |
@@ -77,6 +77,24 @@ Concurrent verification returns `assessment_media.verification_in_progress`;
 a successful retry returns the same File. `status`, `cancel` and
 `cleanupEligibility` use the same exact owner tuple. Cancellation is idempotent;
 terminal READY cannot be cancelled or replayed into another context.
+
+READY Complete and identical Create retries recheck current tenant, actor,
+membership, permission, allocation/enrollment and immutable intent identity, then
+validate the authoritative private File relationship. They return that same File
+without storage writes, verification or another upload capability even after
+Homework publication, Grades authoring lock, or school upload-policy revocation.
+Upload policy controls new creation/finalization; it does not revoke ownership
+access to an existing valid File. Fresh uploads still require mutable resources
+and the current upload policy. Revoked actors cannot retrieve READY results.
+
+Only a successfully committed verification claim issues an internal compensation
+handle. If verification/finalization fails after authorization is revoked, that
+handle can fail/expire only its exact persisted tenant/actor/purpose/context,
+upload and claim. It cannot create a File, read data, issue capabilities or delete
+objects. Cancellation/expiry/other terminal outcomes win unchanged. Compensation
+and its audit commit together; an infrastructure failure emits a safe error event
+and preserves the original operation failure. Retained bytes remain reserved
+until object deletion is proven; compensation grants no deletion authority.
 
 ## Verification and availability
 

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { Logger } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
 import {
@@ -33,6 +34,53 @@ describe('ST-03 Assessment Media real tenant/resource authorization', () => {
     expectedMimeType: 'text/plain',
     expectedSizeBytes: '3',
   });
+  const expectCompensated = async (uploadId: string) => {
+    const session = await prisma.fileUploadSession.findUniqueOrThrow({
+      where: { id: uploadId },
+    });
+    expect(session).toMatchObject({
+      status: 'FAILED',
+      fileId: null,
+      completedAt: null,
+      verifiedAt: null,
+      verifiedMimeType: null,
+      actualSizeBytes: null,
+      checksumSha256: null,
+      durationSeconds: null,
+      width: null,
+      height: null,
+      verificationVersion: null,
+      assessmentSecurityEvidence: null,
+      assessmentVerificationClaimId: null,
+      cancelledAt: null,
+      stagingObjectDeletedAt: null,
+      finalObjectDeletedAt: null,
+    });
+    expect(session.failedAt).toBeInstanceOf(Date);
+    expect(typeof session.failureReason).toBe('string');
+    expect(session.latestUploadUrlExpiresAt).toBeInstanceOf(Date);
+    expect(
+      await prisma.file.count({ where: { schoolId: fixture.school.schoolId } }),
+    ).toBe(0);
+    expect(
+      await prisma.auditLog.count({
+        where: { resourceId: uploadId, action: 'upload.failed' },
+      }),
+    ).toBe(1);
+    expect(
+      await prisma.auditLog.count({
+        where: { resourceId: uploadId, action: 'upload.ready' },
+      }),
+    ).toBe(0);
+    // Both retained objects continue consuming physical bytes; no deletion is inferred.
+    for (const [bucket, objectKey] of [
+      [session.stagingBucket!, session.stagingObjectKey!],
+      [session.finalBucket, session.finalObjectKey],
+    ])
+      expect(await fixture.storage.objectExists({ bucket, objectKey })).toBe(
+        true,
+      );
+  };
 
   it('injects automatic school scope into the new independent policy model', async () => {
     const scoped = prisma.scoped as unknown as PrismaClient;
@@ -321,13 +369,7 @@ describe('ST-03 Assessment Media real tenant/resource authorization', () => {
           where: { schoolId: fixture.school.schoolId },
         }),
       ).toBe(0);
-      expect(
-        (
-          await prisma.fileUploadSession.findUniqueOrThrow({
-            where: { id: uploaded.intent.uploadId },
-          })
-        ).fileId,
-      ).toBeNull();
+      await expectCompensated(uploaded.intent.uploadId);
     },
   );
 
@@ -369,6 +411,7 @@ describe('ST-03 Assessment Media real tenant/resource authorization', () => {
     });
     release.resolve();
     await rejected;
+    await expectCompensated(uploaded.intent.uploadId);
     expect(
       await prisma.file.count({ where: { schoolId: fixture.school.schoolId } }),
     ).toBe(0);
@@ -418,8 +461,242 @@ describe('ST-03 Assessment Media real tenant/resource authorization', () => {
         ),
       ),
     ).rejects.toMatchObject({ httpStatus: 404 });
+    await expectCompensated(uploaded.intent.uploadId);
     expect(
       await prisma.file.count({ where: { schoolId: fixture.school.schoolId } }),
     ).toBe(0);
+  });
+
+  it('terminalizes the issued claim when Grades authoring is locked during verification', async () => {
+    const assessment = await fixture.assessment();
+    const uploaded = await fixture.asMediaActor('teacher', () =>
+      fixture.upload(assessment.id, undefined, 'GRADE_ASSESSMENT_MEDIA'),
+    );
+    fixture.security.beforeAttest = async () => {
+      await prisma.gradeAssessment.update({
+        where: { id: assessment.id },
+        data: { lockedAt: new Date() },
+      });
+    };
+    await expect(
+      fixture.asMediaActor('teacher', () =>
+        fixture.service.complete(
+          'GRADE_ASSESSMENT_MEDIA',
+          assessment.id,
+          uploaded.intent.uploadId,
+        ),
+      ),
+    ).rejects.toMatchObject({ httpStatus: 409 });
+    await expectCompensated(uploaded.intent.uploadId);
+  });
+
+  it('reports infrastructure failure safely when compensation cannot commit, and permits claim-bound recovery', async () => {
+    const homework = await fixture.homework();
+    const uploaded = await fixture.asMediaActor('teacher', () =>
+      fixture.upload(homework.id),
+    );
+    const claimed = jest.spyOn(fixture.repository, 'claim');
+    const finish = fixture.repository.finish.bind(
+      fixture.repository,
+    ) as typeof fixture.repository.finish;
+    jest
+      .spyOn(fixture.repository, 'finish')
+      .mockImplementation(async (...args) => {
+        try {
+          return await finish(...args);
+        } catch (error) {
+          // Inject only after the actual live authorization denial, before compensation.
+          jest
+            .spyOn(prisma, '$transaction')
+            .mockRejectedValueOnce(new Error('private-infrastructure-details'));
+          throw error;
+        }
+      });
+    const report = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+    fixture.security.beforeAttest = async () => {
+      await prisma.membership.update({
+        where: { id: fixture.actors.teacher.membershipId },
+        data: { status: 'SUSPENDED' },
+      });
+    };
+    await expect(
+      fixture.asMediaActor('teacher', () =>
+        fixture.service.complete(
+          'HOMEWORK_ASSIGNMENT_MEDIA',
+          homework.id,
+          uploaded.intent.uploadId,
+        ),
+      ),
+    ).rejects.toMatchObject({ httpStatus: 404 });
+    const pending = await prisma.fileUploadSession.findUniqueOrThrow({
+      where: { id: uploaded.intent.uploadId },
+    });
+    expect(pending).toMatchObject({
+      status: 'VERIFYING',
+      fileId: null,
+      failedAt: null,
+    });
+    expect(typeof pending.assessmentVerificationClaimId).toBe('string');
+    expect(report).toHaveBeenCalledWith({
+      event: 'assessment_media.verification.compensation_failed',
+      schoolId: fixture.school.schoolId,
+      actorId: fixture.actors.teacher.userId,
+      uploadId: uploaded.intent.uploadId,
+      reason: 'upload_not_found',
+    });
+    expect(JSON.stringify(report.mock.calls)).not.toContain(
+      'private-infrastructure-details',
+    );
+    const result = claimed.mock.results[0];
+    if (result.type !== 'return') throw new Error('Expected returned claim');
+    const claim = await result.value;
+    if (claim.kind !== 'claimed') throw new Error('Expected committed claim');
+    await claim.compensate('verification_failed'); // internal handle needs no current actor permission
+    await claim.compensate('verification_failed');
+    await expectCompensated(uploaded.intent.uploadId);
+  });
+
+  it.each(['allocation', 'membership', 'permission'] as const)(
+    'denies READY Complete and identical Create after live %s revocation',
+    async (resource) => {
+      const homework = await fixture.homework();
+      const uploaded = await fixture.asMediaActor('teacher', () =>
+        fixture.upload(homework.id),
+      );
+      const ready = await fixture.asMediaActor('teacher', () =>
+        fixture.service.complete(
+          'HOMEWORK_ASSIGNMENT_MEDIA',
+          homework.id,
+          uploaded.intent.uploadId,
+        ),
+      );
+      if (resource === 'allocation')
+        await prisma.teacherSubjectAllocation.update({
+          where: { id: fixture.allocations.teacher },
+          data: { teacherUserId: fixture.actors.otherTeacher.userId },
+        });
+      if (resource === 'membership')
+        await prisma.membership.update({
+          where: { id: fixture.actors.teacher.membershipId },
+          data: { status: 'SUSPENDED' },
+        });
+      if (resource === 'permission')
+        await prisma.rolePermission.deleteMany({
+          where: {
+            roleId: fixture.actors.teacher.roleId,
+            permission: { code: 'homework.attachments.manage' },
+          },
+        });
+      const issue = jest.spyOn(
+        fixture.storage,
+        'createBoundedUploadCapability',
+      );
+      const write = jest.spyOn(fixture.storage, 'saveObject');
+      await expect(
+        fixture.asMediaActor('teacher', () =>
+          fixture.service.complete(
+            'HOMEWORK_ASSIGNMENT_MEDIA',
+            homework.id,
+            ready.uploadId,
+          ),
+        ),
+      ).rejects.toMatchObject({ httpStatus: 404 });
+      await expect(
+        fixture.asMediaActor('teacher', () =>
+          fixture.service.createHomeworkAssignmentUpload(
+            homework.id,
+            uploaded.command,
+          ),
+        ),
+      ).rejects.toMatchObject({ httpStatus: 404 });
+      expect(issue).not.toHaveBeenCalled();
+      expect(write).not.toHaveBeenCalled();
+      expect(fixture.security.calls).toBe(1);
+      expect(
+        await prisma.fileUploadSession.findUniqueOrThrow({
+          where: { id: ready.uploadId },
+        }),
+      ).toMatchObject({
+        status: 'READY',
+        fileId: ready.fileId,
+        assessmentVerificationClaimId: null,
+      });
+      expect(
+        await prisma.file.count({
+          where: { schoolId: fixture.school.schoolId },
+        }),
+      ).toBe(1);
+    },
+  );
+
+  it('denies changed READY purpose, actor, context and immutable metadata without disclosing another File', async () => {
+    const homework = await fixture.homework(),
+      other = await fixture.homework(),
+      assessment = await fixture.assessment();
+    const uploaded = await fixture.asMediaActor('teacher', () =>
+      fixture.upload(homework.id),
+    );
+    const ready = await fixture.asMediaActor('teacher', () =>
+      fixture.service.complete(
+        'HOMEWORK_ASSIGNMENT_MEDIA',
+        homework.id,
+        uploaded.intent.uploadId,
+      ),
+    );
+    for (const actor of ['otherTeacher', 'foreignTeacher'] as const)
+      await expect(
+        fixture.asMediaActor(actor, () =>
+          fixture.service.complete(
+            'HOMEWORK_ASSIGNMENT_MEDIA',
+            homework.id,
+            ready.uploadId,
+          ),
+        ),
+      ).rejects.toMatchObject({ httpStatus: 404 });
+    await expect(
+      fixture.asMediaActor('teacher', () =>
+        fixture.service.complete(
+          'HOMEWORK_ASSIGNMENT_MEDIA',
+          other.id,
+          ready.uploadId,
+        ),
+      ),
+    ).rejects.toMatchObject({ httpStatus: 404 });
+    await expect(
+      fixture.asMediaActor('teacher', () =>
+        fixture.service.complete(
+          'GRADE_ASSESSMENT_MEDIA',
+          assessment.id,
+          ready.uploadId,
+        ),
+      ),
+    ).rejects.toMatchObject({ httpStatus: 404 });
+    for (const patch of [
+      { originalName: 'changed.txt' },
+      { expectedSizeBytes: '4' },
+      { originalName: 'changed.pdf', expectedMimeType: 'application/pdf' },
+    ])
+      await expect(
+        fixture.asMediaActor('teacher', () =>
+          fixture.service.createHomeworkAssignmentUpload(homework.id, {
+            ...uploaded.command,
+            ...patch,
+          }),
+        ),
+      ).rejects.toMatchObject({ reason: 'idempotency_conflict' });
+    await expect(
+      fixture.asMediaActor('teacher', () =>
+        fixture.service.createHomeworkAssignmentUpload(
+          other.id,
+          uploaded.command,
+        ),
+      ),
+    ).rejects.toMatchObject({ reason: 'idempotency_conflict' });
+    expect(fixture.security.calls).toBe(1);
+    expect(
+      await prisma.file.count({ where: { schoolId: fixture.school.schoolId } }),
+    ).toBe(1);
   });
 });
