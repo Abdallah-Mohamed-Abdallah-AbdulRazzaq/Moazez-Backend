@@ -290,6 +290,28 @@ describe('ST-04 eight existing Grades types — real HTTP/PostgreSQL certificati
       const submission = await prisma.gradeSubmission.findFirstOrThrow({
         where: { assessmentId, studentId: fixture.children[0].studentId },
       });
+      // Isolate the attempt guard from the already-tested publication guard.
+      // Only this owned disposable fixture is put back into Draft.
+      await prisma.gradeAssessment.update({
+        where: { id: assessmentId },
+        data: { approvalStatus: 'DRAFT' },
+      });
+      await http()
+        .patch(`${prefix}/grades/questions/${question.id}`)
+        .set(api())
+        .send({ prompt: 'Forbidden edit after an existing attempt' })
+        .expect(409);
+      expect(
+        (
+          await prisma.gradeAssessmentQuestion.findUniqueOrThrow({
+            where: { id: question.id },
+          })
+        ).prompt,
+      ).toBe('Edited typed prompt');
+      await prisma.gradeAssessment.update({
+        where: { id: assessmentId },
+        data: { approvalStatus: 'PUBLISHED' },
+      });
       await http()
         .post(`${prefix}/student/exams/${assessmentId}/submission/submit`)
         .set(api('student'))

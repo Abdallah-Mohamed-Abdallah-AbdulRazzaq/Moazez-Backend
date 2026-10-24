@@ -334,3 +334,51 @@ selection bounds, segment order and text limits. Do not send multiple modalities
 Display the MEDIA source as an external stimulus and collect only text; it is not
 a managed-file capability or evidence of scanning. Reviewer clients use the
 existing manual scoring endpoints and must handle terminal-state conflicts.
+
+## Final eight-type certification matrix
+
+Evidence references (all observations matched expected outcomes):
+
+- W(T): `test/e2e/grades-eight-question-contracts.e2e-spec.ts`, named
+  `%s: author/edit/publish → both student reads → single/bulk save → submit/review/finalize → Parent-safe result`, instantiated for T.
+  Includes invalid update (400), post-publication edit denial (409), and an
+  independent Draft-with-existing-attempt edit denial (409) with unchanged prompt.
+  Both student reads and reviewer retrieval return 200; saves return 200,
+  submit/finalize/sync return 201, required-empty submit fails 400, excessive marks
+  fail 400, foreign resources fail 404, terminal edits fail 409. PostgreSQL answer
+  rows/option relations and final score 1.5 are asserted; parent release is 200
+  only with the existing eligible result and unrelated child is 404.
+- A(T): same HTTP file, named `%s: school administrator authoring and publication obey typed and scoring constraints`, instantiated for T. Invalid create is
+  rejected 400/422; valid draft create/update succeed; points mismatch blocks
+  publication with 422 and corrected matching points publish with 201.
+- S(T): `src/modules/student-app/exams/tests/student-exams.presenter.spec.ts` and
+  `src/modules/student-app/grades/tests/student-grades.presenter.spec.ts`, both
+  named `preserves legacy %s and adds exact interaction`; exact legacy aliases,
+  canonical type and interaction agree for T. Safe legacy text/selection shapes
+  use the same stored representations as W(T); no old database is rewritten.
+- U: `src/modules/grades/assessments/tests/grade-question-interaction.spec.ts`,
+  named boundary/modality tests; `rejects ambiguous TRUE_FALSE semantics and contradictory legacy key aliases`;
+  `validates exact Fill IDs, completeness, bounds and safe one-blank legacy text`;
+  `validates Matching references and one-to-one cardinality without accepting arbitrary maps`;
+  and `marks incomplete historical %s unavailable and excludes malformed answers from progress` (Fill/Matching/Media).
+- H: same HTTP file as W, named `historical malformed definitions and MEDIA answers stay unavailable without destructive rewrites` and
+  `stored legacy short text retains the former 10000-character read/review bound without widening new saves`. These mutate representative owned PostgreSQL rows
+  directly and assert safe reads and unchanged legacy answer persistence.
+- Q: `src/modules/grades/assessments/tests/grade-assessment-question.presenter.spec.ts`, named `maps numeric values and marks an incomplete historical choice unavailable`
+  and `preserves the existing metadata-backed MEDIA read shape`.
+
+| Type | Author | Publish | Student Read | Save | Submit | Review | Parent Safety | Legacy |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| MCQ_SINGLE | PASS A+W | PASS A+W | PASS W+S | PASS W+U | PASS W | PASS W | PASS W | PASS S+Q |
+| MCQ_MULTI | PASS A+W | PASS A+W | PASS W+S | PASS W+U | PASS W | PASS W | PASS W | PASS S |
+| TRUE_FALSE | PASS A+W | PASS A+W | PASS W+S | PASS W+U | PASS W | PASS W | PASS W | PASS S+U |
+| SHORT_ANSWER | PASS A+W | PASS A+W | PASS W+S | PASS W+U | PASS W+H | PASS W+H | PASS W | PASS S+H |
+| ESSAY | PASS A+W | PASS A+W | PASS W+S | PASS W+U | PASS W | PASS W | PASS W | PASS S |
+| FILL_IN_BLANK | PASS A+W | PASS A+W | PASS W+S | PASS W+U | PASS W | PASS W | PASS W | PASS S+U |
+| MATCHING | PASS A+W | PASS A+W | PASS W+S | PASS W+U | PASS W | PASS W | PASS W | PASS S+U+H |
+| MEDIA | PASS A+W | PASS A+W | PASS W+S | PASS W+U | PASS W | PASS W | PASS W | PASS S+U+H+Q |
+
+Legacy PASS certifies the documented safe formats/aliases and controlled
+unsupported fallbacks; it does not claim every arbitrary historical JSON shape
+can be solved. Direct PostgreSQL legacy fixtures are representative, not a live
+historical inventory or a backfill. All eight remain manually scored.
