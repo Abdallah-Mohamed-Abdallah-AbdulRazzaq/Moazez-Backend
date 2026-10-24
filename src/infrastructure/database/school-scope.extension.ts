@@ -131,6 +131,11 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
   'HomeworkSubmissionAnswer',
   'HomeworkSubmissionAttachment',
   'HomeworkQuestion',
+  'HomeworkQuestionAsset',
+  'GradeAssessmentQuestionAsset',
+  'GradeAssessmentAsset',
+  'HomeworkAnswerAsset',
+  'GradeSubmissionAnswerAsset',
   'HomeworkQuestionOption',
   'HomeworkAssignmentAttachment',
   'ReinforcementTask',
@@ -185,6 +190,11 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
 // automatically exclude deletedAt != null unless the caller opts in via
 // withSoftDeleted().
 export const SOFT_DELETE_MODELS = new Set<string>([
+  'HomeworkQuestionAsset',
+  'GradeAssessmentQuestionAsset',
+  'GradeAssessmentAsset',
+  'HomeworkAnswerAsset',
+  'GradeSubmissionAnswerAsset',
   'Organization',
   'School',
   'User',

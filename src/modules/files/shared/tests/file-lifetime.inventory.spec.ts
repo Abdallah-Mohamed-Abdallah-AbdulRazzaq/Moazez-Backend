@@ -25,6 +25,11 @@ const physicalReferences = [
   'CommunicationAnnouncementAttachment.fileId',
   'Attachment.fileId',
   'ImportJob.uploadedFileId',
+  'HomeworkQuestionAsset.fileId',
+  'GradeAssessmentQuestionAsset.fileId',
+  'GradeAssessmentAsset.fileId',
+  'HomeworkAnswerAsset.fileId',
+  'GradeSubmissionAnswerAsset.fileId',
   'FileUploadSession.fileId',
 ];
 
@@ -80,7 +85,7 @@ describe('Files shared lifetime inventory contract', () => {
         .map((row) => row.sql)
         .sort(),
     );
-    expect(parameters).toHaveLength(21);
+    expect(parameters).toHaveLength(physicalReferences.length - 1);
     expect(parameters.every((value) => value === 'file-id')).toBe(true);
     expect(statement).not.toContain('school_id');
     expect(statement.match(/deleted_at IS NULL/g)).toHaveLength(1);

@@ -1045,7 +1045,7 @@ function verifyOwnershipAndPrivileges(context) {
   assert.equal(
     queryScalar(
       context,
-      `SELECT count(*) = 3 AND count(DISTINCT procedure.proname) = 3 AND bool_and(
+      `SELECT count(*) = 4 AND count(DISTINCT procedure.proname) = 4 AND bool_and(
          CASE procedure.proname
            WHEN 'normalize_learning_media_original_name' THEN
              procedure.provolatile = 'i'
@@ -1054,6 +1054,15 @@ function verifyOwnershipAndPrivileges(context) {
              AND procedure.proparallel = 's'
              AND language.lanname = 'sql'
            WHEN 'enforce_live_file_reference' THEN
+             procedure.pronargs = 0
+             AND procedure.prorettype = 'trigger'::regtype
+             AND procedure.provolatile = 'v'
+             AND NOT procedure.proisstrict
+             AND NOT procedure.prosecdef
+             AND procedure.proparallel = 'u'
+             AND COALESCE(procedure.proconfig = ARRAY['search_path=pg_catalog']::text[], false)
+             AND language.lanname = 'plpgsql'
+           WHEN 'enforce_assessment_asset_identity' THEN
              procedure.pronargs = 0
              AND procedure.prorettype = 'trigger'::regtype
              AND procedure.provolatile = 'v'
@@ -1118,13 +1127,14 @@ function verifyOwnershipAndPrivileges(context) {
       queryScalar(
         context,
         `SELECT NOT has_function_privilege(${sqlLiteral(login)}, 'public.enforce_live_file_reference()', 'EXECUTE')
+           AND NOT has_function_privilege(${sqlLiteral(login)}, 'public.enforce_assessment_asset_identity()', 'EXECUTE')
            AND NOT EXISTS (
              SELECT 1
              FROM pg_catalog.pg_proc procedure
              JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
              JOIN pg_catalog.pg_roles grantee ON grantee.rolname = ${sqlLiteral(login)}
              CROSS JOIN LATERAL aclexplode(COALESCE(procedure.proacl, acldefault('f', procedure.proowner))) acl
-             WHERE namespace.nspname = 'public' AND procedure.proname = 'enforce_live_file_reference'
+             WHERE namespace.nspname = 'public' AND procedure.proname IN ('enforce_live_file_reference', 'enforce_assessment_asset_identity')
                AND acl.grantee IN (0, grantee.oid)
            )`,
       ),

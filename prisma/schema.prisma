@@ -624,6 +624,20 @@ enum GradeAssessmentApprovalStatus {
   @@map("grade_assessment_approval_status")
 }
 
+// ST-05 structural classification only; not upload/security verification.
+enum AssessmentAssetSourceType {
+  MANAGED_FILE
+  EXTERNAL_HTTPS
+}
+
+enum AssessmentAssetCategory {
+  IMAGE
+  AUDIO
+  VIDEO
+  DOCUMENT
+  OTHER
+}
+
 enum GradeQuestionType {
   MCQ_SINGLE
   MCQ_MULTI
@@ -1669,6 +1683,12 @@ model School {
   academicContentEngagementAdmissions           AcademicContentEngagementAdmission[]
   academicContentAcknowledgements               AcademicContentAcknowledgement[]
 
+  homeworkQuestionAssets        HomeworkQuestionAsset[]
+  gradeAssessmentQuestionAssets GradeAssessmentQuestionAsset[]
+  gradeAssessmentAssets         GradeAssessmentAsset[]
+  homeworkAnswerAssets          HomeworkAnswerAsset[]
+  gradeSubmissionAnswerAssets   GradeSubmissionAnswerAsset[]
+
   @@unique([organizationId, slug])
   @@index([organizationId])
   @@index([status])
@@ -1895,6 +1915,12 @@ model User {
   academicContentEngagementEvents                AcademicContentEngagementEvent[]       @relation("AcademicContentEngagementActor")
   academicContentEngagementAdmissions            AcademicContentEngagementAdmission[]
   academicContentAcknowledgements                AcademicContentAcknowledgement[]       @relation("AcademicContentAcknowledgementActor")
+
+  homeworkQuestionAssetsCreated        HomeworkQuestionAsset[]        @relation("HomeworkQuestionAssetCreatedBy")
+  gradeAssessmentQuestionAssetsCreated GradeAssessmentQuestionAsset[] @relation("GradeAssessmentQuestionAssetCreatedBy")
+  gradeAssessmentAssetsCreated         GradeAssessmentAsset[]         @relation("GradeAssessmentAssetCreatedBy")
+  homeworkAnswerAssetsCreated          HomeworkAnswerAsset[]          @relation("HomeworkAnswerAssetCreatedBy")
+  gradeSubmissionAnswerAssetsCreated   GradeSubmissionAnswerAsset[]   @relation("GradeSubmissionAnswerAssetCreatedBy")
 
   @@index([userType])
   @@index([status])
@@ -5446,6 +5472,8 @@ model GradeAssessment {
   heroObjectives                                HeroMissionObjective[]
   academicContentWeeklyPlanAssessmentReferences AcademicContentWeeklyPlanAssessmentReference[]
 
+  assets GradeAssessmentAsset[]
+
   @@unique([id, schoolId], map: "grade_assessments_id_school_id_unique")
   @@index([schoolId])
   @@index([academicYearId])
@@ -5466,6 +5494,33 @@ model GradeAssessment {
   @@index([schoolId, termId, approvalStatus])
   @@index([schoolId, deletedAt])
   @@map("grade_assessments")
+}
+
+model GradeAssessmentAsset {
+  id              String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String                    @map("school_id") @db.Uuid
+  assessmentId    String                    @map("assessment_id") @db.Uuid
+  fileId          String?                   @map("file_id") @db.Uuid
+  externalUrl     String?                   @map("external_url") @db.VarChar(2000)
+  sourceType      AssessmentAssetSourceType @default(MANAGED_FILE) @map("source_type")
+  category        AssessmentAssetCategory   @default(OTHER)
+  title           String?                   @db.VarChar(255)
+  description     String?                   @db.VarChar(2000)
+  sortOrder       Int                       @default(0) @map("sort_order")
+  createdByUserId String                    @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime                  @default(now()) @map("created_at")
+  updatedAt       DateTime                  @updatedAt @map("updated_at")
+  deletedAt       DateTime?                 @map("deleted_at")
+
+  school          School          @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "grade_assessment_asset_school_fk")
+  gradeAssessment GradeAssessment @relation(fields: [assessmentId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "grade_assessment_asset_parent_fk")
+  file            File?           @relation(fields: [fileId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "grade_assessment_asset_file_fk")
+  createdBy       User            @relation("GradeAssessmentAssetCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "grade_assessment_asset_creator_fk")
+
+  @@index([schoolId, assessmentId, deletedAt, sortOrder, id], map: "grade_assessment_asset_parent_order_idx")
+  @@index([fileId, schoolId], map: "grade_assessment_asset_file_idx")
+  @@index([createdByUserId], map: "grade_assessment_asset_creator_idx")
+  @@map("grade_assessment_assets")
 }
 
 model GradeItem {
@@ -5525,6 +5580,8 @@ model GradeAssessmentQuestion {
   options    GradeAssessmentQuestionOption[]
   answers    GradeSubmissionAnswer[]
 
+  assets GradeAssessmentQuestionAsset[]
+
   @@unique([id, schoolId])
   @@unique([schoolId, assessmentId, sortOrder])
   @@index([schoolId])
@@ -5533,6 +5590,33 @@ model GradeAssessmentQuestion {
   @@index([schoolId, type])
   @@index([deletedAt])
   @@map("grade_assessment_questions")
+}
+
+model GradeAssessmentQuestionAsset {
+  id              String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String                    @map("school_id") @db.Uuid
+  questionId      String                    @map("question_id") @db.Uuid
+  fileId          String?                   @map("file_id") @db.Uuid
+  externalUrl     String?                   @map("external_url") @db.VarChar(2000)
+  sourceType      AssessmentAssetSourceType @default(MANAGED_FILE) @map("source_type")
+  category        AssessmentAssetCategory   @default(OTHER)
+  title           String?                   @db.VarChar(255)
+  description     String?                   @db.VarChar(2000)
+  sortOrder       Int                       @default(0) @map("sort_order")
+  createdByUserId String                    @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime                  @default(now()) @map("created_at")
+  updatedAt       DateTime                  @updatedAt @map("updated_at")
+  deletedAt       DateTime?                 @map("deleted_at")
+
+  school                  School                  @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "grade_question_asset_school_fk")
+  gradeAssessmentQuestion GradeAssessmentQuestion @relation(fields: [questionId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "grade_question_asset_parent_fk")
+  file                    File?                   @relation(fields: [fileId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "grade_question_asset_file_fk")
+  createdBy               User                    @relation("GradeAssessmentQuestionAssetCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "grade_question_asset_creator_fk")
+
+  @@index([schoolId, questionId, deletedAt, sortOrder, id], map: "grade_question_asset_parent_order_idx")
+  @@index([fileId, schoolId], map: "grade_question_asset_file_idx")
+  @@index([createdByUserId], map: "grade_question_asset_creator_idx")
+  @@map("grade_assessment_question_assets")
 }
 
 model GradeAssessmentQuestionOption {
@@ -5631,6 +5715,8 @@ model GradeSubmissionAnswer {
   reviewedBy      User?                         @relation("GradeSubmissionAnswerReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
   selectedOptions GradeSubmissionAnswerOption[]
 
+  assets GradeSubmissionAnswerAsset[]
+
   @@unique([id, schoolId])
   @@unique([schoolId, submissionId, questionId])
   @@index([schoolId])
@@ -5642,6 +5728,32 @@ model GradeSubmissionAnswer {
   @@index([schoolId, assessmentId, studentId])
   @@index([schoolId, correctionStatus])
   @@map("grade_submission_answers")
+}
+
+model GradeSubmissionAnswerAsset {
+  id              String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String                    @map("school_id") @db.Uuid
+  answerId        String                    @map("answer_id") @db.Uuid
+  fileId          String                    @map("file_id") @db.Uuid
+  sourceType      AssessmentAssetSourceType @default(MANAGED_FILE) @map("source_type")
+  category        AssessmentAssetCategory   @default(OTHER)
+  title           String?                   @db.VarChar(255)
+  description     String?                   @db.VarChar(2000)
+  sortOrder       Int                       @default(0) @map("sort_order")
+  createdByUserId String                    @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime                  @default(now()) @map("created_at")
+  updatedAt       DateTime                  @updatedAt @map("updated_at")
+  deletedAt       DateTime?                 @map("deleted_at")
+
+  school                School                @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "grade_answer_asset_school_fk")
+  gradeSubmissionAnswer GradeSubmissionAnswer @relation(fields: [answerId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "grade_answer_asset_parent_fk")
+  file                  File                  @relation(fields: [fileId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "grade_answer_asset_file_fk")
+  createdBy             User                  @relation("GradeSubmissionAnswerAssetCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "grade_answer_asset_creator_fk")
+
+  @@index([schoolId, answerId, deletedAt, sortOrder, id], map: "grade_answer_asset_parent_order_idx")
+  @@index([fileId, schoolId], map: "grade_answer_asset_file_idx")
+  @@index([createdByUserId], map: "grade_answer_asset_creator_idx")
+  @@map("grade_submission_answer_assets")
 }
 
 model GradeSubmissionAnswerOption {
@@ -5877,6 +5989,8 @@ model HomeworkQuestion {
   options            HomeworkQuestionOption[]
   submissionAnswers  HomeworkSubmissionAnswer[]
 
+  assets HomeworkQuestionAsset[]
+
   @@unique([id, schoolId])
   @@index([schoolId])
   @@index([schoolId, homeworkAssignmentId], map: "hw_question_school_assignment_idx")
@@ -5886,6 +6000,33 @@ model HomeworkQuestion {
   @@index([updatedByUserId])
   @@index([deletedAt])
   @@map("homework_questions")
+}
+
+model HomeworkQuestionAsset {
+  id                 String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId           String                    @map("school_id") @db.Uuid
+  homeworkQuestionId String                    @map("homework_question_id") @db.Uuid
+  fileId             String?                   @map("file_id") @db.Uuid
+  externalUrl        String?                   @map("external_url") @db.VarChar(2000)
+  sourceType         AssessmentAssetSourceType @default(MANAGED_FILE) @map("source_type")
+  category           AssessmentAssetCategory   @default(OTHER)
+  title              String?                   @db.VarChar(255)
+  description        String?                   @db.VarChar(2000)
+  sortOrder          Int                       @default(0) @map("sort_order")
+  createdByUserId    String                    @map("created_by_user_id") @db.Uuid
+  createdAt          DateTime                  @default(now()) @map("created_at")
+  updatedAt          DateTime                  @updatedAt @map("updated_at")
+  deletedAt          DateTime?                 @map("deleted_at")
+
+  school           School           @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "hw_question_asset_school_fk")
+  homeworkQuestion HomeworkQuestion @relation(fields: [homeworkQuestionId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "hw_question_asset_parent_fk")
+  file             File?            @relation(fields: [fileId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "hw_question_asset_file_fk")
+  createdBy        User             @relation("HomeworkQuestionAssetCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "hw_question_asset_creator_fk")
+
+  @@index([schoolId, homeworkQuestionId, deletedAt, sortOrder, id], map: "hw_question_asset_parent_order_idx")
+  @@index([fileId, schoolId], map: "hw_question_asset_file_idx")
+  @@index([createdByUserId], map: "hw_question_asset_creator_idx")
+  @@map("homework_question_assets")
 }
 
 model HomeworkSubmissionAnswer {
@@ -5913,6 +6054,8 @@ model HomeworkSubmissionAnswer {
   homeworkQuestion   HomeworkQuestion   @relation(fields: [homeworkQuestionId, schoolId], references: [id, schoolId], onDelete: Restrict)
   reviewedByUser     User?              @relation("HomeworkSubmissionAnswerReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
 
+  assets HomeworkAnswerAsset[]
+
   @@unique([id, schoolId])
   @@index([schoolId])
   @@index([schoolId, homeworkSubmissionId])
@@ -5922,6 +6065,32 @@ model HomeworkSubmissionAnswer {
   @@index([reviewedByUserId])
   @@index([deletedAt])
   @@map("homework_submission_answers")
+}
+
+model HomeworkAnswerAsset {
+  id                         String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                   String                    @map("school_id") @db.Uuid
+  homeworkSubmissionAnswerId String                    @map("homework_submission_answer_id") @db.Uuid
+  fileId                     String                    @map("file_id") @db.Uuid
+  sourceType                 AssessmentAssetSourceType @default(MANAGED_FILE) @map("source_type")
+  category                   AssessmentAssetCategory   @default(OTHER)
+  title                      String?                   @db.VarChar(255)
+  description                String?                   @db.VarChar(2000)
+  sortOrder                  Int                       @default(0) @map("sort_order")
+  createdByUserId            String                    @map("created_by_user_id") @db.Uuid
+  createdAt                  DateTime                  @default(now()) @map("created_at")
+  updatedAt                  DateTime                  @updatedAt @map("updated_at")
+  deletedAt                  DateTime?                 @map("deleted_at")
+
+  school                   School                   @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "hw_answer_asset_school_fk")
+  homeworkSubmissionAnswer HomeworkSubmissionAnswer @relation(fields: [homeworkSubmissionAnswerId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "hw_answer_asset_parent_fk")
+  file                     File                     @relation(fields: [fileId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "hw_answer_asset_file_fk")
+  createdBy                User                     @relation("HomeworkAnswerAssetCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "hw_answer_asset_creator_fk")
+
+  @@index([schoolId, homeworkSubmissionAnswerId, deletedAt, sortOrder, id], map: "hw_answer_asset_parent_order_idx")
+  @@index([fileId, schoolId], map: "hw_answer_asset_file_idx")
+  @@index([createdByUserId], map: "hw_answer_asset_creator_idx")
+  @@map("homework_answer_assets")
 }
 
 model HomeworkSubmissionAttachment {
@@ -7818,6 +7987,12 @@ model File {
   uploadSession                        FileUploadSession?
   academicContentAssets                AcademicContentAsset[]
   academicContentRevisionAssets        AcademicContentRevisionAsset[]
+
+  homeworkQuestionAssets        HomeworkQuestionAsset[]
+  gradeAssessmentQuestionAssets GradeAssessmentQuestionAsset[]
+  gradeAssessmentAssets         GradeAssessmentAsset[]
+  homeworkAnswerAssets          HomeworkAnswerAsset[]
+  gradeSubmissionAnswerAssets   GradeSubmissionAnswerAsset[]
 
   @@unique([bucket, objectKey])
   @@unique([id, schoolId])

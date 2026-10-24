@@ -65,6 +65,11 @@ updatedAt DateTime @updatedAt @map("updated_at")
   and disabled by default. Assessment-only claim/evidence fields on the shared
   upload session do not reclassify historical sessions or generic Files.
 
+- `HomeworkQuestionAsset`, `GradeAssessmentQuestionAsset`, `GradeAssessmentAsset`,
+  `HomeworkAnswerAsset` and `GradeSubmissionAnswerAsset` are School-scoped and
+  soft-deletable. Each uses a composite exact-parent FK and composite File FK;
+  soft-deleted asset rows retain their File references (ADR-0018).
+
 ## 7. Relations
 
 - Relation fields use the referenced model name:
