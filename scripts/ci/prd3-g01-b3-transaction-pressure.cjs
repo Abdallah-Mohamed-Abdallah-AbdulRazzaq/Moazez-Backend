@@ -318,6 +318,26 @@ const PURE_METHODS = new Set([
   'toLowerCase', 'trim', 'values',
 ]);
 const REVIEWED_CALL_OVERRIDES = Object.freeze([
+  Object.freeze({
+    path: 'src/modules/files/assessment-media/infrastructure/assessment-media.repository.ts',
+    owner: 'AssessmentMediaRepository.transaction',
+    target: /^operation$/,
+    explicitLock: true,
+    reason: 'ST-03 assessment media callbacks are the eight reviewed scoped repository operations.',
+    classification: 'LOCK_CONTENTION_SENSITIVE',
+    resolvedCallers: Object.freeze(['AssessmentMediaRepository.reserve', 'AssessmentMediaRepository.publishCapability', 'AssessmentMediaRepository.claim', 'AssessmentMediaRepository.finish', 'AssessmentMediaRepository.fail', 'AssessmentMediaRepository.cancel', 'AssessmentMediaRepository.find', 'AssessmentMediaRepository.cleanupEligibility']),
+    evidence: 'The eight callbacks receive only the active scoped Prisma.TransactionClient and effective policy after School/Organization, live membership/permission and domain resource locks. Reservation aggregates, claim/state changes, File/evidence/audit persistence and retained-reference inventory are DB-only. Capability issuance and bounded technical/security verification run in AssessmentMediaService outside these transactions. Cleanup eligibility grants no deletion authority. The facade uses maxWait 5000 and timeout 15000; it opens no nested transaction and returns the callback Promise.',
+  }),
+  Object.freeze({
+    path: 'src/modules/files/assessment-media/infrastructure/assessment-media.repository.ts',
+    owner: 'AssessmentMediaRepository.transaction',
+    target: /^gate\.lock$/,
+    explicitLock: true,
+    reason: 'ST-03 Homework and Grades authorization adapters reuse the existing allocation write gate on the active transaction.',
+    classification: 'LOCK_CONTENTION_SENSITIVE',
+    resolvedCallers: Object.freeze(['assertHomeworkMediaAuthorization', 'assertGradesMediaAuthorization', 'PrismaTeacherAllocationOperationalWriteGate.lock']),
+    evidence: 'AssessmentMediaRepository.authorize passes only its active scoped transaction to assertHomeworkMediaAuthorization or assertGradesMediaAuthorization. Their abstract gate.lock calls resolve to the independently audited PrismaTeacherAllocationOperationalWriteGate; all allocation fences and hierarchy locks stay on that same transaction. These adapters perform DB reads/locks and in-memory checks only, with no Storage, scanner, FFprobe, queue or HTTP operation and no transaction escape.',
+  }),
   ...[
     'academic-content-workflow.repository.ts',
     'academic-content-publication.repository.ts',
@@ -496,6 +516,17 @@ function declarationName(node) {
 
 function callTarget(call, source) {
   return call.expression.getText(source).replace(/\s+/g, '');
+}
+
+function isRequestContextStoreRead(call, source, checker) {
+  if (normalized(path.relative(ROOT, source.fileName)) !== 'src/common/context/request-context.ts' ||
+      !ts.isPropertyAccessExpression(call.expression) ||
+      call.expression.name.text !== 'getStore' || call.arguments.length !== 0) return false;
+  const receiver = checker.getTypeAtLocation(call.expression.expression).getSymbol();
+  return (receiver?.getDeclarations() ?? []).some(declaration =>
+    ts.isClassDeclaration(declaration) && declaration.name?.text === 'AsyncLocalStorage' &&
+    normalized(declaration.getSourceFile().fileName).endsWith('/node_modules/@types/node/async_hooks.d.ts'),
+  );
 }
 
 function isEffectivelyWaited(node, boundary) {
@@ -743,6 +774,9 @@ function analyzeCallback({ callback, ownerNode, source, checker, sourceRoot }) {
           visitTree(boundCallback, target, false);
         } else if (property === '$transaction') {
           // Nested transactions are separately inventoried; they are not a helper call.
+        } else if (isRequestContextStoreRead(child, nodeSource, checker)) {
+          // Node AsyncLocalStorage.getStore is synchronous in-process context,
+          // not the Object Storage dependency matched by the name heuristic.
         } else if (EXTERNAL_TARGET_PATTERN.test(target)) {
           analysis.externalCalls.push({ target, awaited, origin });
         } else if (
@@ -788,7 +822,7 @@ function analyzeCallback({ callback, ownerNode, source, checker, sourceRoot }) {
     if (node.pos >= callbackStart && node.end <= callbackEnd) return;
     if (ts.isCallExpression(node) && isEffectivelyWaited(node, ownerNode)) {
       const target = callTarget(node, source);
-      if (EXTERNAL_TARGET_PATTERN.test(target)) outside.externalCalls.push(target);
+      if (EXTERNAL_TARGET_PATTERN.test(target) && !isRequestContextStoreRead(node, source, checker)) outside.externalCalls.push(target);
     }
     ts.forEachChild(node, visitOwner);
   };
@@ -1572,6 +1606,7 @@ function isDirectlyInsideTransactionCallback(node) {
 
 function scanDirectExternalWaitsOutsideTransactions(program, sourceRoot) {
   const evidence = [];
+  const checker = program.getTypeChecker();
   for (const source of program.getSourceFiles()) {
     const absolute = path.resolve(source.fileName);
     if (!isPathWithinDirectory(absolute, sourceRoot) || absolute.endsWith('.spec.ts')) continue;
@@ -1580,6 +1615,7 @@ function scanDirectExternalWaitsOutsideTransactions(program, sourceRoot) {
         ts.isCallExpression(node) &&
         isEffectivelyWaited(node, source) &&
         EXTERNAL_TARGET_PATTERN.test(callTarget(node, source)) &&
+        !isRequestContextStoreRead(node, source, checker) &&
         !isDirectlyInsideTransactionCallback(node)
       ) {
         evidence.push({

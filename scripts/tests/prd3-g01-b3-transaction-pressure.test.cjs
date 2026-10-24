@@ -173,6 +173,57 @@ test('ACC transaction facade and READY cleanup have scoped DB-only lock boundari
   }]);
 });
 
+test('ST-03 assessment facade has exactly the reviewed DB-only callbacks and allocation gate', () => {
+  const repositoryPath = 'src/modules/files/assessment-media/infrastructure/assessment-media.repository.ts';
+  const row = INVENTORY.find(item => item.path === repositoryPath && item.entryOwner === 'AssessmentMediaRepository.transaction');
+  assert.ok(row);
+  assert.equal(row.classification, 'LOCK_CONTENTION_SENSITIVE');
+  assert.equal(row.explicitLock, true);
+  assert.equal(row.externalWaitInsideTransaction, false);
+  assert.deepEqual(row.unresolvedCalls, []);
+  assert.equal(row.maxWaitMs, 5000);
+  assert.equal(row.timeoutMs, 15000);
+  const callbacks = row.manualOverrides.find(item => item.unresolvedCallExpression === 'operation');
+  const allocation = row.manualOverrides.find(item => item.unresolvedCallExpression === 'gate.lock');
+  assert.ok(callbacks);
+  assert.ok(allocation);
+  const repository = fs.readFileSync(path.join(__dirname, '..', '..', repositoryPath), 'utf8');
+  const methods = [...repository.matchAll(/^  (?:private )?(?:async )?(\w+)(?:<[^>]+>)?\(/gmu)];
+  const callers = methods.filter((match, index) => {
+    const body = repository.slice(match.index, methods[index + 1]?.index ?? repository.length);
+    if (!body.includes('this.transaction(')) return false;
+    assert.doesNotMatch(body, /\b(?:storage|verifier|scanner|queue|http)\./u);
+    return true;
+  }).map(match => `AssessmentMediaRepository.${match[1]}`).sort();
+  assert.equal(callers.length, 8);
+  assert.deepEqual(callbacks.resolvedCallers, callers);
+  assert.deepEqual(allocation.resolvedCallers, ['PrismaTeacherAllocationOperationalWriteGate.lock', 'assertGradesMediaAuthorization', 'assertHomeworkMediaAuthorization']);
+});
+
+test('a storage dependency named getStore remains an external wait outside the exact Node context lookup', () => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'moazez-st03-audit-'));
+  try {
+    fs.writeFileSync(path.join(temporaryRoot, 'storage.repository.ts'), `
+      declare const prisma: any;
+      declare const storage: { getStore(): Promise<unknown> };
+      export function write() {
+        return prisma.$transaction(async (tx: any) => {
+          await storage.getStore();
+          return tx.file.count();
+        });
+      }
+    `);
+    const [row] = inventoryTransactions(temporaryRoot);
+    assert.ok(row);
+    assert.equal(row.externalWaitInsideTransaction, true);
+    assert.ok(row.externalInsideTargets.includes('storage.getStore'));
+    assert.equal(row.classification, 'EXTERNAL_WAIT_SENSITIVE');
+  } finally {
+    assert.equal(path.dirname(path.resolve(temporaryRoot)), path.resolve(os.tmpdir()));
+    fs.rmSync(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
 test('ACC later-event authorization has a scoped reviewed transaction-bound lock record', () => {
   const row = INVENTORY.find(
     (item) =>

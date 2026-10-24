@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "prismaSchema": {
     "path": "prisma/schema.prisma",
-    "sha256": "9885f158554032c465f1543a985a4c0af98b0ad29400960d3020afa7b783ae72"
+    "sha256": "c19eba1a90591c37051aeae3fbd2eabaffb9ba2efb5ee0453b6d09b300cfd870"
   },
   "prismaConfig": {
     "path": "prisma.config.ts",
@@ -36,7 +36,9 @@
     "20261005184814_academic_content_review_decision_notification_types",
     "20261006155322_file_live_reference_integrity",
     "20261008064934_academic_content_engagement_acknowledgement_foundation",
-    "20261008093728_academic_content_engagement_admission"
+    "20261008093728_academic_content_engagement_admission",
+    "20261024085802_assessment_media_upload_purposes",
+    "20261024085803_assessment_media_foundation"
   ],
   "migrations": [
     {
@@ -178,7 +180,17 @@
       "directory": "20261008093728_academic_content_engagement_admission",
       "path": "prisma/migrations/20261008093728_academic_content_engagement_admission/migration.sql",
       "sha256": "68b1f5140c36a2b5a2290d2309debdeac86e58464c85721bc516e43231d9e1c1"
+    },
+    {
+      "directory": "20261024085802_assessment_media_upload_purposes",
+      "path": "prisma/migrations/20261024085802_assessment_media_upload_purposes/migration.sql",
+      "sha256": "6c38a4ff282c359dbcea00e5e9ec430fa4514be1ae07080a5d709adc1d17512a"
+    },
+    {
+      "directory": "20261024085803_assessment_media_foundation",
+      "path": "prisma/migrations/20261024085803_assessment_media_foundation/migration.sql",
+      "sha256": "71e9f99b22a3a14025cd9f5e2e861a6917217834b3d05ed9fff0bd5338906268"
     }
   ],
-  "aggregateMigrationChainSha256": "e7c4e10394cfdb5788d5f75988850b035c81763ee860af763836d224f4be51e1"
+  "aggregateMigrationChainSha256": "acfbb3531b88cfe83b8ff6c21df5ca245a55439cbfd40278acba559ea96821f5"
 }

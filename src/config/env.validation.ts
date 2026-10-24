@@ -43,6 +43,7 @@ export const envSchema = z
       .default('none'),
     APP_CORS_ORIGINS: optionalNonEmptyString,
     SWAGGER_ENABLED: booleanFromString.default('false'),
+    ASSESSMENT_MEDIA_UPLOADS_ENABLED: booleanFromString.default('false'),
     APP_SHUTDOWN_TIMEOUT_MS: z.coerce
       .number()
       .int()
@@ -135,6 +136,15 @@ export const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['SWAGGER_ENABLED'],
         message: 'SWAGGER_ENABLED=true is forbidden in production',
+      });
+    }
+
+    if (env.NODE_ENV === 'production' && env.ASSESSMENT_MEDIA_UPLOADS_ENABLED) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ASSESSMENT_MEDIA_UPLOADS_ENABLED'],
+        message:
+          'Assessment Media production enablement requires separate acceptance',
       });
     }
 

@@ -22,6 +22,7 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
   'Role',
   'File',
   'FileUploadSession',
+  'SchoolAssessmentMediaPolicy',
   'Attachment',
   'ImportJob',
   'SchoolEntitlement',

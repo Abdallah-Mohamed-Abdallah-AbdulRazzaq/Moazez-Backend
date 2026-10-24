@@ -20,6 +20,24 @@ export type ObjectStorageResumableUploadInput = {
   contentType?: string;
   metadata?: Record<string, string>;
   origin?: string;
+  expectedSizeBytes?: number;
+};
+
+/** Assessment-only capability. Provider must enforce the exact length and MIME. */
+export type ObjectStorageBoundedUploadInput = {
+  bucket: string;
+  objectKey: string;
+  contentType: string;
+  expectedSizeBytes: number;
+  expiresInSeconds: number;
+  origin?: string;
+};
+
+export type ObjectStorageBoundedUploadCapability = {
+  mode: 'resumable' | 'signed-post';
+  url: string;
+  expiresAt: Date;
+  formFields?: Record<string, string>;
 };
 
 export type ObjectStorageResumableUploadSession = {
@@ -105,6 +123,9 @@ export type ObjectStorageListPage = {
 };
 
 export interface ObjectStoragePort {
+  createBoundedUploadCapability?(
+    input: ObjectStorageBoundedUploadInput,
+  ): Promise<ObjectStorageBoundedUploadCapability>;
   getCapabilities(): ObjectStorageCapabilities;
   createResumableUploadSession(
     input: ObjectStorageResumableUploadInput,
@@ -146,6 +167,18 @@ export function assertSignedUrlTtl(expiresInSeconds: number): void {
   ) {
     throw new Error('storage_signed_url_ttl_invalid');
   }
+}
+
+export function assertBoundedUpload(
+  input: ObjectStorageBoundedUploadInput,
+): void {
+  assertSignedUrlTtl(input.expiresInSeconds);
+  if (
+    !Number.isSafeInteger(input.expectedSizeBytes) ||
+    input.expectedSizeBytes <= 0 ||
+    !/^[a-z0-9.+-]+\/[a-z0-9.+-]+$/u.test(input.contentType)
+  )
+    throw new Error('storage_bounded_upload_invalid');
 }
 
 export function assertObjectRange(input: ObjectStorageRangeInput): void {

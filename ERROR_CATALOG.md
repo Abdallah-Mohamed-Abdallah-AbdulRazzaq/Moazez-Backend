@@ -1,5 +1,32 @@
 # Error Catalog
 
+## Assessment Media foundation (ST-03)
+
+These stable codes belong to internal application contracts. ST-03 adds no
+public Assessment Media route. Existing domain ownership failures retain the
+non-disclosing `not_found` 404; no error includes provider output, capabilities,
+object coordinates, file bytes or foreign resource identifiers.
+
+| Code | HTTP | Meaning |
+| --- | --- | --- |
+| `assessment_media.disabled` | 409 | New upload execution is disabled |
+| `assessment_media.invalid_request` | 400 | Invalid UUID, size, filename or extension/MIME pair |
+| `assessment_media.policy_denied` | 409 | Effective school/platform policy rejects the upload |
+| `assessment_media.quota_exceeded` | 409 | Atomic byte/count/concurrency reservation rejected |
+| `assessment_media.rate_exceeded` | 429 | Persisted upload request rate exceeded |
+| `assessment_media.idempotency_conflict` | 409 | Request identity reused with different immutable metadata |
+| `assessment_media.upload_not_found` | 404 | Actor, membership, permission or exact upload identity unavailable |
+| `assessment_media.state_conflict` | 409 | Illegal or concurrently changed lifecycle state |
+| `assessment_media.verification_in_progress` | 409 | Another completion owns the verification claim |
+| `assessment_media.expired` | 409 | Session cannot complete after expiry |
+| `assessment_media.capability_failed` | 409 | Private upload capability could not be safely issued |
+| `assessment_media.verification_failed` | 409 | Required content facts were rejected |
+| `assessment_media.verifier_unavailable` | 409 | Required technical verifier or bounded execution slot unavailable |
+| `assessment_media.security_verification_unavailable` | 409 | DR-07 release verification is unavailable or unapproved |
+| `assessment_media.object_changed` | 409 | Object identity changed or could not be established |
+| `assessment_media.verification_timeout` | 409 | Completion exceeded its caller deadline; no READY release |
+| `assessment_media.ready_relationship_invalid` | 409 | READY provenance no longer matches its live private File |
+
 This is the authoritative registry of error codes and response shapes used by the Moazez backend.
 
 ## 1. Error Envelope
