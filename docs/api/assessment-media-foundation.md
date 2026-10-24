@@ -84,6 +84,7 @@ Expected extension/MIME pairs are restricted to the current bounded verifier's
 text/PDF/JPEG/PNG/MP3/M4A/WebM/MP4 registry. Archives, Office, HTML, scripts,
 executables and ambiguous types are denied. Full bounded streaming/hash and
 FFprobe container/codec/duration/dimension checks are reused where applicable.
+Text UTF-8/signature inspection is prefix-bounded, not full-file classification.
 Image/PDF signatures are not deep integrity or malware evidence: those formats
 remain blocked pending an approved stronger capability.
 
@@ -94,6 +95,10 @@ transaction/persistence contracts and must never be called production scanning.
 Missing dependencies, timeout, object identity changes, malformed/zero/incorrect
 size or MIME content never create READY or a File.
 
+Upload capabilities are bearer secrets, not actor-authenticated storage requests.
+Provider-side early revocation is not assumed: an issued capability may still
+write its exact staging object until expiry after cancellation/completion. It
+cannot authorize another actor to finalize an intent or overwrite its final File.
 The uploader can write only staging. The server writes a distinct final object;
 staging and final object identity are checked around verification. No storage
 call runs inside the authorization/claim/File transaction. There are at most two

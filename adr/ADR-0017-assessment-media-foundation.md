@@ -63,7 +63,11 @@ and `content-length-range [expected, expected]`. Unsupported adapters fail close
 there is no unbounded signed-PUT fallback. The existing generic capability shape
 stays unchanged. GCS runtime enforcement/CORS/least-privilege evidence remains a
 DevOps dependency; the real owned MinIO policy is tested. Never persist or log
-the secret URL or POST fields. A create retry with
+the secret URL or POST fields. These are bearer capabilities: early provider
+revocation is not assumed. An issued MinIO capability may still write its exact
+staging object until expiry, including after application cancellation/completion;
+it cannot address the server-only final object or authorize another actor to
+finalize/reuse the intent. All reservations account for the actual lifetime. A create retry with
 identical metadata returns the same session and current status without
 reissuing a capability; changed metadata conflicts.
 
@@ -80,7 +84,7 @@ LESSON_CONTENT/ACADEMIC_CONTENT, LEGACY and PURGED branches retain their meaning
 
 | Category | Reusable technical capability | Release restriction |
 | --- | --- | --- |
-| Strict UTF-8 text | Full bounded byte/hash and text validation | Additional security release gate; no approved malware provider |
+| Plain text | Bounded UTF-8 prefix/signature validation and full bounded byte/hash streaming | Full-content security acceptance remains pending; no approved release gate |
 | JPEG / PNG | Signature and bounded dimensions | Deep image/content security is not attested by these checks; blocked |
 | PDF / Office | Signature only / no approved deep parser | Blocked; Office is outside the assessment allowlist |
 | Audio / video | Accepted containers/codecs/duration/dimensions via bounded FFprobe | Additional security release gate; runtime acceptance required |
