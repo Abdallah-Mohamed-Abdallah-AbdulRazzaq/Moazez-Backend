@@ -1,5 +1,9 @@
 import { sanitizeGradeQuestionContent } from '../domain/grade-question-content-policy';
 import {
+  presentGradeQuestionContract,
+  presentSafeGradeAnswer,
+} from '../../shared/presenters/grade-question-contract';
+import {
   GradeAnswerCorrectionStatus,
   GradeQuestionType,
   GradeSubmissionStatus,
@@ -95,16 +99,23 @@ export function presentGradeSubmissionAnswer(
     id: answer.id,
     questionId: answer.questionId,
     type: presentQuestionType(answer.question.type),
-    answerText: answer.answerText,
-    answerJson: sanitizeGradeQuestionContent(answer.answerJson, true),
+    ...presentSafeGradeAnswer(answer.question, {
+      answerText: answer.answerText,
+      answerJson: answer.answerJson,
+      selectedOptionIds: answer.selectedOptions.map(
+        (option) => option.optionId,
+      ),
+    }),
     correctionStatus: presentAnswerCorrectionStatus(answer.correctionStatus),
     awardedPoints: presentDecimal(answer.awardedPoints),
     maxPoints: presentDecimal(answer.maxPoints),
     reviewerComment: answer.reviewerComment,
     reviewerCommentAr: answer.reviewerCommentAr,
-    selectedOptions: answer.selectedOptions.map((selected) =>
-      presentSelectedOption(selected),
-    ),
+    selectedOptions: (presentGradeQuestionContract(answer.question.type)
+      .interaction.kind === 'choice'
+      ? answer.selectedOptions
+      : []
+    ).map((selected) => presentSelectedOption(selected)),
     reviewedAt: presentNullableDate(answer.reviewedAt),
     reviewedById: answer.reviewedById,
     createdAt: answer.createdAt.toISOString(),
@@ -166,6 +177,14 @@ function presentSubmissionQuestion(params: {
   return {
     id: params.question.id,
     type: presentQuestionType(params.question.type),
+    canonicalType: presentGradeQuestionContract(
+      params.question.type,
+      params.question,
+    ).canonicalType,
+    interaction: presentGradeQuestionContract(
+      params.question.type,
+      params.question,
+    ).interaction,
     prompt:
       (sanitizeGradeQuestionContent(params.question.prompt) as string | null) ??
       '',

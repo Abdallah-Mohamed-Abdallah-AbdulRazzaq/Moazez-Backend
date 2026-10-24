@@ -1,6 +1,8 @@
 import {
   gradeAssessmentAccessWhere,
   assertGradeAssessmentAccess,
+  lockGradeAssessmentMutation,
+  assertGradeLiveMutationPermission,
 } from './grades-resource-access';
 import { Injectable } from '@nestjs/common';
 import {
@@ -12,6 +14,15 @@ import {
 } from '@prisma/client';
 import { withSoftDeleted } from '../../../../common/context/request-context';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import {
+  assertQuestionBasedAssessmentPublishable,
+  assertQuestionBasedPublishReady,
+} from '../domain/grade-assessment-question-publish-domain';
+import {
+  assertPublishableAssessment,
+  assertWorkflowTermWritable,
+} from '../domain/grade-assessment-domain';
+import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 
 const SUBJECT_SUMMARY_SELECT = {
   id: true,
@@ -297,7 +308,26 @@ export class GradesAssessmentsRepository {
     data: PublishGradeAssessmentData,
   ): Promise<GradeAssessmentRecord> {
     await this.scopedPrisma.$transaction(async (tx) => {
-      await assertGradeAssessmentAccess(tx, assessmentId);
+      await assertGradeLiveMutationPermission(tx, 'grades.assessments.publish');
+      await lockGradeAssessmentMutation(tx, assessmentId);
+      const assessment = await tx.gradeAssessment.findFirst({
+        where: { id: assessmentId },
+        include: { term: true },
+      });
+      if (!assessment) throw new NotFoundDomainException();
+      assertWorkflowTermWritable(assessment.term);
+      if (
+        assessment.deliveryMode === GradeAssessmentDeliveryMode.QUESTION_BASED
+      ) {
+        assertQuestionBasedAssessmentPublishable(assessment);
+        const questions = await tx.gradeAssessmentQuestion.findMany({
+          where: { assessmentId },
+          ...QUESTION_FOR_PUBLISH_ARGS,
+        });
+        assertQuestionBasedPublishReady({ assessment, questions });
+      } else {
+        assertPublishableAssessment(assessment);
+      }
       await tx.gradeAssessment.updateMany({
         where: { id: assessmentId, deletedAt: null },
         data: data as Prisma.GradeAssessmentUncheckedUpdateManyInput,

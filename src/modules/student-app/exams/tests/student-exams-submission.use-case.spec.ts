@@ -128,7 +128,8 @@ describe('Student Exam submission use-cases', () => {
         action: 'grades.submission.answers.bulk_save',
       }),
     );
-    expect(serialized).toContain('kept');
+    expect(serialized).not.toContain('kept');
+    expect(serialized).toContain('"supported":false');
     for (const forbidden of [
       'answerKey',
       'correctAnswer',

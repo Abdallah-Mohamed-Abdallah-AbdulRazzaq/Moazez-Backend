@@ -1,4 +1,5 @@
 import { validateGradeQuestionContent } from './grade-question-content-policy';
+import { validateGradeQuestionDefinition } from './grade-question-interaction';
 import { HttpStatus } from '@nestjs/common';
 import {
   GradeAssessmentApprovalStatus,
@@ -204,8 +205,14 @@ export function validateQuestionForPublish(
   question: QuestionPublishQuestionLike,
 ): void {
   validateGradeQuestionContent(question);
+  if (question.prompt !== undefined && !question.prompt.trim())
+    throw new ValidationDomainException('Question prompt is required', {
+      field: 'prompt',
+      questionId: question.id,
+    });
   requirePositiveQuestionPoints(question);
   assertQuestionOptionsValidForPublish(question);
+  validateGradeQuestionDefinition(question, true);
 }
 
 export function assertQuestionOptionsValidForPublish(

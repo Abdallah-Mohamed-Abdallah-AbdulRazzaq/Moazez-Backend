@@ -47,13 +47,21 @@ describe('grade assessment question presenter', () => {
     };
   }
 
-  it('maps question shape and numeric values', () => {
+  it('maps numeric values and marks an incomplete historical choice unavailable', () => {
     const result = presentGradeAssessmentQuestion(questionRecord(), true);
 
     expect(result).toEqual({
       id: 'question-1',
       assessmentId: 'assessment-1',
       type: 'mcq_single',
+      canonicalType: 'MCQ_SINGLE',
+      interaction: {
+        kind: 'choice',
+        selectionMode: 'single',
+        multiline: false,
+        supported: false,
+        definition: null,
+      },
       prompt: 'Choose one',
       promptAr: 'Prompt AR',
       explanation: 'Because it is correct',

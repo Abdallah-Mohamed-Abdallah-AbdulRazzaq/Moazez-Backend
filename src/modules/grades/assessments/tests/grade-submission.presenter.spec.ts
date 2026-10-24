@@ -100,6 +100,15 @@ describe('grade submission presenter', () => {
           sortOrder: 1,
           deletedAt: null,
         },
+        {
+          id: 'option-2',
+          questionId: id,
+          label: 'B',
+          labelAr: null,
+          value: 'b',
+          sortOrder: 2,
+          deletedAt: null,
+        },
       ],
     };
   }

@@ -20,7 +20,11 @@ import {
 } from '../../shared/domain/grade-workflow';
 import { GradeAssessmentLockedException } from './grade-assessment-domain';
 import { GradebookNoEnrollmentException } from './grade-item-entry-domain';
-import { normalizeQuestionType } from './grade-question-domain';
+import {
+  normalizeTypedGradeAnswer,
+  normalizeStoredGradeAnswer,
+  type GradeInteractionQuestion,
+} from './grade-question-interaction';
 
 export interface SubmissionAssessmentLike {
   id: string;
@@ -66,12 +70,13 @@ export interface SubmissionEnrollmentLike {
   } | null;
 }
 
-export interface SubmissionQuestionLike {
+export interface SubmissionQuestionLike extends GradeInteractionQuestion {
   id: string;
   assessmentId: string;
   type: GradeQuestionType | string;
   required: boolean;
   points?: unknown;
+  options?: SubmissionOptionLike[];
 }
 
 export interface SubmissionOptionLike {
@@ -212,66 +217,15 @@ export function assertQuestionBelongsToSubmissionAssessment(params: {
 export function validateAnswerPayloadForQuestion(params: {
   question: SubmissionQuestionLike;
   payload: NormalizedAnswerPayload;
-}): void {
-  const type = normalizeQuestionType(params.question.type);
-  const selectedOptionCount = params.payload.selectedOptionIds.length;
-  const hasText = hasMeaningfulText(params.payload.answerText);
-  const hasJson = hasMeaningfulJson(params.payload.answerJson);
+}): NormalizedAnswerPayload {
+  return normalizeTypedGradeAnswer(params.question, params.payload);
+}
 
-  switch (type) {
-    case GradeQuestionType.MCQ_SINGLE:
-    case GradeQuestionType.TRUE_FALSE:
-      if (selectedOptionCount !== 1) {
-        throw new ValidationDomainException(
-          `${type} answers require exactly one selected option`,
-          { field: 'selectedOptionIds', questionId: params.question.id, type },
-        );
-      }
-      return;
-
-    case GradeQuestionType.MCQ_MULTI:
-      if (selectedOptionCount < 1) {
-        throw new ValidationDomainException(
-          'MCQ_MULTI answers require at least one selected option',
-          { field: 'selectedOptionIds', questionId: params.question.id, type },
-        );
-      }
-      return;
-
-    case GradeQuestionType.SHORT_ANSWER:
-      assertNoSelectedOptions(type, selectedOptionCount, params.question.id);
-      if (!hasText && !hasJson) {
-        throwRequiredAnswer(params.question.id, type, 'answerText');
-      }
-      return;
-
-    case GradeQuestionType.ESSAY:
-      assertNoSelectedOptions(type, selectedOptionCount, params.question.id);
-      if (!hasText) {
-        throwRequiredAnswer(params.question.id, type, 'answerText');
-      }
-      return;
-
-    case GradeQuestionType.FILL_IN_BLANK:
-      assertNoSelectedOptions(type, selectedOptionCount, params.question.id);
-      if (!hasText && !hasJson) {
-        throwRequiredAnswer(params.question.id, type, 'answerText');
-      }
-      return;
-
-    case GradeQuestionType.MATCHING:
-      if (!hasJson) {
-        throwRequiredAnswer(params.question.id, type, 'answerJson');
-      }
-      return;
-
-    case GradeQuestionType.MEDIA:
-      assertNoSelectedOptions(type, selectedOptionCount, params.question.id);
-      if (!hasText && !hasJson) {
-        throwRequiredAnswer(params.question.id, type, 'answerText');
-      }
-      return;
-  }
+export function validateStoredAnswerPayloadForQuestion(params: {
+  question: SubmissionQuestionLike;
+  payload: NormalizedAnswerPayload;
+}): NormalizedAnswerPayload {
+  return normalizeStoredGradeAnswer(params.question, params.payload);
 }
 
 export function validateSelectedOptionsForQuestion(params: {
@@ -471,27 +425,16 @@ function isAnswerMeaningfulForQuestion(
   });
 
   try {
-    validateAnswerPayloadForQuestion({ question, payload });
+    validateStoredAnswerPayloadForQuestion({ question, payload });
+    if (question.options)
+      validateSelectedOptionsForQuestion({
+        question,
+        selectedOptionIds: payload.selectedOptionIds,
+        options: question.options,
+      });
     return true;
   } catch {
     return false;
-  }
-}
-
-function assertNoSelectedOptions(
-  type: GradeQuestionType,
-  selectedOptionCount: number,
-  questionId: string,
-): void {
-  if (selectedOptionCount > 0) {
-    throw new ValidationDomainException(
-      `${type} answers do not accept options`,
-      {
-        field: 'selectedOptionIds',
-        questionId,
-        type,
-      },
-    );
   }
 }
 
@@ -518,18 +461,6 @@ function assertNoDuplicateSelectedOptionIds(optionIds: string[]): void {
   }
 }
 
-function throwRequiredAnswer(
-  questionId: string,
-  type: GradeQuestionType,
-  field: string,
-): never {
-  throw new ValidationDomainException(`${type} answer is required`, {
-    field,
-    questionId,
-    type,
-  });
-}
-
 function normalizeNullableText(
   value: string | null | undefined,
 ): string | null {
@@ -537,18 +468,6 @@ function normalizeNullableText(
 
   const normalized = String(value).trim();
   return normalized.length > 0 ? normalized : null;
-}
-
-function hasMeaningfulText(value: string | null): boolean {
-  return Boolean(value && value.trim().length > 0);
-}
-
-function hasMeaningfulJson(value: unknown): boolean {
-  if (value === null || value === undefined) return false;
-  if (typeof value === 'string') return value.trim().length > 0;
-  if (Array.isArray(value)) return value.length > 0;
-  if (typeof value === 'object') return Object.keys(value).length > 0;
-  return true;
 }
 
 function isEnrollmentInsideAssessmentScope(params: {

@@ -103,6 +103,7 @@ const STUDENT_GRADE_ASSESSMENT_DETAIL_ARGS =
           points: true,
           sortOrder: true,
           required: true,
+          metadata: true,
           options: {
             where: { deletedAt: null },
             orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
@@ -119,8 +120,8 @@ const STUDENT_GRADE_ASSESSMENT_DETAIL_ARGS =
     },
   });
 
-const STUDENT_GRADE_ITEM_ARGS =
-  Prisma.validator<Prisma.GradeItemDefaultArgs>()({
+const STUDENT_GRADE_ITEM_ARGS = Prisma.validator<Prisma.GradeItemDefaultArgs>()(
+  {
     select: {
       id: true,
       assessmentId: true,
@@ -129,7 +130,8 @@ const STUDENT_GRADE_ITEM_ARGS =
       comment: true,
       enteredAt: true,
     },
-  });
+  },
+);
 
 const STUDENT_GRADE_SUBMISSION_ARGS =
   Prisma.validator<Prisma.GradeSubmissionDefaultArgs>()({
@@ -218,7 +220,8 @@ export class StudentGradesReadAdapter {
     paginate?: boolean;
   }): Promise<StudentGradesReadResult> {
     const enrollment = await this.findEnrollmentContext(params.context);
-    const page = params.paginate === false ? 1 : resolvePage(params.query?.page);
+    const page =
+      params.paginate === false ? 1 : resolvePage(params.query?.page);
     const limit =
       params.paginate === false
         ? MAX_LIMIT
@@ -360,7 +363,9 @@ function buildAssessmentWhere(params: {
   const grade = section.grade;
   const stage = grade.stage;
   const requestedSubjectIds = params.query?.subjectId
-    ? params.subjectIds.filter((subjectId) => subjectId === params.query?.subjectId)
+    ? params.subjectIds.filter(
+        (subjectId) => subjectId === params.query?.subjectId,
+      )
     : params.subjectIds;
 
   return {

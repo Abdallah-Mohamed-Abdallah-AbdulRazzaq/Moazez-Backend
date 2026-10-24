@@ -1,4 +1,8 @@
-import { GradeQuestionContractDto } from '../../../grades/shared/presenters/grade-question-contract';
+import {
+  GradeQuestionContractDto,
+  GradeQuestionInteractionDto,
+} from '../../../grades/shared/presenters/grade-question-contract';
+import { GradeQuestionType } from '@prisma/client';
 import { Transform, Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 
@@ -242,6 +246,8 @@ export class StudentAssessmentGradeSelectedOptionDto {
 }
 
 export class StudentAssessmentGradeSubmissionAnswerDto {
+  canonicalType!: GradeQuestionType | null;
+  interaction!: GradeQuestionInteractionDto;
   answerId!: string;
   questionId!: string;
   answerText!: string | null;

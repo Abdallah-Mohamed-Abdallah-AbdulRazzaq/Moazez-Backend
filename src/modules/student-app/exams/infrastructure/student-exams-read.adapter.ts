@@ -9,7 +9,11 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import type { StudentAppContext } from '../../shared/student-app.types';
-import type { StudentExamStatus, StudentExamType, StudentExamsQueryDto } from '../dto/student-exams.dto';
+import type {
+  StudentExamStatus,
+  StudentExamType,
+  StudentExamsQueryDto,
+} from '../dto/student-exams.dto';
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 100;
@@ -112,6 +116,7 @@ const STUDENT_EXAM_DETAIL_ARGS =
           points: true,
           sortOrder: true,
           required: true,
+          metadata: true,
           options: {
             where: { deletedAt: null },
             orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
@@ -165,6 +170,9 @@ const STUDENT_EXAM_SUBMISSION_DETAIL_ARGS =
             select: {
               id: true,
               type: true,
+              metadata: true,
+              required: true,
+              options: STUDENT_EXAM_DETAIL_ARGS.select.questions.select.options,
             },
           },
           selectedOptions: {
@@ -198,9 +206,8 @@ export type StudentExamDetailRecord = Prisma.GradeAssessmentGetPayload<
 export type StudentExamSubmissionListRecord = Prisma.GradeSubmissionGetPayload<
   typeof STUDENT_EXAM_SUBMISSION_LIST_ARGS
 >;
-export type StudentExamSubmissionDetailRecord = Prisma.GradeSubmissionGetPayload<
-  typeof STUDENT_EXAM_SUBMISSION_DETAIL_ARGS
->;
+export type StudentExamSubmissionDetailRecord =
+  Prisma.GradeSubmissionGetPayload<typeof STUDENT_EXAM_SUBMISSION_DETAIL_ARGS>;
 
 export interface StudentExamsReadResult {
   exams: StudentExamCardRecord[];
@@ -402,7 +409,9 @@ function buildExamAssessmentWhere(params: {
   const grade = section.grade;
   const stage = grade.stage;
   const requestedSubjectIds = params.query?.subjectId
-    ? params.subjectIds.filter((subjectId) => subjectId === params.query?.subjectId)
+    ? params.subjectIds.filter(
+        (subjectId) => subjectId === params.query?.subjectId,
+      )
     : params.subjectIds;
 
   return {

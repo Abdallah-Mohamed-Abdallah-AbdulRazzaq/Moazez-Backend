@@ -67,6 +67,7 @@ describe('StudentExamsSubmissionWriteAdapter', () => {
         studentId: 'student-1',
         enrollmentId: 'enrollment-1',
       }),
+      'grades.submissions.start',
     );
     expect(result.created).toBe(true);
     expect(result.submission.id).toBe('submission-1');
@@ -293,9 +294,10 @@ describe('StudentExamsSubmissionWriteAdapter', () => {
       submissionFixture(),
     );
     repository.findQuestionForAnswer.mockResolvedValue(questionFixture());
-    repository.findOptionsByIds.mockResolvedValue([
-      optionFixture({ id: 'option-other', questionId: 'question-other' }),
-    ]);
+    repository.findOptionsByIds.mockResolvedValue(
+      [optionFixture({ id: 'option-other', questionId: 'question-other' })],
+      'grades.submissions.save',
+    );
 
     await expect(
       adapter.saveAnswer({
@@ -327,9 +329,10 @@ describe('StudentExamsSubmissionWriteAdapter', () => {
     );
     repository.findQuestionsByIds.mockResolvedValue([questionFixture()]);
     repository.findOptionsByIds.mockResolvedValue([optionFixture()]);
-    repository.bulkUpsertAnswersWithSelectedOptions.mockResolvedValue([
-      answerFixture(),
-    ]);
+    repository.bulkUpsertAnswersWithSelectedOptions.mockResolvedValue(
+      [answerFixture()],
+      'grades.submissions.save',
+    );
 
     const result = await adapter.bulkSaveAnswers({
       context: contextFixture(),
@@ -346,15 +349,18 @@ describe('StudentExamsSubmissionWriteAdapter', () => {
 
     expect(
       repository.bulkUpsertAnswersWithSelectedOptions,
-    ).toHaveBeenCalledWith([
-      expect.objectContaining({
-        schoolId: 'school-1',
-        submissionId: 'submission-1',
-        assessmentId: 'assessment-1',
-        studentId: 'student-1',
-        questionId: 'question-1',
-      }),
-    ]);
+    ).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          schoolId: 'school-1',
+          submissionId: 'submission-1',
+          assessmentId: 'assessment-1',
+          studentId: 'student-1',
+          questionId: 'question-1',
+        }),
+      ],
+      'grades.submissions.save',
+    );
     expect(result.answers).toHaveLength(1);
   });
 
@@ -571,7 +577,7 @@ function questionFixture(overrides?: { assessmentId?: string }) {
     sortOrder: 1,
     required: true,
     deletedAt: null,
-    options: [optionFixture()],
+    options: [optionFixture(), optionFixture({ id: 'option-2' })],
   } as never;
 }
 

@@ -932,14 +932,14 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
       planner.listRepositoryFiles({ repositoryRoot: REPOSITORY_ROOT }),
     ),
   );
-  assert.equal(assignments.length, 1005);
+  assert.equal(assignments.length, 1007);
   assert.equal(
     assignments.filter((item) => item.execution === 'manual').length,
     10,
   );
   assert.equal(
     assignments.filter((item) => item.execution !== 'manual').length,
-    995,
+    997,
   );
   assert.deepEqual(
     planner.ACTIVE_TAP_OWNERS[

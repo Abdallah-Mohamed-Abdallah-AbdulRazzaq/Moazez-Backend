@@ -5026,6 +5026,12 @@ describe('Grades tenancy isolation (security)', () => {
             subjectId: demoSubjectId,
             scopeType,
             scopeKey,
+            stageId: scopeType === GradeScopeType.STAGE ? demoStageId : null,
+            gradeId: scopeType === GradeScopeType.GRADE ? demoGradeId : null,
+            sectionId:
+              scopeType === GradeScopeType.SECTION ? demoSectionId : null,
+            classroomId:
+              scopeType === GradeScopeType.CLASSROOM ? demoClassroomId : null,
             deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
             approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
             type: GradeAssessmentType.QUIZ,
@@ -5059,6 +5065,10 @@ describe('Grades tenancy isolation (security)', () => {
             sortOrder: index + 1,
           })),
         });
+        const selectedOption =
+          await prisma.gradeAssessmentQuestionOption.findFirstOrThrow({
+            where: { questionId: question.id, sortOrder: 1 },
+          });
         const owned = await prisma.gradeSubmission.create({
           data: {
             schoolId: demoSchoolId,
@@ -5089,8 +5099,14 @@ describe('Grades tenancy isolation (security)', () => {
               submissionId: submission.id,
               studentId: submission.studentId,
               questionId: question.id,
-              answerText: 'An answer',
               maxPoints: 5,
+            },
+          });
+          await prisma.gradeSubmissionAnswerOption.create({
+            data: {
+              schoolId: demoSchoolId,
+              answerId: answer.id,
+              optionId: selectedOption.id,
             },
           });
           if (submission.id === owned.id) ownedAnswerId = answer.id;
@@ -5509,6 +5525,10 @@ describe('Grades tenancy isolation (security)', () => {
       await prisma.user.deleteMany({
         where: { id: { in: [fixture.teacher.id, fixture.studentUser.id] } },
       });
+      await prisma.rolePermission.deleteMany({
+        where: { roleId: { in: fixture.roleIds } },
+      });
+      await prisma.role.deleteMany({ where: { id: { in: fixture.roleIds } } });
     }
   }
 
@@ -5532,6 +5552,7 @@ describe('Grades tenancy isolation (security)', () => {
         status: UserStatus.ACTIVE,
       },
     });
+    const roleIds: string[] = [];
     for (const [user, roleKey] of [
       [teacher, 'teacher'],
       [studentUser, 'student'],
@@ -5539,11 +5560,32 @@ describe('Grades tenancy isolation (security)', () => {
       const role = await prisma.role.findFirstOrThrow({
         where: { key: roleKey, isSystem: true, schoolId: null },
       });
+      const ownedRole = await prisma.role.create({
+        data: {
+          key: suffix + '-' + roleKey,
+          name: suffix + '-' + roleKey,
+          schoolId: demoSchoolId,
+        },
+      });
+      roleIds.push(ownedRole.id);
+      const sourcePermissions = await prisma.rolePermission.findMany({
+        where: { roleId: role.id },
+        select: { permissionId: true },
+      });
+      const submitPermission = await prisma.permission.findUniqueOrThrow({
+        where: { code: 'grades.submissions.submit' },
+      });
+      await prisma.rolePermission.createMany({
+        data: [...sourcePermissions, { permissionId: submitPermission.id }].map(
+          (row) => ({ roleId: ownedRole.id, permissionId: row.permissionId }),
+        ),
+        skipDuplicates: true,
+      });
       await prisma.membership.create({
         data: {
           userId: user.id,
           userType: user.userType,
-          roleId: role.id,
+          roleId: ownedRole.id,
           schoolId: demoSchoolId,
           organizationId: demoOrganizationId,
           status: MembershipStatus.ACTIVE,
@@ -5653,6 +5695,7 @@ describe('Grades tenancy isolation (security)', () => {
     return {
       teacher,
       studentUser,
+      roleIds,
       students,
       enrollments,
       otherClass,

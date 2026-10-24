@@ -365,9 +365,9 @@ function assertAnswerQuestionIsActiveForReview(params: {
 }
 
 function isAnswerCorrected(answer: ReviewAnswerLike): boolean {
+  const status = String(answer.correctionStatus).trim().toUpperCase();
   return (
-    String(answer.correctionStatus).trim().toUpperCase() ===
-      GradeAnswerCorrectionStatus.CORRECTED &&
+    status === GradeAnswerCorrectionStatus.CORRECTED &&
     toReviewNumber(answer.awardedPoints) !== null
   );
 }
@@ -384,7 +384,9 @@ function resolveSubmissionMaxScore(submission: ReviewSubmissionLike): number {
   return toReviewNumber(submission.assessment.maxScore) ?? 0;
 }
 
-function normalizeNullableText(value: string | null | undefined): string | null {
+function normalizeNullableText(
+  value: string | null | undefined,
+): string | null {
   if (value === undefined || value === null) return null;
 
   const normalized = String(value).trim();

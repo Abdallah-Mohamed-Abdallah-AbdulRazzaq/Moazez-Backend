@@ -17,7 +17,9 @@ describe('StudentGradesReadAdapter', () => {
       scopedGradeAssessmentMocks,
       scopedGradeItemMocks,
     } = createAdapter();
-    scopedEnrollmentMocks.findFirstOrThrow.mockResolvedValue(enrollmentFixture());
+    scopedEnrollmentMocks.findFirstOrThrow.mockResolvedValue(
+      enrollmentFixture(),
+    );
     scopedTeacherSubjectAllocationMocks.findMany.mockResolvedValue([
       { subjectId: 'subject-1' },
     ]);
@@ -30,7 +32,8 @@ describe('StudentGradesReadAdapter', () => {
       query: { type: 'quiz', status: 'published' },
     });
 
-    const assessmentQuery = scopedGradeAssessmentMocks.findMany.mock.calls[0][0];
+    const assessmentQuery =
+      scopedGradeAssessmentMocks.findMany.mock.calls[0][0];
     expect(assessmentQuery.where).toMatchObject({
       academicYearId: 'year-1',
       termId: 'term-1',
@@ -60,7 +63,9 @@ describe('StudentGradesReadAdapter', () => {
       scopedGradeItemMocks,
       scopedGradeSubmissionMocks,
     } = createAdapter();
-    scopedEnrollmentMocks.findFirstOrThrow.mockResolvedValue(enrollmentFixture());
+    scopedEnrollmentMocks.findFirstOrThrow.mockResolvedValue(
+      enrollmentFixture(),
+    );
     scopedTeacherSubjectAllocationMocks.findMany.mockResolvedValue([
       { subjectId: 'subject-1' },
     ]);
@@ -75,7 +80,8 @@ describe('StudentGradesReadAdapter', () => {
       assessmentId: 'assessment-1',
     });
 
-    const assessmentQuery = scopedGradeAssessmentMocks.findFirst.mock.calls[0][0];
+    const assessmentQuery =
+      scopedGradeAssessmentMocks.findFirst.mock.calls[0][0];
     expect(assessmentQuery.select.questions).toMatchObject({
       where: { deletedAt: null },
       select: {
@@ -91,18 +97,20 @@ describe('StudentGradesReadAdapter', () => {
     expect(assessmentQuery.select.questions.select).not.toHaveProperty(
       'answerKey',
     );
-    expect(assessmentQuery.select.questions.select).not.toHaveProperty(
+    // Internal definition parsing requires metadata; presenters expose only typed allowlists.
+    expect(assessmentQuery.select.questions.select).toHaveProperty(
       'metadata',
+      true,
     );
-    expect(assessmentQuery.select.questions.select.options.select).toMatchObject(
-      {
-        id: true,
-        label: true,
-        labelAr: true,
-        value: true,
-        sortOrder: true,
-      },
-    );
+    expect(
+      assessmentQuery.select.questions.select.options.select,
+    ).toMatchObject({
+      id: true,
+      label: true,
+      labelAr: true,
+      value: true,
+      sortOrder: true,
+    });
     expect(
       assessmentQuery.select.questions.select.options.select,
     ).not.toHaveProperty('isCorrect');
@@ -116,11 +124,13 @@ describe('StudentGradesReadAdapter', () => {
       assessmentId: 'assessment-1',
       studentId: 'student-1',
     });
-    expect(scopedGradeSubmissionMocks.findFirst.mock.calls[0][0].where).toEqual({
-      assessmentId: 'assessment-1',
-      studentId: 'student-1',
-      enrollmentId: 'enrollment-1',
-    });
+    expect(scopedGradeSubmissionMocks.findFirst.mock.calls[0][0].where).toEqual(
+      {
+        assessmentId: 'assessment-1',
+        studentId: 'student-1',
+        enrollmentId: 'enrollment-1',
+      },
+    );
     const submissionSelect =
       scopedGradeSubmissionMocks.findFirst.mock.calls[0][0].select;
     expect(submissionSelect.answers.select).toMatchObject({
@@ -164,7 +174,9 @@ describe('StudentGradesReadAdapter', () => {
       mutationMocks,
       platformBypass,
     } = createAdapter();
-    scopedEnrollmentMocks.findFirstOrThrow.mockResolvedValue(enrollmentFixture());
+    scopedEnrollmentMocks.findFirstOrThrow.mockResolvedValue(
+      enrollmentFixture(),
+    );
     scopedTeacherSubjectAllocationMocks.findMany.mockResolvedValue([]);
     scopedGradeAssessmentMocks.findMany.mockResolvedValue([]);
     scopedGradeAssessmentMocks.count.mockResolvedValue(0);

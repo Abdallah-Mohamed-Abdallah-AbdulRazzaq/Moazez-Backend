@@ -12,6 +12,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { GradeSubmissionStatus } from '@prisma/client';
+import { GradeQuestionContractDto } from '../../shared/presenters/grade-question-contract';
 
 const MAX_SELECTED_OPTIONS = 100;
 const MAX_BULK_SUBMISSION_ANSWERS = 200;
@@ -129,10 +130,9 @@ export class GradeSubmissionSelectedOptionResponseDto {
   value!: string | null;
 }
 
-export class GradeSubmissionAnswerResponseDto {
+export class GradeSubmissionAnswerResponseDto extends GradeQuestionContractDto {
   id!: string;
   questionId!: string;
-  type!: string;
   answerText!: string | null;
   answerJson!: unknown;
   correctionStatus!: string;
@@ -147,9 +147,8 @@ export class GradeSubmissionAnswerResponseDto {
   updatedAt!: string;
 }
 
-export class GradeSubmissionQuestionResponseDto {
+export class GradeSubmissionQuestionResponseDto extends GradeQuestionContractDto {
   id!: string;
-  type!: string;
   prompt!: string;
   promptAr!: string | null;
   points!: number;
