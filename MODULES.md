@@ -34,6 +34,8 @@
 - uploads
 - attachments
 - file-links
+- assessment-media (internal shared upload/policy foundation; Homework and
+  Grades retain separate resource authorization and business ownership)
 
 ## Admissions
 

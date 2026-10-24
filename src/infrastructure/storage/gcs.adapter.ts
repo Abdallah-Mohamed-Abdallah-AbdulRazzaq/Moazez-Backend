@@ -16,6 +16,9 @@ import {
   assertSignedUrlTtl,
   MAX_RESUMABLE_UPLOAD_CAPABILITY_LIFETIME_MS,
   type ObjectStorageCapabilities,
+  assertBoundedUpload,
+  type ObjectStorageBoundedUploadInput,
+  type ObjectStorageBoundedUploadCapability,
   type ObjectStorageListPage,
   type ObjectStoragePort,
   type ObjectStoragePutInput,
@@ -138,6 +141,17 @@ export class DefaultGcsClientFactory implements GcsClientFactory {
 
 @Injectable()
 export class GcsAdapter implements ObjectStoragePort {
+  async createBoundedUploadCapability(
+    input: ObjectStorageBoundedUploadInput,
+  ): Promise<ObjectStorageBoundedUploadCapability> {
+    assertBoundedUpload(input);
+    const session = await this.createResumableUploadSession(input);
+    return {
+      mode: 'resumable',
+      url: session.sessionUrl,
+      expiresAt: session.expiresAt,
+    };
+  }
   private readonly projectId: string;
   private readonly runtimeClient: Storage;
   private readonly readinessClient: Storage;
@@ -170,6 +184,10 @@ export class GcsAdapter implements ObjectStoragePort {
           preconditionOpts: { ifGenerationMatch: 0 },
           ...(input.origin !== undefined ? { origin: input.origin } : {}),
           metadata: {
+            // SDK maps contentLength to X-Upload-Content-Length at initiation.
+            ...(input.expectedSizeBytes !== undefined
+              ? { contentLength: input.expectedSizeBytes }
+              : {}),
             ...(input.contentType !== undefined
               ? { contentType: input.contentType }
               : {}),

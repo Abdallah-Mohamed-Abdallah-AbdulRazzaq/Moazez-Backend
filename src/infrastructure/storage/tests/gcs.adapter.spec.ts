@@ -445,6 +445,22 @@ describe('GcsAdapter object operations', () => {
 });
 
 describe('GcsAdapter keyless signed capabilities', () => {
+  it('binds assessment resumable initiation to exact expected bytes and MIME without changing generic initiation', async () => {
+    const harness = createHarness();
+    const capability = await harness.adapter.createBoundedUploadCapability({
+      bucket: 'private-bucket',
+      objectKey: 'assessment/staging',
+      contentType: 'text/plain',
+      expectedSizeBytes: 123,
+      expiresInSeconds: 900,
+    });
+    expect(capability.mode).toBe('resumable');
+    expect(harness.runtimeFile.createResumableUpload).toHaveBeenCalledWith({
+      preconditionOpts: { ifGenerationMatch: 0 },
+      metadata: { contentType: 'text/plain', contentLength: 123 },
+    });
+    expect(harness.createSigningClient).not.toHaveBeenCalled();
+  });
   it('uses a lazy, separate dedicated signer for V4 GET and PUT URLs', async () => {
     const harness = createHarness();
 
