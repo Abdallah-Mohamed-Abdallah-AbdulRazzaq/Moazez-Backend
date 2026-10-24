@@ -1,5 +1,6 @@
 import {
   assertGradeSubmissionAccess,
+  assertGradeLiveMutationPermission,
   gradeAssessmentAccessWhere,
   gradeSubmissionAccessWhere,
   gradeStudentAccessWhere,
@@ -14,10 +15,28 @@ import {
   StudentStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import { requireGradesScope } from '../../grades-context';
+import {
+  NotFoundDomainException,
+  ValidationDomainException,
+} from '../../../../common/exceptions/domain-exception';
 import {
   NormalizedAnswerPayload,
   SubmissionAssessmentLike,
+  assertSubmissionMutable,
+  assertSubmissionAssessmentAcceptsDrafts,
+  assertRequiredQuestionsAnswered,
+  validateAnswerPayloadForQuestion,
+  validateStoredAnswerPayloadForQuestion,
+  validateSelectedOptionsForQuestion,
+  validateEnrollmentWithinAssessmentScope,
 } from '../domain/grade-submission-domain';
+import {
+  assertSubmissionReviewable,
+  assertAllRequiredAnswersReviewed,
+  assertReviewAwardedPoints,
+  calculateSubmissionTotalScore,
+} from '../domain/grade-submission-review-domain';
 
 const STUDENT_SUMMARY_SELECT = {
   id: true,
@@ -112,6 +131,7 @@ const QUESTION_FOR_SUBMISSION_ARGS =
       points: true,
       sortOrder: true,
       required: true,
+      metadata: true,
       deletedAt: true,
       options: {
         where: { deletedAt: null },
@@ -172,6 +192,9 @@ const ANSWER_WITH_OPTIONS_ARGS =
           assessmentId: true,
           type: true,
           points: true,
+          metadata: true,
+          required: true,
+          options: QUESTION_FOR_SUBMISSION_ARGS.select.options,
           deletedAt: true,
         },
       },
@@ -432,8 +455,38 @@ export class GradesSubmissionsRepository {
 
   async createSubmission(
     input: CreateSubmissionInput,
+    permission:
+      | 'grades.submissions.submit'
+      | 'grades.submissions.start' = 'grades.submissions.submit',
   ): Promise<GradeSubmissionDetailRecord> {
     const created = await this.scopedPrisma.$transaction(async (tx) => {
+      await assertGradeLiveMutationPermission(tx, permission);
+      const access = await gradeAssessmentAccessWhere(tx, true);
+      const { schoolId, actorId, userType } = requireGradesScope();
+      await tx.$queryRaw`SELECT id FROM grade_assessments WHERE id = ${input.assessmentId}::uuid AND school_id = ${schoolId}::uuid FOR UPDATE`;
+      const assessment = await tx.gradeAssessment.findFirst({
+        where: { id: input.assessmentId, AND: [access] },
+        ...ASSESSMENT_FOR_SUBMISSION_ARGS,
+      });
+      if (!assessment) throw new NotFoundDomainException();
+      assertSubmissionAssessmentAcceptsDrafts(assessment, assessment.term);
+      const rows = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT e.id FROM student_enrollments e JOIN students s ON s.id = e.student_id AND s.school_id = e.school_id
+        WHERE e.id = ${input.enrollmentId}::uuid AND e.student_id = ${input.studentId}::uuid AND e.school_id = ${schoolId}::uuid
+          AND e.status = 'ACTIVE' AND e.ended_at IS NULL AND e.deleted_at IS NULL AND s.status = 'ACTIVE' AND s.deleted_at IS NULL
+          AND (${userType} <> 'STUDENT' OR s.user_id = ${actorId}::uuid) FOR SHARE OF e, s`;
+      if (
+        !rows.length ||
+        input.termId !== assessment.termId ||
+        input.schoolId !== schoolId
+      )
+        throw new NotFoundDomainException();
+      const enrollment = await tx.enrollment.findFirst({
+        where: { id: input.enrollmentId },
+        ...ENROLLMENT_SUMMARY_ARGS,
+      });
+      if (!enrollment) throw new NotFoundDomainException();
+      validateEnrollmentWithinAssessmentScope({ assessment, enrollment });
       const created = await tx.gradeSubmission.create({
         data: {
           schoolId: input.schoolId,
@@ -443,7 +496,7 @@ export class GradesSubmissionsRepository {
           enrollmentId: input.enrollmentId,
           status: GradeSubmissionStatus.IN_PROGRESS,
           startedAt: new Date(),
-          maxScore: input.maxScore,
+          maxScore: assessment.maxScore,
         },
         select: { id: true },
       });
@@ -588,9 +641,17 @@ export class GradesSubmissionsRepository {
 
   async upsertAnswerWithSelectedOptions(
     input: AnswerSaveInput,
+    permission:
+      | 'grades.submissions.submit'
+      | 'grades.submissions.save' = 'grades.submissions.submit',
   ): Promise<GradeSubmissionAnswerRecord> {
     const answerId = await this.scopedPrisma.$transaction(async (tx) => {
-      await assertGradeSubmissionAccess(tx, input.submissionId);
+      const submission = await this.lockSubmissionMutation(
+        tx,
+        input.submissionId,
+        permission,
+      );
+      input = await this.validateAnswerSave(tx, submission, input);
       const answer = await tx.gradeSubmissionAnswer.upsert({
         where: {
           schoolId_submissionId_questionId: {
@@ -618,18 +679,43 @@ export class GradesSubmissionsRepository {
 
   async bulkUpsertAnswersWithSelectedOptions(
     inputs: AnswerSaveInput[],
+    permission:
+      | 'grades.submissions.submit'
+      | 'grades.submissions.save' = 'grades.submissions.submit',
   ): Promise<GradeSubmissionAnswerRecord[]> {
     if (inputs.length === 0) return [];
 
     const answerIds = await this.scopedPrisma.$transaction(async (tx) => {
-      for (const submissionId of new Set(
-        inputs.map((input) => input.submissionId),
-      )) {
-        await assertGradeSubmissionAccess(tx, submissionId);
+      const submissions: GradeSubmissionDetailRecord[] = [];
+      for (const submissionId of [
+        ...new Set(inputs.map((input) => input.submissionId)),
+      ].sort()) {
+        submissions.push(
+          await this.lockSubmissionMutation(tx, submissionId, permission),
+        );
       }
+      const keys = inputs.map(
+        (input) => `${input.submissionId}:${input.questionId}`,
+      );
+      if (new Set(keys).size !== keys.length)
+        throw new ValidationDomainException(
+          'Duplicate question ids are not allowed',
+          { field: 'answers.questionId' },
+        );
+      const validated: AnswerSaveInput[] = [];
+      for (const input of inputs)
+        validated.push(
+          await this.validateAnswerSave(
+            tx,
+            submissions.find(
+              (submission) => submission.id === input.submissionId,
+            )!,
+            input,
+          ),
+        );
       const savedAnswerIds: string[] = [];
 
-      for (const input of inputs) {
+      for (const input of validated) {
         const answer = await tx.gradeSubmissionAnswer.upsert({
           where: {
             schoolId_submissionId_questionId: {
@@ -668,7 +754,12 @@ export class GradesSubmissionsRepository {
     input: AnswerReviewUpdateInput,
   ): Promise<GradeSubmissionAnswerRecord> {
     await this.scopedPrisma.$transaction(async (tx) => {
-      await assertGradeSubmissionAccess(tx, input.submissionId);
+      const submission = await this.lockSubmissionMutation(
+        tx,
+        input.submissionId,
+        'grades.submissions.review',
+      );
+      await this.validateReviewWrite(tx, submission, input);
       await tx.gradeSubmissionAnswer.updateMany({
         where: {
           id: input.answerId,
@@ -694,10 +785,33 @@ export class GradesSubmissionsRepository {
     if (inputs.length === 0) return [];
 
     const answerIds = await this.scopedPrisma.$transaction(async (tx) => {
+      const submissions: GradeSubmissionDetailRecord[] = [];
+      for (const id of [
+        ...new Set(inputs.map((input) => input.submissionId)),
+      ].sort())
+        submissions.push(
+          await this.lockSubmissionMutation(
+            tx,
+            id,
+            'grades.submissions.review',
+          ),
+        );
+      if (new Set(inputs.map((input) => input.answerId)).size !== inputs.length)
+        throw new ValidationDomainException(
+          'Duplicate answer ids are not allowed',
+          { field: 'reviews.answerId' },
+        );
+      for (const input of inputs)
+        await this.validateReviewWrite(
+          tx,
+          submissions.find(
+            (submission) => submission.id === input.submissionId,
+          )!,
+          input,
+        );
       const updatedAnswerIds: string[] = [];
 
       for (const input of inputs) {
-        await assertGradeSubmissionAccess(tx, input.submissionId);
         await tx.gradeSubmissionAnswer.updateMany({
           where: {
             id: input.answerId,
@@ -732,7 +846,45 @@ export class GradesSubmissionsRepository {
     submissionId: string,
   ): Promise<GradeSubmissionDetailRecord> {
     await this.scopedPrisma.$transaction(async (tx) => {
-      await assertGradeSubmissionAccess(tx, submissionId);
+      const submission = await this.lockSubmissionMutation(
+        tx,
+        submissionId,
+        'grades.submissions.submit',
+      );
+      assertSubmissionMutable(submission);
+      assertSubmissionAssessmentAcceptsDrafts(
+        submission.assessment,
+        submission.assessment.term,
+      );
+      const questions = await tx.gradeAssessmentQuestion.findMany({
+        where: { assessmentId: submission.assessmentId },
+        ...QUESTION_FOR_SUBMISSION_ARGS,
+      });
+      assertRequiredQuestionsAnswered({
+        questions,
+        answers: submission.answers,
+      });
+      for (const answer of submission.answers) {
+        const question = questions.find(
+          (question) => question.id === answer.questionId,
+        );
+        if (!question) throw new NotFoundDomainException();
+        const payload = validateStoredAnswerPayloadForQuestion({
+          question,
+          payload: {
+            answerText: answer.answerText,
+            answerJson: answer.answerJson,
+            selectedOptionIds: answer.selectedOptions.map(
+              (option) => option.optionId,
+            ),
+          },
+        });
+        validateSelectedOptionsForQuestion({
+          question,
+          selectedOptionIds: payload.selectedOptionIds,
+          options: question.options,
+        });
+      }
       await tx.gradeSubmission.updateMany({
         where: { id: submissionId, status: GradeSubmissionStatus.IN_PROGRESS },
         data: {
@@ -749,7 +901,34 @@ export class GradesSubmissionsRepository {
     input: FinalizeSubmissionInput,
   ): Promise<GradeSubmissionDetailRecord> {
     await this.scopedPrisma.$transaction(async (tx) => {
-      await assertGradeSubmissionAccess(tx, input.submissionId);
+      const submission = await this.lockSubmissionMutation(
+        tx,
+        input.submissionId,
+        'grades.submissions.review',
+      );
+      assertSubmissionReviewable(submission);
+      const questions = await tx.gradeAssessmentQuestion.findMany({
+        where: { assessmentId: submission.assessmentId },
+        ...QUESTION_FOR_SUBMISSION_ARGS,
+      });
+      assertRequiredQuestionsAnswered({
+        questions,
+        answers: submission.answers,
+      });
+      assertAllRequiredAnswersReviewed({
+        questions,
+        answers: submission.answers,
+      });
+      input = {
+        ...input,
+        totalScore: new Prisma.Decimal(
+          calculateSubmissionTotalScore({
+            questions,
+            answers: submission.answers,
+          }),
+        ),
+        maxScore: submission.maxScore ?? submission.assessment.maxScore,
+      };
       await tx.gradeSubmission.updateMany({
         where: {
           id: input.submissionId,
@@ -772,6 +951,104 @@ export class GradesSubmissionsRepository {
     return this.scopedPrisma.gradeItem.count({
       where: { assessmentId },
     });
+  }
+
+  private async lockSubmissionMutation(
+    tx: Prisma.TransactionClient,
+    submissionId: string,
+    permission: string,
+  ): Promise<GradeSubmissionDetailRecord> {
+    await assertGradeLiveMutationPermission(tx, permission);
+    await assertGradeSubmissionAccess(tx, submissionId);
+    const reference = await tx.gradeSubmission.findFirst({
+      where: { id: submissionId },
+      select: { assessmentId: true },
+    });
+    if (!reference) throw new NotFoundDomainException();
+    const { schoolId } = requireGradesScope();
+    await tx.$queryRaw`SELECT id FROM grade_assessments WHERE id = ${reference.assessmentId}::uuid AND school_id = ${schoolId}::uuid FOR UPDATE`;
+    const rows = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT g.id FROM grade_submissions g
+      JOIN grade_assessments a ON a.id = g.assessment_id AND a.school_id = g.school_id
+      JOIN students s ON s.id = g.student_id AND s.school_id = g.school_id
+      JOIN student_enrollments e ON e.id = g.enrollment_id AND e.student_id = s.id AND e.school_id = g.school_id
+      JOIN subjects su ON su.id = a.subject_id AND su.school_id = g.school_id
+      JOIN terms te ON te.id = a.term_id AND te.school_id = g.school_id AND te.academic_year_id = a.academic_year_id
+      JOIN academic_years ay ON ay.id = a.academic_year_id AND ay.school_id = g.school_id
+      JOIN classrooms c ON c.id = e.classroom_id AND c.school_id = g.school_id
+      JOIN sections se ON se.id = c.section_id AND se.school_id = g.school_id
+      JOIN grades gr ON gr.id = se.grade_id AND gr.school_id = g.school_id
+      JOIN stages st ON st.id = gr.stage_id AND st.school_id = g.school_id
+      WHERE g.id = ${submissionId}::uuid AND g.school_id = ${schoolId}::uuid
+        AND s.deleted_at IS NULL AND s.status = 'ACTIVE'
+        AND e.deleted_at IS NULL AND e.status = 'ACTIVE' AND e.ended_at IS NULL
+        AND su.deleted_at IS NULL AND su.is_active = true AND te.deleted_at IS NULL AND ay.deleted_at IS NULL
+        AND c.deleted_at IS NULL AND se.deleted_at IS NULL AND gr.deleted_at IS NULL AND st.deleted_at IS NULL
+      FOR UPDATE OF g FOR SHARE OF s, e, su, te, ay, c, se, gr, st`;
+    if (!rows.length) throw new NotFoundDomainException();
+    await assertGradeSubmissionAccess(tx, submissionId);
+    const submission = await tx.gradeSubmission.findFirst({
+      where: { id: submissionId },
+      ...SUBMISSION_DETAIL_ARGS,
+    });
+    if (!submission || !submission.enrollment)
+      throw new NotFoundDomainException();
+    validateEnrollmentWithinAssessmentScope({
+      assessment: submission.assessment,
+      enrollment: submission.enrollment,
+    });
+    return submission;
+  }
+
+  private async validateAnswerSave(
+    tx: Prisma.TransactionClient,
+    submission: GradeSubmissionDetailRecord,
+    input: AnswerSaveInput,
+  ): Promise<AnswerSaveInput> {
+    assertSubmissionMutable(submission);
+    assertSubmissionAssessmentAcceptsDrafts(
+      submission.assessment,
+      submission.assessment.term,
+    );
+    if (
+      input.assessmentId !== submission.assessmentId ||
+      input.studentId !== submission.studentId ||
+      input.schoolId !== submission.schoolId
+    )
+      throw new NotFoundDomainException();
+    const { schoolId } = requireGradesScope();
+    await tx.$queryRaw`SELECT id FROM grade_assessment_questions WHERE id = ${input.questionId}::uuid AND assessment_id = ${submission.assessmentId}::uuid AND school_id = ${schoolId}::uuid AND deleted_at IS NULL FOR SHARE`;
+    await tx.$queryRaw`SELECT id FROM grade_assessment_question_options WHERE question_id = ${input.questionId}::uuid AND school_id = ${schoolId}::uuid AND deleted_at IS NULL ORDER BY id FOR SHARE`;
+    const question = await tx.gradeAssessmentQuestion.findFirst({
+      where: { id: input.questionId, assessmentId: submission.assessmentId },
+      ...QUESTION_FOR_SUBMISSION_ARGS,
+    });
+    if (!question) throw new NotFoundDomainException();
+    const payload = validateAnswerPayloadForQuestion({
+      question,
+      payload: input.payload,
+    });
+    validateSelectedOptionsForQuestion({
+      question,
+      selectedOptionIds: payload.selectedOptionIds,
+      options: question.options,
+    });
+    return { ...input, maxPoints: question.points, payload };
+  }
+
+  private async validateReviewWrite(
+    tx: Prisma.TransactionClient,
+    submission: GradeSubmissionDetailRecord,
+    input: AnswerReviewUpdateInput,
+  ): Promise<void> {
+    assertSubmissionReviewable(submission);
+    const answer = await tx.gradeSubmissionAnswer.findFirst({
+      where: { id: input.answerId, submissionId: submission.id },
+      ...ANSWER_WITH_OPTIONS_ARGS,
+    });
+    if (!answer || answer.question.deletedAt)
+      throw new NotFoundDomainException();
+    assertReviewAwardedPoints({ answer, awardedPoints: input.awardedPoints });
   }
 
   private async findAnswerResult(

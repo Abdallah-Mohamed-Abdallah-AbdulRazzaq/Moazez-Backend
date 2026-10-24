@@ -131,6 +131,7 @@ describe('grade submissions use cases', () => {
     id?: string;
     questionId?: string;
     label?: string;
+    value?: string;
   }) {
     return {
       id: overrides?.id ?? OPTION_ID,
@@ -139,7 +140,7 @@ describe('grade submissions use cases', () => {
       questionId: overrides?.questionId ?? QUESTION_ID,
       label: overrides?.label ?? 'A',
       labelAr: null,
-      value: 'a',
+      value: overrides?.value ?? 'a',
       deletedAt: null,
     };
   }
@@ -172,8 +173,24 @@ describe('grade submissions use cases', () => {
         overrides?.type === GradeQuestionType.ESSAY
           ? []
           : [
-              optionRecord({ id: OPTION_ID, questionId: id, label: 'A' }),
-              optionRecord({ id: OPTION_TWO_ID, questionId: id, label: 'B' }),
+              optionRecord({
+                id: OPTION_ID,
+                questionId: id,
+                label: 'A',
+                value:
+                  overrides?.type === GradeQuestionType.TRUE_FALSE
+                    ? 'true'
+                    : 'a',
+              }),
+              optionRecord({
+                id: OPTION_TWO_ID,
+                questionId: id,
+                label: 'B',
+                value:
+                  overrides?.type === GradeQuestionType.TRUE_FALSE
+                    ? 'false'
+                    : 'b',
+              }),
             ]),
     };
   }
@@ -870,11 +887,15 @@ describe('grade submissions use cases', () => {
 
   it('bulk repository validates distinct submissions before the first answer write', async () => {
     const transaction = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: 'locked' }]),
       gradeSubmission: {
         findFirst: jest
           .fn()
-          .mockResolvedValueOnce({ id: SUBMISSION_ID })
-          .mockResolvedValueOnce(null),
+          .mockImplementation((query: { where: unknown }) =>
+            JSON.stringify(query.where).includes('submission-2')
+              ? null
+              : submissionRecord(),
+          ),
       },
       gradeSubmissionAnswer: { upsert: jest.fn() },
       gradeSubmissionAnswerOption: { deleteMany: jest.fn() },
@@ -905,8 +926,7 @@ describe('grade submissions use cases', () => {
       ),
     ).rejects.toMatchObject({ code: 'not_found', httpStatus: 404 });
 
-    expect(transaction.gradeSubmission.findFirst).toHaveBeenCalledTimes(2);
-    expect(transaction.gradeSubmission.findFirst).toHaveBeenNthCalledWith(2, {
+    expect(transaction.gradeSubmission.findFirst).toHaveBeenCalledWith({
       where: { AND: [{ id: 'submission-2' }, {}] },
       select: { id: true },
     });

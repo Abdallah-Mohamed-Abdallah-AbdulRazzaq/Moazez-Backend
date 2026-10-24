@@ -1,10 +1,73 @@
 import { GradeQuestionType } from '@prisma/client';
+import {
+  gradeQuestionDefinition,
+  normalizeStoredGradeAnswer,
+  type GradeTypedAnswer,
+  type GradeInteractionQuestion,
+  type GradePublicDefinition,
+} from '../../assessments/domain/grade-question-interaction';
+import {
+  sanitizeGradeQuestionContent,
+  validateGradeQuestionContent,
+} from '../../assessments/domain/grade-question-content-policy';
 
 export class GradeQuestionInteractionDto {
   kind!: 'choice' | 'text' | 'fill' | 'matching' | 'media' | 'unsupported';
   selectionMode!: 'single' | 'multiple' | null;
   multiline!: boolean;
   supported!: boolean;
+  definition?: GradePublicDefinition | null;
+}
+
+export function presentGradeOptionValue(
+  type: string,
+  value: string | null,
+): string | null {
+  const safe = sanitizeGradeQuestionContent(value) as string | null;
+  if (type !== GradeQuestionType.TRUE_FALSE) return safe;
+  const normalized = safe?.trim().toLowerCase();
+  return normalized === 'true' || normalized === 'false' ? normalized : null;
+}
+
+/** Historical answers are never re-written or exposed as arbitrary JSON. */
+export function presentSafeGradeAnswer(
+  question: GradeInteractionQuestion,
+  payload: GradeTypedAnswer,
+) {
+  const contract = presentGradeQuestionContract(
+    String(question.type),
+    question,
+  );
+  let answerJson: unknown = null;
+  try {
+    if (
+      question.options &&
+      payload.selectedOptionIds.some(
+        (id) =>
+          !question.options!.some(
+            (option) =>
+              !option.deletedAt &&
+              option.id?.toLowerCase() === id.toLowerCase(),
+          ),
+      )
+    )
+      throw new Error('Unavailable historical selection');
+    answerJson = normalizeStoredGradeAnswer(question, payload).answerJson;
+  } catch {
+    contract.interaction = {
+      ...contract.interaction,
+      supported: false,
+      definition: null,
+    };
+  }
+  return {
+    canonicalType: contract.canonicalType,
+    interaction: contract.interaction,
+    answerText: sanitizeGradeQuestionContent(payload.answerText) as
+      | string
+      | null,
+    answerJson: sanitizeGradeQuestionContent(answerJson, true),
+  };
 }
 
 export class GradeQuestionContractDto {
@@ -34,6 +97,7 @@ const TYPES = {
 
 export function presentGradeQuestionContract(
   type: string,
+  question?: GradeInteractionQuestion,
 ): GradeQuestionContractDto {
   if (!Object.prototype.hasOwnProperty.call(TYPES, type)) {
     return {
@@ -49,9 +113,29 @@ export function presentGradeQuestionContract(
   }
   const canonicalType = type as GradeQuestionType;
   const [legacyType, kind, selectionMode, multiline] = TYPES[canonicalType];
+  let definition: GradePublicDefinition | null = null;
+  let supported = true;
+  if (question) {
+    try {
+      definition = gradeQuestionDefinition(question);
+      validateGradeQuestionContent({ metadata: definition });
+      definition = sanitizeGradeQuestionContent(
+        definition,
+      ) as GradePublicDefinition;
+    } catch {
+      supported = false;
+      definition = null;
+    }
+  }
   return {
     type: legacyType,
     canonicalType,
-    interaction: { kind, selectionMode, multiline, supported: true },
+    interaction: {
+      kind,
+      selectionMode,
+      multiline,
+      supported,
+      ...(question ? { definition } : {}),
+    },
   };
 }

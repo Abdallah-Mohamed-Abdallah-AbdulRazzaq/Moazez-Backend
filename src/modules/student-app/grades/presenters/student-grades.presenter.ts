@@ -1,4 +1,8 @@
-import { presentGradeQuestionContract } from '../../../grades/shared/presenters/grade-question-contract';
+import {
+  presentGradeQuestionContract,
+  presentGradeOptionValue,
+  presentSafeGradeAnswer,
+} from '../../../grades/shared/presenters/grade-question-contract';
 import { sanitizeGradeQuestionContent } from '../../../grades/assessments/domain/grade-question-content-policy';
 import {
   GradeAssessmentApprovalStatus,
@@ -134,6 +138,7 @@ export class StudentGradesPresenter {
             result.submission,
             assessment.deliveryMode ===
               GradeAssessmentDeliveryMode.QUESTION_BASED,
+            assessment.questions,
           )
         : null,
       questions: presentQuestions(assessment),
@@ -151,7 +156,7 @@ function presentQuestions(
   return assessment.questions.map((question) => ({
     id: question.id,
     questionId: question.id,
-    ...presentGradeQuestionContract(question.type),
+    ...presentGradeQuestionContract(question.type, question),
     title:
       (sanitizeGradeQuestionContent(question.prompt) as string | null) ?? '',
     body:
@@ -161,7 +166,11 @@ function presentQuestions(
     points: decimalToNumber(question.points) ?? 0,
     required: question.required,
     sortOrder: question.sortOrder,
-    options: question.options.map((option) => ({
+    options: (presentGradeQuestionContract(question.type).interaction.kind ===
+    'choice'
+      ? question.options
+      : []
+    ).map((option) => ({
       id: option.id,
       optionId: option.id,
       text: (sanitizeGradeQuestionContent(option.label) as string | null) ?? '',
@@ -169,7 +178,7 @@ function presentQuestions(
       label:
         (sanitizeGradeQuestionContent(option.label) as string | null) ?? '',
       labelAr: sanitizeGradeQuestionContent(option.labelAr) as string | null,
-      value: sanitizeGradeQuestionContent(option.value) as string | null,
+      value: presentGradeOptionValue(question.type, option.value),
       sortOrder: option.sortOrder,
     })),
   }));
@@ -178,6 +187,7 @@ function presentQuestions(
 function presentSubmission(
   submission: NonNullable<StudentAssessmentGradeDetailReadResult['submission']>,
   includeAnswers: boolean,
+  questions: StudentAssessmentGradeDetailReadResult['assessment']['questions'],
 ): StudentAssessmentGradeSubmissionDto {
   return {
     submissionId: submission.id,
@@ -190,12 +200,25 @@ function presentSubmission(
       ? submission.answers.map((answer) => ({
           answerId: answer.id,
           questionId: answer.questionId,
-          answerText: answer.answerText,
-          answerJson: sanitizeGradeQuestionContent(
-            sanitizeAnswerJson(answer.answerJson),
-            true,
+          ...presentSafeGradeAnswer(
+            questions.find((question) => question.id === answer.questionId) ?? {
+              type: 'UNKNOWN',
+            },
+            {
+              answerText: answer.answerText,
+              answerJson: answer.answerJson,
+              selectedOptionIds: answer.selectedOptions.map(
+                (option) => option.optionId,
+              ),
+            },
           ),
-          selectedOptions: answer.selectedOptions.map((selected) => ({
+          selectedOptions: (presentGradeQuestionContract(
+            questions.find((question) => question.id === answer.questionId)
+              ?.type ?? 'UNKNOWN',
+          ).interaction.kind === 'choice'
+            ? answer.selectedOptions
+            : []
+          ).map((selected) => ({
             optionId: selected.optionId,
             label:
               (sanitizeGradeQuestionContent(selected.option.label) as
@@ -520,38 +543,4 @@ function ratingForPercentage(percentage: number | null): string | null {
 
 function roundTwo(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
-}
-
-function sanitizeAnswerJson(value: unknown): unknown {
-  if (Array.isArray(value))
-    return value.map((item) => sanitizeAnswerJson(item));
-  if (!value || typeof value !== 'object') return value ?? null;
-
-  const forbiddenKeys = new Set([
-    'answerKey',
-    'correctAnswer',
-    'correctAnswers',
-    'isCorrect',
-    'bucket',
-    'objectKey',
-    'storageKey',
-    'directUrl',
-    'signedUrl',
-    'fileUrl',
-    'url',
-    'metadata',
-    'rawMetadata',
-    'rawStorageMetadata',
-    'storageMetadata',
-    'storage',
-    'fileMetadata',
-    'rawAnswerMetadata',
-    'answerMetadata',
-  ]);
-
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>)
-      .filter(([key]) => !forbiddenKeys.has(key))
-      .map(([key, nestedValue]) => [key, sanitizeAnswerJson(nestedValue)]),
-  );
 }

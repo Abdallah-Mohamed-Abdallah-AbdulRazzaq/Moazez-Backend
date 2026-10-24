@@ -13,6 +13,45 @@ import { assertQuestionStructureMutable } from '../domain/grade-question-domain'
 
 type Client = Prisma.TransactionClient;
 
+/** Existing permission and membership revalidated at the final write boundary. */
+export async function assertGradeLiveMutationPermission(
+  client: Client,
+  permission: string,
+): Promise<void> {
+  const scope = requireGradesScope();
+  const membershipId = getRequestContext()?.activeMembership?.membershipId;
+  if (!membershipId) throw new NotFoundDomainException();
+  const rows = await client.$queryRaw<Array<{ id: string }>>`
+    SELECT m.id FROM memberships m
+    JOIN users u ON u.id = m.user_id JOIN roles r ON r.id = m.role_id
+    JOIN role_permissions rp ON rp.role_id = r.id JOIN permissions p ON p.id = rp.permission_id
+    JOIN schools s ON s.id = ${scope.schoolId}::uuid AND s.organization_id = m.organization_id
+    JOIN organizations o ON o.id = s.organization_id
+    WHERE m.id = ${membershipId}::uuid AND m.user_id = ${scope.actorId}::uuid
+      AND m.organization_id = ${scope.organizationId}::uuid AND m.role_id = ${scope.roleId}::uuid
+      AND m.user_type::text = ${scope.userType} AND u.user_type::text = ${scope.userType}
+      AND (m.school_id = s.id OR (m.school_id IS NULL AND m.user_type = 'ORGANIZATION_USER'))
+      AND m.status = 'ACTIVE' AND m.ended_at IS NULL AND m.deleted_at IS NULL
+      AND u.status = 'ACTIVE' AND u.deleted_at IS NULL AND r.deleted_at IS NULL
+      AND (r.school_id IS NULL OR r.school_id = s.id) AND p.code = ${permission}
+      AND s.deleted_at IS NULL AND o.deleted_at IS NULL AND s.status = 'ACTIVE' AND o.status = 'ACTIVE'
+    FOR SHARE OF m, u, r, rp, p, s, o`;
+  if (!rows.length) throw new NotFoundDomainException();
+}
+
+/** All question writers and publication serialize on the same assessment row. */
+export async function lockGradeAssessmentMutation(
+  client: Client,
+  assessmentId: string,
+): Promise<void> {
+  await assertGradeAssessmentAccess(client, assessmentId);
+  const { schoolId } = requireGradesScope();
+  const rows = await client.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM grade_assessments WHERE id = ${assessmentId}::uuid
+      AND school_id = ${schoolId}::uuid AND deleted_at IS NULL FOR UPDATE`;
+  if (!rows.length) throw new NotFoundDomainException();
+}
+
 /** Queries live allocations through the same scoped client/transaction as the resource. */
 async function teacherScopes(client: Client) {
   const scope = requireGradesScope();
@@ -177,13 +216,21 @@ export async function assertGradeQuestionAccess(
   if (!question)
     throw new NotFoundDomainException('Grade assessment question not found');
   await assertGradeQuestionStructureWrite(client, question.assessmentId);
+  if (
+    !(await client.gradeAssessmentQuestion.findFirst({
+      where: { id: questionId },
+      select: { id: true },
+    }))
+  )
+    throw new NotFoundDomainException('Grade assessment question not found');
 }
 
 export async function assertGradeQuestionStructureWrite(
   client: Client,
   assessmentId: string,
 ): Promise<void> {
-  await assertGradeAssessmentAccess(client, assessmentId);
+  await assertGradeLiveMutationPermission(client, 'grades.questions.manage');
+  await lockGradeAssessmentMutation(client, assessmentId);
   const assessment = await client.gradeAssessment.findFirst({
     where: { id: assessmentId },
     select: {

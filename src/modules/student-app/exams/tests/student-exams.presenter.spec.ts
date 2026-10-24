@@ -1,3 +1,5 @@
+import { gradeEightReadDefinition } from '../../../../../test/fixtures/grades-eight-types.fixture';
+import type { GradeQuestionType } from '@prisma/client';
 import { StudentExamsPresenter } from '../presenters/student-exams.presenter';
 import type {
   StudentExamDetailReadResult,
@@ -56,7 +58,14 @@ describe('StudentExamsPresenter', () => {
         submissionId: 'submission-1',
         answers: [
           expect.objectContaining({
-            answerJson: { selected: 'A', nested: { kept: true } },
+            answerJson: null,
+            interaction: {
+              kind: 'choice',
+              selectionMode: 'single',
+              multiline: false,
+              supported: false,
+              definition: null,
+            },
             selectedOptions: [
               {
                 optionId: 'option-1',
@@ -243,7 +252,10 @@ describe('ST-02 canonical exams contract', () => {
     (canonicalType, type, selectionMode) => {
       const fixture = examDetailResultFixture();
       const assessment = fixture.exam;
-      (assessment.questions[0] as { type: string }).type = canonicalType;
+      Object.assign(
+        assessment.questions[0],
+        gradeEightReadDefinition(canonicalType as GradeQuestionType),
+      );
       const result = StudentExamsPresenter.presentDetail(fixture);
       const question = result.stages[0].questions[0];
       expect(question).toMatchObject({

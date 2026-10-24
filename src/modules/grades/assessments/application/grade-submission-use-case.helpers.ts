@@ -88,9 +88,9 @@ export async function prepareSingleAnswerSaveInput(params: {
   question: GradeSubmissionQuestionRecord;
   command: SaveGradeSubmissionAnswerDto;
 }): Promise<AnswerSaveInput> {
-  const payload = normalizeAnswerPayload(params.command);
+  let payload = normalizeAnswerPayload(params.command);
 
-  validateAnswerPayloadForQuestion({
+  payload = validateAnswerPayloadForQuestion({
     question: params.question,
     payload,
   });
@@ -142,8 +142,10 @@ export async function prepareBulkAnswerSaveInputs(params: {
       submission: params.submission,
     });
 
-    const payload = normalizeAnswerPayload(command);
-    validateAnswerPayloadForQuestion({ question, payload });
+    const payload = validateAnswerPayloadForQuestion({
+      question,
+      payload: normalizeAnswerPayload(command),
+    });
 
     return { command, question, payload };
   });

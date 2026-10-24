@@ -11,7 +11,14 @@ import { PrismaService } from '../../../../infrastructure/database/prisma.servic
 import {
   NormalizedQuestionOptionPayload,
   NormalizedQuestionPayload,
+  validateQuestionOptionsForType,
 } from '../domain/grade-question-domain';
+import { validateGradeQuestionDefinition } from '../domain/grade-question-interaction';
+import { validateGradeQuestionContent } from '../domain/grade-question-content-policy';
+import {
+  NotFoundDomainException,
+  ValidationDomainException,
+} from '../../../../common/exceptions/domain-exception';
 
 const QUESTION_OPTION_SELECT = {
   id: true,
@@ -149,6 +156,7 @@ export interface CreateQuestionWithOptionsInput extends Required<
 export interface UpdateQuestionAndReplaceOptionsInput {
   data: NormalizedQuestionPayload;
   options?: NormalizedQuestionOptionPayload[];
+  metadataPatch?: Record<string, unknown>;
 }
 
 @Injectable()
@@ -259,6 +267,9 @@ export class GradesAssessmentQuestionsRepository {
   ): Promise<GradeAssessmentQuestionRecord> {
     const created = await this.scopedPrisma.$transaction(async (tx) => {
       await assertGradeQuestionStructureWrite(tx, input.assessmentId);
+      validateGradeQuestionContent(input);
+      validateQuestionOptionsForType(input);
+      validateGradeQuestionDefinition(input);
       const question = await tx.gradeAssessmentQuestion.create({
         data: {
           schoolId: input.schoolId,
@@ -296,6 +307,34 @@ export class GradesAssessmentQuestionsRepository {
   ): Promise<GradeAssessmentQuestionRecord> {
     await this.scopedPrisma.$transaction(async (tx) => {
       await assertGradeQuestionAccess(tx, questionId);
+      const current = await tx.gradeAssessmentQuestion.findFirst({
+        where: { id: questionId },
+        ...QUESTION_WITH_OPTIONS_ARGS,
+      });
+      if (!current) throw new NotFoundDomainException();
+      if (input.metadataPatch)
+        input = {
+          ...input,
+          data: {
+            ...input.data,
+            metadata: {
+              ...(current.metadata &&
+              typeof current.metadata === 'object' &&
+              !Array.isArray(current.metadata)
+                ? current.metadata
+                : {}),
+              ...input.metadataPatch,
+            },
+          },
+        };
+      const effective = {
+        ...current,
+        ...input.data,
+        options: input.options ?? current.options,
+      };
+      validateGradeQuestionContent(effective);
+      validateQuestionOptionsForType(effective);
+      validateGradeQuestionDefinition(effective);
       if (Object.keys(input.data).length > 0) {
         await tx.gradeAssessmentQuestion.updateMany({
           where: { id: questionId },
@@ -311,16 +350,7 @@ export class GradesAssessmentQuestionsRepository {
 
         if (!question) return;
 
-        await this.retireOptionsForQuestion(tx, {
-          questionId,
-          desiredSortOrders: input.options.map((option) => option.sortOrder),
-        });
-        await this.createOptions(tx, {
-          schoolId: question.schoolId,
-          assessmentId: question.assessmentId,
-          questionId,
-          options: input.options,
-        });
+        await this.replaceOptionsPreservingIdentity(tx, current, input.options);
       }
     });
 
@@ -466,6 +496,85 @@ export class GradesAssessmentQuestionsRepository {
         metadata: this.toOptionalJson(option.metadata),
       })),
     });
+  }
+
+  private async replaceOptionsPreservingIdentity(
+    tx: Prisma.TransactionClient,
+    question: GradeAssessmentQuestionRecord,
+    desired: NormalizedQuestionOptionPayload[],
+  ): Promise<void> {
+    const used = new Set<string>();
+    const resolved = desired.map((option) => {
+      const current = option.id
+        ? question.options.find((row) => row.id === option.id)
+        : question.options.find(
+            (row) => row.sortOrder === option.sortOrder && !used.has(row.id),
+          );
+      if (option.id && !current)
+        throw new NotFoundDomainException(
+          'Grade assessment question option not found',
+        );
+      if (current && used.has(current.id))
+        throw new ValidationDomainException(
+          'Duplicate option ids are not allowed',
+          { field: 'options.id' },
+        );
+      if (current) used.add(current.id);
+      return { option, current };
+    });
+    let next =
+      Math.max(
+        await this.getMaxQuestionOptionSortOrder(tx, question.id),
+        ...desired.map((option) => option.sortOrder),
+        0,
+      ) + 1;
+    const moving = await withSoftDeleted(() =>
+      tx.gradeAssessmentQuestionOption.findMany({
+        where: {
+          questionId: question.id,
+          OR: [
+            { deletedAt: null },
+            { sortOrder: { in: desired.map((option) => option.sortOrder) } },
+          ],
+        },
+        select: { id: true, deletedAt: true },
+      }),
+    );
+    for (const row of moving) {
+      await withSoftDeleted(() =>
+        tx.gradeAssessmentQuestionOption.updateMany({
+          where: { id: row.id },
+          data: {
+            sortOrder: next++,
+            ...(!used.has(row.id) && row.deletedAt === null
+              ? { deletedAt: new Date() }
+              : {}),
+          },
+        }),
+      );
+    }
+    for (const { option, current } of resolved) {
+      if (current) {
+        await tx.gradeAssessmentQuestionOption.updateMany({
+          where: { id: current.id, questionId: question.id },
+          data: {
+            label: option.label,
+            labelAr: option.labelAr,
+            value: option.value,
+            isCorrect: option.isCorrect,
+            sortOrder: option.sortOrder,
+            metadata: this.toOptionalJson(option.metadata),
+          },
+        });
+      } else {
+        await this.createOptions(tx, {
+          schoolId: question.schoolId,
+          assessmentId: question.assessmentId,
+          questionId: question.id,
+          options: [option],
+        });
+      }
+    }
   }
 
   private async retireOptionsForQuestion(

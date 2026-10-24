@@ -13,7 +13,7 @@ import {
   assertSubmissionAssessmentAcceptsDrafts,
   assertSubmissionMutable,
   normalizeAnswerPayload,
-  validateAnswerPayloadForQuestion,
+  validateStoredAnswerPayloadForQuestion,
   validateEnrollmentWithinAssessmentScope,
   validateSelectedOptionsForQuestion,
 } from '../../../grades/assessments/domain/grade-submission-domain';
@@ -131,14 +131,17 @@ export class StudentExamsSubmissionWriteAdapter {
       assessment,
     });
 
-    const submission = await this.gradesSubmissionsRepository.createSubmission({
-      schoolId: params.context.schoolId,
-      assessmentId: assessment.id,
-      termId: assessment.termId,
-      studentId: params.context.studentId,
-      enrollmentId: params.context.enrollmentId,
-      maxScore: new Prisma.Decimal(assessment.maxScore),
-    });
+    const submission = await this.gradesSubmissionsRepository.createSubmission(
+      {
+        schoolId: params.context.schoolId,
+        assessmentId: assessment.id,
+        termId: assessment.termId,
+        studentId: params.context.studentId,
+        enrollmentId: params.context.enrollmentId,
+        maxScore: new Prisma.Decimal(assessment.maxScore),
+      },
+      'grades.submissions.start',
+    );
 
     return { submission, created: true };
   }
@@ -164,6 +167,7 @@ export class StudentExamsSubmissionWriteAdapter {
     const answer =
       await this.gradesSubmissionsRepository.upsertAnswerWithSelectedOptions(
         input,
+        'grades.submissions.save',
       );
 
     return { submission, answer };
@@ -183,6 +187,7 @@ export class StudentExamsSubmissionWriteAdapter {
     const answers =
       await this.gradesSubmissionsRepository.bulkUpsertAnswersWithSelectedOptions(
         inputs,
+        'grades.submissions.save',
       );
 
     return { submission, answers };
@@ -438,7 +443,7 @@ function validateSavedAnswersBeforeSubmit(params: {
       ),
     });
 
-    validateAnswerPayloadForQuestion({ question, payload });
+    validateStoredAnswerPayloadForQuestion({ question, payload });
     validateSelectedOptionsForQuestion({
       question,
       selectedOptionIds: payload.selectedOptionIds,

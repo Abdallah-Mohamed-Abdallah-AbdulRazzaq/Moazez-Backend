@@ -1,4 +1,5 @@
 import { validateGradeQuestionContent } from './grade-question-content-policy';
+import { validateGradeQuestionDefinition } from './grade-question-interaction';
 import { HttpStatus } from '@nestjs/common';
 import {
   GradeAssessmentApprovalStatus,
@@ -63,6 +64,7 @@ export interface QuestionCommandLike {
 }
 
 export interface QuestionOptionCommandLike {
+  id?: string;
   label?: string | null;
   textEn?: string | null;
   labelAr?: string | null;
@@ -89,6 +91,7 @@ export interface NormalizedQuestionPayload {
 }
 
 export interface NormalizedQuestionOptionPayload {
+  id?: string;
   label: string;
   labelAr: string | null;
   value: string | null;
@@ -288,7 +291,9 @@ export function normalizeQuestionPayload(
   }
 
   if (hasOwn(command, 'answerKey') || hasOwn(command, 'correctAnswer')) {
-    payload.answerKey = command.answerKey ?? command.correctAnswer ?? null;
+    payload.answerKey = hasOwn(command, 'answerKey')
+      ? (command.answerKey ?? null)
+      : (command.correctAnswer ?? null);
   }
 
   const metadata = buildQuestionMetadata(command);
@@ -325,10 +330,17 @@ export function validateQuestionOptionsForType(params: {
   metadata?: unknown;
 }): NormalizedQuestionOptionPayload[] {
   const type = normalizeQuestionType(params.type);
-  const options =
+  const originalOptions =
     type === GradeQuestionType.TRUE_FALSE && params.options.length === 0
       ? buildTrueFalseOptionsFromAnswerKey(params.answerKey)
       : params.options;
+  const options =
+    type === GradeQuestionType.TRUE_FALSE
+      ? originalOptions.map((option) => ({
+          ...option,
+          value: (option.value ?? option.label).trim().toLowerCase(),
+        }))
+      : originalOptions;
   const correctCount = options.filter((option) => option.isCorrect).length;
 
   switch (type) {
@@ -340,6 +352,7 @@ export function validateQuestionOptionsForType(params: {
           'MCQ_SINGLE requires exactly one correct option',
         );
       }
+      validateGradeQuestionDefinition({ ...params, type, options });
       return options;
 
     case GradeQuestionType.MCQ_MULTI:
@@ -350,6 +363,7 @@ export function validateQuestionOptionsForType(params: {
           'MCQ_MULTI requires at least one correct option',
         );
       }
+      validateGradeQuestionDefinition({ ...params, type, options });
       return options;
 
     case GradeQuestionType.TRUE_FALSE:
@@ -359,6 +373,7 @@ export function validateQuestionOptionsForType(params: {
           'TRUE_FALSE requires exactly two options and exactly one correct option',
         );
       }
+      validateGradeQuestionDefinition({ ...params, type, options });
       return options;
 
     case GradeQuestionType.SHORT_ANSWER:
@@ -368,6 +383,7 @@ export function validateQuestionOptionsForType(params: {
       if (options.length > 0) {
         throwInvalidOption(type, `${type} questions do not accept options`);
       }
+      validateGradeQuestionDefinition({ ...params, type, options });
       return [];
 
     case GradeQuestionType.MATCHING:
@@ -377,6 +393,7 @@ export function validateQuestionOptionsForType(params: {
           { field: 'metadata', type },
         );
       }
+      validateGradeQuestionDefinition({ ...params, type, options });
       return options;
   }
 }
@@ -447,6 +464,7 @@ export function buildQuestionOptionsPayload(
   const normalized = options.map((option, index) => {
     const label = requireText(option.label ?? option.textEn, 'options.label');
     return {
+      ...(option.id !== undefined ? { id: option.id.toLowerCase() } : {}),
       label,
       labelAr: normalizeNullableText(option.labelAr ?? option.textAr),
       value: normalizeNullableText(option.value) ?? label,

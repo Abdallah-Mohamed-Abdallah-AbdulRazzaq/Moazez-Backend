@@ -1,4 +1,8 @@
-import { presentGradeQuestionContract } from '../../../grades/shared/presenters/grade-question-contract';
+import {
+  presentGradeQuestionContract,
+  presentGradeOptionValue,
+  presentSafeGradeAnswer,
+} from '../../../grades/shared/presenters/grade-question-contract';
 import { sanitizeGradeQuestionContent } from '../../../grades/assessments/domain/grade-question-content-policy';
 import { GradeSubmissionStatus } from '@prisma/client';
 import {
@@ -78,19 +82,23 @@ export class StudentExamsPresenter {
     const questions = result.exam.questions.map((question) => ({
       id: question.id,
       questionId: question.id,
-      ...presentGradeQuestionContract(question.type),
+      ...presentGradeQuestionContract(question.type, question),
       title:
         (sanitizeGradeQuestionContent(question.prompt) as string | null) ?? '',
       body:
         (sanitizeGradeQuestionContent(question.promptAr ?? question.prompt) as
           | string
           | null) ?? '',
-      options: question.options.map((option) => ({
+      options: (presentGradeQuestionContract(question.type).interaction.kind ===
+      'choice'
+        ? question.options
+        : []
+      ).map((option) => ({
         optionId: option.id,
         label:
           (sanitizeGradeQuestionContent(option.label) as string | null) ?? '',
         labelAr: sanitizeGradeQuestionContent(option.labelAr) as string | null,
-        value: sanitizeGradeQuestionContent(option.value) as string | null,
+        value: presentGradeOptionValue(question.type, option.value),
       })),
       answer: null,
       points: decimalToNumber(question.points) ?? 0,
@@ -192,12 +200,18 @@ function presentSubmission(
       ...presentGradeQuestionContract(
         questionTypeById.get(answer.questionId) ?? answer.question.type,
       ),
-      answerText: answer.answerText,
-      answerJson: sanitizeGradeQuestionContent(
-        sanitizeAnswerJson(answer.answerJson),
-        true,
-      ),
-      selectedOptions: answer.selectedOptions.map((selected) => ({
+      ...presentSafeGradeAnswer(answer.question, {
+        answerText: answer.answerText,
+        answerJson: answer.answerJson,
+        selectedOptionIds: answer.selectedOptions.map(
+          (option) => option.optionId,
+        ),
+      }),
+      selectedOptions: (presentGradeQuestionContract(answer.question.type)
+        .interaction.kind === 'choice'
+        ? answer.selectedOptions
+        : []
+      ).map((selected) => ({
         optionId: selected.optionId,
         label:
           (sanitizeGradeQuestionContent(selected.option.label) as
@@ -206,9 +220,10 @@ function presentSubmission(
         labelAr: sanitizeGradeQuestionContent(selected.option.labelAr) as
           | string
           | null,
-        value: sanitizeGradeQuestionContent(selected.option.value) as
-          | string
-          | null,
+        value: presentGradeOptionValue(
+          answer.question.type,
+          selected.option.value,
+        ),
       })),
       correctionStatus: lowerEnum(answer.correctionStatus),
       score: decimalToNumber(answer.awardedPoints),
@@ -265,38 +280,4 @@ function decimalToNumber(value: PresentableDecimal): number | null {
       : Number(value);
 
   return Number.isFinite(numberValue) ? numberValue : null;
-}
-
-function sanitizeAnswerJson(value: unknown): unknown {
-  if (Array.isArray(value))
-    return value.map((item) => sanitizeAnswerJson(item));
-  if (!value || typeof value !== 'object') return value ?? null;
-
-  const forbiddenKeys = new Set([
-    'answerKey',
-    'correctAnswer',
-    'correctAnswers',
-    'isCorrect',
-    'bucket',
-    'objectKey',
-    'storageKey',
-    'directUrl',
-    'signedUrl',
-    'fileUrl',
-    'url',
-    'metadata',
-    'rawMetadata',
-    'rawStorageMetadata',
-    'storageMetadata',
-    'storage',
-    'fileMetadata',
-    'rawAnswerMetadata',
-    'answerMetadata',
-  ]);
-
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>)
-      .filter(([key]) => !forbiddenKeys.has(key))
-      .map(([key, nestedValue]) => [key, sanitizeAnswerJson(nestedValue)]),
-  );
 }

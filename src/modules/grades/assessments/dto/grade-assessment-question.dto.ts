@@ -16,6 +16,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { GradeQuestionType } from '@prisma/client';
+import { GradeQuestionContractDto } from '../../shared/presenters/grade-question-contract';
 
 const MAX_QUESTION_OPTIONS = 50;
 const MAX_QUESTION_BULK_ITEMS = 200;
@@ -389,10 +390,9 @@ export class GradeQuestionOptionResponseDto {
   metadata!: unknown;
 }
 
-export class GradeAssessmentQuestionResponseDto {
+export class GradeAssessmentQuestionResponseDto extends GradeQuestionContractDto {
   id!: string;
   assessmentId!: string;
-  type!: string;
   prompt!: string;
   promptAr!: string | null;
   explanation!: string | null;

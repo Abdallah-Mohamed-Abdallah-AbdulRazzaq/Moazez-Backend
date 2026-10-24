@@ -1,4 +1,5 @@
 import { sanitizeGradeQuestionContent } from '../domain/grade-question-content-policy';
+import { presentGradeQuestionContract } from '../../shared/presenters/grade-question-contract';
 import { GradeQuestionType } from '@prisma/client';
 import { presentDecimal } from '../../shared/presenters/grades.presenter';
 import {
@@ -22,6 +23,10 @@ export function presentGradeAssessmentQuestion(
     id: question.id,
     assessmentId: question.assessmentId,
     type: presentQuestionType(question.type),
+    canonicalType: presentGradeQuestionContract(question.type, question)
+      .canonicalType,
+    interaction: presentGradeQuestionContract(question.type, question)
+      .interaction,
     prompt:
       (sanitizeGradeQuestionContent(question.prompt) as string | null) ?? '',
     promptAr: sanitizeGradeQuestionContent(question.promptAr) as string | null,
@@ -40,9 +45,11 @@ export function presentGradeAssessmentQuestion(
     metadata: authoring
       ? sanitizeGradeQuestionContent(question.metadata)
       : presentReviewMetadata(question.metadata),
-    options: question.options.map((option) =>
-      presentQuestionOption(option, authoring),
-    ),
+    options: (authoring ||
+    presentGradeQuestionContract(question.type).interaction.kind === 'choice'
+      ? question.options
+      : []
+    ).map((option) => presentQuestionOption(option, authoring)),
     createdAt: question.createdAt.toISOString(),
     updatedAt: question.updatedAt.toISOString(),
   };
