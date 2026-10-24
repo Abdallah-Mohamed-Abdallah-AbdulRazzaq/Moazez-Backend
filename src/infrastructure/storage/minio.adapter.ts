@@ -18,6 +18,9 @@ import {
 import { collectObjectRange } from './object-storage.range';
 import {
   assertObjectRange,
+  assertBoundedUpload,
+  type ObjectStorageBoundedUploadInput,
+  type ObjectStorageBoundedUploadCapability,
   assertObjectStreamRange,
   assertSignedUrlTtl,
   type ObjectStorageCapabilities,
@@ -63,6 +66,37 @@ class StorageReadinessTimeoutError extends Error {
 
 @Injectable()
 export class MinioAdapter implements ObjectStoragePort {
+  async createBoundedUploadCapability(
+    input: ObjectStorageBoundedUploadInput,
+  ): Promise<ObjectStorageBoundedUploadCapability> {
+    assertBoundedUpload(input);
+    const expiresAt = new Date(Date.now() + input.expiresInSeconds * 1000);
+    try {
+      const policy = this.client.newPostPolicy();
+      policy.setBucket(input.bucket);
+      policy.setKey(input.objectKey);
+      policy.setContentType(input.contentType);
+      policy.setContentLengthRange(
+        input.expectedSizeBytes,
+        input.expectedSizeBytes,
+      );
+      policy.setExpires(expiresAt);
+      const result = await this.client.presignedPostPolicy(policy);
+      const formFields: Record<string, string> = {};
+      for (const [key, value] of Object.entries(result.formData)) {
+        if (typeof value !== 'string') throw new ObjectStorageError('unknown');
+        formFields[key] = value;
+      }
+      return {
+        mode: 'signed-post',
+        url: result.postURL,
+        formFields,
+        expiresAt,
+      };
+    } catch (error) {
+      throw normalizeMinioStorageError(error);
+    }
+  }
   private readonly client: Client;
   private readonly readinessClient: Client;
 

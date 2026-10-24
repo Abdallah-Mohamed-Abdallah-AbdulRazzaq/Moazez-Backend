@@ -61,6 +61,9 @@ updatedAt DateTime @updatedAt @map("updated_at")
 - The Prisma `schoolScope` extension automatically enforces `schoolId` on queries. See `SECURITY_MODEL.md`.
 - `FileUploadSession` is School-scoped and is intentionally not soft-deletable;
   its explicit status and cleanup-evidence fields preserve lifecycle history.
+- `SchoolAssessmentMediaPolicy` is School-scoped, separate from Academic Content,
+  and disabled by default. Assessment-only claim/evidence fields on the shared
+  upload session do not reclassify historical sessions or generic Files.
 
 ## 7. Relations
 

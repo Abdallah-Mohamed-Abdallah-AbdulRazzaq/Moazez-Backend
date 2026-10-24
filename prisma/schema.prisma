@@ -252,6 +252,10 @@ enum FileVisibility {
 enum FileUploadPurpose {
   LESSON_CONTENT
   ACADEMIC_CONTENT
+  HOMEWORK_ASSIGNMENT_MEDIA
+  GRADE_ASSESSMENT_MEDIA
+  HOMEWORK_SUBMISSION_MEDIA
+  GRADE_SUBMISSION_MEDIA
 
   @@map("file_upload_purpose")
 }
@@ -1548,6 +1552,7 @@ model School {
   academicContentWeeklyPlanHomeworkReferences   AcademicContentWeeklyPlanHomeworkReference[]
   academicContentWeeklyPlanAssessmentReferences AcademicContentWeeklyPlanAssessmentReference[]
   academicContentFilePolicy                     AcademicContentFilePolicy?
+  assessmentMediaPolicy                         SchoolAssessmentMediaPolicy?
   academicContentNotificationPolicy             AcademicContentNotificationPolicy?
   academicContentWorkflowPolicy                 AcademicContentWorkflowPolicy?
   academicContentApprovals                      AcademicContentApproval[]
@@ -7825,44 +7830,46 @@ model File {
 }
 
 model FileUploadSession {
-  id                       String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId           String                  @map("organization_id") @db.Uuid
-  schoolId                 String                  @map("school_id") @db.Uuid
-  createdByUserId          String                  @map("created_by_user_id") @db.Uuid
-  clientRequestId          String                  @map("client_request_id") @db.Uuid
-  purpose                  FileUploadPurpose
-  purposeContextId         String?                 @map("purpose_context_id") @db.Uuid
-  originalName             String                  @map("original_name")
-  expectedMimeType         String                  @map("expected_mime_type")
-  expectedSizeBytes        BigInt                  @map("expected_size_bytes")
-  stagingBucket            String?                 @map("staging_bucket")
-  stagingObjectKey         String?                 @map("staging_object_key")
-  finalBucket              String                  @map("final_bucket")
-  finalObjectKey           String                  @map("final_object_key")
-  status                   FileUploadSessionStatus @default(CREATED)
-  expiresAt                DateTime                @map("expires_at")
-  latestUploadUrlExpiresAt DateTime?               @map("latest_upload_url_expires_at")
-  completedAt              DateTime?               @map("completed_at")
-  failedAt                 DateTime?               @map("failed_at")
-  cancelledAt              DateTime?               @map("cancelled_at")
-  stagingCleanupEligibleAt DateTime?               @map("staging_cleanup_eligible_at")
-  stagingCleanupClaimedAt  DateTime?               @map("staging_cleanup_claimed_at")
-  stagingObjectDeletedAt   DateTime?               @map("staging_object_deleted_at")
-  finalCleanupEligibleAt   DateTime?               @map("final_cleanup_eligible_at")
-  finalCleanupClaimedAt    DateTime?               @map("final_cleanup_claimed_at")
-  finalObjectDeletedAt     DateTime?               @map("final_object_deleted_at")
-  failureReason            String?                 @map("failure_reason")
-  verifiedMimeType         String?                 @map("verified_mime_type")
-  actualSizeBytes          BigInt?                 @map("actual_size_bytes")
-  checksumSha256           String?                 @map("checksum_sha256")
-  durationSeconds          Float?                  @map("duration_seconds")
-  width                    Int?
-  height                   Int?
-  verifiedAt               DateTime?               @map("verified_at")
-  verificationVersion      String?                 @map("verification_version")
-  fileId                   String?                 @unique(map: "file_upload_sessions_file_id_key") @map("file_id") @db.Uuid
-  createdAt                DateTime                @default(now()) @map("created_at")
-  updatedAt                DateTime                @updatedAt @map("updated_at")
+  id                            String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId                String                  @map("organization_id") @db.Uuid
+  schoolId                      String                  @map("school_id") @db.Uuid
+  createdByUserId               String                  @map("created_by_user_id") @db.Uuid
+  clientRequestId               String                  @map("client_request_id") @db.Uuid
+  purpose                       FileUploadPurpose
+  purposeContextId              String?                 @map("purpose_context_id") @db.Uuid
+  originalName                  String                  @map("original_name")
+  expectedMimeType              String                  @map("expected_mime_type")
+  expectedSizeBytes             BigInt                  @map("expected_size_bytes")
+  stagingBucket                 String?                 @map("staging_bucket")
+  stagingObjectKey              String?                 @map("staging_object_key")
+  finalBucket                   String                  @map("final_bucket")
+  finalObjectKey                String                  @map("final_object_key")
+  status                        FileUploadSessionStatus @default(CREATED)
+  expiresAt                     DateTime                @map("expires_at")
+  latestUploadUrlExpiresAt      DateTime?               @map("latest_upload_url_expires_at")
+  completedAt                   DateTime?               @map("completed_at")
+  failedAt                      DateTime?               @map("failed_at")
+  cancelledAt                   DateTime?               @map("cancelled_at")
+  stagingCleanupEligibleAt      DateTime?               @map("staging_cleanup_eligible_at")
+  stagingCleanupClaimedAt       DateTime?               @map("staging_cleanup_claimed_at")
+  stagingObjectDeletedAt        DateTime?               @map("staging_object_deleted_at")
+  finalCleanupEligibleAt        DateTime?               @map("final_cleanup_eligible_at")
+  finalCleanupClaimedAt         DateTime?               @map("final_cleanup_claimed_at")
+  finalObjectDeletedAt          DateTime?               @map("final_object_deleted_at")
+  failureReason                 String?                 @map("failure_reason")
+  verifiedMimeType              String?                 @map("verified_mime_type")
+  actualSizeBytes               BigInt?                 @map("actual_size_bytes")
+  checksumSha256                String?                 @map("checksum_sha256")
+  durationSeconds               Float?                  @map("duration_seconds")
+  width                         Int?
+  height                        Int?
+  verifiedAt                    DateTime?               @map("verified_at")
+  verificationVersion           String?                 @map("verification_version")
+  assessmentVerificationClaimId String?                 @map("assessment_verification_claim_id") @db.Uuid
+  assessmentSecurityEvidence    Json?                   @map("assessment_security_evidence")
+  fileId                        String?                 @unique(map: "file_upload_sessions_file_id_key") @map("file_id") @db.Uuid
+  createdAt                     DateTime                @default(now()) @map("created_at")
+  updatedAt                     DateTime                @updatedAt @map("updated_at")
 
   organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   school        School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
@@ -7878,6 +7885,33 @@ model FileUploadSession {
   @@index([schoolId, status, stagingCleanupEligibleAt, stagingCleanupClaimedAt], map: "file_upload_sessions_staging_cleanup_discovery_idx")
   @@index([schoolId, status, finalCleanupEligibleAt, finalCleanupClaimedAt], map: "file_upload_sessions_final_cleanup_discovery_idx")
   @@map("file_upload_sessions")
+}
+
+model SchoolAssessmentMediaPolicy {
+  id                       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                 String   @unique @map("school_id") @db.Uuid
+  uploadsEnabled           Boolean  @default(false) @map("uploads_enabled")
+  teacherUploadsEnabled    Boolean  @default(false) @map("teacher_uploads_enabled")
+  studentUploadsEnabled    Boolean  @default(false) @map("student_uploads_enabled")
+  allowedMimeTypes         String[] @default([]) @map("allowed_mime_types")
+  maximumFileSizeBytes     BigInt   @default(10485760) @map("maximum_file_size_bytes")
+  maximumFilesPerResource  Int      @default(8) @map("maximum_files_per_resource")
+  maximumResourceBytes     BigInt   @default(83886080) @map("maximum_resource_bytes")
+  maximumSchoolBytes       BigInt   @default(1073741824) @map("maximum_school_bytes")
+  maximumConcurrentUploads Int      @default(2) @map("maximum_concurrent_uploads")
+  maximumUploadsPerHour    Int      @default(30) @map("maximum_uploads_per_hour")
+  maximumDurationSeconds   Int      @default(3600) @map("maximum_duration_seconds")
+  maximumWidth             Int      @default(1920) @map("maximum_width")
+  maximumHeight            Int      @default(1080) @map("maximum_height")
+  allowInlinePreview       Boolean  @default(false) @map("allow_inline_preview")
+  allowDownload            Boolean  @default(false) @map("allow_download")
+  allowGuardianVisibility  Boolean  @default(false) @map("allow_guardian_visibility")
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+
+  @@map("school_assessment_media_policies")
 }
 
 model Attachment {

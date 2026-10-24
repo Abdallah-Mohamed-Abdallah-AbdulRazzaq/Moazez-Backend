@@ -1,5 +1,30 @@
 # Migration Custom SQL Inventory
 
+## ST-03 assessment-only upload foundation
+
+`20261024085802_assessment_media_upload_purposes` adds only four assessment
+purpose enum values. They commit before
+`20261024085803_assessment_media_foundation` references them in constraints.
+No historical migration or row is rewritten or backfilled.
+
+The foundation migration contains Prisma-generated policy/metadata DDL and
+these PostgreSQL-specific objects that Prisma cannot express:
+
+| Object | Invariant | Direct regression |
+| --- | --- | --- |
+| Twelve existing purpose-dependent upload CHECK wrappers | Preserve each prior validated predicate verbatim for LESSON_CONTENT and ACADEMIC_CONTENT; admit only the four new branches to the separate contract. Includes the prior purpose-context check. | `test/integration/assessment-media-lifecycle.integration.spec.ts`; existing Learning Media / Academic Content foundation suites |
+| `assessment_media_policy_bounds_check` | Closed MIME allowlist, exact positive platform ceilings, bounded counts/rates/dimensions; null arrays and over-limit settings fail closed. | Assessment Media policy unit and database suites |
+| `assessment_upload_metadata_isolation_check` | New claim/evidence metadata cannot leak into another upload purpose. | Assessment Media lifecycle database suite |
+| `assessment_upload_contract_check` | Server-owned staging/final namespace, strict states and attested READY facts/File identity; no new LEGACY/PURGED or destructive-cleanup authority. NULL/ambiguous new predicates reject. | Assessment Media lifecycle database suite |
+| `enforce_assessment_upload_contract()` | Actual same-school owning context, immutable actor/purpose/context/expected object identity, initial CREATED, legal transitions, immutable READY facts, and matching live private File held FOR SHARE. No dynamic SQL or SECURITY DEFINER. PUBLIC direct execution revoked. | `test/security/tenancy.assessment-media.spec.ts`; lifecycle suite |
+| `assessment_upload_contract_guard` | BEFORE INSERT OR UPDATE invokes that function; historical purpose behavior and existing live-File-reference triggers remain intact. | Assessment Media and shared File lifetime regressions |
+
+No new File FK or future Asset model is added, so the retained-reference
+inventory needs no expansion. The new policy is registered in schoolScope.
+All new policy defaults are disabled. Assessment code performs no object/File
+deletion and starts no worker, queue or schedule. Fresh replay, second no-op,
+catalog/constraint checks and old-purpose compatibility remain mandatory.
+
 ## Incident
 
 `MIGRATION-RECOVERY-0A` — Canonical Prisma Migration Rebaseline and Permanent Governance.

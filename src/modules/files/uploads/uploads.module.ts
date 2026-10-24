@@ -40,6 +40,7 @@ import { PrismaLearningMediaUnitOfWork } from './infrastructure/prisma-learning-
     VerifyLegacyLearningMediaUseCase,
   ],
   exports: [
+    MediaVerifierService,
     FilesRepository,
     RegisterFileMetadataUseCase,
     UploadFileUseCase,

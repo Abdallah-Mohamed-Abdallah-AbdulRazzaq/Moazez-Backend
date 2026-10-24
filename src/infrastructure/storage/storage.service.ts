@@ -3,6 +3,8 @@ import { FileVisibility } from '@prisma/client';
 import { Readable } from 'node:stream';
 import {
   OBJECT_STORAGE_PORT,
+  type ObjectStorageBoundedUploadInput,
+  type ObjectStorageBoundedUploadCapability,
   type ObjectStorageCapabilities,
   type ObjectStoragePort,
   type ObjectStorageRangeInput,
@@ -24,6 +26,14 @@ export class StorageService {
 
   getCapabilities(): ObjectStorageCapabilities {
     return this.objectStorage.getCapabilities();
+  }
+
+  createBoundedUploadCapability(
+    input: ObjectStorageBoundedUploadInput,
+  ): Promise<ObjectStorageBoundedUploadCapability> {
+    if (!this.objectStorage.createBoundedUploadCapability)
+      throw new Error('storage_bounded_upload_unsupported');
+    return this.objectStorage.createBoundedUploadCapability(input);
   }
 
   createResumableUploadSession(
