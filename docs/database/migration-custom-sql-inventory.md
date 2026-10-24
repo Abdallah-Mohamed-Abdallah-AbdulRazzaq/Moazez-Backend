@@ -1,5 +1,49 @@
 # Migration Custom SQL Inventory
 
+## ST-05 Homework and Grades asset relations
+
+Migration `20261024200456_homework_grades_asset_relations_foundation` creates
+five leaf tables and two new enums. Prisma owns five tables, 15 access indexes
+and 20 restrictive FKs. Existing parent uniqueness is reused: no old table,
+column or index is altered, and no historical DML/backfill occurs.
+
+| PostgreSQL-only object | Invariant / regression |
+| --- | --- |
+| hw_question_asset_source_check, grade_question_asset_source_check, grade_assessment_asset_source_check | Exactly managed File/no URL or canonical external HTTPS/no File; whole predicate IS TRUE. Reject query/fragment/userinfo/ports/percent encoding, unsafe/nonpublic/provider host forms and protected File download references. Real SQLSTATE tests in tenancy.assessment-assets.spec.ts. |
+| hw_answer_asset_source_check, grade_answer_asset_source_check | MANAGED_FILE only, with NOT NULL file_id. Real managed-only negative cases. |
+| Five *_sort_check constraints | Nonnegative order; no speculative uniqueness on tied display positions. |
+| public.enforce_assessment_asset_identity() | Row ID/creation time, School, exact parent, creator and source/File/URL identity immutable. SECURITY INVOKER, pg_catalog search path, PUBLIC execution revoked. No submission-state assumptions. |
+| Five asset_identity_* triggers | BEFORE UPDATE of the identity fields; URL only on dual-source tables. Real same-School and coordinated cross-School reparent/retarget denials and catalog tests. |
+| Five file_live_ref_*_file_id triggers | BEFORE INSERT OR UPDATE OF file_id, using unchanged public.enforce_live_file_reference('file_id'). Retired-link denial and both real File lock schedules for every family. |
+
+Physical columns added: homework_question_assets.file_id,
+grade_assessment_question_assets.file_id, grade_assessment_assets.file_id,
+homework_answer_assets.file_id and grade_submission_answer_assets.file_id.
+All use (file_id,school_id) -> files(id,school_id), exact composite parent FKs,
+and School/creator FKs, with Restrict delete/update. The three nullable File
+columns are external-source-only under CHECK. Nullable File.school_id remains
+unchanged and cannot satisfy these required School tuples for a managed row.
+
+DMMF derives 27 physical File relations: 26 retained consumers and one upload
+provenance relation. Global retained-reference SQL adds all five tables without
+School or deleted_at exclusions and preserves all 21 existing predicates.
+Soft-deleted/history rows retain their File. No cleanup worker, new grant,
+SECURITY DEFINER, public API, upload/asset binder or media release is added.
+The existing G01-C exact function/ACL inventory expands from three to four,
+including no direct runtime/PUBLIC EXECUTE for the new invoker function.
+Actual FK/index/CHECK/trigger/ACL catalogs and retention are tested in
+assessment-asset-relations.integration.spec.ts and the existing File Lifetime
+integration suite. ADR-0018 contains the ER matrix and all future binding duties.
+
+Future binders must prove actor/membership/permission, exact resource/student,
+mutable domain state, private File/purpose/creator, READY and technical/security
+eligibility, and reuse ST-02 URL policy with configured provider endpoints.
+The database URL subset does not attest remote content/DNS safety or recognize
+every custom provider/secret path. ADR-0013/17 release and deletion restrictions
+remain. Deployment requires a separately approved migration-role job; ST-05
+proof uses owned disposable PostgreSQL only.
+
+
 ## ST-03 assessment-only upload foundation
 
 `20261024085802_assessment_media_upload_purposes` adds only four assessment

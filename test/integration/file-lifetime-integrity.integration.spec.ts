@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  Prisma,
   AcademicContentAudienceType,
   AcademicContentStatus,
   AcademicContentType,
@@ -325,7 +326,12 @@ describe('G13 shared File lifetime integrity on PostgreSQL', () => {
     }
   });
 
-  it('covers all 22 physical File FK columns with exact BEFORE INSERT/UPDATE triggers', async () => {
+  it('matches every DMMF physical File FK with exact BEFORE INSERT/UPDATE catalog triggers', async () => {
+    const physicalCount = Prisma.dmmf.datamodel.models.flatMap((model) =>
+      model.fields.filter(
+        (field) => field.type === 'File' && field.relationFromFields?.length,
+      ),
+    ).length;
     const columns = await prisma.$queryRaw<
       Array<{
         table: string;
@@ -352,10 +358,10 @@ describe('G13 shared File lifetime integrity on PostgreSQL', () => {
         AND trigger_row.tgfoid = 'public.enforce_live_file_reference()'::regprocedure
       WHERE constraint_row.contype = 'f' AND parent_namespace.nspname = 'public' AND parent.relname = 'files' AND parent_column.attname = 'id'
       ORDER BY child.relname, child_column.attname`;
-    expect(columns).toHaveLength(22);
+    expect(columns).toHaveLength(physicalCount);
     expect(
       new Set(columns.map((row) => `${row.table}.${row.column}`)).size,
-    ).toBe(22);
+    ).toBe(physicalCount);
     for (const row of columns) {
       // PostgreSQL catalog identifiers are limited to 63 bytes (ASCII here).
       expect(row.trigger).toBe(
@@ -379,7 +385,7 @@ describe('G13 shared File lifetime integrity on PostgreSQL', () => {
     const [total] = await prisma.$queryRaw<Array<{ count: number }>>`
       SELECT count(*)::int AS count FROM pg_catalog.pg_trigger
       WHERE tgfoid = 'public.enforce_live_file_reference()'::regprocedure AND NOT tgisinternal`;
-    expect(total.count).toBe(22);
+    expect(total.count).toBe(physicalCount);
   });
 
   it('retains an existing generic Attachment to an ACC-created READY File', async () => {

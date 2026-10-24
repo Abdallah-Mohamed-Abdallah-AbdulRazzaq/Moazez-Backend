@@ -631,13 +631,15 @@ test('retirement TAP files have unique active runtime governance owners', () => 
     assert.equal(matches[0].profile, 'runtime-governance');
     assert.equal(matches[0].execution, 'pull-request');
   }
-  assert.equal(files.length, 1007);
-  assert.equal(assignments.filter(item => item.execution === 'pull-request').length, 997);
+  assert.equal(files.length, 1009);
+  assert.equal(assignments.filter(item => item.execution === 'pull-request').length, 999);
   assert.equal(assignments.filter(item => item.execution === 'manual').length, 10);
   for (const [file, profile] of [
     ['test/e2e/grades-eight-question-contracts.e2e-spec.ts', 'e2e'],
     ['src/modules/grades/assessments/tests/grade-question-interaction.spec.ts', 'unit'],
     ['test/security/tenancy.assessment-media.spec.ts', 'security'],
+    ['test/security/tenancy.assessment-assets.spec.ts', 'security'],
+    ['test/integration/assessment-asset-relations.integration.spec.ts', 'integration-general'],
     ['test/integration/assessment-media-lifecycle.integration.spec.ts', 'integration-general'],
     ['src/modules/files/assessment-media/tests/assessment-media.policy.spec.ts', 'unit'],
     ['src/modules/files/assessment-media/tests/assessment-media.verifier.spec.ts', 'unit'],

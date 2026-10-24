@@ -50,6 +50,16 @@ export async function hasRetainedFileReferences(
       SELECT 1 FROM public.attachments WHERE file_id = ${fileId}::uuid
       UNION ALL
       SELECT 1 FROM public.import_jobs WHERE uploaded_file_id = ${fileId}::uuid
+      UNION ALL
+      SELECT 1 FROM public.homework_question_assets WHERE file_id = ${fileId}::uuid
+      UNION ALL
+      SELECT 1 FROM public.grade_assessment_question_assets WHERE file_id = ${fileId}::uuid
+      UNION ALL
+      SELECT 1 FROM public.grade_assessment_assets WHERE file_id = ${fileId}::uuid
+      UNION ALL
+      SELECT 1 FROM public.homework_answer_assets WHERE file_id = ${fileId}::uuid
+      UNION ALL
+      SELECT 1 FROM public.grade_submission_answer_assets WHERE file_id = ${fileId}::uuid
     ) AS retained`;
   return result.retained;
 }

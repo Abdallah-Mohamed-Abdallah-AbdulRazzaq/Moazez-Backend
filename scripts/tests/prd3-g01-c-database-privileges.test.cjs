@@ -37,11 +37,14 @@ const bootstrapSql = read('scripts/database/prd3-g01-c-role-bootstrap.sql');
 const grantsSql = read('scripts/database/prd3-g01-c-runtime-grants.sql');
 const verifier = read('scripts/ci/prd3-g01-c-database-privileges.cjs');
 
-test('ST-03 trigger joins the exact invoker function inventory without PUBLIC or runtime EXECUTE grants', () => {
-  assert.match(verifier, /count\(\*\) = 3 AND count\(DISTINCT procedure\.proname\) = 3/u);
+test('ST-03 and ST-05 triggers join the exact invoker function inventory without PUBLIC or runtime EXECUTE grants', () => {
+  assert.match(verifier, /count\(\*\) = 4 AND count\(DISTINCT procedure\.proname\) = 4/u);
   assert.match(verifier, /WHEN 'enforce_assessment_upload_contract' THEN[\s\S]*?procedure\.pronargs = 0[\s\S]*?procedure\.prorettype = 'trigger'::regtype[\s\S]*?NOT procedure\.prosecdef[\s\S]*?search_path=public, pg_temp[\s\S]*?language\.lanname = 'plpgsql'[\s\S]*?ELSE false/u);
   assert.match(verifier, /NOT has_function_privilege\([^\n]*public\.enforce_assessment_upload_contract\(\)[^\n]*'EXECUTE'\)/u);
   assert.match(verifier, /procedure\.proname = 'enforce_assessment_upload_contract'[\s\S]*?acl\.grantee IN \(0, grantee\.oid\)/u);
+  assert.match(verifier, /WHEN 'enforce_assessment_asset_identity' THEN[\s\S]*?procedure\.pronargs = 0[\s\S]*?procedure\.prorettype = 'trigger'::regtype[\s\S]*?NOT procedure\.prosecdef[\s\S]*?search_path=pg_catalog[\s\S]*?language\.lanname = 'plpgsql'/u);
+  assert.match(verifier, /NOT has_function_privilege\([^\n]*public\.enforce_assessment_asset_identity\(\)[^\n]*'EXECUTE'\)/u);
+  assert.match(verifier, /procedure\.proname IN \('enforce_live_file_reference', 'enforce_assessment_asset_identity'\)[\s\S]*?acl\.grantee IN \(0, grantee\.oid\)/u);
   assert.doesNotMatch(grantsSql, /GRANT\s+EXECUTE/iu);
 });
 
