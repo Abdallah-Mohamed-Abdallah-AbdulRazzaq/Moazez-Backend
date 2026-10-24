@@ -169,3 +169,11 @@ precede Draft PR handoff. No independent Reviewer Receipt is manufactured.
 
 Provider contract: [GCS expected length header](https://docs.cloud.google.com/storage/docs/json_api/v1/parameters#xuploadcontentlength).
 The installed SDK maps `metadata.contentLength` to that initiation header; no live GCS operation is performed.
+
+The repository transaction audit registers the eight reviewed DB-only callbacks
+and the existing allocation gate. Its classifier recognizes the exact typed Node
+AsyncLocalStorage lookup as synchronous memory access; a storage lookalike stays
+an external wait. The artifact manifest includes the two additions while all 28
+existing migration digests stay unchanged. CI inventory assertions retain every
+baseline owner and require one active owner for each of the four new test files.
+No migration, transaction, retirement or parity guard is disabled.
