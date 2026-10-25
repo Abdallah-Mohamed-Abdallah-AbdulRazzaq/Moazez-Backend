@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import type { Job, Queue } from 'bullmq';
+import type { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
 import {
   AcademicContentACC12JourneyFixture,
   JourneyContent,
@@ -14,6 +16,152 @@ import {
 } from '../../src/modules/communication/domain/communication-notification-generation-domain';
 import type { AcademicContentTransitionResponseDto } from '../../src/modules/academics/academic-content/dto/academic-content-workflow.dto';
 import type { TeacherNotificationsListResponseDto } from '../../src/modules/teacher-app/notifications/dto/teacher-notifications.dto';
+
+describe('ACC-12 verified terminal Job snapshots', () => {
+  let fixture: AcademicContentACC12JourneyFixture;
+  let getJob: jest.Mock<
+    ReturnType<Queue['getJob']>,
+    Parameters<Queue['getJob']>
+  >;
+  function snapshot(
+    fields: Partial<
+      Pick<Job, 'timestamp' | 'delay' | 'processedOn' | 'finishedOn'>
+    > = {},
+    state: Awaited<ReturnType<Job['getState']>> = 'completed',
+  ): Job {
+    return {
+      timestamp: 1000,
+      delay: 500,
+      processedOn: 1500,
+      finishedOn: 1600,
+      ...fields,
+      getState: jest.fn().mockResolvedValue(state),
+    } as unknown as Job;
+  }
+  beforeEach(() => {
+    fixture = new AcademicContentACC12JourneyFixture();
+    getJob = jest.fn<
+      ReturnType<Queue['getJob']>,
+      Parameters<Queue['getJob']>
+    >();
+    jest.spyOn(fixture, 'queues', 'get').mockReturnValue({
+      getQueue: jest.fn().mockReturnValue({ getJob }),
+    } as unknown as BullmqService);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('refreshes metadata when the worker completes between getJob and getState', async () => {
+    const stale = snapshot({ finishedOn: undefined });
+    const terminal = snapshot();
+    const terminalState = jest.spyOn(terminal, 'getState');
+    let workerCompleted = false;
+    jest.spyOn(stale, 'getState').mockImplementation(() => {
+      workerCompleted = true;
+      return Promise.resolve('completed');
+    });
+    getJob.mockResolvedValueOnce(stale).mockImplementationOnce(() => {
+      expect(workerCompleted).toBe(true);
+      return Promise.resolve(terminal);
+    });
+    expect(await fixture.completed('snapshot-fixture', 'job')).toBe(terminal);
+    expect(getJob).toHaveBeenCalledTimes(2);
+    expect(terminalState).toHaveBeenCalledTimes(1);
+    expect(terminal.finishedOn).toBeGreaterThanOrEqual(terminal.processedOn!);
+  });
+
+  it.each([
+    { processedOn: undefined },
+    { finishedOn: undefined },
+    { processedOn: Number.NaN },
+    { finishedOn: Number.POSITIVE_INFINITY },
+    { processedOn: 1499 },
+    { finishedOn: 1499 },
+    { processedOn: 1500.5 },
+    { finishedOn: 1600.5 },
+    { timestamp: -1 },
+    { delay: -1 },
+  ])(
+    'polls again for incomplete or inconsistent terminal fields %# %j',
+    async (fields) => {
+      const terminal = snapshot();
+      getJob
+        .mockResolvedValueOnce(snapshot())
+        .mockResolvedValueOnce(snapshot(fields))
+        .mockResolvedValue(terminal);
+      expect(await fixture.completed('snapshot-fixture', 'job')).toBe(terminal);
+      expect(getJob).toHaveBeenCalledTimes(4);
+    },
+  );
+
+  it.each(['delayed', 'waiting', 'active'] as const)(
+    'keeps polling an actual nonterminal %s state',
+    async (state) => {
+      const terminal = snapshot();
+      getJob
+        .mockResolvedValueOnce(snapshot({}, state))
+        .mockResolvedValue(terminal);
+      expect(await fixture.completed('snapshot-fixture', 'job')).toBe(terminal);
+      expect(getJob).toHaveBeenCalledTimes(3);
+    },
+  );
+
+  it('rechecks current state after refreshing the Job snapshot', async () => {
+    const terminal = snapshot();
+    getJob
+      .mockResolvedValueOnce(snapshot())
+      .mockResolvedValueOnce(snapshot({}, 'active'))
+      .mockResolvedValue(terminal);
+    expect(await fixture.completed('snapshot-fixture', 'job')).toBe(terminal);
+    expect(getJob).toHaveBeenCalledTimes(4);
+  });
+
+  it.each(['initial', 'refreshed'] as const)(
+    'preserves failure handling for the %s Job state',
+    async (phase) => {
+      if (phase === 'refreshed') getJob.mockResolvedValueOnce(snapshot());
+      getJob.mockResolvedValue(snapshot({}, 'failed'));
+      await expect(
+        fixture.completed('snapshot-fixture', 'job'),
+      ).rejects.toThrow('acc12_consumer_failed:snapshot-fixture');
+    },
+  );
+
+  it.each(['initial', 'refreshed'] as const)(
+    'polls again when the %s Job is missing',
+    async (phase) => {
+      const terminal = snapshot();
+      if (phase === 'refreshed') getJob.mockResolvedValueOnce(snapshot());
+      getJob.mockResolvedValueOnce(undefined).mockResolvedValue(terminal);
+      expect(await fixture.completed('snapshot-fixture', 'job')).toBe(terminal);
+      expect(getJob).toHaveBeenCalledTimes(phase === 'initial' ? 3 : 4);
+    },
+  );
+
+  it.each(['missing', 'incomplete'] as const)(
+    'retains the bounded deadline for a persistently %s Job',
+    async (kind) => {
+      getJob.mockResolvedValue(
+        kind === 'missing' ? undefined : snapshot({ finishedOn: undefined }),
+      );
+      await expect(
+        fixture.completed('snapshot-fixture', 'job', 10),
+      ).rejects.toThrow('acc12_poll_deadline_exceeded');
+      expect(getJob).toHaveBeenCalled();
+    },
+  );
+
+  it('validates numeric timestamps without rejecting a consistent zero value', async () => {
+    const terminal = snapshot({
+      timestamp: 0,
+      delay: 0,
+      processedOn: 0,
+      finishedOn: 0,
+    });
+    getJob.mockResolvedValue(terminal);
+    expect(await fixture.completed('snapshot-fixture', 'job')).toBe(terminal);
+    expect(getJob).toHaveBeenCalledTimes(2);
+  });
+});
 
 describe('ACC-12 composed authoring and review through HTTP and registered consumers', () => {
   jest.setTimeout(120_000);

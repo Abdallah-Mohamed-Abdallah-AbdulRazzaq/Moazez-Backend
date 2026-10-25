@@ -52,13 +52,30 @@ import { TeacherAppAccessService } from '../../src/modules/teacher-app/access/te
 import { TeacherAppAllocationReadAdapter } from '../../src/modules/teacher-app/access/teacher-app-allocation-read.adapter';
 import { TeacherAcademicContentFilesController } from '../../src/modules/teacher-app/academic-content/controller/teacher-academic-content-files.controller';
 import { TeacherAcademicContentFilesUseCases } from '../../src/modules/teacher-app/academic-content/application/teacher-academic-content-files.use-cases';
+import { assertDisposablePostgresTarget } from '../helpers/disposable-postgres-target';
 
 const describeDatabase = process.env.DATABASE_URL ? describe : describe.skip;
 describeDatabase(
   'ACC-9C PostgreSQL Teacher files, resource access and templates',
   () => {
     jest.setTimeout(120_000);
-    const prisma = new PrismaService();
+    // Keep this test client's contention at the three-connection CI limit.
+    const participantUrl = process.env.DATABASE_URL
+      ? new URL(process.env.DATABASE_URL)
+      : undefined;
+    participantUrl?.searchParams.set('connection_limit', '3');
+    const prisma = new PrismaService(
+      participantUrl ? { datasourceUrl: participantUrl.toString() } : undefined,
+    );
+    function assertOwnedDatabase() {
+      assertDisposablePostgresTarget({
+        databaseUrl: process.env.DATABASE_URL,
+        nodeEnv: process.env.NODE_ENV,
+        universalRegressionMarker: undefined,
+        localDatabasePredicate: (name) => /^ci_[a-f0-9]+$/u.test(name),
+        errorMessage: 'ACC-9C requires owned loopback disposable PostgreSQL',
+      });
+    }
     const ids: Record<string, string> = {};
     const suffix = randomUUID();
     const pdf = Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\n');
@@ -352,6 +369,7 @@ describeDatabase(
     }
 
     beforeAll(async () => {
+      assertOwnedDatabase();
       await prisma.$connect();
       for (const [key, userType] of [
         ['teacher', UserType.TEACHER],
@@ -1123,22 +1141,32 @@ describeDatabase(
       });
       const held = barrier(),
         release = barrier();
-      const blocker = prisma.$transaction(
-        async (tx) => {
-          await tx.$queryRaw`SELECT id FROM academic_contents WHERE id = ${row.id}::uuid FOR UPDATE`;
-          held.resolve();
-          await release.promise;
-        },
-        { timeout: 15_000 },
-      );
-      await Promise.race([held.promise, blocker]);
-      async function waitForBlocked(count: number) {
+      assertOwnedDatabase();
+      const observerUrl = new URL(process.env.DATABASE_URL!);
+      observerUrl.searchParams.set('connection_limit', '1');
+      observerUrl.searchParams.set('pool_timeout', '2');
+      const observer = new PrismaService({
+        datasourceUrl: observerUrl.toString(),
+      });
+      const pending: Array<Promise<PromiseSettledResult<unknown>>> = [];
+      function track<T>(operation: Promise<T>) {
+        const settled = operation.then<
+          PromiseSettledResult<T>,
+          PromiseSettledResult<T>
+        >(
+          (value) => ({ status: 'fulfilled', value }),
+          (reason: unknown) => ({ status: 'rejected', reason }),
+        );
+        return settled;
+      }
+      async function waitForBlocked(blockingPid: number) {
         const until = Date.now() + 3000;
         while (Date.now() < until) {
-          const waiting = await prisma.$queryRaw<Array<{ pid: number }>>`
+          const waiting = await observer.$queryRaw<Array<{ pid: number }>>`
             SELECT pid FROM pg_stat_activity WHERE datname = current_database()
-              AND wait_event_type = 'Lock'`;
-          if (waiting.length >= count) return;
+              AND wait_event_type = 'Lock'
+              AND ${blockingPid} = ANY(pg_blocking_pids(pid))`;
+          if (waiting.length === 1) return waiting[0].pid;
           await new Promise((resolve) => setTimeout(resolve, 20));
         }
         throw new Error('Expected real PostgreSQL lock overlap did not occur');
@@ -1156,29 +1184,85 @@ describeDatabase(
         teacherUserId: ids.teacher,
       };
       const expiry = new Date(Date.now() + 7 * 86400_000);
-      const persistence = repository.persistCapabilityExpiry(
-        owner,
-        expiry,
-        scope,
-      );
-      let cancellation: ReturnType<typeof files.cancel> | undefined;
+      const failures: unknown[] = [];
+      let results: PromiseSettledResult<unknown>[] = [];
       try {
-        await waitForBlocked(1);
-        cancellation = asTeacher(() => files.cancel(row.id, upload.id));
-        await waitForBlocked(2);
+        // Warm the independent pool before occupying all participant connections.
+        await observer.$connect();
+        const [observed] = await observer.$queryRaw<
+          Array<{ pid: number; database: string }>
+        >`SELECT pg_backend_pid() AS pid, current_database() AS database`;
+        expect(observed.database).toBe(
+          decodeURIComponent(observerUrl.pathname.slice(1)),
+        );
+        expect(participantUrl?.searchParams.get('connection_limit')).toBe('3');
+        let blockerPid = 0;
+        const blocker = track(
+          prisma.$transaction(
+            async (tx) => {
+              await tx.$queryRaw`SELECT id FROM academic_contents WHERE id = ${row.id}::uuid FOR UPDATE`;
+              const [connection] = await tx.$queryRaw<
+                Array<{ pid: number }>
+              >`SELECT pg_backend_pid() AS pid`;
+              blockerPid = connection.pid;
+              held.resolve();
+              await release.promise;
+            },
+            { timeout: 15_000 },
+          ),
+        );
+        pending.push(blocker);
+        await Promise.race([
+          held.promise,
+          blocker.then((result) => {
+            if (result.status === 'rejected') throw result.reason;
+          }),
+        ]);
+        expect(blockerPid).toBeGreaterThan(0);
+        pending.push(
+          track(repository.persistCapabilityExpiry(owner, expiry, scope)),
+        );
+        const persistencePid = await waitForBlocked(blockerPid);
+        pending.push(track(asTeacher(() => files.cancel(row.id, upload.id))));
+        const cancellationPid = await waitForBlocked(persistencePid);
+        expect(
+          new Set([blockerPid, persistencePid, cancellationPid]).size,
+        ).toBe(3);
+        expect([blockerPid, persistencePid, cancellationPid]).not.toContain(
+          observed.pid,
+        );
+        const overlap = await observer.$queryRaw<
+          Array<{ pid: number; blockers: number[] }>
+        >`SELECT pid, pg_blocking_pids(pid) AS blockers FROM pg_stat_activity
+          WHERE datname = current_database() AND wait_event_type = 'Lock'
+            AND pid IN (${persistencePid}, ${cancellationPid})`;
+        expect(overlap).toHaveLength(2);
+        const blockersByPid = new Map(
+          overlap.map(({ pid, blockers }) => [pid, blockers] as const),
+        );
+        expect(blockersByPid.get(persistencePid)).toContain(blockerPid);
+        expect(blockersByPid.get(cancellationPid)).toContain(persistencePid);
+      } catch (error) {
+        failures.push(error);
       } finally {
         release.resolve();
+        results = await Promise.all(pending);
+        try {
+          await observer.$disconnect();
+        } catch (error) {
+          failures.push(error);
+        }
       }
-      await blocker;
-      const results = await Promise.allSettled([persistence, cancellation]);
-      for (const result of results) {
-        if (result.status === 'rejected') throw result.reason;
-      }
+      for (const result of results)
+        if (result.status === 'rejected') failures.push(result.reason);
+      if (failures.length)
+        throw new AggregateError(failures, 'ACC-9C lock observation failed');
       expect(results.map((result) => result.status)).toEqual([
         'fulfilled',
         'fulfilled',
+        'fulfilled',
       ]);
-      expect(results[0]).toMatchObject({ value: true });
+      expect(results[1]).toMatchObject({ value: true });
       const cancelled = await prisma.fileUploadSession.findUniqueOrThrow({
         where: { id: upload.id },
       });
