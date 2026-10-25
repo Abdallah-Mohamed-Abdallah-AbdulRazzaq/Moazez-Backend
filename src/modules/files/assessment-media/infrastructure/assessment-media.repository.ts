@@ -7,6 +7,7 @@ import {
   Prisma,
   PrismaClient,
   type FileUploadSession,
+  type File as ManagedFile,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import { getRequestContext } from '../../../../common/context/request-context';
@@ -27,6 +28,8 @@ import {
   effectiveAssessmentMediaPolicy,
   type EffectiveAssessmentMediaPolicy,
 } from '../domain/assessment-media.policy';
+import { assertAssessmentReadyEvidence } from '../domain/assessment-media-ready';
+import { requireFilesScope } from '../../uploads/files-scope';
 import type { AssessmentVerifiedObject } from '../application/assessment-media-verifier';
 
 type ReservedUpload = {
@@ -593,10 +596,82 @@ export class AssessmentMediaRepository {
     );
   }
 
+  /** Internal predicate only: caller must already authorize the exact Homework/question. */
+  async readyHomeworkFile(
+    tx: Prisma.TransactionClient,
+    input: {
+      fileId: string;
+      uploadId?: string;
+      contextId: string;
+      creatorId: string;
+      privateBucket: string;
+      lock?: boolean;
+    },
+  ): Promise<{ file: ManagedFile; session: FileUploadSession }> {
+    const scope = requireFilesScope();
+    if (input.lock) {
+      await tx.$queryRaw`SELECT id FROM file_upload_sessions
+        WHERE file_id = ${input.fileId}::uuid AND school_id = ${scope.schoolId}::uuid
+          AND organization_id = ${scope.organizationId}::uuid FOR SHARE`;
+      await tx.$queryRaw`SELECT id FROM files WHERE id = ${input.fileId}::uuid
+        AND school_id = ${scope.schoolId}::uuid AND organization_id = ${scope.organizationId}::uuid FOR SHARE`;
+    }
+    const session = await tx.fileUploadSession.findFirst({
+      where: {
+        ...(input.uploadId ? { id: input.uploadId } : {}),
+        fileId: input.fileId,
+        organizationId: scope.organizationId,
+        createdByUserId: input.creatorId,
+        purpose: 'HOMEWORK_ASSIGNMENT_MEDIA',
+        purposeContextId: input.contextId,
+        status: 'READY',
+      },
+    });
+    if (!session)
+      throw new AssessmentMediaException('ready_relationship_invalid');
+    const file = await this.assertReadyRelationship(tx, session);
+    assertAssessmentReadyEvidence(session, file, {
+      ...input,
+      schoolId: scope.schoolId,
+      organizationId: scope.organizationId,
+    });
+    return { file, session };
+  }
+
+  /** Recheck existing assignment reservations, without charging a second upload/link quota. */
+  async assertHomeworkBindingCapacity(
+    tx: Prisma.TransactionClient,
+    owner: AssessmentMediaOwner,
+    policy: EffectiveAssessmentMediaPolicy,
+  ): Promise<void> {
+    const now = new Date();
+    const [usage] = await tx.$queryRaw<
+      Array<{ count: bigint; bytes: bigint; physical: bigint }>
+    >`
+      WITH reserved AS (
+        SELECT *, (latest_upload_url_expires_at > ${now}
+          OR (status IN ('CREATED', 'UPLOADING', 'VERIFYING') AND expires_at > ${now})) AS active
+        FROM file_upload_sessions WHERE school_id = ${owner.schoolId}::uuid AND organization_id = ${owner.organizationId}::uuid
+          AND purpose IN ('HOMEWORK_ASSIGNMENT_MEDIA', 'GRADE_ASSESSMENT_MEDIA', 'HOMEWORK_SUBMISSION_MEDIA', 'GRADE_SUBMISSION_MEDIA')
+      )
+      SELECT count(*) FILTER (WHERE purpose = 'HOMEWORK_ASSIGNMENT_MEDIA' AND purpose_context_id = ${owner.contextId}::uuid
+          AND (status = 'READY' OR active)) AS count,
+        COALESCE(sum(expected_size_bytes) FILTER (WHERE purpose = 'HOMEWORK_ASSIGNMENT_MEDIA' AND purpose_context_id = ${owner.contextId}::uuid
+          AND (staging_object_deleted_at IS NULL OR final_object_deleted_at IS NULL)), 0)::bigint AS bytes,
+        COALESCE(sum((CASE WHEN staging_object_deleted_at IS NULL THEN expected_size_bytes ELSE 0 END)
+          + (CASE WHEN final_object_deleted_at IS NULL THEN expected_size_bytes ELSE 0 END)), 0)::bigint AS physical FROM reserved`;
+    if (
+      usage.count > BigInt(policy.maximumFilesPerResource) ||
+      usage.bytes > policy.maximumResourceBytes ||
+      usage.physical > policy.maximumSchoolBytes
+    )
+      throw new AssessmentMediaException('quota_exceeded');
+  }
+
   private async assertReadyRelationship(
     tx: Prisma.TransactionClient,
     session: FileUploadSession,
-  ): Promise<void> {
+  ): Promise<ManagedFile> {
     const file = session.fileId
       ? await tx.file.findFirst({
           where: {
@@ -611,7 +686,6 @@ export class AssessmentMediaRepository {
             visibility: FileVisibility.PRIVATE,
             deletedAt: null,
           },
-          select: { id: true },
         })
       : null;
     if (
@@ -620,6 +694,7 @@ export class AssessmentMediaRepository {
       !session.assessmentSecurityEvidence
     )
       throw new AssessmentMediaException('ready_relationship_invalid');
+    return file;
   }
 
   private async audit(

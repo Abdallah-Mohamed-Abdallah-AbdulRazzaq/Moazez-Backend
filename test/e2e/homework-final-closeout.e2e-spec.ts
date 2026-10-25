@@ -7,6 +7,7 @@ import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
 import { HomeworkAssignmentsController } from '../../src/modules/homework/controller/homework-assignments.controller';
 import { HomeworkAttachmentsController } from '../../src/modules/homework/controller/homework-attachments.controller';
 import { HomeworkGradeSyncController } from '../../src/modules/homework/controller/homework-grade-sync.controller';
+import { HomeworkQuestionAssetsController } from '../../src/modules/homework/controller/homework-question-assets.controller';
 import { HomeworkQuestionsController } from '../../src/modules/homework/controller/homework-questions.controller';
 import { HomeworkSubmissionContentController } from '../../src/modules/homework/controller/homework-submission-content.controller';
 import { HomeworkSubmissionsController } from '../../src/modules/homework/controller/homework-submissions.controller';
@@ -26,6 +27,17 @@ type ExpressLayer = {
 };
 
 const HOMEWORK_CORE_ROUTES = [
+  'GET /api/v1/homework/assignments/:homeworkId/questions/:questionId/assets',
+  'POST /api/v1/homework/assignments/:homeworkId/questions/:questionId/assets',
+  'GET /api/v1/homework/assignments/:homeworkId/questions/:questionId/assets/:assetId',
+  'PATCH /api/v1/homework/assignments/:homeworkId/questions/:questionId/assets/:assetId',
+  'PATCH /api/v1/homework/assignments/:homeworkId/questions/:questionId/assets/:assetId/reorder',
+  'DELETE /api/v1/homework/assignments/:homeworkId/questions/:questionId/assets/:assetId',
+  'GET /api/v1/homework/assignments/:homeworkId/questions/:questionId/assets/:assetId/preview',
+  'HEAD /api/v1/homework/assignments/:homeworkId/questions/:questionId/assets/:assetId/preview',
+  'GET /api/v1/homework/assignments/:homeworkId/questions/:questionId/assets/:assetId/download',
+  'HEAD /api/v1/homework/assignments/:homeworkId/questions/:questionId/assets/:assetId/download',
+
   'GET /api/v1/homework/assignments',
   'POST /api/v1/homework/assignments',
   'GET /api/v1/homework/assignments/:homeworkId',
@@ -150,6 +162,10 @@ describe('Sprint 13F Homework final closeout route inventory (e2e)', () => {
 
   it('applies the core guard only to controllers with /homework paths', () => {
     const guardedCoreControllers = [
+      [
+        HomeworkQuestionAssetsController,
+        'homework/assignments/:homeworkId/questions/:questionId/assets',
+      ],
       [HomeworkAssignmentsController, 'homework/assignments'],
       [
         HomeworkAttachmentsController,

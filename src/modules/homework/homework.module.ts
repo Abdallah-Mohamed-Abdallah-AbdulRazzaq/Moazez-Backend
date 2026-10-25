@@ -1,3 +1,8 @@
+import { StorageModule } from '../../infrastructure/storage/storage.module';
+import { AssessmentMediaModule } from '../files/assessment-media/assessment-media.module';
+import { HomeworkQuestionAssetsService } from './application/homework-question-assets.service';
+import { HomeworkQuestionAssetsRepository } from './infrastructure/homework-question-assets.repository';
+import { HomeworkQuestionAssetsController } from './controller/homework-question-assets.controller';
 import { Module } from '@nestjs/common';
 import { TeacherAllocationModule } from '../academics/teacher-allocation/teacher-allocation.module';
 import { AssessmentsModule } from '../grades/assessments/assessments.module';
@@ -80,8 +85,15 @@ import { HomeworkCoreAccessGuard } from './guards/homework-core-access.guard';
 import { HomeworkRepository } from './infrastructure/homework.repository';
 
 @Module({
-  imports: [AuthModule, AssessmentsModule, TeacherAllocationModule],
+  imports: [
+    AuthModule,
+    AssessmentsModule,
+    TeacherAllocationModule,
+    StorageModule,
+    AssessmentMediaModule,
+  ],
   controllers: [
+    HomeworkQuestionAssetsController,
     HomeworkAssignmentsController,
     HomeworkGradeSyncController,
     HomeworkQuestionsController,
@@ -90,6 +102,8 @@ import { HomeworkRepository } from './infrastructure/homework.repository';
     HomeworkSubmissionContentController,
   ],
   providers: [
+    HomeworkQuestionAssetsService,
+    HomeworkQuestionAssetsRepository,
     HomeworkCoreAccessGuard,
     HomeworkRepository,
     ListHomeworkAssignmentsUseCase,
@@ -144,6 +158,7 @@ import { HomeworkRepository } from './infrastructure/homework.repository';
     DeleteHomeworkAttachmentUseCase,
   ],
   exports: [
+    HomeworkQuestionAssetsService,
     HomeworkRepository,
     ListHomeworkAssignmentsUseCase,
     GetHomeworkAssignmentUseCase,

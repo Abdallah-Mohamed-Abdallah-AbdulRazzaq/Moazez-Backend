@@ -303,6 +303,19 @@ export class StudentHomeworksReadAdapter {
     return { items, total, page, limit };
   }
 
+  findVisibleHomeworkBoundary(params: {
+    context: StudentAppContext;
+    homeworkId: string;
+  }): Promise<{ id: string; homeworkAssignmentId: string } | null> {
+    return this.scopedPrisma.homeworkTarget.findFirst({
+      where: {
+        ...buildTargetWhere({ context: params.context, now: new Date() }),
+        homeworkAssignmentId: params.homeworkId,
+      },
+      select: { id: true, homeworkAssignmentId: true },
+    });
+  }
+
   findHomework(params: {
     context: StudentAppContext;
     homeworkId: string;

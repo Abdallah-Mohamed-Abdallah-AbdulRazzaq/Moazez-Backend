@@ -72,6 +72,7 @@ import { TeacherClassroomAssignmentsController } from '../../src/modules/teacher
 import { TeacherClassroomGradesController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-classroom-grades.controller';
 import { TeacherClassroomSubmissionReviewController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-classroom-submission-review.controller';
 import { TeacherHomeController } from '../../src/modules/teacher-app/home/controller/teacher-home.controller';
+import { TeacherHomeworkQuestionAssetsController } from '../../src/modules/teacher-app/homeworks/controller/teacher-homework-question-assets.controller';
 import { TeacherHomeworksController } from '../../src/modules/teacher-app/homeworks/controller/teacher-homeworks.controller';
 import { TeacherLessonPreparationController } from '../../src/modules/teacher-app/lesson-preparation/controller/teacher-lesson-preparation.controller';
 import { TeacherMessagesController } from '../../src/modules/teacher-app/messages/controller/teacher-messages.controller';
@@ -259,6 +260,7 @@ const TEACHER_APP_CONTROLLER_CLASSES = [
   TeacherClassroomAssignmentsController,
   TeacherClassroomSubmissionReviewController,
   TeacherHomeworksController,
+  TeacherHomeworkQuestionAssetsController,
   TeacherTasksController,
   TeacherTaskReviewQueueController,
   TeacherXpController,
@@ -689,9 +691,9 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       (entry) => entry.permissions,
     );
 
-    expect(routes).toHaveLength(159);
-    expect(inventory).toHaveLength(159);
-    expect(decorated).toHaveLength(159);
+    expect(routes).toHaveLength(169);
+    expect(inventory).toHaveLength(169);
+    expect(decorated).toHaveLength(169);
     for (const handler of ['content', 'publication']) {
       expect(
         getHandlerPermissions(
@@ -704,6 +706,24 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       ]);
     }
     expect(undecorated).toEqual([]);
+    for (const handler of [
+      'list',
+      'get',
+      'getPreview',
+      'headPreview',
+      'getDownload',
+      'headDownload',
+    ]) {
+      expect(
+        getHandlerPermissions(TeacherHomeworkQuestionAssetsController, handler),
+      ).toEqual(['homework.questions.view']);
+    }
+    for (const handler of ['create', 'update', 'reorder', 'remove']) {
+      expect(
+        getHandlerPermissions(TeacherHomeworkQuestionAssetsController, handler),
+      ).toEqual(['homework.questions.manage']);
+    }
+
     for (const method of ['uploadIntent', 'complete', 'cancel', 'unlink']) {
       expect(
         getHandlerPermissions(TeacherAcademicContentFilesController, method),

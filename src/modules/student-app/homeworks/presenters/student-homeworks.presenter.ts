@@ -1,3 +1,4 @@
+import type { HomeworkQuestionAssetDto } from '../../../homework/dto/homework-question-asset.dto';
 import {
   HomeworkAssignmentStatus,
   HomeworkSubmissionStatus,
@@ -58,9 +59,10 @@ export class StudentHomeworksPresenter {
 
   static presentDetail(
     target: StudentHomeworkTargetReadModel,
+    questionAssets: ReadonlyMap<string, HomeworkQuestionAssetDto[]> = new Map(),
   ): StudentHomeworkResponseDto {
     return {
-      homework: presentDetail(target),
+      homework: presentDetail(target, questionAssets),
     };
   }
 }
@@ -154,6 +156,7 @@ function presentListItem(
 
 function presentDetail(
   target: StudentHomeworkTargetReadModel,
+  questionAssets: ReadonlyMap<string, HomeworkQuestionAssetDto[]>,
 ): StudentHomeworkDetailDto {
   const assignment = target.homeworkAssignment;
 
@@ -162,7 +165,7 @@ function presentDetail(
     publishAt: presentDateTime(assignment.publishAt),
     closedAt: presentDateTime(assignment.closedAt),
     questions: assignment.questions.map((question) =>
-      presentSafeQuestion(question),
+      presentSafeQuestion(question, questionAssets.get(question.id) ?? []),
     ),
     attachments: assignment.attachments.map((attachment) =>
       presentSafeAttachment(attachment),
@@ -175,9 +178,11 @@ function presentDetail(
 
 function presentSafeQuestion(
   question: StudentHomeworkTargetReadModel['homeworkAssignment']['questions'][number],
+  assets: HomeworkQuestionAssetDto[],
 ): StudentHomeworkQuestionDto {
   return {
     questionId: question.id,
+    assets,
     homeworkId: question.homeworkAssignmentId,
     type: question.type.toLowerCase(),
     prompt: question.prompt,

@@ -1,3 +1,5 @@
+import { StudentHomeworkQuestionAssetsService } from './application/student-homework-question-assets.service';
+import { StudentHomeworkQuestionAssetsController } from './controller/student-homework-question-assets.controller';
 import { Module } from '@nestjs/common';
 import { StorageModule } from '../../../infrastructure/storage/storage.module';
 import { HomeworkModule } from '../../homework/homework.module';
@@ -25,8 +27,12 @@ import { GetStudentHomeworkAttachmentContentUseCase } from './application/get-st
 
 @Module({
   imports: [HomeworkModule, StorageModule],
-  controllers: [StudentHomeworksController],
+  controllers: [
+    StudentHomeworksController,
+    StudentHomeworkQuestionAssetsController,
+  ],
   providers: [
+    StudentHomeworkQuestionAssetsService,
     StudentAppAccessService,
     StudentAppStudentReadAdapter,
     StudentHomeworksReadAdapter,

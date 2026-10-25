@@ -1,3 +1,4 @@
+import type { HomeworkQuestionAssetsService } from '../../../homework/application/homework-question-assets.service';
 import {
   HomeworkSubmissionStatus,
   StudentEnrollmentStatus,
@@ -327,7 +328,9 @@ function createUseCases(): {
 
   return {
     listUseCase: new ListStudentHomeworksUseCase(accessService, readAdapter),
-    getUseCase: new GetStudentHomeworkUseCase(accessService, readAdapter),
+    getUseCase: new GetStudentHomeworkUseCase(accessService, readAdapter, {
+      studentAssets: jest.fn().mockResolvedValue(new Map()),
+    } as unknown as HomeworkQuestionAssetsService),
     downloadUseCase: new GetStudentHomeworkAttachmentDownloadUrlUseCase(
       accessService,
       readAdapter,

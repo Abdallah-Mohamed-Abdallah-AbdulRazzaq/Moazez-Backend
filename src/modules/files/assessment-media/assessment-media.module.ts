@@ -28,6 +28,10 @@ import { AssessmentMediaRepository } from './infrastructure/assessment-media.rep
       useClass: UnapprovedAssessmentMediaSecurityGate,
     },
   ],
-  exports: [AssessmentMediaService],
+  exports: [
+    AssessmentMediaService,
+    AssessmentMediaRepository,
+    AssessmentMediaRuntimePolicy,
+  ],
 })
 export class AssessmentMediaModule {}

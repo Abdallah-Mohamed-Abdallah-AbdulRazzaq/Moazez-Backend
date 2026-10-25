@@ -314,3 +314,11 @@ function expandIpv6(hostname: string): number[] | null {
     ? words
     : null;
 }
+
+/** Configured at the storage boundary; consumers receive classification only. */
+export class PersistedUrlPolicy {
+  constructor(private readonly options: PersistedUrlPolicyOptions = {}) {}
+  classify(value: string | null | undefined): PersistedUrlClassificationResult {
+    return classifyPersistedUrl(value, this.options);
+  }
+}

@@ -1,3 +1,4 @@
+import { PersistedUrlPolicy } from './provider-url.policy';
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GcsAdapter } from './gcs.adapter';
@@ -28,10 +29,21 @@ export function createObjectStoragePort(
       inject: [ConfigService],
       useFactory: createObjectStoragePort,
     },
+    {
+      provide: PersistedUrlPolicy,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) =>
+        new PersistedUrlPolicy({
+          s3CompatibleEndpoints: [
+            config.get<string>('STORAGE_ENDPOINT'),
+            config.get<string>('S3_ENDPOINT'),
+          ].filter((value): value is string => !!value),
+        }),
+    },
     SignedUrlService,
     StorageService,
     PrivateMediaContentService,
   ],
-  exports: [StorageService, PrivateMediaContentService],
+  exports: [StorageService, PrivateMediaContentService, PersistedUrlPolicy],
 })
 export class StorageModule {}

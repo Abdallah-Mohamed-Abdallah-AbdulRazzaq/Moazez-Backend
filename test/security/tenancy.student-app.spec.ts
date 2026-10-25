@@ -85,6 +85,7 @@ import { StudentExamsController } from '../../src/modules/student-app/exams/cont
 import { StudentGradesController } from '../../src/modules/student-app/grades/controller/student-grades.controller';
 import { StudentHeroController } from '../../src/modules/student-app/hero/controller/student-hero.controller';
 import { StudentHomeController } from '../../src/modules/student-app/home/controller/student-home.controller';
+import { StudentHomeworkQuestionAssetsController } from '../../src/modules/student-app/homeworks/controller/student-homework-question-assets.controller';
 import { StudentHomeworksController } from '../../src/modules/student-app/homeworks/controller/student-homeworks.controller';
 import { StudentLessonsController } from '../../src/modules/student-app/lessons/controller/student-lessons.controller';
 import { StudentMessagesController } from '../../src/modules/student-app/messages/controller/student-messages.controller';
@@ -142,6 +143,27 @@ type StudentAppRoutePermissionCase = StudentAppActionPermissionCase & {
 };
 
 const STUDENT_APP_READ_PERMISSION_CASES: StudentAppReadPermissionCase[] = [
+  {
+    controller: StudentHomeworkQuestionAssetsController,
+    method: 'getPreview',
+    permissions: ['homework.assignments.view'],
+  },
+  {
+    controller: StudentHomeworkQuestionAssetsController,
+    method: 'headPreview',
+    permissions: ['homework.assignments.view'],
+  },
+  {
+    controller: StudentHomeworkQuestionAssetsController,
+    method: 'getDownload',
+    permissions: ['homework.assignments.view'],
+  },
+  {
+    controller: StudentHomeworkQuestionAssetsController,
+    method: 'headDownload',
+    permissions: ['homework.assignments.view'],
+  },
+
   {
     controller: StudentAcademicContentController,
     method: 'assetContent',
@@ -701,6 +723,7 @@ const STUDENT_APP_CONTROLLER_CLASSES = [
   StudentCalendarController,
   StudentLessonsController,
   StudentHomeworksController,
+  StudentHomeworkQuestionAssetsController,
   StudentRewardsController,
 ];
 
@@ -726,7 +749,7 @@ const STUDENT_APP_ROUTE_PERMISSION_CASES: StudentAppRoutePermissionCase[] = [
 
 describe('Student App read-only route permission metadata (security)', () => {
   it('declares the STU-PERM-1B read-only permission inventory', () => {
-    expect(STUDENT_APP_READ_PERMISSION_CASES).toHaveLength(72);
+    expect(STUDENT_APP_READ_PERMISSION_CASES).toHaveLength(76);
 
     for (const entry of STUDENT_APP_READ_PERMISSION_CASES) {
       const handler = (entry.controller.prototype as Record<string, unknown>)[
@@ -788,7 +811,7 @@ describe('Student App read-only route permission metadata (security)', () => {
   });
 
   it('declares the final STU-PERM route permission inventory for every Student App handler', () => {
-    expect(STUDENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(108);
+    expect(STUDENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(112);
 
     const expectedByHandler = new Map<string, StudentAppRoutePermissionCase>();
     for (const entry of STUDENT_APP_ROUTE_PERMISSION_CASES) {
