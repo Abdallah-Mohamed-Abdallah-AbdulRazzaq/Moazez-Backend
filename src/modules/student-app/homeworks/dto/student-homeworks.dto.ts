@@ -1,3 +1,5 @@
+import { ApiProperty } from '@nestjs/swagger';
+import { HomeworkQuestionAssetDto } from '../../../homework/dto/homework-question-asset.dto';
 import { Transform, Type } from 'class-transformer';
 import {
   IsDateString,
@@ -146,6 +148,8 @@ export class StudentHomeworkQuestionOptionDto {
 }
 
 export class StudentHomeworkQuestionDto {
+  @ApiProperty({ type: () => [HomeworkQuestionAssetDto] })
+  assets!: HomeworkQuestionAssetDto[];
   questionId!: string;
   homeworkId!: string;
   type!: string;

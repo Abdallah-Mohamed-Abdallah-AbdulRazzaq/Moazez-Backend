@@ -1,3 +1,5 @@
+import { TeacherHomeworkQuestionAssetsService } from './application/teacher-homework-question-assets.service';
+import { TeacherHomeworkQuestionAssetsController } from './controller/teacher-homework-question-assets.controller';
 import { Module } from '@nestjs/common';
 import { StorageModule } from '../../../infrastructure/storage/storage.module';
 import { HomeworkModule } from '../../homework/homework.module';
@@ -47,8 +49,12 @@ import { TeacherHomeworksReadAdapter } from './infrastructure/teacher-homeworks-
 
 @Module({
   imports: [HomeworkModule, StorageModule],
-  controllers: [TeacherHomeworksController],
+  controllers: [
+    TeacherHomeworksController,
+    TeacherHomeworkQuestionAssetsController,
+  ],
   providers: [
+    TeacherHomeworkQuestionAssetsService,
     TeacherAppAccessService,
     TeacherAppAllocationReadAdapter,
     TeacherHomeworksReadAdapter,

@@ -1,3 +1,4 @@
+import { HomeworkQuestionAssetsService } from '../../../homework/application/homework-question-assets.service';
 import { Injectable } from '@nestjs/common';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 import { StorageService } from '../../../../infrastructure/storage/storage.service';
@@ -75,6 +76,7 @@ export class GetStudentHomeworkUseCase {
   constructor(
     private readonly accessService: StudentAppAccessService,
     private readonly readAdapter: StudentHomeworksReadAdapter,
+    private readonly questionAssets: HomeworkQuestionAssetsService,
   ) {}
 
   async execute(homeworkId: string): Promise<StudentHomeworkResponseDto> {
@@ -91,7 +93,11 @@ export class GetStudentHomeworkUseCase {
       });
     }
 
-    return StudentHomeworksPresenter.presentDetail(homework);
+    const assets = await this.questionAssets.studentAssets(
+      { surface: 'student', student: context },
+      homeworkId,
+    );
+    return StudentHomeworksPresenter.presentDetail(homework, assets);
   }
 }
 
