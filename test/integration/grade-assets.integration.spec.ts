@@ -70,6 +70,162 @@ describe('ST-07 actual PostgreSQL transactional authorization and capacity', () 
   afterAll(async () => {
     await prisma.$disconnect();
   });
+  it.each(['student-exams', 'student-grades'] as const)(
+    '%s denies stale Term A asset authorization after committed enrollment reassignment and permits fresh Term B bytes',
+    async (surface) => {
+      const readyA = await fixture.readyGrade(graph.assessment.id);
+      const assetsA = [];
+      for (const target of [resource(), resource(0)]) {
+        const created = await teacher(() =>
+          service.create(actor(), target, {
+            sourceType: 'MANAGED_FILE',
+            fileId: readyA.fileId,
+            uploadId: readyA.uploadId,
+          }),
+        );
+        assetsA.push({ ...target, assetId: created.asset.assetId });
+      }
+      const termA = await prisma.term.findUniqueOrThrow({
+        where: { id: fixture.school.termId },
+      });
+      const termB = await prisma.term.create({
+        data: {
+          schoolId: fixture.school.schoolId,
+          academicYearId: fixture.school.yearId,
+          nameAr: 'ST07-REV-01 Term B',
+          nameEn: 'ST07-REV-01 Term B',
+          startDate: termA.startDate,
+          endDate: termA.endDate,
+          isActive: true,
+        },
+      });
+      const allocationB = await prisma.teacherSubjectAllocation.create({
+        data: {
+          schoolId: fixture.school.schoolId,
+          teacherUserId: fixture.actors.teacher.userId,
+          classroomId: fixture.school.classroomId,
+          subjectId: fixture.school.subjectId,
+          termId: termB.id,
+        },
+      });
+      const draftB = await fixture.assessment();
+      const assessmentB = await prisma.gradeAssessment.update({
+        where: { id: draftB.id },
+        data: {
+          termId: termB.id,
+          deliveryMode: 'SCORE_ONLY',
+          // Preserve the broader Grades audience alongside exam-only access.
+          type: surface === 'student-grades' ? 'ASSIGNMENT' : 'QUIZ',
+        },
+      });
+      const bytesB = Buffer.from('ST07-REV-01 authorized Term B bytes\n');
+      const readyB = await fixture.readyGrade(
+        assessmentB.id,
+        'teacher',
+        bytesB,
+        'term-b.txt',
+      );
+      const assetB = await teacher(() =>
+        service.create(
+          { surface: 'teacher', classId: allocationB.id },
+          { assessmentId: assessmentB.id },
+          {
+            sourceType: 'MANAGED_FILE',
+            fileId: readyB.fileId,
+            uploadId: readyB.uploadId,
+          },
+        ),
+      );
+      for (const assessmentId of [graph.assessment.id, assessmentB.id])
+        await fixture.asMediaActor('admin', () =>
+          new GradesAssessmentsRepository(prisma).publishAssessment(
+            assessmentId,
+            {
+              approvalStatus: 'PUBLISHED',
+              publishedAt: new Date(),
+              publishedById: fixture.actors.admin.userId,
+            },
+          ),
+        );
+      const access = new StudentAppAccessService(
+        new StudentAppStudentReadAdapter(prisma),
+      );
+      const exams = new StudentExamsReadAdapter(prisma);
+      const grades = new StudentGradesReadAdapter(prisma);
+      const adapter = surface === 'student-exams' ? exams : grades;
+      const scoped = prisma.scoped as unknown as PrismaService;
+      await fixture.asMediaActor('student', async () => {
+        const contextA = await access.getStudentAppContext();
+        expect(contextA.termId).toBe(termA.id);
+        await scoped.$transaction((tx) =>
+          adapter.assertAssetAccess(tx, contextA, graph.assessment.id),
+        );
+
+        // Commit reassignment after the real context read, before final auth.
+        const reassigned = await prisma.enrollment.update({
+          where: { id: contextA.enrollmentId },
+          data: { termId: termB.id },
+        });
+        expect(reassigned).toMatchObject({
+          id: contextA.enrollmentId,
+          termId: termB.id,
+          status: 'ACTIVE',
+          academicYearId: contextA.academicYearId,
+          classroomId: contextA.classroomId,
+          endedAt: null,
+        });
+        await expect(
+          scoped.$transaction((tx) =>
+            adapter.assertAssetAccess(tx, contextA, graph.assessment.id),
+          ),
+        ).rejects.toMatchObject({ code: 'not_found' });
+        const readFile = jest.spyOn(fixture.storage, 'getObject');
+        for (const target of assetsA)
+          await expect(
+            service.openContent(
+              {
+                surface,
+                authorize: (tx, assessmentId) =>
+                  adapter.assertAssetAccess(tx, contextA, assessmentId),
+              },
+              target,
+              { disposition: 'attachment' },
+            ),
+          ).rejects.toMatchObject({ code: 'not_found' });
+        expect(readFile).not.toHaveBeenCalled();
+
+        const contextB = await access.getStudentAppContext();
+        expect(contextB).toMatchObject({
+          enrollmentId: contextA.enrollmentId,
+          termId: termB.id,
+        });
+        await scoped.$transaction((tx) =>
+          adapter.assertAssetAccess(tx, contextB, assessmentB.id),
+        );
+        const student = new StudentGradeAssetsService(
+          access,
+          exams,
+          grades,
+          service,
+        );
+        const metadata = await student.metadata(surface, assessmentB.id);
+        expect(metadata.assessment.map((asset) => asset.assetId)).toEqual([
+          assetB.asset.assetId,
+        ]);
+        const content = await student.openContent(
+          surface,
+          { assessmentId: assessmentB.id, assetId: assetB.asset.assetId },
+          { disposition: 'attachment' },
+        );
+        const chunks: Buffer[] = [];
+        for await (const chunk of content.stream)
+          chunks.push(Buffer.from(chunk as Uint8Array));
+        expect(content.statusCode).toBe(200);
+        expect(Buffer.concat(chunks)).toEqual(bytesB);
+        expect(readFile).toHaveBeenCalledTimes(1);
+      });
+    },
+  );
   it('authorizes both Student surfaces and private content with one database connection', async () => {
     const ready = await fixture.readyGrade(graph.assessment.id);
     const created = await teacher(() =>

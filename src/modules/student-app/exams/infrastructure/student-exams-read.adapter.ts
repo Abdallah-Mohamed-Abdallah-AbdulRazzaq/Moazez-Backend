@@ -357,6 +357,7 @@ export class StudentExamsReadAdapter {
         id: context.enrollmentId,
         studentId: context.studentId,
         academicYearId: context.academicYearId,
+        termId: context.termId,
         classroomId: context.classroomId,
         status: 'ACTIVE',
         endedAt: null,

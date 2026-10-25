@@ -2,6 +2,16 @@
 
 Status: implementation contract; independent review pending. Authority: Owner ST-07 execution order and the two explicit Owner decision responses. Base: `b4333aeaa43d645d07aad68fd9c0d330c47fc896`. ST-07 only; no operational release.
 
+## Independent review remediation: ST07-REV-01
+
+The reviewed `d6620df0d47b8699192e72ee50c86fcc4e677d59` resolved StudentAppContext before the asset transaction. `buildStudentAppContext` derives termId directly from the selected enrollment, but both new `assertAssetAccess` enrollment queries rechecked year/classroom/ownership/status without matching that term. Their existing assessment and allocated-subject predicates subsequently used the captured context.termId. A committed same-row enrollment term update could therefore leave stale Term A authorization valid.
+
+The schema permits a valid same-school term change; the PostgreSQL regression demonstrates it on an owned active enrollment. Normal enrollment upsert does not perform this reassignment, and normal lifecycle transitions complete the old row and create another. No public reassignment API, global enrollment-selection change or schema change is introduced. The final asset boundary must still reject the demonstrated valid persisted mismatch.
+
+Both transactional enrollment queries now require `termId: context.termId`. All other ownership, active Student/enrollment, year, classroom/hierarchy, membership/permission, subject allocation, publication and audience predicates remain unchanged. Exams retain their exam-type restriction; Grades retain their broader assessment audience.
+
+Two deterministic real PostgreSQL cases (one per Student surface) first resolve eligible Term A context and successfully authorize it, commit a change of the same active enrollment to valid Term B, and invoke the final predicate with the stale context. They require non-disclosing denial for Term A, verify both root and question private-content calls make zero File reads, then resolve actual fresh Term B context and verify permitted metadata and real private bytes. The Grades case uses an ASSIGNMENT in Term B; the Exams case uses a QUIZ. No sleeps or synthetic context replace the ordered database operations. Both cases reproduce the missing denial on the reviewed source before the correction. The existing one-connection-pool regression remains unchanged.
+
 ## 1. Source discovery and gaps
 
 | Status | Source | Finding / correction |
