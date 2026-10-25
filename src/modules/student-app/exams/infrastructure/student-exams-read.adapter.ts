@@ -1,3 +1,4 @@
+import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 import { Injectable } from '@nestjs/common';
 import {
   GradeAssessmentApprovalStatus,
@@ -344,6 +345,63 @@ export class StudentExamsReadAdapter {
       exam: detail.exam,
       submission,
     };
+  }
+
+  async assertAssetAccess(
+    tx: Prisma.TransactionClient,
+    context: StudentAppContext,
+    assessmentId: string,
+  ): Promise<void> {
+    const enrollment = await tx.enrollment.findFirst({
+      where: {
+        id: context.enrollmentId,
+        studentId: context.studentId,
+        academicYearId: context.academicYearId,
+        classroomId: context.classroomId,
+        status: 'ACTIVE',
+        endedAt: null,
+        deletedAt: null,
+        student: {
+          userId: context.studentUserId,
+          status: 'ACTIVE',
+          deletedAt: null,
+        },
+        classroom: {
+          deletedAt: null,
+          section: {
+            deletedAt: null,
+            grade: { deletedAt: null, stage: { deletedAt: null } },
+          },
+        },
+      },
+      ...STUDENT_EXAMS_ENROLLMENT_ARGS,
+    });
+    if (!enrollment || !context.termId) throw new NotFoundDomainException();
+    const allocations = await tx.teacherSubjectAllocation.findMany({
+      where: {
+        classroomId: context.classroomId,
+        termId: context.termId,
+        subject: { is: { isActive: true, deletedAt: null } },
+      },
+      select: { subjectId: true },
+      distinct: ['subjectId'],
+    });
+    const assessment = await tx.gradeAssessment.findFirst({
+      where: {
+        ...buildExamAssessmentWhere({
+          context,
+          enrollment,
+          subjectIds: allocations.map((row) => row.subjectId),
+        }),
+        id: assessmentId,
+        deletedAt: null,
+        term: { deletedAt: null },
+        academicYear: { deletedAt: null },
+        subject: { deletedAt: null, isActive: true },
+      },
+      select: { id: true },
+    });
+    if (!assessment) throw new NotFoundDomainException();
   }
 
   private findEnrollmentContext(

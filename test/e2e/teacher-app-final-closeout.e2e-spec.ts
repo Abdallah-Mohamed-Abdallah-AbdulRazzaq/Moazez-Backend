@@ -1,3 +1,5 @@
+import { TeacherGradeQuestionAssetsController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-question-assets.controller';
+import { TeacherGradeAssessmentAssetsController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-assessment-assets.controller';
 import type { LoginResponseDto } from '../../src/modules/iam/auth/dto/login-response.dto';
 import type { TeacherClassroomAttendanceSessionResponseDto } from '../../src/modules/teacher-app/classroom/attendance/dto/teacher-classroom-attendance.dto';
 import type { TeacherHomeResponseDto } from '../../src/modules/teacher-app/home/dto/teacher-home.dto';
@@ -261,6 +263,8 @@ const TEACHER_APP_CONTROLLER_CLASSES = [
   TeacherClassroomSubmissionReviewController,
   TeacherHomeworksController,
   TeacherHomeworkQuestionAssetsController,
+  TeacherGradeAssessmentAssetsController,
+  TeacherGradeQuestionAssetsController,
   TeacherTasksController,
   TeacherTaskReviewQueueController,
   TeacherXpController,
@@ -691,9 +695,9 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       (entry) => entry.permissions,
     );
 
-    expect(routes).toHaveLength(169);
-    expect(inventory).toHaveLength(169);
-    expect(decorated).toHaveLength(169);
+    expect(routes).toHaveLength(189);
+    expect(inventory).toHaveLength(189);
+    expect(decorated).toHaveLength(189);
     for (const handler of ['content', 'publication']) {
       expect(
         getHandlerPermissions(
@@ -706,6 +710,27 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       ]);
     }
     expect(undecorated).toEqual([]);
+    for (const [controller, family] of [
+      [TeacherGradeAssessmentAssetsController, 'assessments'],
+      [TeacherGradeQuestionAssetsController, 'questions'],
+    ] as const) {
+      for (const handler of [
+        'list',
+        'get',
+        'getPreview',
+        'headPreview',
+        'getDownload',
+        'headDownload',
+      ])
+        expect(getHandlerPermissions(controller, handler)).toEqual([
+          `grades.${family}.view`,
+        ]);
+      for (const handler of ['create', 'update', 'reorder', 'remove'])
+        expect(getHandlerPermissions(controller, handler)).toEqual([
+          `grades.${family}.manage`,
+        ]);
+    }
+
     for (const handler of [
       'list',
       'get',
@@ -820,7 +845,26 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     );
 
     for (const forbiddenPermission of FORBIDDEN_TEACHER_ROUTE_PERMISSIONS) {
-      expect(decoratedPermissions).not.toContain(forbiddenPermission);
+      const uses = decorated.filter((entry) =>
+        entry.permissions.includes(forbiddenPermission),
+      );
+      const controller =
+        forbiddenPermission === 'grades.assessments.manage'
+          ? 'TeacherGradeAssessmentAssetsController'
+          : forbiddenPermission === 'grades.questions.manage'
+            ? 'TeacherGradeQuestionAssetsController'
+            : null;
+      if (controller)
+        expect(
+          uses
+            .map((entry) => `${entry.controllerName}.${entry.methodName}`)
+            .sort(),
+        ).toEqual(
+          ['create', 'update', 'reorder', 'remove']
+            .map((method) => `${controller}.${method}`)
+            .sort(),
+        );
+      else expect(uses).toEqual([]);
     }
     expect(
       decoratedPermissions.some((code) => code.startsWith('behavior.')),

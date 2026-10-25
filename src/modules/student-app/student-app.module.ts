@@ -1,3 +1,9 @@
+import { AssessmentsModule } from '../grades/assessments/assessments.module';
+import { StudentGradeAssetsService } from './assessment-assets/student-grade-assets.service';
+import { StudentExamsAssessmentAssetsController } from './assessment-assets/student-exams-assessment-assets.controller';
+import { StudentExamsQuestionAssetsController } from './assessment-assets/student-exams-question-assets.controller';
+import { StudentGradesAssessmentAssetsController } from './assessment-assets/student-grades-assessment-assets.controller';
+import { StudentGradesQuestionAssetsController } from './assessment-assets/student-grades-question-assets.controller';
 import { GetStudentAvatarContentUseCase } from './profile/application/get-student-avatar-content.use-case';
 import { GetStudentRewardImageContentUseCase } from './rewards/application/get-student-reward-image-content.use-case';
 import { GetStudentAcademicContentAssetContentUseCase } from './academic-content/application/student-academic-content-asset-content.use-case';
@@ -159,6 +165,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
 
 @Module({
   imports: [
+    AssessmentsModule,
     AcademicContentModule,
     AppCalendarReadModelModule,
     LessonContentPlaybackModule,
@@ -175,6 +182,10 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     StudentHomeworksModule,
   ],
   controllers: [
+    StudentExamsAssessmentAssetsController,
+    StudentExamsQuestionAssetsController,
+    StudentGradesAssessmentAssetsController,
+    StudentGradesQuestionAssetsController,
     StudentAcademicContentEngagementController,
     StudentAcademicContentController,
     StudentHomeController,
@@ -198,6 +209,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     StudentRewardsController,
   ],
   providers: [
+    StudentGradeAssetsService,
     GetStudentAvatarContentUseCase,
     GetStudentRewardImageContentUseCase,
     GetStudentAcademicContentAssetContentUseCase,

@@ -1,3 +1,11 @@
+import { StorageModule } from '../../../infrastructure/storage/storage.module';
+import { AssessmentMediaModule } from '../../files/assessment-media/assessment-media.module';
+import { TeacherAllocationOperationalWriteGate } from '../../academics/teacher-allocation/application/teacher-allocation-operational-write-gate';
+import { PrismaTeacherAllocationOperationalWriteGate } from '../../academics/teacher-allocation/infrastructure/prisma-teacher-allocation-operational-write-gate';
+import { GradeAssetsService } from './application/grade-assets.service';
+import { GradeAssetsRepository } from './infrastructure/grade-assets.repository';
+import { GradeQuestionAssetsController } from './controller/grade-question-assets.controller';
+import { GradeAssessmentAssetsController } from './controller/grade-assessment-assets.controller';
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../../iam/auth/auth.module';
 import { ApproveGradeAssessmentUseCase } from './application/approve-grade-assessment.use-case';
@@ -39,14 +47,22 @@ import { GradesSubmissionGradeItemSyncRepository } from './infrastructure/grades
 import { GradesSubmissionsRepository } from './infrastructure/grades-submissions.repository';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, StorageModule, AssessmentMediaModule],
   controllers: [
+    GradeAssessmentAssetsController,
+    GradeQuestionAssetsController,
     GradesAssessmentsController,
     GradesAssessmentQuestionsController,
     GradesSubmissionReviewController,
     GradesSubmissionsController,
   ],
   providers: [
+    GradeAssetsService,
+    GradeAssetsRepository,
+    {
+      provide: TeacherAllocationOperationalWriteGate,
+      useClass: PrismaTeacherAllocationOperationalWriteGate,
+    },
     GradesAssessmentsRepository,
     GradesAssessmentItemsRepository,
     GradesAssessmentQuestionsRepository,
@@ -82,6 +98,7 @@ import { GradesSubmissionsRepository } from './infrastructure/grades-submissions
     SyncGradeSubmissionToGradeItemUseCase,
   ],
   exports: [
+    GradeAssetsService,
     GetGradeAssessmentUseCase,
     ListGradeAssessmentItemsUseCase,
     UpsertGradeAssessmentItemUseCase,

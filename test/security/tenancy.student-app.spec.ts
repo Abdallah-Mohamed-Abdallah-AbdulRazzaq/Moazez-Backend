@@ -1,3 +1,7 @@
+import { StudentGradesQuestionAssetsController } from '../../src/modules/student-app/assessment-assets/student-grades-question-assets.controller';
+import { StudentGradesAssessmentAssetsController } from '../../src/modules/student-app/assessment-assets/student-grades-assessment-assets.controller';
+import { StudentExamsQuestionAssetsController } from '../../src/modules/student-app/assessment-assets/student-exams-question-assets.controller';
+import { StudentExamsAssessmentAssetsController } from '../../src/modules/student-app/assessment-assets/student-exams-assessment-assets.controller';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { METHOD_METADATA } from '@nestjs/common/constants';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -143,6 +147,87 @@ type StudentAppRoutePermissionCase = StudentAppActionPermissionCase & {
 };
 
 const STUDENT_APP_READ_PERMISSION_CASES: StudentAppReadPermissionCase[] = [
+  {
+    controller: StudentExamsAssessmentAssetsController,
+    method: 'getPreview',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: StudentExamsAssessmentAssetsController,
+    method: 'headPreview',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: StudentExamsAssessmentAssetsController,
+    method: 'getDownload',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: StudentExamsAssessmentAssetsController,
+    method: 'headDownload',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: StudentExamsQuestionAssetsController,
+    method: 'getPreview',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: StudentExamsQuestionAssetsController,
+    method: 'headPreview',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: StudentExamsQuestionAssetsController,
+    method: 'getDownload',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: StudentExamsQuestionAssetsController,
+    method: 'headDownload',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: StudentGradesAssessmentAssetsController,
+    method: 'getPreview',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: StudentGradesAssessmentAssetsController,
+    method: 'headPreview',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: StudentGradesAssessmentAssetsController,
+    method: 'getDownload',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: StudentGradesAssessmentAssetsController,
+    method: 'headDownload',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: StudentGradesQuestionAssetsController,
+    method: 'getPreview',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: StudentGradesQuestionAssetsController,
+    method: 'headPreview',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: StudentGradesQuestionAssetsController,
+    method: 'getDownload',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: StudentGradesQuestionAssetsController,
+    method: 'headDownload',
+    permissions: ['grades.assessments.view'],
+  },
+
   {
     controller: StudentHomeworkQuestionAssetsController,
     method: 'getPreview',
@@ -724,6 +809,10 @@ const STUDENT_APP_CONTROLLER_CLASSES = [
   StudentLessonsController,
   StudentHomeworksController,
   StudentHomeworkQuestionAssetsController,
+  StudentExamsAssessmentAssetsController,
+  StudentExamsQuestionAssetsController,
+  StudentGradesAssessmentAssetsController,
+  StudentGradesQuestionAssetsController,
   StudentRewardsController,
 ];
 
@@ -749,7 +838,7 @@ const STUDENT_APP_ROUTE_PERMISSION_CASES: StudentAppRoutePermissionCase[] = [
 
 describe('Student App read-only route permission metadata (security)', () => {
   it('declares the STU-PERM-1B read-only permission inventory', () => {
-    expect(STUDENT_APP_READ_PERMISSION_CASES).toHaveLength(76);
+    expect(STUDENT_APP_READ_PERMISSION_CASES).toHaveLength(92);
 
     for (const entry of STUDENT_APP_READ_PERMISSION_CASES) {
       const handler = (entry.controller.prototype as Record<string, unknown>)[
@@ -811,7 +900,7 @@ describe('Student App read-only route permission metadata (security)', () => {
   });
 
   it('declares the final STU-PERM route permission inventory for every Student App handler', () => {
-    expect(STUDENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(112);
+    expect(STUDENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(128);
 
     const expectedByHandler = new Map<string, StudentAppRoutePermissionCase>();
     for (const entry of STUDENT_APP_ROUTE_PERMISSION_CASES) {

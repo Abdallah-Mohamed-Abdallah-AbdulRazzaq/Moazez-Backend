@@ -9,6 +9,10 @@ import {
   type EffectiveAssessmentMediaPolicy,
 } from './assessment-media.policy';
 
+export type AssessmentAuthoringPurpose =
+  | 'HOMEWORK_ASSIGNMENT_MEDIA'
+  | 'GRADE_ASSESSMENT_MEDIA';
+
 /** Consumer validation of server-owned terminal evidence, never HTTP attestation JSON. */
 export function assertAssessmentReadyEvidence(
   session: FileUploadSession,
@@ -19,6 +23,7 @@ export function assertAssessmentReadyEvidence(
     contextId: string;
     creatorId: string;
     privateBucket: string;
+    expectedPurpose?: AssessmentAuthoringPurpose;
   },
 ): void {
   const evidence = session.assessmentSecurityEvidence;
@@ -28,7 +33,8 @@ export function assertAssessmentReadyEvidence(
       : null;
   if (
     session.status !== 'READY' ||
-    session.purpose !== 'HOMEWORK_ASSIGNMENT_MEDIA' ||
+    session.purpose !==
+      (input.expectedPurpose ?? 'HOMEWORK_ASSIGNMENT_MEDIA') ||
     session.purposeContextId !== input.contextId ||
     session.schoolId !== input.schoolId ||
     session.organizationId !== input.organizationId ||

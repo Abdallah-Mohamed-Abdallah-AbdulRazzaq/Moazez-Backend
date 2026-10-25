@@ -1,9 +1,10 @@
+import { lockGradeTeacherAcademicHierarchy } from './grade-asset-authorization';
 import { Prisma, UserType } from '@prisma/client';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 import { requireGradesScope } from '../../grades-context';
 import {
   assertGradeAssessmentAccess,
-  assertGradeQuestionStructureWrite,
+  assertGradeLiveMutationPermission,
   assertGradeSubmissionAccess,
 } from './grades-resource-access';
 import { ownedAllocationWhere } from '../../../academics/teacher-allocation/domain/owned-allocation';
@@ -11,6 +12,8 @@ import {
   TeacherAllocationOperationalWriteGate,
   TeacherAllocationOperationalWriteGateError,
 } from '../../../academics/teacher-allocation/application/teacher-allocation-operational-write-gate';
+
+import { assertQuestionStructureMutable } from '../domain/grade-question-domain';
 
 /** Grades remains the owner of assessment and submission eligibility. */
 export async function assertGradesMediaAuthorization(
@@ -100,5 +103,45 @@ export async function assertGradesMediaAuthorization(
     FOR UPDATE OF a FOR SHARE OF te, su, ay`;
   if (!live.length) throw absent();
   if (ownershipOnly) await assertGradeAssessmentAccess(tx, contextId);
-  else await assertGradeQuestionStructureWrite(tx, contextId);
+  else {
+    await assertGradeLiveMutationPermission(tx, 'grades.questions.manage');
+    const assessment = await tx.gradeAssessment.findFirst({
+      where: { id: contextId, deletedAt: null },
+      include: { term: true, _count: { select: { submissions: true } } },
+    });
+    if (!assessment) throw absent();
+    await assertGradeAssessmentAccess(tx, contextId);
+    if (scope.userType === UserType.TEACHER) {
+      if (
+        assessment.scopeType !== 'CLASSROOM' ||
+        assessment.createdById !== scope.actorId
+      )
+        throw absent();
+      const allocation = await tx.teacherSubjectAllocation.findFirst({
+        where: {
+          AND: [
+            ownedAllocationWhere(scope.actorId),
+            {
+              classroomId: assessment.scopeKey,
+              subjectId: assessment.subjectId,
+              termId: assessment.termId,
+              term: { academicYearId: assessment.academicYearId },
+            },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!allocation) throw absent();
+      await lockGradeTeacherAcademicHierarchy(
+        tx,
+        scope.schoolId,
+        allocation.id,
+      );
+    }
+    assertQuestionStructureMutable({
+      assessment,
+      term: assessment.term,
+      submissionCount: assessment._count.submissions,
+    });
+  }
 }

@@ -1,3 +1,8 @@
+import type { GradeAssetDto } from '../../../grades/assessments/dto/grade-asset.dto';
+type AssetProjection = {
+  assessment: GradeAssetDto[];
+  questions: ReadonlyMap<string, GradeAssetDto[]>;
+};
 import {
   presentGradeQuestionContract,
   presentGradeOptionValue,
@@ -95,6 +100,7 @@ export class StudentGradesPresenter {
 
   static presentAssessmentGradeDetail(
     result: StudentAssessmentGradeDetailReadResult,
+    assets: AssetProjection = { assessment: [], questions: new Map() },
   ): StudentAssessmentGradeDetailResponseDto {
     const assessment = result.assessment;
     const item = result.gradeItem;
@@ -113,6 +119,7 @@ export class StudentGradesPresenter {
 
     return {
       assessment: {
+        assets: assets.assessment,
         assessmentId: assessment.id,
         title: assessmentTitle(assessment),
         subject: {
@@ -141,7 +148,10 @@ export class StudentGradesPresenter {
             assessment.questions,
           )
         : null,
-      questions: presentQuestions(assessment),
+      questions: presentQuestions(assessment).map((question) => ({
+        ...question,
+        assets: assets.questions.get(question.questionId) ?? [],
+      })),
     };
   }
 }
@@ -154,6 +164,7 @@ function presentQuestions(
   }
 
   return assessment.questions.map((question) => ({
+    assets: [],
     id: question.id,
     questionId: question.id,
     ...presentGradeQuestionContract(question.type, question),

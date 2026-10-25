@@ -145,7 +145,7 @@ describe('ACC-9 final cross-slice exported contracts', () => {
       acc = routes.filter((route) =>
         route.controller.startsWith('TeacherAcademicContent'),
       );
-    expect(routes).toHaveLength(169);
+    expect(routes).toHaveLength(189);
     const questionAssets = routes.filter(
       (route) => route.controller === 'TeacherHomeworkQuestionAssetsController',
     );
@@ -173,6 +173,31 @@ describe('ACC-9 final cross-slice exported contracts', () => {
       expect(route.permissions).toEqual([
         expectedAssetHandlers.get(route.handler),
       ]);
+    }
+    for (const [controller, family] of [
+      ['TeacherGradeAssessmentAssetsController', 'assessments'],
+      ['TeacherGradeQuestionAssetsController', 'questions'],
+    ]) {
+      const assets = routes.filter((route) => route.controller === controller);
+      expect(assets).toHaveLength(10);
+      expect(assets.map((route) => route.handler).sort()).toEqual(
+        [
+          'list',
+          'get',
+          'getPreview',
+          'headPreview',
+          'getDownload',
+          'headDownload',
+          'create',
+          'update',
+          'reorder',
+          'remove',
+        ].sort(),
+      );
+      for (const route of assets)
+        expect(route.permissions).toEqual([
+          `grades.${family}.${['create', 'update', 'reorder', 'remove'].includes(route.handler) ? 'manage' : 'view'}`,
+        ]);
     }
     expect(acc).toHaveLength(41);
     expect(routes.filter((route) => route.permissions.length === 0)).toEqual(

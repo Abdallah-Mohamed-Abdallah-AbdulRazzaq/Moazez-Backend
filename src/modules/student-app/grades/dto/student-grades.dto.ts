@@ -1,3 +1,5 @@
+import { ApiProperty } from '@nestjs/swagger';
+import { GradeAssetDto } from '../../../grades/assessments/dto/grade-asset.dto';
 import {
   GradeQuestionContractDto,
   GradeQuestionInteractionDto,
@@ -214,6 +216,7 @@ export class StudentAssessmentGradeSubjectDto {
 }
 
 export class StudentAssessmentGradeAssessmentDto {
+  @ApiProperty({ type: () => [GradeAssetDto] }) assets!: GradeAssetDto[];
   assessmentId!: string;
   title!: string | null;
   subject!: StudentAssessmentGradeSubjectDto;
@@ -283,6 +286,7 @@ export class StudentAssessmentGradeQuestionOptionDto {
 }
 
 export class StudentAssessmentGradeQuestionDto extends GradeQuestionContractDto {
+  @ApiProperty({ type: () => [GradeAssetDto] }) assets!: GradeAssetDto[];
   id!: string;
   questionId!: string;
   title!: string;

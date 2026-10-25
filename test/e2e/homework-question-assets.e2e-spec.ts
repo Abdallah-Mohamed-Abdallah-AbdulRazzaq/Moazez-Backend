@@ -493,8 +493,14 @@ describe('ST-06 complete Homework question assets over actual JWT/HTTP and priva
       h.app,
       new DocumentBuilder().setTitle('Owned ST06 contracts').build(),
     );
-    const paths = Object.keys(document.paths).filter((path) =>
-      path.includes('/questions/{questionId}/assets'),
+    const paths = Object.keys(document.paths).filter(
+      (path) =>
+        path.includes('/questions/{questionId}/assets') &&
+        [
+          '/api/v1/homework/',
+          '/api/v1/teacher/homeworks/',
+          '/api/v1/student/homeworks/',
+        ].some((prefix) => path.startsWith(prefix)),
     );
     const content = paths.filter(
       (path) => path.endsWith('/preview') || path.endsWith('/download'),

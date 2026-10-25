@@ -1,3 +1,4 @@
+import type { StudentGradeAssetsService } from '../../assessment-assets/student-grade-assets.service';
 import { StudentAppAccessService } from '../../access/student-app-access.service';
 import { StudentAppRequiredStudentException } from '../../shared/student-app-errors';
 import type {
@@ -169,6 +170,11 @@ function createUseCases(): {
     assessmentUseCase: new GetStudentAssessmentGradeUseCase(
       accessService,
       readAdapter,
+      {
+        metadata: jest
+          .fn()
+          .mockResolvedValue({ assessment: [], questions: new Map() }),
+      } as unknown as StudentGradeAssetsService,
     ),
     accessService,
     readAdapter,
