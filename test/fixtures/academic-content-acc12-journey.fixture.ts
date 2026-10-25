@@ -384,12 +384,34 @@ export class AcademicContentACC12JourneyFixture {
   }
   async completed(queueName: string, jobId: string, timeoutMs = 40_000) {
     return this.until(async () => {
-      const job = await this.queues.getQueue(queueName).getJob(jobId);
+      const queue = this.queues.getQueue(queueName);
+      const job = await queue.getJob(jobId);
       if (!job) return undefined;
       const state = await job.getState();
       if (state === 'failed')
         throw new Error(`acc12_consumer_failed:${queueName}`);
-      return state === 'completed' ? job : undefined;
+      if (state !== 'completed') return undefined;
+      // getState reads Redis again; it does not refresh the earlier Job object.
+      const terminal = await queue.getJob(jobId);
+      if (!terminal) return undefined;
+      const terminalState = await terminal.getState();
+      if (terminalState === 'failed')
+        throw new Error(`acc12_consumer_failed:${queueName}`);
+      if (terminalState !== 'completed') return undefined;
+      const { timestamp, delay, processedOn, finishedOn } = terminal;
+      if (
+        typeof processedOn !== 'number' ||
+        typeof finishedOn !== 'number' ||
+        ![timestamp, delay, processedOn, finishedOn].every(
+          Number.isSafeInteger,
+        ) ||
+        timestamp < 0 ||
+        delay < 0 ||
+        processedOn < timestamp + delay ||
+        finishedOn < processedOn
+      )
+        return undefined;
+      return terminal;
     }, timeoutMs);
   }
   async until<T>(
