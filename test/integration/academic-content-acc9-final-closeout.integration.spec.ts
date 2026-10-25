@@ -145,7 +145,35 @@ describe('ACC-9 final cross-slice exported contracts', () => {
       acc = routes.filter((route) =>
         route.controller.startsWith('TeacherAcademicContent'),
       );
-    expect(routes).toHaveLength(159);
+    expect(routes).toHaveLength(169);
+    const questionAssets = routes.filter(
+      (route) => route.controller === 'TeacherHomeworkQuestionAssetsController',
+    );
+    const expectedAssetHandlers = new Map<string, string>([
+      ...[
+        'list',
+        'get',
+        'getPreview',
+        'headPreview',
+        'getDownload',
+        'headDownload',
+      ].map((handler) => [handler, 'homework.questions.view'] as const),
+      ...['create', 'update', 'reorder', 'remove'].map(
+        (handler) => [handler, 'homework.questions.manage'] as const,
+      ),
+    ]);
+    expect(questionAssets).toHaveLength(10);
+    expect(questionAssets.map((route) => route.handler).sort()).toEqual(
+      [...expectedAssetHandlers.keys()].sort(),
+    );
+    for (const route of questionAssets) {
+      expect(route.prefix).toBe(
+        'teacher/homeworks/classes/:classId/assignments/:homeworkId/questions/:questionId/assets',
+      );
+      expect(route.permissions).toEqual([
+        expectedAssetHandlers.get(route.handler),
+      ]);
+    }
     expect(acc).toHaveLength(41);
     expect(routes.filter((route) => route.permissions.length === 0)).toEqual(
       [],

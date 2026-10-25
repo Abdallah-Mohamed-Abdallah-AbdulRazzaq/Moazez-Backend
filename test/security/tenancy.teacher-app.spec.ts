@@ -102,6 +102,7 @@ import { TeacherClassroomAssignmentsController } from '../../src/modules/teacher
 import { TeacherClassroomGradesController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-classroom-grades.controller';
 import { TeacherClassroomSubmissionReviewController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-classroom-submission-review.controller';
 import { TeacherHomeController } from '../../src/modules/teacher-app/home/controller/teacher-home.controller';
+import { TeacherHomeworkQuestionAssetsController } from '../../src/modules/teacher-app/homeworks/controller/teacher-homework-question-assets.controller';
 import { TeacherHomeworksController } from '../../src/modules/teacher-app/homeworks/controller/teacher-homeworks.controller';
 import { TeacherLessonPreparationController } from '../../src/modules/teacher-app/lesson-preparation/controller/teacher-lesson-preparation.controller';
 import { TeacherMessagesController } from '../../src/modules/teacher-app/messages/controller/teacher-messages.controller';
@@ -293,6 +294,7 @@ const TEACHER_APP_CONTROLLER_CLASSES = [
   TeacherClassroomAssignmentsController,
   TeacherClassroomSubmissionReviewController,
   TeacherHomeworksController,
+  TeacherHomeworkQuestionAssetsController,
   TeacherTasksController,
   TeacherTaskReviewQueueController,
   TeacherXpController,
@@ -898,6 +900,56 @@ const TEACHER_APP_DEFERRED_ACTION_CASES: TeacherAppDeferredCase[] = [];
 
 const TEACHER_APP_DECORATED_PERMISSION_CASES: TeacherAppPermissionCase[] = [
   {
+    controller: TeacherHomeworkQuestionAssetsController,
+    method: 'list',
+    permissions: ['homework.questions.view'],
+  },
+  {
+    controller: TeacherHomeworkQuestionAssetsController,
+    method: 'get',
+    permissions: ['homework.questions.view'],
+  },
+  {
+    controller: TeacherHomeworkQuestionAssetsController,
+    method: 'getPreview',
+    permissions: ['homework.questions.view'],
+  },
+  {
+    controller: TeacherHomeworkQuestionAssetsController,
+    method: 'headPreview',
+    permissions: ['homework.questions.view'],
+  },
+  {
+    controller: TeacherHomeworkQuestionAssetsController,
+    method: 'getDownload',
+    permissions: ['homework.questions.view'],
+  },
+  {
+    controller: TeacherHomeworkQuestionAssetsController,
+    method: 'headDownload',
+    permissions: ['homework.questions.view'],
+  },
+  {
+    controller: TeacherHomeworkQuestionAssetsController,
+    method: 'create',
+    permissions: ['homework.questions.manage'],
+  },
+  {
+    controller: TeacherHomeworkQuestionAssetsController,
+    method: 'update',
+    permissions: ['homework.questions.manage'],
+  },
+  {
+    controller: TeacherHomeworkQuestionAssetsController,
+    method: 'reorder',
+    permissions: ['homework.questions.manage'],
+  },
+  {
+    controller: TeacherHomeworkQuestionAssetsController,
+    method: 'remove',
+    permissions: ['homework.questions.manage'],
+  },
+  {
     controller: TeacherHomeworksController,
     method: 'previewSubmissionAttachment',
     permissions: ['homework.submissions.view'],
@@ -1252,8 +1304,8 @@ describe('Teacher App route permission metadata (security)', () => {
           .map((method) => `${controller.name}.${method}`),
     ).sort();
 
-    expect(discoveredRouteHandlers).toHaveLength(159);
-    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(159);
+    expect(discoveredRouteHandlers).toHaveLength(169);
+    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(169);
     expect(TEACHER_APP_DEFERRED_ACTION_CASES).toHaveLength(0);
     expect(discoveredRouteHandlers).toEqual(
       Array.from(expectedKnownHandlers).sort(),
