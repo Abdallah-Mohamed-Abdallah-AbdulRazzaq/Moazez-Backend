@@ -1,5 +1,14 @@
 # Error Catalog
 
+## Safe Rich Content foundation (ST08-A)
+
+`rich_content.invalid` is a pure internal validation error, not a new HTTP
+contract. Its fixed reason is one of shape/version/limit/text/math/chemistry/
+fallback/association. It contains no rejected payload, field value, answer or
+asset identifier. Future domain adapters must map it to their existing
+validation response. Stored invalid/future data is classified without returning
+the rejected AST or rewriting its row.
+
 ## Assessment Media foundation (ST-03)
 
 These stable codes belong to internal application contracts. ST-03 adds no
