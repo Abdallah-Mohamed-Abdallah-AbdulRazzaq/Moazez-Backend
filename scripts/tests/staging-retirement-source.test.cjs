@@ -932,15 +932,24 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
       planner.listRepositoryFiles({ repositoryRoot: REPOSITORY_ROOT }),
     ),
   );
-  assert.equal(assignments.length, 1017);
+  assert.equal(assignments.length, 1019);
   assert.equal(
     assignments.filter((item) => item.execution === 'manual').length,
     10,
   );
   assert.equal(
     assignments.filter((item) => item.execution !== 'manual').length,
-    1007,
+    1009,
   );
+  for (const [file, profile] of [
+    ['src/common/rich-content/rich-content.spec.ts', 'unit'],
+    ['test/integration/safe-rich-content-persistence.integration.spec.ts', 'integration-general'],
+  ]) {
+    const matches = assignments.filter((item) => item.file === file);
+    assert.equal(matches.length, 1);
+    assert.equal(matches[0].profile, profile);
+    assert.equal(matches[0].execution, 'pull-request');
+  }
   assert.deepEqual(
     planner.ACTIVE_TAP_OWNERS[
       'scripts/tests/staging-retirement-source.test.cjs'
