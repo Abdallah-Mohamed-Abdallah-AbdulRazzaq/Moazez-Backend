@@ -1,3 +1,5 @@
+import { TeacherGradeQuestionAssetsController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-question-assets.controller';
+import { TeacherGradeAssessmentAssetsController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-assessment-assets.controller';
 import type {
   AppDeviceTokenRegisterResponseDto,
   AppDeviceTokenUnregisterResponseDto,
@@ -295,6 +297,8 @@ const TEACHER_APP_CONTROLLER_CLASSES = [
   TeacherClassroomSubmissionReviewController,
   TeacherHomeworksController,
   TeacherHomeworkQuestionAssetsController,
+  TeacherGradeAssessmentAssetsController,
+  TeacherGradeQuestionAssetsController,
   TeacherTasksController,
   TeacherTaskReviewQueueController,
   TeacherXpController,
@@ -900,6 +904,107 @@ const TEACHER_APP_DEFERRED_ACTION_CASES: TeacherAppDeferredCase[] = [];
 
 const TEACHER_APP_DECORATED_PERMISSION_CASES: TeacherAppPermissionCase[] = [
   {
+    controller: TeacherGradeAssessmentAssetsController,
+    method: 'list',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: TeacherGradeAssessmentAssetsController,
+    method: 'get',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: TeacherGradeAssessmentAssetsController,
+    method: 'getPreview',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: TeacherGradeAssessmentAssetsController,
+    method: 'headPreview',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: TeacherGradeAssessmentAssetsController,
+    method: 'getDownload',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: TeacherGradeAssessmentAssetsController,
+    method: 'headDownload',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: TeacherGradeAssessmentAssetsController,
+    method: 'create',
+    permissions: ['grades.assessments.manage'],
+  },
+  {
+    controller: TeacherGradeAssessmentAssetsController,
+    method: 'update',
+    permissions: ['grades.assessments.manage'],
+  },
+  {
+    controller: TeacherGradeAssessmentAssetsController,
+    method: 'reorder',
+    permissions: ['grades.assessments.manage'],
+  },
+  {
+    controller: TeacherGradeAssessmentAssetsController,
+    method: 'remove',
+    permissions: ['grades.assessments.manage'],
+  },
+  {
+    controller: TeacherGradeQuestionAssetsController,
+    method: 'list',
+    permissions: ['grades.questions.view'],
+  },
+  {
+    controller: TeacherGradeQuestionAssetsController,
+    method: 'get',
+    permissions: ['grades.questions.view'],
+  },
+  {
+    controller: TeacherGradeQuestionAssetsController,
+    method: 'getPreview',
+    permissions: ['grades.questions.view'],
+  },
+  {
+    controller: TeacherGradeQuestionAssetsController,
+    method: 'headPreview',
+    permissions: ['grades.questions.view'],
+  },
+  {
+    controller: TeacherGradeQuestionAssetsController,
+    method: 'getDownload',
+    permissions: ['grades.questions.view'],
+  },
+  {
+    controller: TeacherGradeQuestionAssetsController,
+    method: 'headDownload',
+    permissions: ['grades.questions.view'],
+  },
+  {
+    controller: TeacherGradeQuestionAssetsController,
+    method: 'create',
+    permissions: ['grades.questions.manage'],
+  },
+  {
+    controller: TeacherGradeQuestionAssetsController,
+    method: 'update',
+    permissions: ['grades.questions.manage'],
+  },
+  {
+    controller: TeacherGradeQuestionAssetsController,
+    method: 'reorder',
+    permissions: ['grades.questions.manage'],
+  },
+  {
+    controller: TeacherGradeQuestionAssetsController,
+    method: 'remove',
+    permissions: ['grades.questions.manage'],
+  },
+
+  {
     controller: TeacherHomeworkQuestionAssetsController,
     method: 'list',
     permissions: ['homework.questions.view'],
@@ -1304,8 +1409,8 @@ describe('Teacher App route permission metadata (security)', () => {
           .map((method) => `${controller.name}.${method}`),
     ).sort();
 
-    expect(discoveredRouteHandlers).toHaveLength(169);
-    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(169);
+    expect(discoveredRouteHandlers).toHaveLength(189);
+    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(189);
     expect(TEACHER_APP_DEFERRED_ACTION_CASES).toHaveLength(0);
     expect(discoveredRouteHandlers).toEqual(
       Array.from(expectedKnownHandlers).sort(),
@@ -1337,8 +1442,29 @@ describe('Teacher App route permission metadata (security)', () => {
       (entry) => Array.from(entry.permissions),
     );
 
+    // Owner ST-07 permits only these exact asset handlers to require existing
+    // manage grants. Canonical Teacher role exclusions below remain unchanged.
     for (const forbiddenPermission of FORBIDDEN_TEACHER_ROUTE_PERMISSIONS) {
-      expect(decoratedPermissions).not.toContain(forbiddenPermission);
+      const uses = TEACHER_APP_DECORATED_PERMISSION_CASES.filter((entry) =>
+        entry.permissions.includes(forbiddenPermission),
+      );
+      const controller =
+        forbiddenPermission === 'grades.assessments.manage'
+          ? TeacherGradeAssessmentAssetsController
+          : forbiddenPermission === 'grades.questions.manage'
+            ? TeacherGradeQuestionAssetsController
+            : null;
+      if (controller)
+        expect(
+          uses
+            .map((entry) => `${entry.controller.name}.${entry.method}`)
+            .sort(),
+        ).toEqual(
+          ['create', 'update', 'reorder', 'remove']
+            .map((method) => `${controller.name}.${method}`)
+            .sort(),
+        );
+      else expect(uses).toEqual([]);
     }
     expect(
       decoratedPermissions.some((code) => code.startsWith('behavior.')),

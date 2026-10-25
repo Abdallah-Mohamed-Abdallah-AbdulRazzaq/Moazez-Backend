@@ -1,3 +1,4 @@
+import { StudentGradeAssetsService } from '../../assessment-assets/student-grade-assets.service';
 import { Injectable } from '@nestjs/common';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 import { StudentAppAccessService } from '../../access/student-app-access.service';
@@ -10,6 +11,7 @@ export class GetStudentAssessmentGradeUseCase {
   constructor(
     private readonly accessService: StudentAppAccessService,
     private readonly readAdapter: StudentGradesReadAdapter,
+    private readonly assets: StudentGradeAssetsService,
   ) {}
 
   async execute(
@@ -28,6 +30,9 @@ export class GetStudentAssessmentGradeUseCase {
       });
     }
 
-    return StudentGradesPresenter.presentAssessmentGradeDetail(result);
+    return StudentGradesPresenter.presentAssessmentGradeDetail(
+      result,
+      await this.assets.metadata('student-grades', assessmentId),
+    );
   }
 }

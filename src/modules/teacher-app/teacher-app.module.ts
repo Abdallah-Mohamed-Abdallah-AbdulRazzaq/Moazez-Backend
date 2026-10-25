@@ -1,3 +1,6 @@
+import { TeacherGradeAssetsService } from './classroom/grades/application/teacher-grade-assets.service';
+import { TeacherGradeAssessmentAssetsController } from './classroom/grades/controller/teacher-grade-assessment-assets.controller';
+import { TeacherGradeQuestionAssetsController } from './classroom/grades/controller/teacher-grade-question-assets.controller';
 import { StorageModule } from '../../infrastructure/storage/storage.module';
 import { GetTeacherTaskProofContentUseCase } from './tasks/review/application/get-teacher-task-proof-content.use-case';
 import { GetTeacherOwnedTaskProofContentUseCase } from './tasks/application/get-teacher-owned-task-proof-content.use-case';
@@ -164,6 +167,8 @@ import {
     TeacherHomeworksModule,
   ],
   controllers: [
+    TeacherGradeAssessmentAssetsController,
+    TeacherGradeQuestionAssetsController,
     TeacherAcademicContentAnalyticsController,
     TeacherAcademicContentWorkflowPublicationController,
     TeacherAcademicContentFilesController,
@@ -189,6 +194,7 @@ import {
     TeacherLessonPreparationController,
   ],
   providers: [
+    TeacherGradeAssetsService,
     GetTeacherTaskProofContentUseCase,
     GetTeacherOwnedTaskProofContentUseCase,
     GetTeacherMessageAttachmentContentUseCase,

@@ -1,3 +1,4 @@
+import type { StudentGradeAssetsService } from '../../assessment-assets/student-grade-assets.service';
 import { StudentAppAccessService } from '../../access/student-app-access.service';
 import { StudentAppRequiredStudentException } from '../../shared/student-app-errors';
 import type {
@@ -52,9 +53,9 @@ describe('Student Exams use-cases', () => {
     const { detailUseCase, readAdapter } = createUseCasesWithValidAccess();
     readAdapter.findExam.mockResolvedValue(null);
 
-    await expect(detailUseCase.execute('outside-assessment')).rejects.toMatchObject(
-      { httpStatus: 404 },
-    );
+    await expect(
+      detailUseCase.execute('outside-assessment'),
+    ).rejects.toMatchObject({ httpStatus: 404 });
   });
 
   it('returns safe exam detail without answer keys or correct options', async () => {
@@ -108,7 +109,11 @@ function createUseCases(): {
 
   return {
     listUseCase: new ListStudentExamsUseCase(accessService, readAdapter),
-    detailUseCase: new GetStudentExamUseCase(accessService, readAdapter),
+    detailUseCase: new GetStudentExamUseCase(accessService, readAdapter, {
+      metadata: jest
+        .fn()
+        .mockResolvedValue({ assessment: [], questions: new Map() }),
+    } as unknown as StudentGradeAssetsService),
     submissionUseCase: new GetStudentExamSubmissionUseCase(
       accessService,
       readAdapter,

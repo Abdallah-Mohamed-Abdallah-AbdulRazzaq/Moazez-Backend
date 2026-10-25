@@ -596,7 +596,6 @@ export class AssessmentMediaRepository {
     );
   }
 
-  /** Internal predicate only: caller must already authorize the exact Homework/question. */
   async readyHomeworkFile(
     tx: Prisma.TransactionClient,
     input: {
@@ -606,6 +605,54 @@ export class AssessmentMediaRepository {
       creatorId: string;
       privateBucket: string;
       lock?: boolean;
+    },
+  ) {
+    return this.readyAuthoringFile(tx, {
+      ...input,
+      expectedPurpose: 'HOMEWORK_ASSIGNMENT_MEDIA',
+    });
+  }
+
+  async readyGradeAssessmentFile(
+    tx: Prisma.TransactionClient,
+    input: {
+      fileId: string;
+      uploadId?: string;
+      contextId: string;
+      creatorId: string;
+      privateBucket: string;
+      lock?: boolean;
+    },
+  ) {
+    return this.readyAuthoringFile(tx, {
+      ...input,
+      expectedPurpose: 'GRADE_ASSESSMENT_MEDIA',
+    });
+  }
+
+  async assertHomeworkBindingCapacity(
+    tx: Prisma.TransactionClient,
+    owner: AssessmentMediaOwner,
+    policy: EffectiveAssessmentMediaPolicy,
+  ): Promise<void> {
+    return this.assertAuthoringBindingCapacity(
+      tx,
+      { ...owner, purpose: 'HOMEWORK_ASSIGNMENT_MEDIA' },
+      policy,
+    );
+  }
+
+  /** Internal predicate only: caller must already authorize the exact authoring resource. */
+  private async readyAuthoringFile(
+    tx: Prisma.TransactionClient,
+    input: {
+      fileId: string;
+      uploadId?: string;
+      contextId: string;
+      creatorId: string;
+      privateBucket: string;
+      lock?: boolean;
+      expectedPurpose: 'HOMEWORK_ASSIGNMENT_MEDIA' | 'GRADE_ASSESSMENT_MEDIA';
     },
   ): Promise<{ file: ManagedFile; session: FileUploadSession }> {
     const scope = requireFilesScope();
@@ -622,7 +669,7 @@ export class AssessmentMediaRepository {
         fileId: input.fileId,
         organizationId: scope.organizationId,
         createdByUserId: input.creatorId,
-        purpose: 'HOMEWORK_ASSIGNMENT_MEDIA',
+        purpose: input.expectedPurpose,
         purposeContextId: input.contextId,
         status: 'READY',
       },
@@ -638,12 +685,17 @@ export class AssessmentMediaRepository {
     return { file, session };
   }
 
-  /** Recheck existing assignment reservations, without charging a second upload/link quota. */
-  async assertHomeworkBindingCapacity(
+  /** Recheck authoring reservations without charging another physical upload quota. */
+  async assertAuthoringBindingCapacity(
     tx: Prisma.TransactionClient,
     owner: AssessmentMediaOwner,
     policy: EffectiveAssessmentMediaPolicy,
   ): Promise<void> {
+    if (
+      owner.purpose !== 'HOMEWORK_ASSIGNMENT_MEDIA' &&
+      owner.purpose !== 'GRADE_ASSESSMENT_MEDIA'
+    )
+      throw new AssessmentMediaException('ready_relationship_invalid');
     const now = new Date();
     const [usage] = await tx.$queryRaw<
       Array<{ count: bigint; bytes: bigint; physical: bigint }>
@@ -654,9 +706,9 @@ export class AssessmentMediaRepository {
         FROM file_upload_sessions WHERE school_id = ${owner.schoolId}::uuid AND organization_id = ${owner.organizationId}::uuid
           AND purpose IN ('HOMEWORK_ASSIGNMENT_MEDIA', 'GRADE_ASSESSMENT_MEDIA', 'HOMEWORK_SUBMISSION_MEDIA', 'GRADE_SUBMISSION_MEDIA')
       )
-      SELECT count(*) FILTER (WHERE purpose = 'HOMEWORK_ASSIGNMENT_MEDIA' AND purpose_context_id = ${owner.contextId}::uuid
+      SELECT count(*) FILTER (WHERE purpose::text = ${owner.purpose} AND purpose_context_id = ${owner.contextId}::uuid
           AND (status = 'READY' OR active)) AS count,
-        COALESCE(sum(expected_size_bytes) FILTER (WHERE purpose = 'HOMEWORK_ASSIGNMENT_MEDIA' AND purpose_context_id = ${owner.contextId}::uuid
+        COALESCE(sum(expected_size_bytes) FILTER (WHERE purpose::text = ${owner.purpose} AND purpose_context_id = ${owner.contextId}::uuid
           AND (staging_object_deleted_at IS NULL OR final_object_deleted_at IS NULL)), 0)::bigint AS bytes,
         COALESCE(sum((CASE WHEN staging_object_deleted_at IS NULL THEN expected_size_bytes ELSE 0 END)
           + (CASE WHEN final_object_deleted_at IS NULL THEN expected_size_bytes ELSE 0 END)), 0)::bigint AS physical FROM reserved`;
