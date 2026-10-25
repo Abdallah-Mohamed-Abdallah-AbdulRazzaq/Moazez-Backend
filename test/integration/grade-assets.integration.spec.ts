@@ -10,6 +10,11 @@ import { GradeAssetsService } from '../../src/modules/grades/assessments/applica
 import { GradesAssessmentsRepository } from '../../src/modules/grades/assessments/infrastructure/grades-assessments.repository';
 import { hasRetainedFileReferences } from '../../src/modules/files/shared/infrastructure/file-lifetime.repository';
 import { GradeAssetsFixture } from '../fixtures/grade-assets.fixture';
+import { StudentGradeAssetsService } from '../../src/modules/student-app/assessment-assets/student-grade-assets.service';
+import { StudentAppAccessService } from '../../src/modules/student-app/access/student-app-access.service';
+import { StudentAppStudentReadAdapter } from '../../src/modules/student-app/access/student-app-student-read.adapter';
+import { StudentExamsReadAdapter } from '../../src/modules/student-app/exams/infrastructure/student-exams-read.adapter';
+import { StudentGradesReadAdapter } from '../../src/modules/student-app/grades/infrastructure/student-grades-read.adapter';
 jest.setTimeout(120000);
 describe('ST-07 actual PostgreSQL transactional authorization and capacity', () => {
   const prisma = new PrismaService();
@@ -64,6 +69,71 @@ describe('ST-07 actual PostgreSQL transactional authorization and capacity', () 
   });
   afterAll(async () => {
     await prisma.$disconnect();
+  });
+  it('authorizes both Student surfaces and private content with one database connection', async () => {
+    const ready = await fixture.readyGrade(graph.assessment.id);
+    const created = await teacher(() =>
+      service.create(actor(), resource(), {
+        sourceType: 'MANAGED_FILE',
+        fileId: ready.fileId,
+        uploadId: ready.uploadId,
+      }),
+    );
+    await fixture.asMediaActor('admin', () =>
+      new GradesAssessmentsRepository(prisma).publishAssessment(
+        graph.assessment.id,
+        {
+          approvalStatus: 'PUBLISHED',
+          publishedAt: new Date(),
+          publishedById: fixture.actors.admin.userId,
+        },
+      ),
+    );
+    const databaseUrl = new URL(
+      fixture.config.getOrThrow<string>('DATABASE_URL'),
+    );
+    databaseUrl.searchParams.set('connection_limit', '1');
+    databaseUrl.searchParams.set('pool_timeout', '2');
+    const single = new PrismaService({ datasourceUrl: databaseUrl.toString() });
+    try {
+      await single.$connect();
+      const urls = new PersistedUrlPolicy();
+      const core = new GradeAssetsService(
+        new GradeAssetsRepository(
+          single,
+          new PrismaTeacherAllocationOperationalWriteGate(),
+          fixture.repository,
+          new AssessmentMediaRuntimePolicy(fixture.config),
+          fixture.storage,
+          urls,
+        ),
+        new PrivateMediaContentService(fixture.storage),
+        urls,
+      );
+      const student = new StudentGradeAssetsService(
+        new StudentAppAccessService(new StudentAppStudentReadAdapter(single)),
+        new StudentExamsReadAdapter(single),
+        new StudentGradesReadAdapter(single),
+        core,
+      );
+      await fixture.asMediaActor('student', async () => {
+        for (const surface of ['student-exams', 'student-grades'] as const) {
+          const result = await student.metadata(surface, graph.assessment.id);
+          expect(result.assessment.map((asset) => asset.assetId)).toEqual([
+            created.asset.assetId,
+          ]);
+          const content = await student.openContent(
+            surface,
+            { ...resource(), assetId: created.asset.assetId },
+            { head: true, disposition: 'attachment' },
+          );
+          expect(content.statusCode).toBe(200);
+          content.stream.destroy();
+        }
+      });
+    } finally {
+      await single.$disconnect();
+    }
   });
   function latch<T>() {
     let resolve!: (value: T) => void;

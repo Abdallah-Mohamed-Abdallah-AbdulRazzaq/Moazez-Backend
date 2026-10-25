@@ -17,25 +17,25 @@ export class StudentGradeAssetsService {
     private readonly grades: StudentGradesReadAdapter,
     private readonly assets: GradeAssetsService,
   ) {}
-  private actor(surface: Surface): GradeAssetActor {
+  private async actor(surface: Surface): Promise<GradeAssetActor> {
+    const { context } = await this.access.getCurrentStudentWithEnrollment();
     return {
       surface,
-      authorize: async (tx, assessmentId) => {
-        const { context } = await this.access.getCurrentStudentWithEnrollment();
-        await (
-          surface === 'student-exams' ? this.exams : this.grades
-        ).assertAssetAccess(tx, context, assessmentId);
-      },
+      authorize: (tx, assessmentId) =>
+        (surface === 'student-exams'
+          ? this.exams
+          : this.grades
+        ).assertAssetAccess(tx, context, assessmentId),
     };
   }
-  metadata(surface: Surface, assessmentId: string) {
-    return this.assets.studentAssets(this.actor(surface), assessmentId);
+  async metadata(surface: Surface, assessmentId: string) {
+    return this.assets.studentAssets(await this.actor(surface), assessmentId);
   }
   openContent(
     surface: Surface,
     input: GradeAssetResource & { assetId: string },
     request: PrivateMediaContentRequest,
   ) {
-    return this.assets.openContent(this.actor(surface), input, request);
+    return this.assets.openContent(() => this.actor(surface), input, request);
   }
 }
