@@ -5571,6 +5571,7 @@ model GradeAssessmentQuestion {
   required      Boolean           @default(true)
   answerKey     Json?             @map("answer_key")
   metadata      Json?
+  richContent   Json?             @map("rich_content")
   createdAt     DateTime          @default(now()) @map("created_at")
   updatedAt     DateTime          @updatedAt @map("updated_at")
   deletedAt     DateTime?         @map("deleted_at")
@@ -5630,6 +5631,7 @@ model GradeAssessmentQuestionOption {
   isCorrect    Boolean   @default(false) @map("is_correct")
   sortOrder    Int       @map("sort_order")
   metadata     Json?
+  richContent  Json?     @map("rich_content")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at")
@@ -5976,6 +5978,7 @@ model HomeworkQuestion {
   isRequired           Boolean              @default(true) @map("is_required")
   expectedAnswer       String?              @map("expected_answer") @db.Text
   metadata             Json?
+  richContent          Json?                @map("rich_content")
   createdByUserId      String               @map("created_by_user_id") @db.Uuid
   updatedByUserId      String?              @map("updated_by_user_id") @db.Uuid
   deletedAt            DateTime?            @map("deleted_at")
@@ -6135,6 +6138,7 @@ model HomeworkQuestionOption {
   isCorrect          Boolean   @default(false) @map("is_correct")
   sortOrder          Int       @default(0) @map("sort_order")
   metadata           Json?
+  richContent        Json?     @map("rich_content")
   deletedAt          DateTime? @map("deleted_at")
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
