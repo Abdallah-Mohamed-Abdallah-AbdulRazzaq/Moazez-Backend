@@ -85,6 +85,19 @@ boundary and allocation/hierarchy locks before the assessment lock. There are
 no permission grants or broader Teacher authoring rights. Invalid AST, identity,
 resource, lifecycle or asset checks roll back the entire operation.
 
+An implicit clear from a legacy question/option display edit is a Rich mutation
+when the final locked row contains stored JSON. The database's `not: Prisma.DbNull`
+filter distinguishes that state from SQL NULL, including stored JSON null.
+Option identity and its display-change plan are resolved together before writes.
+If ordinary authorization discovers such a clear, that attempt rolls back before
+any question or option write. One fresh transaction then acquires
+the existing ST07 locks first, revalidates ownership and lifecycle, and recomputes
+all plans from the current rows and the original command. Authorization is never
+escalated while retaining an assessment lock from the discovery attempt; there
+are no nested transactions. Explicit Rich writes use the same ST07 path directly.
+SQL-null legacy rows, unchanged display values, and points/order/metadata-only
+updates retain their existing authorization behavior.
+
 ## Reads, SQL null evidence and privacy
 
 All affected read models explicitly select Rich columns. The core projection

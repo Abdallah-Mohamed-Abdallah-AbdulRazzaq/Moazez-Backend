@@ -175,6 +175,9 @@ export interface UpdateQuestionAndReplaceOptionsInput {
   metadataPatch?: Record<string, unknown>;
 }
 
+/** Restart before taking ST07 locks; never escalate while holding the assessment. */
+class RichWriteAuthorizationRequired extends Error {}
+
 @Injectable()
 export class GradesAssessmentQuestionsRepository {
   constructor(
@@ -358,83 +361,110 @@ export class GradesAssessmentQuestionsRepository {
     questionId: string,
     input: UpdateQuestionAndReplaceOptionsInput,
   ): Promise<GradeAssessmentQuestionRecord> {
-    await this.scopedPrisma.$transaction(async (tx) => {
-      if (
-        input.data.richContent !== undefined ||
-        input.options?.some((option) => option.richContent !== undefined)
-      ) {
-        const parent = await tx.gradeAssessmentQuestion.findFirst({
+    let richAuthorizationRequired =
+      input.data.richContent !== undefined ||
+      input.options?.some((option) => option.richContent !== undefined);
+    const mutate = () =>
+      this.scopedPrisma.$transaction(async (tx) => {
+        // Each attempt plans from the original command and its final locked row.
+        let mutation = input;
+        let richAssessmentId: string | undefined;
+        if (richAuthorizationRequired) {
+          const parent = await tx.gradeAssessmentQuestion.findFirst({
+            where: { id: questionId },
+            select: { assessmentId: true },
+          });
+          if (!parent || !this.richAssets) throw new NotFoundDomainException();
+          richAssessmentId = parent.assessmentId;
+          await this.richAssets.assertRichWrite(tx, parent.assessmentId);
+        }
+        await assertGradeQuestionAccess(tx, questionId);
+        const current = await tx.gradeAssessmentQuestion.findFirst({
           where: { id: questionId },
-          select: { assessmentId: true },
+          ...QUESTION_WITH_OPTIONS_ARGS,
         });
-        if (!parent || !this.richAssets) throw new NotFoundDomainException();
-        await this.richAssets.assertRichWrite(tx, parent.assessmentId);
-      }
-      await assertGradeQuestionAccess(tx, questionId);
-      const current = await tx.gradeAssessmentQuestion.findFirst({
-        where: { id: questionId },
-        ...QUESTION_WITH_OPTIONS_ARGS,
-      });
-      if (!current) throw new NotFoundDomainException();
-      const rich = gradeRichChange('gradeQuestion', input.data, current);
-      if (rich.action === 'write') {
-        input = {
-          ...input,
-          data: {
-            ...input.data,
-            ...rich.legacy,
-            richContent: rich.richContent,
-          },
-        };
-        if (rich.richContent)
-          await this.assertRichReferences(
-            tx,
-            current.assessmentId,
-            questionId,
-            rich.richContent,
-          );
-      }
-      if (input.metadataPatch)
-        input = {
-          ...input,
-          data: {
-            ...input.data,
-            metadata: {
-              ...(current.metadata &&
-              typeof current.metadata === 'object' &&
-              !Array.isArray(current.metadata)
-                ? current.metadata
-                : {}),
-              ...input.metadataPatch,
+        if (
+          !current ||
+          (richAssessmentId && current.assessmentId !== richAssessmentId)
+        )
+          throw new NotFoundDomainException();
+        const rich = gradeRichChange('gradeQuestion', mutation.data, current);
+        if (rich.action === 'write') {
+          mutation = {
+            ...mutation,
+            data: {
+              ...mutation.data,
+              ...rich.legacy,
+              richContent: rich.richContent,
             },
-          },
+          };
+          if (rich.richContent)
+            await this.assertRichReferences(
+              tx,
+              current.assessmentId,
+              questionId,
+              rich.richContent,
+            );
+        }
+        if (mutation.metadataPatch)
+          mutation = {
+            ...mutation,
+            data: {
+              ...mutation.data,
+              metadata: {
+                ...(current.metadata &&
+                typeof current.metadata === 'object' &&
+                !Array.isArray(current.metadata)
+                  ? current.metadata
+                  : {}),
+                ...mutation.metadataPatch,
+              },
+            },
+          };
+        const effective = {
+          ...current,
+          ...mutation.data,
+          options: mutation.options ?? current.options,
         };
-      const effective = {
-        ...current,
-        ...input.data,
-        options: input.options ?? current.options,
-      };
-      validateGradeQuestionContent(gradeLegacyContent(effective));
-      validateQuestionOptionsForType(effective);
-      validateGradeQuestionDefinition(effective);
-      if (Object.keys(input.data).length > 0) {
-        await tx.gradeAssessmentQuestion.updateMany({
-          where: { id: questionId },
-          data: this.buildQuestionUpdateInput(input.data),
-        });
-      }
+        validateGradeQuestionContent(gradeLegacyContent(effective));
+        validateQuestionOptionsForType(effective);
+        validateGradeQuestionDefinition(effective);
+        const optionPlan =
+          mutation.options === undefined
+            ? undefined
+            : this.planOptionReplacement(current, mutation.options);
+        if (
+          !richAuthorizationRequired &&
+          (await this.hasImplicitRichClear(tx, current, rich, optionPlan))
+        )
+          throw new RichWriteAuthorizationRequired();
+        if (Object.keys(mutation.data).length > 0) {
+          await tx.gradeAssessmentQuestion.updateMany({
+            where: { id: questionId },
+            data: this.buildQuestionUpdateInput(mutation.data),
+          });
+        }
 
-      if (input.options !== undefined) {
-        const question = await tx.gradeAssessmentQuestion.findFirst({
-          where: { id: questionId },
-          select: { schoolId: true, assessmentId: true },
-        });
+        if (optionPlan) {
+          const question = await tx.gradeAssessmentQuestion.findFirst({
+            where: { id: questionId },
+            select: { schoolId: true, assessmentId: true },
+          });
 
-        if (!question) return;
+          if (!question) return;
 
-        await this.replaceOptionsPreservingIdentity(tx, current, input.options);
-      }
-    });
+          await this.replaceOptionsPreservingIdentity(tx, current, optionPlan);
+        }
+      });
+    try {
+      await mutate();
+    } catch (error) {
+      if (!(error instanceof RichWriteAuthorizationRequired)) throw error;
+      // The discovery attempt made no writes and has released its locks. Only
+      // this second attempt takes the full ST07 allocation/assessment hierarchy.
+      richAuthorizationRequired = true;
+      await mutate();
+    }
 
     return this.findQuestionResult(questionId);
   }
@@ -613,11 +643,10 @@ export class GradesAssessmentQuestionsRepository {
         );
   }
 
-  private async replaceOptionsPreservingIdentity(
-    tx: Prisma.TransactionClient,
+  private planOptionReplacement(
     question: GradeAssessmentQuestionRecord,
     desired: NormalizedQuestionOptionPayload[],
-  ): Promise<void> {
+  ) {
     const used = new Set<string>();
     const resolved = desired.map((option) => {
       const current = option.id
@@ -672,6 +701,62 @@ export class GradesAssessmentQuestionsRepository {
         rich,
       };
     });
+    return { desired, resolved, used };
+  }
+
+  private async hasImplicitRichClear(
+    tx: Prisma.TransactionClient,
+    question: GradeAssessmentQuestionRecord,
+    rich: ReturnType<typeof gradeRichChange>,
+    options:
+      | ReturnType<GradesAssessmentQuestionsRepository['planOptionReplacement']>
+      | undefined,
+  ): Promise<boolean> {
+    // DbNull filtering is database evidence: JSON null is stored content too.
+    if (
+      rich.action === 'write' &&
+      rich.richContent === null &&
+      (await tx.gradeAssessmentQuestion.count({
+        where: {
+          id: question.id,
+          assessmentId: question.assessmentId,
+          schoolId: question.schoolId,
+          richContent: { not: Prisma.DbNull },
+        },
+      })) > 0
+    )
+      return true;
+    const ids =
+      options?.resolved
+        .filter(
+          (row) =>
+            row.current &&
+            row.rich.action === 'write' &&
+            row.rich.richContent === null,
+        )
+        .map((row) => row.current!.id) ?? [];
+    return (
+      ids.length > 0 &&
+      (await tx.gradeAssessmentQuestionOption.count({
+        where: {
+          id: { in: ids },
+          questionId: question.id,
+          assessmentId: question.assessmentId,
+          schoolId: question.schoolId,
+          richContent: { not: Prisma.DbNull },
+        },
+      })) > 0
+    );
+  }
+
+  private async replaceOptionsPreservingIdentity(
+    tx: Prisma.TransactionClient,
+    question: GradeAssessmentQuestionRecord,
+    plan: ReturnType<
+      GradesAssessmentQuestionsRepository['planOptionReplacement']
+    >,
+  ): Promise<void> {
+    const { desired, resolved, used } = plan;
     // Resolve every identity before changing order or retiring rows.
     for (const row of resolved)
       if (row.current && row.rich.action === 'write' && row.rich.richContent)

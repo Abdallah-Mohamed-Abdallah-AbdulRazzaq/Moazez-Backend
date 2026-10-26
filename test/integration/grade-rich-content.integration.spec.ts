@@ -119,6 +119,453 @@ describe('ST08-B real PostgreSQL Grades Rich authorization and persistence', () 
   });
   afterAll(() => prisma.$disconnect());
 
+  it.each(['question', 'option'] as const)(
+    'ST08B-REV-01 rejects an implicit %s Rich clear after creator ownership changes',
+    async (target) => {
+      const q = await create(true);
+      await prisma.gradeAssessment.update({
+        where: { id: q.assessmentId },
+        data: { createdById: fixture.actors.otherTeacher.userId },
+      });
+      // Matching allocation, live membership and existing Grades access remain.
+      expect(
+        await teacher(() => repository.findQuestionByIdWithAssessment(q.id)),
+      ).toMatchObject({ id: q.id, richContent: questionRich() });
+      const before = await prisma.gradeAssessmentQuestion.findUniqueOrThrow({
+        where: { id: q.id },
+        include: { options: { orderBy: { id: 'asc' } } },
+      });
+      const data = normalizeQuestionPayload({
+        ...(target === 'question'
+          ? { prompt: 'Unauthorized legacy edit' }
+          : {}),
+        points: 2,
+        options: [
+          { id: q.options[1].id, label: 'B', sortOrder: 1 },
+          {
+            id: q.options[0].id,
+            label: target === 'option' ? 'Unauthorized option edit' : 'A',
+            isCorrect: true,
+            sortOrder: 2,
+            metadata: { rejected: true },
+          },
+        ],
+      });
+      await expect(
+        teacher(() =>
+          repository.updateQuestionAndReplaceOptions(q.id, {
+            data,
+            options: data.options,
+            metadataPatch: { rejected: true },
+          }),
+        ),
+      ).rejects.toMatchObject({ code: 'not_found' });
+      expect(
+        await prisma.gradeAssessmentQuestion.findUniqueOrThrow({
+          where: { id: q.id },
+          include: { options: { orderBy: { id: 'asc' } } },
+        }),
+      ).toEqual(before);
+    },
+  );
+
+  it('ST08B-REV-01 permits owned implicit question/option clears and commits their legacy fields atomically', async () => {
+    const q = await create(true);
+    const changed = await teacher(() =>
+      update(q.id, {
+        prompt: 'Owned legacy question edit',
+        metadata: { edited: true },
+        options: [
+          { id: q.options[1].id, label: 'B', sortOrder: 1 },
+          {
+            id: q.options[0].id,
+            label: 'Owned legacy option edit',
+            isCorrect: true,
+            sortOrder: 2,
+            metadata: { edited: true },
+          },
+        ],
+      }),
+    );
+    expect(changed).toMatchObject({
+      prompt: 'Owned legacy question edit',
+      metadata: { edited: true },
+      richContent: null,
+    });
+    expect(changed.options.map((o) => o.id)).toEqual([
+      q.options[1].id,
+      q.options[0].id,
+    ]);
+    expect(changed.options[1]).toMatchObject({
+      label: 'Owned legacy option edit',
+      metadata: { edited: true },
+      richContent: null,
+    });
+    const [stored] = await prisma.$queryRaw<
+      Array<{ questionNull: boolean; optionNull: boolean }>
+    >`
+      SELECT q.rich_content IS NULL AS "questionNull", o.rich_content IS NULL AS "optionNull"
+      FROM grade_assessment_questions q JOIN grade_assessment_question_options o ON o.question_id=q.id
+      WHERE q.id=${q.id}::uuid AND o.id=${q.options[0].id}::uuid`;
+    expect(stored).toEqual({ questionNull: true, optionNull: true });
+    expect(changed.options[0].richContent).toEqual(optionRich('B'));
+  });
+
+  it('ST08B-REV-01 preserves Rich content for unrelated and unchanged legacy edits without requiring creator ownership', async () => {
+    const q = await create(true);
+    await prisma.gradeAssessment.update({
+      where: { id: q.assessmentId },
+      data: { createdById: fixture.actors.otherTeacher.userId },
+    });
+    await teacher(() =>
+      update(q.id, { points: 2, sortOrder: 5, metadata: { unrelated: true } }),
+    );
+    const unchanged = await teacher(() =>
+      update(q.id, {
+        questionTextEn: q.prompt,
+        questionTextAr: q.promptAr,
+        options: [
+          {
+            id: q.options[1].id,
+            label: 'B',
+            sortOrder: 1,
+            metadata: { unrelated: true },
+          },
+          { id: q.options[0].id, label: 'A', isCorrect: true, sortOrder: 2 },
+        ],
+      }),
+    );
+    expect(unchanged).toMatchObject({
+      points: new Prisma.Decimal(2),
+      sortOrder: 5,
+      metadata: { unrelated: true },
+      richContent: questionRich(),
+    });
+    expect(unchanged.options.map((o) => [o.id, o.richContent])).toEqual([
+      [q.options[1].id, optionRich('B')],
+      [q.options[0].id, optionRich('A')],
+    ]);
+  });
+
+  it.each(['CREATOR', 'SCHOOL_SCOPE'] as const)(
+    'ST08B-REV-01 preserves ordinary legacy question/option replacement with a differing %s boundary',
+    async (boundary) => {
+      const q = await teacher(() =>
+        repository.createQuestionWithOptions({
+          schoolId: fixture.school.schoolId,
+          assessmentId: graph.assessment.id,
+          type: 'MCQ_SINGLE',
+          prompt: 'Legacy question',
+          points: 1,
+          sortOrder: 4,
+          required: true,
+          options: normalizeQuestionPayload({
+            options: [
+              { label: 'Legacy A', isCorrect: true },
+              { label: 'Legacy B' },
+            ],
+          }).options!,
+        }),
+      );
+      await prisma.gradeAssessment.update({
+        where: { id: q.assessmentId },
+        data:
+          boundary === 'CREATOR'
+            ? { createdById: fixture.actors.otherTeacher.userId }
+            : {
+                scopeType: 'SCHOOL',
+                scopeKey: fixture.school.schoolId,
+                classroomId: null,
+              },
+      });
+      const changed = await teacher(() =>
+        update(q.id, {
+          prompt: 'Updated legacy question',
+          options: [
+            { label: 'Updated legacy A', isCorrect: true },
+            { label: 'Updated legacy B' },
+          ],
+        }),
+      );
+      expect(changed.prompt).toBe('Updated legacy question');
+      expect(changed.richContent).toBeNull();
+      expect(
+        changed.options.map((o) => [o.id, o.label, o.richContent]),
+      ).toEqual([
+        [q.options[0].id, 'Updated legacy A', null],
+        [q.options[1].id, 'Updated legacy B', null],
+      ]);
+    },
+  );
+
+  it.each([
+    ['question', 'replace'],
+    ['question', 'clear'],
+    ['option', 'replace'],
+    ['option', 'clear'],
+  ] as const)(
+    'ST08B-REV-01 retains explicit %s %s authorization',
+    async (target, operation) => {
+      const q = await create(true);
+      await prisma.gradeAssessment.update({
+        where: { id: q.assessmentId },
+        data: { createdById: fixture.actors.otherTeacher.userId },
+      });
+      const before = await prisma.gradeAssessmentQuestion.findUniqueOrThrow({
+        where: { id: q.id },
+        include: { options: { orderBy: { id: 'asc' } } },
+      });
+      await expect(
+        teacher(() =>
+          update(
+            q.id,
+            target === 'question'
+              ? {
+                  richContent:
+                    operation === 'clear'
+                      ? null
+                      : questionRich('Denied replacement'),
+                }
+              : {
+                  options: [
+                    {
+                      id: q.options[0].id,
+                      label: operation === 'clear' ? 'A' : 'Denied replacement',
+                      richContent:
+                        operation === 'clear'
+                          ? null
+                          : optionRich('Denied replacement'),
+                      isCorrect: true,
+                    },
+                    { id: q.options[1].id, label: 'B' },
+                  ],
+                },
+          ),
+        ),
+      ).rejects.toMatchObject({ code: 'not_found' });
+      expect(
+        await prisma.gradeAssessmentQuestion.findUniqueOrThrow({
+          where: { id: q.id },
+          include: { options: { orderBy: { id: 'asc' } } },
+        }),
+      ).toEqual(before);
+    },
+  );
+
+  it.each(['question', 'option'] as const)(
+    'ST08B-REV-01 distinguishes stored JSON null from SQL NULL for an implicit %s clear',
+    async (target) => {
+      const q = await create(true);
+      const option = q.options[0];
+      await prisma.gradeAssessment.update({
+        where: { id: q.assessmentId },
+        data: { createdById: fixture.actors.otherTeacher.userId },
+      });
+      const setNull = (value: typeof Prisma.JsonNull | typeof Prisma.DbNull) =>
+        target === 'question'
+          ? prisma.gradeAssessmentQuestion.update({
+              where: { id: q.id },
+              data: { richContent: value },
+            })
+          : prisma.gradeAssessmentQuestionOption.update({
+              where: { id: option.id },
+              data: { richContent: value },
+            });
+      const sqlNull = async () =>
+        (target === 'question'
+          ? await prisma.$queryRaw<
+              Array<{ absent: boolean }>
+            >`SELECT rich_content IS NULL AS absent FROM grade_assessment_questions WHERE id=${q.id}::uuid`
+          : await prisma.$queryRaw<
+              Array<{ absent: boolean }>
+            >`SELECT rich_content IS NULL AS absent FROM grade_assessment_question_options WHERE id=${option.id}::uuid`)[0]
+          .absent;
+      const command =
+        target === 'question'
+          ? { prompt: 'Changed legacy text' }
+          : {
+              options: [
+                {
+                  id: option.id,
+                  label: 'Changed legacy text',
+                  isCorrect: true,
+                },
+                { id: q.options[1].id, label: 'B' },
+              ],
+            };
+      await setNull(Prisma.JsonNull);
+      await teacher(() => update(q.id, { points: 2 }));
+      expect(await sqlNull()).toBe(false);
+      const before = await prisma.gradeAssessmentQuestion.findUniqueOrThrow({
+        where: { id: q.id },
+        include: { options: { orderBy: { id: 'asc' } } },
+      });
+      await expect(teacher(() => update(q.id, command))).rejects.toMatchObject({
+        code: 'not_found',
+      });
+      expect(await sqlNull()).toBe(false);
+      expect(
+        await prisma.gradeAssessmentQuestion.findUniqueOrThrow({
+          where: { id: q.id },
+          include: { options: { orderBy: { id: 'asc' } } },
+        }),
+      ).toEqual(before);
+      await setNull(Prisma.DbNull);
+      const changed = await teacher(() => update(q.id, command));
+      expect(await sqlNull()).toBe(true);
+      expect(
+        target === 'question' ? changed.prompt : changed.options[0].label,
+      ).toBe('Changed legacy text');
+    },
+  );
+
+  function latch<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason: unknown) => void;
+    const promise = new Promise<T>((yes, no) => {
+      resolve = yes;
+      reject = no;
+    });
+    return { promise, resolve, reject };
+  }
+  async function blockedBy(pid: number) {
+    const until = Date.now() + 10000;
+    while (Date.now() < until) {
+      const rows = await prisma.$queryRaw<Array<{ pid: number }>>`
+        SELECT pid FROM pg_stat_activity WHERE ${pid}=ANY(pg_blocking_pids(pid)) AND wait_event_type='Lock'`;
+      if (rows.length) return;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error('Expected real PostgreSQL assessment lock wait was absent');
+  }
+  it.each(['question', 'option'] as const)(
+    'ST08B-REV-01 rechecks concurrent %s Rich introduction after waiting on the assessment lock',
+    async (target) => {
+      const q = await create(true);
+      await prisma.gradeAssessment.update({
+        where: { id: q.assessmentId },
+        data: { createdById: fixture.actors.otherTeacher.userId },
+      });
+      if (target === 'question')
+        await prisma.gradeAssessmentQuestion.update({
+          where: { id: q.id },
+          data: { richContent: Prisma.DbNull },
+        });
+      else
+        await prisma.gradeAssessmentQuestionOption.update({
+          where: { id: q.options[0].id },
+          data: { richContent: Prisma.DbNull },
+        });
+      expect(
+        await teacher(() => repository.findQuestionByIdWithAssessment(q.id)),
+      ).toBeTruthy();
+      const ready = latch<number>(),
+        release = latch<void>();
+      let expected: unknown;
+      const blocker = prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`SELECT id FROM grade_assessments WHERE id=${q.assessmentId}::uuid FOR UPDATE`;
+          const [connection] = await tx.$queryRaw<
+            Array<{ pid: number }>
+          >`SELECT pg_backend_pid() AS pid`;
+          if (target === 'question')
+            await tx.gradeAssessmentQuestion.update({
+              where: { id: q.id },
+              data: { richContent: questionRich() },
+            });
+          else
+            await tx.gradeAssessmentQuestionOption.update({
+              where: { id: q.options[0].id },
+              data: { richContent: optionRich('A') },
+            });
+          expected = await tx.gradeAssessmentQuestion.findUniqueOrThrow({
+            where: { id: q.id },
+            include: { options: { orderBy: { id: 'asc' } } },
+          });
+          ready.resolve(connection.pid);
+          await release.promise;
+        },
+        { timeout: 15000 },
+      );
+      void blocker.catch((error) => ready.reject(error));
+      let pending: Promise<unknown> | undefined;
+      try {
+        const pid = await ready.promise;
+        pending = teacher(() =>
+          update(
+            q.id,
+            target === 'question'
+              ? {
+                  prompt: 'Racing unauthorized clear',
+                  metadata: { rejected: true },
+                }
+              : {
+                  options: [
+                    {
+                      id: q.options[0].id,
+                      label: 'Racing unauthorized clear',
+                      isCorrect: true,
+                      metadata: { rejected: true },
+                    },
+                    { id: q.options[1].id, label: 'B' },
+                  ],
+                },
+          ),
+        ).then(
+          (value) => ({ value }),
+          (error: unknown) => ({ error }),
+        );
+        await blockedBy(pid);
+      } finally {
+        release.resolve();
+        await blocker;
+      }
+      expect(await pending).toMatchObject({ error: { code: 'not_found' } });
+      expect(
+        await prisma.gradeAssessmentQuestion.findUniqueOrThrow({
+          where: { id: q.id },
+          include: { options: { orderBy: { id: 'asc' } } },
+        }),
+      ).toEqual(expected);
+    },
+  );
+
+  it('ST08B-REV-01 serializes concurrent owned implicit clears without changing ST07 lock order', async () => {
+    const q = await create(true);
+    await Promise.all([
+      teacher(() => update(q.id, { prompt: 'Concurrent owned question edit' })),
+      teacher(() =>
+        update(q.id, {
+          options: [
+            {
+              id: q.options[0].id,
+              label: 'Concurrent owned option edit',
+              isCorrect: true,
+            },
+            { id: q.options[1].id, label: 'B' },
+          ],
+        }),
+      ),
+    ]);
+    const row = await prisma.gradeAssessmentQuestion.findUniqueOrThrow({
+      where: { id: q.id },
+      include: { options: { orderBy: { sortOrder: 'asc' } } },
+    });
+    expect(row).toMatchObject({
+      prompt: 'Concurrent owned question edit',
+      richContent: null,
+    });
+    expect(row.options[0]).toMatchObject({
+      id: q.options[0].id,
+      label: 'Concurrent owned option edit',
+      richContent: null,
+    });
+    expect(row.options[1]).toMatchObject({
+      id: q.options[1].id,
+      richContent: optionRich('B'),
+    });
+  });
+
   it('persists question/options atomically, preserves identity across reorder and serializes concurrent edits', async () => {
     const q = await create(true);
     const [a, b] = q.options;
