@@ -31,6 +31,7 @@ export async function authorizeGradeAssets(
   input: GradeAssetResource,
   write = false,
   managedBinding = false,
+  questionAuthoring = false,
 ) {
   const scope = requireGradesScope();
   const ctx = getRequestContext();
@@ -48,7 +49,7 @@ export async function authorizeGradeAssets(
     throw absent();
   const permission = isGradeAssetStudent(actor)
     ? 'grades.assessments.view'
-    : `grades.${input.questionId ? 'questions' : 'assessments'}.${write ? 'manage' : 'view'}`;
+    : `grades.${input.questionId || questionAuthoring ? 'questions' : 'assessments'}.${write ? 'manage' : 'view'}`;
   await assertGradeLiveMutationPermission(tx, permission);
   if (managedBinding)
     await assertGradeLiveMutationPermission(tx, 'grades.questions.manage');
@@ -147,6 +148,7 @@ export async function authorizeGradeAssets(
       term: assessment.term,
       submissionCount: assessment._count.submissions,
     });
+  if (questionAuthoring) assertQuestionBasedAssessment(assessment);
   if (input.questionId) {
     if (!write && assessment.deliveryMode !== 'QUESTION_BASED') throw absent();
     assertQuestionBasedAssessment(assessment);

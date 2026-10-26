@@ -1,3 +1,16 @@
+import { randomUUID } from 'node:crypto';
+import { GradeAssetsRepository } from './grade-assets.repository';
+import {
+  gradeRichChange,
+  gradeLegacyContent,
+} from '../domain/grade-rich-content';
+import { requireGradesScope } from '../../grades-context';
+import {
+  authorizeGradeRichReview,
+  gradeRichReferences,
+  hasGradeRichSelection,
+  projectGradeRichContent,
+} from './grade-rich-content.projection';
 import {
   assertGradeQuestionStructureWrite,
   assertGradeQuestionAccess,
@@ -31,6 +44,7 @@ const QUESTION_OPTION_SELECT = {
   isCorrect: true,
   sortOrder: true,
   metadata: true,
+  richContent: true,
   createdAt: true,
   updatedAt: true,
   deletedAt: true,
@@ -52,6 +66,7 @@ const QUESTION_WITH_OPTIONS_ARGS =
       required: true,
       answerKey: true,
       metadata: true,
+      richContent: true,
       createdAt: true,
       updatedAt: true,
       deletedAt: true,
@@ -145,6 +160,7 @@ export interface CreateQuestionWithOptionsInput extends Required<
 > {
   schoolId: string;
   assessmentId: string;
+  richContent?: NormalizedQuestionPayload['richContent'];
   promptAr?: string | null;
   explanation?: string | null;
   explanationAr?: string | null;
@@ -161,7 +177,10 @@ export interface UpdateQuestionAndReplaceOptionsInput {
 
 @Injectable()
 export class GradesAssessmentQuestionsRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly richAssets?: GradeAssetsRepository,
+  ) {}
 
   private get scopedPrisma(): PrismaService {
     return this.prisma.scoped as unknown as PrismaService;
@@ -184,7 +203,7 @@ export class GradesAssessmentQuestionsRepository {
   async listQuestions(
     assessmentId: string,
   ): Promise<GradeAssessmentQuestionRecord[]> {
-    return this.scopedPrisma.gradeAssessmentQuestion.findMany({
+    const questions = await this.scopedPrisma.gradeAssessmentQuestion.findMany({
       where: {
         AND: [
           { assessmentId },
@@ -194,18 +213,22 @@ export class GradesAssessmentQuestionsRepository {
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
       ...QUESTION_WITH_OPTIONS_ARGS,
     });
+    await this.projectRich(assessmentId, questions);
+    return questions;
   }
 
   async findQuestionByIdWithAssessment(
     questionId: string,
   ): Promise<GradeAssessmentQuestionWithAssessmentRecord | null> {
-    return this.scopedPrisma.gradeAssessmentQuestion.findFirst({
+    const question = await this.scopedPrisma.gradeAssessmentQuestion.findFirst({
       where: {
         id: questionId,
         AND: [await gradeQuestionAccessWhere(this.scopedPrisma)],
       },
       ...QUESTION_WITH_ASSESSMENT_ARGS,
     });
+    if (question) await this.projectRich(question.assessmentId, [question]);
+    return question;
   }
 
   async listQuestionsByIds(
@@ -266,8 +289,23 @@ export class GradesAssessmentQuestionsRepository {
     input: CreateQuestionWithOptionsInput,
   ): Promise<GradeAssessmentQuestionRecord> {
     const created = await this.scopedPrisma.$transaction(async (tx) => {
+      if (input.schoolId !== requireGradesScope().schoolId)
+        throw new NotFoundDomainException();
+      if (
+        input.richContent !== undefined ||
+        input.options.some((option) => option.richContent !== undefined)
+      ) {
+        if (!this.richAssets) throw new NotFoundDomainException();
+        await this.richAssets.assertRichWrite(tx, input.assessmentId);
+      }
       await assertGradeQuestionStructureWrite(tx, input.assessmentId);
-      validateGradeQuestionContent(input);
+      if (input.options.some((option) => option.id))
+        throw new NotFoundDomainException(
+          'Grade assessment question option not found',
+        );
+      const rich = gradeRichChange('gradeQuestion', input);
+      if (rich.action === 'write') input = { ...input, ...rich.legacy };
+      validateGradeQuestionContent(gradeLegacyContent(input));
       validateQuestionOptionsForType(input);
       validateGradeQuestionDefinition(input);
       const question = await tx.gradeAssessmentQuestion.create({
@@ -284,10 +322,25 @@ export class GradesAssessmentQuestionsRepository {
           required: input.required,
           answerKey: this.toOptionalJson(input.answerKey),
           metadata: this.toOptionalJson(input.metadata),
+          ...(rich.action === 'write'
+            ? {
+                richContent:
+                  rich.richContent === null
+                    ? Prisma.DbNull
+                    : (rich.richContent as unknown as Prisma.InputJsonValue),
+              }
+            : {}),
         },
         select: { id: true },
       });
 
+      if (rich.action === 'write' && rich.richContent)
+        await this.assertRichReferences(
+          tx,
+          input.assessmentId,
+          question.id,
+          rich.richContent,
+        );
       await this.createOptions(tx, {
         schoolId: input.schoolId,
         assessmentId: input.assessmentId,
@@ -306,12 +359,41 @@ export class GradesAssessmentQuestionsRepository {
     input: UpdateQuestionAndReplaceOptionsInput,
   ): Promise<GradeAssessmentQuestionRecord> {
     await this.scopedPrisma.$transaction(async (tx) => {
+      if (
+        input.data.richContent !== undefined ||
+        input.options?.some((option) => option.richContent !== undefined)
+      ) {
+        const parent = await tx.gradeAssessmentQuestion.findFirst({
+          where: { id: questionId },
+          select: { assessmentId: true },
+        });
+        if (!parent || !this.richAssets) throw new NotFoundDomainException();
+        await this.richAssets.assertRichWrite(tx, parent.assessmentId);
+      }
       await assertGradeQuestionAccess(tx, questionId);
       const current = await tx.gradeAssessmentQuestion.findFirst({
         where: { id: questionId },
         ...QUESTION_WITH_OPTIONS_ARGS,
       });
       if (!current) throw new NotFoundDomainException();
+      const rich = gradeRichChange('gradeQuestion', input.data, current);
+      if (rich.action === 'write') {
+        input = {
+          ...input,
+          data: {
+            ...input.data,
+            ...rich.legacy,
+            richContent: rich.richContent,
+          },
+        };
+        if (rich.richContent)
+          await this.assertRichReferences(
+            tx,
+            current.assessmentId,
+            questionId,
+            rich.richContent,
+          );
+      }
       if (input.metadataPatch)
         input = {
           ...input,
@@ -332,7 +414,7 @@ export class GradesAssessmentQuestionsRepository {
         ...input.data,
         options: input.options ?? current.options,
       };
-      validateGradeQuestionContent(effective);
+      validateGradeQuestionContent(gradeLegacyContent(effective));
       validateQuestionOptionsForType(effective);
       validateGradeQuestionDefinition(effective);
       if (Object.keys(input.data).length > 0) {
@@ -441,6 +523,7 @@ export class GradesAssessmentQuestionsRepository {
       );
     }
 
+    await this.projectRich(question.assessmentId, [question]);
     return question;
   }
 
@@ -449,6 +532,11 @@ export class GradesAssessmentQuestionsRepository {
   ): Prisma.GradeAssessmentQuestionUncheckedUpdateManyInput {
     const data: Prisma.GradeAssessmentQuestionUncheckedUpdateManyInput = {};
 
+    if (payload.richContent !== undefined)
+      data.richContent =
+        payload.richContent === null
+          ? Prisma.DbNull
+          : (payload.richContent as unknown as Prisma.InputJsonValue);
     if (payload.type !== undefined) data.type = payload.type;
     if (payload.prompt !== undefined) data.prompt = payload.prompt;
     if (payload.promptAr !== undefined) data.promptAr = payload.promptAr;
@@ -483,8 +571,18 @@ export class GradesAssessmentQuestionsRepository {
   ): Promise<void> {
     if (params.options.length === 0) return;
 
+    const prepared = params.options.map((option) => {
+      const rich = gradeRichChange('gradeOption', option);
+      return {
+        option:
+          rich.action === 'write' ? { ...option, ...rich.legacy } : option,
+        rich,
+        id: randomUUID(),
+      };
+    });
     await tx.gradeAssessmentQuestionOption.createMany({
-      data: params.options.map((option) => ({
+      data: prepared.map(({ option, rich, id }) => ({
+        id,
         schoolId: params.schoolId,
         assessmentId: params.assessmentId,
         questionId: params.questionId,
@@ -494,8 +592,25 @@ export class GradesAssessmentQuestionsRepository {
         isCorrect: option.isCorrect,
         sortOrder: option.sortOrder,
         metadata: this.toOptionalJson(option.metadata),
+        ...(rich.action === 'write'
+          ? {
+              richContent:
+                rich.richContent === null
+                  ? Prisma.DbNull
+                  : (rich.richContent as unknown as Prisma.InputJsonValue),
+            }
+          : {}),
       })),
     });
+    for (const row of prepared)
+      if (row.rich.action === 'write' && row.rich.richContent)
+        await this.assertRichReferences(
+          tx,
+          params.assessmentId,
+          params.questionId,
+          row.rich.richContent,
+          row.id,
+        );
   }
 
   private async replaceOptionsPreservingIdentity(
@@ -510,6 +625,15 @@ export class GradesAssessmentQuestionsRepository {
         : question.options.find(
             (row) => row.sortOrder === option.sortOrder && !used.has(row.id),
           );
+      if (
+        !option.id &&
+        current &&
+        (option.richContent != null || current.richContent != null)
+      )
+        throw new ValidationDomainException(
+          'Rich option updates require the exact active option id',
+          { field: 'options.id' },
+        );
       if (option.id && !current)
         throw new NotFoundDomainException(
           'Grade assessment question option not found',
@@ -520,8 +644,44 @@ export class GradesAssessmentQuestionsRepository {
           { field: 'options.id' },
         );
       if (current) used.add(current.id);
-      return { option, current };
+      const display = {
+        label: option.label,
+        ...(option.displayPatch &&
+        !Object.hasOwn(option.displayPatch, 'labelAr')
+          ? {}
+          : { labelAr: option.labelAr }),
+      };
+      const rich = gradeRichChange(
+        'gradeOption',
+        { ...display, richContent: option.richContent },
+        current,
+      );
+      const effective =
+        current?.richContent != null &&
+        option.displayPatch &&
+        !Object.hasOwn(display, 'labelAr') &&
+        option.richContent == null
+          ? { ...option, labelAr: current.labelAr }
+          : option;
+      return {
+        option:
+          rich.action === 'write'
+            ? { ...effective, ...rich.legacy }
+            : effective,
+        current,
+        rich,
+      };
     });
+    // Resolve every identity before changing order or retiring rows.
+    for (const row of resolved)
+      if (row.current && row.rich.action === 'write' && row.rich.richContent)
+        await this.assertRichReferences(
+          tx,
+          question.assessmentId,
+          question.id,
+          row.rich.richContent,
+          row.current.id,
+        );
     let next =
       Math.max(
         await this.getMaxQuestionOptionSortOrder(tx, question.id),
@@ -553,7 +713,7 @@ export class GradesAssessmentQuestionsRepository {
         }),
       );
     }
-    for (const { option, current } of resolved) {
+    for (const { option, current, rich } of resolved) {
       if (current) {
         await tx.gradeAssessmentQuestionOption.updateMany({
           where: { id: current.id, questionId: question.id },
@@ -564,6 +724,14 @@ export class GradesAssessmentQuestionsRepository {
             isCorrect: option.isCorrect,
             sortOrder: option.sortOrder,
             metadata: this.toOptionalJson(option.metadata),
+            ...(rich.action === 'write'
+              ? {
+                  richContent:
+                    rich.richContent === null
+                      ? Prisma.DbNull
+                      : (rich.richContent as unknown as Prisma.InputJsonValue),
+                }
+              : {}),
           },
         });
       } else {
@@ -699,6 +867,49 @@ export class GradesAssessmentQuestionsRepository {
     );
 
     return latest?.sortOrder ?? 0;
+  }
+
+  private async projectRich(
+    assessmentId: string,
+    questions: GradeAssessmentQuestionRecord[],
+  ): Promise<void> {
+    if (!hasGradeRichSelection(questions)) return;
+    await this.scopedPrisma.$transaction(async (tx) => {
+      await authorizeGradeRichReview(tx, assessmentId);
+      await projectGradeRichContent(
+        tx,
+        assessmentId,
+        questions,
+        this.richAssets,
+        'review',
+      );
+    });
+  }
+
+  private async assertRichReferences(
+    tx: Prisma.TransactionClient,
+    assessmentId: string,
+    questionId: string,
+    content: NonNullable<NormalizedQuestionPayload['richContent']>,
+    optionId?: string,
+  ): Promise<void> {
+    const actor = requireGradesScope();
+    const refs = gradeRichReferences(content);
+    if (refs.length && !this.richAssets) throw new NotFoundDomainException();
+    for (const reference of refs)
+      await this.richAssets!.assertReference({
+        transaction: tx,
+        actor,
+        schoolId: actor.schoolId,
+        owner: {
+          domain: 'grades',
+          assessmentId,
+          questionId,
+          ...(optionId ? { optionId } : {}),
+        },
+        reference,
+        audience: 'author',
+      });
   }
 
   private toOptionalJson(value: unknown): Prisma.InputJsonValue | undefined {

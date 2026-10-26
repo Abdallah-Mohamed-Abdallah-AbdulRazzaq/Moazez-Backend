@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { hasGradeRichSelection } from '../infrastructure/grade-rich-content.projection';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { requireGradesScope } from '../../grades-context';
 import { assertSubmissionReviewable } from '../domain/grade-submission-review-domain';
@@ -47,9 +48,18 @@ export class BulkReviewGradeSubmissionAnswersUseCase {
       }),
     );
 
+    const displayQuestions = hasGradeRichSelection(
+      answers.map((answer) => answer.question),
+    )
+      ? await this.gradesSubmissionsRepository.listActiveQuestionsForSubmission(
+          submission.assessmentId,
+          [...new Set(answers.map((answer) => answer.questionId))],
+        )
+      : [];
     return presentBulkReviewGradeSubmissionAnswers({
       submissionId: submission.id,
       answers,
+      questions: displayQuestions,
     });
   }
 }

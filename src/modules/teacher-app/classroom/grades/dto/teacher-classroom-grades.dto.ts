@@ -1,3 +1,4 @@
+import type { RichContent } from '../../../../../common/rich-content/rich-content.types';
 import { Transform, Type } from 'class-transformer';
 import {
   IsIn,
@@ -203,6 +204,7 @@ export class TeacherClassroomAssessmentsListResponseDto {
 }
 
 export class TeacherClassroomAssessmentQuestionSummaryDto {
+  richContent?: RichContent;
   questionId!: string;
   type!: string;
   prompt!: string;
@@ -348,6 +350,7 @@ export class TeacherClassroomAssignmentSubmissionsListResponseDto {
 }
 
 export class TeacherClassroomAssignmentSubmissionSelectedOptionDto {
+  richContent?: RichContent;
   optionId!: string;
   label!: string;
   labelAr!: string | null;
@@ -361,6 +364,7 @@ export class TeacherClassroomAssignmentSubmissionAnswerValueDto {
 }
 
 export class TeacherClassroomAssignmentSubmissionAnswerDto {
+  richContent?: RichContent;
   answerId!: string | null;
   questionId!: string;
   type!: string;

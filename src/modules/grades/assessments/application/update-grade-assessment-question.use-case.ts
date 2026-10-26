@@ -1,3 +1,4 @@
+import { gradeLegacyContent } from '../domain/grade-rich-content';
 import { validateGradeQuestionContent } from '../domain/grade-question-content-policy';
 import { validateGradeQuestionDefinition } from '../domain/grade-question-interaction';
 import { Injectable } from '@nestjs/common';
@@ -79,13 +80,15 @@ export class UpdateGradeAssessmentQuestionUseCase {
       answerKey: nextAnswerKey,
       options,
     });
-    validateGradeQuestionContent({
-      ...existing,
-      ...payload,
-      metadata: nextMetadata,
-      answerKey: nextAnswerKey,
-      options,
-    });
+    validateGradeQuestionContent(
+      gradeLegacyContent({
+        ...existing,
+        ...payload,
+        metadata: nextMetadata,
+        answerKey: nextAnswerKey,
+        options,
+      }),
+    );
     const normalizedOptions =
       payload.options !== undefined
         ? validateQuestionOptionsForType({

@@ -396,7 +396,7 @@ export class AssessmentMediaFixture extends AcademicContentEngagementFixture {
 
   async upload(
     contextId: string,
-    bytes = Buffer.from('actual owned fixture text\n'),
+    bytes: Buffer = Buffer.from('actual owned fixture text\n'),
     purpose: AssessmentMediaPurpose = 'HOMEWORK_ASSIGNMENT_MEDIA',
     name = 'response.txt',
     mime = 'text/plain',

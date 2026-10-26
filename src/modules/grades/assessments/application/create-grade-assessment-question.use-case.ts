@@ -50,6 +50,7 @@ export class CreateGradeAssessmentQuestionUseCase {
       assessmentId: assessment.id,
       type: payload.type,
       prompt: payload.prompt,
+      richContent: payload.richContent,
       promptAr: payload.promptAr,
       explanation: payload.explanation,
       explanationAr: payload.explanationAr,

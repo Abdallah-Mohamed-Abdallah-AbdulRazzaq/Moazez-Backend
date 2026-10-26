@@ -1984,3 +1984,54 @@ test('ACC-9D workflow and publication gate resolution is confined to five user w
   }
   assert.ok(rows.filter(row => !gated.includes(row)).every(row => row.manualOverrides.every(override => override.unresolvedCallExpression !== 'gate.lock')));
 });
+
+test('ST08-B Grades Rich writers and readers retain transaction-bound DB-only resolution', () => {
+  const owners = [
+    'GradesAssessmentQuestionsRepository.createQuestionWithOptions',
+    'GradesAssessmentQuestionsRepository.updateQuestionAndReplaceOptions',
+    'GradesAssessmentQuestionsRepository.projectRich',
+    'GradesSubmissionsRepository.findQuestionsForSubmission',
+    'StudentExamsReadAdapter.findExam',
+    'StudentGradesReadAdapter.findAssessmentGrade',
+    'TeacherClassroomGradesReadAdapter.projectRich',
+  ];
+  for (const owner of owners) {
+    const rows = INVENTORY.filter((row) => row.entryOwner === owner);
+    assert.equal(rows.length, 1, owner);
+    const row = rows[0];
+    assert.equal(row.classification, 'LOCK_CONTENTION_SENSITIVE', owner);
+    assert.equal(row.externalWaitInsideTransaction, false, owner);
+    assert.deepEqual(row.unresolvedCalls, [], owner);
+    assert.ok(
+      row.manualOverrides.some(
+        (item) => item.unresolvedCallExpression === 'Buffer.byteLength',
+      ),
+    );
+    assert.ok(
+      row.manualOverrides.every(
+        (item) => item.sourcePath === row.path && item.owner === owner,
+      ),
+    );
+  }
+  const source = fs.readFileSync(
+    path.join(
+      ROOT,
+      'src/modules/grades/assessments/infrastructure/grade-assets.repository.ts',
+    ),
+    'utf8',
+  );
+  assert.match(
+    source,
+    /this\.privateBucket = storage\.resolveBucket\('PRIVATE'\)/u,
+  );
+  assert.doesNotMatch(source, /this\.storage\./u);
+  const projection = fs.readFileSync(
+    path.join(
+      ROOT,
+      'src/modules/grades/assessments/infrastructure/grade-rich-content.projection.ts',
+    ),
+    'utf8',
+  );
+  assert.match(projection, /resolver: GradeAssetsRepository \| undefined/u);
+  assert.match(projection, /rich_content IS NULL AS "sqlNull"/u);
+});

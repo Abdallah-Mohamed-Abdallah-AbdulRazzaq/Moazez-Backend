@@ -1,3 +1,4 @@
+import type { RichContent } from '../../../../common/rich-content/rich-content.types';
 import { ApiProperty } from '@nestjs/swagger';
 import { GradeAssetDto } from '../../../grades/assessments/dto/grade-asset.dto';
 import {
@@ -242,6 +243,7 @@ export class StudentAssessmentGradeItemDto {
 }
 
 export class StudentAssessmentGradeSelectedOptionDto {
+  richContent?: RichContent;
   optionId!: string;
   label!: string;
   labelAr!: string | null;
@@ -275,6 +277,7 @@ export class StudentAssessmentGradeSubmissionDto {
 }
 
 export class StudentAssessmentGradeQuestionOptionDto {
+  richContent?: RichContent;
   id!: string;
   optionId!: string;
   text!: string;

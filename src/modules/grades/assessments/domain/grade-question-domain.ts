@@ -1,3 +1,5 @@
+import { gradeRichInput, gradeLegacyContent } from './grade-rich-content';
+import type { RichContent } from '../../../../common/rich-content/rich-content.types';
 import { validateGradeQuestionContent } from './grade-question-content-policy';
 import { validateGradeQuestionDefinition } from './grade-question-interaction';
 import { HttpStatus } from '@nestjs/common';
@@ -34,6 +36,7 @@ export interface QuestionAssessmentLike {
 }
 
 export interface QuestionCommandLike {
+  richContent?: unknown;
   type?: GradeQuestionType | string;
   questionType?: GradeQuestionType | string;
   prompt?: string | null;
@@ -64,6 +67,7 @@ export interface QuestionCommandLike {
 }
 
 export interface QuestionOptionCommandLike {
+  richContent?: unknown;
   id?: string;
   label?: string | null;
   textEn?: string | null;
@@ -77,6 +81,7 @@ export interface QuestionOptionCommandLike {
 }
 
 export interface NormalizedQuestionPayload {
+  richContent?: RichContent | null;
   type?: GradeQuestionType;
   prompt?: string;
   promptAr?: string | null;
@@ -91,6 +96,8 @@ export interface NormalizedQuestionPayload {
 }
 
 export interface NormalizedQuestionOptionPayload {
+  displayPatch?: { label?: string; labelAr?: string | null };
+  richContent?: unknown;
   id?: string;
   label: string;
   labelAr: string | null;
@@ -237,7 +244,13 @@ export function normalizeQuestionPayload(
     defaultRequired?: boolean;
   } = {},
 ): NormalizedQuestionPayload {
-  const payload: NormalizedQuestionPayload = {};
+  const rich = gradeRichInput(command, 'gradeQuestion');
+  command = { ...command, ...rich.display };
+  const payload: NormalizedQuestionPayload = {
+    ...(rich.richContent !== undefined
+      ? { richContent: rich.richContent }
+      : {}),
+  };
 
   const typeInput = command.type ?? command.questionType;
   if (typeInput !== undefined) {
@@ -307,7 +320,7 @@ export function normalizeQuestionPayload(
       : [];
   }
 
-  validateGradeQuestionContent(payload);
+  validateGradeQuestionContent(gradeLegacyContent(payload));
   return payload;
 }
 
@@ -462,10 +475,21 @@ export function buildQuestionOptionsPayload(
   options: QuestionOptionCommandLike[],
 ): NormalizedQuestionOptionPayload[] {
   const normalized = options.map((option, index) => {
+    const rich = gradeRichInput(option, 'gradeOption');
+    option = { ...option, ...rich.display };
     const label = requireText(option.label ?? option.textEn, 'options.label');
     return {
       ...(option.id !== undefined ? { id: option.id.toLowerCase() } : {}),
+      ...(rich.richContent !== undefined
+        ? { richContent: rich.richContent }
+        : {}),
       label,
+      displayPatch: {
+        label,
+        ...(hasOwn(option, 'labelAr') || hasOwn(option, 'textAr')
+          ? { labelAr: normalizeNullableText(option.labelAr ?? option.textAr) }
+          : {}),
+      },
       labelAr: normalizeNullableText(option.labelAr ?? option.textAr),
       value: normalizeNullableText(option.value) ?? label,
       isCorrect: option.isCorrect === true,

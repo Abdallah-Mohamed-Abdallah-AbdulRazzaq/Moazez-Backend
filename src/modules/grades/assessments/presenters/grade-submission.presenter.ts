@@ -1,3 +1,4 @@
+import { presentGradeRichContent } from '../infrastructure/grade-rich-content.projection';
 import { sanitizeGradeQuestionContent } from '../domain/grade-question-content-policy';
 import {
   presentGradeQuestionContract,
@@ -56,7 +57,10 @@ export function presentGradeSubmissionDetail(params: {
   questions: GradeSubmissionQuestionRecord[];
 }): GradeSubmissionResponseDto {
   const answers = params.submission.answers.map((answer) =>
-    presentGradeSubmissionAnswer(answer),
+    presentGradeSubmissionAnswer(
+      answer,
+      params.questions.find((q) => q.id === answer.questionId),
+    ),
   );
   const answerByQuestionId = new Map(
     params.submission.answers.map((answer) => [answer.questionId, answer]),
@@ -94,6 +98,7 @@ export function presentGradeSubmissionDetail(params: {
 
 export function presentGradeSubmissionAnswer(
   answer: GradeSubmissionAnswerRecord,
+  displayQuestion?: GradeSubmissionQuestionRecord,
 ): GradeSubmissionAnswerResponseDto {
   return {
     id: answer.id,
@@ -115,7 +120,13 @@ export function presentGradeSubmissionAnswer(
       .interaction.kind === 'choice'
       ? answer.selectedOptions
       : []
-    ).map((selected) => presentSelectedOption(selected)),
+    ).map((selected) => ({
+      ...presentSelectedOption(selected),
+      ...presentGradeRichContent(
+        displayQuestion?.options.find((o) => o.id === selected.optionId) ??
+          selected.option,
+      ),
+    })),
     reviewedAt: presentNullableDate(answer.reviewedAt),
     reviewedById: answer.reviewedById,
     createdAt: answer.createdAt.toISOString(),
@@ -139,12 +150,16 @@ export function presentBulkSaveGradeSubmissionAnswers(params: {
 export function presentBulkReviewGradeSubmissionAnswers(params: {
   submissionId: string;
   answers: GradeSubmissionAnswerRecord[];
+  questions?: GradeSubmissionQuestionRecord[];
 }): BulkReviewGradeSubmissionAnswersResponseDto {
   return {
     submissionId: params.submissionId,
     reviewedCount: params.answers.length,
     answers: params.answers.map((answer) =>
-      presentGradeSubmissionAnswer(answer),
+      presentGradeSubmissionAnswer(
+        answer,
+        params.questions?.find((question) => question.id === answer.questionId),
+      ),
     ),
   };
 }
@@ -175,6 +190,7 @@ function presentSubmissionQuestion(params: {
   answer: GradeSubmissionAnswerRecord | null;
 }): GradeSubmissionQuestionResponseDto {
   return {
+    ...presentGradeRichContent(params.question),
     id: params.question.id,
     type: presentQuestionType(params.question.type),
     canonicalType: presentGradeQuestionContract(
@@ -194,7 +210,9 @@ function presentSubmissionQuestion(params: {
     points: presentDecimal(params.question.points) ?? 0,
     sortOrder: params.question.sortOrder,
     required: params.question.required,
-    answer: params.answer ? presentGradeSubmissionAnswer(params.answer) : null,
+    answer: params.answer
+      ? presentGradeSubmissionAnswer(params.answer, params.question)
+      : null,
   };
 }
 

@@ -318,6 +318,115 @@ const PURE_METHODS = new Set([
   'toLowerCase', 'trim', 'values',
 ]);
 const REVIEWED_CALL_OVERRIDES = Object.freeze([
+  // ST08-B: exact transaction owners only; no global intrinsic/port allowlist.
+  ...[
+    [
+      'src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts',
+      'GradesAssessmentQuestionsRepository.createQuestionWithOptions',
+    ],
+    [
+      'src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts',
+      'GradesAssessmentQuestionsRepository.updateQuestionAndReplaceOptions',
+    ],
+    [
+      'src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts',
+      'GradesAssessmentQuestionsRepository.projectRich',
+    ],
+    [
+      'src/modules/grades/assessments/infrastructure/grades-submissions.repository.ts',
+      'GradesSubmissionsRepository.findQuestionsForSubmission',
+    ],
+    [
+      'src/modules/student-app/exams/infrastructure/student-exams-read.adapter.ts',
+      'StudentExamsReadAdapter.findExam',
+    ],
+    [
+      'src/modules/student-app/grades/infrastructure/student-grades-read.adapter.ts',
+      'StudentGradesReadAdapter.findAssessmentGrade',
+    ],
+    [
+      'src/modules/teacher-app/classroom/grades/infrastructure/teacher-classroom-grades-read.adapter.ts',
+      'TeacherClassroomGradesReadAdapter.projectRich',
+    ],
+  ].flatMap(([path, owner]) => [
+    Object.freeze({
+      path,
+      owner,
+      origin: 'stringBytes',
+      target: /^Buffer\.byteLength$/,
+      reason:
+        'ST08-B bounded Rich normalization uses the Node Buffer UTF-8 length intrinsic.',
+      classification: 'LOCK_CONTENTION_SENSITIVE',
+      resolvedCallers: Object.freeze(['normalizeRichContent', 'stringBytes']),
+      evidence:
+        'The unchanged common Rich validator bounds each primitive and total envelope before Buffer.byteLength(value, utf8). This synchronous standard Node intrinsic performs memory-only byte counting, without filesystem, network, provider, timer or database operations. Scope is this exact helper and these seven authorized Grades transaction owners.',
+    }),
+    Object.freeze({
+      path,
+      owner,
+      origin: 'classifyPersistedUrl',
+      target: /^parsed\.toString$/,
+      reason:
+        'ST08-B reuses ST07 pure external-URL classification while resolving exact question assets.',
+      classification: 'LOCK_CONTENTION_SENSITIVE',
+      resolvedCallers: Object.freeze(['classifyPersistedUrl']),
+      evidence:
+        'parsed is constructed by the existing URL classifier with new URL(value); URL.toString is synchronous memory-only canonicalization. No DNS lookup, fetch, storage access or provider call occurs. Managed provenance uses only the active scoped Prisma.TransactionClient. The private bucket configuration is resolved once in the repository constructor outside transactions.',
+    }),
+    ...(owner ===
+      'GradesAssessmentQuestionsRepository.createQuestionWithOptions' ||
+    owner ===
+      'GradesAssessmentQuestionsRepository.updateQuestionAndReplaceOptions'
+      ? [
+          Object.freeze({
+            path,
+            owner,
+            origin: 'authorizeGradeAssets',
+            target: /^gate\.lock$/,
+            explicitLock: true,
+            reason:
+              'ST08-B resource authorization reuses the existing independently audited Prisma allocation gate.',
+            classification: 'LOCK_CONTENTION_SENSITIVE',
+            resolvedCallers: Object.freeze([
+              'PrismaTeacherAllocationOperationalWriteGate.lock',
+            ]),
+            evidence:
+              'The same active scoped Prisma.TransactionClient reaches the existing gate; all allocation and hierarchy fences are parameterized database locks. The dedicated allocation-gate audit still rejects nested transactions, transaction escapes and external waits. No gate implementation or runtime wiring changes.',
+          }),
+          Object.freeze({
+            path,
+            owner,
+            origin: 'authorizeGradeAssets',
+            target: /^actor\.authorize$/,
+            reason:
+              'ST08-B author dispatch cannot select the Student authorization callback; read callbacks use their domain adapter.',
+            classification: 'LOCK_CONTENTION_SENSITIVE',
+            resolvedCallers: Object.freeze([
+              'GradeAssetsRepository.assertRichWrite',
+              'StudentExamsReadAdapter.assertAssetAccess',
+              'StudentGradesReadAdapter.assertAssetAccess',
+            ]),
+            evidence:
+              'assertRichWrite constructs only a core or exact-owned Teacher actor and invokes authorizeGradeAssets with write=true, so the Student callback branch is unreachable for a writer. Student projection callers revalidate through their concrete assertAssetAccess on the same scoped transaction. Those adapters perform only current enrollment/allocation/assessment Prisma reads. No callback contains storage, HTTP, queue, nested transaction or other external wait.',
+          }),
+        ]
+      : [
+          Object.freeze({
+            path,
+            owner,
+            origin: 'projectGradeRichContent',
+            target: /^resolver!?\.assertReference$/,
+            reason:
+              'ST08-B Rich read projection invokes the concrete GradeAssetsRepository implementation on its active transaction.',
+            classification: 'LOCK_CONTENTION_SENSITIVE',
+            resolvedCallers: Object.freeze([
+              'GradeAssetsRepository.assertReference',
+            ]),
+            evidence:
+              'The projection parameter is the concrete GradeAssetsRepository, implementing the shared RichAssetResolver port. assertReference uses only the supplied scoped transaction for live permission, exact question/option/binding and READY provenance checks plus synchronous policy/URL validation. The same concrete method is source-resolved by both writer audits. Private bucket selection is an immutable constructor lookup; there is no object read, signed capability, HTTP, queue, nested transaction or transaction escape.',
+          }),
+        ]),
+  ]),
   Object.freeze({
     path: 'src/modules/files/assessment-media/infrastructure/assessment-media.repository.ts',
     owner: 'AssessmentMediaRepository.transaction',

@@ -1,0 +1,1122 @@
+{
+  "source": "test/e2e/grade-rich-content.e2e-spec.ts — actual owned disposable JWT HTTP responses",
+  "examples": [
+    {
+      "name": "1 Rich question create",
+      "request": {
+        "type": "MCQ_SINGLE",
+        "points": 1,
+        "richContent": {
+          "contentVersion": 1,
+          "kind": "question",
+          "stem": {
+            "language": "und",
+            "direction": "auto",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "Compare x < y"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "options": [
+          {
+            "richContent": {
+              "contentVersion": 1,
+              "kind": "option",
+              "label": {
+                "language": "und",
+                "direction": "auto",
+                "blocks": [
+                  {
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "A"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "isCorrect": true,
+            "value": "a"
+          },
+          {
+            "richContent": {
+              "contentVersion": 1,
+              "kind": "option",
+              "label": {
+                "language": "und",
+                "direction": "auto",
+                "blocks": [
+                  {
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "B"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "value": "b"
+          }
+        ]
+      },
+      "response": {
+        "richContent": {
+          "contentVersion": 1,
+          "kind": "question",
+          "stem": {
+            "language": "und",
+            "direction": "auto",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "Compare x < y"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "id": "78d5087a-e235-43e9-8222-6075b86b0f9b",
+        "assessmentId": "37a59e11-e710-416f-85e5-0523f749b504",
+        "type": "mcq_single",
+        "canonicalType": "MCQ_SINGLE",
+        "interaction": {
+          "kind": "choice",
+          "selectionMode": "single",
+          "multiline": false,
+          "supported": true,
+          "definition": {
+            "kind": "choice",
+            "minSelections": 1,
+            "maxSelections": 1
+          }
+        },
+        "prompt": "Compare x < y",
+        "promptAr": null,
+        "explanation": null,
+        "explanationAr": null,
+        "points": 1,
+        "sortOrder": 3,
+        "required": true,
+        "answerKey": null,
+        "metadata": null,
+        "options": [
+          {
+            "richContent": {
+              "contentVersion": 1,
+              "kind": "option",
+              "label": {
+                "language": "und",
+                "direction": "auto",
+                "blocks": [
+                  {
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "A"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "id": "cdfb6d67-357e-4241-9e2b-52cf8097fd01",
+            "label": "A",
+            "labelAr": null,
+            "value": "a",
+            "isCorrect": true,
+            "sortOrder": 1,
+            "metadata": null
+          },
+          {
+            "richContent": {
+              "contentVersion": 1,
+              "kind": "option",
+              "label": {
+                "language": "und",
+                "direction": "auto",
+                "blocks": [
+                  {
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "B"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "id": "f3da496c-8402-4fe6-af92-c51228fe3df6",
+            "label": "B",
+            "labelAr": null,
+            "value": "b",
+            "isCorrect": false,
+            "sortOrder": 2,
+            "metadata": null
+          }
+        ],
+        "createdAt": "2026-10-26T17:20:10.927Z",
+        "updatedAt": "2026-10-26T17:20:10.927Z"
+      }
+    },
+    {
+      "name": "2 Rich option create",
+      "request": [
+        {
+          "richContent": {
+            "contentVersion": 1,
+            "kind": "option",
+            "label": {
+              "language": "und",
+              "direction": "auto",
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "A"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "isCorrect": true,
+          "value": "a"
+        },
+        {
+          "richContent": {
+            "contentVersion": 1,
+            "kind": "option",
+            "label": {
+              "language": "und",
+              "direction": "auto",
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "B"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "value": "b"
+        }
+      ],
+      "response": [
+        {
+          "richContent": {
+            "contentVersion": 1,
+            "kind": "option",
+            "label": {
+              "language": "und",
+              "direction": "auto",
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "A"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "id": "cdfb6d67-357e-4241-9e2b-52cf8097fd01",
+          "label": "A",
+          "labelAr": null,
+          "value": "a",
+          "isCorrect": true,
+          "sortOrder": 1,
+          "metadata": null
+        },
+        {
+          "richContent": {
+            "contentVersion": 1,
+            "kind": "option",
+            "label": {
+              "language": "und",
+              "direction": "auto",
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "B"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "id": "f3da496c-8402-4fe6-af92-c51228fe3df6",
+          "label": "B",
+          "labelAr": null,
+          "value": "b",
+          "isCorrect": false,
+          "sortOrder": 2,
+          "metadata": null
+        }
+      ]
+    },
+    {
+      "name": "3 Rich question update",
+      "request": {
+        "richContent": {
+          "contentVersion": 1,
+          "kind": "question",
+          "stem": {
+            "language": "und",
+            "direction": "auto",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "Updated scientific stem"
+                  }
+                ]
+              }
+            ]
+          },
+          "stemAr": {
+            "language": "und",
+            "direction": "auto",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "قارن س < ص"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "response": {
+        "richContent": {
+          "contentVersion": 1,
+          "kind": "question",
+          "stem": {
+            "language": "und",
+            "direction": "auto",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "Updated scientific stem"
+                  }
+                ]
+              }
+            ]
+          },
+          "stemAr": {
+            "language": "und",
+            "direction": "auto",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "قارن س < ص"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "id": "78d5087a-e235-43e9-8222-6075b86b0f9b",
+        "assessmentId": "37a59e11-e710-416f-85e5-0523f749b504",
+        "type": "mcq_single",
+        "canonicalType": "MCQ_SINGLE",
+        "interaction": {
+          "kind": "choice",
+          "selectionMode": "single",
+          "multiline": false,
+          "supported": true,
+          "definition": {
+            "kind": "choice",
+            "minSelections": 1,
+            "maxSelections": 1
+          }
+        },
+        "prompt": "Updated scientific stem",
+        "promptAr": "قارن س < ص",
+        "explanation": null,
+        "explanationAr": null,
+        "points": 1,
+        "sortOrder": 3,
+        "required": true,
+        "answerKey": null,
+        "metadata": null,
+        "options": [
+          {
+            "richContent": {
+              "contentVersion": 1,
+              "kind": "option",
+              "label": {
+                "language": "und",
+                "direction": "auto",
+                "blocks": [
+                  {
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "A"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "id": "cdfb6d67-357e-4241-9e2b-52cf8097fd01",
+            "label": "A",
+            "labelAr": null,
+            "value": "a",
+            "isCorrect": true,
+            "sortOrder": 1,
+            "metadata": null
+          },
+          {
+            "richContent": {
+              "contentVersion": 1,
+              "kind": "option",
+              "label": {
+                "language": "und",
+                "direction": "auto",
+                "blocks": [
+                  {
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "B"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "id": "f3da496c-8402-4fe6-af92-c51228fe3df6",
+            "label": "B",
+            "labelAr": null,
+            "value": "b",
+            "isCorrect": false,
+            "sortOrder": 2,
+            "metadata": null
+          }
+        ],
+        "createdAt": "2026-10-26T17:20:10.927Z",
+        "updatedAt": "2026-10-26T17:20:11.123Z"
+      }
+    },
+    {
+      "name": "4 Legacy update clears stale AST",
+      "request": {
+        "questionTextEn": "Legacy display edit"
+      },
+      "response": {
+        "id": "78d5087a-e235-43e9-8222-6075b86b0f9b",
+        "assessmentId": "37a59e11-e710-416f-85e5-0523f749b504",
+        "type": "mcq_single",
+        "canonicalType": "MCQ_SINGLE",
+        "interaction": {
+          "kind": "choice",
+          "selectionMode": "single",
+          "multiline": false,
+          "supported": true,
+          "definition": {
+            "kind": "choice",
+            "minSelections": 1,
+            "maxSelections": 1
+          }
+        },
+        "prompt": "Legacy display edit",
+        "promptAr": "قارن س < ص",
+        "explanation": null,
+        "explanationAr": null,
+        "points": 1,
+        "sortOrder": 3,
+        "required": true,
+        "answerKey": null,
+        "metadata": null,
+        "options": [
+          {
+            "richContent": {
+              "contentVersion": 1,
+              "kind": "option",
+              "label": {
+                "language": "und",
+                "direction": "auto",
+                "blocks": [
+                  {
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "A"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "id": "cdfb6d67-357e-4241-9e2b-52cf8097fd01",
+            "label": "A",
+            "labelAr": null,
+            "value": "a",
+            "isCorrect": true,
+            "sortOrder": 1,
+            "metadata": null
+          },
+          {
+            "richContent": {
+              "contentVersion": 1,
+              "kind": "option",
+              "label": {
+                "language": "und",
+                "direction": "auto",
+                "blocks": [
+                  {
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "B"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "id": "f3da496c-8402-4fe6-af92-c51228fe3df6",
+            "label": "B",
+            "labelAr": null,
+            "value": "b",
+            "isCorrect": false,
+            "sortOrder": 2,
+            "metadata": null
+          }
+        ],
+        "createdAt": "2026-10-26T17:20:10.927Z",
+        "updatedAt": "2026-10-26T17:20:11.228Z"
+      }
+    },
+    {
+      "name": "5 Student Exams question projection",
+      "request": {
+        "method": "GET",
+        "route": "/api/v1/student/exams/:assessmentId"
+      },
+      "response": {
+        "assets": [
+          {
+            "assetId": "fb3957af-2028-4d62-a9a8-895d485a3dab",
+            "assessmentId": "37a59e11-e710-416f-85e5-0523f749b504",
+            "questionId": "78d5087a-e235-43e9-8222-6075b86b0f9b",
+            "sourceType": "MANAGED_FILE",
+            "category": "DOCUMENT",
+            "title": null,
+            "description": null,
+            "sortOrder": 0,
+            "file": {
+              "filename": "reference.txt",
+              "mimeType": "text/plain",
+              "sizeBytes": "25"
+            },
+            "externalUrl": null,
+            "access": {
+              "previewPath": "/api/v1/student/exams/37a59e11-e710-416f-85e5-0523f749b504/questions/78d5087a-e235-43e9-8222-6075b86b0f9b/assets/fb3957af-2028-4d62-a9a8-895d485a3dab/preview",
+              "downloadPath": "/api/v1/student/exams/37a59e11-e710-416f-85e5-0523f749b504/questions/78d5087a-e235-43e9-8222-6075b86b0f9b/assets/fb3957af-2028-4d62-a9a8-895d485a3dab/download"
+            },
+            "createdAt": "2026-10-26T17:20:11.963Z",
+            "updatedAt": "2026-10-26T17:20:11.963Z"
+          }
+        ],
+        "richContent": {
+          "contentVersion": 1,
+          "kind": "question",
+          "stem": {
+            "language": "und",
+            "direction": "auto",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "children": [
+                  {
+                    "type": "assetReference",
+                    "assetId": "fb3957af-2028-4d62-a9a8-895d485a3dab",
+                    "kind": "document",
+                    "altText": "Private reference"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "id": "78d5087a-e235-43e9-8222-6075b86b0f9b",
+        "questionId": "78d5087a-e235-43e9-8222-6075b86b0f9b",
+        "type": "multiple_choice",
+        "canonicalType": "MCQ_SINGLE",
+        "interaction": {
+          "kind": "choice",
+          "selectionMode": "single",
+          "multiline": false,
+          "supported": true,
+          "definition": {
+            "kind": "choice",
+            "minSelections": 1,
+            "maxSelections": 1
+          }
+        },
+        "title": "[Private reference]",
+        "body": "[Private reference]",
+        "options": [
+          {
+            "richContent": {
+              "contentVersion": 1,
+              "kind": "option",
+              "label": {
+                "language": "und",
+                "direction": "auto",
+                "blocks": [
+                  {
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "A"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "optionId": "cdfb6d67-357e-4241-9e2b-52cf8097fd01",
+            "label": "A",
+            "labelAr": null,
+            "value": "a"
+          },
+          {
+            "richContent": {
+              "contentVersion": 1,
+              "kind": "option",
+              "label": {
+                "language": "und",
+                "direction": "auto",
+                "blocks": [
+                  {
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "B"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "optionId": "f3da496c-8402-4fe6-af92-c51228fe3df6",
+            "label": "B",
+            "labelAr": null,
+            "value": "b"
+          }
+        ],
+        "answer": null,
+        "points": 1,
+        "sortOrder": 3,
+        "required": true
+      }
+    },
+    {
+      "name": "6 Student Grades question projection",
+      "request": {
+        "method": "GET",
+        "route": "/api/v1/student/grades/assessments/:assessmentId"
+      },
+      "response": {
+        "assets": [
+          {
+            "assetId": "fb3957af-2028-4d62-a9a8-895d485a3dab",
+            "assessmentId": "37a59e11-e710-416f-85e5-0523f749b504",
+            "questionId": "78d5087a-e235-43e9-8222-6075b86b0f9b",
+            "sourceType": "MANAGED_FILE",
+            "category": "DOCUMENT",
+            "title": null,
+            "description": null,
+            "sortOrder": 0,
+            "file": {
+              "filename": "reference.txt",
+              "mimeType": "text/plain",
+              "sizeBytes": "25"
+            },
+            "externalUrl": null,
+            "access": {
+              "previewPath": "/api/v1/student/grades/assessments/37a59e11-e710-416f-85e5-0523f749b504/questions/78d5087a-e235-43e9-8222-6075b86b0f9b/assets/fb3957af-2028-4d62-a9a8-895d485a3dab/preview",
+              "downloadPath": "/api/v1/student/grades/assessments/37a59e11-e710-416f-85e5-0523f749b504/questions/78d5087a-e235-43e9-8222-6075b86b0f9b/assets/fb3957af-2028-4d62-a9a8-895d485a3dab/download"
+            },
+            "createdAt": "2026-10-26T17:20:11.963Z",
+            "updatedAt": "2026-10-26T17:20:11.963Z"
+          }
+        ],
+        "richContent": {
+          "contentVersion": 1,
+          "kind": "question",
+          "stem": {
+            "language": "und",
+            "direction": "auto",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "children": [
+                  {
+                    "type": "assetReference",
+                    "assetId": "fb3957af-2028-4d62-a9a8-895d485a3dab",
+                    "kind": "document",
+                    "altText": "Private reference"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "id": "78d5087a-e235-43e9-8222-6075b86b0f9b",
+        "questionId": "78d5087a-e235-43e9-8222-6075b86b0f9b",
+        "type": "multiple_choice",
+        "canonicalType": "MCQ_SINGLE",
+        "interaction": {
+          "kind": "choice",
+          "selectionMode": "single",
+          "multiline": false,
+          "supported": true,
+          "definition": {
+            "kind": "choice",
+            "minSelections": 1,
+            "maxSelections": 1
+          }
+        },
+        "title": "[Private reference]",
+        "body": "[Private reference]",
+        "points": 1,
+        "required": true,
+        "sortOrder": 3,
+        "options": [
+          {
+            "richContent": {
+              "contentVersion": 1,
+              "kind": "option",
+              "label": {
+                "language": "und",
+                "direction": "auto",
+                "blocks": [
+                  {
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "A"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "id": "cdfb6d67-357e-4241-9e2b-52cf8097fd01",
+            "optionId": "cdfb6d67-357e-4241-9e2b-52cf8097fd01",
+            "text": "A",
+            "textAr": null,
+            "label": "A",
+            "labelAr": null,
+            "value": "a",
+            "sortOrder": 1
+          },
+          {
+            "richContent": {
+              "contentVersion": 1,
+              "kind": "option",
+              "label": {
+                "language": "und",
+                "direction": "auto",
+                "blocks": [
+                  {
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "B"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "id": "f3da496c-8402-4fe6-af92-c51228fe3df6",
+            "optionId": "f3da496c-8402-4fe6-af92-c51228fe3df6",
+            "text": "B",
+            "textAr": null,
+            "label": "B",
+            "labelAr": null,
+            "value": "b",
+            "sortOrder": 2
+          }
+        ]
+      }
+    },
+    {
+      "name": "7 Authorized Teacher review projection",
+      "request": {
+        "method": "GET",
+        "route": "/api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId"
+      },
+      "response": {
+        "answerId": "6670adb9-98f6-4010-a5c7-3fed92d7d856",
+        "richContent": {
+          "contentVersion": 1,
+          "kind": "question",
+          "stem": {
+            "language": "und",
+            "direction": "auto",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "children": [
+                  {
+                    "type": "assetReference",
+                    "assetId": "fb3957af-2028-4d62-a9a8-895d485a3dab",
+                    "kind": "document",
+                    "altText": "Private reference"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "questionId": "78d5087a-e235-43e9-8222-6075b86b0f9b",
+        "type": "mcq_single",
+        "prompt": "[Private reference]",
+        "promptAr": null,
+        "required": true,
+        "sortOrder": 3,
+        "studentAnswer": {
+          "text": null,
+          "json": null,
+          "selectedOptions": [
+            {
+              "richContent": {
+                "contentVersion": 1,
+                "kind": "option",
+                "label": {
+                  "language": "und",
+                  "direction": "auto",
+                  "blocks": [
+                    {
+                      "type": "paragraph",
+                      "children": [
+                        {
+                          "type": "text",
+                          "text": "A"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              "optionId": "cdfb6d67-357e-4241-9e2b-52cf8097fd01",
+              "label": "A",
+              "labelAr": null,
+              "value": "a"
+            }
+          ]
+        },
+        "correctionStatus": "pending",
+        "score": null,
+        "maxScore": 1,
+        "reviewedAt": null,
+        "feedback": null
+      }
+    },
+    {
+      "name": "8 Unsupported stored AST fallback",
+      "request": {
+        "method": "GET",
+        "route": "/api/v1/student/grades/assessments/:assessmentId"
+      },
+      "response": {
+        "assets": [
+          {
+            "assetId": "fb3957af-2028-4d62-a9a8-895d485a3dab",
+            "assessmentId": "37a59e11-e710-416f-85e5-0523f749b504",
+            "questionId": "78d5087a-e235-43e9-8222-6075b86b0f9b",
+            "sourceType": "MANAGED_FILE",
+            "category": "DOCUMENT",
+            "title": null,
+            "description": null,
+            "sortOrder": 0,
+            "file": {
+              "filename": "reference.txt",
+              "mimeType": "text/plain",
+              "sizeBytes": "25"
+            },
+            "externalUrl": null,
+            "access": {
+              "previewPath": "/api/v1/student/grades/assessments/37a59e11-e710-416f-85e5-0523f749b504/questions/78d5087a-e235-43e9-8222-6075b86b0f9b/assets/fb3957af-2028-4d62-a9a8-895d485a3dab/preview",
+              "downloadPath": "/api/v1/student/grades/assessments/37a59e11-e710-416f-85e5-0523f749b504/questions/78d5087a-e235-43e9-8222-6075b86b0f9b/assets/fb3957af-2028-4d62-a9a8-895d485a3dab/download"
+            },
+            "createdAt": "2026-10-26T17:20:11.963Z",
+            "updatedAt": "2026-10-26T17:20:11.963Z"
+          }
+        ],
+        "id": "78d5087a-e235-43e9-8222-6075b86b0f9b",
+        "questionId": "78d5087a-e235-43e9-8222-6075b86b0f9b",
+        "type": "multiple_choice",
+        "canonicalType": "MCQ_SINGLE",
+        "interaction": {
+          "kind": "choice",
+          "selectionMode": "single",
+          "multiline": false,
+          "supported": true,
+          "definition": {
+            "kind": "choice",
+            "minSelections": 1,
+            "maxSelections": 1
+          }
+        },
+        "title": "[Private reference]",
+        "body": "[Private reference]",
+        "points": 1,
+        "required": true,
+        "sortOrder": 3,
+        "options": [
+          {
+            "richContent": {
+              "contentVersion": 1,
+              "kind": "option",
+              "label": {
+                "language": "und",
+                "direction": "auto",
+                "blocks": [
+                  {
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "A"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "id": "cdfb6d67-357e-4241-9e2b-52cf8097fd01",
+            "optionId": "cdfb6d67-357e-4241-9e2b-52cf8097fd01",
+            "text": "A",
+            "textAr": null,
+            "label": "A",
+            "labelAr": null,
+            "value": "a",
+            "sortOrder": 1
+          },
+          {
+            "richContent": {
+              "contentVersion": 1,
+              "kind": "option",
+              "label": {
+                "language": "und",
+                "direction": "auto",
+                "blocks": [
+                  {
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "B"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "id": "f3da496c-8402-4fe6-af92-c51228fe3df6",
+            "optionId": "f3da496c-8402-4fe6-af92-c51228fe3df6",
+            "text": "B",
+            "textAr": null,
+            "label": "B",
+            "labelAr": null,
+            "value": "b",
+            "sortOrder": 2
+          }
+        ]
+      }
+    },
+    {
+      "name": "9 Embedded authorized question asset",
+      "request": {
+        "richContent": {
+          "contentVersion": 1,
+          "kind": "question",
+          "stem": {
+            "language": "und",
+            "direction": "auto",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "children": [
+                  {
+                    "type": "assetReference",
+                    "assetId": "fb3957af-2028-4d62-a9a8-895d485a3dab",
+                    "kind": "document",
+                    "altText": "Private reference"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "response": {
+        "richContent": {
+          "contentVersion": 1,
+          "kind": "question",
+          "stem": {
+            "language": "und",
+            "direction": "auto",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "children": [
+                  {
+                    "type": "assetReference",
+                    "assetId": "fb3957af-2028-4d62-a9a8-895d485a3dab",
+                    "kind": "document",
+                    "altText": "Private reference"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "id": "78d5087a-e235-43e9-8222-6075b86b0f9b",
+        "assessmentId": "37a59e11-e710-416f-85e5-0523f749b504",
+        "type": "mcq_single",
+        "canonicalType": "MCQ_SINGLE",
+        "interaction": {
+          "kind": "choice",
+          "selectionMode": "single",
+          "multiline": false,
+          "supported": true,
+          "definition": {
+            "kind": "choice",
+            "minSelections": 1,
+            "maxSelections": 1
+          }
+        },
+        "prompt": "[Private reference]",
+        "promptAr": null,
+        "explanation": null,
+        "explanationAr": null,
+        "points": 1,
+        "sortOrder": 3,
+        "required": true,
+        "answerKey": null,
+        "metadata": null,
+        "options": [
+          {
+            "richContent": {
+              "contentVersion": 1,
+              "kind": "option",
+              "label": {
+                "language": "und",
+                "direction": "auto",
+                "blocks": [
+                  {
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "A"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "id": "cdfb6d67-357e-4241-9e2b-52cf8097fd01",
+            "label": "A",
+            "labelAr": null,
+            "value": "a",
+            "isCorrect": true,
+            "sortOrder": 1,
+            "metadata": null
+          },
+          {
+            "richContent": {
+              "contentVersion": 1,
+              "kind": "option",
+              "label": {
+                "language": "und",
+                "direction": "auto",
+                "blocks": [
+                  {
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "B"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "id": "f3da496c-8402-4fe6-af92-c51228fe3df6",
+            "label": "B",
+            "labelAr": null,
+            "value": "b",
+            "isCorrect": false,
+            "sortOrder": 2,
+            "metadata": null
+          }
+        ],
+        "createdAt": "2026-10-26T17:20:10.927Z",
+        "updatedAt": "2026-10-26T17:20:12.099Z"
+      }
+    }
+  ]
+}

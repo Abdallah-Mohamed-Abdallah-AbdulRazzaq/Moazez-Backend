@@ -1,3 +1,4 @@
+import { presentGradeRichContent } from '../../../../grades/assessments/infrastructure/grade-rich-content.projection';
 import {
   GradeAnswerCorrectionStatus,
   GradeAssessmentApprovalStatus,
@@ -95,6 +96,7 @@ export class TeacherClassroomGradesPresenter {
           ) ?? 0,
       },
       questions: assessment.questions.map((question) => ({
+        ...presentGradeRichContent(question),
         questionId: question.id,
         type: toLowerEnum(question.type),
         prompt: question.prompt,
@@ -252,6 +254,7 @@ export class TeacherClassroomGradesPresenter {
 
           return {
             answerId: answer?.id ?? null,
+            ...presentGradeRichContent(question),
             questionId: question.id,
             type: toLowerEnum(question.type),
             prompt: question.prompt,
@@ -263,6 +266,11 @@ export class TeacherClassroomGradesPresenter {
                   text: answer.answerText,
                   json: answer.answerJson ?? null,
                   selectedOptions: answer.selectedOptions.map((selected) => ({
+                    ...presentGradeRichContent(
+                      question.options?.find(
+                        (o) => o.id === selected.optionId,
+                      ) ?? selected.option,
+                    ),
                     optionId: selected.optionId,
                     label: selected.option.label,
                     labelAr: selected.option.labelAr,

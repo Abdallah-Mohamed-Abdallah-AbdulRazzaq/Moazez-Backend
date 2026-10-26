@@ -1,3 +1,4 @@
+import type { RichContent } from '../../../../common/rich-content/rich-content.types';
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -124,6 +125,7 @@ export class GradeSubmissionProgressResponseDto {
 }
 
 export class GradeSubmissionSelectedOptionResponseDto {
+  richContent?: RichContent;
   optionId!: string;
   label!: string;
   labelAr!: string | null;

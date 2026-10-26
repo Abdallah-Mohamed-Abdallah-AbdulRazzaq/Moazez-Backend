@@ -1,3 +1,4 @@
+import type { RichContent } from '../../../../common/rich-content/rich-content.types';
 import { GradeQuestionType } from '@prisma/client';
 import {
   gradeQuestionDefinition,
@@ -71,6 +72,7 @@ export function presentSafeGradeAnswer(
 }
 
 export class GradeQuestionContractDto {
+  richContent?: RichContent;
   type!: string;
   canonicalType!: GradeQuestionType | null;
   interaction!: GradeQuestionInteractionDto;

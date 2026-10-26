@@ -1,3 +1,9 @@
+import { GradeAssetsRepository } from '../../../grades/assessments/infrastructure/grade-assets.repository';
+import {
+  hasGradeRichSelection,
+  projectGradeRichContent,
+} from '../../../grades/assessments/infrastructure/grade-rich-content.projection';
+import { assertGradeLiveMutationPermission } from '../../../grades/assessments/infrastructure/grades-resource-access';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 import { Injectable } from '@nestjs/common';
 import {
@@ -101,6 +107,7 @@ const STUDENT_GRADE_ASSESSMENT_DETAIL_ARGS =
           type: true,
           prompt: true,
           promptAr: true,
+          richContent: true,
           points: true,
           sortOrder: true,
           required: true,
@@ -112,6 +119,7 @@ const STUDENT_GRADE_ASSESSMENT_DETAIL_ARGS =
               id: true,
               label: true,
               labelAr: true,
+              richContent: true,
               value: true,
               sortOrder: true,
             },
@@ -209,7 +217,10 @@ export interface StudentAssessmentGradeDetailReadResult {
 
 @Injectable()
 export class StudentGradesReadAdapter {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly richAssets?: GradeAssetsRepository,
+  ) {}
 
   private get scopedPrisma(): PrismaService {
     return this.prisma.scoped as unknown as PrismaService;
@@ -295,6 +306,18 @@ export class StudentGradesReadAdapter {
     });
 
     if (!assessment) return null;
+    if (hasGradeRichSelection(assessment.questions))
+      await this.scopedPrisma.$transaction(async (tx) => {
+        await assertGradeLiveMutationPermission(tx, 'grades.assessments.view');
+        await this.assertAssetAccess(tx, params.context, assessment.id);
+        await projectGradeRichContent(
+          tx,
+          assessment.id,
+          assessment.questions,
+          this.richAssets,
+          'student',
+        );
+      });
 
     const [gradeItem, submission] = await Promise.all([
       this.scopedPrisma.gradeItem.findFirst({
