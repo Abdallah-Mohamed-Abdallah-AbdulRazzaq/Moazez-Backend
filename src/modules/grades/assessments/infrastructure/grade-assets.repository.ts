@@ -4,6 +4,7 @@ import { ownedAllocationWhere } from '../../../academics/teacher-allocation/doma
 import { requireGradesScope } from '../../grades-context';
 import { assertGradeLiveMutationPermission } from './grades-resource-access';
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   AuditOutcome,
   Prisma,
@@ -17,7 +18,6 @@ import {
   ValidationDomainException,
 } from '../../../../common/exceptions/domain-exception';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
-import { StorageService } from '../../../../infrastructure/storage/storage.service';
 import { PersistedUrlPolicy } from '../../../../infrastructure/storage/provider-url.policy';
 import { TeacherAllocationOperationalWriteGate } from '../../../academics/teacher-allocation/application/teacher-allocation-operational-write-gate';
 import { AssessmentMediaRuntimePolicy } from '../../../files/assessment-media/application/assessment-media-runtime.policy';
@@ -86,11 +86,11 @@ export class GradeAssetsRepository implements RichAssetResolver<
     private readonly gate: TeacherAllocationOperationalWriteGate,
     private readonly media: AssessmentMediaRepository,
     private readonly runtime: AssessmentMediaRuntimePolicy,
-    storage: StorageService,
+    config: ConfigService,
     private readonly urls: PersistedUrlPolicy,
   ) {
     // Immutable configuration lookup, before any authorization transaction.
-    this.privateBucket = storage.resolveBucket('PRIVATE');
+    this.privateBucket = config.getOrThrow<string>('STORAGE_BUCKET');
   }
   private transaction<T>(
     operation: (tx: Prisma.TransactionClient) => Promise<T>,

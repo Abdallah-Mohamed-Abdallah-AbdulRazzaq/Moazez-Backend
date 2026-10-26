@@ -2022,7 +2022,7 @@ test('ST08-B Grades Rich writers and readers retain transaction-bound DB-only re
   );
   assert.match(
     source,
-    /this\.privateBucket = storage\.resolveBucket\('PRIVATE'\)/u,
+    /this\.privateBucket = config\.getOrThrow<string>\('STORAGE_BUCKET'\)/u,
   );
   assert.doesNotMatch(source, /this\.storage\./u);
   const projection = fs.readFileSync(

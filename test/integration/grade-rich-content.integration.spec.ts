@@ -106,7 +106,7 @@ describe('ST08-B real PostgreSQL Grades Rich authorization and persistence', () 
       new PrismaTeacherAllocationOperationalWriteGate(),
       fixture.repository,
       new AssessmentMediaRuntimePolicy(fixture.config),
-      fixture.storage,
+      fixture.config,
       new PersistedUrlPolicy({
         s3CompatibleEndpoints: [fixture.config.getOrThrow('STORAGE_ENDPOINT')],
       }),
