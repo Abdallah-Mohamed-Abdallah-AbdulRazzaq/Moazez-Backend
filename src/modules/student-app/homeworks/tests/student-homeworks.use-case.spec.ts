@@ -155,6 +155,7 @@ describe('Student Homeworks use-cases', () => {
       homeworkId: 'homework-1',
       studentId: 'student-1',
       enrollmentId: 'enrollment-1',
+      richActor: { surface: 'student', student: contextFixture() },
     });
     expect(response.submission).toEqual(
       expect.objectContaining({
@@ -181,6 +182,7 @@ describe('Student Homeworks use-cases', () => {
       homeworkId: 'homework-1',
       studentId: 'student-1',
       enrollmentId: 'enrollment-1',
+      richActor: { surface: 'student', student: contextFixture() },
       bodyText: 'Draft answer',
       answers: undefined,
     });
@@ -204,6 +206,7 @@ describe('Student Homeworks use-cases', () => {
       homeworkId: 'homework-1',
       studentId: 'student-1',
       enrollmentId: 'enrollment-1',
+      richActor: { surface: 'student', student: contextFixture() },
       bodyText: 'Final answer',
       answers: undefined,
     });
@@ -236,12 +239,14 @@ describe('Student Homeworks use-cases', () => {
       homeworkId: 'homework-1',
       studentId: 'student-1',
       enrollmentId: 'enrollment-1',
+      richActor: { surface: 'student', student: contextFixture() },
       answers: [{ questionId: 'question-1', textAnswer: 'Draft answer' }],
     });
     expect(saveAnswerCoreUseCase.execute).toHaveBeenCalledWith({
       homeworkId: 'homework-1',
       studentId: 'student-1',
       enrollmentId: 'enrollment-1',
+      richActor: { surface: 'student', student: contextFixture() },
       questionId: 'question-1',
       answer: { questionId: 'question-1', textAnswer: 'One answer' },
       isDraft: undefined,

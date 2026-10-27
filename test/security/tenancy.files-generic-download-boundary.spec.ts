@@ -237,6 +237,7 @@ describe('Generic Files download actor boundary (security)', () => {
       expiresAt: new Date('2026-07-23T12:05:00.000Z'),
     });
     const storageService = {
+      resolveBucket: () => 'test-private-bucket',
       createDownloadUrl: createDownloadUrlMock,
     };
     const moduleRef: TestingModule = await Test.createTestingModule({

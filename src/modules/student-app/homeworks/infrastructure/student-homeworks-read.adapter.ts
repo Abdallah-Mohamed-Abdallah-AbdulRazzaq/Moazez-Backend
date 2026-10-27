@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { HomeworkRichContentService } from '../../../homework/application/homework-rich-content.service';
 import {
   HomeworkAssignmentMode,
   HomeworkAssignmentStatus,
@@ -117,6 +118,7 @@ const STUDENT_HOMEWORK_TARGET_ARGS =
               homeworkAssignmentId: true,
               type: true,
               prompt: true,
+              richContent: true,
               instructions: true,
               points: true,
               sortOrder: true,
@@ -134,6 +136,7 @@ const STUDENT_HOMEWORK_TARGET_ARGS =
                   id: true,
                   homeworkQuestionId: true,
                   text: true,
+                  richContent: true,
                   sortOrder: true,
                   createdAt: true,
                   updatedAt: true,
@@ -202,6 +205,7 @@ const STUDENT_HOMEWORK_TARGET_ARGS =
                   id: true,
                   type: true,
                   prompt: true,
+                  richContent: true,
                   points: true,
                   isRequired: true,
                   options: {
@@ -215,6 +219,7 @@ const STUDENT_HOMEWORK_TARGET_ARGS =
                       id: true,
                       homeworkQuestionId: true,
                       text: true,
+                      richContent: true,
                       isCorrect: true,
                       sortOrder: true,
                     },
@@ -267,7 +272,10 @@ export interface StudentHomeworksListReadModel {
 
 @Injectable()
 export class StudentHomeworksReadAdapter {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly richContent?: HomeworkRichContentService,
+  ) {}
 
   private get scopedPrisma(): PrismaService {
     return this.prisma.scoped as unknown as PrismaService;
@@ -316,11 +324,11 @@ export class StudentHomeworksReadAdapter {
     });
   }
 
-  findHomework(params: {
+  async findHomework(params: {
     context: StudentAppContext;
     homeworkId: string;
   }): Promise<StudentHomeworkTargetReadModel | null> {
-    return this.scopedPrisma.homeworkTarget.findFirst({
+    const target = await this.scopedPrisma.homeworkTarget.findFirst({
       where: {
         ...buildTargetWhere({
           context: params.context,
@@ -330,6 +338,19 @@ export class StudentHomeworksReadAdapter {
       },
       ...STUDENT_HOMEWORK_TARGET_ARGS,
     });
+    if (target)
+      await this.richContent?.project(
+        params.homeworkId,
+        [
+          ...target.homeworkAssignment.questions,
+          ...target.submissions.flatMap((s) =>
+            s.answers.map((a) => a.homeworkQuestion),
+          ),
+        ],
+        'student',
+        { surface: 'student', student: params.context },
+      );
+    return target;
   }
 
   async findHomeworkAttachmentForDownload(params: {

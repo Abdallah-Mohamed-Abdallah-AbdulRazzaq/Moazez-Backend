@@ -32,6 +32,7 @@ describe('Student avatar upload foundation (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaClient;
   let storageService: {
+    resolveBucket: () => string;
     saveObject: jest.Mock;
     deleteObject: jest.Mock;
     createDownloadUrl: jest.Mock;
@@ -137,6 +138,7 @@ describe('Student avatar upload foundation (e2e)', () => {
     createdEnrollmentIds.push(enrollment.id);
 
     storageService = {
+      resolveBucket: () => 'student-avatar-private',
       saveObject: jest.fn().mockResolvedValue({
         bucket: 'student-avatar-private',
         etag: 'fake-etag',

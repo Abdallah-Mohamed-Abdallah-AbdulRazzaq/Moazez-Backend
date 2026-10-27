@@ -1,5 +1,9 @@
 import { Prisma } from '@prisma/client';
 import {
+  presentHomeworkRichQuestion,
+  presentHomeworkRichOption,
+} from '../infrastructure/homework-rich-content.projection';
+import {
   HomeworkAnswerDetailResponseDto,
   HomeworkAnswerResponseDto,
   HomeworkAnswersListResponseDto,
@@ -50,6 +54,7 @@ export function presentHomeworkAnswerStudent(
     includeCorrectOptions: false,
     includeReviewFields: options?.includeReviewFields === true,
     includeReviewedBy: false,
+    includeRich: true,
   });
 }
 
@@ -57,7 +62,13 @@ export function presentHomeworkAnswerParent(
   answer: HomeworkAnswerPresenterModel,
   options?: { includeReviewFields?: boolean },
 ): HomeworkAnswerResponseDto {
-  return presentHomeworkAnswerStudent(answer, options);
+  return presentHomeworkAnswer(answer, {
+    includePrompt: false,
+    includeCorrectOptions: false,
+    includeReviewFields: options?.includeReviewFields === true,
+    includeReviewedBy: false,
+    includeRich: false,
+  });
 }
 
 export function presentHomeworkAnswerTeacher(
@@ -68,6 +79,7 @@ export function presentHomeworkAnswerTeacher(
     includeCorrectOptions: true,
     includeReviewFields: true,
     includeReviewedBy: true,
+    includeRich: true,
   });
 }
 
@@ -114,6 +126,7 @@ function presentHomeworkAnswer(
     includeCorrectOptions: boolean;
     includeReviewFields: boolean;
     includeReviewedBy: boolean;
+    includeRich: boolean;
   },
 ): HomeworkAnswerResponseDto {
   const selectedOptionIds = toStringArray(answer.selectedOptionIds);
@@ -122,6 +135,7 @@ function presentHomeworkAnswer(
     .filter((option) => selectedOptionSet.has(option.id))
     .map((option) => ({
       optionId: option.id,
+      ...(options.includeRich ? presentHomeworkRichOption(option) : {}),
       questionId: option.homeworkQuestionId,
       text: option.text,
       ...(options.includeCorrectOptions ? { isCorrect: option.isCorrect } : {}),
@@ -138,6 +152,9 @@ function presentHomeworkAnswer(
       ? {
           prompt: {
             questionId: answer.homeworkQuestion.id,
+            ...(options.includeRich
+              ? presentHomeworkRichQuestion(answer.homeworkQuestion)
+              : {}),
             type: answer.homeworkQuestion.type.toLowerCase(),
             prompt: answer.homeworkQuestion.prompt,
             points: presentDecimal(answer.homeworkQuestion.points) ?? 0,

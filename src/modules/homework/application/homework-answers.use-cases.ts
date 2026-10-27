@@ -7,6 +7,9 @@ import {
   Prisma,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
+import type { HomeworkAssetActor } from '../domain/homework-question-asset';
+import type { HomeworkRichAudience } from './homework-rich-content.service';
+import { hasHomeworkRichSelection } from '../infrastructure/homework-rich-content.projection';
 import { requireHomeworkScope } from '../homework-context';
 import {
   BulkSaveHomeworkAnswersDto,
@@ -51,6 +54,7 @@ const SINGLE_SELECTION_QUESTION_TYPES = new Set<HomeworkQuestionType>([
 ]);
 
 export interface StudentHomeworkAnswersCommand {
+  richActor?: HomeworkAssetActor;
   homeworkId: string;
   studentId: string;
   enrollmentId: string;
@@ -73,6 +77,7 @@ export class ListHomeworkSubmissionAnswersUseCase {
   async execute(input: {
     homeworkId: string;
     submissionId: string;
+    richActor?: HomeworkAssetActor;
   }): Promise<HomeworkAnswersListResponseDto> {
     requireHomeworkScope();
     await requireSubmissionInAssignment(this.homeworkRepository, input);
@@ -81,6 +86,13 @@ export class ListHomeworkSubmissionAnswersUseCase {
       submissionId: input.submissionId,
     });
 
+    await projectHomeworkAnswerRich(
+      this.homeworkRepository,
+      input.homeworkId,
+      answers,
+      'review',
+      input.richActor,
+    );
     return presentHomeworkAnswersTeacher(answers);
   }
 }
@@ -93,6 +105,7 @@ export class GetHomeworkSubmissionAnswerUseCase {
     homeworkId: string;
     submissionId: string;
     answerId: string;
+    richActor?: HomeworkAssetActor;
   }): Promise<HomeworkAnswerDetailResponseDto> {
     requireHomeworkScope();
     await requireSubmissionInAssignment(this.homeworkRepository, input);
@@ -106,6 +119,13 @@ export class GetHomeworkSubmissionAnswerUseCase {
       throw new HomeworkAnswerNotFoundException(input);
     }
 
+    await projectHomeworkAnswerRich(
+      this.homeworkRepository,
+      input.homeworkId,
+      [answer],
+      'review',
+      input.richActor,
+    );
     return presentHomeworkAnswerDetailTeacher(answer);
   }
 }
@@ -127,6 +147,13 @@ export class ListStudentHomeworkAnswersUseCase {
       return { items: [] };
     }
 
+    await projectHomeworkAnswerRich(
+      this.homeworkRepository,
+      command.homeworkId,
+      submission.answers,
+      'student',
+      command.richActor,
+    );
     return presentHomeworkAnswersStudent(submission.answers, {
       includeReviewFields:
         submission.status === HomeworkSubmissionStatus.REVIEWED,
@@ -165,6 +192,13 @@ export class SaveStudentHomeworkAnswersDraftUseCase {
       );
     }
 
+    await projectHomeworkAnswerRich(
+      this.homeworkRepository,
+      command.homeworkId,
+      saved,
+      'student',
+      command.richActor,
+    );
     return presentHomeworkAnswersStudent(saved);
   }
 }
@@ -198,8 +232,32 @@ export class SaveStudentHomeworkAnswerUseCase {
       isDraft: command.isDraft ?? true,
     });
 
+    await projectHomeworkAnswerRich(
+      this.homeworkRepository,
+      command.homeworkId,
+      [answer],
+      'student',
+      command.richActor,
+    );
     return { answer: presentHomeworkAnswersStudent([answer]).items[0] };
   }
+}
+
+export async function projectHomeworkAnswerRich(
+  repository: HomeworkRepository,
+  homeworkId: string,
+  answers: HomeworkSubmissionAnswerRecord[],
+  audience: HomeworkRichAudience,
+  actor?: HomeworkAssetActor,
+): Promise<void> {
+  const questions = answers.map((answer) => answer.homeworkQuestion);
+  if (hasHomeworkRichSelection(questions))
+    await repository.projectRichQuestions(
+      homeworkId,
+      questions,
+      audience,
+      actor,
+    );
 }
 
 export async function saveStudentAnswersForSubmit(input: {

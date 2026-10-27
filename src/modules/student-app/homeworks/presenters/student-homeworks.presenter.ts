@@ -1,5 +1,9 @@
 import type { HomeworkQuestionAssetDto } from '../../../homework/dto/homework-question-asset.dto';
 import {
+  presentHomeworkRichQuestion,
+  presentHomeworkRichOption,
+} from '../../../homework/infrastructure/homework-rich-content.projection';
+import {
   HomeworkAssignmentStatus,
   HomeworkSubmissionStatus,
   HomeworkTargetStatus,
@@ -182,6 +186,7 @@ function presentSafeQuestion(
 ): StudentHomeworkQuestionDto {
   return {
     questionId: question.id,
+    ...presentHomeworkRichQuestion(question),
     assets,
     homeworkId: question.homeworkAssignmentId,
     type: question.type.toLowerCase(),
@@ -192,6 +197,7 @@ function presentSafeQuestion(
     isRequired: question.isRequired,
     options: question.options.map((option) => ({
       optionId: option.id,
+      ...presentHomeworkRichOption(option),
       questionId: option.homeworkQuestionId,
       text: option.text,
       sortOrder: option.sortOrder,

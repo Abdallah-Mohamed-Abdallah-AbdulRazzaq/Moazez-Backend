@@ -10,6 +10,19 @@ import { assertHomeworkMediaAuthorization } from './homework-media-authorization
 
 const absent = () => new NotFoundDomainException();
 
+/** Internal Rich display consumers retain their own existing route permission.
+ * Asset HTTP handlers omit this argument and retain the ST06 contract. */
+export type HomeworkRichReadPermission =
+  | 'homework.assignments.view'
+  | 'homework.assignments.manage'
+  | 'homework.questions.view'
+  | 'homework.questions.manage'
+  | 'homework.submissions.view'
+  | 'homework.submissions.review'
+  | 'homework.answers.manage'
+  | 'homework.submissions.save'
+  | 'homework.submissions.submit';
+
 /** Current authorization is part of the mutation transaction, not a stale app pre-read. */
 export async function authorizeHomeworkQuestionAssets(
   tx: Prisma.TransactionClient,
@@ -18,6 +31,7 @@ export async function authorizeHomeworkQuestionAssets(
   input: { homeworkId: string; questionId?: string },
   write = false,
   managedBinding = false,
+  richReadPermission?: HomeworkRichReadPermission,
 ) {
   const scope = requireHomeworkScope();
   const ctx = getRequestContext();
@@ -33,14 +47,21 @@ export async function authorizeHomeworkQuestionAssets(
     (actor.surface === 'student' && (scope.userType !== 'STUDENT' || write))
   )
     throw absent();
+  if (write && richReadPermission) throw absent();
+  if (
+    richReadPermission === 'homework.submissions.submit' &&
+    (actor.surface !== 'student' || managedBinding)
+  )
+    throw absent();
   const permission =
-    actor.surface === 'teacher'
+    richReadPermission ??
+    (actor.surface === 'teacher'
       ? write
         ? 'homework.questions.manage'
         : 'homework.questions.view'
       : write
         ? 'homework.assignments.manage'
-        : 'homework.assignments.view';
+        : 'homework.assignments.view');
   const required = [
     permission,
     ...(managedBinding ? ['homework.attachments.manage'] : []),

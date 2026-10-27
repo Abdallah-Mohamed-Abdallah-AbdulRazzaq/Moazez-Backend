@@ -163,6 +163,7 @@ describe('Student avatar tenancy and actor boundaries (security)', () => {
     });
 
     const storageService = {
+      resolveBucket: () => 'student-avatar-private',
       saveObject: jest.fn().mockResolvedValue({
         bucket: 'student-avatar-private',
         etag: 'fake-etag',

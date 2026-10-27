@@ -1,4 +1,8 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import type {
+  RichQuestionContent,
+  RichOptionContent,
+} from '../../../../common/rich-content/rich-content.types';
 import { HomeworkQuestionAssetDto } from '../../../homework/dto/homework-question-asset.dto';
 import { Transform, Type } from 'class-transformer';
 import {
@@ -141,6 +145,12 @@ export class StudentHomeworkListItemDto {
 }
 
 export class StudentHomeworkQuestionOptionDto {
+  @ApiPropertyOptional({
+    type: Object,
+    description:
+      'Validated authorized V1 option display; contains no correctness data.',
+  })
+  richContent?: RichOptionContent;
   optionId!: string;
   questionId!: string;
   text!: string;
@@ -148,6 +158,12 @@ export class StudentHomeworkQuestionOptionDto {
 }
 
 export class StudentHomeworkQuestionDto {
+  @ApiPropertyOptional({
+    type: Object,
+    description:
+      'Validated authorized V1 question display; omitted when absent or withheld.',
+  })
+  richContent?: RichQuestionContent;
   @ApiProperty({ type: () => [HomeworkQuestionAssetDto] })
   assets!: HomeworkQuestionAssetDto[];
   questionId!: string;

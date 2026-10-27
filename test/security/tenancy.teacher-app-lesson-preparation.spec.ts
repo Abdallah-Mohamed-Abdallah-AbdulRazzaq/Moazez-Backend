@@ -236,7 +236,10 @@ describe('Teacher App lesson preparation tenancy and security', () => {
         ping: jest.fn().mockResolvedValue(undefined),
       })
       .overrideProvider(StorageService)
-      .useValue({ createDownloadUrl })
+      .useValue({
+        createDownloadUrl,
+        resolveBucket: () => 'test-private-bucket',
+      })
       .compile();
 
     app = moduleRef.createNestApplication();

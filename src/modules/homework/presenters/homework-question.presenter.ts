@@ -1,5 +1,9 @@
 import { Prisma } from '@prisma/client';
 import {
+  presentHomeworkRichQuestion,
+  presentHomeworkRichOption,
+} from '../infrastructure/homework-rich-content.projection';
+import {
   HomeworkQuestionDetailResponseDto,
   HomeworkQuestionResponseDto,
   HomeworkQuestionsListResponseDto,
@@ -70,6 +74,7 @@ function presentHomeworkQuestion(
 ): HomeworkQuestionResponseDto {
   const response: HomeworkQuestionResponseDto = {
     questionId: question.id,
+    ...presentHomeworkRichQuestion(question),
     homeworkId: question.homeworkAssignmentId,
     type: question.type.toLowerCase(),
     prompt: question.prompt,
@@ -79,6 +84,7 @@ function presentHomeworkQuestion(
     isRequired: question.isRequired,
     options: question.options.map((option) => ({
       optionId: option.id,
+      ...presentHomeworkRichOption(option),
       questionId: option.homeworkQuestionId,
       text: option.text,
       ...(options.includeAnswers ? { isCorrect: option.isCorrect } : {}),

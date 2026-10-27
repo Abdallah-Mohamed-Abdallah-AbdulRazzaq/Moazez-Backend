@@ -1,5 +1,7 @@
 import { Transform, Type } from 'class-transformer';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  Allow,
   ArrayMaxSize,
   IsArray,
   IsBoolean,
@@ -12,6 +14,7 @@ import {
   Min,
   MinLength,
   ValidateNested,
+  ValidateIf,
 } from 'class-validator';
 import { HomeworkQuestionType } from '@prisma/client';
 
@@ -25,6 +28,25 @@ function toUpperEnumValue(value: unknown): unknown {
 }
 
 export class CreateHomeworkQuestionOptionDto {
+  @ApiPropertyOptional({
+    type: Object,
+    nullable: true,
+    description:
+      'Closed Safe Rich AST V1 option envelope; non-null derives text. Null retains legacy creation requirements.',
+  })
+  @Allow()
+  richContent?: unknown;
+
+  @ApiPropertyOptional({
+    minLength: 1,
+    maxLength: 1000,
+    description:
+      'Required for legacy-only creation; may be omitted when a valid non-null Rich option derives text.',
+  })
+  @ValidateIf(
+    (object: CreateHomeworkQuestionOptionDto, value: unknown) =>
+      object.richContent == null || value !== undefined,
+  )
   @Transform(({ value }) => trimText(value))
   @IsString()
   @MinLength(1)
@@ -48,10 +70,28 @@ export class CreateHomeworkQuestionOptionDto {
 }
 
 export class CreateHomeworkQuestionDto {
+  @ApiPropertyOptional({
+    type: Object,
+    nullable: true,
+    description:
+      'Closed Safe Rich AST V1 Homework question envelope; non-null derives prompt/instructions. stemAr is unsupported.',
+  })
+  @Allow()
+  richContent?: unknown;
   @Transform(({ value }) => toUpperEnumValue(value))
   @IsEnum(HomeworkQuestionType)
   type!: HomeworkQuestionType;
 
+  @ApiPropertyOptional({
+    minLength: 1,
+    maxLength: 8000,
+    description:
+      'Required for legacy-only creation; may be omitted when a valid non-null Rich question derives prompt.',
+  })
+  @ValidateIf(
+    (object: CreateHomeworkQuestionDto, value: unknown) =>
+      object.richContent == null || value !== undefined,
+  )
   @Transform(({ value }) => trimText(value))
   @IsString()
   @MinLength(1)
@@ -99,6 +139,14 @@ export class CreateHomeworkQuestionDto {
 }
 
 export class UpdateHomeworkQuestionDto {
+  @ApiPropertyOptional({
+    type: Object,
+    nullable: true,
+    description:
+      'Complete V1 replacement; omitted preserves unless legacy display changes; null clears SQL JSONB.',
+  })
+  @Allow()
+  richContent?: unknown;
   @IsOptional()
   @Transform(({ value }) => toUpperEnumValue(value))
   @IsEnum(HomeworkQuestionType)
@@ -146,6 +194,14 @@ export class ReorderHomeworkQuestionDto {
 }
 
 export class UpdateHomeworkQuestionOptionDto {
+  @ApiPropertyOptional({
+    type: Object,
+    nullable: true,
+    description:
+      'Complete V1 label replacement on this option UUID; null clears SQL JSONB.',
+  })
+  @Allow()
+  richContent?: unknown;
   @IsOptional()
   @Transform(({ value }) => trimText(value))
   @IsString()

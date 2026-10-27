@@ -636,11 +636,18 @@ test('retirement TAP files have unique active runtime governance owners', () => 
     ['test/integration/grade-rich-content.integration.spec.ts', 'integration-general'],
     ['test/e2e/grade-rich-content.e2e-spec.ts', 'e2e'],
   ];
-  assert.equal(files.length, 1019 + st08bFiles.length);
-  assert.equal(assignments.filter(item => item.execution === 'pull-request').length, 1009 + st08bFiles.length);
+  const st08cFiles = [
+    ['src/modules/homework/tests/homework-rich-content.spec.ts', 'unit'],
+    ['test/integration/homework-rich-content.integration.spec.ts', 'integration-general'],
+    ['test/e2e/homework-rich-content.e2e-spec.ts', 'e2e'],
+    ['test/security/tenancy.homework-rich-content.spec.ts', 'security'],
+  ];
+  assert.equal(files.length, 1019 + st08bFiles.length + st08cFiles.length);
+  assert.equal(assignments.filter(item => item.execution === 'pull-request').length, 1009 + st08bFiles.length + st08cFiles.length);
   assert.equal(assignments.filter(item => item.execution === 'manual').length, 10);
   for (const [file, profile] of [
     ...st08bFiles,
+    ...st08cFiles,
     ['src/common/rich-content/rich-content.spec.ts', 'unit'],
     ['test/integration/safe-rich-content-persistence.integration.spec.ts', 'integration-general'],
     ['test/e2e/grade-assets.e2e-spec.ts', 'e2e'],
