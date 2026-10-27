@@ -1,5 +1,14 @@
 # Error Catalog
 
+## Homework typed foundation (ST09-A)
+
+`homework.typed_content.invalid` is an internal pure validation error, with fixed
+shape/version/limit/text/association/completeness reasons. It never contains a
+rejected answer, private key or resource identifier. Future adapters must map it
+to existing Homework validation responses. No new HTTP contract is activated.
+Stored invalid/future data is classified without returning or rewriting it.
+Inactive question types use existing `homework.question.invalid_type_payload`.
+
 ## Safe Rich Content foundation (ST08-A)
 
 `rich_content.invalid` is a pure internal validation error, not a new HTTP

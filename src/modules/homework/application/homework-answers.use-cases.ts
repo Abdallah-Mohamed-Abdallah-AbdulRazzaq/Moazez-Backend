@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import {
+  assertHomeworkRuntimeQuestions,
+  assertHomeworkRuntimeQuestionType,
+} from '../domain/homework-runtime-types';
+import {
   HomeworkAssignmentStatus,
   HomeworkQuestionType,
   HomeworkSubmissionStatus,
@@ -265,6 +269,7 @@ export async function saveStudentAnswersForSubmit(input: {
   target: HomeworkTargetForSubmissionRecord;
   answers: HomeworkAnswerInput[] | undefined;
 }): Promise<HomeworkSubmissionRecord | null> {
+  assertHomeworkRuntimeQuestions(input.target.homeworkAssignment.questions);
   if (!input.answers || input.answers.length === 0) {
     return input.target.submissions[0] ?? null;
   }
@@ -298,6 +303,7 @@ export async function saveStudentAnswersAsDraft(input: {
   target: HomeworkTargetForSubmissionRecord;
   answers: HomeworkAnswerInput[] | undefined;
 }): Promise<HomeworkSubmissionRecord | null> {
+  assertHomeworkRuntimeQuestions(input.target.homeworkAssignment.questions);
   if (!input.answers || input.answers.length === 0) {
     return input.target.submissions[0] ?? null;
   }
@@ -337,6 +343,7 @@ export function validateRequiredHomeworkAnswers(input: {
   );
 
   for (const question of input.questions) {
+    assertHomeworkRuntimeQuestionType(question.type);
     const answer = answerByQuestionId.get(question.id);
     if (!question.isRequired) {
       if (answer) {
@@ -406,6 +413,7 @@ async function findStudentTargetOrThrow(
 function assertAnswersEditable(
   target: HomeworkTargetForSubmissionRecord,
 ): void {
+  assertHomeworkRuntimeQuestions(target.homeworkAssignment.questions);
   if (target.homeworkAssignment.status !== HomeworkAssignmentStatus.PUBLISHED) {
     throw new HomeworkAnswerReadOnlyException({
       homeworkId: target.homeworkAssignmentId,
@@ -508,6 +516,7 @@ function normalizeAnswerForQuestion(input: {
   input: HomeworkAnswerInput;
   final: boolean;
 }): NormalizedHomeworkAnswerInput {
+  assertHomeworkRuntimeQuestionType(input.question.type);
   const textAnswer = normalizeNullableText(input.input.textAnswer);
   const selectedOptionIds = normalizeSelectedOptionIds(
     input.input.selectedOptionIds,

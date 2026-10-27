@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { assertHomeworkRuntimeQuestions } from '../domain/homework-runtime-types';
 import type { HomeworkAssetActor } from '../domain/homework-question-asset';
 import {
   AuditOutcome,
@@ -420,6 +421,8 @@ async function findStudentSubmissionTargetOrThrow(
       homeworkId: command.homeworkId,
     });
   }
+
+  assertHomeworkRuntimeQuestions(target.homeworkAssignment.questions);
 
   return target;
 }

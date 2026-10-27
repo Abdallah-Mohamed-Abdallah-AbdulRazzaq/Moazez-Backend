@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { assertHomeworkRuntimeQuestionType } from '../domain/homework-runtime-types';
 import {
   presentHomeworkRichQuestion,
   presentHomeworkRichOption,
@@ -72,6 +73,7 @@ function presentHomeworkQuestion(
   question: HomeworkQuestionPresenterModel,
   options: { includeAnswers: boolean },
 ): HomeworkQuestionResponseDto {
+  assertHomeworkRuntimeQuestionType(question.type);
   const response: HomeworkQuestionResponseDto = {
     questionId: question.id,
     ...presentHomeworkRichQuestion(question),
