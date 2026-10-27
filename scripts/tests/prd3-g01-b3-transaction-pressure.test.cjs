@@ -2077,7 +2077,7 @@ test('ST08-C Homework Rich mappings stay confined to the reader and six-callback
   visit(file);
   assert.deepEqual(actual.sort(), [...callers].sort());
   const assets = fs.readFileSync(path.join(ROOT, 'src/modules/homework/infrastructure/homework-question-assets.repository.ts'), 'utf8');
-  assert.match(assets, /this\.privateBucket = config\.getOrThrow<string>\('STORAGE_BUCKET'\)/u);
+  assert.match(assets, /this\.privateBucket = storage\.resolveBucket\(FileVisibility\.PRIVATE\)/u);
   assert.doesNotMatch(assets, /this\.storage\./u);
   const scoped = INVENTORY.filter(row => row.manualOverrides.some(item => /ST08-C/u.test(item.reason)));
   assert.deepEqual(scoped.map(row => row.entryOwner).sort(), [...owners].sort());

@@ -14,6 +14,59 @@ import {
 } from '../dto/homework-question-asset.dto';
 import { assertAssessmentReadyEvidence } from '../../files/assessment-media/domain/assessment-media-ready';
 import { ASSESSMENT_MEDIA_VERSION } from '../../files/assessment-media/domain/assessment-media.contract';
+import { ConfigService } from '@nestjs/config';
+import { FileVisibility } from '@prisma/client';
+import { StorageService } from '../../../infrastructure/storage/storage.service';
+import { SignedUrlService } from '../../../infrastructure/storage/signed-url.service';
+import type { ObjectStoragePort } from '../../../infrastructure/storage/object-storage.port';
+import { HomeworkQuestionAssetsRepository } from '../infrastructure/homework-question-assets.repository';
+
+describe('ST08C-REV-01 accepted ST06 storage boundary', () => {
+  it.each(['gcs', 'minio', 's3'])(
+    'caches the established private bucket once without provider I/O for %s',
+    (provider) => {
+      const noIo = new Proxy({} as ObjectStoragePort, {
+        get() {
+          throw new Error('Bucket resolution must not access the provider');
+        },
+      });
+      const config = new ConfigService({
+        STORAGE_PROVIDER: provider,
+        STORAGE_BUCKET: `owned-${provider}-private`,
+        STORAGE_PUBLIC_BUCKET: `owned-${provider}-public`,
+      });
+      const storage = new StorageService(
+        noIo,
+        new SignedUrlService(noIo, config),
+      );
+      const expected = storage.resolveBucket(FileVisibility.PRIVATE);
+      const resolve = jest.spyOn(storage, 'resolveBucket');
+      type Dependencies = ConstructorParameters<
+        typeof HomeworkQuestionAssetsRepository
+      >;
+      const unused = new Proxy(
+        {},
+        {
+          get() {
+            throw new Error('Construction must not start a transaction');
+          },
+        },
+      );
+      const repository = new HomeworkQuestionAssetsRepository(
+        unused as Dependencies[0],
+        unused as Dependencies[1],
+        unused as Dependencies[2],
+        unused as Dependencies[3],
+        storage,
+        unused as Dependencies[5],
+      );
+      expect(resolve).toHaveBeenCalledTimes(1);
+      expect(resolve).toHaveBeenCalledWith(FileVisibility.PRIVATE);
+      expect(Reflect.get(repository, 'privateBucket')).toBe(expected);
+      expect(expected).toBe(`owned-${provider}-private`);
+    },
+  );
+});
 
 const ids = {
   schoolId: randomUUID(),

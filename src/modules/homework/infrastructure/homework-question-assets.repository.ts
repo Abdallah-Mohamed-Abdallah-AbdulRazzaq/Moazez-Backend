@@ -4,10 +4,11 @@ import {
 } from '../../../common/context/request-context';
 import type { RichAssetResolver } from '../../../common/rich-content/rich-content.types';
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { StorageService } from '../../../infrastructure/storage/storage.service';
 import { PersistedUrlPolicy } from '../../../infrastructure/storage/provider-url.policy';
 import {
   AuditOutcome,
+  FileVisibility,
   Prisma,
   type File as ManagedFile,
   type HomeworkQuestionAsset,
@@ -80,10 +81,10 @@ export class HomeworkQuestionAssetsRepository implements RichAssetResolver<
     private readonly gate: TeacherAllocationOperationalWriteGate,
     private readonly media: AssessmentMediaRepository,
     private readonly runtime: AssessmentMediaRuntimePolicy,
-    config: ConfigService,
+    storage: StorageService,
     private readonly urls: PersistedUrlPolicy,
   ) {
-    this.privateBucket = config.getOrThrow<string>('STORAGE_BUCKET');
+    this.privateBucket = storage.resolveBucket(FileVisibility.PRIVATE);
   }
   private get scoped(): PrismaService {
     return this.prisma.scoped as unknown as PrismaService;

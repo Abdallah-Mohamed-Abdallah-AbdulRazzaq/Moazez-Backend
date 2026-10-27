@@ -23,7 +23,8 @@ export type HomeworkRichAudience =
   | 'question'
   | 'assignment'
   | 'review'
-  | 'student';
+  | 'student'
+  | 'student-submit';
 
 @Injectable()
 export class HomeworkRichContentService {
@@ -109,21 +110,25 @@ export class HomeworkRichContentService {
     await scoped.$transaction(
       async (tx) => {
         const actor = await this.actor(tx, homeworkId, supplied);
+        if (audience === 'student-submit' && actor.surface !== 'student')
+          throw new NotFoundDomainException();
         const permissions =
           getRequestContext()?.activeMembership?.permissions ?? [];
         const candidates: HomeworkRichReadPermission[] =
           audience === 'review'
             ? ['homework.submissions.view', 'homework.submissions.review']
-            : audience === 'student'
-              ? [
-                  'homework.assignments.view',
-                  'homework.submissions.view',
-                  'homework.answers.manage',
-                  'homework.submissions.save',
-                ]
-              : audience === 'assignment' || actor.surface === 'core'
-                ? ['homework.assignments.view', 'homework.assignments.manage']
-                : ['homework.questions.view', 'homework.questions.manage'];
+            : audience === 'student-submit'
+              ? ['homework.submissions.submit']
+              : audience === 'student'
+                ? [
+                    'homework.assignments.view',
+                    'homework.submissions.view',
+                    'homework.answers.manage',
+                    'homework.submissions.save',
+                  ]
+                : audience === 'assignment' || actor.surface === 'core'
+                  ? ['homework.assignments.view', 'homework.assignments.manage']
+                  : ['homework.questions.view', 'homework.questions.manage'];
         const permission = candidates.find((p) => permissions.includes(p));
         if (!permission) throw new NotFoundDomainException();
         await authorizeHomeworkQuestionAssets(

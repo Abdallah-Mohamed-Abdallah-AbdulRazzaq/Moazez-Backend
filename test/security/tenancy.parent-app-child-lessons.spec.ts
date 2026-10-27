@@ -284,7 +284,10 @@ describe('Parent App child lesson content tenancy/security (e2e)', () => {
         ping: jest.fn().mockResolvedValue(undefined),
       })
       .overrideProvider(StorageService)
-      .useValue({ createDownloadUrl })
+      .useValue({
+        createDownloadUrl,
+        resolveBucket: () => 'test-private-bucket',
+      })
       .compile();
 
     app = moduleRef.createNestApplication();

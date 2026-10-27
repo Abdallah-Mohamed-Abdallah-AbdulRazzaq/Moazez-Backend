@@ -9,7 +9,10 @@ import type {
   HomeworkQuestionDetailResponseDto,
   HomeworkQuestionsListResponseDto,
 } from '../../src/modules/homework/dto/homework-question-response.dto';
-import type { StudentHomeworkResponseDto } from '../../src/modules/student-app/homeworks/dto/student-homeworks.dto';
+import type {
+  StudentHomeworkSubmissionResponseDto,
+  StudentHomeworkResponseDto,
+} from '../../src/modules/student-app/homeworks/dto/student-homeworks.dto';
 import type {
   HomeworkAnswersListResponseDto,
   HomeworkAnswerDetailResponseDto,
@@ -89,6 +92,306 @@ describe('ST08-C actual Homework HTTP, Student/Teacher review and private media'
       .expect(201);
     return st06Json<HomeworkQuestionDetailResponseDto>(response).question;
   }
+
+  async function submissionRows(homeworkId: string) {
+    const where = { homeworkAssignmentId: homeworkId };
+    return {
+      targets: await h.prisma.homeworkTarget.findMany({
+        where,
+        orderBy: { id: 'asc' },
+      }),
+      submissions: await h.prisma.homeworkSubmission.findMany({
+        where,
+        orderBy: { id: 'asc' },
+        include: { answers: { orderBy: { id: 'asc' } } },
+      }),
+    };
+  }
+  async function submitOnly() {
+    const roleId = h.fixture.actors.student.roleId;
+    await h.prisma.rolePermission.deleteMany({ where: { roleId } });
+    await h.fixture.grantAssets(roleId, ['homework.submissions.submit']);
+    const grants = await h.prisma.rolePermission.findMany({
+      where: { roleId },
+      include: { permission: true },
+    });
+    expect(grants.map((grant) => grant.permission.code)).toEqual([
+      'homework.submissions.submit',
+    ]);
+  }
+  async function existingAnswer(mode: 'legacy' | 'rich' | 'asset' = 'rich') {
+    const graph = await h.fixture.graph();
+    const q =
+      mode === 'legacy'
+        ? st06Json<HomeworkQuestionDetailResponseDto>(
+            await h
+              .http()
+              .post(teacherBase(graph) + '/questions')
+              .set(h.headers())
+              .send({
+                type: 'single_choice',
+                prompt: 'Legacy question',
+                expectedAnswer: 'PRIVATE_EXPECTED_ANSWER',
+                metadata: { privateAuthor: 'PRIVATE_METADATA' },
+                options: [
+                  { text: 'Choice A', isCorrect: true },
+                  { text: 'Choice B', isCorrect: false },
+                ],
+              })
+              .expect(201),
+          ).question
+        : await create(graph);
+    let media:
+      | {
+          path: string;
+          bytes: Buffer;
+          fileId: string;
+          objectKey: string;
+          bucket: string;
+        }
+      | undefined;
+    if (mode === 'asset') {
+      const bytes = Buffer.from('Private submit regression bytes\n');
+      const ready = await h.fixture.ready(graph.homework.id, 'teacher', bytes);
+      const bound = st06Json<{ asset: { assetId: string } }>(
+        await h
+          .http()
+          .post(teacherBase(graph) + '/questions/' + q.questionId + '/assets')
+          .set(h.headers())
+          .send({
+            sourceType: 'MANAGED_FILE',
+            fileId: ready.fileId,
+            uploadId: ready.uploadId,
+          })
+          .expect(201),
+      );
+      await h
+        .http()
+        .patch(
+          teacherBase(graph) +
+            '/questions/' +
+            q.questionId +
+            '/options/' +
+            q.options[0].optionId,
+        )
+        .set(h.headers())
+        .send({
+          richContent: {
+            contentVersion: 1,
+            kind: 'option',
+            label: assetRich(bound.asset.assetId).stem,
+          },
+        })
+        .expect(200);
+      media = {
+        path:
+          '/api/v1/student/homeworks/' +
+          graph.homework.id +
+          '/questions/' +
+          q.questionId +
+          '/assets/' +
+          bound.asset.assetId,
+        bytes,
+        fileId: ready.fileId,
+        objectKey: ready.file.objectKey,
+        bucket: ready.file.bucket,
+      };
+    }
+    await h.fixture.grantAssets(h.fixture.actors.student.roleId, [
+      'homework.answers.manage',
+      'homework.submissions.save',
+      'homework.submissions.submit',
+    ]);
+    await h.publish(graph);
+    const base = '/api/v1/student/homeworks/' + graph.homework.id;
+    await h.http().get(base).set(h.headers('student')).expect(200);
+    const saved = st06Json<HomeworkAnswerDetailResponseDto>(
+      await h
+        .http()
+        .patch(base + '/submission/answers/' + q.questionId)
+        .set(h.headers('student'))
+        .send({ selectedOptionIds: [q.options[0].optionId] })
+        .expect(200),
+    ).answer;
+    if (media) {
+      const content = await h
+        .http()
+        .get(media.path + '/preview')
+        .set(h.headers('student'))
+        .expect(200);
+      expect(content.text).toBe(media.bytes.toString());
+      expect(saved.selectedOptions[0]).toHaveProperty('richContent');
+    }
+    const persisted = await h.prisma.homeworkQuestion.findUniqueOrThrow({
+      where: { id: q.questionId },
+    });
+    expect(persisted.richContent).toEqual(
+      mode === 'legacy' ? null : questionRich(),
+    );
+    expect(
+      await h.prisma.$queryRaw<
+        Array<{ sqlNull: boolean }>
+      >`SELECT rich_content IS NULL AS "sqlNull" FROM homework_questions WHERE id = ${q.questionId}::uuid`,
+    ).toEqual([{ sqlNull: mode === 'legacy' }]);
+    await submitOnly();
+    return { graph, q, base, saved, media };
+  }
+
+  describe.each(['submit', 'submission/submit'])(
+    'ST08C-REV-01 POST %s',
+    (suffix) => {
+      it.each(['legacy', 'rich', 'asset'] as const)(
+        'completes a submit-only %s response after real persistence and preserves replay/privacy boundaries',
+        async (mode) => {
+          const { graph, q, base, saved, media } = await existingAnswer(mode);
+          if (mode === 'rich')
+            await h.prisma.homeworkAssignment.update({
+              where: { id: graph.homework.id },
+              data: { dueAt: new Date(Date.now() - 60000) },
+            });
+          const before = await submissionRows(graph.homework.id);
+          expect(before.submissions).toHaveLength(1);
+          expect(before.submissions[0].status).toBe('DRAFT');
+          const response = await h
+            .http()
+            .post(base + '/' + suffix)
+            .set(h.headers('student'))
+            .send({})
+            .expect(200);
+          const submission =
+            st06Json<StudentHomeworkSubmissionResponseDto>(
+              response,
+            ).submission!;
+          const after = await submissionRows(graph.homework.id);
+          expect(after.submissions).toHaveLength(1);
+          expect(after.submissions[0]).toMatchObject({
+            id: before.submissions[0].id,
+            status: mode === 'rich' ? 'LATE' : 'SUBMITTED',
+          });
+          expect(after.submissions[0].submittedAt).toBeInstanceOf(Date);
+          expect(after.targets[0].status).toBe(after.submissions[0].status);
+          expect(after.submissions[0].answers).toHaveLength(1);
+          expect(after.submissions[0].answers[0]).toMatchObject({
+            id: saved.answerId,
+            selectedOptionIds: [q.options[0].optionId],
+          });
+          expect(submission.id).toBe(after.submissions[0].id);
+          expect(submission.status).toBe(
+            mode === 'rich' ? 'late' : 'submitted',
+          );
+          expect(submission.answers[0].answerId).toBe(saved.answerId);
+          if (mode === 'rich')
+            expect(submission.answers[0].selectedOptions[0]).toHaveProperty(
+              'richContent',
+              optionRich(),
+            );
+          else
+            expect(submission.answers[0].selectedOptions[0]).not.toHaveProperty(
+              'richContent',
+            );
+          for (const value of [
+            'expectedAnswer',
+            'isCorrect',
+            'PRIVATE_EXPECTED_ANSWER',
+            'PRIVATE_METADATA',
+            'objectKey',
+            'bucket',
+          ])
+            expect(response.text).not.toContain(value);
+          await h
+            .http()
+            .post(base + '/' + suffix)
+            .set(h.headers('student'))
+            .send({})
+            .expect(409);
+          expect(await submissionRows(graph.homework.id)).toEqual(after);
+          for (const path of [
+            base,
+            base + '/submission',
+            base + '/submission/answers',
+          ])
+            await h.http().get(path).set(h.headers('student')).expect(403);
+          await h
+            .http()
+            .patch(base + '/submission/answers/' + q.questionId)
+            .set(h.headers('student'))
+            .send({ selectedOptionIds: [q.options[0].optionId] })
+            .expect(403);
+          if (media) {
+            for (const mode of ['preview', 'download']) {
+              await h
+                .http()
+                .get(media.path + '/' + mode)
+                .set(h.headers('student'))
+                .expect(403);
+              await h
+                .http()
+                .head(media.path + '/' + mode)
+                .set(h.headers('student'))
+                .expect(403);
+            }
+            for (const value of [media.fileId, media.objectKey, media.bucket])
+              expect(response.text).not.toContain(value);
+            const parent = await h
+              .http()
+              .get(
+                '/api/v1/parent/children/' +
+                  h.fixture.children[0].studentId +
+                  '/homeworks/' +
+                  graph.homework.id,
+              )
+              .set(h.headers('parent'))
+              .expect(200);
+            expect(parent.text).not.toContain('richContent');
+            expect(parent.text).not.toContain(media.fileId);
+          }
+        },
+      );
+      it.each(['permission', 'target', 'enrollment', 'closed'] as const)(
+        'denies a revoked %s after an earlier authorized read without changing persisted rows',
+        async (revoked) => {
+          const { graph, base } = await existingAnswer();
+          if (revoked === 'permission')
+            await h.prisma.rolePermission.deleteMany({
+              where: { roleId: h.fixture.actors.student.roleId },
+            });
+          if (revoked === 'target')
+            await h.prisma.homeworkTarget.updateMany({
+              where: { homeworkAssignmentId: graph.homework.id },
+              data: {
+                studentId: h.fixture.children[1].studentId,
+                enrollmentId: h.fixture.children[1].enrollmentId,
+              },
+            });
+          if (revoked === 'enrollment')
+            await h.prisma.enrollment.update({
+              where: { id: h.fixture.children[0].enrollmentId },
+              data: { status: 'COMPLETED' },
+            });
+          if (revoked === 'closed')
+            await h.prisma.homeworkAssignment.update({
+              where: { id: graph.homework.id },
+              data: { status: 'CLOSED', closedAt: new Date() },
+            });
+          const before = await submissionRows(graph.homework.id);
+          const response = await h
+            .http()
+            .post(base + '/' + suffix)
+            .set(h.headers('student'))
+            .send({});
+          expect(
+            revoked === 'permission'
+              ? [403]
+              : revoked === 'closed'
+                ? [409]
+                : [403, 404],
+          ).toContain(response.status);
+          expect(await submissionRows(graph.homework.id)).toEqual(before);
+          expect(before.submissions[0].status).toBe('DRAFT');
+        },
+      );
+    },
+  );
 
   it.each([false, true])(
     'accepts Rich-only creation before legacy DTO requirements on Core=%s and exposes existing list/detail/assignment fields',

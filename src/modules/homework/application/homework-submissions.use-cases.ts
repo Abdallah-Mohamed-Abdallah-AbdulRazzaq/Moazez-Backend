@@ -281,7 +281,7 @@ export class SubmitHomeworkSubmissionUseCase {
       this.homeworkRepository,
       command.homeworkId,
       result.submission.answers,
-      'student',
+      command.richActor?.surface === 'student' ? 'student-submit' : 'student',
       command.richActor,
     );
     return result.submission;

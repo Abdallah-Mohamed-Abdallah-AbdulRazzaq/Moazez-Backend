@@ -20,7 +20,8 @@ export type HomeworkRichReadPermission =
   | 'homework.submissions.view'
   | 'homework.submissions.review'
   | 'homework.answers.manage'
-  | 'homework.submissions.save';
+  | 'homework.submissions.save'
+  | 'homework.submissions.submit';
 
 /** Current authorization is part of the mutation transaction, not a stale app pre-read. */
 export async function authorizeHomeworkQuestionAssets(
@@ -47,6 +48,11 @@ export async function authorizeHomeworkQuestionAssets(
   )
     throw absent();
   if (write && richReadPermission) throw absent();
+  if (
+    richReadPermission === 'homework.submissions.submit' &&
+    (actor.surface !== 'student' || managedBinding)
+  )
+    throw absent();
   const permission =
     richReadPermission ??
     (actor.surface === 'teacher'
