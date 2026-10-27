@@ -1,4 +1,8 @@
-import { getCurrentRequestId } from '../../../common/context/request-context';
+import {
+  getCurrentRequestId,
+  getRequestContext,
+} from '../../../common/context/request-context';
+import type { RichAssetResolver } from '../../../common/rich-content/rich-content.types';
 import { Injectable } from '@nestjs/common';
 import { PersistedUrlPolicy } from '../../../infrastructure/storage/provider-url.policy';
 import {
@@ -37,7 +41,7 @@ import type {
   CreateHomeworkQuestionAssetDto,
   UpdateHomeworkQuestionAssetDto,
 } from '../dto/homework-question-asset.dto';
-import type { HomeworkScope } from '../homework-context';
+import { requireHomeworkScope, type HomeworkScope } from '../homework-context';
 import { authorizeHomeworkQuestionAssets } from './homework-question-asset-authorization';
 
 export interface HomeworkQuestionAssetView {
@@ -66,15 +70,21 @@ const orderBy = [
 ] as const;
 
 @Injectable()
-export class HomeworkQuestionAssetsRepository {
+export class HomeworkQuestionAssetsRepository implements RichAssetResolver<
+  Prisma.TransactionClient,
+  HomeworkScope & { resourceActor: HomeworkAssetActor }
+> {
+  private readonly privateBucket: string;
   constructor(
     private readonly prisma: PrismaService,
     private readonly gate: TeacherAllocationOperationalWriteGate,
     private readonly media: AssessmentMediaRepository,
     private readonly runtime: AssessmentMediaRuntimePolicy,
-    private readonly storage: StorageService,
+    storage: StorageService,
     private readonly urls: PersistedUrlPolicy,
-  ) {}
+  ) {
+    this.privateBucket = storage.resolveBucket('PRIVATE');
+  }
   private get scoped(): PrismaService {
     return this.prisma.scoped as unknown as PrismaService;
   }
@@ -102,6 +112,7 @@ export class HomeworkQuestionAssetsRepository {
     asset: HomeworkQuestionAsset,
     homeworkId: string,
     policy: EffectiveAssessmentMediaPolicy,
+    lock = false,
   ): Promise<HomeworkQuestionAssetView> {
     let file: ManagedFile | null = null;
     let externalUrl: string | null = null;
@@ -111,7 +122,8 @@ export class HomeworkQuestionAssetsRepository {
           fileId: asset.fileId,
           contextId: homeworkId,
           creatorId: asset.createdByUserId,
-          privateBucket: this.storage.resolveBucket('PRIVATE'),
+          privateBucket: this.privateBucket,
+          lock,
         });
         assertAssessmentReadyContentPolicy(policy, ready.session, ready.file);
         if (
@@ -138,6 +150,92 @@ export class HomeworkQuestionAssetsRepository {
       previewAllowed: !!file && policy.allowInlinePreview,
       downloadAllowed: !!file && policy.allowDownload,
     };
+  }
+  /** A reference is an existing question binding, never a File capability. */
+  async assertReference(
+    input: Parameters<
+      RichAssetResolver<
+        Prisma.TransactionClient,
+        HomeworkScope & { resourceActor: HomeworkAssetActor }
+      >['assertReference']
+    >[0],
+  ): Promise<void> {
+    const { transaction: tx, owner, actor, reference, audience } = input;
+    const scope = requireHomeworkScope();
+    if (
+      owner.domain !== 'homework' ||
+      input.schoolId !== scope.schoolId ||
+      actor.actorId !== scope.actorId ||
+      actor.userType !== scope.userType ||
+      actor.schoolId !== scope.schoolId ||
+      actor.organizationId !== scope.organizationId ||
+      actor.roleId !== scope.roleId ||
+      !actor.resourceActor ||
+      !getRequestContext()?.activeMembership
+    )
+      throw absent();
+    await authorizeHomeworkQuestionAssets(
+      tx,
+      this.gate,
+      actor.resourceActor,
+      { homeworkId: owner.homeworkId, questionId: owner.questionId },
+      audience === 'author',
+    );
+    if (owner.optionId) {
+      if (audience === 'author')
+        await tx.$queryRaw`SELECT id FROM homework_question_options WHERE id = ${owner.optionId}::uuid
+          AND homework_question_id = ${owner.questionId}::uuid AND school_id = ${scope.schoolId}::uuid AND deleted_at IS NULL FOR SHARE`;
+      const option = await tx.homeworkQuestionOption.findFirst({
+        where: {
+          id: owner.optionId,
+          homeworkQuestionId: owner.questionId,
+          deletedAt: null,
+          homeworkQuestion: {
+            is: { homeworkAssignmentId: owner.homeworkId, deletedAt: null },
+          },
+        },
+        select: { id: true },
+      });
+      if (!option) throw absent();
+    }
+    if (audience === 'author')
+      await tx.$queryRaw`SELECT id FROM homework_question_assets WHERE id = ${reference.assetId}::uuid
+        AND homework_question_id = ${owner.questionId}::uuid AND school_id = ${scope.schoolId}::uuid AND deleted_at IS NULL FOR SHARE`;
+    const asset = await tx.homeworkQuestionAsset.findFirst({
+      where: {
+        id: reference.assetId,
+        homeworkQuestionId: owner.questionId,
+        deletedAt: null,
+      },
+    });
+    if (
+      !asset ||
+      asset.sourceType !== 'MANAGED_FILE' ||
+      !asset.fileId ||
+      asset.category.toLowerCase() !== reference.kind
+    )
+      throw absent();
+    const policy = await this.policy(tx, scope.schoolId, audience === 'author');
+    const view = await this.view(
+      tx,
+      asset,
+      owner.homeworkId,
+      policy,
+      audience === 'author',
+    );
+    const content =
+      view.file &&
+      resolveFileContentType(view.file.originalName, view.file.mimeType);
+    if (
+      !content ||
+      !view.file ||
+      assetCategoryForMime(content.category) !== asset.category ||
+      !(
+        view.downloadAllowed ||
+        (view.previewAllowed && content.inlinePreviewSupported)
+      )
+    )
+      throw absent();
   }
   async read(
     actor: HomeworkAssetActor,
@@ -198,7 +296,7 @@ export class HomeworkQuestionAssetsRepository {
             uploadId: data.uploadId!,
             contextId: input.homeworkId,
             creatorId: scope.actorId,
-            privateBucket: this.storage.resolveBucket('PRIVATE'),
+            privateBucket: this.privateBucket,
             lock: true,
           });
           assertAssessmentReadyContentPolicy(policy, ready.session, ready.file);

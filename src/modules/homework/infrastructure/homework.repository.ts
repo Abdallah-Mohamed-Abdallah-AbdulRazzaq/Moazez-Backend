@@ -1,4 +1,18 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import type { RichContent } from '../../../common/rich-content/rich-content.types';
+import { NotFoundDomainException } from '../../../common/exceptions/domain-exception';
+import {
+  HomeworkRichContentService,
+  type HomeworkRichAudience,
+} from '../application/homework-rich-content.service';
+import { homeworkRichChange } from '../domain/homework-rich-content';
+import type { HomeworkAssetActor } from '../domain/homework-question-asset';
+import type { HomeworkRichQuestion } from './homework-rich-content.projection';
+import {
+  HomeworkQuestionInvalidTypePayloadException,
+  HomeworkQuestionOptionNotFoundException,
+  HomeworkQuestionNotFoundException,
+} from '../domain/homework-question.exceptions';
 import {
   HomeworkAssignmentMode,
   HomeworkAssignmentStatus,
@@ -25,6 +39,20 @@ import {
 } from '../domain/homework-submission-attachment.exceptions';
 import { HomeworkAnswerReadOnlyException } from '../domain/homework-answer.exceptions';
 
+class HomeworkRichAuthorizationRequired extends Error {}
+
+function richStorage(
+  plan: ReturnType<typeof homeworkRichChange>,
+): Record<string, unknown> {
+  return plan.action === 'write'
+    ? {
+        ...plan.legacy,
+        richContent:
+          plan.richContent === null ? Prisma.DbNull : plan.richContent,
+      }
+    : {};
+}
+
 const REVIEWABLE_SUBMISSION_STATUSES: HomeworkSubmissionStatus[] = [
   HomeworkSubmissionStatus.SUBMITTED,
   HomeworkSubmissionStatus.LATE,
@@ -47,6 +75,7 @@ const NAMED_REFERENCE_SELECT = {
 } satisfies Prisma.AcademicYearSelect;
 
 const HOMEWORK_QUESTION_OPTION_SELECT = {
+  richContent: true,
   id: true,
   schoolId: true,
   homeworkQuestionId: true,
@@ -60,6 +89,7 @@ const HOMEWORK_QUESTION_OPTION_SELECT = {
 } satisfies Prisma.HomeworkQuestionOptionSelect;
 
 const HOMEWORK_QUESTION_SELECT = {
+  richContent: true,
   id: true,
   schoolId: true,
   homeworkAssignmentId: true,
@@ -612,14 +642,22 @@ export interface HomeworkAllocationWriteContext {
 }
 export type CreateHomeworkTargetData =
   Prisma.HomeworkTargetUncheckedCreateInput;
-export type CreateHomeworkQuestionData =
-  Prisma.HomeworkQuestionUncheckedCreateInput;
-export type UpdateHomeworkQuestionData =
-  Prisma.HomeworkQuestionUncheckedUpdateInput;
-export type CreateHomeworkQuestionOptionData =
-  Prisma.HomeworkQuestionOptionUncheckedCreateInput;
-export type UpdateHomeworkQuestionOptionData =
-  Prisma.HomeworkQuestionOptionUncheckedUpdateInput;
+export type CreateHomeworkQuestionData = Omit<
+  Prisma.HomeworkQuestionUncheckedCreateInput,
+  'richContent'
+> & { richContent?: RichContent | null };
+export type UpdateHomeworkQuestionData = Omit<
+  Prisma.HomeworkQuestionUncheckedUpdateInput,
+  'richContent'
+> & { richContent?: RichContent | null };
+export type CreateHomeworkQuestionOptionData = Omit<
+  Prisma.HomeworkQuestionOptionUncheckedCreateInput,
+  'richContent'
+> & { richContent?: RichContent | null };
+export type UpdateHomeworkQuestionOptionData = Omit<
+  Prisma.HomeworkQuestionOptionUncheckedUpdateInput,
+  'richContent'
+> & { richContent?: RichContent | null };
 export type CreateHomeworkAttachmentData =
   Prisma.HomeworkAssignmentAttachmentUncheckedCreateInput;
 export type UpdateHomeworkAttachmentData =
@@ -652,10 +690,75 @@ export class HomeworkRepository {
   constructor(
     private readonly prisma: PrismaService,
     private readonly teacherAllocationWriteGate: TeacherAllocationOperationalWriteGate,
+    @Optional() private readonly richContent?: HomeworkRichContentService,
   ) {}
 
   private get scopedPrisma(): PrismaService {
     return this.prisma.scoped as unknown as PrismaService;
+  }
+
+  async projectRichQuestions(
+    homeworkId: string,
+    questions: HomeworkRichQuestion[],
+    audience: HomeworkRichAudience = 'question',
+    actor?: HomeworkAssetActor,
+  ): Promise<void> {
+    await this.richContent?.project(homeworkId, questions, audience, actor);
+  }
+
+  private requireRichIntegration(): HomeworkRichContentService {
+    if (!this.richContent) throw new NotFoundDomainException();
+    return this.richContent;
+  }
+
+  /** Discovery holds only assignment/question locks. Escalation rolls back
+   * before a fresh ST06-ordered transaction revalidates the original command. */
+  private async questionMutation<T>(
+    resource: { homeworkId: string; questionId?: string },
+    explicitRich: boolean,
+    actor: HomeworkAssetActor | undefined,
+    operation: (
+      tx: Prisma.TransactionClient,
+      protectedWrite: boolean,
+    ) => Promise<T>,
+  ): Promise<T> {
+    let protectedWrite = explicitRich;
+    const mutate = () =>
+      this.scopedPrisma.$transaction(
+        async (tx) => {
+          if (protectedWrite)
+            await this.requireRichIntegration().assertWrite(
+              tx,
+              resource,
+              actor,
+            );
+          const scope = requireHomeworkScope();
+          const assignment = await tx.$queryRaw<
+            Array<{ id: string }>
+          >`SELECT id FROM homework_assignments
+        WHERE id = ${resource.homeworkId}::uuid AND school_id = ${scope.schoolId}::uuid AND deleted_at IS NULL FOR UPDATE`;
+          if (!assignment.length)
+            throw new HomeworkQuestionNotFoundException(resource);
+          if (resource.questionId) {
+            const question = await tx.$queryRaw<
+              Array<{ id: string }>
+            >`SELECT id FROM homework_questions
+          WHERE id = ${resource.questionId}::uuid AND homework_assignment_id = ${resource.homeworkId}::uuid
+            AND school_id = ${scope.schoolId}::uuid AND deleted_at IS NULL FOR UPDATE`;
+            if (!question.length)
+              throw new HomeworkQuestionNotFoundException(resource);
+          }
+          return operation(tx, protectedWrite);
+        },
+        { maxWait: 5000, timeout: 15000 },
+      );
+    try {
+      return await mutate();
+    } catch (error) {
+      if (!(error instanceof HomeworkRichAuthorizationRequired)) throw error;
+      protectedWrite = true;
+      return mutate();
+    }
   }
 
   private async lockEditableStudentTarget(
@@ -1071,15 +1174,71 @@ export class HomeworkRepository {
   async createQuestionWithOptions(input: {
     question: CreateHomeworkQuestionData;
     options: CreateHomeworkQuestionOptionData[];
+    actor?: HomeworkAssetActor;
   }): Promise<HomeworkQuestionRecord> {
+    const homeworkId = String(input.question.homeworkAssignmentId);
+    const questionId = String(input.question.id);
+    if (
+      input.question.richContent !== undefined ||
+      input.options.some((option) => option.richContent !== undefined)
+    ) {
+      await this.questionMutation(
+        { homeworkId },
+        true,
+        input.actor,
+        async (tx) => {
+          const questionPlan = homeworkRichChange(
+            'homeworkQuestion',
+            input.question,
+          );
+          const options = input.options.map((option) => ({
+            option,
+            plan: homeworkRichChange('homeworkOption', option),
+          }));
+          await tx.homeworkQuestion.create({
+            data: {
+              ...input.question,
+              ...richStorage(questionPlan),
+            } as Prisma.HomeworkQuestionUncheckedCreateInput,
+          });
+          if (options.length)
+            await tx.homeworkQuestionOption.createMany({
+              data: options.map(
+                ({ option, plan }) =>
+                  ({
+                    ...option,
+                    ...richStorage(plan),
+                  }) as Prisma.HomeworkQuestionOptionUncheckedCreateInput,
+              ),
+            });
+          if (questionPlan.action === 'write' && questionPlan.richContent)
+            await this.requireRichIntegration().assertReferences(
+              tx,
+              homeworkId,
+              questionId,
+              questionPlan.richContent,
+            );
+          for (const { option, plan } of options)
+            if (plan.action === 'write' && plan.richContent)
+              await this.requireRichIntegration().assertReferences(
+                tx,
+                homeworkId,
+                questionId,
+                plan.richContent,
+                String(option.id),
+              );
+        },
+      );
+      return this.findQuestionMutationResult({ homeworkId, questionId });
+    }
     await this.scopedPrisma.$transaction([
       this.scopedPrisma.homeworkQuestion.create({
-        data: input.question,
+        data: input.question as Prisma.HomeworkQuestionUncheckedCreateInput,
       }),
       ...(input.options.length > 0
         ? [
             this.scopedPrisma.homeworkQuestionOption.createMany({
-              data: input.options,
+              data: input.options as Prisma.HomeworkQuestionOptionUncheckedCreateInput[],
             }),
           ]
         : []),
@@ -1095,15 +1254,72 @@ export class HomeworkRepository {
     homeworkId: string;
     questionId: string;
     data: UpdateHomeworkQuestionData;
+    actor?: HomeworkAssetActor;
   }): Promise<HomeworkQuestionRecord> {
-    await this.scopedPrisma.homeworkQuestion.updateMany({
-      where: {
-        id: input.questionId,
-        homeworkAssignmentId: input.homeworkId,
-        deletedAt: null,
+    await this.questionMutation(
+      input,
+      input.data.richContent !== undefined,
+      input.actor,
+      async (tx, protectedWrite) => {
+        const current = await tx.homeworkQuestion.findFirst({
+          where: {
+            id: input.questionId,
+            homeworkAssignmentId: input.homeworkId,
+            deletedAt: null,
+          },
+          select: HOMEWORK_QUESTION_SELECT,
+        });
+        if (!current) throw new HomeworkQuestionNotFoundException(input);
+        const plan = homeworkRichChange(
+          'homeworkQuestion',
+          input.data,
+          current,
+        );
+        if (
+          !protectedWrite &&
+          plan.action === 'write' &&
+          plan.richContent === null &&
+          (await tx.homeworkQuestion.count({
+            where: { id: current.id, richContent: { not: Prisma.DbNull } },
+          }))
+        )
+          throw new HomeworkRichAuthorizationRequired();
+        const nextType =
+          typeof input.data.type === 'string'
+            ? input.data.type
+            : (input.data.type?.set ?? current.type);
+        if (
+          protectedWrite &&
+          !['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'TRUE_FALSE'].includes(
+            nextType,
+          ) &&
+          current.options.length
+        )
+          throw new HomeworkQuestionInvalidTypePayloadException({
+            reason: 'text_question_cannot_keep_options',
+          });
+        const changed = await tx.homeworkQuestion.updateMany({
+          where: {
+            id: current.id,
+            homeworkAssignmentId: input.homeworkId,
+            deletedAt: null,
+          },
+          data: {
+            ...input.data,
+            ...richStorage(plan),
+          } as Prisma.HomeworkQuestionUncheckedUpdateManyInput,
+        });
+        if (changed.count !== 1)
+          throw new HomeworkQuestionNotFoundException(input);
+        if (plan.action === 'write' && plan.richContent)
+          await this.requireRichIntegration().assertReferences(
+            tx,
+            input.homeworkId,
+            input.questionId,
+            plan.richContent,
+          );
       },
-      data: input.data as Prisma.HomeworkQuestionUncheckedUpdateManyInput,
-    });
+    );
 
     return this.findQuestionMutationResult(input);
   }
@@ -1111,25 +1327,48 @@ export class HomeworkRepository {
   async softDeleteQuestion(input: {
     homeworkId: string;
     questionId: string;
+    actor?: HomeworkAssetActor;
   }): Promise<void> {
     const deletedAt = new Date();
-    await this.scopedPrisma.$transaction([
-      this.scopedPrisma.homeworkQuestion.updateMany({
-        where: {
-          id: input.questionId,
-          homeworkAssignmentId: input.homeworkId,
-          deletedAt: null,
-        },
-        data: { deletedAt },
-      }),
-      this.scopedPrisma.homeworkQuestionOption.updateMany({
-        where: {
-          homeworkQuestionId: input.questionId,
-          deletedAt: null,
-        },
-        data: { deletedAt },
-      }),
-    ]);
+    await this.questionMutation(
+      input,
+      false,
+      input.actor,
+      async (tx, protectedWrite) => {
+        if (
+          !protectedWrite &&
+          ((await tx.homeworkQuestion.count({
+            where: {
+              id: input.questionId,
+              richContent: { not: Prisma.DbNull },
+            },
+          })) ||
+            (await tx.homeworkQuestionOption.count({
+              where: {
+                homeworkQuestionId: input.questionId,
+                deletedAt: null,
+                richContent: { not: Prisma.DbNull },
+              },
+            })))
+        )
+          throw new HomeworkRichAuthorizationRequired();
+        await tx.homeworkQuestion.updateMany({
+          where: {
+            id: input.questionId,
+            homeworkAssignmentId: input.homeworkId,
+            deletedAt: null,
+          },
+          data: { deletedAt },
+        });
+        await tx.homeworkQuestionOption.updateMany({
+          where: {
+            homeworkQuestionId: input.questionId,
+            deletedAt: null,
+          },
+          data: { deletedAt },
+        });
+      },
+    );
   }
 
   async getNextOptionSortOrder(questionId: string): Promise<number> {
@@ -1166,10 +1405,53 @@ export class HomeworkRepository {
   async createQuestionOption(input: {
     homeworkId: string;
     data: CreateHomeworkQuestionOptionData;
+    actor?: HomeworkAssetActor;
   }): Promise<HomeworkQuestionRecord> {
-    await this.scopedPrisma.homeworkQuestionOption.create({
-      data: input.data,
-    });
+    const questionId = String(input.data.homeworkQuestionId);
+    if (input.data.richContent !== undefined) {
+      await this.questionMutation(
+        { homeworkId: input.homeworkId, questionId },
+        true,
+        input.actor,
+        async (tx) => {
+          const question = await tx.homeworkQuestion.findFirst({
+            where: {
+              id: questionId,
+              homeworkAssignmentId: input.homeworkId,
+              deletedAt: null,
+            },
+            select: { type: true },
+          });
+          if (
+            !question ||
+            !['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'TRUE_FALSE'].includes(
+              question.type,
+            )
+          )
+            throw new HomeworkQuestionInvalidTypePayloadException({
+              reason: 'options_forbidden_for_text_question',
+            });
+          const plan = homeworkRichChange('homeworkOption', input.data);
+          await tx.homeworkQuestionOption.create({
+            data: {
+              ...input.data,
+              ...richStorage(plan),
+            } as Prisma.HomeworkQuestionOptionUncheckedCreateInput,
+          });
+          if (plan.action === 'write' && plan.richContent)
+            await this.requireRichIntegration().assertReferences(
+              tx,
+              input.homeworkId,
+              questionId,
+              plan.richContent,
+              String(input.data.id),
+            );
+        },
+      );
+    } else
+      await this.scopedPrisma.homeworkQuestionOption.create({
+        data: input.data as Prisma.HomeworkQuestionOptionUncheckedCreateInput,
+      });
 
     return this.findQuestionMutationResult({
       homeworkId: input.homeworkId,
@@ -1182,15 +1464,73 @@ export class HomeworkRepository {
     questionId: string;
     optionId: string;
     data: UpdateHomeworkQuestionOptionData;
+    actor?: HomeworkAssetActor;
   }): Promise<HomeworkQuestionRecord> {
-    await this.scopedPrisma.homeworkQuestionOption.updateMany({
-      where: {
-        id: input.optionId,
-        homeworkQuestionId: input.questionId,
-        deletedAt: null,
+    await this.questionMutation(
+      input,
+      input.data.richContent !== undefined,
+      input.actor,
+      async (tx, protectedWrite) => {
+        const scope = requireHomeworkScope();
+        await tx.$queryRaw`SELECT id FROM homework_question_options WHERE id = ${input.optionId}::uuid
+        AND homework_question_id = ${input.questionId}::uuid AND school_id = ${scope.schoolId}::uuid AND deleted_at IS NULL FOR UPDATE`;
+        const current = await tx.homeworkQuestionOption.findFirst({
+          where: {
+            id: input.optionId,
+            homeworkQuestionId: input.questionId,
+            deletedAt: null,
+          },
+          select: HOMEWORK_QUESTION_OPTION_SELECT,
+        });
+        if (!current) throw new HomeworkQuestionOptionNotFoundException(input);
+        const plan = homeworkRichChange('homeworkOption', input.data, current);
+        if (
+          !protectedWrite &&
+          plan.action === 'write' &&
+          plan.richContent === null &&
+          (await tx.homeworkQuestionOption.count({
+            where: { id: current.id, richContent: { not: Prisma.DbNull } },
+          }))
+        )
+          throw new HomeworkRichAuthorizationRequired();
+        if (protectedWrite) {
+          const question = await tx.homeworkQuestion.findFirst({
+            where: { id: input.questionId },
+            select: { type: true },
+          });
+          if (
+            !question ||
+            !['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'TRUE_FALSE'].includes(
+              question.type,
+            )
+          )
+            throw new HomeworkQuestionInvalidTypePayloadException({
+              reason: 'options_forbidden_for_text_question',
+            });
+        }
+        const changed = await tx.homeworkQuestionOption.updateMany({
+          where: {
+            id: current.id,
+            homeworkQuestionId: input.questionId,
+            deletedAt: null,
+          },
+          data: {
+            ...input.data,
+            ...richStorage(plan),
+          } as Prisma.HomeworkQuestionOptionUncheckedUpdateManyInput,
+        });
+        if (changed.count !== 1)
+          throw new HomeworkQuestionOptionNotFoundException(input);
+        if (plan.action === 'write' && plan.richContent)
+          await this.requireRichIntegration().assertReferences(
+            tx,
+            input.homeworkId,
+            input.questionId,
+            plan.richContent,
+            input.optionId,
+          );
       },
-      data: input.data as Prisma.HomeworkQuestionOptionUncheckedUpdateManyInput,
-    });
+    );
 
     return this.findQuestionMutationResult(input);
   }
@@ -1199,15 +1539,37 @@ export class HomeworkRepository {
     homeworkId: string;
     questionId: string;
     optionId: string;
+    actor?: HomeworkAssetActor;
   }): Promise<HomeworkQuestionRecord> {
-    await this.scopedPrisma.homeworkQuestionOption.updateMany({
-      where: {
-        id: input.optionId,
-        homeworkQuestionId: input.questionId,
-        deletedAt: null,
+    await this.questionMutation(
+      input,
+      false,
+      input.actor,
+      async (tx, protectedWrite) => {
+        const scope = requireHomeworkScope();
+        const locked = await tx.$queryRaw<
+          Array<{ id: string }>
+        >`SELECT id FROM homework_question_options WHERE id = ${input.optionId}::uuid
+        AND homework_question_id = ${input.questionId}::uuid AND school_id = ${scope.schoolId}::uuid AND deleted_at IS NULL FOR UPDATE`;
+        if (!locked.length)
+          throw new HomeworkQuestionOptionNotFoundException(input);
+        if (
+          !protectedWrite &&
+          (await tx.homeworkQuestionOption.count({
+            where: { id: input.optionId, richContent: { not: Prisma.DbNull } },
+          }))
+        )
+          throw new HomeworkRichAuthorizationRequired();
+        await tx.homeworkQuestionOption.updateMany({
+          where: {
+            id: input.optionId,
+            homeworkQuestionId: input.questionId,
+            deletedAt: null,
+          },
+          data: { deletedAt: new Date() },
+        });
       },
-      data: { deletedAt: new Date() },
-    });
+    );
 
     return this.findQuestionMutationResult(input);
   }

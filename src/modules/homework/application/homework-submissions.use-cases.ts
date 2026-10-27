@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { HomeworkAssetActor } from '../domain/homework-question-asset';
 import {
   AuditOutcome,
   HomeworkAssignmentStatus,
@@ -27,6 +28,7 @@ import {
 import { HomeworkAnswerInput } from '../domain/homework-answer-inputs';
 import {
   saveStudentAnswersAsDraft,
+  projectHomeworkAnswerRich,
   saveStudentAnswersForSubmit,
   validateRequiredHomeworkAnswers,
 } from './homework-answers.use-cases';
@@ -40,6 +42,7 @@ export const HOMEWORK_SUBMISSION_BODY_TEXT_MAX_LENGTH = 20_000;
 export const HOMEWORK_SUBMISSION_REVIEW_NOTE_MAX_LENGTH = 2_000;
 
 export interface StudentHomeworkSubmissionCommand {
+  richActor?: HomeworkAssetActor;
   homeworkId: string;
   studentId: string;
   enrollmentId: string;
@@ -87,7 +90,16 @@ export class GetHomeworkSubmissionUseCase {
       command,
     );
 
-    return target.submissions[0] ?? null;
+    const submission = target.submissions[0] ?? null;
+    if (submission)
+      await projectHomeworkAnswerRich(
+        this.homeworkRepository,
+        command.homeworkId,
+        submission.answers,
+        'student',
+        command.richActor,
+      );
+    return submission;
   }
 }
 
@@ -128,9 +140,24 @@ export class SaveHomeworkSubmissionDraftUseCase {
         target,
         answers: command.answers,
       });
-      return submissionWithAnswers ?? result.submission;
+      const submission = submissionWithAnswers ?? result.submission;
+      await projectHomeworkAnswerRich(
+        this.homeworkRepository,
+        command.homeworkId,
+        submission.answers,
+        'student',
+        command.richActor,
+      );
+      return submission;
     }
 
+    await projectHomeworkAnswerRich(
+      this.homeworkRepository,
+      command.homeworkId,
+      result.submission.answers,
+      'student',
+      command.richActor,
+    );
     return result.submission;
   }
 }
@@ -250,6 +277,13 @@ export class SubmitHomeworkSubmissionUseCase {
       }),
     );
 
+    await projectHomeworkAnswerRich(
+      this.homeworkRepository,
+      command.homeworkId,
+      result.submission.answers,
+      'student',
+      command.richActor,
+    );
     return result.submission;
   }
 }

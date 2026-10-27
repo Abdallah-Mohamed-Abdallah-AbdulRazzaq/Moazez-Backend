@@ -155,11 +155,14 @@ export class ListTeacherHomeworkAssignmentsUseCase {
     query: ListTeacherHomeworkAssignmentsQueryDto,
   ): Promise<TeacherHomeworkAssignmentsListResponseDto> {
     const context = await this.ownershipService.resolveOwnedClass(classId);
-    const result = await this.listHomeworkAssignmentsUseCase.execute({
-      ...query,
-      teacherUserId: context.teacherUserId,
-      teacherSubjectAllocationId: context.allocation.id,
-    } satisfies ListHomeworkAssignmentsQueryDto);
+    const result = await this.listHomeworkAssignmentsUseCase.execute(
+      {
+        ...query,
+        teacherUserId: context.teacherUserId,
+        teacherSubjectAllocationId: context.allocation.id,
+      } satisfies ListHomeworkAssignmentsQueryDto,
+      { surface: 'teacher', classId },
+    );
 
     return TeacherHomeworksPresenter.presentAssignmentsList(result);
   }
@@ -207,8 +210,10 @@ export class GetTeacherHomeworkAssignmentUseCase {
       classId,
       homeworkId,
     });
-    const assignment =
-      await this.getHomeworkAssignmentUseCase.execute(homeworkId);
+    const assignment = await this.getHomeworkAssignmentUseCase.execute(
+      homeworkId,
+      { surface: 'teacher', classId },
+    );
     this.ownershipService.assertAssignmentResponseBelongsToClass({
       assignment,
       classId: context.allocation.id,
@@ -390,7 +395,10 @@ export class ListTeacherHomeworkQuestionsUseCase {
     homeworkId: string,
   ): Promise<HomeworkQuestionsListResponseDto> {
     await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
-    return this.listHomeworkQuestionsUseCase.execute(homeworkId);
+    return this.listHomeworkQuestionsUseCase.execute(homeworkId, {
+      surface: 'teacher',
+      classId,
+    });
   }
 }
 
@@ -407,7 +415,10 @@ export class CreateTeacherHomeworkQuestionUseCase {
     dto: CreateHomeworkQuestionDto,
   ): Promise<HomeworkQuestionDetailResponseDto> {
     await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
-    return this.createHomeworkQuestionUseCase.execute(homeworkId, dto);
+    return this.createHomeworkQuestionUseCase.execute(homeworkId, dto, {
+      surface: 'teacher',
+      classId,
+    });
   }
 }
 
@@ -424,7 +435,10 @@ export class GetTeacherHomeworkQuestionUseCase {
     questionId: string,
   ): Promise<HomeworkQuestionDetailResponseDto> {
     await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
-    return this.getHomeworkQuestionUseCase.execute({ homeworkId, questionId });
+    return this.getHomeworkQuestionUseCase.execute(
+      { homeworkId, questionId },
+      { surface: 'teacher', classId },
+    );
   }
 }
 
@@ -446,6 +460,7 @@ export class UpdateTeacherHomeworkQuestionUseCase {
       homeworkId,
       questionId,
       dto,
+      { surface: 'teacher', classId },
     );
   }
 }
@@ -468,6 +483,7 @@ export class ReorderTeacherHomeworkQuestionUseCase {
       homeworkId,
       questionId,
       dto,
+      { surface: 'teacher', classId },
     );
   }
 }
@@ -485,7 +501,10 @@ export class DeleteTeacherHomeworkQuestionUseCase {
     questionId: string,
   ): Promise<void> {
     await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
-    return this.deleteHomeworkQuestionUseCase.execute(homeworkId, questionId);
+    return this.deleteHomeworkQuestionUseCase.execute(homeworkId, questionId, {
+      surface: 'teacher',
+      classId,
+    });
   }
 }
 
@@ -507,6 +526,7 @@ export class CreateTeacherHomeworkQuestionOptionUseCase {
       homeworkId,
       questionId,
       dto,
+      { surface: 'teacher', classId },
     );
   }
 }
@@ -531,6 +551,7 @@ export class UpdateTeacherHomeworkQuestionOptionUseCase {
       questionId,
       optionId,
       dto,
+      { surface: 'teacher', classId },
     );
   }
 }
@@ -555,6 +576,7 @@ export class ReorderTeacherHomeworkQuestionOptionUseCase {
       questionId,
       optionId,
       dto,
+      { surface: 'teacher', classId },
     );
   }
 }
@@ -577,6 +599,7 @@ export class DeleteTeacherHomeworkQuestionOptionUseCase {
       homeworkId,
       questionId,
       optionId,
+      { surface: 'teacher', classId },
     );
   }
 }
@@ -743,6 +766,7 @@ export class ListTeacherHomeworkSubmissionAnswersUseCase {
     return this.listHomeworkSubmissionAnswersUseCase.execute({
       homeworkId,
       submissionId,
+      richActor: { surface: 'teacher', classId },
     });
   }
 }
@@ -769,6 +793,7 @@ export class ReviewTeacherHomeworkSubmissionAnswerUseCase {
     return this.reviewHomeworkSubmissionAnswerUseCase.execute({
       homeworkId,
       submissionId,
+      richActor: { surface: 'teacher', classId },
       answerId,
       reviewedByUserId: context.teacherUserId,
       review: dto,
@@ -797,6 +822,7 @@ export class BulkReviewTeacherHomeworkSubmissionAnswersUseCase {
     return this.bulkReviewHomeworkSubmissionAnswersUseCase.execute({
       homeworkId,
       submissionId,
+      richActor: { surface: 'teacher', classId },
       reviewedByUserId: context.teacherUserId,
       reviews: dto.answers,
     });

@@ -6,6 +6,9 @@ import {
   Prisma,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
+import type { HomeworkAssetActor } from '../domain/homework-question-asset';
+import { homeworkRichInput } from '../domain/homework-rich-content';
+import { hasHomeworkRichSelection } from '../infrastructure/homework-rich-content.projection';
 import { AuthRepository } from '../../iam/auth/infrastructure/auth.repository';
 import { requireHomeworkScope, HomeworkScope } from '../homework-context';
 import {
@@ -32,6 +35,7 @@ import {
 import { HomeworkAssignmentNotFoundException } from '../domain/homework.exceptions';
 import {
   CreateHomeworkQuestionOptionData,
+  CreateHomeworkQuestionData,
   HomeworkAssignmentWithCounters,
   HomeworkQuestionRecord,
   HomeworkRepository,
@@ -54,10 +58,19 @@ const CHOICE_QUESTION_TYPES = new Set<HomeworkQuestionType>([
 export class ListHomeworkQuestionsUseCase {
   constructor(private readonly homeworkRepository: HomeworkRepository) {}
 
-  async execute(homeworkId: string): Promise<HomeworkQuestionsListResponseDto> {
+  async execute(
+    homeworkId: string,
+    actor?: HomeworkAssetActor,
+  ): Promise<HomeworkQuestionsListResponseDto> {
     requireHomeworkScope();
     await findAssignmentOrThrow(this.homeworkRepository, homeworkId);
     const questions = await this.homeworkRepository.listQuestions(homeworkId);
+    await projectHomeworkQuestions(
+      this.homeworkRepository,
+      homeworkId,
+      questions,
+      actor,
+    );
     return presentHomeworkQuestionsAdmin(questions);
   }
 }
@@ -66,13 +79,22 @@ export class ListHomeworkQuestionsUseCase {
 export class GetHomeworkQuestionUseCase {
   constructor(private readonly homeworkRepository: HomeworkRepository) {}
 
-  async execute(input: {
-    homeworkId: string;
-    questionId: string;
-  }): Promise<HomeworkQuestionDetailResponseDto> {
+  async execute(
+    input: {
+      homeworkId: string;
+      questionId: string;
+    },
+    actor?: HomeworkAssetActor,
+  ): Promise<HomeworkQuestionDetailResponseDto> {
     requireHomeworkScope();
     await findAssignmentOrThrow(this.homeworkRepository, input.homeworkId);
     const question = await findQuestionOrThrow(this.homeworkRepository, input);
+    await projectHomeworkQuestions(
+      this.homeworkRepository,
+      input.homeworkId,
+      [question],
+      actor,
+    );
     return presentHomeworkQuestionDetailAdmin(question);
   }
 }
@@ -87,6 +109,7 @@ export class CreateHomeworkQuestionUseCase {
   async execute(
     homeworkId: string,
     command: CreateHomeworkQuestionDto,
+    actor?: HomeworkAssetActor,
   ): Promise<HomeworkQuestionDetailResponseDto> {
     const scope = requireHomeworkScope();
     const assignment = await findAssignmentOrThrow(
@@ -101,8 +124,10 @@ export class CreateHomeworkQuestionUseCase {
       homeworkId,
       command,
     });
-    const question =
-      await this.homeworkRepository.createQuestionWithOptions(normalized);
+    const question = await this.homeworkRepository.createQuestionWithOptions({
+      ...normalized,
+      ...(actor ? { actor } : {}),
+    });
 
     await this.auditQuestionMutation({
       scope,
@@ -110,6 +135,12 @@ export class CreateHomeworkQuestionUseCase {
       question,
     });
 
+    await projectHomeworkQuestions(
+      this.homeworkRepository,
+      homeworkId,
+      [question],
+      actor,
+    );
     return { question: presentHomeworkQuestionAdmin(question) };
   }
 
@@ -133,6 +164,7 @@ export class UpdateHomeworkQuestionUseCase {
     homeworkId: string,
     questionId: string,
     command: UpdateHomeworkQuestionDto,
+    actor?: HomeworkAssetActor,
   ): Promise<HomeworkQuestionDetailResponseDto> {
     const scope = requireHomeworkScope();
     const assignment = await findAssignmentOrThrow(
@@ -149,6 +181,7 @@ export class UpdateHomeworkQuestionUseCase {
       homeworkId,
       questionId,
       data,
+      ...(actor ? { actor } : {}),
     });
 
     await this.authRepository.createAuditLog(
@@ -160,6 +193,12 @@ export class UpdateHomeworkQuestionUseCase {
       }),
     );
 
+    await projectHomeworkQuestions(
+      this.homeworkRepository,
+      homeworkId,
+      [question],
+      actor,
+    );
     return { question: presentHomeworkQuestionAdmin(question) };
   }
 }
@@ -175,6 +214,7 @@ export class ReorderHomeworkQuestionUseCase {
     homeworkId: string,
     questionId: string,
     command: ReorderHomeworkQuestionDto,
+    actor?: HomeworkAssetActor,
   ): Promise<HomeworkQuestionDetailResponseDto> {
     const scope = requireHomeworkScope();
     const assignment = await findAssignmentOrThrow(
@@ -199,6 +239,7 @@ export class ReorderHomeworkQuestionUseCase {
       homeworkId,
       questionId,
       data: { sortOrder: command.sortOrder, updatedByUserId: scope.actorId },
+      ...(actor ? { actor } : {}),
     });
 
     await this.authRepository.createAuditLog(
@@ -210,6 +251,12 @@ export class ReorderHomeworkQuestionUseCase {
       }),
     );
 
+    await projectHomeworkQuestions(
+      this.homeworkRepository,
+      homeworkId,
+      [question],
+      actor,
+    );
     return { question: presentHomeworkQuestionAdmin(question) };
   }
 }
@@ -221,7 +268,11 @@ export class DeleteHomeworkQuestionUseCase {
     private readonly authRepository: AuthRepository,
   ) {}
 
-  async execute(homeworkId: string, questionId: string): Promise<void> {
+  async execute(
+    homeworkId: string,
+    questionId: string,
+    actor?: HomeworkAssetActor,
+  ): Promise<void> {
     const scope = requireHomeworkScope();
     const assignment = await findAssignmentOrThrow(
       this.homeworkRepository,
@@ -236,6 +287,7 @@ export class DeleteHomeworkQuestionUseCase {
     await this.homeworkRepository.softDeleteQuestion({
       homeworkId,
       questionId,
+      ...(actor ? { actor } : {}),
     });
     await this.authRepository.createAuditLog(
       buildQuestionAuditEntry({
@@ -258,6 +310,7 @@ export class CreateHomeworkQuestionOptionUseCase {
     homeworkId: string,
     questionId: string,
     command: CreateHomeworkQuestionOptionDto,
+    actor?: HomeworkAssetActor,
   ): Promise<HomeworkQuestionDetailResponseDto> {
     const scope = requireHomeworkScope();
     const assignment = await findAssignmentOrThrow(
@@ -282,6 +335,7 @@ export class CreateHomeworkQuestionOptionUseCase {
     const updatedQuestion = await this.homeworkRepository.createQuestionOption({
       homeworkId,
       data,
+      ...(actor ? { actor } : {}),
     });
 
     await this.authRepository.createAuditLog(
@@ -293,6 +347,12 @@ export class CreateHomeworkQuestionOptionUseCase {
       }),
     );
 
+    await projectHomeworkQuestions(
+      this.homeworkRepository,
+      homeworkId,
+      [updatedQuestion],
+      actor,
+    );
     return { question: presentHomeworkQuestionAdmin(updatedQuestion) };
   }
 }
@@ -309,6 +369,7 @@ export class UpdateHomeworkQuestionOptionUseCase {
     questionId: string,
     optionId: string,
     command: UpdateHomeworkQuestionOptionDto,
+    actor?: HomeworkAssetActor,
   ): Promise<HomeworkQuestionDetailResponseDto> {
     const scope = requireHomeworkScope();
     const assignment = await findAssignmentOrThrow(
@@ -340,6 +401,7 @@ export class UpdateHomeworkQuestionOptionUseCase {
       questionId,
       optionId,
       data,
+      ...(actor ? { actor } : {}),
     });
 
     await this.authRepository.createAuditLog(
@@ -351,6 +413,12 @@ export class UpdateHomeworkQuestionOptionUseCase {
       }),
     );
 
+    await projectHomeworkQuestions(
+      this.homeworkRepository,
+      homeworkId,
+      [updatedQuestion],
+      actor,
+    );
     return { question: presentHomeworkQuestionAdmin(updatedQuestion) };
   }
 }
@@ -367,6 +435,7 @@ export class ReorderHomeworkQuestionOptionUseCase {
     questionId: string,
     optionId: string,
     command: ReorderHomeworkQuestionOptionDto,
+    actor?: HomeworkAssetActor,
   ): Promise<HomeworkQuestionDetailResponseDto> {
     const scope = requireHomeworkScope();
     const assignment = await findAssignmentOrThrow(
@@ -405,6 +474,7 @@ export class ReorderHomeworkQuestionOptionUseCase {
       questionId,
       optionId,
       data: { sortOrder: command.sortOrder },
+      ...(actor ? { actor } : {}),
     });
 
     await this.authRepository.createAuditLog(
@@ -416,6 +486,12 @@ export class ReorderHomeworkQuestionOptionUseCase {
       }),
     );
 
+    await projectHomeworkQuestions(
+      this.homeworkRepository,
+      homeworkId,
+      [updatedQuestion],
+      actor,
+    );
     return { question: presentHomeworkQuestionAdmin(updatedQuestion) };
   }
 }
@@ -431,6 +507,7 @@ export class DeleteHomeworkQuestionOptionUseCase {
     homeworkId: string,
     questionId: string,
     optionId: string,
+    actor?: HomeworkAssetActor,
   ): Promise<HomeworkQuestionDetailResponseDto> {
     const scope = requireHomeworkScope();
     const assignment = await findAssignmentOrThrow(
@@ -460,6 +537,7 @@ export class DeleteHomeworkQuestionOptionUseCase {
         homeworkId,
         questionId,
         optionId,
+        ...(actor ? { actor } : {}),
       });
 
     await this.authRepository.createAuditLog(
@@ -471,6 +549,12 @@ export class DeleteHomeworkQuestionOptionUseCase {
       }),
     );
 
+    await projectHomeworkQuestions(
+      this.homeworkRepository,
+      homeworkId,
+      [updatedQuestion],
+      actor,
+    );
     return { question: presentHomeworkQuestionAdmin(updatedQuestion) };
   }
 }
@@ -551,10 +635,14 @@ async function normalizeCreateQuestionCommand(input: {
   homeworkId: string;
   command: CreateHomeworkQuestionDto;
 }): Promise<{
-  question: Prisma.HomeworkQuestionUncheckedCreateInput;
+  question: CreateHomeworkQuestionData;
   options: CreateHomeworkQuestionOptionData[];
 }> {
-  const prompt = normalizeRequiredText(input.command.prompt, 'prompt');
+  const rich = homeworkRichInput(input.command, 'homeworkQuestion');
+  const prompt = normalizeRequiredText(
+    rich.display.prompt ?? input.command.prompt,
+    'prompt',
+  );
   const options = input.command.options ?? [];
   assertQuestionTypePayload(input.command.type, options);
   const questionId = randomUUID();
@@ -569,7 +657,14 @@ async function normalizeCreateQuestionCommand(input: {
       homeworkAssignmentId: input.homeworkId,
       type: input.command.type,
       prompt,
-      instructions: normalizeNullableText(input.command.instructions),
+      instructions: normalizeNullableText(
+        Object.hasOwn(rich.display, 'instructions')
+          ? rich.display.instructions
+          : input.command.instructions,
+      ),
+      ...(rich.richContent !== undefined
+        ? { richContent: rich.richContent }
+        : {}),
       points: toDecimal(input.command.points ?? 0),
       sortOrder,
       isRequired: input.command.isRequired ?? true,
@@ -605,7 +700,14 @@ function normalizeUpdateQuestionCommand(
     });
   }
 
-  const data: UpdateHomeworkQuestionData = { type: nextType };
+  const data: UpdateHomeworkQuestionData = command.type
+    ? { type: nextType }
+    : {};
+  const rich = homeworkRichInput(command, 'homeworkQuestion');
+  if (rich.richContent !== undefined) {
+    data.richContent = rich.richContent;
+    Object.assign(data, rich.display);
+  }
   if (hasOwn(command, 'prompt')) {
     data.prompt = normalizeRequiredText(command.prompt ?? '', 'prompt');
   }
@@ -655,11 +757,18 @@ function normalizeCreateOption(input: {
   command: CreateHomeworkQuestionOptionDto;
   sortOrder: number;
 }): CreateHomeworkQuestionOptionData {
+  const rich = homeworkRichInput(input.command, 'homeworkOption');
   return {
     id: randomUUID(),
     schoolId: input.scope.schoolId,
     homeworkQuestionId: input.questionId,
-    text: normalizeRequiredText(input.command.text, 'text'),
+    text: normalizeRequiredText(
+      rich.display.text ?? input.command.text,
+      'text',
+    ),
+    ...(rich.richContent !== undefined
+      ? { richContent: rich.richContent }
+      : {}),
     isCorrect: input.command.isCorrect ?? false,
     sortOrder: input.sortOrder,
     metadata: toNullableJson(input.command.metadata),
@@ -670,6 +779,11 @@ function normalizeUpdateOption(
   command: UpdateHomeworkQuestionOptionDto,
 ): UpdateHomeworkQuestionOptionData {
   const data: UpdateHomeworkQuestionOptionData = {};
+  const rich = homeworkRichInput(command, 'homeworkOption');
+  if (rich.richContent !== undefined) {
+    data.richContent = rich.richContent;
+    Object.assign(data, rich.display);
+  }
   if (hasOwn(command, 'text')) {
     data.text = normalizeRequiredText(command.text ?? '', 'text');
   }
@@ -800,5 +914,24 @@ function summarizeQuestionForAudit(
 }
 
 function hasOwn<T extends object>(object: T, key: PropertyKey): boolean {
-  return Object.prototype.hasOwnProperty.call(object, key);
+  return (
+    Object.prototype.hasOwnProperty.call(object, key) &&
+    object[key as keyof T] !== undefined
+  );
+}
+
+/** Existing mock/historical projections without selected Rich columns stay legacy. */
+export async function projectHomeworkQuestions(
+  repository: HomeworkRepository,
+  homeworkId: string,
+  questions: HomeworkQuestionRecord[],
+  actor?: HomeworkAssetActor,
+): Promise<void> {
+  if (hasHomeworkRichSelection(questions))
+    await repository.projectRichQuestions(
+      homeworkId,
+      questions,
+      'question',
+      actor,
+    );
 }

@@ -2035,3 +2035,50 @@ test('ST08-B Grades Rich writers and readers retain transaction-bound DB-only re
   assert.match(projection, /resolver: GradeAssetsRepository \| undefined/u);
   assert.match(projection, /rich_content IS NULL AS "sqlNull"/u);
 });
+
+test('ST08-C Homework Rich mappings stay confined to the reader and six-callback private writer', () => {
+  const owners = ['HomeworkRichContentService.project', 'HomeworkRepository.questionMutation'];
+  for (const owner of owners) {
+    const rows = INVENTORY.filter(row => row.entryOwner === owner);
+    assert.equal(rows.length, 1, owner);
+    const row = rows[0];
+    assert.equal(row.classification, 'LOCK_CONTENTION_SENSITIVE');
+    assert.equal(row.externalWaitInsideTransaction, false);
+    assert.deepEqual(row.unresolvedCalls, []);
+    assert.ok(row.manualOverrides.every(item => item.sourcePath === row.path && item.owner === owner));
+  }
+  const writer = INVENTORY.find(row => row.entryOwner === owners[1]);
+  const operation = writer.manualOverrides.find(item => item.unresolvedCallExpression === 'operation');
+  const callers = ['createQuestionWithOptions', 'updateQuestion', 'softDeleteQuestion', 'createQuestionOption', 'updateQuestionOption', 'softDeleteQuestionOption'];
+  assert.deepEqual(operation.resolvedCallers, callers.map(name => 'HomeworkRepository.' + name).sort());
+  assert.match(operation.reviewEvidence, /rolls back, then starts one fresh ordered transaction using the original command/u);
+  const source = fs.readFileSync(path.join(ROOT, writer.path), 'utf8');
+  const ts = require('typescript');
+  const file = ts.createSourceFile(writer.path, source, ts.ScriptTarget.Latest, true);
+  const actual = [];
+  const visit = node => {
+    if (ts.isMethodDeclaration(node)) {
+      const invokes = [];
+      const calls = child => {
+        if (ts.isCallExpression(child) && child.expression.getText(file) === 'this.questionMutation') invokes.push(child);
+        ts.forEachChild(child, calls);
+      };
+      if (node.body) calls(node.body);
+      if (invokes.length) {
+        assert.equal(invokes.length, 1);
+        actual.push(node.name.getText(file));
+        const callback = invokes[0].arguments[3];
+        assert.ok(ts.isArrowFunction(callback));
+        assert.doesNotMatch(callback.getText(file), /\$transaction|\b(?:storage|fetch|setTimeout|queue|signer)\b/u);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  assert.deepEqual(actual.sort(), [...callers].sort());
+  const assets = fs.readFileSync(path.join(ROOT, 'src/modules/homework/infrastructure/homework-question-assets.repository.ts'), 'utf8');
+  assert.match(assets, /this\.privateBucket = storage\.resolveBucket\('PRIVATE'\)/u);
+  assert.doesNotMatch(assets, /this\.storage\./u);
+  const scoped = INVENTORY.filter(row => row.manualOverrides.some(item => /ST08-C/u.test(item.reason)));
+  assert.deepEqual(scoped.map(row => row.entryOwner).sort(), [...owners].sort());
+});

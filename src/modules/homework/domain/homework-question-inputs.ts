@@ -1,7 +1,8 @@
 import { HomeworkQuestionType, Prisma } from '@prisma/client';
 
 export interface HomeworkQuestionOptionInput {
-  text: string;
+  text?: string;
+  richContent?: unknown;
   isCorrect?: boolean;
   sortOrder?: number;
   metadata?: Prisma.InputJsonValue | null;
@@ -9,7 +10,8 @@ export interface HomeworkQuestionOptionInput {
 
 export interface CreateHomeworkQuestionInput {
   type: HomeworkQuestionType;
-  prompt: string;
+  prompt?: string;
+  richContent?: unknown;
   instructions?: string | null;
   points?: number | null;
   sortOrder?: number | null;
@@ -20,6 +22,7 @@ export interface CreateHomeworkQuestionInput {
 }
 
 export interface UpdateHomeworkQuestionInput {
+  richContent?: unknown;
   type?: HomeworkQuestionType;
   prompt?: string;
   instructions?: string | null;
@@ -34,6 +37,7 @@ export interface ReorderHomeworkQuestionInput {
 }
 
 export interface UpdateHomeworkQuestionOptionInput {
+  richContent?: unknown;
   text?: string;
   isCorrect?: boolean;
   metadata?: Prisma.InputJsonValue | null;

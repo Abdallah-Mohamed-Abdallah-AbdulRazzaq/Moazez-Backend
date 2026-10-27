@@ -98,6 +98,7 @@ describe('Teacher Homeworks use cases', () => {
         page: 2,
         limit: 10,
       }),
+      { surface: 'teacher', classId: 'allocation-1' },
     );
   });
 
@@ -395,6 +396,7 @@ describe('Teacher Homeworks use cases', () => {
       submissionId: 'submission-1',
       answerId: 'answer-1',
       reviewedByUserId: 'teacher-1',
+      richActor: { surface: 'teacher', classId: 'allocation-1' },
       review: { awardedPoints: 2, teacherComment: 'Clear' },
     });
     expect(result).toEqual({ answer: { answerId: 'answer-1' } });
@@ -421,6 +423,7 @@ describe('Teacher Homeworks use cases', () => {
       submissionId: 'submission-1',
       reviewedByUserId: 'teacher-1',
       reviews: [{ answerId: 'answer-1', awardedPoints: 2 }],
+      richActor: { surface: 'teacher', classId: 'allocation-1' },
     });
   });
 
@@ -482,6 +485,7 @@ describe('Teacher Homeworks use cases', () => {
     expect(coreAnswers.execute).toHaveBeenCalledWith({
       homeworkId: 'homework-1',
       submissionId: 'submission-1',
+      richActor: { surface: 'teacher', classId: 'allocation-1' },
     });
     expect(coreAttachments.execute).toHaveBeenCalledWith({
       homeworkId: 'homework-1',

@@ -7,6 +7,8 @@ import {
   Prisma,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
+import type { HomeworkAssetActor } from '../domain/homework-question-asset';
+import { hasHomeworkRichSelection } from '../infrastructure/homework-rich-content.projection';
 import { AuthRepository } from '../../iam/auth/infrastructure/auth.repository';
 import { HomeworkScope, requireHomeworkScope } from '../homework-context';
 import { validateHomeworkQuestionsForPublish } from './homework-questions.use-cases';
@@ -79,10 +81,21 @@ interface HomeworkWriteCommand {
 export class ListHomeworkAssignmentsUseCase {
   constructor(private readonly homeworkRepository: HomeworkRepository) {}
 
-  async execute(query: ListHomeworkAssignmentsQueryDto) {
+  async execute(
+    query: ListHomeworkAssignmentsQueryDto,
+    actor?: HomeworkAssetActor,
+  ) {
     requireHomeworkScope();
     const filters = normalizeListFilters(query);
     const result = await this.homeworkRepository.listAssignments(filters);
+    for (const assignment of result.items)
+      if (hasHomeworkRichSelection(assignment.questions))
+        await this.homeworkRepository.projectRichQuestions(
+          assignment.id,
+          assignment.questions,
+          'assignment',
+          actor,
+        );
     return presentHomeworkAssignments(result);
   }
 }
@@ -91,12 +104,19 @@ export class ListHomeworkAssignmentsUseCase {
 export class GetHomeworkAssignmentUseCase {
   constructor(private readonly homeworkRepository: HomeworkRepository) {}
 
-  async execute(homeworkId: string) {
+  async execute(homeworkId: string, actor?: HomeworkAssetActor) {
     requireHomeworkScope();
     const assignment = await findAssignmentOrThrow(
       this.homeworkRepository,
       homeworkId,
     );
+    if (hasHomeworkRichSelection(assignment.questions))
+      await this.homeworkRepository.projectRichQuestions(
+        homeworkId,
+        assignment.questions,
+        'assignment',
+        actor,
+      );
     return presentHomeworkAssignment(assignment);
   }
 }

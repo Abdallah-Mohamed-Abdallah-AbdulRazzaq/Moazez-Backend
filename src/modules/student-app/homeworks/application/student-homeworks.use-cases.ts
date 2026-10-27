@@ -156,6 +156,7 @@ export class GetStudentHomeworkSubmissionUseCase {
       homeworkId,
       studentId: context.studentId,
       enrollmentId: context.enrollmentId,
+      richActor: { surface: 'student', student: context },
     });
 
     return {
@@ -183,6 +184,7 @@ export class SaveStudentHomeworkSubmissionUseCase {
       homeworkId,
       studentId: context.studentId,
       enrollmentId: context.enrollmentId,
+      richActor: { surface: 'student', student: context },
       bodyText: dto.bodyText,
       answers: dto.answers,
     });
@@ -208,6 +210,7 @@ export class SubmitStudentHomeworkSubmissionUseCase {
       homeworkId,
       studentId: context.studentId,
       enrollmentId: context.enrollmentId,
+      richActor: { surface: 'student', student: context },
       bodyText: dto.bodyText,
       answers: dto.answers,
     });
@@ -230,6 +233,7 @@ export class ListStudentHomeworkSubmissionAnswersUseCase {
       homeworkId,
       studentId: context.studentId,
       enrollmentId: context.enrollmentId,
+      richActor: { surface: 'student', student: context },
     });
   }
 }
@@ -251,6 +255,7 @@ export class SaveStudentHomeworkSubmissionAnswersUseCase {
       homeworkId,
       studentId: context.studentId,
       enrollmentId: context.enrollmentId,
+      richActor: { surface: 'student', student: context },
       answers: mapBulkAnswersDto(dto),
     });
   }
@@ -274,6 +279,7 @@ export class SaveStudentHomeworkSubmissionAnswerUseCase {
       homeworkId,
       studentId: context.studentId,
       enrollmentId: context.enrollmentId,
+      richActor: { surface: 'student', student: context },
       questionId,
       answer: mapSingleAnswerDto({ questionId, dto }),
       isDraft: dto.isDraft,

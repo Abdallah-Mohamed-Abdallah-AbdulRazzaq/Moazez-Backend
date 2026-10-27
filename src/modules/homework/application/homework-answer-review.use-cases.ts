@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import type { HomeworkAssetActor } from '../domain/homework-question-asset';
+import { projectHomeworkAnswerRich } from './homework-answers.use-cases';
 import {
   AuditOutcome,
   HomeworkAssignmentStatus,
@@ -35,6 +37,7 @@ import {
 } from '../presenters/homework-answer.presenter';
 
 export interface ReviewHomeworkSubmissionAnswerCommand {
+  richActor?: HomeworkAssetActor;
   homeworkId: string;
   submissionId: string;
   answerId: string;
@@ -43,6 +46,7 @@ export interface ReviewHomeworkSubmissionAnswerCommand {
 }
 
 export interface BulkReviewHomeworkSubmissionAnswersCommand {
+  richActor?: HomeworkAssetActor;
   homeworkId: string;
   submissionId: string;
   reviewedByUserId?: string;
@@ -90,6 +94,13 @@ export class ReviewHomeworkSubmissionAnswerUseCase {
       }),
     );
 
+    await projectHomeworkAnswerRich(
+      this.homeworkRepository,
+      command.homeworkId,
+      [answer],
+      'review',
+      command.richActor,
+    );
     return presentHomeworkAnswerDetailTeacher(answer);
   }
 }
@@ -130,6 +141,13 @@ export class BulkReviewHomeworkSubmissionAnswersUseCase {
       }),
     );
 
+    await projectHomeworkAnswerRich(
+      this.homeworkRepository,
+      command.homeworkId,
+      reviewedAnswers,
+      'review',
+      command.richActor,
+    );
     return presentHomeworkAnswersTeacher(reviewedAnswers);
   }
 }

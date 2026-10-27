@@ -318,6 +318,59 @@ const PURE_METHODS = new Set([
   'toLowerCase', 'trim', 'values',
 ]);
 const REVIEWED_CALL_OVERRIDES = Object.freeze([
+  // ST08-C: two exact Homework transaction owners; existing Grades rules stay intact.
+  ...[
+    ['src/modules/homework/application/homework-rich-content.service.ts', 'HomeworkRichContentService.project'],
+    ['src/modules/homework/infrastructure/homework.repository.ts', 'HomeworkRepository.questionMutation'],
+  ].map(([path, owner]) => Object.freeze({
+    path,
+    owner,
+    origin: 'assertHomeworkMediaAuthorization',
+    target: /^gate\.lock$/,
+    explicitLock: true,
+    reason: 'ST08-C reuses the independently audited Prisma allocation gate on the active transaction.',
+    classification: 'LOCK_CONTENTION_SENSITIVE',
+    resolvedCallers: Object.freeze(['PrismaTeacherAllocationOperationalWriteGate.lock']),
+    evidence: 'The existing ST06 authorization helper receives the active scoped Prisma.TransactionClient. Its write branch takes allocation and hierarchy database fences before assignment/question locks. Read projection cannot enter this write-only gate branch. The dedicated allocation-gate audit still rejects nested transactions, transaction escapes and external waits. No gate implementation or runtime wiring changes.',
+  })),
+  Object.freeze({
+    path: 'src/modules/homework/application/homework-rich-content.service.ts',
+    owner: 'HomeworkRichContentService.project',
+    origin: 'stringBytes',
+    target: /^Buffer\.byteLength$/,
+    reason: 'ST08-C read normalization uses the unchanged synchronous UTF-8 length intrinsic.',
+    classification: 'LOCK_CONTENTION_SENSITIVE',
+    resolvedCallers: Object.freeze(['normalizeRichContent', 'stringBytes']),
+    evidence: 'The canonical shared Rich validator bounds primitives and the envelope before memory-only Buffer.byteLength(value, utf8). No filesystem, provider, network, queue, timer or database operation occurs in this intrinsic. This mapping applies only to this exact Homework reader and helper origin.',
+  }),
+  Object.freeze({
+    path: 'src/modules/homework/application/homework-rich-content.service.ts',
+    owner: 'HomeworkRichContentService.project',
+    origin: 'classifyPersistedUrl',
+    target: /^parsed\.toString$/,
+    reason: 'ST08-C READY policy validation formats a URL without fetching it.',
+    classification: 'LOCK_CONTENTION_SENSITIVE',
+    resolvedCallers: Object.freeze(['classifyPersistedUrl']),
+    evidence: 'The existing persisted URL policy constructs and validates a standard URL, then synchronously serializes it. It issues no HTTP request or signed capability. The concrete HomeworkQuestionAssetsRepository resolver uses only the supplied transaction, live scoped authority, READY File/session database evidence and synchronous policy checks. Private bucket selection is an immutable constructor lookup.',
+  }),
+  Object.freeze({
+    path: 'src/modules/homework/infrastructure/homework.repository.ts',
+    owner: 'HomeworkRepository.questionMutation',
+    origin: 'transaction-callback',
+    target: /^operation$/,
+    explicitLock: true,
+    reason: 'ST08-C private mutation facade has exactly six reviewed Homework question/option callbacks.',
+    classification: 'LOCK_CONTENTION_SENSITIVE',
+    resolvedCallers: Object.freeze([
+      'HomeworkRepository.createQuestionWithOptions',
+      'HomeworkRepository.updateQuestion',
+      'HomeworkRepository.softDeleteQuestion',
+      'HomeworkRepository.createQuestionOption',
+      'HomeworkRepository.updateQuestionOption',
+      'HomeworkRepository.softDeleteQuestionOption',
+    ]),
+    evidence: 'All six callbacks use only the supplied scoped Prisma.TransactionClient, the unchanged synchronous Rich normalizer/fallback planner, and the concrete HomeworkQuestionAssetsRepository resolver on that same transaction. The resolver reuses ST06 authorization and the independently audited allocation gate, exact active parent/binding checks, READY File/session database evidence and synchronous policy validation. No callback performs storage I/O, signing, HTTP, queues, timers or nested transactions. Implicit-clear escalation throws before writes, rolls back, then starts one fresh ordered transaction using the original command. Audit publication and response projection run after the mutation commits. The private facade uses maxWait 5000 and timeout 15000.',
+  }),
   // ST08-B: exact transaction owners only; no global intrinsic/port allowlist.
   ...[
     [

@@ -1,4 +1,16 @@
+import type {
+  RichQuestionContent,
+  RichOptionContent,
+} from '../../../common/rich-content/rich-content.types';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+
 export class HomeworkAnswerSelectedOptionResponseDto {
+  @ApiPropertyOptional({
+    type: Object,
+    description:
+      'Authorized V1 selected-option display; omitted for Parent consumers.',
+  })
+  richContent?: RichOptionContent;
   optionId!: string;
   questionId!: string;
   text!: string;
@@ -7,6 +19,12 @@ export class HomeworkAnswerSelectedOptionResponseDto {
 }
 
 export class HomeworkAnswerPromptSummaryDto {
+  @ApiPropertyOptional({
+    type: Object,
+    description:
+      'Authorized V1 question display in the existing Teacher review prompt.',
+  })
+  richContent?: RichQuestionContent;
   questionId!: string;
   type!: string;
   prompt!: string;
