@@ -181,7 +181,7 @@ describe('ST08-C real PostgreSQL Homework Rich transactions and cross-domain iso
       gate,
       fixture.repository,
       new AssessmentMediaRuntimePolicy(fixture.config),
-      fixture.storage,
+      fixture.config,
       urls,
     );
     rich = new HomeworkRichContentService(prisma, gate, assets);

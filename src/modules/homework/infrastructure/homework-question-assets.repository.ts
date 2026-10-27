@@ -4,6 +4,7 @@ import {
 } from '../../../common/context/request-context';
 import type { RichAssetResolver } from '../../../common/rich-content/rich-content.types';
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PersistedUrlPolicy } from '../../../infrastructure/storage/provider-url.policy';
 import {
   AuditOutcome,
@@ -16,7 +17,6 @@ import {
   ValidationDomainException,
 } from '../../../common/exceptions/domain-exception';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
-import { StorageService } from '../../../infrastructure/storage/storage.service';
 import { TeacherAllocationOperationalWriteGate } from '../../academics/teacher-allocation/application/teacher-allocation-operational-write-gate';
 import { AssessmentMediaRuntimePolicy } from '../../files/assessment-media/application/assessment-media-runtime.policy';
 import {
@@ -80,10 +80,10 @@ export class HomeworkQuestionAssetsRepository implements RichAssetResolver<
     private readonly gate: TeacherAllocationOperationalWriteGate,
     private readonly media: AssessmentMediaRepository,
     private readonly runtime: AssessmentMediaRuntimePolicy,
-    storage: StorageService,
+    config: ConfigService,
     private readonly urls: PersistedUrlPolicy,
   ) {
-    this.privateBucket = storage.resolveBucket('PRIVATE');
+    this.privateBucket = config.getOrThrow<string>('STORAGE_BUCKET');
   }
   private get scoped(): PrismaService {
     return this.prisma.scoped as unknown as PrismaService;

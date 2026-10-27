@@ -77,7 +77,7 @@ describe('ST-06 exact Homework question assets on real PostgreSQL and private Mi
       gate,
       fixture.repository,
       new AssessmentMediaRuntimePolicy(fixture.config),
-      fixture.storage,
+      fixture.config,
       new PersistedUrlPolicy({
         s3CompatibleEndpoints: [
           fixture.config.getOrThrow<string>('STORAGE_ENDPOINT'),
