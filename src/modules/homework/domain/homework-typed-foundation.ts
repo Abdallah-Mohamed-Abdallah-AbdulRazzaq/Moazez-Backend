@@ -25,7 +25,9 @@ function boundedJson(input: unknown): void {
     if (++nodes > LIMIT.nodes || depth > LIMIT.depth) invalid('limit');
     if (typeof value === 'string') {
       if (value.length > LIMIT.jsonBytes) invalid('limit');
-      bytes += Buffer.byteLength(value, 'utf8') + 2;
+      // Serialize only a primitive: count escaped quotes/control characters
+      // without invoking an object's getters or toJSON hook.
+      bytes += Buffer.byteLength(JSON.stringify(value), 'utf8');
     } else if (value === null || typeof value === 'boolean') {
       bytes += 5;
     } else if (typeof value === 'number') {

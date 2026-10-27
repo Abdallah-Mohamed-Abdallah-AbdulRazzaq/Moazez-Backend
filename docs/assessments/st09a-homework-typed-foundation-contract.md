@@ -172,8 +172,10 @@ history. Read classifiers require an authoritative `column IS NULL` boolean
 alongside the stored value; Prisma JavaScript null alone is insufficient.
 The opt-in persistence helpers validate values and reconstruct explicit fields.
 Only a tagged `{state:'clear'}` maps to Prisma.DbNull; raw null is invalid as a
-typed value. Clearing a required final answer is rejected as incomplete; draft
-and optional final absence may be cleared explicitly. Existing runtime selects and unchecked input aliases do not acquire
+typed value. Clearing a required final Fill/Matching answer is rejected as
+incomplete; draft and optional final absence may be cleared explicitly. MEDIA
+always keeps answerJson SQL NULL, including required final answers; its textAnswer
+must be validated separately by the normalizer. Existing runtime selects and unchecked input aliases do not acquire
 answerKey/answerJson automatically. No current response/DTO field is added.
 
 | Audience                   | ST09-A / future boundary                                                                                           |

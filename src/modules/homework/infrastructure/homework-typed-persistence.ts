@@ -49,7 +49,7 @@ export function homeworkAnswerJsonPersistence(
   required: boolean,
 ): Prisma.InputJsonValue | Prisma.NullTypes.DbNull {
   if (write.state === 'clear') {
-    if (mode === 'final' && required)
+    if (definition.kind !== 'media' && mode === 'final' && required)
       throw new HomeworkTypedContentError('completeness');
     return Prisma.DbNull;
   }

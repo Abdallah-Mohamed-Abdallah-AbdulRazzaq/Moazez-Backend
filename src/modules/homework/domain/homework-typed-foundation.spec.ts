@@ -339,6 +339,17 @@ describe('ST09-A pure Homework typed foundation (runtime inactive)', () => {
   });
 
   it('enforces collection, label, key and MEDIA text ceilings at their boundaries', () => {
+    invalid(() =>
+      definition('FILL_IN_BLANK', {
+        definitionVersion: 1,
+        kind: 'fill',
+        blanks: [{ id: 'a', order: 1 }],
+        segments: [
+          { blankId: 'a' },
+          ...Array.from({ length: 12 }, () => ({ text: '\\'.repeat(5000) })),
+        ],
+      }),
+    );
     const f = definition('FILL_IN_BLANK', {
       definitionVersion: 1,
       kind: 'fill',
@@ -438,6 +449,17 @@ describe('ST09-A pure Homework typed foundation (runtime inactive)', () => {
     invalid(() =>
       homeworkAnswerJsonPersistence(fill(), { state: 'clear' }, 'final', true),
     );
+    invalid(() =>
+      homeworkAnswerJsonPersistence(
+        matching(),
+        { state: 'clear' },
+        'final',
+        true,
+      ),
+    );
+    expect(
+      homeworkAnswerJsonPersistence(media(), { state: 'clear' }, 'final', true),
+    ).toBe(Prisma.DbNull);
     expect(homeworkAnswerKeyPersistence(fill(), { state: 'clear' })).toBe(
       Prisma.DbNull,
     );
