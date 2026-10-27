@@ -1,3 +1,9 @@
+import { GradeAssetsRepository } from './grade-assets.repository';
+import {
+  authorizeGradeRichReview,
+  hasGradeRichSelection,
+  projectGradeRichContent,
+} from './grade-rich-content.projection';
 import {
   assertGradeSubmissionAccess,
   assertGradeLiveMutationPermission,
@@ -128,6 +134,7 @@ const QUESTION_FOR_SUBMISSION_ARGS =
       type: true,
       prompt: true,
       promptAr: true,
+      richContent: true,
       points: true,
       sortOrder: true,
       required: true,
@@ -141,6 +148,7 @@ const QUESTION_FOR_SUBMISSION_ARGS =
           questionId: true,
           label: true,
           labelAr: true,
+          richContent: true,
           value: true,
           sortOrder: true,
           deletedAt: true,
@@ -364,7 +372,10 @@ export interface FinalizeSubmissionInput {
 
 @Injectable()
 export class GradesSubmissionsRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly richAssets?: GradeAssetsRepository,
+  ) {}
 
   private get scopedPrisma(): PrismaService {
     return this.prisma.scoped as unknown as PrismaService;
@@ -578,20 +589,41 @@ export class GradesSubmissionsRepository {
     });
   }
 
-  findQuestionsForSubmission(
+  async findQuestionsForSubmission(
     assessmentId: string,
+    questionIds?: string[],
   ): Promise<GradeSubmissionQuestionRecord[]> {
-    return this.scopedPrisma.gradeAssessmentQuestion.findMany({
-      where: { assessmentId },
+    const questions = await this.scopedPrisma.gradeAssessmentQuestion.findMany({
+      where: {
+        assessmentId,
+        ...(questionIds ? { id: { in: questionIds } } : {}),
+      },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
       ...QUESTION_FOR_SUBMISSION_ARGS,
     });
+    // Students receive Rich display through their independently scoped app adapters.
+    if (
+      requireGradesScope().userType !== 'STUDENT' &&
+      hasGradeRichSelection(questions)
+    )
+      await this.scopedPrisma.$transaction(async (tx) => {
+        await authorizeGradeRichReview(tx, assessmentId);
+        await projectGradeRichContent(
+          tx,
+          assessmentId,
+          questions,
+          this.richAssets,
+          'review',
+        );
+      });
+    return questions;
   }
 
   listActiveQuestionsForSubmission(
     assessmentId: string,
+    questionIds?: string[],
   ): Promise<GradeSubmissionQuestionRecord[]> {
-    return this.findQuestionsForSubmission(assessmentId);
+    return this.findQuestionsForSubmission(assessmentId, questionIds);
   }
 
   async listAnswersForSubmission(

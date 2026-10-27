@@ -98,6 +98,7 @@ import { GradesSubmissionsRepository } from './infrastructure/grades-submissions
     SyncGradeSubmissionToGradeItemUseCase,
   ],
   exports: [
+    GradeAssetsRepository,
     GradeAssetsService,
     GetGradeAssessmentUseCase,
     ListGradeAssessmentItemsUseCase,

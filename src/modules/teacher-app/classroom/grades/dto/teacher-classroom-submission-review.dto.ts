@@ -1,3 +1,4 @@
+import type { RichContent } from '../../../../../common/rich-content/rich-content.types';
 import { IsUUID } from 'class-validator';
 import { TeacherClassroomAssignmentSubmissionDetailResponseDto } from './teacher-classroom-grades.dto';
 
@@ -18,6 +19,7 @@ export class TeacherClassroomSubmissionAnswerReviewParamsDto extends TeacherClas
 }
 
 export class TeacherClassroomReviewedAnswerSelectedOptionDto {
+  richContent?: RichContent;
   optionId!: string;
   label!: string;
   labelAr!: string | null;

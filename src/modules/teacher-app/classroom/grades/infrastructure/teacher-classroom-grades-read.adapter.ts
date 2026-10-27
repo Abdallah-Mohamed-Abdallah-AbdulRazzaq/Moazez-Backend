@@ -1,3 +1,11 @@
+import { GradeAssetsRepository } from '../../../../grades/assessments/infrastructure/grade-assets.repository';
+import {
+  authorizeGradeRichReview,
+  hasGradeRichSelection,
+  projectGradeRichContent,
+} from '../../../../grades/assessments/infrastructure/grade-rich-content.projection';
+import { requireGradesScope } from '../../../../grades/grades-context';
+import { ownedAllocationWhere } from '../../../../academics/teacher-allocation/domain/owned-allocation';
 import { Injectable } from '@nestjs/common';
 import {
   GradeAssessmentApprovalStatus,
@@ -98,6 +106,11 @@ const ASSESSMENT_DETAIL_ARGS =
           type: true,
           prompt: true,
           promptAr: true,
+          richContent: true,
+          options: {
+            where: { deletedAt: null },
+            select: { id: true, label: true, labelAr: true, richContent: true },
+          },
           points: true,
           sortOrder: true,
           required: true,
@@ -319,7 +332,10 @@ export interface TeacherClassroomSubmissionReviewBoundaryResult {
 
 @Injectable()
 export class TeacherClassroomGradesReadAdapter {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly richAssets?: GradeAssetsRepository,
+  ) {}
 
   private get scopedPrisma(): PrismaService {
     return this.prisma.scoped as unknown as PrismaService;
@@ -368,6 +384,7 @@ export class TeacherClassroomGradesReadAdapter {
       });
     }
 
+    await this.projectRich(params.allocation, assessment);
     const [itemStatusRows, submissionStatusRows] = await Promise.all([
       this.scopedPrisma.gradeItem.groupBy({
         by: ['status'],
@@ -548,6 +565,7 @@ export class TeacherClassroomGradesReadAdapter {
       });
     }
 
+    await this.projectRich(params.allocation, assignment);
     const [itemStatusRows, submissionStatusRows] = await Promise.all([
       this.scopedPrisma.gradeItem.groupBy({
         by: ['status'],
@@ -804,6 +822,45 @@ export class TeacherClassroomGradesReadAdapter {
         answerIds: missingAnswerIds,
       });
     }
+  }
+
+  private async projectRich(
+    allocation: TeacherAppAllocationRecord,
+    assessment: TeacherClassroomAssessmentDetailRecord,
+  ): Promise<void> {
+    if (!hasGradeRichSelection(assessment.questions)) return;
+    await this.scopedPrisma.$transaction(async (tx) => {
+      await authorizeGradeRichReview(tx, assessment.id);
+      const owned = await tx.teacherSubjectAllocation.findFirst({
+        where: {
+          AND: [
+            ownedAllocationWhere(requireGradesScope().actorId),
+            {
+              id: allocation.id,
+              classroomId: allocation.classroomId,
+              subjectId: allocation.subjectId,
+              termId: allocation.termId,
+            },
+          ],
+        },
+        select: { id: true },
+      });
+      const current = await tx.gradeAssessment.findFirst({
+        where: buildAssessmentWhere({
+          allocation,
+          assessmentId: assessment.id,
+        }),
+        select: { id: true },
+      });
+      if (!owned || !current) throw new NotFoundDomainException();
+      await projectGradeRichContent(
+        tx,
+        assessment.id,
+        assessment.questions,
+        this.richAssets,
+        'review',
+      );
+    });
   }
 
   private async findOwnedAssignmentCardOrThrow(params: {

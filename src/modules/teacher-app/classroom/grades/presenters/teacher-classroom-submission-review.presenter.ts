@@ -142,6 +142,7 @@ function presentReviewedAnswer(
       text: answer.answerText,
       json: answer.answerJson ?? null,
       selectedOptions: answer.selectedOptions.map((selected) => ({
+        ...(selected.richContent ? { richContent: selected.richContent } : {}),
         optionId: selected.optionId,
         label: selected.label,
         labelAr: selected.labelAr,
@@ -166,6 +167,9 @@ function presentSubmissionQuestion(params: {
     answerId: answer?.id ?? null,
     questionId: params.question.id,
     type: params.question.type,
+    ...(params.question.richContent
+      ? { richContent: params.question.richContent }
+      : {}),
     prompt: params.question.prompt,
     promptAr: params.question.promptAr,
     required: params.question.required,
@@ -175,6 +179,9 @@ function presentSubmissionQuestion(params: {
           text: answer.answerText,
           json: answer.answerJson ?? null,
           selectedOptions: answer.selectedOptions.map((selected) => ({
+            ...(selected.richContent
+              ? { richContent: selected.richContent }
+              : {}),
             optionId: selected.optionId,
             label: selected.label,
             labelAr: selected.labelAr,
@@ -187,7 +194,7 @@ function presentSubmissionQuestion(params: {
     maxScore: answer?.maxPoints ?? params.question.points,
     reviewedAt: answer?.reviewedAt ?? null,
     feedback: answer
-      ? answer.reviewerComment ?? answer.reviewerCommentAr ?? null
+      ? (answer.reviewerComment ?? answer.reviewerCommentAr ?? null)
       : null,
   };
 }

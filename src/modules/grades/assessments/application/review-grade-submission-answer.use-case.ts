@@ -5,6 +5,7 @@ import { assertSubmissionReviewable } from '../domain/grade-submission-review-do
 import { ReviewGradeSubmissionAnswerDto } from '../dto/grade-submission-review.dto';
 import { GradesSubmissionsRepository } from '../infrastructure/grades-submissions.repository';
 import { presentGradeSubmissionAnswer } from '../presenters/grade-submission.presenter';
+import { hasGradeRichSelection } from '../infrastructure/grade-rich-content.projection';
 import {
   buildSingleAnswerReviewAuditEntry,
   findReviewAnswerOrThrow,
@@ -52,6 +53,15 @@ export class ReviewGradeSubmissionAnswerUseCase {
       }),
     );
 
-    return presentGradeSubmissionAnswer(updated);
+    const displayQuestions = hasGradeRichSelection([updated.question])
+      ? await this.gradesSubmissionsRepository.listActiveQuestionsForSubmission(
+          submission.assessmentId,
+          [updated.questionId],
+        )
+      : [];
+    return presentGradeSubmissionAnswer(
+      updated,
+      displayQuestions.find((question) => question.id === updated.questionId),
+    );
   }
 }

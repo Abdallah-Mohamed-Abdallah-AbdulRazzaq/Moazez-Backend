@@ -1,4 +1,10 @@
+import type { RichAssetResolver } from '../../../../common/rich-content/rich-content.types';
+import { getRequestContext } from '../../../../common/context/request-context';
+import { ownedAllocationWhere } from '../../../academics/teacher-allocation/domain/owned-allocation';
+import { requireGradesScope } from '../../grades-context';
+import { assertGradeLiveMutationPermission } from './grades-resource-access';
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   AuditOutcome,
   Prisma,
@@ -12,7 +18,6 @@ import {
   ValidationDomainException,
 } from '../../../../common/exceptions/domain-exception';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
-import { StorageService } from '../../../../infrastructure/storage/storage.service';
 import { PersistedUrlPolicy } from '../../../../infrastructure/storage/provider-url.policy';
 import { TeacherAllocationOperationalWriteGate } from '../../../academics/teacher-allocation/application/teacher-allocation-operational-write-gate';
 import { AssessmentMediaRuntimePolicy } from '../../../files/assessment-media/application/assessment-media-runtime.policy';
@@ -71,15 +76,22 @@ const orderBy = [
 ] as const;
 
 @Injectable()
-export class GradeAssetsRepository {
+export class GradeAssetsRepository implements RichAssetResolver<
+  Prisma.TransactionClient,
+  GradesScope
+> {
+  private readonly privateBucket: string;
   constructor(
     private readonly prisma: PrismaService,
     private readonly gate: TeacherAllocationOperationalWriteGate,
     private readonly media: AssessmentMediaRepository,
     private readonly runtime: AssessmentMediaRuntimePolicy,
-    private readonly storage: StorageService,
+    config: ConfigService,
     private readonly urls: PersistedUrlPolicy,
-  ) {}
+  ) {
+    // Immutable configuration lookup, before any authorization transaction.
+    this.privateBucket = config.getOrThrow<string>('STORAGE_BUCKET');
+  }
   private transaction<T>(
     operation: (tx: Prisma.TransactionClient) => Promise<T>,
   ): Promise<T> {
@@ -102,6 +114,7 @@ export class GradeAssetsRepository {
     asset: Asset,
     assessmentId: string,
     policy: EffectiveAssessmentMediaPolicy,
+    lock = false,
   ): Promise<GradeAssetView> {
     let file: ManagedFile | null = null;
     let externalUrl: string | null = null;
@@ -111,7 +124,8 @@ export class GradeAssetsRepository {
           fileId: asset.fileId,
           contextId: assessmentId,
           creatorId: asset.createdByUserId,
-          privateBucket: this.storage.resolveBucket('PRIVATE'),
+          privateBucket: this.privateBucket,
+          lock,
         });
         assertAssessmentReadyContentPolicy(policy, ready.session, ready.file);
         if (
@@ -139,6 +153,133 @@ export class GradeAssetsRepository {
       downloadAllowed: !!file && policy.allowDownload,
     };
   }
+  /** Rich authoring uses the existing ST07 exact Teacher boundary and lock order. */
+  async assertRichWrite(
+    tx: Prisma.TransactionClient,
+    assessmentId: string,
+  ): Promise<void> {
+    const scope = requireGradesScope();
+    let actor: GradeAssetActor = { surface: 'core' };
+    if (scope.userType === 'TEACHER') {
+      const assessment = await tx.gradeAssessment.findFirst({
+        where: { id: assessmentId },
+        select: { classroomId: true, subjectId: true, termId: true },
+      });
+      if (!assessment?.classroomId) throw absent();
+      const allocation = await tx.teacherSubjectAllocation.findFirst({
+        where: {
+          AND: [
+            ownedAllocationWhere(scope.actorId),
+            {
+              classroomId: assessment.classroomId ?? '',
+              subjectId: assessment.subjectId,
+              termId: assessment.termId,
+            },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!allocation) throw absent();
+      actor = { surface: 'teacher', classId: allocation.id };
+    }
+    await authorizeGradeAssets(
+      tx,
+      this.gate,
+      actor,
+      { assessmentId },
+      true,
+      false,
+      true,
+    );
+  }
+
+  /** No capability is issued. The caller holds the authorized resource transaction. */
+  async assertReference(
+    input: Parameters<
+      RichAssetResolver<
+        Prisma.TransactionClient,
+        GradesScope
+      >['assertReference']
+    >[0],
+  ): Promise<void> {
+    const { transaction: tx, owner, actor, reference, audience } = input;
+    const scope = requireGradesScope();
+    if (
+      owner.domain !== 'grades' ||
+      input.schoolId !== scope.schoolId ||
+      actor.actorId !== scope.actorId ||
+      actor.userType !== scope.userType ||
+      actor.roleId !== scope.roleId ||
+      actor.schoolId !== scope.schoolId ||
+      actor.organizationId !== scope.organizationId ||
+      !getRequestContext()?.activeMembership ||
+      getRequestContext()?.bypass.bypassSchoolScope ||
+      getRequestContext()?.bypass.includeSoftDeleted
+    )
+      throw absent();
+    const permissions =
+      getRequestContext()?.activeMembership?.permissions ?? [];
+    const permission =
+      audience === 'author'
+        ? 'grades.questions.manage'
+        : audience === 'student'
+          ? 'grades.assessments.view'
+          : [
+              'grades.questions.view',
+              'grades.questions.manage',
+              'grades.submissions.view',
+              'grades.submissions.review',
+              'grades.assessments.view',
+            ].find((value) => permissions.includes(value));
+    if (!permission) throw absent();
+    await assertGradeLiveMutationPermission(tx, permission);
+    const question = await tx.gradeAssessmentQuestion.findFirst({
+      where: {
+        id: owner.questionId,
+        assessmentId: owner.assessmentId,
+        schoolId: scope.schoolId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (!question) throw absent();
+    if (
+      owner.optionId &&
+      !(await tx.gradeAssessmentQuestionOption.findFirst({
+        where: {
+          id: owner.optionId,
+          questionId: owner.questionId,
+          assessmentId: owner.assessmentId,
+          schoolId: scope.schoolId,
+          deletedAt: null,
+        },
+        select: { id: true },
+      }))
+    )
+      throw absent();
+    if (audience === 'author')
+      await tx.$queryRaw`SELECT id FROM grade_assessment_question_assets WHERE id = ${reference.assetId}::uuid AND question_id = ${owner.questionId}::uuid AND school_id = ${scope.schoolId}::uuid AND deleted_at IS NULL FOR SHARE`;
+    const asset = await tx.gradeAssessmentQuestionAsset.findFirst({
+      where: {
+        id: reference.assetId,
+        questionId: owner.questionId,
+        schoolId: scope.schoolId,
+        deletedAt: null,
+      },
+    });
+    if (!asset || asset.category.toLowerCase() !== reference.kind)
+      throw absent();
+    const policy = await this.policy(tx, scope.schoolId, audience === 'author');
+    const view = await this.view(
+      tx,
+      asset,
+      owner.assessmentId,
+      policy,
+      audience === 'author',
+    );
+    if (!view.usable) throw absent();
+  }
+
   async read(
     actor: GradeAssetActor,
     input: GradeAssetResource,
@@ -239,7 +380,7 @@ export class GradeAssetsRepository {
             uploadId: data.uploadId!,
             contextId: input.assessmentId,
             creatorId: scope.actorId,
-            privateBucket: this.storage.resolveBucket('PRIVATE'),
+            privateBucket: this.privateBucket,
             lock: true,
           });
           assertAssessmentReadyContentPolicy(policy, ready.session, ready.file);

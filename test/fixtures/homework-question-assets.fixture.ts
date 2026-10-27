@@ -194,7 +194,7 @@ export class HomeworkQuestionAssetsFixture extends AssessmentMediaFixture {
   async ready(
     contextId: string,
     actor: MediaFixtureActor = 'teacher',
-    bytes = Buffer.from('Owned ST06 verified text\n'),
+    bytes: Buffer = Buffer.from('Owned ST06 verified text\n'),
     purpose: AssessmentMediaPurpose = 'HOMEWORK_ASSIGNMENT_MEDIA',
     filename = 'reference.txt',
   ) {

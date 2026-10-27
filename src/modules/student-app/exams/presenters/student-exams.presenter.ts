@@ -1,3 +1,4 @@
+import { presentGradeRichContent } from '../../../grades/assessments/infrastructure/grade-rich-content.projection';
 import type { GradeAssetDto } from '../../../grades/assessments/dto/grade-asset.dto';
 type AssetProjection = {
   assessment: GradeAssetDto[];
@@ -87,6 +88,7 @@ export class StudentExamsPresenter {
     });
     const questions = result.exam.questions.map((question) => ({
       assets: assets.questions.get(question.id) ?? [],
+      ...presentGradeRichContent(question),
       id: question.id,
       questionId: question.id,
       ...presentGradeQuestionContract(question.type, question),
@@ -101,6 +103,7 @@ export class StudentExamsPresenter {
         ? question.options
         : []
       ).map((option) => ({
+        ...presentGradeRichContent(option),
         optionId: option.id,
         label:
           (sanitizeGradeQuestionContent(option.label) as string | null) ?? '',
@@ -220,6 +223,12 @@ function presentSubmission(
         ? answer.selectedOptions
         : []
       ).map((selected) => ({
+        ...presentGradeRichContent(
+          exam.questions
+            .find((q) => q.id === answer.questionId)
+            ?.options.find((o) => o.id === selected.optionId) ??
+            selected.option,
+        ),
         optionId: selected.optionId,
         label:
           (sanitizeGradeQuestionContent(selected.option.label) as

@@ -1,3 +1,4 @@
+import { presentGradeRichContent } from '../infrastructure/grade-rich-content.projection';
 import { sanitizeGradeQuestionContent } from '../domain/grade-question-content-policy';
 import { presentGradeQuestionContract } from '../../shared/presenters/grade-question-contract';
 import { GradeQuestionType } from '@prisma/client';
@@ -20,6 +21,7 @@ export function presentGradeAssessmentQuestion(
   authoring = false,
 ): GradeAssessmentQuestionResponseDto {
   return {
+    ...presentGradeRichContent(question),
     id: question.id,
     assessmentId: question.assessmentId,
     type: presentQuestionType(question.type),
@@ -87,6 +89,7 @@ function presentQuestionOption(
   authoring: boolean,
 ): GradeQuestionOptionResponseDto {
   return {
+    ...presentGradeRichContent(option),
     id: option.id,
     label: (sanitizeGradeQuestionContent(option.label) as string | null) ?? '',
     labelAr: sanitizeGradeQuestionContent(option.labelAr) as string | null,

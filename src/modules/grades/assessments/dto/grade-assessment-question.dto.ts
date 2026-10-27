@@ -1,5 +1,7 @@
+import type { RichContent } from '../../../../common/rich-content/rich-content.types';
 import { Type, Transform } from 'class-transformer';
 import {
+  Allow,
   ArrayMaxSize,
   ArrayNotEmpty,
   IsArray,
@@ -40,6 +42,9 @@ function toBooleanValue(value: unknown): unknown {
 export class ListGradeAssessmentQuestionsQueryDto {}
 
 export class GradeQuestionOptionDto {
+  // Validated presence-sensitively by the Grades domain and final transaction.
+  @Allow()
+  richContent?: unknown;
   @IsOptional()
   @IsUUID()
   id?: string;
@@ -92,6 +97,8 @@ export class GradeQuestionOptionDto {
 }
 
 export class CreateGradeAssessmentQuestionDto {
+  @Allow()
+  richContent?: unknown;
   @IsOptional()
   @Transform(({ value }) => toUpperEnumValue(value))
   @IsEnum(GradeQuestionType)
@@ -219,6 +226,8 @@ export class CreateGradeAssessmentQuestionDto {
 }
 
 export class UpdateGradeAssessmentQuestionDto {
+  @Allow()
+  richContent?: unknown;
   @IsOptional()
   @Transform(({ value }) => toUpperEnumValue(value))
   @IsEnum(GradeQuestionType)
@@ -381,6 +390,7 @@ export class BulkUpdateGradeAssessmentQuestionPointsDto {
 }
 
 export class GradeQuestionOptionResponseDto {
+  richContent?: RichContent;
   id!: string;
   label!: string;
   labelAr!: string | null;

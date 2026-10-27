@@ -932,18 +932,30 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
       planner.listRepositoryFiles({ repositoryRoot: REPOSITORY_ROOT }),
     ),
   );
-  assert.equal(assignments.length, 1019);
+  const st08bFiles = [
+    ['src/modules/grades/assessments/tests/grade-rich-content.spec.ts', 'unit'],
+    [
+      'test/integration/grade-rich-content.integration.spec.ts',
+      'integration-general',
+    ],
+    ['test/e2e/grade-rich-content.e2e-spec.ts', 'e2e'],
+  ];
+  assert.equal(assignments.length, 1019 + st08bFiles.length);
   assert.equal(
     assignments.filter((item) => item.execution === 'manual').length,
     10,
   );
   assert.equal(
     assignments.filter((item) => item.execution !== 'manual').length,
-    1009,
+    1009 + st08bFiles.length,
   );
   for (const [file, profile] of [
     ['src/common/rich-content/rich-content.spec.ts', 'unit'],
-    ['test/integration/safe-rich-content-persistence.integration.spec.ts', 'integration-general'],
+    [
+      'test/integration/safe-rich-content-persistence.integration.spec.ts',
+      'integration-general',
+    ],
+    ...st08bFiles,
   ]) {
     const matches = assignments.filter((item) => item.file === file);
     assert.equal(matches.length, 1);

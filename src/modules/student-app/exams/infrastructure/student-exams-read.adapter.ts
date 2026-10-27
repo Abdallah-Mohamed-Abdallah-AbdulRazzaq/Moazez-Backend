@@ -1,3 +1,9 @@
+import { GradeAssetsRepository } from '../../../grades/assessments/infrastructure/grade-assets.repository';
+import {
+  hasGradeRichSelection,
+  projectGradeRichContent,
+} from '../../../grades/assessments/infrastructure/grade-rich-content.projection';
+import { assertGradeLiveMutationPermission } from '../../../grades/assessments/infrastructure/grades-resource-access';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 import { Injectable } from '@nestjs/common';
 import {
@@ -114,6 +120,7 @@ const STUDENT_EXAM_DETAIL_ARGS =
           type: true,
           prompt: true,
           promptAr: true,
+          richContent: true,
           points: true,
           sortOrder: true,
           required: true,
@@ -125,6 +132,7 @@ const STUDENT_EXAM_DETAIL_ARGS =
               id: true,
               label: true,
               labelAr: true,
+              richContent: true,
               value: true,
               sortOrder: true,
             },
@@ -185,6 +193,7 @@ const STUDENT_EXAM_SUBMISSION_DETAIL_ARGS =
                   id: true,
                   label: true,
                   labelAr: true,
+                  richContent: true,
                   value: true,
                 },
               },
@@ -230,7 +239,10 @@ export interface StudentExamSubmissionReadResult {
 
 @Injectable()
 export class StudentExamsReadAdapter {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly richAssets?: GradeAssetsRepository,
+  ) {}
 
   private get scopedPrisma(): PrismaService {
     return this.prisma.scoped as unknown as PrismaService;
@@ -312,6 +324,18 @@ export class StudentExamsReadAdapter {
     });
 
     if (!exam) return null;
+    if (hasGradeRichSelection(exam.questions))
+      await this.scopedPrisma.$transaction(async (tx) => {
+        await assertGradeLiveMutationPermission(tx, 'grades.assessments.view');
+        await this.assertAssetAccess(tx, params.context, exam.id);
+        await projectGradeRichContent(
+          tx,
+          exam.id,
+          exam.questions,
+          this.richAssets,
+          'student',
+        );
+      });
 
     const submission = await this.scopedPrisma.gradeSubmission.findFirst({
       where: {
