@@ -1,3 +1,4 @@
+import { assertHomeworkRuntimeQuestionType } from '../../../homework/domain/homework-runtime-types';
 import {
   HomeworkAssignmentStatus,
   HomeworkSubmissionStatus,
@@ -182,6 +183,7 @@ function presentDetail(
 function presentSafeQuestion(
   question: ParentHomeworkTargetDetailReadModel['homeworkAssignment']['questions'][number],
 ): ParentHomeworkQuestionDto {
+  assertHomeworkRuntimeQuestionType(question.type);
   return {
     questionId: question.id,
     homeworkId: question.homeworkAssignmentId,

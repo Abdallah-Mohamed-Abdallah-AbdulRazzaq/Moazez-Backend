@@ -1,11 +1,11 @@
 import { Transform, Type } from 'class-transformer';
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   Allow,
   ArrayMaxSize,
   IsArray,
   IsBoolean,
-  IsEnum,
+  IsIn,
   IsInt,
   IsObject,
   IsOptional,
@@ -17,6 +17,7 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { HomeworkQuestionType } from '@prisma/client';
+import { HOMEWORK_RUNTIME_QUESTION_TYPES } from '../domain/homework-runtime-types';
 
 function trimText(value: unknown): unknown {
   return typeof value === 'string' ? value.trim() : value;
@@ -78,8 +79,9 @@ export class CreateHomeworkQuestionDto {
   })
   @Allow()
   richContent?: unknown;
+  @ApiProperty({ enum: HOMEWORK_RUNTIME_QUESTION_TYPES })
   @Transform(({ value }) => toUpperEnumValue(value))
-  @IsEnum(HomeworkQuestionType)
+  @IsIn(HOMEWORK_RUNTIME_QUESTION_TYPES)
   type!: HomeworkQuestionType;
 
   @ApiPropertyOptional({
@@ -147,9 +149,10 @@ export class UpdateHomeworkQuestionDto {
   })
   @Allow()
   richContent?: unknown;
+  @ApiPropertyOptional({ enum: HOMEWORK_RUNTIME_QUESTION_TYPES })
   @IsOptional()
   @Transform(({ value }) => toUpperEnumValue(value))
-  @IsEnum(HomeworkQuestionType)
+  @IsIn(HOMEWORK_RUNTIME_QUESTION_TYPES)
   type?: HomeworkQuestionType;
 
   @IsOptional()

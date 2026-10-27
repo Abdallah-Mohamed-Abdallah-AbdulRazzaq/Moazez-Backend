@@ -642,12 +642,19 @@ test('retirement TAP files have unique active runtime governance owners', () => 
     ['test/e2e/homework-rich-content.e2e-spec.ts', 'e2e'],
     ['test/security/tenancy.homework-rich-content.spec.ts', 'security'],
   ];
-  assert.equal(files.length, 1019 + st08bFiles.length + st08cFiles.length);
-  assert.equal(assignments.filter(item => item.execution === 'pull-request').length, 1009 + st08bFiles.length + st08cFiles.length);
+  // Register only the three ST09-A additions; planner/retirement owners stay unchanged.
+  const st09aFiles = [
+    ['src/modules/homework/domain/homework-typed-foundation.spec.ts', 'unit'],
+    ['test/integration/homework-typed-foundation.integration.spec.ts', 'integration-general'],
+    ['test/e2e/homework-typed-foundation.e2e-spec.ts', 'e2e'],
+  ];
+  assert.equal(files.length, 1019 + st08bFiles.length + st08cFiles.length + st09aFiles.length);
+  assert.equal(assignments.filter(item => item.execution === 'pull-request').length, 1009 + st08bFiles.length + st08cFiles.length + st09aFiles.length);
   assert.equal(assignments.filter(item => item.execution === 'manual').length, 10);
   for (const [file, profile] of [
     ...st08bFiles,
     ...st08cFiles,
+    ...st09aFiles,
     ['src/common/rich-content/rich-content.spec.ts', 'unit'],
     ['test/integration/safe-rich-content-persistence.integration.spec.ts', 'integration-general'],
     ['test/e2e/grade-assets.e2e-spec.ts', 'e2e'],

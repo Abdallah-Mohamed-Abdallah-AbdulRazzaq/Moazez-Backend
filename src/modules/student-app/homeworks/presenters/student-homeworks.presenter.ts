@@ -1,3 +1,4 @@
+import { assertHomeworkRuntimeQuestionType } from '../../../homework/domain/homework-runtime-types';
 import type { HomeworkQuestionAssetDto } from '../../../homework/dto/homework-question-asset.dto';
 import {
   presentHomeworkRichQuestion,
@@ -184,6 +185,7 @@ function presentSafeQuestion(
   question: StudentHomeworkTargetReadModel['homeworkAssignment']['questions'][number],
   assets: HomeworkQuestionAssetDto[],
 ): StudentHomeworkQuestionDto {
+  assertHomeworkRuntimeQuestionType(question.type);
   return {
     questionId: question.id,
     ...presentHomeworkRichQuestion(question),

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { assertHomeworkRuntimeQuestionType } from '../domain/homework-runtime-types';
 import {
   AuditOutcome,
   HomeworkAssignmentStatus,
@@ -571,6 +572,7 @@ function validateActiveQuestionStructures(
   questions: HomeworkQuestionRecord[],
 ): void {
   for (const question of questions) {
+    assertHomeworkRuntimeQuestionType(question.type);
     if (!question.prompt.trim()) {
       throw new HomeworkAssignmentInvalidQuestionStructureException({
         questionId: question.id,
@@ -638,6 +640,7 @@ async function normalizeCreateQuestionCommand(input: {
   question: CreateHomeworkQuestionData;
   options: CreateHomeworkQuestionOptionData[];
 }> {
+  assertHomeworkRuntimeQuestionType(input.command.type);
   const rich = homeworkRichInput(input.command, 'homeworkQuestion');
   const prompt = normalizeRequiredText(
     rich.display.prompt ?? input.command.prompt,
@@ -688,6 +691,8 @@ function normalizeUpdateQuestionCommand(
   command: UpdateHomeworkQuestionDto,
 ): UpdateHomeworkQuestionData {
   const nextType = command.type ?? existing.type;
+  assertHomeworkRuntimeQuestionType(existing.type);
+  assertHomeworkRuntimeQuestionType(nextType);
   if (
     command.type &&
     !isChoiceQuestionType(command.type) &&

@@ -1,4 +1,8 @@
 import { Injectable, Optional } from '@nestjs/common';
+import {
+  assertHomeworkRuntimeQuestionType,
+  assertHomeworkRuntimeQuestions,
+} from '../domain/homework-runtime-types';
 import type { RichContent } from '../../../common/rich-content/rich-content.types';
 import { NotFoundDomainException } from '../../../common/exceptions/domain-exception';
 import {
@@ -32,6 +36,7 @@ import {
   HomeworkSubmissionAlreadySubmittedException,
   HomeworkSubmissionNotSubmittableException,
   HomeworkSubmissionTargetNotFoundException,
+  HomeworkAssignmentNotFoundException,
 } from '../domain/homework.exceptions';
 import {
   HomeworkSubmissionAttachmentFileNotFoundException,
@@ -644,11 +649,11 @@ export type CreateHomeworkTargetData =
   Prisma.HomeworkTargetUncheckedCreateInput;
 export type CreateHomeworkQuestionData = Omit<
   Prisma.HomeworkQuestionUncheckedCreateInput,
-  'richContent'
+  'richContent' | 'answerKey'
 > & { richContent?: RichContent | null };
 export type UpdateHomeworkQuestionData = Omit<
   Prisma.HomeworkQuestionUncheckedUpdateInput,
-  'richContent'
+  'richContent' | 'answerKey'
 > & { richContent?: RichContent | null };
 export type CreateHomeworkQuestionOptionData = Omit<
   Prisma.HomeworkQuestionOptionUncheckedCreateInput,
@@ -662,10 +667,14 @@ export type CreateHomeworkAttachmentData =
   Prisma.HomeworkAssignmentAttachmentUncheckedCreateInput;
 export type UpdateHomeworkAttachmentData =
   Prisma.HomeworkAssignmentAttachmentUncheckedUpdateInput;
-export type CreateHomeworkSubmissionAnswerData =
-  Prisma.HomeworkSubmissionAnswerUncheckedCreateInput;
-export type UpdateHomeworkSubmissionAnswerData =
-  Prisma.HomeworkSubmissionAnswerUncheckedUpdateInput;
+export type CreateHomeworkSubmissionAnswerData = Omit<
+  Prisma.HomeworkSubmissionAnswerUncheckedCreateInput,
+  'answerJson'
+>;
+export type UpdateHomeworkSubmissionAnswerData = Omit<
+  Prisma.HomeworkSubmissionAnswerUncheckedUpdateInput,
+  'answerJson'
+>;
 export type CreateHomeworkSubmissionAttachmentData =
   Prisma.HomeworkSubmissionAttachmentUncheckedCreateInput;
 export type UpdateHomeworkSubmissionAttachmentData =
@@ -1097,22 +1106,36 @@ export class HomeworkRepository {
     >,
     targets: CreateHomeworkTargetData[],
   ): Promise<HomeworkAssignmentWithCounters> {
-    await this.scopedPrisma.$transaction([
-      this.scopedPrisma.homeworkTarget.deleteMany({
-        where: { homeworkAssignmentId: homeworkId },
-      }),
-      ...(targets.length > 0
-        ? [
-            this.scopedPrisma.homeworkTarget.createMany({
-              data: targets,
-            }),
-          ]
-        : []),
-      this.scopedPrisma.homeworkAssignment.updateMany({
-        where: { id: homeworkId, deletedAt: null },
-        data: data as Prisma.HomeworkAssignmentUncheckedUpdateManyInput,
-      }),
-    ]);
+    await this.scopedPrisma.$transaction(
+      async (tx) => {
+        const scope = requireHomeworkScope();
+        // Assignment-only lock: never acquire an allocation lock afterwards.
+        // Question writers use this same parent lock; inspect current types
+        // before any of the existing target/status mutations.
+        const assignment = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM homework_assignments
+        WHERE id = ${homeworkId}::uuid AND school_id = ${scope.schoolId}::uuid
+          AND deleted_at IS NULL FOR UPDATE
+      `;
+        if (!assignment.length) throw new HomeworkAssignmentNotFoundException();
+        const questions = await tx.homeworkQuestion.findMany({
+          where: { homeworkAssignmentId: homeworkId, deletedAt: null },
+          select: { type: true },
+          orderBy: { id: 'asc' },
+        });
+        assertHomeworkRuntimeQuestions(questions);
+        await tx.homeworkTarget.deleteMany({
+          where: { homeworkAssignmentId: homeworkId },
+        });
+        if (targets.length > 0)
+          await tx.homeworkTarget.createMany({ data: targets });
+        await tx.homeworkAssignment.updateMany({
+          where: { id: homeworkId, deletedAt: null },
+          data: data as Prisma.HomeworkAssignmentUncheckedUpdateManyInput,
+        });
+      },
+      { maxWait: 5000, timeout: 15000 },
+    );
 
     return this.findMutationResult(homeworkId);
   }
@@ -1176,6 +1199,7 @@ export class HomeworkRepository {
     options: CreateHomeworkQuestionOptionData[];
     actor?: HomeworkAssetActor;
   }): Promise<HomeworkQuestionRecord> {
+    assertHomeworkRuntimeQuestionType(input.question.type);
     const homeworkId = String(input.question.homeworkAssignmentId);
     const questionId = String(input.question.id);
     if (
@@ -1270,6 +1294,12 @@ export class HomeworkRepository {
           select: HOMEWORK_QUESTION_SELECT,
         });
         if (!current) throw new HomeworkQuestionNotFoundException(input);
+        assertHomeworkRuntimeQuestionType(current.type);
+        assertHomeworkRuntimeQuestionType(
+          typeof input.data.type === 'string'
+            ? input.data.type
+            : (input.data.type?.set ?? current.type),
+        );
         const plan = homeworkRichChange(
           'homeworkQuestion',
           input.data,
@@ -1771,6 +1801,16 @@ export class HomeworkRepository {
         String(input.data.homeworkAssignmentId),
         () => new HomeworkAnswerReadOnlyException(),
       );
+      const question = await tx.homeworkQuestion.findFirst({
+        where: {
+          id: String(input.data.homeworkQuestionId),
+          homeworkAssignmentId: String(input.data.homeworkAssignmentId),
+          deletedAt: null,
+        },
+        select: { type: true },
+      });
+      if (!question) throw new HomeworkQuestionNotFoundException();
+      assertHomeworkRuntimeQuestionType(question.type);
       const existing = await tx.homeworkSubmissionAnswer.findFirst({
         where: {
           homeworkSubmissionId: String(input.data.homeworkSubmissionId),
@@ -2211,6 +2251,7 @@ export class HomeworkRepository {
         where: { id: target.id, schoolId: target.schoolId },
         ...HOMEWORK_TARGET_FOR_SUBMISSION_ARGS,
       });
+      assertHomeworkRuntimeQuestions(target.homeworkAssignment.questions);
       const hasEligibleAttachment = await this.eligibleSubmissionAttachments(
         tx,
         target,

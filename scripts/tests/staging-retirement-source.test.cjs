@@ -949,14 +949,27 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
     ['test/e2e/homework-rich-content.e2e-spec.ts', 'e2e'],
     ['test/security/tenancy.homework-rich-content.spec.ts', 'security'],
   ];
-  assert.equal(assignments.length, 1019 + st08bFiles.length + st08cFiles.length);
+  // ST09-A adds foundation coverage without changing the canonical planner,
+  // historical exclusions or any existing retirement-owner obligations.
+  const st09aFiles = [
+    ['src/modules/homework/domain/homework-typed-foundation.spec.ts', 'unit'],
+    [
+      'test/integration/homework-typed-foundation.integration.spec.ts',
+      'integration-general',
+    ],
+    ['test/e2e/homework-typed-foundation.e2e-spec.ts', 'e2e'],
+  ];
+  assert.equal(
+    assignments.length,
+    1019 + st08bFiles.length + st08cFiles.length + st09aFiles.length,
+  );
   assert.equal(
     assignments.filter((item) => item.execution === 'manual').length,
     10,
   );
   assert.equal(
     assignments.filter((item) => item.execution !== 'manual').length,
-    1009 + st08bFiles.length + st08cFiles.length,
+    1009 + st08bFiles.length + st08cFiles.length + st09aFiles.length,
   );
   for (const [file, profile] of [
     ['src/common/rich-content/rich-content.spec.ts', 'unit'],
@@ -966,6 +979,7 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
     ],
     ...st08bFiles,
     ...st08cFiles,
+    ...st09aFiles,
   ]) {
     const matches = assignments.filter((item) => item.file === file);
     assert.equal(matches.length, 1);
