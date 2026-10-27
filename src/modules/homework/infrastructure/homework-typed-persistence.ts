@@ -48,7 +48,11 @@ export function homeworkAnswerJsonPersistence(
   mode: HomeworkAnswerMode,
   required: boolean,
 ): Prisma.InputJsonValue | Prisma.NullTypes.DbNull {
-  if (write.state === 'clear') return Prisma.DbNull;
+  if (write.state === 'clear') {
+    if (mode === 'final' && required)
+      throw new HomeworkTypedContentError('completeness');
+    return Prisma.DbNull;
+  }
   if (write.state !== 'value') throw new HomeworkTypedContentError('shape');
   const answer = normalizeHomeworkTypedAnswer(
     definition,

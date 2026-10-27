@@ -432,6 +432,12 @@ describe('ST09-A pure Homework typed foundation (runtime inactive)', () => {
     expect(
       homeworkAnswerJsonPersistence(fill(), { state: 'clear' }, 'draft', false),
     ).toBe(Prisma.DbNull);
+    expect(
+      homeworkAnswerJsonPersistence(fill(), { state: 'clear' }, 'final', false),
+    ).toBe(Prisma.DbNull);
+    invalid(() =>
+      homeworkAnswerJsonPersistence(fill(), { state: 'clear' }, 'final', true),
+    );
     expect(homeworkAnswerKeyPersistence(fill(), { state: 'clear' })).toBe(
       Prisma.DbNull,
     );
