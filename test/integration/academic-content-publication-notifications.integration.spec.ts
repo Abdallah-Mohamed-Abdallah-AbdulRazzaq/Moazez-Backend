@@ -467,6 +467,7 @@ describeDatabase(
         });
         const before = await prisma.academicContentAudienceRecipient.findMany({
           where: { publicationId: input.publicationId },
+          orderBy: { id: 'asc' },
         });
         const jobs = new Map<string, { data: unknown; delay: number }>();
         const ensure = jest.fn(
@@ -525,6 +526,7 @@ describeDatabase(
         expect(
           await prisma.academicContentAudienceRecipient.findMany({
             where: { publicationId: input.publicationId },
+            orderBy: { id: 'asc' },
           }),
         ).toEqual(before);
       },
@@ -1051,6 +1053,7 @@ describeDatabase(
       });
       const before = await prisma.academicContentAudienceRecipient.findMany({
         where: { schoolId, publicationId: input.publicationId },
+        orderBy: { id: 'asc' },
       });
       const result = await scoped(() => adapter().generate(input, now));
       expect(result.recipientCount).toBe(3);
@@ -1098,6 +1101,7 @@ describeDatabase(
       expect(
         await prisma.academicContentAudienceRecipient.findMany({
           where: { schoolId, publicationId: input.publicationId },
+          orderBy: { id: 'asc' },
         }),
       ).toEqual(before);
       await scoped(() => adapter().generate(input, now));
@@ -1237,6 +1241,7 @@ describeDatabase(
       const input = await publication();
       const before = await prisma.academicContentAudienceRecipient.findMany({
         where: { schoolId, publicationId: input.publicationId },
+        orderBy: { id: 'asc' },
       });
       ensureJob.mockRejectedValueOnce(
         new Error('controlled_queue_unavailable'),
@@ -1273,6 +1278,7 @@ describeDatabase(
       expect(
         await prisma.academicContentAudienceRecipient.findMany({
           where: { schoolId, publicationId: input.publicationId },
+          orderBy: { id: 'asc' },
         }),
       ).toEqual(before);
       ensureJob.mockClear();
