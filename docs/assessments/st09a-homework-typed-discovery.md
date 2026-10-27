@@ -31,3 +31,14 @@ Authorized source: 0bf87c83d7617038df33b6fdfd7b40e63d2948ba. Primary and isolate
 - A narrow callback transaction is necessary because the existing array transaction cannot inspect a current type and abort before target writes. Acquire only the assignment lock, then current question types, then the existing target/status mutations; never acquire an allocation lock after assignment. Do not redesign publication lifecycle/scoring/targets.
 
 A1 complete before schema or runtime implementation. ST09-B/C remain NOT AUTHORIZED.
+
+## A3 classification verification
+
+Exact-head CI exposed historical inventory-count expectations in
+`scripts/tests/plan-ci.test.cjs` and `scripts/tests/staging-retirement-source.test.cjs`.
+The three new ST09-A unit/integration/HTTP files are now explicitly checked for
+unique pull-request execution in their existing profiles. This is the mandate
+Section 14 exception for required new-test classification. Canonical discovery,
+routing, workflow behavior, Required aggregation, retirement owners, ten manual
+exclusions and all historical assertion obligations remain unchanged. Counts in
+the delivery receipt come from the final exact-head CI plan and execution.
