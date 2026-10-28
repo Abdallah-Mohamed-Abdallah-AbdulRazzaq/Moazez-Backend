@@ -146,6 +146,7 @@ export class ParentHomeworkQuestionOptionDto {
 }
 
 export class ParentHomeworkQuestionDto {
+  metadata?: import('../../../homework/domain/homework-typed-contract').HomeworkPublicDefinition;
   questionId!: string;
   homeworkId!: string;
   type!: string;
@@ -195,6 +196,7 @@ export class ParentHomeworkAnswerSelectedOptionDto {
 }
 
 export class ParentHomeworkAnswerDto {
+  answerJson?: unknown;
   answerId!: string;
   homeworkId!: string;
   submissionId!: string;

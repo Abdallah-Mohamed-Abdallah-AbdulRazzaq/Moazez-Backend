@@ -19,6 +19,7 @@ export class HomeworkAnswerSelectedOptionResponseDto {
 }
 
 export class HomeworkAnswerPromptSummaryDto {
+  metadata?: import('../domain/homework-typed-contract').HomeworkPublicDefinition;
   @ApiPropertyOptional({
     type: Object,
     description:
@@ -38,6 +39,7 @@ export class HomeworkAnswerReviewedByDto {
 }
 
 export class HomeworkAnswerResponseDto {
+  answerJson?: unknown;
   answerId!: string;
   homeworkId!: string;
   submissionId!: string;

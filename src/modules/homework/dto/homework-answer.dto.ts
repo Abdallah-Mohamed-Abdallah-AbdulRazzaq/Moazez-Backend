@@ -1,5 +1,6 @@
 import { Transform, Type } from 'class-transformer';
 import {
+  Allow,
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
@@ -19,6 +20,12 @@ function trimText(value: unknown): unknown {
 }
 
 export class HomeworkAnswerInputDto {
+  @Allow()
+  answerJson?: unknown;
+
+  @IsOptional()
+  @IsBoolean()
+  clearAnswer?: boolean;
   @IsString()
   questionId!: string;
 
@@ -36,6 +43,12 @@ export class HomeworkAnswerInputDto {
 }
 
 export class SaveHomeworkAnswerDto {
+  @Allow()
+  answerJson?: unknown;
+
+  @IsOptional()
+  @IsBoolean()
+  clearAnswer?: boolean;
   @IsOptional()
   @Transform(({ value }) => trimText(value))
   @IsString()

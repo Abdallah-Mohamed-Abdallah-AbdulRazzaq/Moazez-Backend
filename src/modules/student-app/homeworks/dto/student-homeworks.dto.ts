@@ -6,6 +6,7 @@ import type {
 import { HomeworkQuestionAssetDto } from '../../../homework/dto/homework-question-asset.dto';
 import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   IsDateString,
   IsArray,
   IsIn,
@@ -17,6 +18,7 @@ import {
   MaxLength,
   Min,
   ValidateNested,
+  ValidateIf,
 } from 'class-validator';
 import { HomeworkAnswerInputDto } from '../../../homework/dto/homework-answer.dto';
 
@@ -158,6 +160,7 @@ export class StudentHomeworkQuestionOptionDto {
 }
 
 export class StudentHomeworkQuestionDto {
+  metadata?: import('../../../homework/domain/homework-typed-contract').HomeworkPublicDefinition;
   @ApiPropertyOptional({
     type: Object,
     description:
@@ -217,6 +220,7 @@ export class StudentHomeworkAnswerSelectedOptionDto {
 }
 
 export class StudentHomeworkAnswerDto {
+  answerJson?: unknown;
   answerId!: string;
   homeworkId!: string;
   submissionId!: string;
@@ -270,14 +274,19 @@ export class StudentHomeworkResponseDto {
 }
 
 export class StudentHomeworkSubmissionBodyDto {
+  @ValidateIf(
+    (object: StudentHomeworkSubmissionBodyDto, value: unknown) =>
+      value !== undefined || !object.answers?.length,
+  )
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @IsNotEmpty()
   @MaxLength(STUDENT_HOMEWORK_SUBMISSION_BODY_TEXT_MAX_LENGTH)
-  bodyText!: string;
+  bodyText?: string;
 
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(100)
   @ValidateNested({ each: true })
   @Type(() => HomeworkAnswerInputDto)
   answers?: HomeworkAnswerInputDto[];
@@ -292,6 +301,7 @@ export class StudentHomeworkSubmitBodyDto {
 
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(100)
   @ValidateNested({ each: true })
   @Type(() => HomeworkAnswerInputDto)
   answers?: HomeworkAnswerInputDto[];

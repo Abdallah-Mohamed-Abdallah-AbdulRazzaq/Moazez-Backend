@@ -5,7 +5,7 @@ import {
   type HttpHomeworkGraph,
 } from '../fixtures/homework-question-assets.http';
 
-describe('ST09-A actual HTTP compatibility gates and private typed columns', () => {
+describe('ST09-A storage/privacy preservation under authorized ST09-B/C integration', () => {
   jest.setTimeout(180000);
   const h = new HomeworkQuestionAssetsHttp();
   const teacher = (g: HttpHomeworkGraph) =>
@@ -48,7 +48,7 @@ describe('ST09-A actual HTTP compatibility gates and private typed columns', () 
     };
   }
   it.each(['FILL_IN_BLANK', 'MATCHING', 'MEDIA', 'FUTURE'])(
-    'rejects %s Core/Teacher creates and updates without changing rows',
+    'rejects unknown or incomplete %s Core/Teacher payloads without changing rows',
     async (type) => {
       const g = await h.fixture.graph();
       const before = await rows(g);
@@ -61,25 +61,25 @@ describe('ST09-A actual HTTP compatibility gates and private typed columns', () 
           .post(base + '/questions')
           .set(h.headers(actor))
           .send({ type, prompt: 'Future question' })
-          .expect(400);
+          .expect(type === 'FUTURE' ? 400 : 422);
         await h
           .http()
           .patch(base + '/questions/' + g.questions[0].id)
           .set(h.headers(actor))
           .send({ type })
-          .expect(400);
+          .expect(type === 'FUTURE' ? 400 : 422);
         await h
           .http()
           .patch(base + '/questions/' + g.questions[0].id)
           .set(h.headers(actor))
           .send({ answerKey: { keyVersion: 1 } })
-          .expect(400);
+          .expect(422);
       }
       expect(await rows(g)).toEqual(before);
     },
   );
   it.each(['FILL_IN_BLANK', 'MATCHING', 'MEDIA'] as const)(
-    'blocks stored %s publication, every save and both submit aliases, including optional unanswered questions',
+    'blocks malformed stored %s publication, every save and both submit aliases, including optional unanswered questions',
     async (type) => {
       const g = await h.fixture.graph();
       const q = g.questions[0];
@@ -99,7 +99,7 @@ describe('ST09-A actual HTTP compatibility gates and private typed columns', () 
           .send({})
           .expect(422);
       expect(await rows(g)).toEqual(beforePublish);
-      // Simulate a historical/imported published future type; no production runtime activates it.
+      // A type alone is insufficient: historical/imported rows lack a valid public definition.
       await h.prisma.homeworkAssignment.update({
         where: { id: g.homework.id },
         data: { status: 'PUBLISHED', publishedAt: new Date() },
@@ -152,7 +152,7 @@ describe('ST09-A actual HTTP compatibility gates and private typed columns', () 
         .patch(base + '/submission/answers/' + q.id)
         .set(h.headers('student'))
         .send({ answerJson: { blanks: [] } })
-        .expect(400);
+        .expect(422);
       expect(await rows(g)).toEqual(before);
     },
   );

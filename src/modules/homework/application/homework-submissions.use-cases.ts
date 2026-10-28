@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { assertHomeworkRuntimeQuestions } from '../domain/homework-runtime-types';
 import type { HomeworkAssetActor } from '../domain/homework-question-asset';
+import { isHomeworkTypedType } from './homework-typed-runtime';
 import {
   AuditOutcome,
   HomeworkAssignmentStatus,
@@ -32,6 +33,9 @@ import {
   projectHomeworkAnswerRich,
   saveStudentAnswersForSubmit,
   validateRequiredHomeworkAnswers,
+  requiresTypedHomeworkMutation,
+  typedStudentMutationTarget,
+  assertUniqueHomeworkAnswerInputs,
 } from './homework-answers.use-cases';
 import {
   assertAnswerReviewRollupWithinAssignmentMarks,
@@ -50,7 +54,7 @@ export interface StudentHomeworkSubmissionCommand {
 }
 
 export interface SaveStudentHomeworkSubmissionDraftCommand extends StudentHomeworkSubmissionCommand {
-  bodyText: string;
+  bodyText?: string;
   answers?: HomeworkAnswerInput[];
 }
 
@@ -118,6 +122,29 @@ export class SaveHomeworkSubmissionDraftUseCase {
     );
     assertSubmissionIsEditable(target);
 
+    if (requiresTypedHomeworkMutation(target, command.answers)) {
+      assertUniqueHomeworkAnswerInputs(command.answers ?? []);
+      const submission =
+        await this.homeworkRepository.mutateTypedStudentSubmission({
+          ...typedStudentMutationTarget(target),
+          answers: command.answers ?? [],
+          finalAnswers: false,
+          bodyText:
+            command.bodyText === undefined
+              ? undefined
+              : normalizeOptionalBodyText(command.bodyText),
+          permission: 'homework.submissions.save',
+        });
+      await projectHomeworkAnswerRich(
+        this.homeworkRepository,
+        command.homeworkId,
+        submission.answers,
+        'student',
+        command.richActor,
+      );
+      return submission;
+    }
+
     const bodyText = normalizeRequiredBodyText(command.bodyText);
     const result = await this.homeworkRepository.saveDraftSubmission({
       schoolId: target.schoolId,
@@ -179,6 +206,59 @@ export class SubmitHomeworkSubmissionUseCase {
       command,
     );
     assertSubmissionIsEditable(target);
+
+    if (requiresTypedHomeworkMutation(target, command.answers)) {
+      assertUniqueHomeworkAnswerInputs(command.answers ?? []);
+      const submission =
+        await this.homeworkRepository.mutateTypedStudentSubmission({
+          ...typedStudentMutationTarget(target),
+          answers: command.answers ?? [],
+          finalAnswers: true,
+          permission: 'homework.submissions.submit',
+          finalize: (currentTarget, hasEligibleAttachment) => {
+            assertSubmissionIsEditable(currentTarget);
+            const current = currentTarget.submissions[0];
+            const bodyText =
+              currentTarget.homeworkAssignment.questions.length === 0 &&
+              !hasEligibleAttachment
+                ? normalizeRequiredBodyText(
+                    command.bodyText ?? current?.bodyText ?? null,
+                  )
+                : normalizeOptionalBodyText(
+                    command.bodyText ?? current?.bodyText ?? null,
+                  );
+            const submittedAt = new Date();
+            const late =
+              currentTarget.homeworkAssignment.dueAt.getTime() <
+              submittedAt.getTime();
+            return {
+              bodyText,
+              submittedAt,
+              submissionStatus: late
+                ? HomeworkSubmissionStatus.LATE
+                : HomeworkSubmissionStatus.SUBMITTED,
+              targetStatus: late
+                ? HomeworkTargetStatus.LATE
+                : HomeworkTargetStatus.SUBMITTED,
+            };
+          },
+        });
+      await this.authRepository.createAuditLog(
+        buildSubmissionAuditEntry({
+          scope,
+          action: 'homework.submission.submit',
+          submission,
+        }),
+      );
+      await projectHomeworkAnswerRich(
+        this.homeworkRepository,
+        command.homeworkId,
+        submission.answers,
+        command.richActor?.surface === 'student' ? 'student-submit' : 'student',
+        command.richActor,
+      );
+      return submission;
+    }
 
     const answerSubmission = await saveStudentAnswersForSubmit({
       repository: this.homeworkRepository,
@@ -293,18 +373,29 @@ export class SubmitHomeworkSubmissionUseCase {
 export class ListHomeworkSubmissionsForReviewUseCase {
   constructor(private readonly homeworkRepository: HomeworkRepository) {}
 
-  execute(
+  async execute(
     command: ListHomeworkSubmissionsForReviewCommand,
   ): Promise<ListHomeworkReviewSubmissionsResult> {
     requireHomeworkScope();
 
-    return this.homeworkRepository.listReviewableSubmissions({
+    const result = await this.homeworkRepository.listReviewableSubmissions({
       homeworkAssignmentId: command.homeworkId,
       statuses: command.statuses,
       search: command.search,
       page: normalizePositiveInteger(command.page, 1),
       limit: normalizeBoundedLimit(command.limit),
     });
+    for (const submission of result.items)
+      if (
+        submission.answers.some((answer) =>
+          isHomeworkTypedType(answer.homeworkQuestion.type),
+        )
+      )
+        await this.homeworkRepository.projectTypedAnswers(
+          command.homeworkId,
+          submission.answers,
+        );
+    return result;
   }
 }
 
@@ -328,6 +419,16 @@ export class GetHomeworkSubmissionForReviewUseCase {
         submissionId: command.submissionId,
       });
     }
+
+    if (
+      submission.answers.some((answer) =>
+        isHomeworkTypedType(answer.homeworkQuestion.type),
+      )
+    )
+      await this.homeworkRepository.projectTypedAnswers(
+        command.homeworkId,
+        submission.answers,
+      );
 
     return submission;
   }
@@ -375,6 +476,11 @@ export class ReviewHomeworkSubmissionUseCase {
       reviewedAt,
       reviewNote,
       awardedMarks,
+      ...(submission.homeworkAssignment.questions.some((question) =>
+        isHomeworkTypedType(question.type),
+      )
+        ? { awardedMarksExplicit: command.awardedMarks !== undefined }
+        : {}),
     });
 
     if (result.outcome === 'not_found') {
@@ -406,6 +512,16 @@ export class ReviewHomeworkSubmissionUseCase {
         submission: result.submission,
       }),
     );
+
+    if (
+      result.submission.answers.some((answer) =>
+        isHomeworkTypedType(answer.homeworkQuestion.type),
+      )
+    )
+      await this.homeworkRepository.projectTypedAnswers(
+        command.homeworkId,
+        result.submission.answers,
+      );
 
     return result.submission;
   }

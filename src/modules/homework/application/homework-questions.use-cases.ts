@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { assertHomeworkRuntimeQuestionType } from '../domain/homework-runtime-types';
 import {
+  isHomeworkTypedType,
+  normalizeHomeworkTypedQuestionMutation,
+  presentHomeworkTypedDefinition,
+} from './homework-typed-runtime';
+import {
   AuditOutcome,
   HomeworkAssignmentStatus,
   HomeworkQuestionType,
@@ -127,6 +132,7 @@ export class CreateHomeworkQuestionUseCase {
     });
     const question = await this.homeworkRepository.createQuestionWithOptions({
       ...normalized,
+      keyWrite: command.answerKey,
       ...(actor ? { actor } : {}),
     });
 
@@ -182,6 +188,9 @@ export class UpdateHomeworkQuestionUseCase {
       homeworkId,
       questionId,
       data,
+      keyWrite: command.answerKey,
+      typedMutation:
+        isHomeworkTypedType(existing.type) || isHomeworkTypedType(command.type),
       ...(actor ? { actor } : {}),
     });
 
@@ -573,6 +582,10 @@ function validateActiveQuestionStructures(
 ): void {
   for (const question of questions) {
     assertHomeworkRuntimeQuestionType(question.type);
+    if (isHomeworkTypedType(question.type)) {
+      // Early diagnostics only; the locked publication transaction is authoritative.
+      presentHomeworkTypedDefinition(question);
+    }
     if (!question.prompt.trim()) {
       throw new HomeworkAssignmentInvalidQuestionStructureException({
         questionId: question.id,
@@ -648,6 +661,19 @@ async function normalizeCreateQuestionCommand(input: {
   );
   const options = input.command.options ?? [];
   assertQuestionTypePayload(input.command.type, options);
+  const typed = isHomeworkTypedType(input.command.type)
+    ? normalizeHomeworkTypedQuestionMutation({
+        type: input.command.type,
+        metadata: input.command.metadata,
+        expectedAnswer: normalizeNullableText(input.command.expectedAnswer),
+        optionCount: options.length,
+        keyWrite: input.command.answerKey,
+      })
+    : null;
+  if (!typed && input.command.answerKey !== undefined)
+    throw new HomeworkQuestionInvalidTypePayloadException({
+      reason: 'key_requires_typed_question',
+    });
   const questionId = randomUUID();
   const sortOrder =
     input.command.sortOrder ??
@@ -672,7 +698,7 @@ async function normalizeCreateQuestionCommand(input: {
       sortOrder,
       isRequired: input.command.isRequired ?? true,
       expectedAnswer: normalizeNullableText(input.command.expectedAnswer),
-      metadata: toNullableJson(input.command.metadata),
+      metadata: typed?.metadata ?? toNullableJson(input.command.metadata),
       createdByUserId: input.scope.actorId,
     },
     options: options.map((option, index) =>
@@ -693,6 +719,14 @@ function normalizeUpdateQuestionCommand(
   const nextType = command.type ?? existing.type;
   assertHomeworkRuntimeQuestionType(existing.type);
   assertHomeworkRuntimeQuestionType(nextType);
+  if (
+    !isHomeworkTypedType(nextType) &&
+    !isHomeworkTypedType(existing.type) &&
+    command.answerKey !== undefined
+  )
+    throw new HomeworkQuestionInvalidTypePayloadException({
+      reason: 'key_requires_typed_question',
+    });
   if (
     command.type &&
     !isChoiceQuestionType(command.type) &&
@@ -932,6 +966,8 @@ export async function projectHomeworkQuestions(
   questions: HomeworkQuestionRecord[],
   actor?: HomeworkAssetActor,
 ): Promise<void> {
+  if (questions.some((question) => isHomeworkTypedType(question.type)))
+    await repository.projectAuthorTypedQuestions(homeworkId, questions, actor);
   if (hasHomeworkRichSelection(questions))
     await repository.projectRichQuestions(
       homeworkId,

@@ -1,5 +1,10 @@
 import { Prisma } from '@prisma/client';
 import { assertHomeworkRuntimeQuestionType } from '../domain/homework-runtime-types';
+import { presentHomeworkTypedAnswer } from '../infrastructure/homework-typed-answer.projection';
+import {
+  isHomeworkTypedType,
+  presentHomeworkTypedDefinition,
+} from '../application/homework-typed-runtime';
 import {
   presentHomeworkRichQuestion,
   presentHomeworkRichOption,
@@ -42,6 +47,7 @@ export interface HomeworkAnswerPresenterModel {
     prompt: string;
     points: Prisma.Decimal | number | string;
     isRequired: boolean;
+    metadata?: unknown;
     options: HomeworkAnswerQuestionOptionPresenterModel[];
   };
 }
@@ -131,7 +137,9 @@ function presentHomeworkAnswer(
   },
 ): HomeworkAnswerResponseDto {
   assertHomeworkRuntimeQuestionType(answer.homeworkQuestion.type);
-  const selectedOptionIds = toStringArray(answer.selectedOptionIds);
+  const selectedOptionIds = isHomeworkTypedType(answer.homeworkQuestion.type)
+    ? []
+    : toStringArray(answer.selectedOptionIds);
   const selectedOptionSet = new Set(selectedOptionIds);
   const selectedOptions = answer.homeworkQuestion.options
     .filter((option) => selectedOptionSet.has(option.id))
@@ -154,6 +162,7 @@ function presentHomeworkAnswer(
       ? {
           prompt: {
             questionId: answer.homeworkQuestion.id,
+            ...presentHomeworkTypedDefinition(answer.homeworkQuestion),
             ...(options.includeRich
               ? presentHomeworkRichQuestion(answer.homeworkQuestion)
               : {}),
@@ -165,6 +174,7 @@ function presentHomeworkAnswer(
         }
       : {}),
     textAnswer: answer.textAnswer ?? null,
+    ...presentHomeworkTypedAnswer(answer),
     selectedOptionIds,
     selectedOptions,
     isDraft: answer.isDraft,

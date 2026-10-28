@@ -4,10 +4,14 @@
 
 `homework.typed_content.invalid` is an internal pure validation error, with fixed
 shape/version/limit/text/association/completeness reasons. It never contains a
-rejected answer, private key or resource identifier. Future adapters must map it
-to existing Homework validation responses. No new HTTP contract is activated.
+rejected answer, private key or resource identifier. Runtime adapters map it
+to existing Homework validation responses; ST09-A itself activated no HTTP API.
 Stored invalid/future data is classified without returning or rewriting it.
-Inactive question types use existing `homework.question.invalid_type_payload`.
+ST09-B/C explicitly activates all eight Homework types. Its adapters map typed
+definition/key errors to `homework.question.invalid_type_payload`, typed answer
+errors to `homework.answer.invalid_payload`, and missing required final answers
+to `homework.answer.missing_required`. Unknown types still fail closed. No
+rejected private key, answer, or MEDIA source value is included in those errors.
 
 ## Safe Rich Content foundation (ST08-A)
 

@@ -1,4 +1,5 @@
 import { assertHomeworkRuntimeQuestionType } from '../../../homework/domain/homework-runtime-types';
+import { presentHomeworkTypedDefinition } from '../../../homework/application/homework-typed-runtime';
 import {
   HomeworkAssignmentStatus,
   HomeworkSubmissionStatus,
@@ -184,8 +185,10 @@ function presentSafeQuestion(
   question: ParentHomeworkTargetDetailReadModel['homeworkAssignment']['questions'][number],
 ): ParentHomeworkQuestionDto {
   assertHomeworkRuntimeQuestionType(question.type);
+  const definition = presentHomeworkTypedDefinition(question);
   return {
     questionId: question.id,
+    ...(question.type === 'MEDIA' ? {} : definition),
     homeworkId: question.homeworkAssignmentId,
     type: question.type.toLowerCase(),
     prompt: question.prompt,

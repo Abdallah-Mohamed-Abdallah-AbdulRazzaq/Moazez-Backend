@@ -318,6 +318,48 @@ const PURE_METHODS = new Set([
   'toLowerCase', 'trim', 'values',
 ]);
 const REVIEWED_CALL_OVERRIDES = Object.freeze([
+  // ST09-B/C: exact Homework transaction owners reuse the existing audited gate.
+  ...[
+    'HomeworkRepository.mutateTypedStudentSubmission',
+    'HomeworkRepository.projectAuthorTypedQuestions',
+    'HomeworkRepository.publishAssignmentWithTargets',
+    'HomeworkRepository.replaceTargets',
+    'HomeworkRepository.reviewSubmission',
+    'HomeworkRepository.reviewSubmissionAnswers',
+  ].map(owner => Object.freeze({
+    path: 'src/modules/homework/infrastructure/homework.repository.ts',
+    owner,
+    origin: 'assertHomeworkMediaAuthorization',
+    target: /^gate\.lock$/,
+    explicitLock: true,
+    reason: 'ST09-B/C reuses the existing transaction-bound Prisma allocation fence.',
+    classification: 'LOCK_CONTENTION_SENSITIVE',
+    resolvedCallers: Object.freeze(['PrismaTeacherAllocationOperationalWriteGate.lock']),
+    evidence: 'The concrete gate is unchanged and remains independently audited for scoped database-only operations, advisory/row fences, no nested transaction and no external wait. Homework author/publication/review authority acquires the gate before the assignment; Student authority never enters the author gate. All calls receive the active scoped transaction. Real PostgreSQL barriers prove author/publication, allocation revocation, Student target/submission serialization and concurrent review outcomes. The read-only author-key projection conservatively inherits the conditional author-gate classification; its runtime read branch cannot acquire that gate.',
+  })),
+  ...[
+    'HomeworkRepository.mutateTypedStudentSubmission',
+    'HomeworkRepository.publishAssignmentWithTargets',
+  ].map(owner => Object.freeze({
+    path: 'src/modules/homework/infrastructure/homework.repository.ts',
+    owner,
+    origin: 'classifyPersistedUrl',
+    target: /^parsed\.toString$/,
+    reason: 'ST09-B/C uses existing synchronous persisted-URL formatting for ST06 stimulus policy.',
+    classification: 'LOCK_CONTENTION_SENSITIVE',
+    resolvedCallers: Object.freeze(['classifyPersistedUrl']),
+    evidence: 'The unchanged persisted URL policy constructs and serializes a standard URL in memory. It performs no DNS, HTTP, provider, signing, queue or storage operation. The exact Homework stimulus resolver uses only the supplied transaction, current scoped asset/policy/READY provenance and immutable constructor private-bucket selection. No global intrinsic or provider-port exemption is introduced.',
+  })),
+  Object.freeze({
+    path: 'src/modules/homework/infrastructure/homework.repository.ts',
+    owner: 'HomeworkRepository.publishAssignmentWithTargets',
+    origin: 'stringBytes',
+    target: /^Buffer\.byteLength$/,
+    reason: 'ST09-B/C publication reuses the unchanged synchronous Rich UTF-8 budget intrinsic.',
+    classification: 'LOCK_CONTENTION_SENSITIVE',
+    resolvedCallers: Object.freeze(['normalizeRichContent', 'stringBytes']),
+    evidence: 'The shared Rich validator and fallback grammar are unchanged. Buffer.byteLength(value, utf8) measures a bounded primitive synchronously; it performs no filesystem, network, provider, queue, timer or database operation. The exception is restricted to this exact Homework transaction owner, helper origin and expression.',
+  }),
   // ST08-C: two exact Homework transaction owners; existing Grades rules stay intact.
   ...[
     ['src/modules/homework/application/homework-rich-content.service.ts', 'HomeworkRichContentService.project'],

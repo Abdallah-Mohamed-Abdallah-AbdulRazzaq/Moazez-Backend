@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { HomeworkAssetActor } from '../domain/homework-question-asset';
 import { projectHomeworkAnswerRich } from './homework-answers.use-cases';
+import { isHomeworkTypedType } from './homework-typed-runtime';
 import {
   AuditOutcome,
   HomeworkAssignmentStatus,
@@ -245,6 +246,18 @@ async function reviewAnswers(input: {
     awardedMarks,
     reviews: normalizedReviews.map((review) => ({
       ...review,
+      ...(submission.homeworkAssignment.questions.some((question) =>
+        isHomeworkTypedType(question.type),
+      )
+        ? {
+            awardedPointsChanged:
+              input.reviews.find((item) => item.answerId === review.answerId)!
+                .awardedPoints !== undefined,
+            teacherCommentChanged:
+              input.reviews.find((item) => item.answerId === review.answerId)!
+                .teacherComment !== undefined,
+          }
+        : {}),
       homeworkQuestionId:
         submission.answers.find((answer) => answer.id === review.answerId)
           ?.homeworkQuestionId ?? '',

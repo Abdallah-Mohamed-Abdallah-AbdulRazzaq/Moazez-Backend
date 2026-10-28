@@ -8,6 +8,7 @@ import { AssessmentMediaRuntimePolicy } from '../../src/modules/files/assessment
 import { HomeworkQuestionAssetsRepository } from '../../src/modules/homework/infrastructure/homework-question-assets.repository';
 import { HomeworkQuestionAssetsService } from '../../src/modules/homework/application/homework-question-assets.service';
 import { HomeworkRepository } from '../../src/modules/homework/infrastructure/homework.repository';
+import { HomeworkRichContentService } from '../../src/modules/homework/application/homework-rich-content.service';
 import { StudentAppAccessService } from '../../src/modules/student-app/access/student-app-access.service';
 import { StudentAppStudentReadAdapter } from '../../src/modules/student-app/access/student-app-student-read.adapter';
 import { hasRetainedFileReferences } from '../../src/modules/files/shared/infrastructure/file-lifetime.repository';
@@ -18,6 +19,7 @@ describe('ST-06 exact Homework question assets on real PostgreSQL and private Mi
   const prisma = new PrismaService();
   let fixture: HomeworkQuestionAssetsFixture;
   let service: HomeworkQuestionAssetsService;
+  let homeworkRepository: HomeworkRepository;
   let graph: Awaited<ReturnType<HomeworkQuestionAssetsFixture['graph']>>;
   const actor = () => ({
     surface: 'teacher' as const,
@@ -49,10 +51,7 @@ describe('ST-06 exact Homework question assets on real PostgreSQL and private Mi
       where: { homeworkAssignmentId: graph.homework.id },
     });
     return asTeacher(() =>
-      new HomeworkRepository(
-        prisma,
-        new PrismaTeacherAllocationOperationalWriteGate(),
-      ).publishAssignmentWithTargets(
+      homeworkRepository.publishAssignmentWithTargets(
         graph.homework.id,
         {
           status: 'PUBLISHED',
@@ -83,6 +82,11 @@ describe('ST-06 exact Homework question assets on real PostgreSQL and private Mi
           fixture.config.getOrThrow<string>('STORAGE_ENDPOINT'),
         ],
       }),
+    );
+    homeworkRepository = new HomeworkRepository(
+      prisma,
+      gate,
+      new HomeworkRichContentService(prisma, gate, repository),
     );
     service = new HomeworkQuestionAssetsService(
       repository,

@@ -32,6 +32,8 @@ export async function authorizeHomeworkQuestionAssets(
   write = false,
   managedBinding = false,
   richReadPermission?: HomeworkRichReadPermission,
+  writePermission?: 'homework.assignments.manage' | 'homework.targets.manage',
+  lockAuthorization = false,
 ) {
   const scope = requireHomeworkScope();
   const ctx = getRequestContext();
@@ -54,6 +56,7 @@ export async function authorizeHomeworkQuestionAssets(
   )
     throw absent();
   const permission =
+    (write ? writePermission : undefined) ??
     richReadPermission ??
     (actor.surface === 'teacher'
       ? write
@@ -70,7 +73,7 @@ export async function authorizeHomeworkQuestionAssets(
     SELECT s.id FROM schools s JOIN organizations o ON o.id = s.organization_id
     WHERE s.id = ${scope.schoolId}::uuid AND o.id = ${scope.organizationId}::uuid
       AND s.deleted_at IS NULL AND o.deleted_at IS NULL AND s.status = 'ACTIVE' AND o.status = 'ACTIVE'
-    ${write ? Prisma.sql`FOR NO KEY UPDATE OF s FOR SHARE OF o` : Prisma.empty}`);
+    ${write ? Prisma.sql`FOR NO KEY UPDATE OF s FOR SHARE OF o` : lockAuthorization ? Prisma.sql`FOR SHARE OF s, o` : Prisma.empty}`);
   if (!schools.length) throw absent();
   const grants = await tx.$queryRaw<Array<{ code: string }>>(Prisma.sql`
     SELECT p.code FROM memberships m JOIN users u ON u.id = m.user_id
@@ -83,7 +86,7 @@ export async function authorizeHomeworkQuestionAssets(
       AND u.status = 'ACTIVE' AND u.deleted_at IS NULL AND r.deleted_at IS NULL
       AND (r.school_id IS NULL OR r.school_id = ${scope.schoolId}::uuid)
       AND p.code IN (${Prisma.join(required)})
-    ${write ? Prisma.sql`FOR SHARE OF m, u, r, rp, p` : Prisma.empty}`);
+    ${write || lockAuthorization ? Prisma.sql`FOR SHARE OF m, u, r, rp, p` : Prisma.empty}`);
   if (required.some((code) => !grants.some((grant) => grant.code === code)))
     throw absent();
 
@@ -137,7 +140,7 @@ export async function authorizeHomeworkQuestionAssets(
     );
     assignment = await findAssignment();
     if (!assignment) throw absent();
-    if (assignment.status !== 'DRAFT')
+    if (assignment.status !== 'DRAFT' && !writePermission)
       throw new HomeworkQuestionReadOnlyException();
   }
   if (actor.surface === 'teacher') {

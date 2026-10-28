@@ -1,11 +1,15 @@
+import {
+  normalizeAnswerForQuestion,
+  homeworkSelectedOptionIds,
+} from '../domain/homework-answer-normalization';
 import { Injectable } from '@nestjs/common';
+import { isHomeworkTypedType } from './homework-typed-runtime';
 import {
   assertHomeworkRuntimeQuestions,
   assertHomeworkRuntimeQuestionType,
 } from '../domain/homework-runtime-types';
 import {
   HomeworkAssignmentStatus,
-  HomeworkQuestionType,
   HomeworkSubmissionStatus,
   HomeworkTargetStatus,
   Prisma,
@@ -23,12 +27,8 @@ import {
   HomeworkAnswerDetailResponseDto,
   HomeworkAnswersListResponseDto,
 } from '../dto/homework-answer-response.dto';
+import { HomeworkAnswerInput } from '../domain/homework-answer-inputs';
 import {
-  HomeworkAnswerInput,
-  NormalizedHomeworkAnswerInput,
-} from '../domain/homework-answer-inputs';
-import {
-  HomeworkAnswerInvalidOptionException,
   HomeworkAnswerInvalidPayloadException,
   HomeworkAnswerInvalidSubmissionScopeException,
   HomeworkAnswerMissingRequiredException,
@@ -46,16 +46,6 @@ import {
   presentHomeworkAnswersStudent,
   presentHomeworkAnswersTeacher,
 } from '../presenters/homework-answer.presenter';
-
-const TEXT_QUESTION_TYPES = new Set<HomeworkQuestionType>([
-  HomeworkQuestionType.SHORT_TEXT,
-  HomeworkQuestionType.LONG_TEXT,
-]);
-
-const SINGLE_SELECTION_QUESTION_TYPES = new Set<HomeworkQuestionType>([
-  HomeworkQuestionType.SINGLE_CHOICE,
-  HomeworkQuestionType.TRUE_FALSE,
-]);
 
 export interface StudentHomeworkAnswersCommand {
   richActor?: HomeworkAssetActor;
@@ -178,6 +168,28 @@ export class SaveStudentHomeworkAnswersDraftUseCase {
       command,
     );
     assertAnswersEditable(target);
+    assertUniqueHomeworkAnswerInputs(command.answers);
+    if (requiresTypedHomeworkMutation(target, command.answers)) {
+      const submission =
+        await this.homeworkRepository.mutateTypedStudentSubmission({
+          ...typedStudentMutationTarget(target),
+          answers: command.answers,
+          finalAnswers: false,
+          permission: 'homework.answers.manage',
+        });
+      const ids = new Set(command.answers.map((answer) => answer.questionId));
+      const saved = submission.answers.filter((answer) =>
+        ids.has(answer.homeworkQuestionId),
+      );
+      await projectHomeworkAnswerRich(
+        this.homeworkRepository,
+        command.homeworkId,
+        saved,
+        'student',
+        command.richActor,
+      );
+      return presentHomeworkAnswersStudent(saved);
+    }
     const submission = await resolveDraftSubmissionOrThrow(
       this.homeworkRepository,
       target,
@@ -220,6 +232,27 @@ export class SaveStudentHomeworkAnswerUseCase {
       command,
     );
     assertAnswersEditable(target);
+    if (requiresTypedHomeworkMutation(target, [command.answer])) {
+      const submission =
+        await this.homeworkRepository.mutateTypedStudentSubmission({
+          ...typedStudentMutationTarget(target),
+          answers: [{ ...command.answer, questionId: command.questionId }],
+          finalAnswers: command.isDraft === false,
+          permission: 'homework.answers.manage',
+        });
+      const answer = submission.answers.find(
+        (item) => item.homeworkQuestionId === command.questionId,
+      );
+      if (!answer) throw new HomeworkAnswerNotFoundException();
+      await projectHomeworkAnswerRich(
+        this.homeworkRepository,
+        command.homeworkId,
+        [answer],
+        'student',
+        command.richActor,
+      );
+      return { answer: presentHomeworkAnswersStudent([answer]).items[0] };
+    }
     const submission = await resolveDraftSubmissionOrThrow(
       this.homeworkRepository,
       target,
@@ -254,6 +287,10 @@ export async function projectHomeworkAnswerRich(
   audience: HomeworkRichAudience,
   actor?: HomeworkAssetActor,
 ): Promise<void> {
+  if (
+    answers.some((answer) => isHomeworkTypedType(answer.homeworkQuestion.type))
+  )
+    await repository.projectTypedAnswers(homeworkId, answers);
   const questions = answers.map((answer) => answer.homeworkQuestion);
   if (hasHomeworkRichSelection(questions))
     await repository.projectRichQuestions(
@@ -270,6 +307,7 @@ export async function saveStudentAnswersForSubmit(input: {
   answers: HomeworkAnswerInput[] | undefined;
 }): Promise<HomeworkSubmissionRecord | null> {
   assertHomeworkRuntimeQuestions(input.target.homeworkAssignment.questions);
+  assertUniqueHomeworkAnswerInputs(input.answers ?? []);
   if (!input.answers || input.answers.length === 0) {
     return input.target.submissions[0] ?? null;
   }
@@ -304,6 +342,7 @@ export async function saveStudentAnswersAsDraft(input: {
   answers: HomeworkAnswerInput[] | undefined;
 }): Promise<HomeworkSubmissionRecord | null> {
   assertHomeworkRuntimeQuestions(input.target.homeworkAssignment.questions);
+  assertUniqueHomeworkAnswerInputs(input.answers ?? []);
   if (!input.answers || input.answers.length === 0) {
     return input.target.submissions[0] ?? null;
   }
@@ -511,149 +550,13 @@ async function saveAnswer(input: {
   });
 }
 
-function normalizeAnswerForQuestion(input: {
-  question: HomeworkTargetForSubmissionRecord['homeworkAssignment']['questions'][number];
-  input: HomeworkAnswerInput;
-  final: boolean;
-}): NormalizedHomeworkAnswerInput {
-  assertHomeworkRuntimeQuestionType(input.question.type);
-  const textAnswer = normalizeNullableText(input.input.textAnswer);
-  const selectedOptionIds = normalizeSelectedOptionIds(
-    input.input.selectedOptionIds,
-  );
-
-  if (textAnswer && selectedOptionIds) {
-    throw new HomeworkAnswerInvalidPayloadException({
-      questionId: input.question.id,
-      reason: 'mixed_text_and_options',
-    });
-  }
-
-  if (TEXT_QUESTION_TYPES.has(input.question.type)) {
-    if (selectedOptionIds) {
-      throw new HomeworkAnswerInvalidPayloadException({
-        questionId: input.question.id,
-        type: input.question.type,
-        reason: 'text_question_selected_options_forbidden',
-      });
-    }
-
-    if (input.final && input.question.isRequired && !textAnswer) {
-      throw new HomeworkAnswerMissingRequiredException({
-        questionId: input.question.id,
-      });
-    }
-
-    return {
-      questionId: input.question.id,
-      textAnswer,
-      selectedOptionIds: null,
-    };
-  }
-
-  if (textAnswer) {
-    throw new HomeworkAnswerInvalidPayloadException({
-      questionId: input.question.id,
-      type: input.question.type,
-      reason: 'choice_question_text_forbidden',
-    });
-  }
-
-  if (!selectedOptionIds) {
-    if (input.final && input.question.isRequired) {
-      throw new HomeworkAnswerMissingRequiredException({
-        questionId: input.question.id,
-      });
-    }
-
-    return {
-      questionId: input.question.id,
-      textAnswer: null,
-      selectedOptionIds: null,
-    };
-  }
-
-  assertOptionsBelongToQuestion(input.question, selectedOptionIds);
-
-  if (
-    SINGLE_SELECTION_QUESTION_TYPES.has(input.question.type) &&
-    selectedOptionIds.length !== 1
-  ) {
-    throw new HomeworkAnswerInvalidPayloadException({
-      questionId: input.question.id,
-      type: input.question.type,
-      reason: 'exactly_one_option_required',
-    });
-  }
-
-  if (
-    input.question.type === HomeworkQuestionType.MULTIPLE_CHOICE &&
-    input.final &&
-    input.question.isRequired &&
-    selectedOptionIds.length < 1
-  ) {
-    throw new HomeworkAnswerMissingRequiredException({
-      questionId: input.question.id,
-    });
-  }
-
-  return {
-    questionId: input.question.id,
-    textAnswer: null,
-    selectedOptionIds,
-  };
-}
-
-function normalizeNullableText(
-  value: string | null | undefined,
-): string | null {
-  if (value === undefined || value === null) return null;
-  const normalized = value.trim();
-  return normalized.length > 0 ? normalized : null;
-}
-
-function normalizeSelectedOptionIds(
-  value: string[] | null | undefined,
-): string[] | null {
-  if (!value || value.length === 0) return null;
-  const normalized = value
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
-  if (normalized.length === 0) return null;
-
-  if (new Set(normalized).size !== normalized.length) {
-    throw new HomeworkAnswerInvalidPayloadException({
-      reason: 'duplicate_selected_options',
-    });
-  }
-
-  return normalized;
-}
-
 function selectedOptionIdsFromJson(
   value: Prisma.JsonValue | null,
 ): string[] | null {
   if (!Array.isArray(value)) return null;
-  return normalizeSelectedOptionIds(
+  return homeworkSelectedOptionIds(
     value.filter((item): item is string => typeof item === 'string'),
   );
-}
-
-function assertOptionsBelongToQuestion(
-  question: HomeworkTargetForSubmissionRecord['homeworkAssignment']['questions'][number],
-  selectedOptionIds: string[],
-): void {
-  const validOptionIds = new Set(question.options.map((option) => option.id));
-  const invalidOptionId = selectedOptionIds.find(
-    (optionId) => !validOptionIds.has(optionId),
-  );
-
-  if (invalidOptionId) {
-    throw new HomeworkAnswerInvalidOptionException({
-      questionId: question.id,
-      optionId: invalidOptionId,
-    });
-  }
 }
 
 export function mapBulkAnswersDto(
@@ -667,8 +570,10 @@ export function mapSingleAnswerDto(input: {
   dto: SaveHomeworkAnswerDto;
 }): HomeworkAnswerInput {
   if (
-    !Object.prototype.hasOwnProperty.call(input.dto, 'textAnswer') &&
-    !Object.prototype.hasOwnProperty.call(input.dto, 'selectedOptionIds')
+    input.dto.textAnswer === undefined &&
+    input.dto.selectedOptionIds === undefined &&
+    input.dto.answerJson === undefined &&
+    input.dto.clearAnswer !== true
   ) {
     throw new HomeworkAnswerInvalidPayloadException({
       questionId: input.questionId,
@@ -680,5 +585,43 @@ export function mapSingleAnswerDto(input: {
     questionId: input.questionId,
     textAnswer: input.dto.textAnswer,
     selectedOptionIds: input.dto.selectedOptionIds,
+    answerJson: input.dto.answerJson,
+    clearAnswer: input.dto.clearAnswer,
   };
+}
+
+export function requiresTypedHomeworkMutation(
+  target: HomeworkTargetForSubmissionRecord,
+  answers: HomeworkAnswerInput[] = [],
+): boolean {
+  return (
+    target.homeworkAssignment.questions.some((question) =>
+      isHomeworkTypedType(question.type),
+    ) ||
+    answers.some(
+      (answer) =>
+        answer.answerJson !== undefined || answer.clearAnswer !== undefined,
+    )
+  );
+}
+export function typedStudentMutationTarget(
+  target: HomeworkTargetForSubmissionRecord,
+) {
+  return {
+    schoolId: target.schoolId,
+    homeworkAssignmentId: target.homeworkAssignmentId,
+    homeworkTargetId: target.id,
+    studentId: target.studentId,
+    enrollmentId: target.enrollmentId,
+  };
+}
+export function assertUniqueHomeworkAnswerInputs(
+  answers: HomeworkAnswerInput[],
+): void {
+  if (
+    new Set(answers.map((answer) => answer.questionId)).size !== answers.length
+  )
+    throw new HomeworkAnswerInvalidPayloadException({
+      reason: 'duplicate_question_ids',
+    });
 }

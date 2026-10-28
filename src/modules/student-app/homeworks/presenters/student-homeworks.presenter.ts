@@ -1,4 +1,8 @@
 import { assertHomeworkRuntimeQuestionType } from '../../../homework/domain/homework-runtime-types';
+import {
+  presentHomeworkTypedDefinition,
+  authorizeHomeworkMediaProjection,
+} from '../../../homework/application/homework-typed-runtime';
 import type { HomeworkQuestionAssetDto } from '../../../homework/dto/homework-question-asset.dto';
 import {
   presentHomeworkRichQuestion,
@@ -186,8 +190,18 @@ function presentSafeQuestion(
   assets: HomeworkQuestionAssetDto[],
 ): StudentHomeworkQuestionDto {
   assertHomeworkRuntimeQuestionType(question.type);
+  authorizeHomeworkMediaProjection(
+    question,
+    new Set(assets.map((asset) => asset.assetId)),
+  );
+  const definition = presentHomeworkTypedDefinition(question);
+  const source =
+    definition.metadata?.kind === 'media' ? definition.metadata.source : null;
   return {
     questionId: question.id,
+    ...(source && !assets.some((asset) => asset.assetId === source.assetId)
+      ? {}
+      : definition),
     ...presentHomeworkRichQuestion(question),
     assets,
     homeworkId: question.homeworkAssignmentId,

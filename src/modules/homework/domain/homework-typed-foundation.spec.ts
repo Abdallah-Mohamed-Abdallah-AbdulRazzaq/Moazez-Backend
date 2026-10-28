@@ -68,8 +68,8 @@ const media = () => definition('MEDIA', mediaInput);
 const invalid = (operation: () => unknown) =>
   expect(operation).toThrow(HomeworkTypedContentError);
 
-describe('ST09-A pure Homework typed foundation (runtime inactive)', () => {
-  it('declares eight DB types while every new/unknown DTO type stays inactive', () => {
+describe('ST09-A pure Homework typed foundation with authorized ST09-B/C dispatch', () => {
+  it('preserves eight ordered DB types and explicitly accepts those eight at the runtime boundary', () => {
     expect(Object.values(HomeworkQuestionType)).toEqual([
       'SHORT_TEXT',
       'LONG_TEXT',
@@ -80,7 +80,7 @@ describe('ST09-A pure Homework typed foundation (runtime inactive)', () => {
       'MATCHING',
       'MEDIA',
     ]);
-    expect(HOMEWORK_RUNTIME_QUESTION_TYPES).toHaveLength(5);
+    expect(HOMEWORK_RUNTIME_QUESTION_TYPES).toHaveLength(8);
     for (const type of ['fill_in_blank', 'MATCHING', 'media', 'FUTURE_TYPE']) {
       for (const dto of [
         CreateHomeworkQuestionDto,
@@ -89,9 +89,16 @@ describe('ST09-A pure Homework typed foundation (runtime inactive)', () => {
         const errors = validateSync(
           plainToInstance(dto, { type, prompt: 'Question' }),
         );
-        expect(errors.some((e) => e.property === 'type')).toBe(true);
+        expect(errors.some((e) => e.property === 'type')).toBe(
+          type === 'FUTURE_TYPE',
+        );
       }
-      expect(() => assertHomeworkRuntimeQuestionType(type)).toThrow();
+      if (type === 'FUTURE_TYPE')
+        expect(() => assertHomeworkRuntimeQuestionType(type)).toThrow();
+      else
+        expect(() =>
+          assertHomeworkRuntimeQuestionType(type.toUpperCase()),
+        ).not.toThrow();
     }
     for (const type of HOMEWORK_RUNTIME_QUESTION_TYPES)
       expect(() => assertHomeworkRuntimeQuestionType(type)).not.toThrow();
