@@ -108,6 +108,9 @@ primary := number | declared-variable | '(' sum ')'
 Power binds more tightly than unary signs and associates right: `-2^2=-4`,
 `(-2)^2=4`, `2^3^2=512`, `2^-2=1/4`. Every exponent must itself be a variable-free
 exact integer within ±16. Variable exponents and unsupported syntax are invalid.
+If a constant exponent exceeds the proof resource envelope, the expression stays
+manual-only; no containing power executes without proving an integer within ±16.
+This also covers exact cancellation of over-budget intermediates in an exponent.
 `0^0`, division by zero and zero to a negative power are undefined. No implicit
 multiplication, functions, properties, strings, HTML, compilation or symbolic CAS.
 
@@ -156,6 +159,9 @@ Grades tenant security, real MinIO media streaming and asset lifetime behavior.
 The seven new suites are explicitly registered in both inventory tests. The first
 remote CI run exposed the second stale retirement inventory assertion; its narrow
 correction is test/documentation-only, with all production code unchanged.
+Final pure-foundation checks also enforce the stricter existing 1,000-character
+label limit and keep over-budget constant-exponent proofs manual-only. Known
+noninteger, variable and out-of-range exponents still fail validation.
 
 The three future values are deliberately persisted in each domain's owned
 PostgreSQL fixture. Tests exercise Core/Teacher ingress, aliases, direct create/

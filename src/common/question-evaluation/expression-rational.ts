@@ -76,8 +76,13 @@ export function validatePowers(node: ExpressionNode): void {
   try {
     integerPower(evaluateConstant(node.right, new RationalBudget()));
   } catch (error) {
-    if (error instanceof ProofLimit) invalid();
-    if (!(error instanceof UndefinedExpression)) throw error;
+    // Inability to prove a constant exponent's bounds is not invalid syntax.
+    // evaluateConstant enforces the integer/power bounds before any power runs.
+    if (
+      !(error instanceof ProofLimit) &&
+      !(error instanceof UndefinedExpression)
+    )
+      throw error;
   }
 }
 export function evaluateConstant(

@@ -141,6 +141,10 @@ describe('ST10-A bounded mathematical expression proof', () => {
     expect(compare('((2^16)^16)^16', '1')).toBe(
       'UNKNOWN_REQUIRES_MANUAL_REVIEW',
     );
+    const cancellation = '2^((((2^16)^16)^16)-(((2^16)^16)^16)+1)';
+    expect(compare(cancellation, '2')).toBe('UNKNOWN_REQUIRES_MANUAL_REVIEW');
+    expect(compare('2', cancellation)).toBe('UNKNOWN_REQUIRES_MANUAL_REVIEW');
+    expect(compare('2^(2^16)', '2')).toBe('INVALID_INPUT');
   });
   it('bounds declarations and returns a frozen safe AST without proving variables', () => {
     const variables = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
