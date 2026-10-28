@@ -3,6 +3,10 @@ import type {
   RichOptionContent,
 } from '../../../common/rich-content/rich-content.types';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import type {
+  HomeworkPrivateAnswerKey,
+  HomeworkPublicDefinition,
+} from '../domain/homework-typed-contract';
 
 export class HomeworkQuestionOptionResponseDto {
   @ApiPropertyOptional({
@@ -21,6 +25,18 @@ export class HomeworkQuestionOptionResponseDto {
 }
 
 export class HomeworkQuestionResponseDto {
+  @ApiPropertyOptional({
+    type: Object,
+    description: 'Closed public typed definition for Fill, Matching or MEDIA.',
+  })
+  metadata?: HomeworkPublicDefinition;
+  @ApiPropertyOptional({
+    type: Object,
+    nullable: true,
+    description:
+      'Only on the explicitly authorized author surface; absent for view/review-only actors.',
+  })
+  answerKey?: HomeworkPrivateAnswerKey | null;
   @ApiPropertyOptional({
     type: Object,
     description:

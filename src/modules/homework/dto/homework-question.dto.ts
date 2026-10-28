@@ -73,6 +73,13 @@ export class CreateHomeworkQuestionOptionDto {
 export class CreateHomeworkQuestionDto {
   @ApiPropertyOptional({
     type: Object,
+    description:
+      'Author-private tagged write: {state:"value",value:key} or {state:"clear"}. Typed questions only.',
+  })
+  @Allow()
+  answerKey?: unknown;
+  @ApiPropertyOptional({
+    type: Object,
     nullable: true,
     description:
       'Closed Safe Rich AST V1 Homework question envelope; non-null derives prompt/instructions. stemAr is unsupported.',
@@ -141,6 +148,13 @@ export class CreateHomeworkQuestionDto {
 }
 
 export class UpdateHomeworkQuestionDto {
+  @ApiPropertyOptional({
+    type: Object,
+    description:
+      'Omitted preserves only a compatible key; explicit {state:"clear"} clears to SQL NULL.',
+  })
+  @Allow()
+  answerKey?: unknown;
   @ApiPropertyOptional({
     type: Object,
     nullable: true,

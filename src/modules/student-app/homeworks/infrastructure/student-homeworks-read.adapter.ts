@@ -1,4 +1,5 @@
 import { Injectable, Optional } from '@nestjs/common';
+import { projectHomeworkTypedAnswers } from '../../../homework/infrastructure/homework-typed-answer.projection';
 import { HomeworkRichContentService } from '../../../homework/application/homework-rich-content.service';
 import {
   HomeworkAssignmentMode,
@@ -117,6 +118,7 @@ const STUDENT_HOMEWORK_TARGET_ARGS =
               id: true,
               homeworkAssignmentId: true,
               type: true,
+              metadata: true,
               prompt: true,
               richContent: true,
               instructions: true,
@@ -349,6 +351,12 @@ export class StudentHomeworksReadAdapter {
         ],
         'student',
         { surface: 'student', student: params.context },
+      );
+    if (target)
+      await projectHomeworkTypedAnswers(
+        this.scopedPrisma,
+        params.homeworkId,
+        target.submissions.flatMap((submission) => submission.answers),
       );
     return target;
   }

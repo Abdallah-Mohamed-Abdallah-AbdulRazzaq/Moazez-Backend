@@ -1,13 +1,16 @@
 import { HomeworkQuestionType } from '@prisma/client';
 import { HomeworkQuestionInvalidTypePayloadException } from './homework-question.exceptions';
 
-/** Declared persistence types may grow; operational APIs stay at the approved five. */
+/** Explicit ST09-B/C runtime dispatch. Future persisted values remain fail closed. */
 export const HOMEWORK_RUNTIME_QUESTION_TYPES = Object.freeze([
   HomeworkQuestionType.SHORT_TEXT,
   HomeworkQuestionType.LONG_TEXT,
   HomeworkQuestionType.SINGLE_CHOICE,
   HomeworkQuestionType.MULTIPLE_CHOICE,
   HomeworkQuestionType.TRUE_FALSE,
+  HomeworkQuestionType.FILL_IN_BLANK,
+  HomeworkQuestionType.MATCHING,
+  HomeworkQuestionType.MEDIA,
 ]);
 
 export function isHomeworkRuntimeQuestionType(value: unknown): boolean {

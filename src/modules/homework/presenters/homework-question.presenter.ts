@@ -1,6 +1,10 @@
 import { Prisma } from '@prisma/client';
 import { assertHomeworkRuntimeQuestionType } from '../domain/homework-runtime-types';
 import {
+  presentHomeworkAuthorKey,
+  presentHomeworkTypedDefinition,
+} from '../application/homework-typed-runtime';
+import {
   presentHomeworkRichQuestion,
   presentHomeworkRichOption,
 } from '../infrastructure/homework-rich-content.projection';
@@ -30,6 +34,7 @@ export interface HomeworkQuestionPresenterModel {
   sortOrder: number;
   isRequired: boolean;
   expectedAnswer: string | null;
+  metadata?: unknown;
   options: HomeworkQuestionOptionPresenterModel[];
   createdAt: Date;
   updatedAt: Date;
@@ -76,6 +81,8 @@ function presentHomeworkQuestion(
   assertHomeworkRuntimeQuestionType(question.type);
   const response: HomeworkQuestionResponseDto = {
     questionId: question.id,
+    ...presentHomeworkTypedDefinition(question),
+    ...(options.includeAnswers ? presentHomeworkAuthorKey(question) : {}),
     ...presentHomeworkRichQuestion(question),
     homeworkId: question.homeworkAssignmentId,
     type: question.type.toLowerCase(),

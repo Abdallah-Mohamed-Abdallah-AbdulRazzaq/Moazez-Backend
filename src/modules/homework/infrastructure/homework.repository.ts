@@ -37,12 +37,48 @@ import {
   HomeworkSubmissionNotSubmittableException,
   HomeworkSubmissionTargetNotFoundException,
   HomeworkAssignmentNotFoundException,
+  HomeworkAssignmentNotMutableException,
 } from '../domain/homework.exceptions';
 import {
   HomeworkSubmissionAttachmentFileNotFoundException,
   HomeworkSubmissionAttachmentReadOnlyException,
 } from '../domain/homework-submission-attachment.exceptions';
 import { HomeworkAnswerReadOnlyException } from '../domain/homework-answer.exceptions';
+import {
+  isHomeworkTypedType,
+  normalizeHomeworkTypedQuestionMutation,
+  normalizeHomeworkTypedWrite,
+  attachHomeworkAuthorKey,
+  homeworkTypedQuestionValidation,
+} from '../application/homework-typed-runtime';
+import { normalizeHomeworkDefinition } from '../domain/homework-typed-foundation';
+import { classifyStoredHomeworkPrivateAnswerKey } from '../domain/homework-typed-foundation';
+import {
+  assertHomeworkPublicationState,
+  validateHomeworkPublicationStructures,
+} from '../domain/homework-publication';
+import { HomeworkAssignmentInvalidQuestionStructureException } from '../domain/homework-question.exceptions';
+import { HomeworkAssignmentTargetConflictException } from '../domain/homework.exceptions';
+import { HomeworkQuestionReadOnlyException } from '../domain/homework-question.exceptions';
+import type { HomeworkAnswerInput } from '../domain/homework-answer-inputs';
+import { normalizeAnswerForQuestion } from '../domain/homework-answer-normalization';
+import {
+  HomeworkAnswerInvalidPayloadException,
+  HomeworkAnswerInvalidSubmissionScopeException,
+} from '../domain/homework-answer.exceptions';
+import {
+  projectHomeworkTypedAnswers,
+  readHomeworkTypedAnswers,
+} from './homework-typed-answer.projection';
+import { homeworkAnswerJsonPersistence } from './homework-typed-persistence';
+import {
+  HomeworkAnswerReviewReadOnlyException,
+  HomeworkAnswerReviewInvalidScopeException,
+  HomeworkAnswerReviewExceedsQuestionPointsException,
+  HomeworkAnswerReviewExceedsAssignmentMarksException,
+  HomeworkAnswerReviewIncompleteRequiredAnswersException,
+} from '../domain/homework-answer-review.exceptions';
+import { HomeworkSubmissionReviewInvalidException } from '../domain/homework.exceptions';
 
 class HomeworkRichAuthorizationRequired extends Error {}
 
@@ -720,6 +756,66 @@ export class HomeworkRepository {
     return this.richContent;
   }
 
+  async projectAuthorTypedQuestions(
+    homeworkId: string,
+    questions: HomeworkQuestionRecord[],
+    actor?: HomeworkAssetActor,
+  ): Promise<void> {
+    const typed = questions.filter((question) =>
+      isHomeworkTypedType(question.type),
+    );
+    if (!typed.length) return;
+    await this.requireRichIntegration().projectTypedMediaRead(
+      homeworkId,
+      typed,
+      actor,
+    );
+    if (typed.length > 200) {
+      for (let offset = 0; offset < typed.length; offset += 200)
+        await this.projectAuthorTypedQuestions(
+          homeworkId,
+          typed.slice(offset, offset + 200),
+          actor,
+        );
+      return;
+    }
+    await this.scopedPrisma.$transaction(
+      async (tx) => {
+        if (
+          !(await this.requireRichIntegration().assertAuthorRead(
+            tx,
+            homeworkId,
+            actor,
+          ))
+        )
+          return;
+        const scope = requireHomeworkScope();
+        const rows = await tx.$queryRaw<
+          Array<{ id: string; value: unknown; sqlNull: boolean }>
+        >`
+        SELECT id, answer_key AS value, answer_key IS NULL AS "sqlNull" FROM homework_questions
+        WHERE school_id = ${scope.schoolId}::uuid AND homework_assignment_id = ${homeworkId}::uuid
+          AND deleted_at IS NULL AND id IN (${Prisma.join(typed.map((question) => Prisma.sql`${question.id}::uuid`))})`;
+        for (const question of typed) {
+          if (!isHomeworkTypedType(question.type)) continue;
+          const row = rows.find((item) => item.id === question.id);
+          if (row)
+            attachHomeworkAuthorKey(
+              question,
+              normalizeHomeworkDefinition(
+                question.type,
+                question.metadata,
+                'draft',
+              ),
+              row.value,
+              row.sqlNull,
+            );
+        }
+      },
+      { maxWait: 5000, timeout: 15000 },
+    );
+  }
+
   /** Discovery holds only assignment/question locks. Escalation rolls back
    * before a fresh ST06-ordered transaction revalidates the original command. */
   private async questionMutation<T>(
@@ -743,19 +839,23 @@ export class HomeworkRepository {
             );
           const scope = requireHomeworkScope();
           const assignment = await tx.$queryRaw<
-            Array<{ id: string }>
-          >`SELECT id FROM homework_assignments
+            Array<{ id: string; status: HomeworkAssignmentStatus }>
+          >`SELECT id, status FROM homework_assignments
         WHERE id = ${resource.homeworkId}::uuid AND school_id = ${scope.schoolId}::uuid AND deleted_at IS NULL FOR UPDATE`;
           if (!assignment.length)
             throw new HomeworkQuestionNotFoundException(resource);
+          if (assignment[0].status !== 'DRAFT')
+            throw new HomeworkQuestionReadOnlyException();
           if (resource.questionId) {
             const question = await tx.$queryRaw<
-              Array<{ id: string }>
-            >`SELECT id FROM homework_questions
+              Array<{ id: string; type: string }>
+            >`SELECT id, type FROM homework_questions
           WHERE id = ${resource.questionId}::uuid AND homework_assignment_id = ${resource.homeworkId}::uuid
             AND school_id = ${scope.schoolId}::uuid AND deleted_at IS NULL FOR UPDATE`;
             if (!question.length)
               throw new HomeworkQuestionNotFoundException(resource);
+            if (!protectedWrite && isHomeworkTypedType(question[0].type))
+              throw new HomeworkRichAuthorizationRequired();
           }
           return operation(tx, protectedWrite);
         },
@@ -1024,6 +1124,19 @@ export class HomeworkRepository {
         throw new Error('Homework target allocation was not locked');
       }
 
+      await tx.$queryRaw`SELECT id FROM homework_assignments WHERE id = ${homeworkId}::uuid AND school_id = ${writeContext.schoolId}::uuid AND deleted_at IS NULL FOR UPDATE`;
+      const current = await tx.homeworkAssignment.findFirst({
+        where: {
+          id: homeworkId,
+          schoolId: writeContext.schoolId,
+          deletedAt: null,
+        },
+        select: { status: true },
+      });
+      if (!current) throw new HomeworkAssignmentNotFoundException();
+      if (current.status !== 'DRAFT')
+        throw new HomeworkAssignmentNotMutableException();
+
       await tx.homeworkTarget.deleteMany({
         where: {
           schoolId: writeContext.schoolId,
@@ -1082,18 +1195,38 @@ export class HomeworkRepository {
     homeworkId: string,
     targets: CreateHomeworkTargetData[],
   ): Promise<HomeworkAssignmentWithCounters> {
-    await this.scopedPrisma.$transaction([
-      this.scopedPrisma.homeworkTarget.deleteMany({
-        where: { homeworkAssignmentId: homeworkId },
-      }),
-      ...(targets.length > 0
-        ? [
-            this.scopedPrisma.homeworkTarget.createMany({
-              data: targets,
-            }),
-          ]
-        : []),
-    ]);
+    await this.scopedPrisma.$transaction(
+      async (tx) => {
+        await this.requireRichIntegration().assertWrite(
+          tx,
+          { homeworkId },
+          undefined,
+          'homework.targets.manage',
+        );
+        const current = await tx.homeworkAssignment.findFirst({
+          where: { id: homeworkId, deletedAt: null },
+          select: { status: true },
+        });
+        if (!current) throw new HomeworkAssignmentNotFoundException();
+        if (current.status !== 'DRAFT')
+          throw new HomeworkAssignmentNotMutableException();
+        const scope = requireHomeworkScope();
+        if (
+          targets.some(
+            (target) =>
+              target.schoolId !== scope.schoolId ||
+              target.homeworkAssignmentId !== homeworkId,
+          )
+        )
+          throw new HomeworkAssignmentTargetConflictException();
+        await tx.homeworkTarget.deleteMany({
+          where: { homeworkAssignmentId: homeworkId },
+        });
+        if (targets.length > 0)
+          await tx.homeworkTarget.createMany({ data: targets });
+      },
+      { maxWait: 5000, timeout: 15000 },
+    );
 
     return this.findMutationResult(homeworkId);
   }
@@ -1109,21 +1242,126 @@ export class HomeworkRepository {
     await this.scopedPrisma.$transaction(
       async (tx) => {
         const scope = requireHomeworkScope();
-        // Assignment-only lock: never acquire an allocation lock afterwards.
-        // Question writers use this same parent lock; inspect current types
-        // before any of the existing target/status mutations.
+        await this.requireRichIntegration().assertWrite(
+          tx,
+          { homeworkId },
+          undefined,
+          'homework.assignments.manage',
+        );
+        // The protected author boundary already acquired allocation before assignment.
+        // All question/option writers use this same parent serialization.
         const assignment = await tx.$queryRaw<Array<{ id: string }>>`
         SELECT id FROM homework_assignments
         WHERE id = ${homeworkId}::uuid AND school_id = ${scope.schoolId}::uuid
           AND deleted_at IS NULL FOR UPDATE
       `;
         if (!assignment.length) throw new HomeworkAssignmentNotFoundException();
+        const current = await tx.homeworkAssignment.findFirstOrThrow({
+          where: { id: homeworkId, deletedAt: null },
+          select: {
+            status: true,
+            dueAt: true,
+            publishAt: true,
+            classroomId: true,
+            academicYearId: true,
+            termId: true,
+            targetMode: true,
+          },
+        });
+        assertHomeworkPublicationState(current);
+        await tx.$queryRaw`SELECT id FROM homework_questions WHERE homework_assignment_id = ${homeworkId}::uuid AND school_id = ${scope.schoolId}::uuid ORDER BY id FOR SHARE`;
+        await tx.$queryRaw`SELECT o.id FROM homework_question_options o JOIN homework_questions q ON q.id=o.homework_question_id AND q.school_id=o.school_id WHERE q.homework_assignment_id = ${homeworkId}::uuid AND q.school_id = ${scope.schoolId}::uuid ORDER BY o.id FOR SHARE OF o`;
         const questions = await tx.homeworkQuestion.findMany({
           where: { homeworkAssignmentId: homeworkId, deletedAt: null },
-          select: { type: true },
+          select: HOMEWORK_QUESTION_SELECT,
           orderBy: { id: 'asc' },
         });
         assertHomeworkRuntimeQuestions(questions);
+        validateHomeworkPublicationStructures(questions);
+        const keys = await tx.$queryRaw<
+          Array<{ id: string; value: unknown; sqlNull: boolean }>
+        >`
+          SELECT id, answer_key AS value, answer_key IS NULL AS "sqlNull" FROM homework_questions
+          WHERE school_id = ${scope.schoolId}::uuid AND homework_assignment_id = ${homeworkId}::uuid AND deleted_at IS NULL`;
+        for (const question of questions) {
+          if (!isHomeworkTypedType(question.type)) continue;
+          const definition = homeworkTypedQuestionValidation(() =>
+            normalizeHomeworkDefinition(
+              question.type as 'FILL_IN_BLANK' | 'MATCHING' | 'MEDIA',
+              question.metadata,
+              'complete',
+            ),
+          );
+          const key = keys.find((row) => row.id === question.id);
+          if (
+            !key ||
+            question.expectedAnswer !== null ||
+            classifyStoredHomeworkPrivateAnswerKey(
+              definition,
+              key.value,
+              key.sqlNull,
+            ).state === 'invalid'
+          )
+            throw new HomeworkAssignmentInvalidQuestionStructureException({
+              reason: 'invalid_typed_definition_or_key',
+            });
+          if (definition.kind === 'media' && definition.source)
+            await this.requireRichIntegration().assertMediaSource(
+              tx,
+              {
+                homeworkId,
+                questionId: question.id,
+                assetId: definition.source.assetId,
+              },
+              undefined,
+              true,
+            );
+        }
+        await this.requireRichIntegration().assertPublicationDisplay(
+          tx,
+          homeworkId,
+          questions,
+        );
+        const eligible = await tx.$queryRaw<
+          Array<{ enrollmentId: string; studentId: string }>
+        >`
+          SELECT e.id AS "enrollmentId", s.id AS "studentId" FROM student_enrollments e JOIN students s ON s.id=e.student_id AND s.school_id=e.school_id
+          WHERE e.school_id = ${scope.schoolId}::uuid AND e.classroom_id = ${current.classroomId}::uuid AND e.academic_year_id = ${current.academicYearId}::uuid
+            AND e.term_id = ${current.termId}::uuid AND e.status='ACTIVE' AND e.deleted_at IS NULL AND e.ended_at IS NULL
+            AND s.status='ACTIVE' AND s.deleted_at IS NULL ORDER BY e.id FOR SHARE OF e,s`;
+        if (
+          !targets.length ||
+          targets.some(
+            (target) =>
+              target.schoolId !== scope.schoolId ||
+              target.homeworkAssignmentId !== homeworkId ||
+              !eligible.some(
+                (row) =>
+                  row.enrollmentId === target.enrollmentId &&
+                  row.studentId === target.studentId,
+              ),
+          )
+        )
+          throw new HomeworkAssignmentTargetConflictException();
+        if (
+          current.targetMode === 'CLASSROOM' &&
+          targets.length !== eligible.length
+        )
+          throw new HomeworkAssignmentTargetConflictException();
+        if (current.targetMode === 'SELECTED_STUDENTS') {
+          const selected = await tx.homeworkTarget.findMany({
+            where: { homeworkAssignmentId: homeworkId },
+            select: { studentId: true },
+          });
+          if (
+            selected.length !== targets.length ||
+            selected.some(
+              (row) =>
+                !targets.some((target) => target.studentId === row.studentId),
+            )
+          )
+            throw new HomeworkAssignmentTargetConflictException();
+        }
         await tx.homeworkTarget.deleteMany({
           where: { homeworkAssignmentId: homeworkId },
         });
@@ -1198,19 +1436,30 @@ export class HomeworkRepository {
     question: CreateHomeworkQuestionData;
     options: CreateHomeworkQuestionOptionData[];
     actor?: HomeworkAssetActor;
+    keyWrite?: unknown;
   }): Promise<HomeworkQuestionRecord> {
     assertHomeworkRuntimeQuestionType(input.question.type);
     const homeworkId = String(input.question.homeworkAssignmentId);
     const questionId = String(input.question.id);
-    if (
-      input.question.richContent !== undefined ||
-      input.options.some((option) => option.richContent !== undefined)
-    ) {
+    {
       await this.questionMutation(
         { homeworkId },
         true,
         input.actor,
         async (tx) => {
+          const typed = isHomeworkTypedType(input.question.type)
+            ? normalizeHomeworkTypedQuestionMutation({
+                type: input.question.type,
+                metadata: input.question.metadata,
+                expectedAnswer: input.question.expectedAnswer,
+                optionCount: input.options.length,
+                keyWrite: input.keyWrite,
+              })
+            : null;
+          if (!typed && input.keyWrite !== undefined)
+            throw new HomeworkQuestionInvalidTypePayloadException({
+              reason: 'key_requires_typed_question',
+            });
           const questionPlan = homeworkRichChange(
             'homeworkQuestion',
             input.question,
@@ -1222,9 +1471,22 @@ export class HomeworkRepository {
           await tx.homeworkQuestion.create({
             data: {
               ...input.question,
+              ...(typed
+                ? { metadata: typed.metadata, answerKey: typed.answerKey }
+                : {}),
               ...richStorage(questionPlan),
             } as Prisma.HomeworkQuestionUncheckedCreateInput,
           });
+          if (typed?.definition.kind === 'media' && typed.definition.source)
+            await this.requireRichIntegration().assertMediaSource(
+              tx,
+              {
+                homeworkId,
+                questionId,
+                assetId: typed.definition.source.assetId,
+              },
+              input.actor,
+            );
           if (options.length)
             await tx.homeworkQuestionOption.createMany({
               data: options.map(
@@ -1255,23 +1517,6 @@ export class HomeworkRepository {
       );
       return this.findQuestionMutationResult({ homeworkId, questionId });
     }
-    await this.scopedPrisma.$transaction([
-      this.scopedPrisma.homeworkQuestion.create({
-        data: input.question as Prisma.HomeworkQuestionUncheckedCreateInput,
-      }),
-      ...(input.options.length > 0
-        ? [
-            this.scopedPrisma.homeworkQuestionOption.createMany({
-              data: input.options as Prisma.HomeworkQuestionOptionUncheckedCreateInput[],
-            }),
-          ]
-        : []),
-    ]);
-
-    return this.findQuestionMutationResult({
-      homeworkId: String(input.question.homeworkAssignmentId),
-      questionId: String(input.question.id),
-    });
   }
 
   async updateQuestion(input: {
@@ -1279,10 +1524,15 @@ export class HomeworkRepository {
     questionId: string;
     data: UpdateHomeworkQuestionData;
     actor?: HomeworkAssetActor;
+    keyWrite?: unknown;
+    typedMutation?: boolean;
   }): Promise<HomeworkQuestionRecord> {
     await this.questionMutation(
       input,
-      input.data.richContent !== undefined,
+      input.data.richContent !== undefined ||
+        input.typedMutation === true ||
+        isHomeworkTypedType(input.data.type) ||
+        input.keyWrite !== undefined,
       input.actor,
       async (tx, protectedWrite) => {
         const current = await tx.homeworkQuestion.findFirst({
@@ -1300,6 +1550,88 @@ export class HomeworkRepository {
             ? input.data.type
             : (input.data.type?.set ?? current.type),
         );
+        const nextTypedType =
+          typeof input.data.type === 'string'
+            ? input.data.type
+            : (input.data.type?.set ?? current.type);
+        const typedMutation =
+          isHomeworkTypedType(current.type) ||
+          isHomeworkTypedType(nextTypedType);
+        if (typedMutation && !protectedWrite)
+          throw new HomeworkRichAuthorizationRequired();
+        const typedData: Pick<
+          Prisma.HomeworkQuestionUncheckedUpdateManyInput,
+          'metadata' | 'answerKey'
+        > = {};
+        if (current.type !== nextTypedType && typedMutation) {
+          const [relationships] = await tx.$queryRaw<
+            Array<{ present: boolean }>
+          >`
+            SELECT (EXISTS (SELECT 1 FROM homework_question_options WHERE homework_question_id = ${current.id}::uuid AND school_id = ${current.schoolId}::uuid)
+              OR EXISTS (SELECT 1 FROM homework_submission_answers WHERE homework_question_id = ${current.id}::uuid AND school_id = ${current.schoolId}::uuid)
+              OR EXISTS (SELECT 1 FROM homework_question_assets WHERE homework_question_id = ${current.id}::uuid AND school_id = ${current.schoolId}::uuid)) AS present`;
+          if (relationships.present)
+            throw new HomeworkQuestionInvalidTypePayloadException({
+              reason: 'type_transition_has_relationships',
+            });
+        }
+        if (typedMutation) {
+          const [key] = await tx.$queryRaw<
+            Array<{ value: unknown; sqlNull: boolean }>
+          >`
+            SELECT answer_key AS value, answer_key IS NULL AS "sqlNull" FROM homework_questions
+            WHERE id = ${current.id}::uuid AND school_id = ${current.schoolId}::uuid AND homework_assignment_id = ${input.homeworkId}::uuid AND deleted_at IS NULL`;
+          if (!key) throw new HomeworkQuestionNotFoundException();
+          if (isHomeworkTypedType(nextTypedType)) {
+            const typed = normalizeHomeworkTypedQuestionMutation({
+              type: nextTypedType,
+              metadata:
+                input.data.metadata === undefined
+                  ? current.metadata
+                  : input.data.metadata,
+              expectedAnswer:
+                input.data.expectedAnswer === undefined
+                  ? current.expectedAnswer
+                  : input.data.expectedAnswer,
+              optionCount: current.options.length,
+              keyWrite: input.keyWrite,
+              currentKey: key,
+            });
+            typedData.metadata = typed.metadata;
+            typedData.answerKey = typed.answerKey;
+            if (typed.definition.kind === 'media' && typed.definition.source)
+              await this.requireRichIntegration().assertMediaSource(
+                tx,
+                {
+                  homeworkId: input.homeworkId,
+                  questionId: current.id,
+                  assetId: typed.definition.source.assetId,
+                },
+                input.actor,
+              );
+          } else {
+            if (
+              input.data.metadata === undefined ||
+              (!key.sqlNull && input.keyWrite === undefined)
+            )
+              throw new HomeworkQuestionInvalidTypePayloadException({
+                reason: 'type_transition_requires_explicit_clear',
+              });
+            if (
+              input.keyWrite !== undefined &&
+              homeworkTypedQuestionValidation(() =>
+                normalizeHomeworkTypedWrite(input.keyWrite),
+              ).state !== 'clear'
+            )
+              throw new HomeworkQuestionInvalidTypePayloadException({
+                reason: 'legacy_question_key_forbidden',
+              });
+            typedData.answerKey = Prisma.DbNull;
+          }
+        } else if (input.keyWrite !== undefined)
+          throw new HomeworkQuestionInvalidTypePayloadException({
+            reason: 'key_requires_typed_question',
+          });
         const plan = homeworkRichChange(
           'homeworkQuestion',
           input.data,
@@ -1336,6 +1668,7 @@ export class HomeworkRepository {
           },
           data: {
             ...input.data,
+            ...typedData,
             ...richStorage(plan),
           } as Prisma.HomeworkQuestionUncheckedUpdateManyInput,
         });
@@ -1438,7 +1771,7 @@ export class HomeworkRepository {
     actor?: HomeworkAssetActor;
   }): Promise<HomeworkQuestionRecord> {
     const questionId = String(input.data.homeworkQuestionId);
-    if (input.data.richContent !== undefined) {
+    {
       await this.questionMutation(
         { homeworkId: input.homeworkId, questionId },
         true,
@@ -1478,10 +1811,7 @@ export class HomeworkRepository {
             );
         },
       );
-    } else
-      await this.scopedPrisma.homeworkQuestionOption.create({
-        data: input.data as Prisma.HomeworkQuestionOptionUncheckedCreateInput,
-      });
+    }
 
     return this.findQuestionMutationResult({
       homeworkId: input.homeworkId,
@@ -1523,7 +1853,7 @@ export class HomeworkRepository {
           }))
         )
           throw new HomeworkRichAuthorizationRequired();
-        if (protectedWrite) {
+        {
           const question = await tx.homeworkQuestion.findFirst({
             where: { id: input.questionId },
             select: { type: true },
@@ -1576,6 +1906,23 @@ export class HomeworkRepository {
       false,
       input.actor,
       async (tx, protectedWrite) => {
+        const question = await tx.homeworkQuestion.findFirst({
+          where: {
+            id: input.questionId,
+            homeworkAssignmentId: input.homeworkId,
+            deletedAt: null,
+          },
+          select: { type: true },
+        });
+        if (
+          !question ||
+          !['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'TRUE_FALSE'].includes(
+            question.type,
+          )
+        )
+          throw new HomeworkQuestionInvalidTypePayloadException({
+            reason: 'options_forbidden_for_text_question',
+          });
         const scope = requireHomeworkScope();
         const locked = await tx.$queryRaw<
           Array<{ id: string }>
@@ -1735,6 +2082,323 @@ export class HomeworkRepository {
     });
   }
 
+  private async assertFinalTypedAnswers(
+    tx: Prisma.TransactionClient,
+    homeworkId: string,
+    submissionId: string,
+    questions: HomeworkQuestionRecord[],
+  ): Promise<void> {
+    const stored = await readHomeworkTypedAnswers(
+      tx,
+      homeworkId,
+      submissionId,
+      questions.map((question) => question.id),
+    );
+    if (new Set(stored.map((row) => row.questionId)).size !== stored.length)
+      throw new HomeworkAnswerInvalidPayloadException({
+        reason: 'duplicate_stored_answers',
+      });
+    for (const question of questions) {
+      const answer = stored.find((row) => row.questionId === question.id);
+      normalizeAnswerForQuestion({
+        question,
+        final: true,
+        existing: answer,
+        input: {
+          questionId: question.id,
+          textAnswer: answer?.textAnswer,
+          selectedOptionIds: Array.isArray(answer?.selectedOptionIds)
+            ? answer.selectedOptionIds.filter(
+                (id): id is string => typeof id === 'string',
+              )
+            : null,
+          ...(isHomeworkTypedType(question.type) &&
+          question.type !== 'MEDIA' &&
+          answer &&
+          !answer.answerJsonSqlNull
+            ? { answerJson: answer.answerJson }
+            : {}),
+        },
+      });
+    }
+  }
+
+  private async lockTypedReview(
+    tx: Prisma.TransactionClient,
+    homeworkId: string,
+    targetId: string,
+    submissionId: string,
+    allowReviewed = false,
+  ): Promise<HomeworkReviewSubmissionRecord> {
+    const scope = requireHomeworkScope();
+    await this.requireRichIntegration().assertReviewWrite(
+      tx,
+      homeworkId,
+      allowReviewed && scope.userType !== 'TEACHER'
+        ? 'homework.assignments.manage'
+        : 'homework.submissions.review',
+    );
+    await tx.$queryRaw`SELECT id FROM homework_targets WHERE id=${targetId}::uuid AND school_id=${scope.schoolId}::uuid AND homework_assignment_id=${homeworkId}::uuid FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM homework_submissions WHERE id=${submissionId}::uuid AND school_id=${scope.schoolId}::uuid AND homework_assignment_id=${homeworkId}::uuid AND homework_target_id=${targetId}::uuid FOR UPDATE`;
+    const current = await tx.homeworkSubmission.findFirst({
+      where: {
+        id: submissionId,
+        schoolId: scope.schoolId,
+        homeworkAssignmentId: homeworkId,
+        homeworkTargetId: targetId,
+      },
+      ...HOMEWORK_REVIEW_SUBMISSION_ARGS,
+    });
+    if (!current) throw new HomeworkAnswerReviewInvalidScopeException();
+    if (allowReviewed && current.status === 'REVIEWED') return current;
+    if (
+      !['PUBLISHED', 'CLOSED'].includes(current.homeworkAssignment.status) ||
+      !['SUBMITTED', 'LATE'].includes(current.status)
+    )
+      throw new HomeworkAnswerReviewReadOnlyException();
+    await this.assertFinalTypedAnswers(
+      tx,
+      homeworkId,
+      submissionId,
+      current.homeworkAssignment.questions,
+    );
+    return current;
+  }
+
+  async projectTypedAnswers(
+    homeworkId: string,
+    answers: HomeworkSubmissionAnswerRecord[],
+  ): Promise<void> {
+    await projectHomeworkTypedAnswers(this.scopedPrisma, homeworkId, answers);
+  }
+
+  /** One target lock serializes the first draft, all answer writes and final submit. */
+  async mutateTypedStudentSubmission(input: {
+    schoolId: string;
+    homeworkAssignmentId: string;
+    homeworkTargetId: string;
+    studentId: string;
+    enrollmentId: string;
+    answers: HomeworkAnswerInput[];
+    finalAnswers: boolean;
+    bodyText?: string | null;
+    permission:
+      | 'homework.answers.manage'
+      | 'homework.submissions.save'
+      | 'homework.submissions.submit';
+    finalize?: (
+      target: HomeworkTargetForSubmissionRecord,
+      hasEligibleAttachment: boolean,
+    ) => {
+      bodyText: string | null;
+      submittedAt: Date;
+      submissionStatus: HomeworkSubmissionStatus;
+      targetStatus: HomeworkTargetStatus;
+    };
+  }): Promise<HomeworkSubmissionRecord> {
+    return this.scopedPrisma.$transaction(
+      async (tx) => {
+        const scope = requireHomeworkScope();
+        if (scope.schoolId !== input.schoolId)
+          throw new HomeworkAnswerInvalidSubmissionScopeException();
+        if (
+          !Array.isArray(input.answers) ||
+          input.answers.length > 100 ||
+          new Set(input.answers.map((answer) => answer.questionId)).size !==
+            input.answers.length
+        )
+          throw new HomeworkAnswerInvalidPayloadException({
+            reason: 'invalid_bulk_identity',
+          });
+        const actor = await this.requireRichIntegration().assertStudentWrite(
+          tx,
+          input.homeworkAssignmentId,
+          input,
+          input.permission,
+        );
+        const target = await this.lockEditableStudentTarget(
+          tx,
+          input,
+          input.finalize
+            ? undefined
+            : () => new HomeworkAnswerReadOnlyException(),
+        );
+        await tx.$queryRaw`SELECT id FROM homework_questions WHERE homework_assignment_id=${input.homeworkAssignmentId}::uuid
+        AND school_id=${scope.schoolId}::uuid ORDER BY id FOR SHARE`;
+        const questions = await tx.homeworkQuestion.findMany({
+          where: {
+            homeworkAssignmentId: input.homeworkAssignmentId,
+            deletedAt: null,
+          },
+          orderBy: { id: 'asc' },
+          select: HOMEWORK_QUESTION_SELECT,
+        });
+        assertHomeworkRuntimeQuestions(questions);
+        for (const question of questions) {
+          if (!isHomeworkTypedType(question.type)) continue;
+          const definition = homeworkTypedQuestionValidation(() =>
+            normalizeHomeworkDefinition(
+              question.type as 'FILL_IN_BLANK' | 'MATCHING' | 'MEDIA',
+              question.metadata,
+              'complete',
+            ),
+          );
+          if (definition.kind === 'media' && definition.source)
+            await this.requireRichIntegration().assertStudentMediaSource(
+              tx,
+              actor,
+              {
+                homeworkId: input.homeworkAssignmentId,
+                questionId: question.id,
+                assetId: definition.source.assetId,
+              },
+              input.permission,
+            );
+        }
+        const existing = target.submissions[0];
+        const submission = existing
+          ? await tx.homeworkSubmission.update({
+              where: { id: existing.id },
+              data:
+                input.bodyText === undefined
+                  ? {}
+                  : { bodyText: input.bodyText },
+              ...HOMEWORK_SUBMISSION_ARGS,
+            })
+          : await tx.homeworkSubmission.create({
+              data: {
+                schoolId: scope.schoolId,
+                homeworkAssignmentId: input.homeworkAssignmentId,
+                homeworkTargetId: target.id,
+                studentId: target.studentId,
+                enrollmentId: target.enrollmentId,
+                status: 'DRAFT',
+                bodyText: input.bodyText ?? null,
+              },
+              ...HOMEWORK_SUBMISSION_ARGS,
+            });
+        const stored = await readHomeworkTypedAnswers(
+          tx,
+          input.homeworkAssignmentId,
+          submission.id,
+          questions.map((question) => question.id),
+        );
+        if (new Set(stored.map((row) => row.questionId)).size !== stored.length)
+          throw new HomeworkAnswerInvalidPayloadException({
+            reason: 'duplicate_stored_answers',
+          });
+        for (const command of input.answers) {
+          const question = questions.find(
+            (item) => item.id === command.questionId,
+          );
+          if (!question)
+            throw new HomeworkAnswerInvalidSubmissionScopeException();
+          const current = stored.find((row) => row.questionId === question.id);
+          const normalized = normalizeAnswerForQuestion({
+            question,
+            input: command,
+            final: input.finalAnswers,
+            existing: current,
+          });
+          const data: Prisma.HomeworkSubmissionAnswerUncheckedUpdateManyInput =
+            {
+              textAnswer: normalized.textAnswer,
+              selectedOptionIds:
+                normalized.selectedOptionIds ?? Prisma.JsonNull,
+              isDraft: !input.finalAnswers,
+            };
+          if (isHomeworkTypedType(question.type)) {
+            const definition = normalizeHomeworkDefinition(
+              question.type,
+              question.metadata,
+              'complete',
+            );
+            data.answerJson = homeworkAnswerJsonPersistence(
+              definition,
+              normalized.answerJson === null
+                ? { state: 'clear' }
+                : { state: 'value', value: normalized.answerJson },
+              input.finalAnswers ? 'final' : 'draft',
+              question.isRequired,
+            );
+          }
+          if (current)
+            await tx.homeworkSubmissionAnswer.update({
+              where: { id: current.id },
+              data,
+            });
+          else
+            await tx.homeworkSubmissionAnswer.create({
+              data: {
+                schoolId: scope.schoolId,
+                homeworkSubmissionId: submission.id,
+                homeworkAssignmentId: input.homeworkAssignmentId,
+                homeworkTargetId: target.id,
+                homeworkQuestionId: question.id,
+                textAnswer: normalized.textAnswer,
+                selectedOptionIds:
+                  normalized.selectedOptionIds ?? Prisma.JsonNull,
+                isDraft: !input.finalAnswers,
+                ...(isHomeworkTypedType(question.type)
+                  ? {
+                      answerJson: data.answerJson as
+                        | Prisma.InputJsonValue
+                        | Prisma.NullTypes.DbNull,
+                    }
+                  : {}),
+              },
+            });
+        }
+        if (input.finalize) {
+          await this.assertFinalTypedAnswers(
+            tx,
+            input.homeworkAssignmentId,
+            submission.id,
+            questions,
+          );
+          const refreshed = await tx.homeworkTarget.findFirstOrThrow({
+            where: { id: target.id, schoolId: scope.schoolId },
+            ...HOMEWORK_TARGET_FOR_SUBMISSION_ARGS,
+          });
+          const final = input.finalize(
+            refreshed,
+            await this.eligibleSubmissionAttachments(tx, refreshed),
+          );
+          await tx.homeworkSubmission.update({
+            where: { id: submission.id },
+            data: {
+              status: final.submissionStatus,
+              submittedAt: final.submittedAt,
+              bodyText: final.bodyText,
+            },
+          });
+          await tx.homeworkTarget.update({
+            where: { id: target.id },
+            data: {
+              status: final.targetStatus,
+              submittedAt: final.submittedAt,
+            },
+          });
+          await tx.homeworkSubmissionAnswer.updateMany({
+            where: { homeworkSubmissionId: submission.id, deletedAt: null },
+            data: { isDraft: false },
+          });
+        }
+        const result = await tx.homeworkSubmission.findFirstOrThrow({
+          where: { id: submission.id, schoolId: scope.schoolId },
+          ...HOMEWORK_SUBMISSION_ARGS,
+        });
+        await projectHomeworkTypedAnswers(
+          tx,
+          input.homeworkAssignmentId,
+          result.answers,
+        );
+        return result;
+      },
+      { maxWait: 5000, timeout: 15000 },
+    );
+  }
+
   async resolveDraftSubmission(input: {
     schoolId: string;
     homeworkAssignmentId: string;
@@ -1811,6 +2475,10 @@ export class HomeworkRepository {
       });
       if (!question) throw new HomeworkQuestionNotFoundException();
       assertHomeworkRuntimeQuestionType(question.type);
+      if (isHomeworkTypedType(question.type))
+        throw new HomeworkAnswerInvalidPayloadException({
+          reason: 'typed_answer_requires_atomic_path',
+        });
       const existing = await tx.homeworkSubmissionAnswer.findFirst({
         where: {
           homeworkSubmissionId: String(input.data.homeworkSubmissionId),
@@ -2076,9 +2744,64 @@ export class HomeworkRepository {
       teacherComment: string | null;
       reviewedAt: Date;
       reviewedByUserId: string;
+      awardedPointsChanged?: boolean;
+      teacherCommentChanged?: boolean;
     }[];
   }): Promise<ReviewHomeworkSubmissionAnswersResult> {
     return this.scopedPrisma.$transaction(async (tx) => {
+      const snapshot = await tx.homeworkSubmission.findFirst({
+        where: {
+          id: input.submissionId,
+          schoolId: input.schoolId,
+          homeworkAssignmentId: input.homeworkAssignmentId,
+          homeworkTargetId: input.homeworkTargetId,
+          studentId: input.studentId,
+          enrollmentId: input.enrollmentId,
+        },
+        ...HOMEWORK_REVIEW_SUBMISSION_ARGS,
+      });
+      const typed =
+        snapshot?.homeworkAssignment.questions.some((question) =>
+          isHomeworkTypedType(question.type),
+        ) === true;
+      const current = typed
+        ? await this.lockTypedReview(
+            tx,
+            input.homeworkAssignmentId,
+            input.homeworkTargetId,
+            input.submissionId,
+          )
+        : null;
+      if (current) {
+        if (
+          input.reviews.some(
+            (review) =>
+              review.reviewedByUserId !== requireHomeworkScope().actorId,
+          )
+        )
+          throw new HomeworkAnswerReviewInvalidScopeException();
+        for (const review of input.reviews) {
+          const answer = current.answers.find(
+            (item) =>
+              item.id === review.answerId &&
+              item.homeworkQuestionId === review.homeworkQuestionId,
+          );
+          if (!answer) throw new HomeworkAnswerReviewInvalidScopeException();
+          const points =
+            review.awardedPointsChanged === false
+              ? answer.awardedPoints === null
+                ? null
+                : Number(answer.awardedPoints)
+              : review.awardedPoints;
+          if (
+            points !== null &&
+            (!Number.isFinite(points) ||
+              points < 0 ||
+              points > Number(answer.homeworkQuestion.points))
+          )
+            throw new HomeworkAnswerReviewExceedsQuestionPointsException();
+        }
+      }
       const matchingAnswers = await tx.homeworkSubmissionAnswer.count({
         where: {
           schoolId: input.schoolId,
@@ -2109,12 +2832,35 @@ export class HomeworkRepository {
             deletedAt: null,
           },
           data: {
-            teacherComment: review.teacherComment,
-            awardedPoints: review.awardedPoints,
+            ...(current && review.teacherCommentChanged === false
+              ? {}
+              : { teacherComment: review.teacherComment }),
+            ...(current && review.awardedPointsChanged === false
+              ? {}
+              : { awardedPoints: review.awardedPoints }),
             reviewedAt: review.reviewedAt,
             reviewedByUserId: review.reviewedByUserId,
           },
         });
+      }
+
+      let awardedMarks = input.awardedMarks;
+      if (current) {
+        const totals = await tx.homeworkSubmissionAnswer.aggregate({
+          where: {
+            schoolId: input.schoolId,
+            homeworkSubmissionId: input.submissionId,
+            homeworkAssignmentId: input.homeworkAssignmentId,
+            deletedAt: null,
+          },
+          _sum: { awardedPoints: true },
+        });
+        awardedMarks = Number(totals._sum.awardedPoints ?? 0);
+        if (
+          current.homeworkAssignment.totalMarks !== null &&
+          awardedMarks > Number(current.homeworkAssignment.totalMarks)
+        )
+          throw new HomeworkAnswerReviewExceedsAssignmentMarksException();
       }
 
       await tx.homeworkSubmission.updateMany({
@@ -2127,7 +2873,7 @@ export class HomeworkRepository {
           enrollmentId: input.enrollmentId,
         },
         data: {
-          awardedMarks: input.awardedMarks,
+          awardedMarks,
         },
       });
 
@@ -2252,6 +2998,14 @@ export class HomeworkRepository {
         ...HOMEWORK_TARGET_FOR_SUBMISSION_ARGS,
       });
       assertHomeworkRuntimeQuestions(target.homeworkAssignment.questions);
+      if (
+        target.homeworkAssignment.questions.some((question) =>
+          isHomeworkTypedType(question.type),
+        )
+      )
+        throw new HomeworkAnswerInvalidPayloadException({
+          reason: 'typed_submit_requires_atomic_path',
+        });
       const hasEligibleAttachment = await this.eligibleSubmissionAttachments(
         tx,
         target,
@@ -2342,9 +3096,10 @@ export class HomeworkRepository {
     reviewedAt: Date;
     reviewNote: string | null;
     awardedMarks: number | null;
+    awardedMarksExplicit?: boolean;
   }): Promise<ReviewHomeworkSubmissionResult> {
     return this.scopedPrisma.$transaction(async (tx) => {
-      const existing = await tx.homeworkSubmission.findFirst({
+      let existing = await tx.homeworkSubmission.findFirst({
         where: {
           schoolId: input.schoolId,
           id: input.submissionId,
@@ -2358,6 +3113,47 @@ export class HomeworkRepository {
 
       if (!existing) {
         return { outcome: 'not_found' };
+      }
+
+      let awardedMarks = input.awardedMarks;
+      if (
+        existing.homeworkAssignment.questions.some((question) =>
+          isHomeworkTypedType(question.type),
+        )
+      ) {
+        existing = await this.lockTypedReview(
+          tx,
+          input.homeworkAssignmentId,
+          input.homeworkTargetId,
+          input.submissionId,
+          true,
+        );
+        if (input.reviewedByUserId !== requireHomeworkScope().actorId)
+          throw new HomeworkAnswerReviewInvalidScopeException();
+        if (existing.status !== 'REVIEWED') {
+          for (const question of existing.homeworkAssignment.questions)
+            if (
+              question.isRequired &&
+              !existing.answers.find(
+                (answer) => answer.homeworkQuestionId === question.id,
+              )?.reviewedAt
+            )
+              throw new HomeworkAnswerReviewIncompleteRequiredAnswersException();
+          const total = existing.answers.reduce(
+            (sum, answer) => sum + Number(answer.awardedPoints ?? 0),
+            0,
+          );
+          awardedMarks = Math.round(total * 100) / 100;
+          if (input.awardedMarksExplicit && input.awardedMarks !== awardedMarks)
+            throw new HomeworkSubmissionReviewInvalidException({
+              reason: 'review_rollup_changed',
+            });
+          if (
+            existing.homeworkAssignment.totalMarks !== null &&
+            awardedMarks > Number(existing.homeworkAssignment.totalMarks)
+          )
+            throw new HomeworkAnswerReviewExceedsAssignmentMarksException();
+        }
       }
 
       if (existing.status === HomeworkSubmissionStatus.REVIEWED) {
@@ -2382,7 +3178,7 @@ export class HomeworkRepository {
           reviewedAt: input.reviewedAt,
           reviewedByUserId: input.reviewedByUserId,
           reviewNote: input.reviewNote,
-          awardedMarks: input.awardedMarks,
+          awardedMarks,
         },
       });
 

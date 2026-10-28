@@ -43,7 +43,10 @@ import type {
   UpdateHomeworkQuestionAssetDto,
 } from '../dto/homework-question-asset.dto';
 import { requireHomeworkScope, type HomeworkScope } from '../homework-context';
-import { authorizeHomeworkQuestionAssets } from './homework-question-asset-authorization';
+import {
+  authorizeHomeworkQuestionAssets,
+  type HomeworkRichReadPermission,
+} from './homework-question-asset-authorization';
 
 export interface HomeworkQuestionAssetView {
   asset: HomeworkQuestionAsset;
@@ -153,13 +156,67 @@ export class HomeworkQuestionAssetsRepository implements RichAssetResolver<
     };
   }
   /** A reference is an existing question binding, never a File capability. */
+  async assertMediaStimulus(
+    tx: Prisma.TransactionClient,
+    actor: HomeworkAssetActor,
+    input: { homeworkId: string; questionId: string; assetId: string },
+    publication = false,
+    studentPermission?:
+      | 'homework.answers.manage'
+      | 'homework.submissions.save'
+      | 'homework.submissions.submit',
+  ): Promise<void> {
+    if (actor.surface === 'student' && !studentPermission) throw absent();
+    const { scope } = await authorizeHomeworkQuestionAssets(
+      tx,
+      this.gate,
+      actor,
+      input,
+      actor.surface !== 'student',
+      false,
+      actor.surface === 'student' ? studentPermission : undefined,
+      publication ? 'homework.assignments.manage' : undefined,
+      actor.surface === 'student',
+    );
+    await tx.$queryRaw`SELECT id FROM homework_question_assets
+      WHERE id = ${input.assetId}::uuid AND homework_question_id = ${input.questionId}::uuid
+        AND school_id = ${scope.schoolId}::uuid AND deleted_at IS NULL FOR SHARE`;
+    const asset = await tx.homeworkQuestionAsset.findFirst({
+      where: {
+        id: input.assetId,
+        homeworkQuestionId: input.questionId,
+        deletedAt: null,
+      },
+    });
+    if (!asset) throw absent();
+    const policy = await this.policy(tx, scope.schoolId, true);
+    const view = await this.view(tx, asset, input.homeworkId, policy, true);
+    if (!view.usable) throw absent();
+    if (asset.sourceType === 'EXTERNAL_HTTPS') {
+      if (!view.externalUrl || asset.fileId !== null) throw absent();
+      return;
+    }
+    const content =
+      view.file &&
+      resolveFileContentType(view.file.originalName, view.file.mimeType);
+    if (
+      !content ||
+      assetCategoryForMime(content.category) !== asset.category ||
+      !(
+        view.downloadAllowed ||
+        (view.previewAllowed && content.inlinePreviewSupported)
+      )
+    )
+      throw absent();
+  }
+
   async assertReference(
     input: Parameters<
       RichAssetResolver<
         Prisma.TransactionClient,
         HomeworkScope & { resourceActor: HomeworkAssetActor }
       >['assertReference']
-    >[0],
+    >[0] & { publication?: boolean },
   ): Promise<void> {
     const { transaction: tx, owner, actor, reference, audience } = input;
     const scope = requireHomeworkScope();
@@ -181,6 +238,9 @@ export class HomeworkQuestionAssetsRepository implements RichAssetResolver<
       actor.resourceActor,
       { homeworkId: owner.homeworkId, questionId: owner.questionId },
       audience === 'author',
+      false,
+      undefined,
+      input.publication ? 'homework.assignments.manage' : undefined,
     );
     if (owner.optionId) {
       if (audience === 'author')
@@ -241,6 +301,7 @@ export class HomeworkQuestionAssetsRepository implements RichAssetResolver<
   async read(
     actor: HomeworkAssetActor,
     input: { homeworkId: string; questionId?: string; assetId?: string },
+    permission?: HomeworkRichReadPermission,
   ): Promise<HomeworkQuestionAssetView[]> {
     return this.transaction(async (tx) => {
       const { scope } = await authorizeHomeworkQuestionAssets(
@@ -248,6 +309,9 @@ export class HomeworkQuestionAssetsRepository implements RichAssetResolver<
         this.gate,
         actor,
         input,
+        false,
+        false,
+        permission,
       );
       const policy = await this.policy(tx, scope.schoolId, false);
       const assets = await tx.homeworkQuestionAsset.findMany({

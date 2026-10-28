@@ -1328,6 +1328,7 @@ function seedReviewSubmission(overrides?: Record<string, unknown>): any {
       totalMarks,
       isGraded,
       deletedAt: null,
+      questions: [],
     },
     homeworkTarget: {
       id: 'target-1',

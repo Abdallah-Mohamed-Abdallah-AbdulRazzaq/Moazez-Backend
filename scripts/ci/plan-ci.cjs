@@ -96,6 +96,10 @@ const ACTIVE_TAP_OWNERS = Object.freeze({
     owner: 'prd3-g01',
     profile: 'prd3-g01',
   }),
+  'scripts/tests/st09bc-homework-transaction-boundaries.test.cjs': Object.freeze({
+    owner: 'st09bc-homework-transaction-boundaries',
+    profile: 'runtime-governance',
+  }),
   'scripts/tests/prd3-g01-c-database-privileges.test.cjs': Object.freeze({
     owner: 'prd3-g01',
     profile: 'prd3-g01',

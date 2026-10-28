@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { projectHomeworkTypedAnswers } from '../../../homework/infrastructure/homework-typed-answer.projection';
 import {
   HomeworkAssignmentMode,
   HomeworkAssignmentStatus,
@@ -123,6 +124,7 @@ const PARENT_HOMEWORK_TARGET_LIST_ARGS =
               id: true,
               homeworkAssignmentId: true,
               type: true,
+              metadata: true,
               prompt: true,
               instructions: true,
               points: true,
@@ -319,11 +321,11 @@ export class ParentHomeworksReadAdapter {
     return { items, total, page, limit };
   }
 
-  findHomework(params: {
+  async findHomework(params: {
     child: ParentAppAccessibleChild;
     homeworkId: string;
   }): Promise<ParentHomeworkTargetDetailReadModel | null> {
-    return this.scopedPrisma.homeworkTarget.findFirst({
+    const target = await this.scopedPrisma.homeworkTarget.findFirst({
       where: {
         ...buildTargetWhere({
           child: params.child,
@@ -333,6 +335,13 @@ export class ParentHomeworksReadAdapter {
       },
       ...PARENT_HOMEWORK_TARGET_DETAIL_ARGS,
     });
+    if (target)
+      await projectHomeworkTypedAnswers(
+        this.scopedPrisma,
+        params.homeworkId,
+        target.submissions.flatMap((submission) => submission.answers),
+      );
+    return target;
   }
 }
 
