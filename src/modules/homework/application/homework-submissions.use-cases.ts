@@ -458,6 +458,7 @@ export class ReviewHomeworkSubmissionUseCase {
     }
 
     assertSubmissionIsReviewable(submission);
+    assertHomeworkRuntimeQuestions(submission.homeworkAssignment.questions);
     const reviewNote = normalizeReviewNote(command.reviewNote);
     const awardedMarks = resolveSubmissionReviewAwardedMarks({
       value: command.awardedMarks,

@@ -2,6 +2,7 @@ import { presentGradeRichContent } from '../infrastructure/grade-rich-content.pr
 import { sanitizeGradeQuestionContent } from '../domain/grade-question-content-policy';
 import { presentGradeQuestionContract } from '../../shared/presenters/grade-question-contract';
 import { GradeQuestionType } from '@prisma/client';
+import { assertGradeRuntimeQuestionType } from '../domain/grade-runtime-types';
 import { presentDecimal } from '../../shared/presenters/grades.presenter';
 import {
   GradeAssessmentQuestionResponseDto,
@@ -20,6 +21,7 @@ export function presentGradeAssessmentQuestion(
   question: GradeAssessmentQuestionRecord,
   authoring = false,
 ): GradeAssessmentQuestionResponseDto {
+  assertGradeRuntimeQuestionType(question.type);
   return {
     ...presentGradeRichContent(question),
     id: question.id,

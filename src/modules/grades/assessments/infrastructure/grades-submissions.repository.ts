@@ -1,4 +1,5 @@
 import { GradeAssetsRepository } from './grade-assets.repository';
+import { assertGradeRuntimeQuestionType } from '../domain/grade-runtime-types';
 import {
   authorizeGradeRichReview,
   hasGradeRichSelection,
@@ -1029,6 +1030,16 @@ export class GradesSubmissionsRepository {
       assessment: submission.assessment,
       enrollment: submission.enrollment,
     });
+    const questionTypes = await tx.gradeAssessmentQuestion.findMany({
+      where: {
+        assessmentId: submission.assessmentId,
+        schoolId,
+        deletedAt: null,
+      },
+      select: { type: true },
+    });
+    for (const question of questionTypes)
+      assertGradeRuntimeQuestionType(question.type);
     return submission;
   }
 

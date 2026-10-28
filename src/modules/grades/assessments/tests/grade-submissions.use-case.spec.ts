@@ -887,6 +887,9 @@ describe('grade submissions use cases', () => {
 
   it('bulk repository validates distinct submissions before the first answer write', async () => {
     const transaction = {
+      gradeAssessmentQuestion: {
+        findMany: jest.fn().mockResolvedValue([{ type: 'SHORT_ANSWER' }]),
+      },
       $queryRaw: jest.fn().mockResolvedValue([{ id: 'locked' }]),
       gradeSubmission: {
         findFirst: jest

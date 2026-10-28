@@ -27,7 +27,7 @@ describe('ST09-A real PostgreSQL nullable typed storage and immutable legacy row
     await f.dispose();
   });
   afterAll(() => p.$disconnect());
-  it('has exactly eight ordered enum values and only nullable JSONB additions with no defaults', async () => {
+  it('has eleven persisted enum values while ST10 types remain inactive and only nullable JSONB additions with no defaults', async () => {
     const labels = await p.$queryRaw<
       Array<{ enumlabel: string }>
     >`SELECT e.enumlabel FROM pg_enum e JOIN pg_type t ON t.oid=e.enumtypid WHERE t.typname='homework_question_type' ORDER BY e.enumsortorder`;
@@ -40,6 +40,9 @@ describe('ST09-A real PostgreSQL nullable typed storage and immutable legacy row
       'FILL_IN_BLANK',
       'MATCHING',
       'MEDIA',
+      'ORDERING',
+      'NUMERIC',
+      'MATH_EXPRESSION',
     ]);
     const columns = await p.$queryRaw<
       Array<{

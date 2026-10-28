@@ -806,6 +806,10 @@ These codes are emitted by internal ACC-3C use cases; ACC-3C adds no HTTP routes
 
 ### Cross-cutting
 
+Pure ST10-A foundation diagnostic: `question_evaluation.invalid` has the fixed
+message `Invalid question evaluation contract`, no untrusted details, and no HTTP
+status (the pure foundation is not wired into public workflows).
+
 | Code                  | HTTP | Message                                            |
 | --------------------- | ---- | -------------------------------------------------- |
 | `validation.failed`   | 400  | Request validation failed (see details for fields) |
