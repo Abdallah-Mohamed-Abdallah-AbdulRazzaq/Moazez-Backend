@@ -60,6 +60,94 @@ describe('ST10-A bounded mathematical expression proof', () => {
     },
   );
   it.each([
+    'x + 1/0',
+    'x/0',
+    'x/(2-2)',
+    'x + 0^0',
+    'x + 0^-2',
+    'x/(0.1+0.2-0.3)',
+    'x + ((2-2)^(-2))',
+    'x^(1/0)',
+    'x + ((2^16)^16)^16 + 1/0',
+    '((2^16)^16)^16 / 0',
+  ])('rejects demonstrably undefined configured key %s', (expression) => {
+    expect(() => normalizeMathKey(definition, state(expression).key)).toThrow(
+      QuestionEvaluationInputError,
+    );
+  });
+  it.each([
+    'x + 1/0',
+    'x/0',
+    'x/(2-2)',
+    'x + 0^0',
+    'x + 0^-2',
+    'x/(0.1+0.2-0.3)',
+    'x + ((2-2)^(-2))',
+    'x^(1/0)',
+    'x + ((2^16)^16)^16 + 1/0',
+    '((2^16)^16)^16 / 0',
+  ])(
+    'classifies demonstrably undefined student expression %s',
+    (expression) => {
+      expect(compare(expression, '1')).toBe('UNDEFINED_EXPRESSION');
+      expect(
+        evaluateMathExpression(definition, { state: 'manual' }, { expression }),
+      ).toBe('UNDEFINED_EXPRESSION');
+    },
+  );
+  it.each([
+    'x + 1/2',
+    'x/(1+1)',
+    'x^-2',
+    'x^0',
+    'x/(x-x)',
+    'x + ((2^16)^16)^16',
+    'x/((((2^16)^16)^16)-(((2^16)^16)^16))',
+  ])(
+    'preserves unproven definedness and symbolic manual review for %s',
+    (expression) => {
+      expect(
+        normalizeMathKey(definition, state(expression).key).expression,
+      ).toBe(expression);
+      expect(compare(expression, expression)).toBe(
+        'UNKNOWN_REQUIRES_MANUAL_REVIEW',
+      );
+    },
+  );
+  it('keeps undefined-key diagnostics fixed and never logs private or student expressions', () => {
+    const spies = (['log', 'warn', 'error', 'info', 'debug'] as const).map(
+      (method) =>
+        jest.spyOn(console, method).mockImplementation(() => undefined),
+    );
+    const privateExpression = 'private_key_sentinel + 1/0';
+    const current = { ...definition, variables: ['private_key_sentinel'] };
+    try {
+      let rejected: unknown;
+      try {
+        normalizeMathKey(current, state(privateExpression).key);
+      } catch (error) {
+        rejected = error;
+      }
+      expect(rejected).toBeInstanceOf(QuestionEvaluationInputError);
+      expect(rejected).toMatchObject({
+        code: 'question_evaluation.invalid',
+        message: 'Invalid question evaluation contract',
+      });
+      expect(JSON.stringify(rejected)).not.toContain(privateExpression);
+      expect(Object.hasOwn(rejected as object, 'details')).toBe(false);
+      expect(
+        evaluateMathExpression(
+          current,
+          { state: 'manual' },
+          { expression: privateExpression },
+        ),
+      ).toBe('UNDEFINED_EXPRESSION');
+      for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+  });
+  it.each([
     '2x',
     '2(3+4)',
     'sqrt(4)',

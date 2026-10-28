@@ -120,10 +120,21 @@ the node ceiling in this grammar; both budgets are independently enforced.
 The exact rational evaluator independently caps each numerator and denominator
 at 4,096 bits and all operations/GCD iterations at 4,096. Growth is checked before
 large multiplication/powers. Valid constant input beyond this proof envelope is
-manual-only. Variable-bearing expressions are always manual-only, including
-`x+x` vs `2*x` and `x/x` vs `1`. Undefined constant input is distinguished from
-syntax-invalid input. Configured keys must be syntactically valid and cannot be
-undefined. No random substitutions or string equality establish symbolic proof.
+manual-only. Variable-bearing equivalence stays manual-only, including `x+x` vs
+`2*x` and `x/x` vs `1`, after a bounded definedness check. That check walks the
+existing AST and probes fully constant subexpressions with the unchanged exact
+rational limits. A division with a provably zero constant denominator, or a
+provably zero constant base raised to zero/a negative integer, is undefined even
+under a variable-bearing parent. Configured keys are rejected with the existing
+fixed input error; student evaluation returns `UNDEFINED_EXPRESSION`.
+
+At most one constant probe per AST node is performed; traversal uses the existing
+node/depth bounds, and every probe retains the 4,096-bit/4,096-operation limits.
+Budget exhaustion leaves a value unknown, never assumed zero or undefined, while
+independent small constant subexpressions can still be checked. No symbolic
+definedness proof is attempted for `x/x` or `x/(x-x)`. Undefined input remains
+distinct from syntax-invalid input. No random substitution, symbolic rewriting or
+canonical-string equality establishes equivalence.
 
 ## Transition and migration
 

@@ -57,6 +57,37 @@ export function containsVariable(node: ExpressionNode): boolean {
         : false)
   );
 }
+/** Parsed AST limits bound traversal; each constant probe keeps its own existing
+ * rational/operation budget. Unknown values never prove zero or undefinedness. */
+export function assertNoProvablyUndefinedSubexpression(
+  node: ExpressionNode,
+): void {
+  function visit(current: ExpressionNode): Rational | null {
+    if (current.kind === 'variable') return null;
+    if (current.kind === 'unary') visit(current.operand);
+    if (current.kind === 'binary') {
+      const left = visit(current.left),
+        right = visit(current.right);
+      if (current.operator === '/' && right?.numerator === 0n)
+        throw new UndefinedExpression();
+      if (
+        current.operator === '^' &&
+        left?.numerator === 0n &&
+        right?.denominator === 1n &&
+        right.numerator <= 0n
+      )
+        throw new UndefinedExpression();
+    }
+    if (containsVariable(current)) return null;
+    try {
+      return evaluateConstant(current, new RationalBudget());
+    } catch (error) {
+      if (error instanceof ProofLimit) return null;
+      throw error;
+    }
+  }
+  visit(node);
+}
 function integerPower(value: Rational): bigint {
   if (
     value.denominator !== 1n ||

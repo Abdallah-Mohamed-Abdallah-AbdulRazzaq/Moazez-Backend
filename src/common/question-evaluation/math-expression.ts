@@ -11,6 +11,7 @@ import {
 } from './contracts';
 import { parseExpression, validateVariables } from './expression-parser';
 import {
+  assertNoProvablyUndefinedSubexpression,
   compareConstants,
   containsVariable,
   evaluateConstant,
@@ -78,13 +79,11 @@ export function normalizeMathKey(
   const item = record(value, ['keyVersion', 'kind', 'expression']);
   const expression = text(item.expression, 512),
     node = parsed(expression, current);
-  if (!containsVariable(node)) {
-    try {
-      evaluateConstant(node, new RationalBudget());
-    } catch (error) {
-      if (error instanceof UndefinedExpression) invalid();
-      if (!(error instanceof ProofLimit)) throw error;
-    }
+  try {
+    assertNoProvablyUndefinedSubexpression(node);
+  } catch (error) {
+    if (error instanceof UndefinedExpression) invalid();
+    throw error;
   }
   return {
     keyVersion: version(item.keyVersion),
@@ -115,8 +114,9 @@ export function evaluateMathExpression(
   }
   if (!expression) return MANUAL;
   const node = parsed(expression, current);
-  if (containsVariable(node)) return MANUAL;
   try {
+    assertNoProvablyUndefinedSubexpression(node);
+    if (containsVariable(node)) return MANUAL;
     // Undefined input stays undefined even when an explicit manual key is used.
     if (!key) {
       evaluateConstant(node, new RationalBudget());
