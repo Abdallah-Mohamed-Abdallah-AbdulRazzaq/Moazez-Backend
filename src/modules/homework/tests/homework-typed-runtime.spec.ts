@@ -1,4 +1,11 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, UserType } from '@prisma/client';
+import { HomeworkRepository } from '../infrastructure/homework.repository';
+import {
+  createRequestContext,
+  runWithRequestContext,
+  setActiveMembership,
+  setActor,
+} from '../../../common/context/request-context';
 import {
   HOMEWORK_RUNTIME_QUESTION_TYPES,
   assertHomeworkRuntimeQuestionType,
@@ -23,6 +30,95 @@ const key = {
   blanks: [{ blankId: 'b', acceptedAnswers: ['PRIVATE_SENTINEL'] }],
 };
 describe('ST09-B/C explicit runtime and atomic definition/key planning', () => {
+  it.each(['FILL_IN_BLANK', 'MATCHING', 'MEDIA'] as const)(
+    'rejects non-Rich option create, update/reorder and delete for a locked current %s repository parent',
+    async (type) => {
+      const tx = {
+        $queryRaw: jest.fn((query: TemplateStringsArray) =>
+          Promise.resolve(
+            query.join('').includes('FROM homework_assignments')
+              ? [{ id: 'homework', status: 'DRAFT' }]
+              : [{ id: 'question', type }],
+          ),
+        ),
+        homeworkQuestion: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'question', type }),
+        },
+        homeworkQuestionOption: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'option',
+            text: 'Existing option',
+            richContent: null,
+          }),
+          create: jest.fn(),
+          updateMany: jest.fn(),
+        },
+      };
+      const scoped = {
+        $transaction: jest.fn(
+          (callback: (transaction: typeof tx) => Promise<unknown>) =>
+            callback(tx),
+        ),
+      };
+      const rich = { assertWrite: jest.fn().mockResolvedValue(undefined) };
+      const repository = new HomeworkRepository(
+        { scoped } as never,
+        { lock: jest.fn() } as never,
+        rich as never,
+      );
+      const resource = {
+        homeworkId: 'homework',
+        questionId: 'question',
+        optionId: 'option',
+        actor: { surface: 'teacher' as const, classId: 'allocation' },
+      };
+      await runWithRequestContext(createRequestContext(), async () => {
+        setActor({ id: 'teacher', userType: UserType.TEACHER });
+        setActiveMembership({
+          membershipId: 'membership',
+          organizationId: 'organization',
+          schoolId: 'school',
+          roleId: 'role',
+          permissions: ['homework.questions.manage'],
+        });
+        const writes = [
+          () =>
+            repository.createQuestionOption({
+              homeworkId: resource.homeworkId,
+              actor: resource.actor,
+              data: {
+                id: 'option',
+                schoolId: 'school',
+                homeworkQuestionId: 'question',
+                text: 'New',
+                sortOrder: 0,
+                isCorrect: false,
+              },
+            }),
+          () =>
+            repository.updateQuestionOption({
+              ...resource,
+              data: { text: 'Changed' },
+            }),
+          () =>
+            repository.updateQuestionOption({
+              ...resource,
+              data: { sortOrder: 2 },
+            }),
+          () => repository.softDeleteQuestionOption(resource),
+        ];
+        for (const write of writes) {
+          await expect(write()).rejects.toMatchObject({
+            code: 'homework.question.invalid_type_payload',
+          });
+          expect(tx.homeworkQuestionOption.create).not.toHaveBeenCalled();
+          expect(tx.homeworkQuestionOption.updateMany).not.toHaveBeenCalled();
+        }
+      });
+      expect(rich.assertWrite).toHaveBeenCalledTimes(4);
+      expect(tx.homeworkQuestion.findFirst).toHaveBeenCalled();
+    },
+  );
   it('dispatches exactly eight declared types and rejects future types', () => {
     expect(HOMEWORK_RUNTIME_QUESTION_TYPES).toEqual([
       'SHORT_TEXT',
