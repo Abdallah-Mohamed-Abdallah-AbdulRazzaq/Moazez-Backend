@@ -20,7 +20,7 @@ Before implementation, the following concrete gaps were found:
 | Grades author presenter | Unsupported type still projects author-private key and metadata | Refuse inactive types before projection |
 | Grades submission repository | Optional unanswered questions are skipped at submit/finalize; review checks points but not type | Check all current question types after existing transactional authorization/parent locks, before any mutation |
 | Homework review use cases/repository | Legacy review path checks only whether an ST09 typed question exists; inactive types can reach writes | Assert the existing allowlist on every current question before review, including the locked transactional snapshot |
-| CI planner inventory test | Hardcoded 1,034-file total excludes the seven new ST10-A suites | Register exactly those seven expected files/profiles and increase totals by seven; routing and Required aggregation remain unchanged |
+| CI planner and retirement inventory tests | Two independent hardcoded 1,034-file totals exclude the seven new ST10-A suites; exact-head run 40724982248 exposed the second assertion | Register exactly those seven expected files/profiles in both tests and increase totals by seven; all owner, historical/manual, routing and Required protections remain unchanged |
 
 Shared pure code belongs in `src/common/question-evaluation`, alongside the existing
 shared Rich AST technical foundation. It imports no Nest, Prisma or business
@@ -151,7 +151,9 @@ All selected suites pass without skips: 489 cases in 21 focused unit suites;
 Required aggregation and strict transaction governance checks. The HTTP suites
 include both eight-type lifecycles, ST09 lock/concurrency proofs, ST08 Rich AST,
 Grades tenant security, real MinIO media streaming and asset lifetime behavior.
-The seven new suites are explicitly registered in the planner inventory test.
+The seven new suites are explicitly registered in both inventory tests. The first
+remote CI run exposed the second stale retirement inventory assertion; its narrow
+correction is test/documentation-only, with all production code unchanged.
 
 The three future values are deliberately persisted in each domain's owned
 PostgreSQL fixture. Tests exercise Core/Teacher ingress, aliases, direct create/
