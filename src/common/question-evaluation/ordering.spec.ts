@@ -96,6 +96,16 @@ describe('ST10-A Ordering pure contracts', () => {
     ).toThrow();
   });
   it('bounds items, validates positions/labels/IDs, and refuses stale keys', () => {
+    const labeled = (length: number) => ({
+      ...definition,
+      items: [{ id: 'a', displayOrder: 1, label: 'A'.repeat(length) }],
+    });
+    expect(
+      normalizeOrderingDefinition(labeled(1000), 'complete').items[0].label,
+    ).toHaveLength(1000);
+    expect(() =>
+      normalizeOrderingDefinition(labeled(1001), 'complete'),
+    ).toThrow();
     const empty = { ...definition, items: [] };
     expect(normalizeOrderingDefinition(empty, 'draft').items).toEqual([]);
     expect(() => normalizeOrderingDefinition(empty, 'complete')).toThrow();

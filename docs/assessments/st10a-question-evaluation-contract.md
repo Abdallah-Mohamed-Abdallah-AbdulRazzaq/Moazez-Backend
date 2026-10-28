@@ -49,7 +49,9 @@ The other outcomes are `PROVED_EQUIVALENT`, `PROVED_DIFFERENT`,
 
 Public items have only `id`, `displayOrder`, `label`; at most 50. IDs are stable
 ASCII identifiers (1–64 characters), positions are unique integers 0–1,000,000,
-labels are nonempty safe Unicode text of at most 2,000 characters. Normalization
+labels are nonempty safe Unicode text of at most 1,000 characters, matching the
+stricter existing Homework typed-label limit without importing a business module.
+The exact 1,000/1,001 boundary is tested. Normalization
 sorts by displayOrder. A complete definition has at least one item. Presentation
 positions never imply the private sequence. Configured expectedItemIds must be an
 exact permutation of public IDs. Draft answers may be unique subsets; supplied

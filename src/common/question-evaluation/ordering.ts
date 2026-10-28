@@ -36,7 +36,7 @@ export function normalizeOrderingDefinition(
       row.displayOrder > 1_000_000
     )
       invalid();
-    const label = text(row.label, 2000).trim();
+    const label = text(row.label, 1000).trim();
     if (!label) invalid();
     return {
       id: identifier(row.id),
