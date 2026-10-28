@@ -2729,6 +2729,19 @@ export class HomeworkRepository {
     });
   }
 
+  private async assertReviewQuestionTypes(
+    tx: Prisma.TransactionClient,
+    homeworkId: string,
+  ): Promise<void> {
+    const { schoolId } = requireHomeworkScope();
+    await tx.$queryRaw`SELECT id FROM homework_assignments WHERE id=${homeworkId}::uuid AND school_id=${schoolId}::uuid FOR UPDATE`;
+    const questions = await tx.homeworkQuestion.findMany({
+      where: { homeworkAssignmentId: homeworkId, schoolId, deletedAt: null },
+      select: { type: true },
+    });
+    assertHomeworkRuntimeQuestions(questions);
+  }
+
   async reviewSubmissionAnswers(input: {
     schoolId: string;
     homeworkAssignmentId: string;
@@ -2772,6 +2785,7 @@ export class HomeworkRepository {
             input.submissionId,
           )
         : null;
+      await this.assertReviewQuestionTypes(tx, input.homeworkAssignmentId);
       if (current) {
         if (
           input.reviews.some(
@@ -3156,6 +3170,7 @@ export class HomeworkRepository {
         }
       }
 
+      await this.assertReviewQuestionTypes(tx, input.homeworkAssignmentId);
       if (existing.status === HomeworkSubmissionStatus.REVIEWED) {
         return { outcome: 'already_reviewed', submission: existing };
       }

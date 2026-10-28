@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { HomeworkAssetActor } from '../domain/homework-question-asset';
 import { projectHomeworkAnswerRich } from './homework-answers.use-cases';
 import { isHomeworkTypedType } from './homework-typed-runtime';
+import { assertHomeworkRuntimeQuestions } from '../domain/homework-runtime-types';
 import {
   AuditOutcome,
   HomeworkAssignmentStatus,
@@ -221,6 +222,7 @@ async function reviewAnswers(input: {
   }
 
   assertSubmissionAcceptsAnswerReview(submission);
+  assertHomeworkRuntimeQuestions(submission.homeworkAssignment.questions);
   const normalizedReviews = normalizeAnswerReviews({
     submission,
     reviews: input.reviews,

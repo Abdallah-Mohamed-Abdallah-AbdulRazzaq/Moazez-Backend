@@ -1,5 +1,6 @@
 import type { RichContent } from '../../../../common/rich-content/rich-content.types';
 import { GradeQuestionType } from '@prisma/client';
+import type { ActiveGradeQuestionType } from '../../assessments/domain/grade-runtime-types';
 import {
   gradeQuestionDefinition,
   normalizeStoredGradeAnswer,
@@ -88,7 +89,7 @@ const TYPES = {
   MATCHING: ['matching', 'matching', null, false],
   MEDIA: ['media', 'media', null, false],
 } as const satisfies Record<
-  GradeQuestionType,
+  ActiveGradeQuestionType,
   readonly [
     string,
     GradeQuestionInteractionDto['kind'],
@@ -113,7 +114,7 @@ export function presentGradeQuestionContract(
       },
     };
   }
-  const canonicalType = type as GradeQuestionType;
+  const canonicalType = type as ActiveGradeQuestionType;
   const [legacyType, kind, selectionMode, multiline] = TYPES[canonicalType];
   let definition: GradePublicDefinition | null = null;
   let supported = true;

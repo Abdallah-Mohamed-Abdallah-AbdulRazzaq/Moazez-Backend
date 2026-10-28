@@ -1154,18 +1154,20 @@ describe('HomeworkRepository submission review methods', () => {
         seedReviewSubmission({ status: HomeworkSubmissionStatus.REVIEWED }),
       );
 
-    const result = await repository.reviewSubmission({
-      schoolId: 'school-1',
-      homeworkAssignmentId: 'homework-1',
-      submissionId: 'submission-1',
-      homeworkTargetId: 'target-1',
-      studentId: 'student-1',
-      enrollmentId: 'enrollment-1',
-      reviewedByUserId: 'teacher-1',
-      reviewedAt: new Date('2026-05-25T08:30:00.000Z'),
-      reviewNote: 'Done',
-      awardedMarks: 8,
-    });
+    const result = await withReviewScope(() =>
+      repository.reviewSubmission({
+        schoolId: 'school-1',
+        homeworkAssignmentId: 'homework-1',
+        submissionId: 'submission-1',
+        homeworkTargetId: 'target-1',
+        studentId: 'student-1',
+        enrollmentId: 'enrollment-1',
+        reviewedByUserId: 'teacher-1',
+        reviewedAt: new Date('2026-05-25T08:30:00.000Z'),
+        reviewNote: 'Done',
+        awardedMarks: 8,
+      }),
+    );
 
     expect(prismaMocks.$transaction).toHaveBeenCalled();
     expect(txMocks.homeworkSubmission.updateMany).toHaveBeenCalledWith(
@@ -1361,6 +1363,8 @@ function createPrismaBackedRepository(): {
   txMocks: any;
 } {
   const txMocks = {
+    $queryRaw: jest.fn().mockResolvedValue([{ id: 'homework-1' }]),
+    homeworkQuestion: { findMany: jest.fn().mockResolvedValue([]) },
     homeworkSubmission: modelMocks(),
     homeworkTarget: modelMocks(),
   };
@@ -1383,4 +1387,18 @@ function createPrismaBackedRepository(): {
     prismaMocks,
     txMocks,
   };
+}
+
+function withReviewScope<T>(operation: () => Promise<T>): Promise<T> {
+  return runWithRequestContext(createRequestContext(), () => {
+    setActor({ id: 'teacher-1', userType: UserType.TEACHER });
+    setActiveMembership({
+      membershipId: 'membership-1',
+      organizationId: 'org-1',
+      schoolId: 'school-1',
+      roleId: 'role-1',
+      permissions: [],
+    });
+    return operation();
+  });
 }

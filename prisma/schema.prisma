@@ -647,6 +647,9 @@ enum GradeQuestionType {
   FILL_IN_BLANK
   MATCHING
   MEDIA
+  ORDERING
+  NUMERIC
+  MATH_EXPRESSION
 
   @@map("grade_question_type")
 }
@@ -748,6 +751,9 @@ enum HomeworkQuestionType {
   FILL_IN_BLANK
   MATCHING
   MEDIA
+  ORDERING
+  NUMERIC
+  MATH_EXPRESSION
 
   @@map("homework_question_type")
 }

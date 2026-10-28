@@ -3,6 +3,7 @@ import type { RichContent } from '../../../../common/rich-content/rich-content.t
 import { validateGradeQuestionContent } from './grade-question-content-policy';
 import { validateGradeQuestionDefinition } from './grade-question-interaction';
 import { HttpStatus } from '@nestjs/common';
+import type { ActiveGradeQuestionType } from './grade-runtime-types';
 import {
   GradeAssessmentApprovalStatus,
   GradeAssessmentDeliveryMode,
@@ -205,7 +206,7 @@ export function assertNoSubmissionsForQuestionStructureChange(
 
 export function normalizeQuestionType(
   input: GradeQuestionType | string | null | undefined,
-): GradeQuestionType {
+): ActiveGradeQuestionType {
   const normalized = String(input ?? '')
     .trim()
     .toUpperCase();

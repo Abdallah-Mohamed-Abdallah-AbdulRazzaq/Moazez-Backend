@@ -6,7 +6,7 @@ import {
   ArrayNotEmpty,
   IsArray,
   IsBoolean,
-  IsEnum,
+  IsIn,
   IsInt,
   IsNumber,
   IsObject,
@@ -18,6 +18,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { GradeQuestionType } from '@prisma/client';
+import { GRADE_RUNTIME_QUESTION_TYPES } from '../domain/grade-runtime-types';
 import { GradeQuestionContractDto } from '../../shared/presenters/grade-question-contract';
 
 const MAX_QUESTION_OPTIONS = 50;
@@ -101,12 +102,12 @@ export class CreateGradeAssessmentQuestionDto {
   richContent?: unknown;
   @IsOptional()
   @Transform(({ value }) => toUpperEnumValue(value))
-  @IsEnum(GradeQuestionType)
+  @IsIn(GRADE_RUNTIME_QUESTION_TYPES)
   type?: GradeQuestionType;
 
   @IsOptional()
   @Transform(({ value }) => toUpperEnumValue(value))
-  @IsEnum(GradeQuestionType)
+  @IsIn(GRADE_RUNTIME_QUESTION_TYPES)
   questionType?: GradeQuestionType;
 
   @IsOptional()
@@ -230,12 +231,12 @@ export class UpdateGradeAssessmentQuestionDto {
   richContent?: unknown;
   @IsOptional()
   @Transform(({ value }) => toUpperEnumValue(value))
-  @IsEnum(GradeQuestionType)
+  @IsIn(GRADE_RUNTIME_QUESTION_TYPES)
   type?: GradeQuestionType;
 
   @IsOptional()
   @Transform(({ value }) => toUpperEnumValue(value))
-  @IsEnum(GradeQuestionType)
+  @IsIn(GRADE_RUNTIME_QUESTION_TYPES)
   questionType?: GradeQuestionType;
 
   @IsOptional()

@@ -79,6 +79,9 @@ describe('ST09-A pure Homework typed foundation with authorized ST09-B/C dispatc
       'FILL_IN_BLANK',
       'MATCHING',
       'MEDIA',
+      'ORDERING',
+      'NUMERIC',
+      'MATH_EXPRESSION',
     ]);
     expect(HOMEWORK_RUNTIME_QUESTION_TYPES).toHaveLength(8);
     for (const type of ['fill_in_blank', 'MATCHING', 'media', 'FUTURE_TYPE']) {
