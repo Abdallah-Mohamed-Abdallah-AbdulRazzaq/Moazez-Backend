@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { projectGradeAuthorKeyNullFacts } from './grade-author-key.projection';
 import { GradeAssetsRepository } from './grade-assets.repository';
 import {
   gradeRichChange,
@@ -221,6 +222,11 @@ export class GradesAssessmentQuestionsRepository {
       ...QUESTION_WITH_OPTIONS_ARGS,
     });
     await this.projectRich(assessmentId, questions);
+    await projectGradeAuthorKeyNullFacts(
+      this.scopedPrisma,
+      assessmentId,
+      questions,
+    );
     return questions;
   }
 
@@ -626,6 +632,11 @@ export class GradesAssessmentQuestionsRepository {
     }
 
     await this.projectRich(question.assessmentId, [question]);
+    await projectGradeAuthorKeyNullFacts(
+      this.scopedPrisma,
+      question.assessmentId,
+      [question],
+    );
     return question;
   }
 

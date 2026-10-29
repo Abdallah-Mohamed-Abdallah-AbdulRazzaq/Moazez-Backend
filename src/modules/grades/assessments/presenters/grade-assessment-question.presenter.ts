@@ -1,4 +1,6 @@
 import { presentGradeRichContent } from '../infrastructure/grade-rich-content.projection';
+import { gradeAuthorKeyNullFact } from '../infrastructure/grade-author-key.projection';
+import { ValidationDomainException } from '../../../../common/exceptions/domain-exception';
 import { sanitizeGradeQuestionContent } from '../domain/grade-question-content-policy';
 import { presentGradeQuestionContract } from '../../shared/presenters/grade-question-contract';
 import { GradeQuestionType } from '@prisma/client';
@@ -32,6 +34,16 @@ export function presentGradeAssessmentQuestion(
         'draft',
       )
     : null;
+  if (
+    authoring &&
+    structured &&
+    question.answerKey === null &&
+    gradeAuthorKeyNullFact(question) !== true
+  )
+    throw new ValidationDomainException(
+      'Question interaction or answer is invalid',
+      { field: 'answerKey' },
+    );
   return {
     ...presentGradeRichContent(question),
     id: question.id,
