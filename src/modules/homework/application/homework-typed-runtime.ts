@@ -19,7 +19,14 @@ import {
 export function isHomeworkTypedType(
   value: unknown,
 ): value is HomeworkFoundationType {
-  return value === 'FILL_IN_BLANK' || value === 'MATCHING' || value === 'MEDIA';
+  return (
+    value === 'FILL_IN_BLANK' ||
+    value === 'MATCHING' ||
+    value === 'MEDIA' ||
+    value === 'ORDERING' ||
+    value === 'NUMERIC' ||
+    value === 'MATH_EXPRESSION'
+  );
 }
 
 export function homeworkTypedQuestionValidation<T>(operation: () => T): T {

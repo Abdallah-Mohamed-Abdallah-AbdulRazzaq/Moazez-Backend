@@ -1,4 +1,5 @@
 import { GradeSubmissionGradeItemSyncResponseDto } from '../../../../grades/assessments/dto/grade-submission-grade-item-sync.dto';
+import { isGradeEvaluationType } from '../../../../grades/assessments/domain/grade-question-evaluation';
 import { BulkReviewGradeSubmissionAnswersResponseDto } from '../../../../grades/assessments/dto/grade-submission-review.dto';
 import {
   GradeSubmissionAnswerResponseDto,
@@ -138,6 +139,9 @@ function presentReviewedAnswer(
     answerId: answer.id,
     questionId: answer.questionId,
     type: answer.type,
+    ...(isGradeEvaluationType(answer.canonicalType)
+      ? { canonicalType: answer.canonicalType, interaction: answer.interaction }
+      : {}),
     studentAnswer: {
       text: answer.answerText,
       json: answer.answerJson ?? null,
@@ -167,6 +171,12 @@ function presentSubmissionQuestion(params: {
     answerId: answer?.id ?? null,
     questionId: params.question.id,
     type: params.question.type,
+    ...(isGradeEvaluationType(params.question.canonicalType)
+      ? {
+          canonicalType: params.question.canonicalType,
+          interaction: params.question.interaction,
+        }
+      : {}),
     ...(params.question.richContent
       ? { richContent: params.question.richContent }
       : {}),

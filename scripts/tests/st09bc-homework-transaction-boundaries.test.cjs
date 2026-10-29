@@ -36,4 +36,34 @@ test('ST09-B/C registers only the exact Homework allocation/URL/UTF-8 transactio
     }
   }
   assert.equal(inventory.some(row => row.unresolvedCalls.length > 0), false);
+  const st10bOwners = [
+    'GradesAssessmentQuestionsRepository.createQuestionWithOptions',
+    'GradesAssessmentQuestionsRepository.updateQuestionAndReplaceOptions',
+    'GradesAssessmentsRepository.publishAssessment',
+    'GradesSubmissionsRepository.bulkUpdateAnswerReviews',
+    'GradesSubmissionsRepository.bulkUpsertAnswersWithSelectedOptions',
+    'GradesSubmissionsRepository.finalizeSubmission',
+    'GradesSubmissionsRepository.submitSubmission',
+    'GradesSubmissionsRepository.updateAnswerReview',
+    'GradesSubmissionsRepository.upsertAnswerWithSelectedOptions',
+    'HomeworkRepository.mutateTypedStudentSubmission',
+    'HomeworkRepository.projectAuthorTypedQuestions',
+    'HomeworkRepository.publishAssignmentWithTargets',
+    'HomeworkRepository.reviewSubmission',
+    'HomeworkRepository.reviewSubmissionAnswers',
+  ];
+  const st10b = inventory.filter(row => row.manualOverrides.some(item => item.reason.startsWith('ST10-B')));
+  assert.deepEqual(st10b.map(row => row.entryOwner).sort(), st10bOwners.sort());
+  for (const row of st10b) {
+    const records = row.manualOverrides.filter(item => item.reason.startsWith('ST10-B'));
+    assert.equal(records.length, 1);
+    assert.equal(records[0].unresolvedCallExpression, 'abs(n).toString');
+    assert.equal(records[0].sourcePath, row.path);
+    assert.equal(records[0].owner, row.entryOwner);
+    assert.equal(row.classification, 'LOCK_CONTENTION_SENSITIVE');
+    assert.equal(row.externalWaitInsideTransaction, false);
+    assert.deepEqual(row.unresolvedCalls, []);
+    assert.deepEqual(records[0].resolvedCallers, ['RationalBudget.check', 'RationalBudget.multiply', 'bits']);
+    assert.ok(records[0].reviewEvidence.length > 100);
+  }
 });

@@ -1,4 +1,10 @@
 import { presentGradeRichContent } from '../../../../grades/assessments/infrastructure/grade-rich-content.projection';
+import { isGradeEvaluationType } from '../../../../grades/assessments/domain/grade-question-evaluation';
+import { gradeAnswerNullFact } from '../../../../grades/assessments/infrastructure/grade-typed-answer.projection';
+import {
+  presentGradeQuestionContract,
+  presentSafeGradeAnswer,
+} from '../../../../grades/shared/presenters/grade-question-contract';
 import {
   GradeAnswerCorrectionStatus,
   GradeAssessmentApprovalStatus,
@@ -251,31 +257,56 @@ export class TeacherClassroomGradesPresenter {
         startedAt: params.result.submission.startedAt.toISOString(),
         answers: params.result.assignment.questions.map((question) => {
           const answer = answerByQuestionId.get(question.id) ?? null;
+          const typed = isGradeEvaluationType(question.type);
+          const safe =
+            typed && answer
+              ? presentSafeGradeAnswer(question, {
+                  answerText: answer.answerText,
+                  answerJson: answer.answerJson,
+                  answerJsonSqlNull: gradeAnswerNullFact(answer),
+                  selectedOptionIds: answer.selectedOptions.map(
+                    (option) => option.optionId,
+                  ),
+                })
+              : null;
+          const contract = typed
+            ? (safe ?? presentGradeQuestionContract(question.type, question))
+            : null;
 
           return {
             answerId: answer?.id ?? null,
             ...presentGradeRichContent(question),
             questionId: question.id,
             type: toLowerEnum(question.type),
+            ...(contract
+              ? {
+                  canonicalType: contract.canonicalType,
+                  interaction: contract.interaction,
+                }
+              : {}),
             prompt: question.prompt,
             promptAr: question.promptAr,
             required: question.required,
             sortOrder: question.sortOrder,
             studentAnswer: answer
               ? {
-                  text: answer.answerText,
-                  json: answer.answerJson ?? null,
-                  selectedOptions: answer.selectedOptions.map((selected) => ({
-                    ...presentGradeRichContent(
-                      question.options?.find(
-                        (o) => o.id === selected.optionId,
-                      ) ?? selected.option,
-                    ),
-                    optionId: selected.optionId,
-                    label: selected.option.label,
-                    labelAr: selected.option.labelAr,
-                    value: selected.option.value,
-                  })),
+                  text: typed ? (safe?.answerText ?? null) : answer.answerText,
+                  json: typed
+                    ? (safe?.answerJson ?? null)
+                    : (answer.answerJson ?? null),
+                  selectedOptions: (typed ? [] : answer.selectedOptions).map(
+                    (selected) => ({
+                      ...presentGradeRichContent(
+                        question.options?.find(
+                          (o) => o.id === selected.optionId,
+                        ) ?? selected.option,
+                      ),
+                      optionId: selected.optionId,
+                      label: selected.option.label,
+                      labelAr: selected.option.labelAr,
+                      value: selected.option.value,
+                    }),
+                  ),
                 }
               : null,
             correctionStatus: answer

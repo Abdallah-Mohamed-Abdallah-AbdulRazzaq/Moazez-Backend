@@ -3,6 +3,10 @@ import { sanitizeGradeQuestionContent } from '../domain/grade-question-content-p
 import { presentGradeQuestionContract } from '../../shared/presenters/grade-question-contract';
 import { GradeQuestionType } from '@prisma/client';
 import { assertGradeRuntimeQuestionType } from '../domain/grade-runtime-types';
+import {
+  isGradeEvaluationType,
+  normalizeGradeEvaluationQuestion,
+} from '../domain/grade-question-evaluation';
 import { presentDecimal } from '../../shared/presenters/grades.presenter';
 import {
   GradeAssessmentQuestionResponseDto,
@@ -22,15 +26,27 @@ export function presentGradeAssessmentQuestion(
   authoring = false,
 ): GradeAssessmentQuestionResponseDto {
   assertGradeRuntimeQuestionType(question.type);
+  const structured = isGradeEvaluationType(question.type)
+    ? normalizeGradeEvaluationQuestion(
+        { ...question, type: question.type },
+        'draft',
+      )
+    : null;
   return {
     ...presentGradeRichContent(question),
     id: question.id,
     assessmentId: question.assessmentId,
     type: presentQuestionType(question.type),
-    canonicalType: presentGradeQuestionContract(question.type, question)
-      .canonicalType,
-    interaction: presentGradeQuestionContract(question.type, question)
-      .interaction,
+    canonicalType: presentGradeQuestionContract(
+      question.type,
+      question,
+      authoring ? 'draft' : 'complete',
+    ).canonicalType,
+    interaction: presentGradeQuestionContract(
+      question.type,
+      question,
+      authoring ? 'draft' : 'complete',
+    ).interaction,
     prompt:
       (sanitizeGradeQuestionContent(question.prompt) as string | null) ?? '',
     promptAr: sanitizeGradeQuestionContent(question.promptAr) as string | null,
@@ -44,11 +60,17 @@ export function presentGradeAssessmentQuestion(
     sortOrder: question.sortOrder,
     required: question.required,
     ...(authoring
-      ? { answerKey: sanitizeGradeQuestionContent(question.answerKey) }
+      ? {
+          answerKey: structured
+            ? structured.answerKey
+            : sanitizeGradeQuestionContent(question.answerKey),
+        }
       : {}),
-    metadata: authoring
-      ? sanitizeGradeQuestionContent(question.metadata)
-      : presentReviewMetadata(question.metadata),
+    metadata: structured
+      ? structured.metadata
+      : authoring
+        ? sanitizeGradeQuestionContent(question.metadata)
+        : presentReviewMetadata(question.metadata),
     options: (authoring ||
     presentGradeQuestionContract(question.type).interaction.kind === 'choice'
       ? question.options

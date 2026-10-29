@@ -1,4 +1,5 @@
 import { GradeAssetsRepository } from '../../../grades/assessments/infrastructure/grade-assets.repository';
+import { projectGradeAnswerNullFacts } from '../../../grades/assessments/infrastructure/grade-typed-answer.projection';
 import {
   hasGradeRichSelection,
   projectGradeRichContent,
@@ -364,6 +365,8 @@ export class StudentExamsReadAdapter {
       },
       ...STUDENT_EXAM_SUBMISSION_DETAIL_ARGS,
     });
+    if (submission)
+      await projectGradeAnswerNullFacts(this.scopedPrisma, submission.answers);
 
     return {
       exam: detail.exam,

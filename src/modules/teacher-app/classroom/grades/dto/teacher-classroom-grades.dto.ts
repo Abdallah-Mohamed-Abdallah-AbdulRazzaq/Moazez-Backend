@@ -1,4 +1,5 @@
 import type { RichContent } from '../../../../../common/rich-content/rich-content.types';
+import type { GradeQuestionContractDto } from '../../../../grades/shared/presenters/grade-question-contract';
 import { Transform, Type } from 'class-transformer';
 import {
   IsIn,
@@ -364,6 +365,8 @@ export class TeacherClassroomAssignmentSubmissionAnswerValueDto {
 }
 
 export class TeacherClassroomAssignmentSubmissionAnswerDto {
+  canonicalType?: GradeQuestionContractDto['canonicalType'];
+  interaction?: GradeQuestionContractDto['interaction'];
   richContent?: RichContent;
   answerId!: string | null;
   questionId!: string;

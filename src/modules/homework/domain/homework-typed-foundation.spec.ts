@@ -69,7 +69,7 @@ const invalid = (operation: () => unknown) =>
   expect(operation).toThrow(HomeworkTypedContentError);
 
 describe('ST09-A pure Homework typed foundation with authorized ST09-B/C dispatch', () => {
-  it('preserves eight ordered DB types and explicitly accepts those eight at the runtime boundary', () => {
+  it('preserves the eleven ordered DB types and activates all eleven under ST10-B', () => {
     expect(Object.values(HomeworkQuestionType)).toEqual([
       'SHORT_TEXT',
       'LONG_TEXT',
@@ -83,8 +83,16 @@ describe('ST09-A pure Homework typed foundation with authorized ST09-B/C dispatc
       'NUMERIC',
       'MATH_EXPRESSION',
     ]);
-    expect(HOMEWORK_RUNTIME_QUESTION_TYPES).toHaveLength(8);
-    for (const type of ['fill_in_blank', 'MATCHING', 'media', 'FUTURE_TYPE']) {
+    expect(HOMEWORK_RUNTIME_QUESTION_TYPES).toHaveLength(11);
+    for (const type of [
+      'fill_in_blank',
+      'MATCHING',
+      'media',
+      'ordering',
+      'numeric',
+      'math_expression',
+      'FUTURE_TYPE',
+    ]) {
       for (const dto of [
         CreateHomeworkQuestionDto,
         UpdateHomeworkQuestionDto,

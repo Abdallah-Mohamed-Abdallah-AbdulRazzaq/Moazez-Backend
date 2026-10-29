@@ -12,8 +12,8 @@ import {
 import { normalizeQuestionType } from '../domain/grade-question-domain';
 import { presentGradeQuestionContract } from '../../shared/presenters/grade-question-contract';
 
-describe('ST10-A Grades persisted and active type separation', () => {
-  it('retains exactly the eight established runtime types with eleven persisted representations', () => {
+describe('ST10-B explicit Grades activation preserves the future-type boundary', () => {
+  it('activates all eleven declared types while retaining the original eight mappings', () => {
     expect(Object.values(GradeQuestionType)).toEqual([
       'MCQ_SINGLE',
       'MCQ_MULTI',
@@ -36,6 +36,9 @@ describe('ST10-A Grades persisted and active type separation', () => {
       'FILL_IN_BLANK',
       'MATCHING',
       'MEDIA',
+      'ORDERING',
+      'NUMERIC',
+      'MATH_EXPRESSION',
     ]);
     for (const value of GRADE_RUNTIME_QUESTION_TYPES) {
       expect(() => assertGradeRuntimeQuestionType(value)).not.toThrow();
@@ -45,7 +48,7 @@ describe('ST10-A Grades persisted and active type separation', () => {
       );
     }
   });
-  it.each(['ORDERING', 'NUMERIC', 'MATH_EXPRESSION'])(
+  it.each(['FUTURE_TYPE', 'ORDERING_V2', 'NUMERIC_V2', 'MATH_EXPRESSION_V2'])(
     'rejects %s through both create/update aliases and domain normalization without a legacy fallback',
     (value) => {
       expect(() => assertGradeRuntimeQuestionType(value)).toThrow();

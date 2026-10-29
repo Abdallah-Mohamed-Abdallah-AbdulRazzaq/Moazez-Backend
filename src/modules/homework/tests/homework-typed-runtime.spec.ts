@@ -119,7 +119,7 @@ describe('ST09-B/C explicit runtime and atomic definition/key planning', () => {
       expect(tx.homeworkQuestion.findFirst).toHaveBeenCalled();
     },
   );
-  it('dispatches exactly eight declared types and rejects future types', () => {
+  it('dispatches exactly eleven declared types under ST10-B and rejects future types', () => {
     expect(HOMEWORK_RUNTIME_QUESTION_TYPES).toEqual([
       'SHORT_TEXT',
       'LONG_TEXT',
@@ -129,6 +129,9 @@ describe('ST09-B/C explicit runtime and atomic definition/key planning', () => {
       'FILL_IN_BLANK',
       'MATCHING',
       'MEDIA',
+      'ORDERING',
+      'NUMERIC',
+      'MATH_EXPRESSION',
     ]);
     expect(() => assertHomeworkRuntimeQuestionType('FUTURE')).toThrow();
   });

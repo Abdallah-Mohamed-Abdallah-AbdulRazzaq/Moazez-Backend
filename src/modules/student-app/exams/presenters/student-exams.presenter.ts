@@ -1,4 +1,5 @@
 import { presentGradeRichContent } from '../../../grades/assessments/infrastructure/grade-rich-content.projection';
+import { gradeAnswerNullFact } from '../../../grades/assessments/infrastructure/grade-typed-answer.projection';
 import type { GradeAssetDto } from '../../../grades/assessments/dto/grade-asset.dto';
 type AssetProjection = {
   assessment: GradeAssetDto[];
@@ -214,6 +215,7 @@ function presentSubmission(
       ...presentSafeGradeAnswer(answer.question, {
         answerText: answer.answerText,
         answerJson: answer.answerJson,
+        answerJsonSqlNull: gradeAnswerNullFact(answer),
         selectedOptionIds: answer.selectedOptions.map(
           (option) => option.optionId,
         ),

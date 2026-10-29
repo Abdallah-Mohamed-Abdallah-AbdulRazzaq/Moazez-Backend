@@ -1285,9 +1285,10 @@ export class HomeworkRepository {
           WHERE school_id = ${scope.schoolId}::uuid AND homework_assignment_id = ${homeworkId}::uuid AND deleted_at IS NULL`;
         for (const question of questions) {
           if (!isHomeworkTypedType(question.type)) continue;
+          const typedType = question.type;
           const definition = homeworkTypedQuestionValidation(() =>
             normalizeHomeworkDefinition(
-              question.type as 'FILL_IN_BLANK' | 'MATCHING' | 'MEDIA',
+              typedType,
               question.metadata,
               'complete',
             ),
@@ -2236,9 +2237,10 @@ export class HomeworkRepository {
         assertHomeworkRuntimeQuestions(questions);
         for (const question of questions) {
           if (!isHomeworkTypedType(question.type)) continue;
+          const typedType = question.type;
           const definition = homeworkTypedQuestionValidation(() =>
             normalizeHomeworkDefinition(
-              question.type as 'FILL_IN_BLANK' | 'MATCHING' | 'MEDIA',
+              typedType,
               question.metadata,
               'complete',
             ),

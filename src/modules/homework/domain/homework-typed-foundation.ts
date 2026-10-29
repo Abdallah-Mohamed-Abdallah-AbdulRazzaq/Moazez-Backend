@@ -1,3 +1,16 @@
+import { isProxy } from 'node:util/types';
+import {
+  QuestionEvaluationInputError,
+  normalizeOrderingDefinition,
+  normalizeOrderingKey,
+  normalizeOrderingAnswer,
+  normalizeNumericDefinition,
+  normalizeNumericKey,
+  normalizeNumericAnswer,
+  normalizeMathDefinition,
+  normalizeMathKey,
+  normalizeMathAnswer,
+} from '../../../common/question-evaluation';
 import {
   HOMEWORK_TYPED_LIMITS as LIMIT,
   HomeworkTypedContentError,
@@ -14,6 +27,15 @@ import {
 
 function invalid(reason: HomeworkTypedContentError['reason']): never {
   throw new HomeworkTypedContentError(reason);
+}
+
+function evaluationInput<T>(operation: () => T): T {
+  try {
+    return operation();
+  } catch (error) {
+    if (error instanceof QuestionEvaluationInputError) invalid('shape');
+    throw error;
+  }
 }
 
 /** Bound plain JSON before cloning/normalization. Never execute getters/toJSON. */
@@ -34,6 +56,7 @@ function boundedJson(input: unknown): void {
       if (!Number.isFinite(value)) invalid('shape');
       bytes += 24;
     } else if (value && typeof value === 'object') {
+      if (isProxy(value)) invalid('shape');
       const proto: unknown = Object.getPrototypeOf(value);
       if (ancestors.has(value)) invalid('shape');
       if (Array.isArray(value) && proto !== Array.prototype) invalid('shape');
@@ -165,6 +188,12 @@ export function normalizeHomeworkDefinition(
   mode: HomeworkDefinitionMode = 'complete',
 ): HomeworkPublicDefinition {
   if (mode !== 'draft' && mode !== 'complete') invalid('shape');
+  if (type === 'ORDERING')
+    return evaluationInput(() => normalizeOrderingDefinition(input, mode));
+  if (type === 'NUMERIC')
+    return evaluationInput(() => normalizeNumericDefinition(input, mode));
+  if (type === 'MATH_EXPRESSION')
+    return evaluationInput(() => normalizeMathDefinition(input, mode));
   boundedJson(input);
   const raw = record(input, [
     'definitionVersion',
@@ -299,6 +328,12 @@ function typeOf(definition: HomeworkPublicDefinition): HomeworkFoundationType {
       return 'MATCHING';
     case 'media':
       return 'MEDIA';
+    case 'ordering':
+      return 'ORDERING';
+    case 'numeric':
+      return 'NUMERIC';
+    case 'math_expression':
+      return 'MATH_EXPRESSION';
     default:
       return invalid('shape');
   }
@@ -323,6 +358,32 @@ export function normalizeHomeworkTypedAnswer(
     if (mode === 'final' && required) invalid('completeness');
     return null;
   }
+  // JSON null is malformed storage/input here; only explicit clear/SQL NULL is absence.
+  if (input === null) invalid('shape');
+  if (current.kind === 'ordering')
+    return {
+      type: 'ORDERING',
+      textAnswer: null,
+      answerJson: evaluationInput(() =>
+        normalizeOrderingAnswer(current, input, mode, required),
+      )!,
+    };
+  if (current.kind === 'numeric')
+    return {
+      type: 'NUMERIC',
+      textAnswer: null,
+      answerJson: evaluationInput(() =>
+        normalizeNumericAnswer(current, input, mode, required),
+      )!,
+    };
+  if (current.kind === 'math_expression')
+    return {
+      type: 'MATH_EXPRESSION',
+      textAnswer: null,
+      answerJson: evaluationInput(() =>
+        normalizeMathAnswer(current, input, mode, required),
+      )!,
+    };
   boundedJson(input);
   if (current.kind === 'fill') {
     const value = record(input, ['blanks']);
@@ -397,6 +458,12 @@ export function normalizeHomeworkPrivateAnswerKey(
 ): HomeworkPrivateAnswerKey | null {
   const current = normalizeHomeworkDefinition(typeOf(definition), definition);
   if (input === undefined) return null;
+  if (current.kind === 'ordering')
+    return evaluationInput(() => normalizeOrderingKey(current, input));
+  if (current.kind === 'numeric')
+    return evaluationInput(() => normalizeNumericKey(current, input));
+  if (current.kind === 'math_expression')
+    return evaluationInput(() => normalizeMathKey(current, input));
   boundedJson(input);
   if (current.kind === 'media') return invalid('shape');
   if (current.kind === 'fill') {

@@ -1,6 +1,17 @@
 import { GradeQuestionType } from '@prisma/client';
 import { ValidationDomainException } from '../../../../common/exceptions/domain-exception';
 import { validateGradeQuestionContent } from './grade-question-content-policy';
+import {
+  isGradeEvaluationType,
+  gradeEvaluationDefinition,
+  normalizeGradeEvaluationQuestion,
+  normalizeGradeEvaluationAnswer,
+  type GradeEvaluationDefinition,
+} from './grade-question-evaluation';
+import type {
+  AnswerPhase,
+  Phase,
+} from '../../../../common/question-evaluation';
 
 export const GRADE_TEXT_LIMITS = Object.freeze({
   short: 1000,
@@ -12,6 +23,7 @@ export const GRADE_STRUCTURED_ITEM_LIMIT = 50;
 type PublicItem = { id: string; label: string; labelAr: string | null };
 type FillSegment = { text: string } | { blankId: string };
 export type GradePublicDefinition =
+  | GradeEvaluationDefinition
   | { kind: 'choice'; minSelections: number; maxSelections: number }
   | { kind: 'text'; maxLength: number; multiline: boolean }
   | {
@@ -50,6 +62,8 @@ export interface GradeTypedAnswer {
   answerText: string | null;
   answerJson: unknown;
   selectedOptionIds: string[];
+  /** Internal authoritative SQL fact, never a public request field. */
+  answerJsonSqlNull?: boolean;
 }
 
 /** Read/submit compatibility for the documented former SHORT_ANSWER text bound.
@@ -57,7 +71,14 @@ export interface GradeTypedAnswer {
 export function normalizeStoredGradeAnswer(
   question: GradeInteractionQuestion,
   payload: GradeTypedAnswer,
+  phase: AnswerPhase = 'final',
 ): GradeTypedAnswer {
+  if (
+    isGradeEvaluationType(question.type) &&
+    payload.answerJson == null &&
+    payload.answerJsonSqlNull !== true
+  )
+    invalid('answerJson');
   if (
     question.type === GradeQuestionType.SHORT_ANSWER &&
     payload.answerJson == null &&
@@ -69,7 +90,7 @@ export function normalizeStoredGradeAnswer(
       selectedOptionIds: [],
     };
   }
-  return normalizeTypedGradeAnswer(question, payload);
+  return normalizeTypedGradeAnswer(question, payload, phase);
 }
 
 function invalid(field: string): never {
@@ -155,6 +176,7 @@ function boundedInteger(
 /** Public allowlist, never a copy of author metadata or correct-pair relations. */
 export function gradeQuestionDefinition(
   question: GradeInteractionQuestion,
+  phase: Phase = 'complete',
 ): GradePublicDefinition {
   const type = String(question.type).toUpperCase();
   if (
@@ -167,6 +189,8 @@ export function gradeQuestionDefinition(
     question.options?.length
   )
     invalid('options');
+  if (isGradeEvaluationType(type))
+    return gradeEvaluationDefinition(type, question.metadata, phase);
   const metadata =
     question.metadata == null ? {} : record(question.metadata, 'metadata');
   switch (type) {
@@ -361,6 +385,13 @@ export function validateGradeQuestionDefinition(
     question.options?.length
   )
     invalid('options');
+  if (isGradeEvaluationType(type)) {
+    normalizeGradeEvaluationQuestion(
+      { ...question, type, metadata: question.metadata },
+      complete ? 'complete' : 'draft',
+    );
+    return;
+  }
   const metadata =
     question.metadata == null ? {} : record(question.metadata, 'metadata');
   // Existing incomplete structured drafts remain editable; supplied structures must be valid.
@@ -471,6 +502,7 @@ function validateMatchingPairs(
 export function normalizeTypedGradeAnswer(
   question: GradeInteractionQuestion,
   payload: GradeTypedAnswer,
+  phase: AnswerPhase = 'final',
 ): GradeTypedAnswer {
   const definition = gradeQuestionDefinition(question);
   unique(
@@ -494,6 +526,24 @@ export function normalizeTypedGradeAnswer(
     };
   }
   if (payload.selectedOptionIds.length) invalid('selectedOptionIds');
+  if (
+    definition.kind === 'ordering' ||
+    definition.kind === 'numeric' ||
+    definition.kind === 'math_expression'
+  ) {
+    if (payload.answerText != null) invalid('answerText');
+    if (payload.answerJson === undefined) invalid('answerJson');
+    return {
+      answerText: null,
+      answerJson: normalizeGradeEvaluationAnswer(
+        definition,
+        payload.answerJson,
+        phase,
+        question.required !== false,
+      ),
+      selectedOptionIds: [],
+    };
+  }
   if (definition.kind === 'text' || definition.kind === 'media') {
     if (payload.answerJson != null) invalid('answerJson');
     const maximum =

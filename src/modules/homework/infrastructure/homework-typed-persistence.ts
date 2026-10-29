@@ -23,6 +23,12 @@ export function homeworkAnswerKeyPersistence(
   if (write.state !== 'value') throw new HomeworkTypedContentError('shape');
   const key = normalizeHomeworkPrivateAnswerKey(definition, write.value);
   if (!key) throw new HomeworkTypedContentError('shape');
+  if (
+    key.kind === 'ordering' ||
+    key.kind === 'numeric' ||
+    key.kind === 'math_expression'
+  )
+    return key as unknown as Prisma.InputJsonValue;
   if (key.kind === 'fill')
     return {
       keyVersion: 1,
@@ -62,6 +68,12 @@ export function homeworkAnswerJsonPersistence(
   );
   if (!answer || answer.type === 'MEDIA')
     throw new HomeworkTypedContentError('shape');
+  if (
+    answer.type === 'ORDERING' ||
+    answer.type === 'NUMERIC' ||
+    answer.type === 'MATH_EXPRESSION'
+  )
+    return answer.answerJson as Prisma.InputJsonValue;
   if (answer.type === 'FILL_IN_BLANK')
     return {
       blanks: answer.answerJson.blanks.map((blank) => ({

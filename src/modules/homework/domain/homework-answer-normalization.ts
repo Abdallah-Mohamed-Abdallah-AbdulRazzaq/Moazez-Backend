@@ -3,6 +3,7 @@ import type {
   HomeworkAnswerInput,
   NormalizedHomeworkAnswerInput,
 } from './homework-answer-inputs';
+import type { HomeworkFoundationType } from './homework-typed-contract';
 import { assertHomeworkRuntimeQuestionType } from './homework-runtime-types';
 import { HomeworkTypedContentError } from './homework-typed-contract';
 import {
@@ -65,7 +66,10 @@ export function normalizeAnswerForQuestion(input: {
   const typed =
     question.type === 'FILL_IN_BLANK' ||
     question.type === 'MATCHING' ||
-    question.type === 'MEDIA';
+    question.type === 'MEDIA' ||
+    question.type === 'ORDERING' ||
+    question.type === 'NUMERIC' ||
+    question.type === 'MATH_EXPRESSION';
   if (!typed && command.answerJson !== undefined)
     return invalid('typed_answer_for_legacy_question');
   if (
@@ -78,7 +82,7 @@ export function normalizeAnswerForQuestion(input: {
   if (typed) {
     try {
       const definition = normalizeHomeworkDefinition(
-        question.type as 'FILL_IN_BLANK' | 'MATCHING' | 'MEDIA',
+        question.type as HomeworkFoundationType,
         question.metadata,
         'complete',
       );

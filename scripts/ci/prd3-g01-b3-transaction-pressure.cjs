@@ -318,6 +318,22 @@ const PURE_METHODS = new Set([
   'toLowerCase', 'trim', 'values',
 ]);
 const REVIEWED_CALL_OVERRIDES = Object.freeze([
+  // ST10-B: only the observed owners reaching the frozen ST10-A BigInt budget.
+  ...[
+    ['src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts', ['GradesAssessmentQuestionsRepository.createQuestionWithOptions', 'GradesAssessmentQuestionsRepository.updateQuestionAndReplaceOptions']],
+    ['src/modules/grades/assessments/infrastructure/grades-assessments.repository.ts', ['GradesAssessmentsRepository.publishAssessment']],
+    ['src/modules/grades/assessments/infrastructure/grades-submissions.repository.ts', ['GradesSubmissionsRepository.bulkUpdateAnswerReviews', 'GradesSubmissionsRepository.bulkUpsertAnswersWithSelectedOptions', 'GradesSubmissionsRepository.finalizeSubmission', 'GradesSubmissionsRepository.submitSubmission', 'GradesSubmissionsRepository.updateAnswerReview', 'GradesSubmissionsRepository.upsertAnswerWithSelectedOptions']],
+    ['src/modules/homework/infrastructure/homework.repository.ts', ['HomeworkRepository.mutateTypedStudentSubmission', 'HomeworkRepository.projectAuthorTypedQuestions', 'HomeworkRepository.publishAssignmentWithTargets', 'HomeworkRepository.reviewSubmission', 'HomeworkRepository.reviewSubmissionAnswers']],
+  ].flatMap(([path, owners]) => owners.map(owner => Object.freeze({
+    path,
+    owner,
+    origin: 'bits',
+    target: /^abs\(n\)\.toString$/,
+    reason: 'ST10-B reaches the unchanged synchronous ST10-A BigInt bit-budget intrinsic.',
+    classification: 'LOCK_CONTENTION_SENSITIVE',
+    resolvedCallers: Object.freeze(['RationalBudget.check', 'RationalBudget.multiply', 'bits']),
+    evidence: 'src/common/question-evaluation/expression-rational.ts defines abs(n: bigint) using primitive BigInt arithmetic and bits(n: bigint) as abs(n).toString(2).length. The existing bounded parser/rational validator uses this standard in-memory conversion to enforce its frozen computation budget. It performs no filesystem, network, storage, queue, timer or database operation and acquires no lock. This exception binds the exact transaction path, owner, bits origin and call expression; it adds no global method exemption, changes no ST10-A mathematics and preserves existing transaction classifications and lock order.',
+  }))),
   // ST09-B/C: exact Homework transaction owners reuse the existing audited gate.
   ...[
     'HomeworkRepository.mutateTypedStudentSubmission',

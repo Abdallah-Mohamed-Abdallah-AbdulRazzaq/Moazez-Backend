@@ -5,6 +5,8 @@ import {
   assertGradeLiveMutationPermission,
 } from './grades-resource-access';
 import { Injectable } from '@nestjs/common';
+import { requireGradesScope } from '../../grades-context';
+import { isGradeEvaluationType } from '../domain/grade-question-evaluation';
 import {
   GradeAssessmentApprovalStatus,
   GradeAssessmentDeliveryMode,
@@ -22,7 +24,10 @@ import {
   assertPublishableAssessment,
   assertWorkflowTermWritable,
 } from '../domain/grade-assessment-domain';
-import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
+import {
+  NotFoundDomainException,
+  ValidationDomainException,
+} from '../../../../common/exceptions/domain-exception';
 
 const SUBJECT_SUMMARY_SELECT = {
   id: true,
@@ -324,6 +329,20 @@ export class GradesAssessmentsRepository {
           where: { assessmentId },
           ...QUESTION_FOR_PUBLISH_ARGS,
         });
+        if (
+          questions.some((question) => isGradeEvaluationType(question.type))
+        ) {
+          const malformed = await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT id FROM grade_assessment_questions
+            WHERE assessment_id=${assessmentId}::uuid AND school_id=${requireGradesScope().schoolId}::uuid
+              AND deleted_at IS NULL AND type IN ('ORDERING', 'NUMERIC', 'MATH_EXPRESSION')
+              AND answer_key = 'null'::jsonb LIMIT 1`;
+          if (malformed.length)
+            throw new ValidationDomainException(
+              'Question interaction or answer is invalid',
+              { field: 'answerKey' },
+            );
+        }
         assertQuestionBasedPublishReady({ assessment, questions });
       } else {
         assertPublishableAssessment(assessment);

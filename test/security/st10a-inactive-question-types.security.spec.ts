@@ -13,7 +13,8 @@ import {
   st09bcTeacher,
 } from '../fixtures/homework-eight-type.fixture';
 
-const inactive = ['ORDERING', 'NUMERIC', 'MATH_EXPRESSION'] as const;
+// ST10-B authorizes these types, but malformed/future definitions and keys stay denied.
+const malformedTypes = ['ORDERING', 'NUMERIC', 'MATH_EXPRESSION'] as const;
 const sentinel = 'ST10A_PRIVATE_KEY_MUST_NEVER_ESCAPE';
 const permissions = [
   'grades.assessments.view',
@@ -31,7 +32,7 @@ const permissions = [
   'homework.submissions.submit',
   'homework.submissions.review',
 ];
-describe('ST10-A real PostgreSQL + JWT HTTP no-activation boundary', () => {
+describe('ST10-B preserves ST10-A malformed/future-data, privacy and mutation boundaries', () => {
   jest.setTimeout(180000);
   const h = new HomeworkQuestionAssetsHttp();
   beforeAll(() => h.start());
@@ -60,8 +61,8 @@ describe('ST10-A real PostgreSQL + JWT HTTP no-activation boundary', () => {
   const refused = (status: number) =>
     expect([400, 404, 409, 422]).toContain(status);
 
-  it.each(inactive)(
-    'Grades %s cannot be authored, published, answered, submitted or reviewed, including direct repository writes',
+  it.each(malformedTypes)(
+    'Grades %s with missing/malformed definitions cannot be authored, published, answered, submitted or reviewed, including direct repository writes',
     async (type) => {
       const p = h.prisma,
         f = h.fixture;
@@ -265,7 +266,7 @@ describe('ST10-A real PostgreSQL + JWT HTTP no-activation boundary', () => {
           where: { id: submission.id },
         }),
       ).toEqual(snapshot);
-      // Optional unanswered future question must also block final review.
+      // An optional unanswered question with malformed definition must still block final review.
       await p.gradeSubmission.update({
         where: { id: submission.id },
         data: { status: 'SUBMITTED', submittedAt: new Date() },
@@ -368,8 +369,8 @@ describe('ST10-A real PostgreSQL + JWT HTTP no-activation boundary', () => {
     },
   );
 
-  it.each(inactive)(
-    'Homework %s stays inactive through authoring, locked publication, student mutations and review',
+  it.each(malformedTypes)(
+    'Homework %s with missing/malformed definitions stays denied through authoring, locked publication, student mutations and review',
     async (type) => {
       const p = h.prisma,
         f = h.fixture,
@@ -384,28 +385,28 @@ describe('ST10-A real PostgreSQL + JWT HTTP no-activation boundary', () => {
         .post(teacher + '/questions')
         .set(h.headers())
         .send({ type, prompt: 'Future', points: 1 });
-      expect(created.status).toBe(400);
+      expect(created.status).toBe(422);
       safe(created.body);
       const updated = await h
         .http()
         .patch(teacher + '/questions/' + q.id)
         .set(h.headers())
         .send({ type });
-      expect(updated.status).toBe(400);
+      expect(updated.status).toBe(422);
       safe(updated.body);
       const coreCreate = await h
         .http()
         .post(core + '/questions')
         .set(h.headers('admin'))
         .send({ type, prompt: 'Future', points: 1 });
-      expect(coreCreate.status).toBe(400);
+      expect(coreCreate.status).toBe(422);
       safe(coreCreate.body);
       const coreUpdate = await h
         .http()
         .patch(core + '/questions/' + q.id)
         .set(h.headers('admin'))
         .send({ type });
-      expect(coreUpdate.status).toBe(400);
+      expect(coreUpdate.status).toBe(422);
       safe(coreUpdate.body);
       await f.asMediaActor('teacher', async () => {
         await expect(

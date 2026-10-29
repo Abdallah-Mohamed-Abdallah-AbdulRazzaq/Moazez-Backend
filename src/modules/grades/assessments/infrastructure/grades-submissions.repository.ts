@@ -1,4 +1,7 @@
 import { GradeAssetsRepository } from './grade-assets.repository';
+import { isGradeEvaluationType } from '../domain/grade-question-evaluation';
+import { gradeQuestionDefinition } from '../domain/grade-question-interaction';
+import { projectGradeAnswerNullFacts } from './grade-typed-answer.projection';
 import { assertGradeRuntimeQuestionType } from '../domain/grade-runtime-types';
 import {
   authorizeGradeRichReview,
@@ -349,6 +352,8 @@ export interface AnswerSaveInput {
   questionId: string;
   maxPoints: Prisma.Decimal;
   payload: NormalizedAnswerPayload;
+  /** Derived again from the locked question; callers cannot choose storage semantics. */
+  answerJsonDbNull?: boolean;
 }
 
 export interface AnswerReviewUpdateInput {
@@ -437,7 +442,7 @@ export class GradesSubmissionsRepository {
     assessmentId: string;
     studentId: string;
   }): Promise<GradeSubmissionDetailRecord | null> {
-    return this.scopedPrisma.gradeSubmission.findFirst({
+    const submission = await this.scopedPrisma.gradeSubmission.findFirst({
       where: {
         assessmentId: params.assessmentId,
         studentId: params.studentId,
@@ -446,6 +451,9 @@ export class GradesSubmissionsRepository {
       },
       ...SUBMISSION_DETAIL_ARGS,
     });
+    if (submission)
+      await projectGradeAnswerNullFacts(this.scopedPrisma, submission.answers);
+    return submission;
   }
 
   async findExistingSubmissionForEnrollment(params: {
@@ -453,7 +461,7 @@ export class GradesSubmissionsRepository {
     studentId: string;
     enrollmentId: string;
   }): Promise<GradeSubmissionDetailRecord | null> {
-    return this.scopedPrisma.gradeSubmission.findFirst({
+    const submission = await this.scopedPrisma.gradeSubmission.findFirst({
       where: {
         assessmentId: params.assessmentId,
         studentId: params.studentId,
@@ -463,6 +471,9 @@ export class GradesSubmissionsRepository {
       },
       ...SUBMISSION_DETAIL_ARGS,
     });
+    if (submission)
+      await projectGradeAnswerNullFacts(this.scopedPrisma, submission.answers);
+    return submission;
   }
 
   async createSubmission(
@@ -538,7 +549,7 @@ export class GradesSubmissionsRepository {
   async findSubmissionDetail(
     submissionId: string,
   ): Promise<GradeSubmissionDetailRecord | null> {
-    return this.scopedPrisma.gradeSubmission.findFirst({
+    const submission = await this.scopedPrisma.gradeSubmission.findFirst({
       where: {
         id: submissionId,
         assessment: { deletedAt: null },
@@ -546,6 +557,9 @@ export class GradesSubmissionsRepository {
       },
       ...SUBMISSION_DETAIL_ARGS,
     });
+    if (submission)
+      await projectGradeAnswerNullFacts(this.scopedPrisma, submission.answers);
+    return submission;
   }
 
   findSubmissionForReview(
@@ -566,13 +580,15 @@ export class GradesSubmissionsRepository {
   async findAnswerForReview(
     answerId: string,
   ): Promise<GradeSubmissionAnswerRecord | null> {
-    return this.scopedPrisma.gradeSubmissionAnswer.findFirst({
+    const answer = await this.scopedPrisma.gradeSubmissionAnswer.findFirst({
       where: {
         id: answerId,
         submission: await gradeSubmissionAccessWhere(this.scopedPrisma),
       },
       ...ANSWER_WITH_OPTIONS_ARGS,
     });
+    if (answer) await projectGradeAnswerNullFacts(this.scopedPrisma, [answer]);
+    return answer;
   }
 
   async findAnswersForBulkReview(
@@ -580,7 +596,7 @@ export class GradesSubmissionsRepository {
   ): Promise<GradeSubmissionAnswerRecord[]> {
     if (answerIds.length === 0) return Promise.resolve([]);
 
-    return this.scopedPrisma.gradeSubmissionAnswer.findMany({
+    const answers = await this.scopedPrisma.gradeSubmissionAnswer.findMany({
       where: {
         id: { in: answerIds },
         submission: await gradeSubmissionAccessWhere(this.scopedPrisma),
@@ -588,6 +604,8 @@ export class GradesSubmissionsRepository {
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       ...ANSWER_WITH_OPTIONS_ARGS,
     });
+    await projectGradeAnswerNullFacts(this.scopedPrisma, answers);
+    return answers;
   }
 
   async findQuestionsForSubmission(
@@ -630,7 +648,7 @@ export class GradesSubmissionsRepository {
   async listAnswersForSubmission(
     submissionId: string,
   ): Promise<GradeSubmissionAnswerRecord[]> {
-    return this.scopedPrisma.gradeSubmissionAnswer.findMany({
+    const answers = await this.scopedPrisma.gradeSubmissionAnswer.findMany({
       where: {
         submissionId,
         submission: await gradeSubmissionAccessWhere(this.scopedPrisma),
@@ -638,6 +656,8 @@ export class GradesSubmissionsRepository {
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       ...ANSWER_WITH_OPTIONS_ARGS,
     });
+    await projectGradeAnswerNullFacts(this.scopedPrisma, answers);
+    return answers;
   }
 
   findQuestionsByIds(
@@ -773,7 +793,7 @@ export class GradesSubmissionsRepository {
       return savedAnswerIds;
     });
 
-    return this.scopedPrisma.gradeSubmissionAnswer.findMany({
+    const answers = await this.scopedPrisma.gradeSubmissionAnswer.findMany({
       where: {
         id: { in: answerIds },
         submission: await gradeSubmissionAccessWhere(this.scopedPrisma),
@@ -781,6 +801,8 @@ export class GradesSubmissionsRepository {
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       ...ANSWER_WITH_OPTIONS_ARGS,
     });
+    await projectGradeAnswerNullFacts(this.scopedPrisma, answers);
+    return answers;
   }
 
   async updateAnswerReview(
@@ -865,7 +887,7 @@ export class GradesSubmissionsRepository {
       return updatedAnswerIds;
     });
 
-    return this.scopedPrisma.gradeSubmissionAnswer.findMany({
+    const answers = await this.scopedPrisma.gradeSubmissionAnswer.findMany({
       where: {
         id: { in: answerIds },
         submission: await gradeSubmissionAccessWhere(this.scopedPrisma),
@@ -873,6 +895,8 @@ export class GradesSubmissionsRepository {
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       ...ANSWER_WITH_OPTIONS_ARGS,
     });
+    await projectGradeAnswerNullFacts(this.scopedPrisma, answers);
+    return answers;
   }
 
   async submitSubmission(
@@ -897,6 +921,10 @@ export class GradesSubmissionsRepository {
         questions,
         answers: submission.answers,
       });
+      const nullFacts = await this.validateStoredEvaluationAnswers(
+        tx,
+        submission,
+      );
       for (const answer of submission.answers) {
         const question = questions.find(
           (question) => question.id === answer.questionId,
@@ -907,6 +935,7 @@ export class GradesSubmissionsRepository {
           payload: {
             answerText: answer.answerText,
             answerJson: answer.answerJson,
+            answerJsonSqlNull: nullFacts.get(answer.id),
             selectedOptionIds: answer.selectedOptions.map(
               (option) => option.optionId,
             ),
@@ -940,6 +969,7 @@ export class GradesSubmissionsRepository {
         'grades.submissions.review',
       );
       assertSubmissionReviewable(submission);
+      await this.validateStoredEvaluationAnswers(tx, submission);
       const questions = await tx.gradeAssessmentQuestion.findMany({
         where: { assessmentId: submission.assessmentId },
         ...QUESTION_FOR_SUBMISSION_ARGS,
@@ -1036,10 +1066,17 @@ export class GradesSubmissionsRepository {
         schoolId,
         deletedAt: null,
       },
-      select: { type: true },
+      select: {
+        type: true,
+        metadata: true,
+        options: { where: { deletedAt: null }, select: { id: true } },
+      },
     });
-    for (const question of questionTypes)
+    for (const question of questionTypes) {
       assertGradeRuntimeQuestionType(question.type);
+      if (isGradeEvaluationType(question.type))
+        gradeQuestionDefinition(question);
+    }
     return submission;
   }
 
@@ -1076,7 +1113,13 @@ export class GradesSubmissionsRepository {
       selectedOptionIds: payload.selectedOptionIds,
       options: question.options,
     });
-    return { ...input, maxPoints: question.points, payload };
+    return {
+      ...input,
+      maxPoints: question.points,
+      payload,
+      answerJsonDbNull:
+        isGradeEvaluationType(question.type) && payload.answerJson === null,
+    };
   }
 
   private async validateReviewWrite(
@@ -1091,7 +1134,40 @@ export class GradesSubmissionsRepository {
     });
     if (!answer || answer.question.deletedAt)
       throw new NotFoundDomainException();
+    if (isGradeEvaluationType(answer.question.type))
+      await this.validateStoredEvaluationAnswers(tx, submission);
     assertReviewAwardedPoints({ answer, awardedPoints: input.awardedPoints });
+  }
+
+  /** Existing submission/assessment locks and authorization already hold. No key read. */
+  private async validateStoredEvaluationAnswers(
+    tx: Prisma.TransactionClient,
+    submission: GradeSubmissionDetailRecord,
+  ): Promise<Map<string, boolean>> {
+    const answers = submission.answers.filter((answer) =>
+      isGradeEvaluationType(answer.question.type),
+    );
+    const facts = new Map<string, boolean>();
+    if (!answers.length) return facts;
+    const { schoolId } = requireGradesScope();
+    const rows = await tx.$queryRaw<Array<{ id: string; sqlNull: boolean }>>`
+      SELECT id, answer_json IS NULL AS "sqlNull" FROM grade_submission_answers
+      WHERE school_id=${schoolId}::uuid AND submission_id=${submission.id}::uuid
+        AND assessment_id=${submission.assessmentId}::uuid`;
+    for (const row of rows) facts.set(row.id, row.sqlNull);
+    for (const answer of answers)
+      validateStoredAnswerPayloadForQuestion({
+        question: answer.question,
+        payload: {
+          answerText: answer.answerText,
+          answerJson: answer.answerJson,
+          answerJsonSqlNull: facts.get(answer.id),
+          selectedOptionIds: answer.selectedOptions.map(
+            (option) => option.optionId,
+          ),
+        },
+      });
+    return facts;
   }
 
   private async findAnswerResult(
@@ -1105,7 +1181,7 @@ export class GradesSubmissionsRepository {
     if (!answer) {
       throw new Error('Grade submission answer mutation result was not found');
     }
-
+    await projectGradeAnswerNullFacts(this.scopedPrisma, [answer]);
     return answer;
   }
 
@@ -1250,7 +1326,9 @@ export class GradesSubmissionsRepository {
       questionId: input.questionId,
       studentId: input.studentId,
       answerText: input.payload.answerText,
-      answerJson: this.toNullableJson(input.payload.answerJson),
+      answerJson: input.answerJsonDbNull
+        ? Prisma.DbNull
+        : this.toNullableJson(input.payload.answerJson),
       correctionStatus: GradeAnswerCorrectionStatus.PENDING,
       awardedPoints: null,
       maxPoints: input.maxPoints,
@@ -1262,7 +1340,9 @@ export class GradesSubmissionsRepository {
   ): Prisma.GradeSubmissionAnswerUncheckedUpdateInput {
     return {
       answerText: input.payload.answerText,
-      answerJson: this.toNullableJson(input.payload.answerJson),
+      answerJson: input.answerJsonDbNull
+        ? Prisma.DbNull
+        : this.toNullableJson(input.payload.answerJson),
       correctionStatus: GradeAnswerCorrectionStatus.PENDING,
       awardedPoints: null,
       maxPoints: input.maxPoints,

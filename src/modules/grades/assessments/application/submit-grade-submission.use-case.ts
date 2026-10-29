@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import { gradeAnswerNullFact } from '../infrastructure/grade-typed-answer.projection';
+import { isGradeEvaluationType } from '../domain/grade-question-evaluation';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { requireGradesScope } from '../../grades-context';
 import {
@@ -7,6 +9,7 @@ import {
   assertSubmissionSubmittable,
   normalizeAnswerPayload,
   validateAnswerPayloadForQuestion,
+  validateStoredAnswerPayloadForQuestion,
   validateSelectedOptionsForQuestion,
 } from '../domain/grade-submission-domain';
 import {
@@ -92,7 +95,12 @@ function validateSavedAnswersBeforeSubmit(params: {
       ),
     });
 
-    validateAnswerPayloadForQuestion({ question, payload });
+    if (isGradeEvaluationType(question.type))
+      validateStoredAnswerPayloadForQuestion({
+        question,
+        payload: { ...payload, answerJsonSqlNull: gradeAnswerNullFact(answer) },
+      });
+    else validateAnswerPayloadForQuestion({ question, payload });
     validateSelectedOptionsForQuestion({
       question,
       selectedOptionIds: payload.selectedOptionIds,

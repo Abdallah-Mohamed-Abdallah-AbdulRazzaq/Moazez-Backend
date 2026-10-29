@@ -1,6 +1,7 @@
 import { gradeLegacyContent } from '../domain/grade-rich-content';
 import { validateGradeQuestionContent } from '../domain/grade-question-content-policy';
 import { validateGradeQuestionDefinition } from '../domain/grade-question-interaction';
+import { isGradeEvaluationType } from '../domain/grade-question-evaluation';
 import { Injectable } from '@nestjs/common';
 import { ValidationDomainException } from '../../../../common/exceptions/domain-exception';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
@@ -40,7 +41,10 @@ export class UpdateGradeAssessmentQuestionUseCase {
     });
 
     const payload = normalizeQuestionPayload(command);
+    const nextType = payload.type ?? existing.type;
     const metadataPatch =
+      !isGradeEvaluationType(nextType) &&
+      !isGradeEvaluationType(existing.type) &&
       command.metadata === undefined &&
       payload.metadata &&
       typeof payload.metadata === 'object' &&
@@ -56,7 +60,6 @@ export class UpdateGradeAssessmentQuestionUseCase {
           : {}),
         ...metadataPatch,
       };
-    const nextType = payload.type ?? existing.type;
     const nextAnswerKey =
       payload.answerKey === undefined ? existing.answerKey : payload.answerKey;
     const nextMetadata =
