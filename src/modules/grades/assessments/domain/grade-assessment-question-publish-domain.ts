@@ -251,6 +251,9 @@ export function assertQuestionOptionsValidForPublish(
     case GradeQuestionType.ESSAY:
     case GradeQuestionType.FILL_IN_BLANK:
     case GradeQuestionType.MEDIA:
+    case GradeQuestionType.ORDERING:
+    case GradeQuestionType.NUMERIC:
+    case GradeQuestionType.MATH_EXPRESSION:
       if (options.length > 0) {
         throwInvalidOption(type, question.id, 'options_not_allowed');
       }

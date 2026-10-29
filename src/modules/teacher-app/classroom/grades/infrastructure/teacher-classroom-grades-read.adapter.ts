@@ -1,4 +1,5 @@
 import { GradeAssetsRepository } from '../../../../grades/assessments/infrastructure/grade-assets.repository';
+import { projectGradeAnswerNullFacts } from '../../../../grades/assessments/infrastructure/grade-typed-answer.projection';
 import {
   authorizeGradeRichReview,
   hasGradeRichSelection,
@@ -107,6 +108,7 @@ const ASSESSMENT_DETAIL_ARGS =
           prompt: true,
           promptAr: true,
           richContent: true,
+          metadata: true,
           options: {
             where: { deletedAt: null },
             select: { id: true, label: true, labelAr: true, richContent: true },
@@ -668,6 +670,16 @@ export class TeacherClassroomGradesReadAdapter {
       );
     }
 
+    await projectGradeAnswerNullFacts(
+      this.scopedPrisma,
+      submission.answers,
+      new Map(
+        assignment.assignment.questions.map((question) => [
+          question.id,
+          question.type,
+        ]),
+      ),
+    );
     return {
       assignment: assignment.assignment,
       submission,

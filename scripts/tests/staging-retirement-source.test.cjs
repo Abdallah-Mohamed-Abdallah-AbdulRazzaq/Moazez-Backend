@@ -975,9 +975,17 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
     ['test/integration/st10a-question-enum-boundary.integration.spec.ts', 'integration-general'],
     ['test/security/st10a-inactive-question-types.security.spec.ts', 'security'],
   ];
+  const st10bFiles = [
+    ['src/modules/homework/tests/homework-st10b-adapters.spec.ts', 'unit'],
+    ['src/modules/grades/assessments/tests/grade-st10b-adapters.spec.ts', 'unit'],
+    ['test/e2e/st10b-authoring-publication.e2e-spec.ts', 'e2e'],
+    ['test/e2e/st10b-student-review.e2e-spec.ts', 'e2e'],
+    ['test/e2e/st10b-concurrency.e2e-spec.ts', 'e2e'],
+    ['test/e2e/st10b-eleven-type-runtime.e2e-spec.ts', 'e2e'],
+  ];
   assert.equal(
     assignments.length,
-    1019 + st08bFiles.length + st08cFiles.length + st09aFiles.length + st09bcFiles.length + st10aFiles.length,
+    1019 + st08bFiles.length + st08cFiles.length + st09aFiles.length + st09bcFiles.length + st10aFiles.length + st10bFiles.length,
   );
   assert.equal(
     assignments.filter((item) => item.execution === 'manual').length,
@@ -985,7 +993,7 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
   );
   assert.equal(
     assignments.filter((item) => item.execution !== 'manual').length,
-    1009 + st08bFiles.length + st08cFiles.length + st09aFiles.length + st09bcFiles.length + st10aFiles.length,
+    1009 + st08bFiles.length + st08cFiles.length + st09aFiles.length + st09bcFiles.length + st10aFiles.length + st10bFiles.length,
   );
   for (const [file, profile] of [
     ['src/common/rich-content/rich-content.spec.ts', 'unit'],
@@ -998,6 +1006,7 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
     ...st09aFiles,
     ...st09bcFiles,
     ...st10aFiles,
+    ...st10bFiles,
   ]) {
     const matches = assignments.filter((item) => item.file === file);
     assert.equal(matches.length, 1);

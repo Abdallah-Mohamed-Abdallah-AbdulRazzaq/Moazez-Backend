@@ -664,8 +664,16 @@ test('retirement TAP files have unique active runtime governance owners', () => 
     ['test/integration/st10a-question-enum-boundary.integration.spec.ts', 'integration-general'],
     ['test/security/st10a-inactive-question-types.security.spec.ts', 'security'],
   ];
-  assert.equal(files.length, 1019 + st08bFiles.length + st08cFiles.length + st09aFiles.length + st09bcFiles.length + st10aFiles.length);
-  assert.equal(assignments.filter(item => item.execution === 'pull-request').length, 1009 + st08bFiles.length + st08cFiles.length + st09aFiles.length + st09bcFiles.length + st10aFiles.length);
+  const st10bFiles = [
+    ['src/modules/homework/tests/homework-st10b-adapters.spec.ts', 'unit'],
+    ['src/modules/grades/assessments/tests/grade-st10b-adapters.spec.ts', 'unit'],
+    ['test/e2e/st10b-authoring-publication.e2e-spec.ts', 'e2e'],
+    ['test/e2e/st10b-student-review.e2e-spec.ts', 'e2e'],
+    ['test/e2e/st10b-concurrency.e2e-spec.ts', 'e2e'],
+    ['test/e2e/st10b-eleven-type-runtime.e2e-spec.ts', 'e2e'],
+  ];
+  assert.equal(files.length, 1019 + st08bFiles.length + st08cFiles.length + st09aFiles.length + st09bcFiles.length + st10aFiles.length + st10bFiles.length);
+  assert.equal(assignments.filter(item => item.execution === 'pull-request').length, 1009 + st08bFiles.length + st08cFiles.length + st09aFiles.length + st09bcFiles.length + st10aFiles.length + st10bFiles.length);
   assert.equal(assignments.filter(item => item.execution === 'manual').length, 10);
   for (const [file, profile] of [
     ...st08bFiles,
@@ -673,6 +681,7 @@ test('retirement TAP files have unique active runtime governance owners', () => 
     ...st09aFiles,
     ...st09bcFiles,
     ...st10aFiles,
+    ...st10bFiles,
     ['src/common/rich-content/rich-content.spec.ts', 'unit'],
     ['test/integration/safe-rich-content-persistence.integration.spec.ts', 'integration-general'],
     ['test/e2e/grade-assets.e2e-spec.ts', 'e2e'],

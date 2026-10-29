@@ -2,6 +2,10 @@ import { gradeRichInput, gradeLegacyContent } from './grade-rich-content';
 import type { RichContent } from '../../../../common/rich-content/rich-content.types';
 import { validateGradeQuestionContent } from './grade-question-content-policy';
 import { validateGradeQuestionDefinition } from './grade-question-interaction';
+import {
+  isGradeEvaluationType,
+  normalizeGradeEvaluationQuestion,
+} from './grade-question-evaluation';
 import { HttpStatus } from '@nestjs/common';
 import type { ActiveGradeQuestionType } from './grade-runtime-types';
 import {
@@ -228,6 +232,12 @@ export function normalizeQuestionType(
       return GradeQuestionType.MATCHING;
     case GradeQuestionType.MEDIA:
       return GradeQuestionType.MEDIA;
+    case GradeQuestionType.ORDERING:
+      return GradeQuestionType.ORDERING;
+    case GradeQuestionType.NUMERIC:
+      return GradeQuestionType.NUMERIC;
+    case GradeQuestionType.MATH_EXPRESSION:
+      return GradeQuestionType.MATH_EXPRESSION;
     default:
       throw new ValidationDomainException('Question type is invalid', {
         field: 'type',
@@ -314,6 +324,19 @@ export function normalizeQuestionPayload(
   if (metadata !== undefined) {
     payload.metadata = metadata;
   }
+  if (isGradeEvaluationType(payload.type) && payload.metadata !== undefined) {
+    const normalized = normalizeGradeEvaluationQuestion(
+      {
+        type: payload.type,
+        metadata: payload.metadata,
+        answerKey: payload.answerKey,
+      },
+      'draft',
+    );
+    payload.metadata = normalized.metadata;
+    if (payload.answerKey !== undefined)
+      payload.answerKey = normalized.answerKey;
+  }
 
   if (hasOwn(command, 'options')) {
     payload.options = command.options
@@ -394,6 +417,9 @@ export function validateQuestionOptionsForType(params: {
     case GradeQuestionType.ESSAY:
     case GradeQuestionType.FILL_IN_BLANK:
     case GradeQuestionType.MEDIA:
+    case GradeQuestionType.ORDERING:
+    case GradeQuestionType.NUMERIC:
+    case GradeQuestionType.MATH_EXPRESSION:
       if (options.length > 0) {
         throwInvalidOption(type, `${type} questions do not accept options`);
       }

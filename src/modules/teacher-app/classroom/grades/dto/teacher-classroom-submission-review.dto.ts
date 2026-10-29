@@ -1,4 +1,5 @@
 import type { RichContent } from '../../../../../common/rich-content/rich-content.types';
+import type { GradeQuestionContractDto } from '../../../../grades/shared/presenters/grade-question-contract';
 import { IsUUID } from 'class-validator';
 import { TeacherClassroomAssignmentSubmissionDetailResponseDto } from './teacher-classroom-grades.dto';
 
@@ -33,6 +34,8 @@ export class TeacherClassroomReviewedAnswerValueDto {
 }
 
 export class TeacherClassroomReviewedAnswerDto {
+  canonicalType?: GradeQuestionContractDto['canonicalType'];
+  interaction?: GradeQuestionContractDto['interaction'];
   answerId!: string;
   questionId!: string;
   type!: string;

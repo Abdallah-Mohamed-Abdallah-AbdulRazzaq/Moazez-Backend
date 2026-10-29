@@ -20,6 +20,7 @@ import {
 } from '../../shared/domain/grade-workflow';
 import { GradeAssessmentLockedException } from './grade-assessment-domain';
 import { GradebookNoEnrollmentException } from './grade-item-entry-domain';
+import { isGradeEvaluationType } from './grade-question-evaluation';
 import {
   normalizeTypedGradeAnswer,
   normalizeStoredGradeAnswer,
@@ -103,6 +104,7 @@ export interface NormalizedAnswerPayload {
   answerText: string | null;
   answerJson: unknown;
   selectedOptionIds: string[];
+  answerJsonSqlNull?: boolean;
 }
 
 export interface SubmissionAnswerProgress {
@@ -218,7 +220,7 @@ export function validateAnswerPayloadForQuestion(params: {
   question: SubmissionQuestionLike;
   payload: NormalizedAnswerPayload;
 }): NormalizedAnswerPayload {
-  return normalizeTypedGradeAnswer(params.question, params.payload);
+  return normalizeTypedGradeAnswer(params.question, params.payload, 'draft');
 }
 
 export function validateStoredAnswerPayloadForQuestion(params: {
@@ -417,6 +419,8 @@ function isAnswerMeaningfulForQuestion(
   question: SubmissionQuestionLike,
   answer: SubmissionAnswerLike,
 ): boolean {
+  if (isGradeEvaluationType(question.type) && answer.answerJson == null)
+    return false;
   const payload = normalizeAnswerPayload({
     answerText: answer.answerText ?? null,
     answerJson: answer.answerJson ?? null,

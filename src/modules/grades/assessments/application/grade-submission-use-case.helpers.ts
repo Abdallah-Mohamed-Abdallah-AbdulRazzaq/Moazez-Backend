@@ -2,6 +2,7 @@ import { AuditOutcome, Prisma } from '@prisma/client';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 import { requireGradesScope } from '../../grades-context';
 import { presentDecimal } from '../../shared/presenters/grades.presenter';
+import { assertGradeEvaluationAnswerProvided } from '../domain/grade-question-evaluation';
 import {
   BulkSaveGradeSubmissionAnswerItemDto,
   SaveGradeSubmissionAnswerDto,
@@ -88,6 +89,7 @@ export async function prepareSingleAnswerSaveInput(params: {
   question: GradeSubmissionQuestionRecord;
   command: SaveGradeSubmissionAnswerDto;
 }): Promise<AnswerSaveInput> {
+  assertGradeEvaluationAnswerProvided(params.question.type, params.command);
   let payload = normalizeAnswerPayload(params.command);
 
   payload = validateAnswerPayloadForQuestion({
@@ -142,6 +144,7 @@ export async function prepareBulkAnswerSaveInputs(params: {
       submission: params.submission,
     });
 
+    assertGradeEvaluationAnswerProvided(question.type, command);
     const payload = validateAnswerPayloadForQuestion({
       question,
       payload: normalizeAnswerPayload(command),

@@ -27,7 +27,8 @@ export class HomeworkQuestionOptionResponseDto {
 export class HomeworkQuestionResponseDto {
   @ApiPropertyOptional({
     type: Object,
-    description: 'Closed public typed definition for Fill, Matching or MEDIA.',
+    description:
+      'Closed versioned public definition for Fill, Matching, MEDIA, Ordering, Numeric or Math Expression.',
   })
   metadata?: HomeworkPublicDefinition;
   @ApiPropertyOptional({

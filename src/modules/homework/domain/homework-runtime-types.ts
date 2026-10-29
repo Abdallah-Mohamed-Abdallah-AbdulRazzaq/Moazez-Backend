@@ -1,7 +1,7 @@
 import { HomeworkQuestionType } from '@prisma/client';
 import { HomeworkQuestionInvalidTypePayloadException } from './homework-question.exceptions';
 
-/** Explicit ST09-B/C runtime dispatch. Future persisted values remain fail closed. */
+/** Explicit ST10-B eleven-type dispatch. Unknown values remain fail closed. */
 export const HOMEWORK_RUNTIME_QUESTION_TYPES = Object.freeze([
   HomeworkQuestionType.SHORT_TEXT,
   HomeworkQuestionType.LONG_TEXT,
@@ -11,6 +11,9 @@ export const HOMEWORK_RUNTIME_QUESTION_TYPES = Object.freeze([
   HomeworkQuestionType.FILL_IN_BLANK,
   HomeworkQuestionType.MATCHING,
   HomeworkQuestionType.MEDIA,
+  HomeworkQuestionType.ORDERING,
+  HomeworkQuestionType.NUMERIC,
+  HomeworkQuestionType.MATH_EXPRESSION,
 ]);
 
 export function isHomeworkRuntimeQuestionType(value: unknown): boolean {

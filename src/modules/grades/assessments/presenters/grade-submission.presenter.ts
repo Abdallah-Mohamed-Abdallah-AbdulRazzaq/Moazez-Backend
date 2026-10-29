@@ -1,5 +1,6 @@
 import { presentGradeRichContent } from '../infrastructure/grade-rich-content.projection';
 import { sanitizeGradeQuestionContent } from '../domain/grade-question-content-policy';
+import { gradeAnswerNullFact } from '../infrastructure/grade-typed-answer.projection';
 import {
   presentGradeQuestionContract,
   presentSafeGradeAnswer,
@@ -107,6 +108,7 @@ export function presentGradeSubmissionAnswer(
     ...presentSafeGradeAnswer(answer.question, {
       answerText: answer.answerText,
       answerJson: answer.answerJson,
+      answerJsonSqlNull: gradeAnswerNullFact(answer),
       selectedOptionIds: answer.selectedOptions.map(
         (option) => option.optionId,
       ),

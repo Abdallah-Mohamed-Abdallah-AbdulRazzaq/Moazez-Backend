@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { gradeAnswerNullFact } from '../../../grades/assessments/infrastructure/grade-typed-answer.projection';
 import {
   GradeAssessmentApprovalStatus,
   GradeAssessmentDeliveryMode,
@@ -443,7 +444,10 @@ function validateSavedAnswersBeforeSubmit(params: {
       ),
     });
 
-    validateStoredAnswerPayloadForQuestion({ question, payload });
+    validateStoredAnswerPayloadForQuestion({
+      question,
+      payload: { ...payload, answerJsonSqlNull: gradeAnswerNullFact(answer) },
+    });
     validateSelectedOptionsForQuestion({
       question,
       selectedOptionIds: payload.selectedOptionIds,

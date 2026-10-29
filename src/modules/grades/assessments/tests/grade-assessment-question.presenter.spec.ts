@@ -1,4 +1,15 @@
-import { GradeQuestionType, Prisma } from '@prisma/client';
+import { GradeQuestionType, Prisma, UserType } from '@prisma/client';
+import {
+  createRequestContext,
+  runWithRequestContext,
+  setActiveMembership,
+  setActor,
+} from '../../../../common/context/request-context';
+import { ValidationDomainException } from '../../../../common/exceptions/domain-exception';
+import {
+  gradeAuthorKeyNullFact,
+  projectGradeAuthorKeyNullFacts,
+} from '../infrastructure/grade-author-key.projection';
 import {
   presentGradeAssessmentQuestion,
   presentGradeAssessmentQuestions,
@@ -123,5 +134,133 @@ describe('grade assessment question presenter', () => {
       type: 'media',
       metadata: question.metadata,
     });
+  });
+
+  function numericQuestion(): GradeAssessmentQuestionRecord {
+    return {
+      ...questionRecord(),
+      type: GradeQuestionType.NUMERIC,
+      options: [],
+      answerKey: null,
+      metadata: {
+        definitionVersion: 1,
+        kind: 'numeric',
+        units: { required: false, allowedCodes: [], allowUnitless: true },
+      },
+    };
+  }
+
+  function withReader<T>(author: boolean, work: () => Promise<T>): Promise<T> {
+    return runWithRequestContext(createRequestContext(), () => {
+      setActor({ id: 'user-1', userType: UserType.SCHOOL_USER });
+      setActiveMembership({
+        membershipId: 'membership-1',
+        organizationId: 'org-1',
+        schoolId: 'school-1',
+        roleId: 'role-1',
+        permissions: author
+          ? ['grades.questions.manage']
+          : ['grades.questions.view'],
+      });
+      return work();
+    });
+  }
+
+  it.each([false, undefined])(
+    'refuses ambiguous author null without authoritative SQL NULL evidence (%s)',
+    async (fact) => {
+      const question = numericQuestion();
+      const client = {
+        $queryRaw: jest
+          .fn()
+          .mockResolvedValue(
+            fact === undefined ? [] : [{ id: question.id, sqlNull: fact }],
+          ),
+      };
+      await withReader(true, () =>
+        projectGradeAuthorKeyNullFacts(client, question.assessmentId, [
+          question,
+        ]),
+      );
+      expect(() => presentGradeAssessmentQuestion(question, true)).toThrow(
+        ValidationDomainException,
+      );
+      expect(() => presentGradeAssessmentQuestion(question, true)).toThrow(
+        'Question interaction or answer is invalid',
+      );
+    },
+  );
+
+  it('requires repository projection and keeps legitimate manual-only null facts out of responses', async () => {
+    const question = numericQuestion();
+    expect(() => presentGradeAssessmentQuestion(question, true)).toThrow(
+      ValidationDomainException,
+    );
+    const client = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValue([{ id: question.id, sqlNull: true }]),
+    };
+    await withReader(true, () =>
+      projectGradeAuthorKeyNullFacts(client, question.assessmentId, [question]),
+    );
+    expect(gradeAuthorKeyNullFact(question)).toBe(true);
+    const presented = presentGradeAssessmentQuestion(question, true);
+    expect(presented.answerKey).toBeNull();
+    expect(presented).not.toHaveProperty('sqlNull');
+    expect(question).not.toHaveProperty('sqlNull');
+  });
+
+  it('does not project author facts or expose keys for a review-only reader', async () => {
+    const question = numericQuestion();
+    const client = { $queryRaw: jest.fn() };
+    await withReader(false, () =>
+      projectGradeAuthorKeyNullFacts(client, question.assessmentId, [question]),
+    );
+    expect(client.$queryRaw).not.toHaveBeenCalled();
+    expect(gradeAuthorKeyNullFact(question)).toBeUndefined();
+    expect(presentGradeAssessmentQuestion(question)).not.toHaveProperty(
+      'answerKey',
+    );
+  });
+
+  it('batches only ambiguous new-type keys in groups of at most 200', async () => {
+    const questions = Array.from({ length: 401 }, (_, index) => ({
+      ...numericQuestion(),
+      id: `q-${index}`,
+    }));
+    const client = { $queryRaw: jest.fn() };
+    for (let offset = 0; offset < questions.length; offset += 200)
+      client.$queryRaw.mockResolvedValueOnce(
+        questions
+          .slice(offset, offset + 200)
+          .map((question) => ({ id: question.id, sqlNull: true })),
+      );
+    const configured = {
+      ...numericQuestion(),
+      answerKey: {
+        keyVersion: 1,
+        kind: 'numeric',
+        reference: { value: '7', unitCode: null },
+        policy: { policyVersion: 1, mode: 'EXACT' },
+      },
+    };
+    const legacy = { ...questionRecord(), answerKey: null };
+    await withReader(true, () =>
+      projectGradeAuthorKeyNullFacts(client, 'assessment-1', [
+        ...questions,
+        configured,
+        legacy,
+      ]),
+    );
+    expect(client.$queryRaw).toHaveBeenCalledTimes(3);
+    for (const question of questions)
+      expect(gradeAuthorKeyNullFact(question)).toBe(true);
+    expect(gradeAuthorKeyNullFact(configured)).toBeUndefined();
+    expect(gradeAuthorKeyNullFact(legacy)).toBeUndefined();
+    expect(presentGradeAssessmentQuestion(configured, true).answerKey).toEqual(
+      configured.answerKey,
+    );
+    expect(presentGradeAssessmentQuestion(legacy, true).answerKey).toBeNull();
   });
 });

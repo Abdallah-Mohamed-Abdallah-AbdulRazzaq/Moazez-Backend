@@ -1,5 +1,6 @@
 import { Prisma, type HomeworkQuestionType } from '@prisma/client';
 import { requireHomeworkScope } from '../homework-context';
+import { isHomeworkTypedType } from '../application/homework-typed-runtime';
 import type { HomeworkStoredAnswer } from '../domain/homework-answer-normalization';
 import {
   classifyStoredHomeworkTypedAnswer,
@@ -58,10 +59,7 @@ export async function projectHomeworkTypedAnswers(
   }>,
 ): Promise<void> {
   const typed = answers.filter(
-    (a) =>
-      ['FILL_IN_BLANK', 'MATCHING', 'MEDIA'].includes(
-        a.homeworkQuestion.type,
-      ) && !projections.has(a),
+    (a) => isHomeworkTypedType(a.homeworkQuestion.type) && !projections.has(a),
   );
   const submissions = [...new Set(typed.map((a) => a.homeworkSubmissionId))];
   for (const submissionId of submissions) {
@@ -82,11 +80,7 @@ export async function projectHomeworkTypedAnswers(
       let value: HomeworkNormalizedTypedAnswer | null = null;
       if (row) {
         try {
-          if (
-            row.type !== 'FILL_IN_BLANK' &&
-            row.type !== 'MATCHING' &&
-            row.type !== 'MEDIA'
-          )
+          if (!isHomeworkTypedType(row.type))
             throw new HomeworkTypedContentError('association');
           const definition = normalizeHomeworkDefinition(
             row.type,
@@ -133,12 +127,7 @@ export async function projectHomeworkTypedAnswers(
 export function presentHomeworkTypedAnswer(answer: {
   homeworkQuestion: { type: string };
 }): { answerJson?: unknown; textAnswer?: string | null } {
-  if (
-    !['FILL_IN_BLANK', 'MATCHING', 'MEDIA'].includes(
-      answer.homeworkQuestion.type,
-    )
-  )
-    return {};
+  if (!isHomeworkTypedType(answer.homeworkQuestion.type)) return {};
   const value = projections.get(answer);
   return {
     answerJson: value?.answerJson ?? null,

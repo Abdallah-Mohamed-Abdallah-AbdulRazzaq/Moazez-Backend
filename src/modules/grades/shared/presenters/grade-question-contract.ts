@@ -1,6 +1,8 @@
 import type { RichContent } from '../../../../common/rich-content/rich-content.types';
 import { GradeQuestionType } from '@prisma/client';
 import type { ActiveGradeQuestionType } from '../../assessments/domain/grade-runtime-types';
+import type { Phase } from '../../../../common/question-evaluation';
+import { isGradeEvaluationType } from '../../assessments/domain/grade-question-evaluation';
 import {
   gradeQuestionDefinition,
   normalizeStoredGradeAnswer,
@@ -14,7 +16,16 @@ import {
 } from '../../assessments/domain/grade-question-content-policy';
 
 export class GradeQuestionInteractionDto {
-  kind!: 'choice' | 'text' | 'fill' | 'matching' | 'media' | 'unsupported';
+  kind!:
+    | 'choice'
+    | 'text'
+    | 'fill'
+    | 'matching'
+    | 'media'
+    | 'ordering'
+    | 'numeric'
+    | 'math_expression'
+    | 'unsupported';
   selectionMode!: 'single' | 'multiple' | null;
   multiline!: boolean;
   supported!: boolean;
@@ -54,7 +65,11 @@ export function presentSafeGradeAnswer(
       )
     )
       throw new Error('Unavailable historical selection');
-    answerJson = normalizeStoredGradeAnswer(question, payload).answerJson;
+    answerJson = normalizeStoredGradeAnswer(
+      question,
+      payload,
+      'draft',
+    ).answerJson;
   } catch {
     contract.interaction = {
       ...contract.interaction,
@@ -65,9 +80,9 @@ export function presentSafeGradeAnswer(
   return {
     canonicalType: contract.canonicalType,
     interaction: contract.interaction,
-    answerText: sanitizeGradeQuestionContent(payload.answerText) as
-      | string
-      | null,
+    answerText: isGradeEvaluationType(question.type)
+      ? null
+      : (sanitizeGradeQuestionContent(payload.answerText) as string | null),
     answerJson: sanitizeGradeQuestionContent(answerJson, true),
   };
 }
@@ -88,6 +103,9 @@ const TYPES = {
   FILL_IN_BLANK: ['fill_blanks', 'fill', null, false],
   MATCHING: ['matching', 'matching', null, false],
   MEDIA: ['media', 'media', null, false],
+  ORDERING: ['ordering', 'ordering', null, false],
+  NUMERIC: ['numeric', 'numeric', null, false],
+  MATH_EXPRESSION: ['math_expression', 'math_expression', null, false],
 } as const satisfies Record<
   ActiveGradeQuestionType,
   readonly [
@@ -101,6 +119,7 @@ const TYPES = {
 export function presentGradeQuestionContract(
   type: string,
   question?: GradeInteractionQuestion,
+  phase: Phase = 'complete',
 ): GradeQuestionContractDto {
   if (!Object.prototype.hasOwnProperty.call(TYPES, type)) {
     return {
@@ -120,7 +139,7 @@ export function presentGradeQuestionContract(
   let supported = true;
   if (question) {
     try {
-      definition = gradeQuestionDefinition(question);
+      definition = gradeQuestionDefinition(question, phase);
       validateGradeQuestionContent({ metadata: definition });
       definition = sanitizeGradeQuestionContent(
         definition,

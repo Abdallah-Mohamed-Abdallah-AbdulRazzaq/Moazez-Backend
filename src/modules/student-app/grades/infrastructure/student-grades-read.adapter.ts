@@ -1,4 +1,5 @@
 import { GradeAssetsRepository } from '../../../grades/assessments/infrastructure/grade-assets.repository';
+import { projectGradeAnswerNullFacts } from '../../../grades/assessments/infrastructure/grade-typed-answer.projection';
 import {
   hasGradeRichSelection,
   projectGradeRichContent,
@@ -337,6 +338,14 @@ export class StudentGradesReadAdapter {
       }),
     ]);
 
+    if (submission)
+      await projectGradeAnswerNullFacts(
+        this.scopedPrisma,
+        submission.answers,
+        new Map(
+          assessment.questions.map((question) => [question.id, question.type]),
+        ),
+      );
     return { enrollment, assessment, gradeItem, submission };
   }
 

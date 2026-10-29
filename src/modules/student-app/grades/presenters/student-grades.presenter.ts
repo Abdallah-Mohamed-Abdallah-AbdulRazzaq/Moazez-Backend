@@ -4,6 +4,7 @@ type AssetProjection = {
   assessment: GradeAssetDto[];
   questions: ReadonlyMap<string, GradeAssetDto[]>;
 };
+import { gradeAnswerNullFact } from '../../../grades/assessments/infrastructure/grade-typed-answer.projection';
 import {
   presentGradeQuestionContract,
   presentGradeOptionValue,
@@ -221,6 +222,7 @@ function presentSubmission(
             {
               answerText: answer.answerText,
               answerJson: answer.answerJson,
+              answerJsonSqlNull: gradeAnswerNullFact(answer),
               selectedOptionIds: answer.selectedOptions.map(
                 (option) => option.optionId,
               ),

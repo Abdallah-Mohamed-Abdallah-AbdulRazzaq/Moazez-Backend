@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { projectGradeAuthorKeyNullFacts } from './grade-author-key.projection';
 import { GradeAssetsRepository } from './grade-assets.repository';
 import {
   gradeRichChange,
@@ -27,6 +28,10 @@ import {
   validateQuestionOptionsForType,
 } from '../domain/grade-question-domain';
 import { validateGradeQuestionDefinition } from '../domain/grade-question-interaction';
+import {
+  isGradeEvaluationType,
+  normalizeGradeEvaluationQuestion,
+} from '../domain/grade-question-evaluation';
 import { validateGradeQuestionContent } from '../domain/grade-question-content-policy';
 import {
   NotFoundDomainException,
@@ -217,6 +222,11 @@ export class GradesAssessmentQuestionsRepository {
       ...QUESTION_WITH_OPTIONS_ARGS,
     });
     await this.projectRich(assessmentId, questions);
+    await projectGradeAuthorKeyNullFacts(
+      this.scopedPrisma,
+      assessmentId,
+      questions,
+    );
     return questions;
   }
 
@@ -308,6 +318,14 @@ export class GradesAssessmentQuestionsRepository {
         );
       const rich = gradeRichChange('gradeQuestion', input);
       if (rich.action === 'write') input = { ...input, ...rich.legacy };
+      if (isGradeEvaluationType(input.type))
+        input = {
+          ...input,
+          ...normalizeGradeEvaluationQuestion(
+            { ...input, type: input.type, metadata: input.metadata },
+            'draft',
+          ),
+        };
       validateGradeQuestionContent(gradeLegacyContent(input));
       validateQuestionOptionsForType(input);
       validateGradeQuestionDefinition(input);
@@ -323,7 +341,10 @@ export class GradesAssessmentQuestionsRepository {
           points: new Prisma.Decimal(input.points),
           sortOrder: input.sortOrder,
           required: input.required,
-          answerKey: this.toOptionalJson(input.answerKey),
+          answerKey:
+            isGradeEvaluationType(input.type) && input.answerKey === null
+              ? Prisma.DbNull
+              : this.toOptionalJson(input.answerKey),
           metadata: this.toOptionalJson(input.metadata),
           ...(rich.action === 'write'
             ? {
@@ -406,6 +427,44 @@ export class GradesAssessmentQuestionsRepository {
               rich.richContent,
             );
         }
+        const nextType = mutation.data.type ?? current.type;
+        if (
+          isGradeEvaluationType(nextType) ||
+          isGradeEvaluationType(current.type)
+        ) {
+          if (
+            isGradeEvaluationType(nextType) &&
+            mutation.data.answerKey === undefined &&
+            current.answerKey === null
+          ) {
+            const [fact] = await tx.$queryRaw<Array<{ sqlNull: boolean }>>`
+              SELECT answer_key IS NULL AS "sqlNull" FROM grade_assessment_questions
+              WHERE id=${current.id}::uuid AND assessment_id=${current.assessmentId}::uuid
+                AND school_id=${requireGradesScope().schoolId}::uuid AND deleted_at IS NULL`;
+            if (!fact?.sqlNull)
+              throw new ValidationDomainException(
+                'Question interaction or answer is invalid',
+                { field: 'answerKey' },
+              );
+          }
+          if (mutation.metadataPatch)
+            throw new ValidationDomainException(
+              'Structured definitions require complete replacement',
+              { field: 'metadata' },
+            );
+          if (
+            nextType !== current.type &&
+            ((mutation.options === undefined && current.options.length > 0) ||
+              (mutation.data.answerKey === undefined &&
+                current.answerKey !== null) ||
+              (mutation.data.metadata === undefined &&
+                current.metadata !== null))
+          )
+            throw new ValidationDomainException(
+              'Type changes must explicitly replace incompatible question content',
+              { field: 'type' },
+            );
+        }
         if (mutation.metadataPatch)
           mutation = {
             ...mutation,
@@ -429,6 +488,19 @@ export class GradesAssessmentQuestionsRepository {
         validateGradeQuestionContent(gradeLegacyContent(effective));
         validateQuestionOptionsForType(effective);
         validateGradeQuestionDefinition(effective);
+        if (isGradeEvaluationType(effective.type)) {
+          // Normalize exactly the state just validated under the existing mutation lock.
+          mutation = {
+            ...mutation,
+            data: {
+              ...mutation.data,
+              ...normalizeGradeEvaluationQuestion(
+                { ...effective, type: effective.type },
+                'draft',
+              ),
+            },
+          };
+        }
         const optionPlan =
           mutation.options === undefined
             ? undefined
@@ -439,9 +511,15 @@ export class GradesAssessmentQuestionsRepository {
         )
           throw new RichWriteAuthorizationRequired();
         if (Object.keys(mutation.data).length > 0) {
+          const data = this.buildQuestionUpdateInput(mutation.data);
+          if (
+            isGradeEvaluationType(effective.type) &&
+            mutation.data.answerKey === null
+          )
+            data.answerKey = Prisma.DbNull;
           await tx.gradeAssessmentQuestion.updateMany({
             where: { id: questionId },
-            data: this.buildQuestionUpdateInput(mutation.data),
+            data,
           });
         }
 
@@ -554,6 +632,11 @@ export class GradesAssessmentQuestionsRepository {
     }
 
     await this.projectRich(question.assessmentId, [question]);
+    await projectGradeAuthorKeyNullFacts(
+      this.scopedPrisma,
+      question.assessmentId,
+      [question],
+    );
     return question;
   }
 
