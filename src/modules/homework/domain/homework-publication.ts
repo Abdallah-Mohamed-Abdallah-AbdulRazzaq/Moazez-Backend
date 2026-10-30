@@ -1,3 +1,4 @@
+import { homeworkResponseConfig } from './homework-response-config';
 import { HomeworkQuestionType } from '@prisma/client';
 import { assertHomeworkRuntimeQuestionType } from './homework-runtime-types';
 import { HomeworkAssignmentInvalidQuestionStructureException } from './homework-question.exceptions';
@@ -37,12 +38,14 @@ export function validateHomeworkPublicationStructures(
   questions: ReadonlyArray<{
     id: string;
     type: HomeworkQuestionType;
+    responseConfig?: unknown;
     prompt: string;
     options: ReadonlyArray<{ isCorrect: boolean }>;
   }>,
 ): void {
   for (const question of questions) {
     assertHomeworkRuntimeQuestionType(question.type);
+    homeworkResponseConfig(question.type, question.responseConfig);
     if (!question.prompt.trim())
       throw new HomeworkAssignmentInvalidQuestionStructureException({
         reason: 'prompt_required',

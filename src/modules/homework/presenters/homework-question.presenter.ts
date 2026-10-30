@@ -1,3 +1,4 @@
+import { homeworkResponseConfig } from '../domain/homework-response-config';
 import { Prisma } from '@prisma/client';
 import { assertHomeworkRuntimeQuestionType } from '../domain/homework-runtime-types';
 import {
@@ -25,6 +26,7 @@ interface HomeworkQuestionOptionPresenterModel {
 }
 
 export interface HomeworkQuestionPresenterModel {
+  responseConfig?: unknown;
   id: string;
   homeworkAssignmentId: string;
   type: string;
@@ -80,6 +82,14 @@ function presentHomeworkQuestion(
 ): HomeworkQuestionResponseDto {
   assertHomeworkRuntimeQuestionType(question.type);
   const response: HomeworkQuestionResponseDto = {
+    ...(homeworkResponseConfig(question.type, question.responseConfig)
+      ? {
+          responseConfig: homeworkResponseConfig(
+            question.type,
+            question.responseConfig,
+          )!,
+        }
+      : {}),
     questionId: question.id,
     ...presentHomeworkTypedDefinition(question),
     ...(options.includeAnswers ? presentHomeworkAuthorKey(question) : {}),

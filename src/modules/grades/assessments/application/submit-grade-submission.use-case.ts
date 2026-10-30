@@ -48,7 +48,7 @@ export class SubmitGradeSubmissionUseCase {
       submission.assessmentId,
     );
     validateSavedAnswersBeforeSubmit({
-      questions,
+      questions: questions.filter((q) => q.responseConfig == null),
       answers: submission.answers,
     });
     assertRequiredQuestionsAnswered({
@@ -85,7 +85,7 @@ function validateSavedAnswersBeforeSubmit(params: {
 
   for (const answer of params.answers) {
     const question = questionById.get(answer.questionId);
-    if (!question) continue;
+    if (!question || question.responseConfig != null) continue;
 
     const payload = normalizeAnswerPayload({
       answerText: answer.answerText,

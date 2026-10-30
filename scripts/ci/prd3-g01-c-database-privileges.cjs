@@ -1045,7 +1045,7 @@ function verifyOwnershipAndPrivileges(context) {
   assert.equal(
     queryScalar(
       context,
-      `SELECT count(*) = 4 AND count(DISTINCT procedure.proname) = 4 AND bool_and(
+      `SELECT count(*) = 7 AND count(DISTINCT procedure.proname) = 7 AND bool_and(
          CASE procedure.proname
            WHEN 'normalize_learning_media_original_name' THEN
              procedure.provolatile = 'i'
@@ -1063,6 +1063,33 @@ function verifyOwnershipAndPrivileges(context) {
              AND COALESCE(procedure.proconfig = ARRAY['search_path=pg_catalog']::text[], false)
              AND language.lanname = 'plpgsql'
            WHEN 'enforce_assessment_asset_identity' THEN
+             procedure.pronargs = 0
+             AND procedure.prorettype = 'trigger'::regtype
+             AND procedure.provolatile = 'v'
+             AND NOT procedure.proisstrict
+             AND NOT procedure.prosecdef
+             AND procedure.proparallel = 'u'
+             AND COALESCE(procedure.proconfig = ARRAY['search_path=pg_catalog']::text[], false)
+             AND language.lanname = 'plpgsql'
+           WHEN 'enforce_answer_media_append_only' THEN
+             procedure.pronargs = 0
+             AND procedure.prorettype = 'trigger'::regtype
+             AND procedure.provolatile = 'v'
+             AND NOT procedure.proisstrict
+             AND NOT procedure.prosecdef
+             AND procedure.proparallel = 'u'
+             AND COALESCE(procedure.proconfig = ARRAY['search_path=pg_catalog']::text[], false)
+             AND language.lanname = 'plpgsql'
+           WHEN 'enforce_answer_media_claim' THEN
+             procedure.pronargs = 0
+             AND procedure.prorettype = 'trigger'::regtype
+             AND procedure.provolatile = 'v'
+             AND NOT procedure.proisstrict
+             AND NOT procedure.prosecdef
+             AND procedure.proparallel = 'u'
+             AND COALESCE(procedure.proconfig = ARRAY['search_path=pg_catalog']::text[], false)
+             AND language.lanname = 'plpgsql'
+           WHEN 'enforce_answer_asset_claim' THEN
              procedure.pronargs = 0
              AND procedure.prorettype = 'trigger'::regtype
              AND procedure.provolatile = 'v'
@@ -1128,13 +1155,16 @@ function verifyOwnershipAndPrivileges(context) {
         context,
         `SELECT NOT has_function_privilege(${sqlLiteral(login)}, 'public.enforce_live_file_reference()', 'EXECUTE')
            AND NOT has_function_privilege(${sqlLiteral(login)}, 'public.enforce_assessment_asset_identity()', 'EXECUTE')
+           AND NOT has_function_privilege(${sqlLiteral(login)}, 'public.enforce_answer_media_append_only()', 'EXECUTE')
+           AND NOT has_function_privilege(${sqlLiteral(login)}, 'public.enforce_answer_media_claim()', 'EXECUTE')
+           AND NOT has_function_privilege(${sqlLiteral(login)}, 'public.enforce_answer_asset_claim()', 'EXECUTE')
            AND NOT EXISTS (
              SELECT 1
              FROM pg_catalog.pg_proc procedure
              JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
              JOIN pg_catalog.pg_roles grantee ON grantee.rolname = ${sqlLiteral(login)}
              CROSS JOIN LATERAL aclexplode(COALESCE(procedure.proacl, acldefault('f', procedure.proowner))) acl
-             WHERE namespace.nspname = 'public' AND procedure.proname IN ('enforce_live_file_reference', 'enforce_assessment_asset_identity')
+             WHERE namespace.nspname = 'public' AND procedure.proname IN ('enforce_live_file_reference', 'enforce_assessment_asset_identity', 'enforce_answer_media_append_only', 'enforce_answer_media_claim', 'enforce_answer_asset_claim')
                AND acl.grantee IN (0, grantee.oid)
            )`,
       ),

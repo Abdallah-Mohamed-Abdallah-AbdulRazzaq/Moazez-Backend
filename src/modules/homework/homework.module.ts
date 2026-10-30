@@ -1,3 +1,6 @@
+import { CoreHomeworkAnswerMediaController } from './controller/core-homework-answer-media.controller';
+import { HomeworkAnswerMediaRepository } from './infrastructure/homework-answer-media.repository';
+import { HomeworkAnswerMediaService } from './application/homework-answer-media.service';
 import { StorageModule } from '../../infrastructure/storage/storage.module';
 import { AssessmentMediaModule } from '../files/assessment-media/assessment-media.module';
 import { HomeworkQuestionAssetsService } from './application/homework-question-assets.service';
@@ -94,6 +97,7 @@ import { HomeworkRepository } from './infrastructure/homework.repository';
     AssessmentMediaModule,
   ],
   controllers: [
+    CoreHomeworkAnswerMediaController,
     HomeworkQuestionAssetsController,
     HomeworkAssignmentsController,
     HomeworkGradeSyncController,
@@ -103,6 +107,8 @@ import { HomeworkRepository } from './infrastructure/homework.repository';
     HomeworkSubmissionContentController,
   ],
   providers: [
+    HomeworkAnswerMediaRepository,
+    HomeworkAnswerMediaService,
     HomeworkRichContentService,
     HomeworkQuestionAssetsService,
     HomeworkQuestionAssetsRepository,
@@ -160,6 +166,8 @@ import { HomeworkRepository } from './infrastructure/homework.repository';
     DeleteHomeworkAttachmentUseCase,
   ],
   exports: [
+    HomeworkAnswerMediaRepository,
+    HomeworkAnswerMediaService,
     HomeworkRichContentService,
     HomeworkQuestionAssetsService,
     HomeworkRepository,

@@ -97,6 +97,7 @@ const QUESTION_FOR_PUBLISH_ARGS =
       promptAr: true,
       explanation: true,
       explanationAr: true,
+      responseConfig: true,
       answerKey: true,
       metadata: true,
       deletedAt: true,

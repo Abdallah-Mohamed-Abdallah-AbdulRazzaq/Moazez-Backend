@@ -30,6 +30,7 @@ const physicalReferences = [
   'GradeAssessmentAsset.fileId',
   'HomeworkAnswerAsset.fileId',
   'GradeSubmissionAnswerAsset.fileId',
+  'AssessmentAnswerMediaClaim.fileId',
   'FileUploadSession.fileId',
 ];
 

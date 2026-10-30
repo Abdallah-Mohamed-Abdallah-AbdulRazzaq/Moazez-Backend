@@ -1,3 +1,8 @@
+import { homeworkAnswerUploadBinding } from '../../../homework/infrastructure/homework-answer-upload-authorization';
+import { gradeAnswerUploadBinding } from '../../../grades/assessments/infrastructure/grade-answer-upload-authorization';
+import { responseAllowsMime } from '../../../../common/assessment-answer/response-config';
+import type { AssessmentAnswerUploadBinding } from '../domain/assessment-media.contract';
+import type { AssessmentReadyPurpose } from '../domain/assessment-media-ready';
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import {
@@ -70,13 +75,37 @@ export class AssessmentMediaRepository {
     private readonly gate: TeacherAllocationOperationalWriteGate,
   ) {}
 
+  /** Domain-owned callback; authorization and School mutex precede parent locks. */
+  answerTransaction<T>(
+    owner: AssessmentMediaOwner,
+    operation: (
+      tx: Prisma.TransactionClient,
+      policy: EffectiveAssessmentMediaPolicy,
+      binding: AssessmentAnswerUploadBinding,
+    ) => Promise<T>,
+    ownershipOnly = false,
+  ): Promise<T> {
+    if (!owner.studentPurpose || !owner.questionId)
+      throw new AssessmentMediaException('upload_not_found');
+    return this.transaction(
+      owner,
+      (tx, policy, binding) => {
+        if (!binding) throw new AssessmentMediaException('upload_not_found');
+        return operation(tx, policy, binding);
+      },
+      ownershipOnly,
+    );
+  }
+
   private transaction<T>(
     owner: AssessmentMediaOwner,
     operation: (
       tx: Prisma.TransactionClient,
       policy: EffectiveAssessmentMediaPolicy,
+      binding?: AssessmentAnswerUploadBinding,
     ) => Promise<T>,
     ownershipOnly = false,
+    deferQuestionBinding = false,
   ): Promise<T> {
     const scoped = this.prisma.scoped as unknown as PrismaClient;
     return scoped.$transaction(
@@ -87,7 +116,10 @@ export class AssessmentMediaRepository {
         const row = await tx.schoolAssessmentMediaPolicy.findFirst({
           where: { schoolId: owner.schoolId },
         });
-        return operation(tx, effectiveAssessmentMediaPolicy(row));
+        const binding = deferQuestionBinding
+          ? undefined
+          : await this.questionBinding(tx, owner);
+        return operation(tx, effectiveAssessmentMediaPolicy(row), binding);
       },
       { maxWait: 5000, timeout: 15_000 },
     );
@@ -168,6 +200,7 @@ export class AssessmentMediaRepository {
     owner: AssessmentMediaOwner,
     uploadId: string,
   ): Promise<FileUploadSession> {
+    await this.assertQuestionIntent(tx, owner, uploadId);
     const rows = await tx.$queryRaw<Array<{ id: string }>>`
       SELECT id FROM file_upload_sessions WHERE id = ${uploadId}::uuid
         AND school_id = ${owner.schoolId}::uuid AND organization_id = ${owner.organizationId}::uuid
@@ -195,6 +228,7 @@ export class AssessmentMediaRepository {
           },
         });
         if (existing) {
+          await this.assertQuestionIntent(tx, owner, existing.id, true);
           if (
             existing.purposeContextId !== owner.contextId ||
             existing.originalName !== data.originalName ||
@@ -202,6 +236,7 @@ export class AssessmentMediaRepository {
             existing.expectedSizeBytes !== data.expectedSizeBytes
           )
             throw new AssessmentMediaException('idempotency_conflict');
+          await this.questionBinding(tx, owner);
           if (existing.status === 'READY') {
             await this.assertReadyRelationship(tx, existing);
             return { created: false, session: existing };
@@ -258,6 +293,12 @@ export class AssessmentMediaRepository {
           throw new AssessmentMediaException('quota_exceeded');
         if (usage.hourlyCount >= BigInt(policy.maximumUploadsPerHour))
           throw new AssessmentMediaException('rate_exceeded');
+        const binding = await this.questionBinding(tx, owner);
+        if (
+          binding &&
+          !responseAllowsMime(binding.responseConfig, data.expectedMimeType)
+        )
+          throw new AssessmentMediaException('invalid_request');
         const session = await tx.fileUploadSession.create({
           data: {
             ...data,
@@ -268,9 +309,38 @@ export class AssessmentMediaRepository {
             purposeContextId: owner.contextId,
           },
         });
+        if (binding) {
+          const identity =
+            binding.homeworkTargetId !== undefined
+              ? {
+                  homeworkTargetId: binding.homeworkTargetId,
+                  homeworkQuestionId: binding.homeworkQuestionId,
+                  homeworkAssignmentId: binding.homeworkAssignmentId,
+                }
+              : {
+                  gradeSubmissionId: binding.gradeSubmissionId,
+                  gradeQuestionId: binding.gradeQuestionId,
+                  gradeAssessmentId: binding.gradeAssessmentId,
+                };
+          await tx.assessmentAnswerUploadIntent.create({
+            data: {
+              ...identity,
+              studentId: binding.studentId,
+              questionId: binding.questionId,
+              schoolId: owner.schoolId,
+              organizationId: owner.organizationId,
+              actorId: owner.actorId,
+              purpose: owner.purpose,
+              contextId: owner.contextId,
+              uploadId: session.id,
+              clientRequestId: session.clientRequestId,
+            },
+          });
+        }
         await this.audit(tx, owner, session, 'created');
         return { created: true, session };
       },
+      true,
       true,
     );
   }
@@ -652,7 +722,7 @@ export class AssessmentMediaRepository {
       creatorId: string;
       privateBucket: string;
       lock?: boolean;
-      expectedPurpose: 'HOMEWORK_ASSIGNMENT_MEDIA' | 'GRADE_ASSESSMENT_MEDIA';
+      expectedPurpose: AssessmentReadyPurpose;
     },
   ): Promise<{ file: ManagedFile; session: FileUploadSession }> {
     const scope = requireFilesScope();
@@ -696,6 +766,14 @@ export class AssessmentMediaRepository {
       owner.purpose !== 'GRADE_ASSESSMENT_MEDIA'
     )
       throw new AssessmentMediaException('ready_relationship_invalid');
+    return this.assertBindingCapacity(tx, owner, policy);
+  }
+
+  private async assertBindingCapacity(
+    tx: Prisma.TransactionClient,
+    owner: AssessmentMediaOwner,
+    policy: EffectiveAssessmentMediaPolicy,
+  ): Promise<void> {
     const now = new Date();
     const [usage] = await tx.$queryRaw<
       Array<{ count: bigint; bytes: bigint; physical: bigint }>
@@ -747,6 +825,85 @@ export class AssessmentMediaRepository {
     )
       throw new AssessmentMediaException('ready_relationship_invalid');
     return file;
+  }
+
+  private questionBinding(
+    tx: Prisma.TransactionClient,
+    owner: AssessmentMediaOwner,
+  ): Promise<AssessmentAnswerUploadBinding | undefined> {
+    if (!owner.questionId) return Promise.resolve(undefined);
+    return owner.purpose === 'HOMEWORK_SUBMISSION_MEDIA'
+      ? homeworkAnswerUploadBinding(tx, owner.contextId, owner.questionId)
+      : gradeAnswerUploadBinding(tx, owner.contextId, owner.questionId);
+  }
+
+  private async assertQuestionIntent(
+    tx: Prisma.TransactionClient,
+    owner: AssessmentMediaOwner,
+    uploadId: string,
+    replay = false,
+  ): Promise<void> {
+    if (!owner.studentPurpose) return;
+    await tx.$queryRaw`SELECT id FROM assessment_answer_upload_intents WHERE upload_id=${uploadId}::uuid AND school_id=${owner.schoolId}::uuid FOR SHARE`;
+    const intent = await tx.assessmentAnswerUploadIntent.findFirst({
+      where: { uploadId, schoolId: owner.schoolId },
+    });
+    if (
+      (!intent && owner.questionId) ||
+      (intent &&
+        (!owner.questionId ||
+          intent.questionId !== owner.questionId ||
+          intent.contextId !== owner.contextId ||
+          intent.purpose !== owner.purpose ||
+          intent.actorId !== owner.actorId ||
+          intent.organizationId !== owner.organizationId))
+    )
+      throw new AssessmentMediaException(
+        replay ? 'idempotency_conflict' : 'upload_not_found',
+      );
+  }
+
+  async readyAnswerFile(
+    tx: Prisma.TransactionClient,
+    input: {
+      fileId: string;
+      uploadId: string;
+      contextId: string;
+      questionId: string;
+      creatorId: string;
+      privateBucket: string;
+      expectedPurpose: 'HOMEWORK_SUBMISSION_MEDIA' | 'GRADE_SUBMISSION_MEDIA';
+      lock?: boolean;
+    },
+  ): Promise<{ file: ManagedFile; session: FileUploadSession }> {
+    const scope = requireFilesScope();
+    if (input.lock)
+      await tx.$queryRaw`SELECT id FROM assessment_answer_upload_intents
+      WHERE upload_id=${input.uploadId}::uuid AND school_id=${scope.schoolId}::uuid FOR SHARE`;
+    const intent = await tx.assessmentAnswerUploadIntent.findFirst({
+      where: {
+        uploadId: input.uploadId,
+        schoolId: scope.schoolId,
+        organizationId: scope.organizationId,
+        actorId: input.creatorId,
+        questionId: input.questionId,
+        contextId: input.contextId,
+        purpose: input.expectedPurpose,
+      },
+    });
+    if (!intent)
+      throw new AssessmentMediaException('ready_relationship_invalid');
+    return this.readyAuthoringFile(tx, input);
+  }
+
+  async assertAnswerBindingCapacity(
+    tx: Prisma.TransactionClient,
+    owner: AssessmentMediaOwner,
+    policy: EffectiveAssessmentMediaPolicy,
+  ): Promise<void> {
+    if (!owner.studentPurpose || !owner.questionId)
+      throw new AssessmentMediaException('ready_relationship_invalid');
+    return this.assertBindingCapacity(tx, owner, policy);
   }
 
   private async audit(

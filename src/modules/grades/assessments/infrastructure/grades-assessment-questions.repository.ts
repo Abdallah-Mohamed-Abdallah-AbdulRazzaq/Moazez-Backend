@@ -1,3 +1,5 @@
+import { gradeResponseConfig } from '../domain/grade-response-config';
+import type { ResponseConfigV1 } from '../../../../common/assessment-answer/response-config';
 import { randomUUID } from 'node:crypto';
 import { projectGradeAuthorKeyNullFacts } from './grade-author-key.projection';
 import { GradeAssetsRepository } from './grade-assets.repository';
@@ -62,6 +64,7 @@ const QUESTION_WITH_OPTIONS_ARGS =
       schoolId: true,
       assessmentId: true,
       type: true,
+      responseConfig: true,
       prompt: true,
       promptAr: true,
       explanation: true,
@@ -165,6 +168,7 @@ export interface CreateQuestionWithOptionsInput extends Required<
 > {
   schoolId: string;
   assessmentId: string;
+  responseConfig?: ResponseConfigV1 | null;
   richContent?: NormalizedQuestionPayload['richContent'];
   promptAr?: string | null;
   explanation?: string | null;
@@ -326,6 +330,12 @@ export class GradesAssessmentQuestionsRepository {
             'draft',
           ),
         };
+      const responseConfig = gradeResponseConfig(
+        input.type,
+        input.responseConfig,
+      );
+      if (responseConfig && requireGradesScope().userType === 'TEACHER')
+        throw new NotFoundDomainException();
       validateGradeQuestionContent(gradeLegacyContent(input));
       validateQuestionOptionsForType(input);
       validateGradeQuestionDefinition(input);
@@ -335,6 +345,8 @@ export class GradesAssessmentQuestionsRepository {
           assessmentId: input.assessmentId,
           type: input.type,
           prompt: input.prompt,
+          responseConfig:
+            responseConfig === null ? Prisma.DbNull : responseConfig,
           promptAr: input.promptAr ?? null,
           explanation: input.explanation ?? null,
           explanationAr: input.explanationAr ?? null,
@@ -429,6 +441,12 @@ export class GradesAssessmentQuestionsRepository {
         }
         const nextType = mutation.data.type ?? current.type;
         if (
+          (current.responseConfig != null ||
+            mutation.data.responseConfig !== undefined) &&
+          requireGradesScope().userType === 'TEACHER'
+        )
+          throw new NotFoundDomainException();
+        if (
           isGradeEvaluationType(nextType) ||
           isGradeEvaluationType(current.type)
         ) {
@@ -485,6 +503,7 @@ export class GradesAssessmentQuestionsRepository {
           ...mutation.data,
           options: mutation.options ?? current.options,
         };
+        gradeResponseConfig(effective.type, effective.responseConfig);
         validateGradeQuestionContent(gradeLegacyContent(effective));
         validateQuestionOptionsForType(effective);
         validateGradeQuestionDefinition(effective);
@@ -650,6 +669,11 @@ export class GradesAssessmentQuestionsRepository {
         payload.richContent === null
           ? Prisma.DbNull
           : (payload.richContent as unknown as Prisma.InputJsonValue);
+    if (payload.responseConfig !== undefined)
+      data.responseConfig =
+        payload.responseConfig === null
+          ? Prisma.DbNull
+          : payload.responseConfig;
     if (payload.type !== undefined) data.type = payload.type;
     if (payload.prompt !== undefined) data.prompt = payload.prompt;
     if (payload.promptAr !== undefined) data.promptAr = payload.promptAr;

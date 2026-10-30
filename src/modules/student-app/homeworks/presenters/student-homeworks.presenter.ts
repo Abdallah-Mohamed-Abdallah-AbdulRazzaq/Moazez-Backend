@@ -1,3 +1,4 @@
+import { homeworkResponseConfig } from '../../../homework/domain/homework-response-config';
 import { assertHomeworkRuntimeQuestionType } from '../../../homework/domain/homework-runtime-types';
 import {
   presentHomeworkTypedDefinition,
@@ -203,6 +204,14 @@ function presentSafeQuestion(
       ? {}
       : definition),
     ...presentHomeworkRichQuestion(question),
+    ...(homeworkResponseConfig(question.type, question.responseConfig)
+      ? {
+          responseConfig: homeworkResponseConfig(
+            question.type,
+            question.responseConfig,
+          )!,
+        }
+      : {}),
     assets,
     homeworkId: question.homeworkAssignmentId,
     type: question.type.toLowerCase(),

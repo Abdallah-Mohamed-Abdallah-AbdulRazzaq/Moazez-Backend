@@ -1,3 +1,6 @@
+import { CoreGradeAnswerMediaController } from './controller/core-grade-answer-media.controller';
+import { GradeAnswerMediaRepository } from './infrastructure/grade-answer-media.repository';
+import { GradeAnswerMediaService } from './application/grade-answer-media.service';
 import { StorageModule } from '../../../infrastructure/storage/storage.module';
 import { AssessmentMediaModule } from '../../files/assessment-media/assessment-media.module';
 import { TeacherAllocationOperationalWriteGate } from '../../academics/teacher-allocation/application/teacher-allocation-operational-write-gate';
@@ -7,6 +10,7 @@ import { GradeAssetsRepository } from './infrastructure/grade-assets.repository'
 import { GradeQuestionAssetsController } from './controller/grade-question-assets.controller';
 import { GradeAssessmentAssetsController } from './controller/grade-assessment-assets.controller';
 import { Module } from '@nestjs/common';
+import { CoreGradeAnswerMediaService } from './application/core-grade-answer-media.service';
 import { AuthModule } from '../../iam/auth/auth.module';
 import { ApproveGradeAssessmentUseCase } from './application/approve-grade-assessment.use-case';
 import { BulkReviewGradeSubmissionAnswersUseCase } from './application/bulk-review-grade-submission-answers.use-case';
@@ -49,6 +53,7 @@ import { GradesSubmissionsRepository } from './infrastructure/grades-submissions
 @Module({
   imports: [AuthModule, StorageModule, AssessmentMediaModule],
   controllers: [
+    CoreGradeAnswerMediaController,
     GradeAssessmentAssetsController,
     GradeQuestionAssetsController,
     GradesAssessmentsController,
@@ -57,6 +62,9 @@ import { GradesSubmissionsRepository } from './infrastructure/grades-submissions
     GradesSubmissionsController,
   ],
   providers: [
+    CoreGradeAnswerMediaService,
+    GradeAnswerMediaRepository,
+    GradeAnswerMediaService,
     GradeAssetsService,
     GradeAssetsRepository,
     {
@@ -98,6 +106,8 @@ import { GradesSubmissionsRepository } from './infrastructure/grades-submissions
     SyncGradeSubmissionToGradeItemUseCase,
   ],
   exports: [
+    GradeAnswerMediaRepository,
+    GradeAnswerMediaService,
     GradeAssetsRepository,
     GradeAssetsService,
     GetGradeAssessmentUseCase,

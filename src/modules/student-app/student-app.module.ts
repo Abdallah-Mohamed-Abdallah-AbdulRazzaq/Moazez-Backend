@@ -1,3 +1,5 @@
+import { AssessmentMediaModule } from '../files/assessment-media/assessment-media.module';
+import { StudentGradeAnswerMediaController } from './controller/student-grade-answer-media.controller';
 import { AssessmentsModule } from '../grades/assessments/assessments.module';
 import { StudentGradeAssetsService } from './assessment-assets/student-grade-assets.service';
 import { StudentExamsAssessmentAssetsController } from './assessment-assets/student-exams-assessment-assets.controller';
@@ -165,6 +167,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
 
 @Module({
   imports: [
+    AssessmentMediaModule,
     AssessmentsModule,
     AcademicContentModule,
     AppCalendarReadModelModule,
@@ -182,6 +185,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     StudentHomeworksModule,
   ],
   controllers: [
+    StudentGradeAnswerMediaController,
     StudentExamsAssessmentAssetsController,
     StudentExamsQuestionAssetsController,
     StudentGradesAssessmentAssetsController,

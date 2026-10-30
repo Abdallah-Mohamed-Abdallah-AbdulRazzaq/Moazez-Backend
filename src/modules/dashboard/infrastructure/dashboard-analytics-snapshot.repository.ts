@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { MEANINGFUL_GRADE_ANSWER_WHERE } from '../../grades/assessments/infrastructure/grade-answer-media.select';
 import {
   AttendanceSessionStatus,
   CommunicationReportStatus,
@@ -51,6 +52,7 @@ export class DashboardAnalyticsSnapshotRepository {
         return this.scopedPrisma.gradeSubmissionAnswer.count({
           where: {
             correctionStatus: GradeAnswerCorrectionStatus.PENDING,
+            ...MEANINGFUL_GRADE_ANSWER_WHERE,
             assessment: {
               is: gradeAssessmentHierarchyWhere(context),
             },

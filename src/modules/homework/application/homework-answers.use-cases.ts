@@ -595,8 +595,9 @@ export function requiresTypedHomeworkMutation(
   answers: HomeworkAnswerInput[] = [],
 ): boolean {
   return (
-    target.homeworkAssignment.questions.some((question) =>
-      isHomeworkTypedType(question.type),
+    target.homeworkAssignment.questions.some(
+      (question) =>
+        isHomeworkTypedType(question.type) || question.responseConfig != null,
     ) ||
     answers.some(
       (answer) =>

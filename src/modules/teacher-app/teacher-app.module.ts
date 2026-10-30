@@ -1,3 +1,4 @@
+import { TeacherGradeAnswerMediaController } from './classroom/grades/controller/teacher-grade-answer-media.controller';
 import { TeacherGradeAssetsService } from './classroom/grades/application/teacher-grade-assets.service';
 import { TeacherGradeAssessmentAssetsController } from './classroom/grades/controller/teacher-grade-assessment-assets.controller';
 import { TeacherGradeQuestionAssetsController } from './classroom/grades/controller/teacher-grade-question-assets.controller';
@@ -167,6 +168,7 @@ import {
     TeacherHomeworksModule,
   ],
   controllers: [
+    TeacherGradeAnswerMediaController,
     TeacherGradeAssessmentAssetsController,
     TeacherGradeQuestionAssetsController,
     TeacherAcademicContentAnalyticsController,

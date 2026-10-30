@@ -602,3 +602,23 @@ Acknowledgement natural uniqueness uses School/publication/child/Parent account,
 not mutable Guardian-record or enrollment identity. Live Parent/Student
 authorization and cross-row acknowledgement eligibility remain subsequent
 operational work, not CHECK-constraint guarantees.
+
+
+## ST11-A question-bound answer media
+
+Migration `20261030131316_st11a_answer_response_and_provenance` adds nullable closed response configuration, immutable upload intents and one globally unique File consumption claim. Composite physical FKs bind School/Organization/Student/actor, session purpose/context/request, the exact question/parent, and the exact answer/File. All added ancestor uniqueness contains an existing primary key; no partial live Homework answer uniqueness, backfill or duplicate cleanup is introduced.
+
+| PostgreSQL-only object | Invariant |
+| --- | --- |
+| *_response_config_v1 | SQL NULL preserves legacy behavior; JSON null, wrong types, unknown keys/versions, invalid modes and caps are rejected. |
+| answer_upload_intent_domain, answer_media_claim_domain | Exactly one complete Homework or Grades identity; no untyped polymorphic owner. |
+| enforce_answer_media_append_only() and two triggers | Intent and consumption history is immutable, including deletion. |
+| enforce_answer_media_claim() | Answer -> Intent -> UploadSession -> File lock order; authoritative READY/private/CLEAN/byte/MIME/checksum evidence, matching response modality and active reference cap. |
+| enforce_answer_asset_claim() and two triggers | Every new answer-asset INSERT requires its exact immutable claim. Existing nullable legacy links are retained unchanged and cannot acquire a different claim. |
+| file_live_ref_assessment_answer_media_claims_file_id | Reuses unchanged live-File serialization guard; global retention includes every claim, without School or soft-delete exclusion. |
+
+The three new functions are SECURITY INVOKER, use pg_catalog search_path, and have no PUBLIC/runtime EXECUTE grants. Exact G01-C function inventory is seven. The new claim adds one physical File relation and retained consumer: 28 File FKs, 27 retained consumers, one upload-provenance exclusion, and 28 live-reference triggers after ST11-A. Historical section totals above describe their original stages. No media operational release or Production migration is authorized.
+
+Forward migration `20261030141000_st11a_answer_media_history_guards` preserves the already applied initial ST11-A migration. It rejects consumption of Files in legacy answer links, including deleted links, prevents soft-deleted asset revival, and retains claimed asset rows against hard deletion. It replaces two existing ST11-A function bodies and their trigger event sets; the function inventory remains seven. Disposable test teardown uses guarded TRUNCATE of the new registries and dependent asset tables; the application has no history-delete operation.
+
+Forward migration `20261030141931_st11a_answer_asset_creator_guard` also binds a claimed asset's creator to the immutable claim actor. Existing asset identities retain their earlier immutable trigger; mismatching claimed creators fail the added provenance constraint before that trigger. No legacy row or grant changes. The function count remains seven.

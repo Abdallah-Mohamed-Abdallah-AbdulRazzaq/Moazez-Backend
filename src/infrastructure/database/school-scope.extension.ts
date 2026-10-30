@@ -23,6 +23,8 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
   'File',
   'FileUploadSession',
   'SchoolAssessmentMediaPolicy',
+  'AssessmentAnswerUploadIntent',
+  'AssessmentAnswerMediaClaim',
   'Attachment',
   'ImportJob',
   'SchoolEntitlement',

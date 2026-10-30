@@ -248,8 +248,9 @@ async function reviewAnswers(input: {
     awardedMarks,
     reviews: normalizedReviews.map((review) => ({
       ...review,
-      ...(submission.homeworkAssignment.questions.some((question) =>
-        isHomeworkTypedType(question.type),
+      ...(submission.homeworkAssignment.questions.some(
+        (question) =>
+          isHomeworkTypedType(question.type) || question.responseConfig != null,
       )
         ? {
             awardedPointsChanged:

@@ -1,4 +1,6 @@
 import { GradeQuestionType } from '@prisma/client';
+import { gradeResponseConfig } from './grade-response-config';
+import { assertResponseModalities } from '../../../../common/assessment-answer/response-config';
 import { ValidationDomainException } from '../../../../common/exceptions/domain-exception';
 import { validateGradeQuestionContent } from './grade-question-content-policy';
 import {
@@ -45,6 +47,7 @@ export type GradePublicDefinition =
     };
 
 export interface GradeInteractionQuestion {
+  responseConfig?: unknown;
   type: string;
   prompt?: string | null;
   metadata?: unknown;
@@ -81,6 +84,7 @@ export function normalizeStoredGradeAnswer(
     invalid('answerJson');
   if (
     question.type === GradeQuestionType.SHORT_ANSWER &&
+    question.responseConfig == null &&
     payload.answerJson == null &&
     payload.selectedOptionIds.length === 0
   ) {
@@ -504,6 +508,35 @@ export function normalizeTypedGradeAnswer(
   payload: GradeTypedAnswer,
   phase: AnswerPhase = 'final',
 ): GradeTypedAnswer {
+  const responseConfig = gradeResponseConfig(
+    question.type,
+    question.responseConfig,
+  );
+  if (responseConfig) {
+    if (payload.answerJson != null || payload.selectedOptionIds.length)
+      invalid('answerJson');
+    const answerText =
+      payload.answerText == null
+        ? null
+        : normalizeGradeAnswerText(
+            payload.answerText,
+            question.type === 'SHORT_ANSWER'
+              ? GRADE_TEXT_LIMITS.short
+              : GRADE_TEXT_LIMITS.essay,
+          );
+    try {
+      assertResponseModalities({
+        config: responseConfig,
+        hasText: !!answerText,
+        assets: [],
+        required: false,
+        phase: 'draft',
+      });
+    } catch {
+      invalid('answerText');
+    }
+    return { answerText, answerJson: null, selectedOptionIds: [] };
+  }
   const definition = gradeQuestionDefinition(question);
   unique(
     payload.selectedOptionIds.map((id) => id.toLowerCase()),
