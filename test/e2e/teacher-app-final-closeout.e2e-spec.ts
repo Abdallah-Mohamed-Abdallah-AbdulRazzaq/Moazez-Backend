@@ -1,3 +1,6 @@
+import { ST11_TEACHER_ANSWER_MEDIA_ROUTES } from '../fixtures/st11-answer-media-routes.fixture';
+import { TeacherGradeAnswerMediaController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-answer-media.controller';
+import { TeacherHomeworkAnswerMediaController } from '../../src/modules/teacher-app/homeworks/controller/teacher-homework-answer-media.controller';
 import { TeacherGradeQuestionAssetsController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-question-assets.controller';
 import { TeacherGradeAssessmentAssetsController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-assessment-assets.controller';
 import type { LoginResponseDto } from '../../src/modules/iam/auth/dto/login-response.dto';
@@ -265,6 +268,8 @@ const TEACHER_APP_CONTROLLER_CLASSES = [
   TeacherHomeworkQuestionAssetsController,
   TeacherGradeAssessmentAssetsController,
   TeacherGradeQuestionAssetsController,
+  TeacherGradeAnswerMediaController,
+  TeacherHomeworkAnswerMediaController,
   TeacherTasksController,
   TeacherTaskReviewQueueController,
   TeacherXpController,
@@ -695,9 +700,13 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       (entry) => entry.permissions,
     );
 
-    expect(routes).toHaveLength(189);
-    expect(inventory).toHaveLength(189);
-    expect(decorated).toHaveLength(189);
+    expect(routes).toHaveLength(189 + ST11_TEACHER_ANSWER_MEDIA_ROUTES.length);
+    expect(inventory).toHaveLength(
+      189 + ST11_TEACHER_ANSWER_MEDIA_ROUTES.length,
+    );
+    expect(decorated).toHaveLength(
+      189 + ST11_TEACHER_ANSWER_MEDIA_ROUTES.length,
+    );
     for (const handler of ['content', 'publication']) {
       expect(
         getHandlerPermissions(
@@ -709,6 +718,9 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
         'academics.academic_content.analytics.own.view',
       ]);
     }
+    expect(routes).toEqual(
+      expect.arrayContaining(ST11_TEACHER_ANSWER_MEDIA_ROUTES),
+    );
     expect(undecorated).toEqual([]);
     for (const [controller, family] of [
       [TeacherGradeAssessmentAssetsController, 'assessments'],

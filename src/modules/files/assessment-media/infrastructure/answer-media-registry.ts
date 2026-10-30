@@ -16,10 +16,13 @@ import { assertAssessmentReadyContentPolicy } from '../domain/assessment-media-r
 /** Storage/provenance primitive only. Callers own parent, question and Answer locks. */
 @Injectable()
 export class AnswerMediaRegistry {
+  private readonly privateBucket: string;
   constructor(
     private readonly media: AssessmentMediaRepository,
-    private readonly storage: StorageService,
-  ) {}
+    storage: StorageService,
+  ) {
+    this.privateBucket = storage.resolveBucket(FileVisibility.PRIVATE);
+  }
 
   async resolve(
     tx: Prisma.TransactionClient,
@@ -53,7 +56,7 @@ export class AnswerMediaRegistry {
         contextId: owner.contextId,
         questionId: intent.questionId,
         creatorId: owner.actorId,
-        privateBucket: this.storage.resolveBucket(FileVisibility.PRIVATE),
+        privateBucket: this.privateBucket,
         expectedPurpose: intent.purpose as
           | 'HOMEWORK_SUBMISSION_MEDIA'
           | 'GRADE_SUBMISSION_MEDIA',
@@ -80,7 +83,7 @@ export class AnswerMediaRegistry {
     const { file, session } = await this.media.readyAnswerFile(tx, {
       ...input,
       expectedPurpose: input.purpose,
-      privateBucket: this.storage.resolveBucket(FileVisibility.PRIVATE),
+      privateBucket: this.privateBucket,
       lock: true,
     });
     const policy = effectiveAssessmentMediaPolicy(

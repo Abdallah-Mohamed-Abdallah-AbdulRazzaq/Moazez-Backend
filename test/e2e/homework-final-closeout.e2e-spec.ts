@@ -1,3 +1,7 @@
+import {
+  ST11_STUDENT_ANSWER_MEDIA_ROUTES,
+  ST11_CORE_HOMEWORK_ANSWER_MEDIA_ROUTES,
+} from '../fixtures/st11-answer-media-routes.fixture';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { GUARDS_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -27,6 +31,7 @@ type ExpressLayer = {
 };
 
 const HOMEWORK_CORE_ROUTES = [
+  ...ST11_CORE_HOMEWORK_ANSWER_MEDIA_ROUTES,
   'GET /api/v1/homework/assignments/:homeworkId/questions/:questionId/assets',
   'POST /api/v1/homework/assignments/:homeworkId/questions/:questionId/assets',
   'GET /api/v1/homework/assignments/:homeworkId/questions/:questionId/assets/:assetId',
@@ -234,6 +239,7 @@ describe('Sprint 13F Homework final closeout route inventory (e2e)', () => {
     }
 
     for (const route of routes) {
+      if (ST11_STUDENT_ANSWER_MEDIA_ROUTES.includes(route)) continue;
       expect(route).not.toMatch(
         /^.+ \/api\/v1\/homework\/.*(proof|upload|xp|reward)/,
       );

@@ -195,7 +195,7 @@ test('ST-03 assessment facade has exactly the reviewed DB-only callbacks and all
     assert.doesNotMatch(body, /\b(?:storage|verifier|scanner|queue|http)\./u);
     return true;
   }).map(match => `AssessmentMediaRepository.${match[1]}`).sort();
-  assert.equal(callers.length, 8);
+  assert.equal(callers.length, 9);
   assert.deepEqual(callbacks.resolvedCallers, callers);
   assert.deepEqual(allocation.resolvedCallers, ['PrismaTeacherAllocationOperationalWriteGate.lock', 'assertGradesMediaAuthorization', 'assertHomeworkMediaAuthorization']);
 });

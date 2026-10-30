@@ -1,3 +1,4 @@
+import { ST11_STUDENT_ANSWER_MEDIA_ROUTES } from '../fixtures/st11-answer-media-routes.fixture';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import type { App } from 'supertest/types';
@@ -108,6 +109,7 @@ describe('Sprint 15E Homework questions and attachments foundation (e2e)', () =>
     }
 
     for (const route of routes) {
+      if (ST11_STUDENT_ANSWER_MEDIA_ROUTES.includes(route)) continue;
       expect(route).not.toMatch(
         /^.+ \/api\/v1\/student\/homeworks\/.*(proof|upload|grade-sync|sync-grade|xp|reward)/,
       );
