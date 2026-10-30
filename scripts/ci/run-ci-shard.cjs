@@ -106,6 +106,7 @@ const HEALTH_SCENARIOS = Object.freeze([
 
 const MEDIA_CONTAINER_ENVIRONMENT_KEYS = Object.freeze([
   'NODE_ENV',
+  'APP_URL',
   'DATABASE_URL',
   'QUEUE_REDIS_URL',
   'REALTIME_REDIS_URL',
