@@ -1515,6 +1515,12 @@ model Organization {
 }
 
 model School {
+  gradeassessmentquestionGroups      GradeAssessmentQuestionGroup[]
+  gradeassessmentquestionGroupAssets GradeAssessmentQuestionGroupAsset[]
+
+  homeworkquestionGroups      HomeworkQuestionGroup[]
+  homeworkquestionGroupAssets HomeworkQuestionGroupAsset[]
+
   id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String       @map("organization_id") @db.Uuid
   name           String
@@ -1759,6 +1765,12 @@ model SchoolFeatureControl {
 // ============================================================
 
 model User {
+  gradeassessmentquestionGroupsCreated      GradeAssessmentQuestionGroup[]      @relation("GradeAssessmentQuestionGroupCreatedBy")
+  gradeassessmentquestionGroupAssetsCreated GradeAssessmentQuestionGroupAsset[] @relation("GradeAssessmentQuestionGroupAssetCreatedBy")
+
+  homeworkquestionGroupsCreated      HomeworkQuestionGroup[]      @relation("HomeworkQuestionGroupCreatedBy")
+  homeworkquestionGroupAssetsCreated HomeworkQuestionGroupAsset[] @relation("HomeworkQuestionGroupAssetCreatedBy")
+
   id                    String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email                 String     @unique
   username              String?
@@ -5436,6 +5448,8 @@ model AttendanceExcuseRequestSession {
 // ============================================================
 
 model GradeAssessment {
+  questionGroups GradeAssessmentQuestionGroup[]
+
   id                  String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   schoolId            String                        @map("school_id") @db.Uuid
   academicYearId      String                        @map("academic_year_id") @db.Uuid
@@ -5575,6 +5589,10 @@ model GradeItem {
 }
 
 model GradeAssessmentQuestion {
+  groupId     String?                       @map("group_id") @db.Uuid
+  layoutOrder Int?                          @map("layout_order")
+  group       GradeAssessmentQuestionGroup? @relation(fields: [groupId, schoolId, assessmentId], references: [id, schoolId, assessmentId], onDelete: Restrict, onUpdate: Restrict, map: "grade_group_question_fk")
+
   id            String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   schoolId      String            @map("school_id") @db.Uuid
   assessmentId  String            @map("assessment_id") @db.Uuid
@@ -5605,6 +5623,7 @@ model GradeAssessmentQuestion {
   @@unique([id, schoolId])
   @@unique([schoolId, assessmentId, sortOrder])
   @@unique([id, schoolId, assessmentId], map: "answer_intent_grade_question_key")
+  @@index([schoolId, assessmentId, groupId], map: "grade_group_question_idx")
   @@index([schoolId])
   @@index([assessmentId])
   @@index([schoolId, assessmentId, deletedAt])
@@ -5837,6 +5856,8 @@ model GradeRule {
 // ============================================================
 
 model HomeworkAssignment {
+  questionGroups HomeworkQuestionGroup[]
+
   id                         String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   schoolId                   String                   @map("school_id") @db.Uuid
   academicYearId             String                   @map("academic_year_id") @db.Uuid
@@ -5998,6 +6019,10 @@ model HomeworkSubmission {
 }
 
 model HomeworkQuestion {
+  groupId     String?                @map("group_id") @db.Uuid
+  layoutOrder Int?                   @map("layout_order")
+  group       HomeworkQuestionGroup? @relation(fields: [groupId, schoolId, homeworkAssignmentId], references: [id, schoolId, homeworkAssignmentId], onDelete: Restrict, onUpdate: Restrict, map: "hw_group_question_fk")
+
   id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   schoolId             String               @map("school_id") @db.Uuid
   homeworkAssignmentId String               @map("homework_assignment_id") @db.Uuid
@@ -6031,6 +6056,7 @@ model HomeworkQuestion {
 
   @@unique([id, schoolId])
   @@unique([id, schoolId, homeworkAssignmentId], map: "answer_intent_homework_question_key")
+  @@index([schoolId, homeworkAssignmentId, groupId], map: "hw_group_question_idx")
   @@index([schoolId])
   @@index([schoolId, homeworkAssignmentId], map: "hw_question_school_assignment_idx")
   @@index([schoolId, homeworkAssignmentId, sortOrder], map: "hw_question_school_assignment_sort_idx")
@@ -7993,6 +8019,10 @@ model AuditLog {
 // ============================================================
 
 model File {
+  gradeassessmentquestionGroupAssets GradeAssessmentQuestionGroupAsset[]
+
+  homeworkquestionGroupAssets HomeworkQuestionGroupAsset[]
+
   id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String?        @map("organization_id") @db.Uuid
   schoolId       String?        @map("school_id") @db.Uuid
@@ -8264,4 +8294,104 @@ model AssessmentAnswerMediaClaim {
   @@index([schoolId, homeworkAnswerId])
   @@index([schoolId, gradeAnswerId])
   @@map("assessment_answer_media_claims")
+}
+
+model HomeworkQuestionGroup {
+  id                   String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId             String                       @map("school_id") @db.Uuid
+  homeworkAssignmentId String                       @map("homework_assignment_id") @db.Uuid
+  title                String                       @db.VarChar(255)
+  instructions         String?                      @db.VarChar(2000)
+  sharedStimulus       Json?                        @map("shared_stimulus")
+  layoutOrder          Int                          @default(0) @map("layout_order")
+  createdByUserId      String                       @map("created_by_user_id") @db.Uuid
+  createdAt            DateTime                     @default(now()) @map("created_at")
+  updatedAt            DateTime                     @updatedAt @map("updated_at")
+  deletedAt            DateTime?                    @map("deleted_at")
+  school               School                       @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  homeworkAssignment   HomeworkAssignment           @relation(fields: [homeworkAssignmentId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "hw_group_root_fk")
+  createdBy            User                         @relation("HomeworkQuestionGroupCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  questions            HomeworkQuestion[]
+  assets               HomeworkQuestionGroupAsset[]
+
+  @@unique([id, schoolId])
+  @@unique([id, schoolId, homeworkAssignmentId], map: "hw_group_root_key")
+  @@index([schoolId, homeworkAssignmentId, deletedAt, layoutOrder, id], map: "hw_group_order_idx")
+  @@map("homework_question_groups")
+}
+
+model HomeworkQuestionGroupAsset {
+  id              String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String                    @map("school_id") @db.Uuid
+  groupId         String                    @map("group_id") @db.Uuid
+  fileId          String?                   @map("file_id") @db.Uuid
+  externalUrl     String?                   @map("external_url") @db.VarChar(2000)
+  sourceType      AssessmentAssetSourceType @default(MANAGED_FILE) @map("source_type")
+  category        AssessmentAssetCategory   @default(OTHER)
+  title           String?                   @db.VarChar(255)
+  description     String?                   @db.VarChar(2000)
+  sortOrder       Int                       @default(0) @map("sort_order")
+  createdByUserId String                    @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime                  @default(now()) @map("created_at")
+  updatedAt       DateTime                  @updatedAt @map("updated_at")
+  deletedAt       DateTime?                 @map("deleted_at")
+  school          School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  group           HomeworkQuestionGroup     @relation(fields: [groupId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "hw_group_asset_parent_fk")
+  file            File?                     @relation(fields: [fileId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "hw_group_asset_file_fk")
+  createdBy       User                      @relation("HomeworkQuestionGroupAssetCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([schoolId, groupId, deletedAt, sortOrder, id], map: "hw_group_asset_order_idx")
+  @@index([fileId, schoolId], map: "hw_group_asset_file_idx")
+  @@index([createdByUserId], map: "hw_group_asset_creator_idx")
+  @@map("homework_question_group_assets")
+}
+
+model GradeAssessmentQuestionGroup {
+  id              String                              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String                              @map("school_id") @db.Uuid
+  assessmentId    String                              @map("assessment_id") @db.Uuid
+  title           String                              @db.VarChar(255)
+  instructions    String?                             @db.VarChar(2000)
+  sharedStimulus  Json?                               @map("shared_stimulus")
+  layoutOrder     Int                                 @default(0) @map("layout_order")
+  createdByUserId String                              @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime                            @default(now()) @map("created_at")
+  updatedAt       DateTime                            @updatedAt @map("updated_at")
+  deletedAt       DateTime?                           @map("deleted_at")
+  school          School                              @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  assessment      GradeAssessment                     @relation(fields: [assessmentId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "grade_group_root_fk")
+  createdBy       User                                @relation("GradeAssessmentQuestionGroupCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  questions       GradeAssessmentQuestion[]
+  assets          GradeAssessmentQuestionGroupAsset[]
+
+  @@unique([id, schoolId])
+  @@unique([id, schoolId, assessmentId], map: "grade_group_root_key")
+  @@index([schoolId, assessmentId, deletedAt, layoutOrder, id], map: "grade_group_order_idx")
+  @@map("grade_assessment_question_groups")
+}
+
+model GradeAssessmentQuestionGroupAsset {
+  id              String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String                       @map("school_id") @db.Uuid
+  groupId         String                       @map("group_id") @db.Uuid
+  fileId          String?                      @map("file_id") @db.Uuid
+  externalUrl     String?                      @map("external_url") @db.VarChar(2000)
+  sourceType      AssessmentAssetSourceType    @default(MANAGED_FILE) @map("source_type")
+  category        AssessmentAssetCategory      @default(OTHER)
+  title           String?                      @db.VarChar(255)
+  description     String?                      @db.VarChar(2000)
+  sortOrder       Int                          @default(0) @map("sort_order")
+  createdByUserId String                       @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime                     @default(now()) @map("created_at")
+  updatedAt       DateTime                     @updatedAt @map("updated_at")
+  deletedAt       DateTime?                    @map("deleted_at")
+  school          School                       @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  group           GradeAssessmentQuestionGroup @relation(fields: [groupId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "grade_group_asset_parent_fk")
+  file            File?                        @relation(fields: [fileId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "grade_group_asset_file_fk")
+  createdBy       User                         @relation("GradeAssessmentQuestionGroupAssetCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([schoolId, groupId, deletedAt, sortOrder, id], map: "grade_group_asset_order_idx")
+  @@index([fileId, schoolId], map: "grade_group_asset_file_idx")
+  @@index([createdByUserId], map: "grade_group_asset_creator_idx")
+  @@map("grade_assessment_question_group_assets")
 }

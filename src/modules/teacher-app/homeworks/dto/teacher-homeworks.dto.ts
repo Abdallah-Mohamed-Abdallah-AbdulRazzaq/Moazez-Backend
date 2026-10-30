@@ -1,3 +1,5 @@
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import type { QuestionGroupContext } from '../../../../common/question-groups/question-group.projection';
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -330,6 +332,14 @@ export class TeacherHomeworkCountersDto {
 }
 
 export class TeacherHomeworkAssignmentDto {
+  @ApiPropertyOptional({
+    type: [Object],
+    description:
+      'Authorized multipart groups with derived child points; omitted for legacy flat content.',
+  })
+  groups?: QuestionGroupContext['groups'];
+  @ApiPropertyOptional({ type: [Object] })
+  displayItems?: QuestionGroupContext['displayItems'];
   id!: string;
   title!: string;
   description!: string | null;
@@ -403,6 +413,8 @@ export class TeacherHomeworkSubmissionStudentDto {
 }
 
 export class TeacherHomeworkSubmissionDto {
+  @ApiPropertyOptional({ type: [Object] }) groups?: object[];
+  @ApiPropertyOptional({ type: [Object] }) displayItems?: object[];
   id!: string;
   homeworkId!: string;
   targetId!: string;

@@ -1,3 +1,5 @@
+import { Optional } from '@nestjs/common';
+import { GradeQuestionGroupsRepository } from './grade-question-groups.repository';
 import {
   gradeAssessmentAccessWhere,
   assertGradeAssessmentAccess,
@@ -245,7 +247,10 @@ export type LockGradeAssessmentData = Pick<
 
 @Injectable()
 export class GradesAssessmentsRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly groups?: GradeQuestionGroupsRepository,
+  ) {}
 
   private get scopedPrisma(): PrismaService {
     return this.prisma.scoped as unknown as PrismaService;
@@ -344,6 +349,7 @@ export class GradesAssessmentsRepository {
               { field: 'answerKey' },
             );
         }
+        await this.groups?.project(tx, assessmentId, undefined, true);
         assertQuestionBasedPublishReady({ assessment, questions });
       } else {
         assertPublishableAssessment(assessment);

@@ -1,3 +1,6 @@
+import { CoreGradeQuestionGroupsController } from './controller/core-grade-question-groups.controller';
+import { GradeQuestionGroupsRepository } from './infrastructure/grade-question-groups.repository';
+import { GradeQuestionGroupsService } from './application/grade-question-groups.service';
 import { CoreGradeAnswerMediaController } from './controller/core-grade-answer-media.controller';
 import { GradeAnswerMediaRepository } from './infrastructure/grade-answer-media.repository';
 import { GradeAnswerMediaService } from './application/grade-answer-media.service';
@@ -53,6 +56,7 @@ import { GradesSubmissionsRepository } from './infrastructure/grades-submissions
 @Module({
   imports: [AuthModule, StorageModule, AssessmentMediaModule],
   controllers: [
+    CoreGradeQuestionGroupsController,
     CoreGradeAnswerMediaController,
     GradeAssessmentAssetsController,
     GradeQuestionAssetsController,
@@ -62,6 +66,8 @@ import { GradesSubmissionsRepository } from './infrastructure/grades-submissions
     GradesSubmissionsController,
   ],
   providers: [
+    GradeQuestionGroupsRepository,
+    GradeQuestionGroupsService,
     CoreGradeAnswerMediaService,
     GradeAnswerMediaRepository,
     GradeAnswerMediaService,
@@ -106,6 +112,8 @@ import { GradesSubmissionsRepository } from './infrastructure/grades-submissions
     SyncGradeSubmissionToGradeItemUseCase,
   ],
   exports: [
+    GradeQuestionGroupsRepository,
+    GradeQuestionGroupsService,
     GradeAnswerMediaRepository,
     GradeAnswerMediaService,
     GradeAssetsRepository,

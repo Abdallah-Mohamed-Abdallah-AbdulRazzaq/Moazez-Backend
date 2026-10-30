@@ -1,6 +1,7 @@
 import {
   ST11_STUDENT_ANSWER_MEDIA_ROUTES,
   ST11_CORE_HOMEWORK_ANSWER_MEDIA_ROUTES,
+  ST11B_CORE_HOMEWORK_GROUP_ROUTES,
 } from '../fixtures/st11-answer-media-routes.fixture';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { GUARDS_METADATA, PATH_METADATA } from '@nestjs/common/constants';
@@ -32,6 +33,7 @@ type ExpressLayer = {
 
 const HOMEWORK_CORE_ROUTES = [
   ...ST11_CORE_HOMEWORK_ANSWER_MEDIA_ROUTES,
+  ...ST11B_CORE_HOMEWORK_GROUP_ROUTES,
   'GET /api/v1/homework/assignments/:homeworkId/questions/:questionId/assets',
   'POST /api/v1/homework/assignments/:homeworkId/questions/:questionId/assets',
   'GET /api/v1/homework/assignments/:homeworkId/questions/:questionId/assets/:assetId',

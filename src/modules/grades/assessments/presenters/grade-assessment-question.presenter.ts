@@ -1,3 +1,4 @@
+import { presentQuestionGroupMembership } from '../../../../common/question-groups/question-group.projection';
 import { gradeResponseConfig } from '../domain/grade-response-config';
 import { presentGradeRichContent } from '../infrastructure/grade-rich-content.projection';
 import { gradeAuthorKeyNullFact } from '../infrastructure/grade-author-key.projection';
@@ -55,6 +56,7 @@ export function presentGradeAssessmentQuestion(
         }
       : {}),
     ...presentGradeRichContent(question),
+    ...presentQuestionGroupMembership(question),
     id: question.id,
     assessmentId: question.assessmentId,
     type: presentQuestionType(question.type),

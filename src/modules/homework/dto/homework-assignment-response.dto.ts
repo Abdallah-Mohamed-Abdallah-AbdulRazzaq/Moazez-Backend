@@ -1,3 +1,5 @@
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import type { QuestionGroupContext } from '../../../common/question-groups/question-group.projection';
 import { HomeworkAttachmentResponseDto } from './homework-attachment-response.dto';
 import { HomeworkQuestionResponseDto } from './homework-question-response.dto';
 
@@ -35,6 +37,14 @@ export class HomeworkCountersDto {
 }
 
 export class HomeworkAssignmentResponseDto {
+  @ApiPropertyOptional({
+    type: [Object],
+    description:
+      'Authorized multipart groups with derived child points; omitted for legacy flat content.',
+  })
+  groups?: QuestionGroupContext['groups'];
+  @ApiPropertyOptional({ type: [Object] })
+  displayItems?: QuestionGroupContext['displayItems'];
   id!: string;
   title!: string;
   description!: string | null;

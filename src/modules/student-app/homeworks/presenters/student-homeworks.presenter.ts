@@ -1,3 +1,7 @@
+import {
+  presentQuestionGroupContext,
+  presentQuestionGroupMembership,
+} from '../../../../common/question-groups/question-group.projection';
 import { homeworkResponseConfig } from '../../../homework/domain/homework-response-config';
 import { assertHomeworkRuntimeQuestionType } from '../../../homework/domain/homework-runtime-types';
 import {
@@ -171,6 +175,7 @@ function presentDetail(
   const assignment = target.homeworkAssignment;
 
   return {
+    ...presentQuestionGroupContext(assignment.questions),
     ...presentListItem(target),
     publishAt: presentDateTime(assignment.publishAt),
     closedAt: presentDateTime(assignment.closedAt),
@@ -199,6 +204,7 @@ function presentSafeQuestion(
   const source =
     definition.metadata?.kind === 'media' ? definition.metadata.source : null;
   return {
+    ...presentQuestionGroupMembership(question),
     questionId: question.id,
     ...(source && !assets.some((asset) => asset.assetId === source.assetId)
       ? {}

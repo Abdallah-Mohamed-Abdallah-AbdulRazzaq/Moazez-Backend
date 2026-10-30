@@ -1,3 +1,4 @@
+import type { QuestionGroupContext } from '../../../common/question-groups/question-group.projection';
 import type { ResponseConfigV1 } from '../../../common/assessment-answer/response-config';
 import { RESPONSE_CONFIG_OPENAPI } from '../../../common/assessment-answer/response-config.openapi';
 import type {
@@ -27,6 +28,7 @@ export class HomeworkQuestionOptionResponseDto {
 }
 
 export class HomeworkQuestionResponseDto {
+  @ApiPropertyOptional({ format: 'uuid' }) groupId?: string;
   @ApiPropertyOptional(RESPONSE_CONFIG_OPENAPI)
   responseConfig?: ResponseConfigV1;
   @ApiPropertyOptional({
@@ -64,6 +66,14 @@ export class HomeworkQuestionResponseDto {
 }
 
 export class HomeworkQuestionsListResponseDto {
+  @ApiPropertyOptional({
+    type: [Object],
+    description:
+      'Authorized multipart groups with derived child points; omitted for legacy flat content.',
+  })
+  groups?: QuestionGroupContext['groups'];
+  @ApiPropertyOptional({ type: [Object] })
+  displayItems?: QuestionGroupContext['displayItems'];
   @ApiProperty({ type: () => [HomeworkQuestionResponseDto] })
   items!: HomeworkQuestionResponseDto[];
 }

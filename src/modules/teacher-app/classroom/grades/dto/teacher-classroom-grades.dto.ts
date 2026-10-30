@@ -1,3 +1,5 @@
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import type { QuestionGroupContext } from '../../../../../common/question-groups/question-group.projection';
 import type { RichContent } from '../../../../../common/rich-content/rich-content.types';
 import type { GradeQuestionContractDto } from '../../../../grades/shared/presenters/grade-question-contract';
 import { Transform, Type } from 'class-transformer';
@@ -205,6 +207,7 @@ export class TeacherClassroomAssessmentsListResponseDto {
 }
 
 export class TeacherClassroomAssessmentQuestionSummaryDto {
+  @ApiPropertyOptional({ format: 'uuid' }) groupId?: string;
   richContent?: RichContent;
   questionId!: string;
   type!: string;
@@ -239,6 +242,14 @@ export class TeacherClassroomAssessmentDetailDto extends TeacherClassroomAssessm
 }
 
 export class TeacherClassroomAssessmentDetailResponseDto {
+  @ApiPropertyOptional({
+    type: [Object],
+    description:
+      'Authorized multipart groups with derived child points; omitted for legacy flat content.',
+  })
+  groups?: QuestionGroupContext['groups'];
+  @ApiPropertyOptional({ type: [Object] })
+  displayItems?: QuestionGroupContext['displayItems'];
   classId!: string;
   assessment!: TeacherClassroomAssessmentDetailDto;
   itemsSummary!: TeacherClassroomAssessmentItemsSummaryDto;
@@ -389,6 +400,10 @@ export class TeacherClassroomAssignmentSubmissionDetailDto extends TeacherClassr
 }
 
 export class TeacherClassroomAssignmentSubmissionDetailResponseDto {
+  @ApiPropertyOptional({ type: [Object] })
+  groups?: QuestionGroupContext['groups'];
+  @ApiPropertyOptional({ type: [Object] })
+  displayItems?: QuestionGroupContext['displayItems'];
   classId!: string;
   assignmentId!: string;
   source!: 'grades_assessment';

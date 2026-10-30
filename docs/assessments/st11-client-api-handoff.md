@@ -82,3 +82,64 @@ Teacher classId is the existing TeacherSubjectAllocation ID, not a free classroo
 Core Grades also admits Students for their own Submission media lifecycle using the same persistence and authorization as Student Exams. School/Organization actors have reviewer read access only; every upload/bind/remove operation still requires the authenticated Student owner. Use the existing Core submission resolve/submit/review/sync APIs for Grades ASSIGNMENT resources; they are distinct from HomeworkAssignment. No powerful Core role may upload for another Student.
 
 Invalid DTO/config returns established 400/422 errors; missing/mismatched/revoked access returns non-disclosing 403/404; invalid upload state, unavailable policy/verification, conflicting replay, exhausted capacity or immutable/terminal mutation returns the existing 409 family. Terminal lifecycle operations never write scores or automatically sync grades.
+
+## ST11-B multipart groups — actual routes
+
+All paths below are ACTUAL additive endpoints. Existing questions, answer save/bulk/submit, manual review and explicit sync endpoints remain canonical. Every path parameter is UUID-validated. classId is the existing TeacherSubjectAllocation ID.
+
+| Surface | Parent prefix | Read permission | Mutation permission |
+| --- | --- | --- | --- |
+| Core Homework | `/api/v1/homework/assignments/:homeworkId` | homework.assignments.view | homework.assignments.manage |
+| Teacher Homework | `/api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId` | homework.submissions.view | homework.questions.manage |
+| Core Grades | `/api/v1/grades/assessments/:assessmentId` | grades.assessments.view | grades.questions.manage |
+| Teacher Grades | `/api/v1/teacher/classroom/:classId/grades/assessments/:assessmentId` | grades.submissions.view | None |
+| Student Homework | `/api/v1/student/homeworks/:homeworkId` | homework.assignments.view | None |
+| Student Exams | `/api/v1/student/exams/:assessmentId` | grades.assessments.view | None |
+| Student Grades | `/api/v1/student/grades/assessments/:assessmentId` | grades.assessments.view | None |
+
+Each prefix supports GET `/groups` (200) and GET/HEAD `/groups/:groupId/assets/:assetId/preview` or `/download`. Managed Homework author binding also rechecks the existing homework.attachments.manage permission. All rights are intersected with live membership, exact parent/target/allocation and current lifecycle. Teacher Grades has no group write endpoints or Core-role bypass; Parents have no new surface.
+
+Only the first three author prefixes support:
+
+| Method and suffix | Success | Result |
+| --- | --- | --- |
+| POST `/groups` | 201 | Complete groups/displayItems layout |
+| PATCH `/groups/:groupId` | 200 | Complete layout |
+| DELETE `/groups/:groupId` | 204 | Atomic child detach and asset soft-delete |
+| PUT `/groups/layout` | 200 | Complete layout after atomic membership/order update |
+| POST `/groups/:groupId/assets` | 201 | Safe asset DTO |
+| PATCH `/groups/:groupId/assets/:assetId` | 200 | Safe metadata/order DTO |
+| DELETE `/groups/:groupId/assets/:assetId` | 204 | Soft-delete only; File retained |
+
+Create/update display example (closed RichQuestionContent V1 is optional):
+
+```json
+{"title":"Read the passage","instructions":"Answer each child separately","layoutOrder":1,"sharedStimulus":{"contentVersion":1,"kind":"question","stem":{"language":"en","direction":"ltr","blocks":[{"type":"paragraph","children":[{"type":"text","text":"Shared passage"}]}]}}}
+```
+
+Membership/order example; UUIDs are illustrative:
+
+```json
+{"questions":[{"questionId":"11111111-1111-4111-8111-111111111111","expectedGroupId":null,"groupId":"22222222-2222-4222-8222-222222222222","layoutOrder":0}],"blocks":[{"kind":"group","id":"22222222-2222-4222-8222-222222222222","layoutOrder":1}]}
+```
+
+Move requires the exact previous group; detach uses groupId=null. Unlisted questions remain unchanged. Homework requests/groups/children are capped at 100 and Grades at 200. layoutOrder is an integer from 0 through 2147483647. Stable mixed order uses ID tie-breaks and never rewrites legacy question sortOrder.
+
+Asset create accepts either an existing exact-parent verified authoring upload or a safe external source:
+
+```json
+{"sourceType":"MANAGED_FILE","uploadId":"33333333-3333-4333-8333-333333333333","fileId":"44444444-4444-4444-8444-444444444444","title":"Shared document"}
+{"sourceType":"EXTERNAL_HTTPS","externalUrl":"https://example.org/passage","category":"DOCUMENT","title":"External passage"}
+```
+
+Do not persist upload capabilities in Rich AST. Use the returned group asset ID in a closed assetReference node belonging to that same group. Metadata PATCH accepts only title, description and sortOrder; it cannot change File/source identity. Replacement creates a new binding. Remove existing AST references before deleting an asset. Same-parent verified source reuse is separately authorized and shares the eight-reference parent limit.
+
+The group DTO contains id, title, instructions, layoutOrder, questionIds in display order, derived points (for example `"2.00"`), sharedStimulusSupported, optional validated sharedStimulus and safe asset metadata. Assets expose availability and current preview/download flags, with filename/MIME/decimal bytes only for available Files. displayItems contains either `{kind:"question",questionId}` or `{kind:"group",groupId,questionIds}`. No group is answerable or scored twice. Legacy flat roots omit these fields until opted into groups/layout; canonical question lists remain present. Student Homework nests layout under homework; Student Exams retains stages[0].questions; Student Grades retains questions.
+
+Existing Core/Teacher Homework submission-review responses place authorized layout under submission.groups/displayItems, including unanswered optional children. Core Grades submission detail and Teacher Classroom assessment/review responses carry root layout. These display fields do not add an answer or review operation. Existing review and explicit synchronization routes retain their own permissions and lifecycle checks.
+
+GET uses 200/206/416 with Range and If-Range; HEAD follows existing transport policy (200 full-length headers and no body, ignoring Range). Responses remain private/no-store with safe content disposition and abort handling. Invalid stored or unavailable shared stimulus is omitted with sharedStimulusSupported=false on reads; publication rejects it, while existing child answer/review operations continue.
+
+Invalid examples include parentGroupId/nesting, group points/answers, unknown Rich fields, a foreign group's assetReference, duplicate membership IDs, a stale expectedGroupId, cross-parent membership, unsupported source identity changes and a group ID supplied as questionId. Shape/validation errors return established 400/422; revoked/mismatched resources return non-disclosing 403/404; stale membership returns 409. Published/locked/attempted structures follow existing domain 400/404/409 errors. Parent/Teacher Grades mutation requests remain denied.
+
+POST group/asset creation follows existing authoring semantics and is not idempotent: a retry can create another group/reference and must not be assumed safe after an uncertain transport outcome. Fetch groups to reconcile. Membership/layout uses explicit expected membership; repeating an already-applied move with the old expectation returns 409. PATCH metadata/order assigns values; DELETE on a removed resource returns 404. No new idempotency key or generic upload purpose is introduced. Production execution still requires future DR07 approval; this source change does not enable it.

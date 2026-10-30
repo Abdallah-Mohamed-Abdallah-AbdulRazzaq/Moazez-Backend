@@ -1,3 +1,4 @@
+import { presentQuestionGroupContext } from '../../../../common/question-groups/question-group.projection';
 import { presentGradeRichContent } from '../infrastructure/grade-rich-content.projection';
 import { sanitizeGradeQuestionContent } from '../domain/grade-question-content-policy';
 import { gradeAnswerNullFact } from '../infrastructure/grade-typed-answer.projection';
@@ -68,6 +69,7 @@ export function presentGradeSubmissionDetail(params: {
   );
 
   return {
+    ...presentQuestionGroupContext(params.questions),
     id: params.submission.id,
     assessmentId: params.submission.assessmentId,
     termId: params.submission.termId,

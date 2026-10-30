@@ -1,3 +1,5 @@
+import { Optional } from '@nestjs/common';
+import { GradeQuestionGroupsRepository } from './grade-question-groups.repository';
 import type { RichAssetResolver } from '../../../../common/rich-content/rich-content.types';
 import { getRequestContext } from '../../../../common/context/request-context';
 import { ownedAllocationWhere } from '../../../academics/teacher-allocation/domain/owned-allocation';
@@ -88,9 +90,18 @@ export class GradeAssetsRepository implements RichAssetResolver<
     private readonly runtime: AssessmentMediaRuntimePolicy,
     config: ConfigService,
     private readonly urls: PersistedUrlPolicy,
+    @Optional() private readonly groups?: GradeQuestionGroupsRepository,
   ) {
     // Immutable configuration lookup, before any authorization transaction.
     this.privateBucket = config.getOrThrow<string>('STORAGE_BUCKET');
+  }
+  projectGroups(
+    tx: Prisma.TransactionClient,
+    parentId: string,
+    questions?: readonly { id: string }[],
+    publication = false,
+  ) {
+    return this.groups?.project(tx, parentId, questions, publication);
   }
   private transaction<T>(
     operation: (tx: Prisma.TransactionClient) => Promise<T>,
@@ -355,6 +366,12 @@ export class GradeAssetsRepository implements RichAssetResolver<
         const policy = await this.policy(tx, scope.schoolId, true);
         // The assessment lock serializes references across both families. Physical reservations remain producer-owned.
         const referenceCount =
+          (await tx.gradeAssessmentQuestionGroupAsset.count({
+            where: {
+              deletedAt: null,
+              group: { assessmentId: input.assessmentId, deletedAt: null },
+            },
+          })) +
           (await tx.gradeAssessmentAsset.count({
             where: { assessmentId: input.assessmentId, deletedAt: null },
           })) +

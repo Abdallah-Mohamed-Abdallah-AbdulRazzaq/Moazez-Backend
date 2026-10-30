@@ -9,6 +9,10 @@ export async function hasRetainedFileReferences(
   // retain their File even when an unrelated domain soft-deletes its owner.
   const [result] = await tx.$queryRaw<Array<{ retained: boolean }>>`
     SELECT EXISTS (
+      SELECT 1 FROM public.homework_question_group_assets WHERE file_id = ${fileId}::uuid
+      UNION ALL
+      SELECT 1 FROM public.grade_assessment_question_group_assets WHERE file_id = ${fileId}::uuid
+      UNION ALL
       SELECT 1 FROM public.settings_school_profile WHERE logo_file_id = ${fileId}::uuid
       UNION ALL
       SELECT 1 FROM public.admission_application_documents WHERE file_id = ${fileId}::uuid

@@ -1,3 +1,4 @@
+import { presentQuestionGroupContext } from '../../../../common/question-groups/question-group.projection';
 import {
   HomeworkAssignmentStatus,
   HomeworkSubmissionStatus,
@@ -70,6 +71,9 @@ export class TeacherHomeworksPresenter {
       isGraded: assignment.isGraded,
       questionCount: assignment.questionCount,
       attachmentsCount: assignment.attachmentsCount,
+      ...(assignment.groups
+        ? { groups: assignment.groups, displayItems: assignment.displayItems }
+        : {}),
       questions: assignment.questions,
       attachments: assignment.attachments,
       counters: assignment.counters,
@@ -163,6 +167,7 @@ function presentSubmission(
   submission: HomeworkReviewSubmissionRecord,
 ): TeacherHomeworkSubmissionDto {
   return {
+    ...presentQuestionGroupContext(submission.homeworkAssignment.questions),
     id: submission.id,
     homeworkId: submission.homeworkAssignmentId,
     targetId: submission.homeworkTargetId,

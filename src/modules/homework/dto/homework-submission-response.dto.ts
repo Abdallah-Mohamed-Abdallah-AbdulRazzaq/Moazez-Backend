@@ -1,3 +1,5 @@
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import type { QuestionGroupContext } from '../../../common/question-groups/question-group.projection';
 export class HomeworkSubmissionStudentDto {
   id!: string;
   displayName!: string;
@@ -5,6 +7,10 @@ export class HomeworkSubmissionStudentDto {
 }
 
 export class HomeworkSubmissionDto {
+  @ApiPropertyOptional({ type: [Object] })
+  groups?: QuestionGroupContext['groups'];
+  @ApiPropertyOptional({ type: [Object] })
+  displayItems?: QuestionGroupContext['displayItems'];
   id!: string;
   homeworkId!: string;
   targetId!: string;

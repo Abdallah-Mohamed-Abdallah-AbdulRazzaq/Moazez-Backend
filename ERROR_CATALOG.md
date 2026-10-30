@@ -1,5 +1,11 @@
 # Error Catalog
 
+## ST11 multipart question groups
+
+| Code | HTTP | Meaning |
+| --- | --- | --- |
+| `question_group.conflict` | 409 | The child's current membership differs from expectedGroupId, or a grouped child is submitted as a flat layout block. Read the current layout before retrying. No previous owner or resource identifiers are disclosed. |
+
 ## Homework typed foundation (ST09-A)
 
 `homework.typed_content.invalid` is an internal pure validation error, with fixed

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { hasHomeworkRichSelection } from '../infrastructure/homework-rich-content.projection';
 import { assertHomeworkRuntimeQuestions } from '../domain/homework-runtime-types';
 import type { HomeworkAssetActor } from '../domain/homework-question-asset';
 import { isHomeworkTypedType } from './homework-typed-runtime';
@@ -385,7 +386,7 @@ export class ListHomeworkSubmissionsForReviewUseCase {
       page: normalizePositiveInteger(command.page, 1),
       limit: normalizeBoundedLimit(command.limit),
     });
-    for (const submission of result.items)
+    for (const submission of result.items) {
       if (
         submission.answers.some((answer) =>
           isHomeworkTypedType(answer.homeworkQuestion.type),
@@ -395,6 +396,15 @@ export class ListHomeworkSubmissionsForReviewUseCase {
           command.homeworkId,
           submission.answers,
         );
+      if (
+        hasHomeworkRichSelection(submission.homeworkAssignment.questions ?? [])
+      )
+        await this.homeworkRepository.projectRichQuestions(
+          command.homeworkId,
+          submission.homeworkAssignment.questions,
+          'review',
+        );
+    }
     return result;
   }
 }
@@ -428,6 +438,12 @@ export class GetHomeworkSubmissionForReviewUseCase {
       await this.homeworkRepository.projectTypedAnswers(
         command.homeworkId,
         submission.answers,
+      );
+    if (hasHomeworkRichSelection(submission.homeworkAssignment.questions ?? []))
+      await this.homeworkRepository.projectRichQuestions(
+        command.homeworkId,
+        submission.homeworkAssignment.questions,
+        'review',
       );
 
     return submission;
@@ -523,6 +539,16 @@ export class ReviewHomeworkSubmissionUseCase {
       await this.homeworkRepository.projectTypedAnswers(
         command.homeworkId,
         result.submission.answers,
+      );
+    if (
+      hasHomeworkRichSelection(
+        result.submission.homeworkAssignment.questions ?? [],
+      )
+    )
+      await this.homeworkRepository.projectRichQuestions(
+        command.homeworkId,
+        result.submission.homeworkAssignment.questions,
+        'review',
       );
 
     return result.submission;

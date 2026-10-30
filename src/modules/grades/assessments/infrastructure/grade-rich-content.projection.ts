@@ -99,6 +99,7 @@ export async function projectGradeRichContent(
   resolver: GradeAssetsRepository | undefined,
   audience: 'author' | 'student' | 'review',
 ): Promise<void> {
+  await resolver?.projectGroups?.(tx, assessmentId, questions);
   if (!questions.length) return;
   if (questions.length > 200) {
     for (let start = 0; start < questions.length; start += 200)

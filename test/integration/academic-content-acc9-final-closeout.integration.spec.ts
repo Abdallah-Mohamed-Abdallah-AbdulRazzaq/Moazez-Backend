@@ -1,4 +1,7 @@
-import { ST11_TEACHER_ANSWER_MEDIA_ROUTES } from '../fixtures/st11-answer-media-routes.fixture';
+import {
+  ST11_TEACHER_ANSWER_MEDIA_ROUTES,
+  ST11B_TEACHER_GROUP_ROUTES,
+} from '../fixtures/st11-answer-media-routes.fixture';
 import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import {
@@ -146,7 +149,32 @@ describe('ACC-9 final cross-slice exported contracts', () => {
       acc = routes.filter((route) =>
         route.controller.startsWith('TeacherAcademicContent'),
       );
-    expect(routes).toHaveLength(189 + ST11_TEACHER_ANSWER_MEDIA_ROUTES.length);
+    expect(routes).toHaveLength(
+      189 +
+        ST11_TEACHER_ANSWER_MEDIA_ROUTES.length +
+        ST11B_TEACHER_GROUP_ROUTES.length,
+    );
+    const groupRoutes = routes.filter((route) =>
+      [
+        'TeacherGradeQuestionGroupsController',
+        'TeacherHomeworkQuestionGroupsController',
+      ].includes(route.controller),
+    );
+    expect(groupRoutes).toHaveLength(ST11B_TEACHER_GROUP_ROUTES.length);
+    for (const route of groupRoutes)
+      expect(route.permissions).toEqual([
+        route.controller === 'TeacherGradeQuestionGroupsController'
+          ? 'grades.submissions.view'
+          : [
+                'list',
+                'getpreview',
+                'headpreview',
+                'getdownload',
+                'headdownload',
+              ].includes(route.handler)
+            ? 'homework.submissions.view'
+            : 'homework.questions.manage',
+      ]);
     const answerMedia = routes.filter(
       (route) =>
         route.controller === 'TeacherGradeAnswerMediaController' ||

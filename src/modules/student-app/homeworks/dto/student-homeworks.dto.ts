@@ -1,3 +1,4 @@
+import type { QuestionGroupContext } from '../../../../common/question-groups/question-group.projection';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { ResponseConfigV1 } from '../../../../common/assessment-answer/response-config';
 import { RESPONSE_CONFIG_OPENAPI } from '../../../../common/assessment-answer/response-config.openapi';
@@ -162,6 +163,7 @@ export class StudentHomeworkQuestionOptionDto {
 }
 
 export class StudentHomeworkQuestionDto {
+  @ApiPropertyOptional({ format: 'uuid' }) groupId?: string;
   @ApiPropertyOptional(RESPONSE_CONFIG_OPENAPI)
   responseConfig?: ResponseConfigV1;
   metadata?: import('../../../homework/domain/homework-typed-contract').HomeworkPublicDefinition;
@@ -255,6 +257,14 @@ export class StudentHomeworkSubmissionAttachmentDto {
 }
 
 export class StudentHomeworkDetailDto extends StudentHomeworkListItemDto {
+  @ApiPropertyOptional({
+    type: [Object],
+    description:
+      'Authorized multipart groups with derived child points; omitted for legacy flat content.',
+  })
+  groups?: QuestionGroupContext['groups'];
+  @ApiPropertyOptional({ type: [Object] })
+  displayItems?: QuestionGroupContext['displayItems'];
   publishAt!: string | null;
   closedAt!: string | null;
   questions!: StudentHomeworkQuestionDto[];
