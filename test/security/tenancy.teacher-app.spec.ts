@@ -1,3 +1,5 @@
+import { TeacherGradeAnswerMediaController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-answer-media.controller';
+import { TeacherHomeworkAnswerMediaController } from '../../src/modules/teacher-app/homeworks/controller/teacher-homework-answer-media.controller';
 import { TeacherGradeQuestionAssetsController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-question-assets.controller';
 import { TeacherGradeAssessmentAssetsController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-assessment-assets.controller';
 import type {
@@ -299,6 +301,8 @@ const TEACHER_APP_CONTROLLER_CLASSES = [
   TeacherHomeworkQuestionAssetsController,
   TeacherGradeAssessmentAssetsController,
   TeacherGradeQuestionAssetsController,
+  TeacherGradeAnswerMediaController,
+  TeacherHomeworkAnswerMediaController,
   TeacherTasksController,
   TeacherTaskReviewQueueController,
   TeacherXpController,
@@ -903,6 +907,22 @@ const TEACHER_APP_1E_COMMUNICATION_ACTION_PERMISSION_CASES: TeacherAppPermission
 const TEACHER_APP_DEFERRED_ACTION_CASES: TeacherAppDeferredCase[] = [];
 
 const TEACHER_APP_DECORATED_PERMISSION_CASES: TeacherAppPermissionCase[] = [
+  ...[
+    TeacherGradeAnswerMediaController,
+    TeacherHomeworkAnswerMediaController,
+  ].flatMap((controller) =>
+    ['list', 'getpreview', 'headpreview', 'getdownload', 'headdownload'].map(
+      (method) => ({
+        controller,
+        method,
+        permissions: [
+          controller === TeacherGradeAnswerMediaController
+            ? 'grades.submissions.view'
+            : 'homework.submissions.view',
+        ],
+      }),
+    ),
+  ),
   {
     controller: TeacherGradeAssessmentAssetsController,
     method: 'list',
@@ -1409,8 +1429,8 @@ describe('Teacher App route permission metadata (security)', () => {
           .map((method) => `${controller.name}.${method}`),
     ).sort();
 
-    expect(discoveredRouteHandlers).toHaveLength(189);
-    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(189);
+    expect(discoveredRouteHandlers).toHaveLength(199);
+    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(199);
     expect(TEACHER_APP_DEFERRED_ACTION_CASES).toHaveLength(0);
     expect(discoveredRouteHandlers).toEqual(
       Array.from(expectedKnownHandlers).sort(),

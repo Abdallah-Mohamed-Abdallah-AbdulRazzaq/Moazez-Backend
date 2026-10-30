@@ -1,3 +1,4 @@
+import { ST11_TEACHER_ANSWER_MEDIA_ROUTES } from '../fixtures/st11-answer-media-routes.fixture';
 import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import {
@@ -145,7 +146,19 @@ describe('ACC-9 final cross-slice exported contracts', () => {
       acc = routes.filter((route) =>
         route.controller.startsWith('TeacherAcademicContent'),
       );
-    expect(routes).toHaveLength(189);
+    expect(routes).toHaveLength(189 + ST11_TEACHER_ANSWER_MEDIA_ROUTES.length);
+    const answerMedia = routes.filter(
+      (route) =>
+        route.controller === 'TeacherGradeAnswerMediaController' ||
+        route.controller === 'TeacherHomeworkAnswerMediaController',
+    );
+    expect(answerMedia).toHaveLength(ST11_TEACHER_ANSWER_MEDIA_ROUTES.length);
+    for (const route of answerMedia)
+      expect(route.permissions).toEqual([
+        route.controller === 'TeacherGradeAnswerMediaController'
+          ? 'grades.submissions.view'
+          : 'homework.submissions.view',
+      ]);
     const questionAssets = routes.filter(
       (route) => route.controller === 'TeacherHomeworkQuestionAssetsController',
     );
