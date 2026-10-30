@@ -520,7 +520,7 @@ export class GradeQuestionGroupsRepository {
         if (command.sortOrder !== undefined)
           data.sortOrder = groupOrder(command.sortOrder);
       }
-      await tx.gradeAssessmentQuestionGroupAsset.update({
+      const updated = await tx.gradeAssessmentQuestionGroupAsset.update({
         where: { id: asset.id },
         data,
       });
@@ -530,6 +530,15 @@ export class GradeQuestionGroupsRepository {
         command ? 'asset.update' : 'asset.remove',
         asset.id,
       );
+      if (command)
+        return presentGroupAsset(
+          await this.media.view(
+            tx,
+            'GRADE_ASSESSMENT_MEDIA',
+            input.assessmentId,
+            updated,
+          ),
+        );
     });
   }
   asset(

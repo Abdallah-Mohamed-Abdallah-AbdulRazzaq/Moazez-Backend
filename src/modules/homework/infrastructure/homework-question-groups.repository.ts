@@ -526,7 +526,7 @@ export class HomeworkQuestionGroupsRepository {
         if (command.sortOrder !== undefined)
           data.sortOrder = groupOrder(command.sortOrder);
       }
-      await tx.homeworkQuestionGroupAsset.update({
+      const updated = await tx.homeworkQuestionGroupAsset.update({
         where: { id: asset.id },
         data,
       });
@@ -536,6 +536,15 @@ export class HomeworkQuestionGroupsRepository {
         command ? 'asset.update' : 'asset.remove',
         asset.id,
       );
+      if (command)
+        return presentGroupAsset(
+          await this.media.view(
+            tx,
+            'HOMEWORK_ASSIGNMENT_MEDIA',
+            input.homeworkId,
+            updated,
+          ),
+        );
     });
   }
   asset(

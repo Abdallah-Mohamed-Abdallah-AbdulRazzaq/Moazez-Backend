@@ -37,6 +37,32 @@ describe('ST11-B actual group-owned private media and File lifetime', () => {
         })
         .expect(201);
       const asset = st06Json<{ id: string }>(created);
+      const updated = await h
+        .http()
+        .patch(f.groups + '/' + f.groupId + '/assets/' + asset.id)
+        .set(h.headers(f.author))
+        .send({
+          title: 'Updated shared document',
+          description: 'Current display metadata',
+          sortOrder: 7,
+        })
+        .expect(200);
+      expect(
+        st06Json<{ id: string; title: string; sortOrder: number }>(updated),
+      ).toMatchObject({
+        id: asset.id,
+        title: 'Updated shared document',
+        sortOrder: 7,
+      });
+      expect(JSON.stringify(st06Json(updated))).not.toMatch(
+        /"(?:bucket|objectKey|uploadCapability)"/u,
+      );
+      await h
+        .http()
+        .patch(f.groups + '/' + f.groupId + '/assets/' + asset.id)
+        .set(h.headers(f.author))
+        .send({ fileId: ready.fileId })
+        .expect(400);
       await h
         .http()
         .patch(f.groups + '/' + f.groupId)
