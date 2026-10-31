@@ -217,4 +217,3 @@ CREATE TRIGGER "grade_key_approval_identity_guard"
 CREATE TRIGGER "grade_scoring_suggestion_identity_guard"
   BEFORE UPDATE OR DELETE ON "grade_scoring_suggestions"
   FOR EACH ROW EXECUTE FUNCTION public.enforce_grade_review_evidence_identity();
-

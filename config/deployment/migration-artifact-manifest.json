@@ -243,8 +243,8 @@
     {
       "directory": "20261031120322_st12_grades_review_release_scoring",
       "path": "prisma/migrations/20261031120322_st12_grades_review_release_scoring/migration.sql",
-      "sha256": "17ac155ee965e20a06f9ab1d3802f3c15e639002c8f126fcec2e090b695f02e2"
+      "sha256": "3311350d985bf0ea9e958639cbbc3d89297ddf5bed8a6b32ea4906b4a6abda22"
     }
   ],
-  "aggregateMigrationChainSha256": "c672095a3c603b7004a7fdb4407cc2cf96d9eb098fa9cc012ec10c34a56d3a86"
+  "aggregateMigrationChainSha256": "00236bbdfa80b6f26effc04574841d92fc6fa18f31a93ae1a83bf45f16119214"
 }
