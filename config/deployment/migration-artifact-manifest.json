@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "prismaSchema": {
     "path": "prisma/schema.prisma",
-    "sha256": "32a289bb7924052445bddf78152819ad59c706761865bf135dc381e491077290"
+    "sha256": "34ae0228e6cb7d009677872d7864e4929fb92dfe5a90516215275873c1dd9997"
   },
   "prismaConfig": {
     "path": "prisma.config.ts",

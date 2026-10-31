@@ -1515,9 +1515,9 @@ model Organization {
 }
 
 model School {
-  gradeReviewReleasePolicies GradeReviewReleasePolicy[]
-  gradeQuestionKeyApprovals  GradeQuestionKeyApproval[]
-  gradeScoringSuggestions    GradeScoringSuggestion[]
+  gradeReviewReleasePolicies         GradeReviewReleasePolicy[]
+  gradeQuestionKeyApprovals          GradeQuestionKeyApproval[]
+  gradeScoringSuggestions            GradeScoringSuggestion[]
   gradeassessmentquestionGroups      GradeAssessmentQuestionGroup[]
   gradeassessmentquestionGroupAssets GradeAssessmentQuestionGroupAsset[]
 
@@ -1768,11 +1768,11 @@ model SchoolFeatureControl {
 // ============================================================
 
 model User {
-  gradeReviewReleaseChanges GradeReviewReleasePolicy[] @relation("GradeReviewReleaseChangedBy")
-  gradeKeyApprovals         GradeQuestionKeyApproval[] @relation("GradeKeyApprovedBy")
-  gradeKeyRevocations       GradeQuestionKeyApproval[] @relation("GradeKeyRevokedBy")
-  gradeScoringEvaluations   GradeScoringSuggestion[] @relation("GradeScoringEvaluatedBy")
-  gradeScoringApplications  GradeScoringSuggestion[] @relation("GradeScoringAppliedBy")
+  gradeReviewReleaseChanges                 GradeReviewReleasePolicy[]          @relation("GradeReviewReleaseChangedBy")
+  gradeKeyApprovals                         GradeQuestionKeyApproval[]          @relation("GradeKeyApprovedBy")
+  gradeKeyRevocations                       GradeQuestionKeyApproval[]          @relation("GradeKeyRevokedBy")
+  gradeScoringEvaluations                   GradeScoringSuggestion[]            @relation("GradeScoringEvaluatedBy")
+  gradeScoringApplications                  GradeScoringSuggestion[]            @relation("GradeScoringAppliedBy")
   gradeassessmentquestionGroupsCreated      GradeAssessmentQuestionGroup[]      @relation("GradeAssessmentQuestionGroupCreatedBy")
   gradeassessmentquestionGroupAssetsCreated GradeAssessmentQuestionGroupAsset[] @relation("GradeAssessmentQuestionGroupAssetCreatedBy")
 
@@ -5457,7 +5457,7 @@ model AttendanceExcuseRequestSession {
 
 model GradeAssessment {
   reviewReleasePolicy GradeReviewReleasePolicy?
-  questionGroups GradeAssessmentQuestionGroup[]
+  questionGroups      GradeAssessmentQuestionGroup[]
 
   id                  String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   schoolId            String                        @map("school_id") @db.Uuid
@@ -5599,9 +5599,9 @@ model GradeItem {
 
 model GradeAssessmentQuestion {
   keyApprovals GradeQuestionKeyApproval[]
-  groupId     String?                       @map("group_id") @db.Uuid
-  layoutOrder Int?                          @map("layout_order")
-  group       GradeAssessmentQuestionGroup? @relation(fields: [groupId, schoolId, assessmentId], references: [id, schoolId, assessmentId], onDelete: Restrict, onUpdate: Restrict, map: "grade_group_question_fk")
+  groupId      String?                       @map("group_id") @db.Uuid
+  layoutOrder  Int?                          @map("layout_order")
+  group        GradeAssessmentQuestionGroup? @relation(fields: [groupId, schoolId, assessmentId], references: [id, schoolId, assessmentId], onDelete: Restrict, onUpdate: Restrict, map: "grade_group_question_fk")
 
   id            String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   schoolId      String            @map("school_id") @db.Uuid
@@ -5743,23 +5743,23 @@ model GradeSubmission {
 
 model GradeSubmissionAnswer {
   scoringSuggestions GradeScoringSuggestion[]
-  id                String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schoolId          String                      @map("school_id") @db.Uuid
-  submissionId      String                      @map("submission_id") @db.Uuid
-  assessmentId      String                      @map("assessment_id") @db.Uuid
-  questionId        String                      @map("question_id") @db.Uuid
-  studentId         String                      @map("student_id") @db.Uuid
-  answerText        String?                     @map("answer_text")
-  answerJson        Json?                       @map("answer_json")
-  correctionStatus  GradeAnswerCorrectionStatus @default(PENDING) @map("correction_status")
-  awardedPoints     Decimal?                    @map("awarded_points") @db.Decimal(8, 2)
-  maxPoints         Decimal?                    @map("max_points") @db.Decimal(8, 2)
-  reviewerComment   String?                     @map("reviewer_comment")
-  reviewerCommentAr String?                     @map("reviewer_comment_ar")
-  reviewedById      String?                     @map("reviewed_by_id") @db.Uuid
-  reviewedAt        DateTime?                   @map("reviewed_at")
-  createdAt         DateTime                    @default(now()) @map("created_at")
-  updatedAt         DateTime                    @updatedAt @map("updated_at")
+  id                 String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId           String                      @map("school_id") @db.Uuid
+  submissionId       String                      @map("submission_id") @db.Uuid
+  assessmentId       String                      @map("assessment_id") @db.Uuid
+  questionId         String                      @map("question_id") @db.Uuid
+  studentId          String                      @map("student_id") @db.Uuid
+  answerText         String?                     @map("answer_text")
+  answerJson         Json?                       @map("answer_json")
+  correctionStatus   GradeAnswerCorrectionStatus @default(PENDING) @map("correction_status")
+  awardedPoints      Decimal?                    @map("awarded_points") @db.Decimal(8, 2)
+  maxPoints          Decimal?                    @map("max_points") @db.Decimal(8, 2)
+  reviewerComment    String?                     @map("reviewer_comment")
+  reviewerCommentAr  String?                     @map("reviewer_comment_ar")
+  reviewedById       String?                     @map("reviewed_by_id") @db.Uuid
+  reviewedAt         DateTime?                   @map("reviewed_at")
+  createdAt          DateTime                    @default(now()) @map("created_at")
+  updatedAt          DateTime                    @updatedAt @map("updated_at")
 
   school          School                        @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   submission      GradeSubmission               @relation(fields: [submissionId, schoolId], references: [id, schoolId], onDelete: Restrict)
@@ -8417,16 +8417,16 @@ enum GradeReviewReleaseLevel {
 }
 
 model GradeReviewReleasePolicy {
-  id              String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schoolId        String                  @map("school_id") @db.Uuid
-  assessmentId    String                  @map("assessment_id") @db.Uuid
-  studentLevel    GradeReviewReleaseLevel @default(NONE) @map("student_level")
-  parentLevel     GradeReviewReleaseLevel @default(NONE) @map("parent_level")
-  version         Int                     @default(1)
-  lastRequestId   String                  @map("last_request_id") @db.Uuid
-  changedById     String                  @map("changed_by_id") @db.Uuid
-  createdAt       DateTime                @default(now()) @map("created_at")
-  updatedAt       DateTime                @updatedAt @map("updated_at")
+  id            String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId      String                  @map("school_id") @db.Uuid
+  assessmentId  String                  @map("assessment_id") @db.Uuid
+  studentLevel  GradeReviewReleaseLevel @default(NONE) @map("student_level")
+  parentLevel   GradeReviewReleaseLevel @default(NONE) @map("parent_level")
+  version       Int                     @default(1)
+  lastRequestId String                  @map("last_request_id") @db.Uuid
+  changedById   String                  @map("changed_by_id") @db.Uuid
+  createdAt     DateTime                @default(now()) @map("created_at")
+  updatedAt     DateTime                @updatedAt @map("updated_at")
 
   school     School          @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   assessment GradeAssessment @relation(fields: [assessmentId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
@@ -8451,10 +8451,10 @@ model GradeQuestionKeyApproval {
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
-  school      School                  @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  question    GradeAssessmentQuestion @relation(fields: [questionId, schoolId, assessmentId], references: [id, schoolId, assessmentId], onDelete: Restrict, onUpdate: Restrict)
-  approvedBy  User                    @relation("GradeKeyApprovedBy", fields: [approvedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  revokedBy   User?                   @relation("GradeKeyRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  school      School                   @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  question    GradeAssessmentQuestion  @relation(fields: [questionId, schoolId, assessmentId], references: [id, schoolId, assessmentId], onDelete: Restrict, onUpdate: Restrict)
+  approvedBy  User                     @relation("GradeKeyApprovedBy", fields: [approvedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  revokedBy   User?                    @relation("GradeKeyRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
   suggestions GradeScoringSuggestion[]
 
   @@unique([id, schoolId, questionId, assessmentId, questionFingerprint])
@@ -8466,39 +8466,39 @@ model GradeQuestionKeyApproval {
 }
 
 model GradeScoringSuggestion {
-  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schoolId             String   @map("school_id") @db.Uuid
-  answerId             String   @map("answer_id") @db.Uuid
-  submissionId         String   @map("submission_id") @db.Uuid
-  assessmentId         String   @map("assessment_id") @db.Uuid
-  questionId           String   @map("question_id") @db.Uuid
-  studentId            String   @map("student_id") @db.Uuid
-  keyApprovalId        String?  @map("key_approval_id") @db.Uuid
-  questionFingerprint  String   @map("question_fingerprint") @db.Char(64)
-  answerFingerprint    String   @map("answer_fingerprint") @db.Char(64)
-  fingerprint          String   @db.Char(64)
-  evaluationVersion    String   @map("evaluation_version") @db.VarChar(64)
-  policyVersion        Int      @map("policy_version")
-  outcome              String   @db.VarChar(64)
-  reason               String   @db.VarChar(64)
-  suggestedPoints      Decimal? @map("suggested_points") @db.Decimal(8, 2)
-  maxPoints            Decimal  @map("max_points") @db.Decimal(8, 2)
-  manualReviewRequired Boolean  @map("manual_review_required")
-  evaluatedById        String   @map("evaluated_by_id") @db.Uuid
-  appliedAt            DateTime? @map("applied_at")
-  appliedById          String?   @map("applied_by_id") @db.Uuid
-  appliedPoints        Decimal? @map("applied_points") @db.Decimal(8, 2)
-  decision             String?  @db.VarChar(16)
-  overrideReason       String?  @map("override_reason") @db.VarChar(64)
-  previousAwardedPoints Decimal? @map("previous_awarded_points") @db.Decimal(8, 2)
-  createdAt            DateTime @default(now()) @map("created_at")
-  updatedAt            DateTime @updatedAt @map("updated_at")
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId              String    @map("school_id") @db.Uuid
+  answerId              String    @map("answer_id") @db.Uuid
+  submissionId          String    @map("submission_id") @db.Uuid
+  assessmentId          String    @map("assessment_id") @db.Uuid
+  questionId            String    @map("question_id") @db.Uuid
+  studentId             String    @map("student_id") @db.Uuid
+  keyApprovalId         String?   @map("key_approval_id") @db.Uuid
+  questionFingerprint   String    @map("question_fingerprint") @db.Char(64)
+  answerFingerprint     String    @map("answer_fingerprint") @db.Char(64)
+  fingerprint           String    @db.Char(64)
+  evaluationVersion     String    @map("evaluation_version") @db.VarChar(64)
+  policyVersion         Int       @map("policy_version")
+  outcome               String    @db.VarChar(64)
+  reason                String    @db.VarChar(64)
+  suggestedPoints       Decimal?  @map("suggested_points") @db.Decimal(8, 2)
+  maxPoints             Decimal   @map("max_points") @db.Decimal(8, 2)
+  manualReviewRequired  Boolean   @map("manual_review_required")
+  evaluatedById         String    @map("evaluated_by_id") @db.Uuid
+  appliedAt             DateTime? @map("applied_at")
+  appliedById           String?   @map("applied_by_id") @db.Uuid
+  appliedPoints         Decimal?  @map("applied_points") @db.Decimal(8, 2)
+  decision              String?   @db.VarChar(16)
+  overrideReason        String?   @map("override_reason") @db.VarChar(64)
+  previousAwardedPoints Decimal?  @map("previous_awarded_points") @db.Decimal(8, 2)
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
 
   school      School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   answer      GradeSubmissionAnswer     @relation(fields: [answerId, schoolId, submissionId, questionId, studentId, assessmentId], references: [id, schoolId, submissionId, questionId, studentId, assessmentId], onDelete: Restrict, onUpdate: Restrict)
   keyApproval GradeQuestionKeyApproval? @relation(fields: [keyApprovalId, schoolId, questionId, assessmentId, questionFingerprint], references: [id, schoolId, questionId, assessmentId, questionFingerprint], onDelete: Restrict, onUpdate: Restrict)
-  evaluatedBy User                     @relation("GradeScoringEvaluatedBy", fields: [evaluatedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  appliedBy   User?                    @relation("GradeScoringAppliedBy", fields: [appliedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  evaluatedBy User                      @relation("GradeScoringEvaluatedBy", fields: [evaluatedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  appliedBy   User?                     @relation("GradeScoringAppliedBy", fields: [appliedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([schoolId, answerId, fingerprint])
   @@index([answerId, schoolId, submissionId, questionId, studentId, assessmentId])

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import { PLATFORM_ADMIN_ROLE_CODE } from '../../../platform-admin/bootstrap/platform-admin-bootstrap.constants';
 import { PERMISSIONS } from '../permission-catalog';
@@ -28,73 +29,85 @@ export class AuthorizationReferenceDataRepository {
   }
 
   async verify(): Promise<AuthorizationReferenceDataVerification> {
-    const canonicalPermissionCodes = PERMISSIONS.map(
-      (permission) => permission.code,
-    );
-    const canonicalRoleKeys = SYSTEM_ROLES.map((role) => role.key);
+    return verifyAuthorizationReferenceData(this.prisma);
+  }
+}
 
-    const [
-      canonicalPermissions,
-      permissionCount,
-      canonicalRoles,
-      systemRoleCount,
-    ] = await Promise.all([
-      this.prisma.permission.findMany({
-        where: { code: { in: canonicalPermissionCodes } },
-        select: {
-          code: true,
-          module: true,
-          resource: true,
-          action: true,
-          description: true,
+/** The same exact canonical contract applies inside initial-admin transactions. */
+export async function verifyAuthorizationReferenceData(
+  prisma: Pick<Prisma.TransactionClient, 'permission' | 'role'>,
+): Promise<AuthorizationReferenceDataVerification> {
+  const canonicalPermissionCodes = PERMISSIONS.map(
+    (permission) => permission.code,
+  );
+  const canonicalRoleKeys = SYSTEM_ROLES.map((role) => role.key);
+
+  const [
+    canonicalPermissions,
+    permissionCount,
+    canonicalRoles,
+    systemRoleCount,
+  ] = await Promise.all([
+    prisma.permission.findMany({
+      where: { code: { in: canonicalPermissionCodes } },
+      select: {
+        code: true,
+        module: true,
+        resource: true,
+        action: true,
+        description: true,
+      },
+    }),
+    prisma.permission.count(),
+    prisma.role.findMany({
+      where: {
+        key: { in: canonicalRoleKeys },
+        schoolId: null,
+        isSystem: true,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        key: true,
+        name: true,
+        description: true,
+        rolePermissions: {
+          select: { permission: { select: { code: true } } },
         },
-      }),
-      this.prisma.permission.count(),
-      this.prisma.role.findMany({
-        where: {
-          key: { in: canonicalRoleKeys },
-          schoolId: null,
-          isSystem: true,
-          deletedAt: null,
-        },
-        select: {
-          id: true,
-          key: true,
-          name: true,
-          description: true,
-          rolePermissions: {
-            select: { permission: { select: { code: true } } },
-          },
-        },
-      }),
-      this.prisma.role.count({
-        where: { schoolId: null, isSystem: true, deletedAt: null },
-      }),
-    ]);
+      },
+    }),
+    prisma.role.count({
+      where: { schoolId: null, isSystem: true, deletedAt: null },
+    }),
+  ]);
 
-    const permissionByCode = new Map(
-      canonicalPermissions.map((permission) => [permission.code, permission]),
-    );
-    const permissionsReady =
-      canonicalPermissions.length === PERMISSIONS.length &&
-      PERMISSIONS.every((definition) => {
-        const permission = permissionByCode.get(definition.code);
-        return (
-          permission?.module === definition.module &&
-          permission.resource === definition.resource &&
-          permission.action === definition.action &&
-          permission.description === definition.description
-        );
-      });
+  const permissionByCode = new Map(
+    canonicalPermissions.map((permission) => [permission.code, permission]),
+  );
+  const permissionsReady =
+    permissionCount === PERMISSIONS.length &&
+    new Set(canonicalPermissionCodes).size === PERMISSIONS.length &&
+    canonicalPermissions.length === PERMISSIONS.length &&
+    PERMISSIONS.every((definition) => {
+      const permission = permissionByCode.get(definition.code);
+      return (
+        permission?.module === definition.module &&
+        permission.resource === definition.resource &&
+        permission.action === definition.action &&
+        permission.description === definition.description
+      );
+    });
 
-    const rolesByKey = new Map<string, (typeof canonicalRoles)[number][]>();
-    for (const role of canonicalRoles) {
-      const matchingRoles = rolesByKey.get(role.key) ?? [];
-      matchingRoles.push(role);
-      rolesByKey.set(role.key, matchingRoles);
-    }
+  const rolesByKey = new Map<string, (typeof canonicalRoles)[number][]>();
+  for (const role of canonicalRoles) {
+    const matchingRoles = rolesByKey.get(role.key) ?? [];
+    matchingRoles.push(role);
+    rolesByKey.set(role.key, matchingRoles);
+  }
 
-    const systemRolesReady = SYSTEM_ROLES.every((definition) => {
+  const systemRolesReady =
+    systemRoleCount === SYSTEM_ROLES.length &&
+    SYSTEM_ROLES.every((definition) => {
       const matchingRoles = rolesByKey.get(definition.key) ?? [];
       if (matchingRoles.length !== 1) return false;
 
@@ -109,31 +122,29 @@ export class AuthorizationReferenceDataRepository {
       );
     });
 
-    const platformRoles = rolesByKey.get(PLATFORM_ADMIN_ROLE_CODE) ?? [];
-    const platformRole = platformRoles.length === 1 ? platformRoles[0] : null;
-    const platformPermissionCodes =
-      platformRole?.rolePermissions.map(
-        (rolePermission) => rolePermission.permission.code,
-      ) ?? [];
-    const platformSuperAdminPermissionCount = platformPermissionCodes.length;
-    const platformSuperAdminReady =
-      platformRole !== null &&
-      permissionCount > 0 &&
-      platformSuperAdminPermissionCount === permissionCount &&
-      canonicalPermissionCodes.every((code) =>
-        platformPermissionCodes.includes(code),
-      );
+  const platformRoles = rolesByKey.get(PLATFORM_ADMIN_ROLE_CODE) ?? [];
+  const platformRole = platformRoles.length === 1 ? platformRoles[0] : null;
+  const platformPermissionCodes =
+    platformRole?.rolePermissions.map(
+      (rolePermission) => rolePermission.permission.code,
+    ) ?? [];
+  const platformSuperAdminPermissionCount = platformPermissionCodes.length;
+  const defaultPlatformPermissions = SYSTEM_ROLES.find(
+    (role) => role.key === PLATFORM_ADMIN_ROLE_CODE,
+  )!.permissions;
+  const platformSuperAdminReady =
+    platformRole !== null &&
+    sameValues(platformPermissionCodes, defaultPlatformPermissions);
 
-    return {
-      ready: permissionsReady && systemRolesReady && platformSuperAdminReady,
-      permissionsReady,
-      systemRolesReady,
-      platformSuperAdminReady,
-      permissionCount,
-      systemRoleCount,
-      platformSuperAdminPermissionCount,
-    };
-  }
+  return {
+    ready: permissionsReady && systemRolesReady && platformSuperAdminReady,
+    permissionsReady,
+    systemRolesReady,
+    platformSuperAdminReady,
+    permissionCount,
+    systemRoleCount,
+    platformSuperAdminPermissionCount,
+  };
 }
 
 function sameValues(
@@ -144,6 +155,7 @@ function sameValues(
   const actualValues = new Set(actual);
   return (
     actualValues.size === actual.length &&
+    new Set(expected).size === expected.length &&
     expected.every((value) => actualValues.has(value))
   );
 }

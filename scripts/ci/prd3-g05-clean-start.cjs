@@ -1,5 +1,8 @@
 'use strict';
 
+// Read the same canonical TypeScript catalogs used by the approved seed functions.
+require('ts-node/register/transpile-only');
+
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -9,6 +12,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { isDeepStrictEqual } = require('node:util');
 const { resolveCiParentRunId } = require('./ci-parent-run-id.cjs');
+const { loadProductionContracts } = require('./ci-fixture-contract.cjs');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
 const BASE_SHA = '10be00c51eba72bbdfe9591eb0e00399402100ef';
@@ -35,7 +39,7 @@ const VERIFICATION_MODES = Object.freeze({
   REGRESSION: 'regression',
   CURRENT_CI: 'current-ci',
 });
-const FOCUSED_TEST_COUNT = 22;
+const FOCUSED_TEST_COUNT = 23;
 const CURRENT_CI_SKIPPED_TEST_COUNT = 8;
 const ROLE_BOOTSTRAP_PATH = path.join(
   REPOSITORY_ROOT,
@@ -868,13 +872,27 @@ function provePostSeedRowScope() {
     )
     .reduce((total, [, count]) => total + count, 0);
 
-  assert.equal(permissionCount, 243);
+  assert.equal(permissionCount, 244);
   assert.equal(systemRoleCount, 7);
   assert.equal(rolePermissionCount, 874);
   assert.equal(userCount, 0);
   assert.equal(organizationCount, 0);
   assert.equal(schoolCount, 0);
   assert.equal(allOtherBusinessRowTotal, 0);
+  assertCanonicalSeedPermissions(
+    JSON.parse(
+      queryScalar(
+        DATABASE_NAME,
+        'SELECT json_agg(code ORDER BY code) FROM public.permissions',
+      ),
+    ),
+    JSON.parse(
+      queryScalar(
+        DATABASE_NAME,
+        `SELECT json_agg(json_build_object('key', r.key, 'permissions', COALESCE((SELECT json_agg(p.code ORDER BY p.code) FROM public.role_permissions rp JOIN public.permissions p ON p.id=rp.permission_id WHERE rp.role_id=r.id), '[]'::json)) ORDER BY r.key) FROM public.roles r WHERE r.is_system=true AND r.school_id IS NULL AND r.deleted_at IS NULL`,
+      ),
+    ),
+  );
   return {
     nonzeroApplicationTables: ['Permission', 'Role', 'RolePermission'],
     nonzeroMetadataTables: ['_prisma_migrations'],
@@ -886,6 +904,32 @@ function provePostSeedRowScope() {
     schoolCount,
     allOtherBusinessRowTotal,
   };
+}
+
+function assertCanonicalSeedPermissions(permissionCodes, roles) {
+  const production = loadProductionContracts(REPOSITORY_ROOT);
+  assert.deepEqual(
+    [...permissionCodes].sort(),
+    [...production.permissionCodes].sort(),
+  );
+  assert.equal(
+    permissionCodes.filter((code) => code === 'grades.teacher_authoring.manage')
+      .length,
+    1,
+  );
+  const grants = (values) =>
+    values
+      .map((role) => ({
+        key: role.key,
+        permissions: [...role.permissions].sort(),
+      }))
+      .sort((a, b) => a.key.localeCompare(b.key));
+  assert.deepEqual(grants(roles), grants(production.systemRoles));
+  assert.ok(
+    roles.every(
+      (role) => !role.permissions.includes('grades.teacher_authoring.manage'),
+    ),
+  );
 }
 
 function cleanupOwnedResources() {
@@ -1065,6 +1109,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  assertCanonicalSeedPermissions,
   ALLOWED_NONZERO_APPLICATION_TABLES,
   BASE_SHA,
   CURRENT_CI_SKIPPED_TEST_COUNT,

@@ -40,6 +40,9 @@ const EXPECTED_ROLE_GRANT_COUNT = SYSTEM_ROLES.reduce(
   (count, role) => count + role.permissions.length,
   0,
 );
+const DEFAULT_PLATFORM_PERMISSIONS = requireCanonicalRole(
+  PLATFORM_ADMIN_ROLE_CODE,
+).permissions;
 
 describe('authorization reference-data bootstrap (integration)', () => {
   const prisma = new PrismaClient();
@@ -234,7 +237,7 @@ describe('authorization reference-data bootstrap (integration)', () => {
       platformSuperAdminReady: true,
       permissionCount: PERMISSIONS.length,
       systemRoleCount: SYSTEM_ROLES.length,
-      platformSuperAdminPermissionCount: PERMISSIONS.length,
+      platformSuperAdminPermissionCount: DEFAULT_PLATFORM_PERMISSIONS.length,
       userMutation: false,
     });
     await expectCanonicalReferenceData();
@@ -279,12 +282,12 @@ describe('authorization reference-data bootstrap (integration)', () => {
     const verification = await repository.verify();
     expect(verification).toEqual({
       ready: false,
-      permissionsReady: true,
+      permissionsReady: false,
       systemRolesReady: true,
-      platformSuperAdminReady: false,
+      platformSuperAdminReady: true,
       permissionCount: PERMISSIONS.length + 1,
       systemRoleCount: SYSTEM_ROLES.length,
-      platformSuperAdminPermissionCount: PERMISSIONS.length,
+      platformSuperAdminPermissionCount: DEFAULT_PLATFORM_PERMISSIONS.length,
     });
 
     let userCreateAttempted = false;
@@ -594,7 +597,7 @@ describe('authorization reference-data bootstrap (integration)', () => {
       platformSuperAdminReady: true,
       permissionCount: PERMISSIONS.length,
       systemRoleCount: SYSTEM_ROLES.length,
-      platformSuperAdminPermissionCount: PERMISSIONS.length,
+      platformSuperAdminPermissionCount: DEFAULT_PLATFORM_PERMISSIONS.length,
     });
   }
 });

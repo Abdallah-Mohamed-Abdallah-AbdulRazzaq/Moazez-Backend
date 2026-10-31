@@ -1,3 +1,15 @@
+import { expectSt12SurfaceMetadata } from '../fixtures/st12-contract-expectations';
+import { TeacherGradeAuthoringController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-authoring.controller';
+import { TeacherGradeAuthoringUploadsController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-authoring-uploads.controller';
+import { TeacherGradeAuthoringAssessmentAssetsController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-authoring-assessment-assets.controller';
+import { TeacherGradeAuthoringQuestionAssetsController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-authoring-question-assets.controller';
+import { TeacherGradeAuthoringGroupsController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-authoring-groups.controller';
+import { TeacherGradeScoringController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-scoring.controller';
+import {
+  ST12_TEACHER_ROUTES,
+  expectSt12TeacherMetadata,
+  expectDefaultPermissionContract,
+} from '../fixtures/st12-contract-expectations';
 import { TeacherHomeworkQuestionGroupsController } from '../../src/modules/teacher-app/homeworks/controller/teacher-homework-question-groups.controller';
 import { TeacherGradeQuestionGroupsController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-question-groups.controller';
 import {
@@ -262,6 +274,12 @@ const FORBIDDEN_TEACHER_ROUTE_PERMISSIONS = [
 ] as const;
 
 const TEACHER_APP_CONTROLLER_CLASSES = [
+  TeacherGradeAuthoringController,
+  TeacherGradeAuthoringUploadsController,
+  TeacherGradeAuthoringAssessmentAssetsController,
+  TeacherGradeAuthoringQuestionAssetsController,
+  TeacherGradeAuthoringGroupsController,
+  TeacherGradeScoringController,
   TeacherHomeController,
   TeacherMyClassesController,
   TeacherClassroomController,
@@ -697,8 +715,21 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
   });
 
   it('verifies the final Teacher App route permission inventory', () => {
+    expectSt12SurfaceMetadata('teacher');
     const routes = listRegisteredTeacherRoutes();
     const inventory = listTeacherRoutePermissionInventory();
+    expectSt12TeacherMetadata(
+      inventory.map((r) => ({
+        controller: r.controllerName,
+        handler: r.methodName,
+        permissions: r.permissions,
+      })),
+    );
+    expect(
+      routes
+        .filter((r) => r.includes('/authoring/') || r.includes('/scoring/'))
+        .sort(),
+    ).toEqual([...ST12_TEACHER_ROUTES].sort());
     const decorated = inventory.filter((entry) => entry.permissions.length > 0);
     const undecorated = inventory.filter(
       (entry) => entry.permissions.length === 0,
@@ -710,17 +741,20 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     expect(routes).toHaveLength(
       189 +
         ST11_TEACHER_ANSWER_MEDIA_ROUTES.length +
-        ST11B_TEACHER_GROUP_ROUTES.length,
+        ST11B_TEACHER_GROUP_ROUTES.length +
+        ST12_TEACHER_ROUTES.length,
     );
     expect(inventory).toHaveLength(
       189 +
         ST11_TEACHER_ANSWER_MEDIA_ROUTES.length +
-        ST11B_TEACHER_GROUP_ROUTES.length,
+        ST11B_TEACHER_GROUP_ROUTES.length +
+        ST12_TEACHER_ROUTES.length,
     );
     expect(decorated).toHaveLength(
       189 +
         ST11_TEACHER_ANSWER_MEDIA_ROUTES.length +
-        ST11B_TEACHER_GROUP_ROUTES.length,
+        ST11B_TEACHER_GROUP_ROUTES.length +
+        ST12_TEACHER_ROUTES.length,
     );
     for (const handler of ['content', 'publication']) {
       expect(
@@ -936,7 +970,16 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
   });
 
   it('verifies the final Teacher role, catalog, Parent role, and Student role state', async () => {
-    expect(await prisma.permission.count()).toBe(243);
+    expect(await prisma.permission.count()).toBe(244);
+    expectDefaultPermissionContract();
+    expect(
+      await prisma.rolePermission.count({
+        where: {
+          role: { isSystem: true, schoolId: null },
+          permission: { code: 'grades.teacher_authoring.manage' },
+        },
+      }),
+    ).toBe(0);
     const dashboardTodoCatalogCodes = await prisma.permission.findMany({
       where: {
         code: {
@@ -2467,7 +2510,7 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
         .map(({ methodName, handler }) => ({
           controllerName: controller.name,
           methodName,
-          permissions: readHandlerPermissions(handler),
+          permissions: readHandlerPermissions(handler, controller),
         })),
     ).sort((left, right) =>
       `${left.controllerName}.${left.methodName}`.localeCompare(
@@ -2483,23 +2526,18 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     return readHandlerPermissions(getControllerHandler(controller, methodName));
   }
 
-  function readHandlerPermissions(handler: unknown): string[] {
-    if (typeof handler !== 'function') {
-      throw new Error('Expected a controller handler function');
-    }
-
-    const permissions: unknown =
-      Reflect.getMetadata(REQUIRED_PERMISSIONS_METADATA, handler) ?? [];
-    if (
-      !Array.isArray(permissions) ||
-      !permissions.every(
-        (permission: unknown) => typeof permission === 'string',
-      )
-    ) {
-      throw new Error('Expected controller permissions to be a string array');
-    }
-
-    return permissions;
+  function readHandlerPermissions(
+    handler: unknown,
+    controller?: object,
+  ): string[] {
+    return (Reflect.getMetadata(
+      REQUIRED_PERMISSIONS_METADATA,
+      handler as object,
+    ) ??
+      (controller
+        ? Reflect.getMetadata(REQUIRED_PERMISSIONS_METADATA, controller)
+        : undefined) ??
+      []) as string[];
   }
 
   function getControllerHandler(

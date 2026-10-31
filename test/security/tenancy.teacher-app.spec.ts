@@ -1,3 +1,4 @@
+import { expectDefaultPermissionContract } from '../fixtures/st12-contract-expectations';
 import { TeacherGradeQuestionGroupsController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-question-groups.controller';
 import { TeacherHomeworkQuestionGroupsController } from '../../src/modules/teacher-app/homeworks/controller/teacher-homework-question-groups.controller';
 import { TeacherGradeAnswerMediaController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-answer-media.controller';
@@ -1564,7 +1565,8 @@ describe('Teacher role seed integrity (security)', () => {
       'STUDENT_PERMISSIONS',
     );
 
-    expect(catalogCodes).toHaveLength(243);
+    expect(catalogCodes).toHaveLength(244);
+    expectDefaultPermissionContract();
     expect(catalogCodeSet.size).toBe(catalogCodes.length);
     expect(catalogCodes).toEqual(
       expect.arrayContaining(Array.from(TEACHER_PERM_1A_CATALOG_ADDITIONS)),

@@ -1,3 +1,4 @@
+import { expectDefaultPermissionContract } from '../fixtures/st12-contract-expectations';
 import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -396,7 +397,7 @@ describe('Dashboard LightModeDropdown tenancy/security contracts', () => {
     expect(permissionsSeed).toContain("'dashboard.todos.view'");
     expect(permissionsSeed).toContain("'dashboard.todos.manage'");
     expect(permissionsSeed).toContain("resource: 'todos'");
-    expect(rolesSeed).toContain('const ALL = PERMISSION_CODES;');
+    expectDefaultPermissionContract();
     expect(rolesSeed).toContain('const NON_PLATFORM = ALL.filter');
     expect(rolesSeed).toContain('const SCHOOL_LEVEL = NON_PLATFORM;');
     expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
