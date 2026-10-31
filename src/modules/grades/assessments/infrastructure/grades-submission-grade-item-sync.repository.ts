@@ -2,11 +2,15 @@ import {
   gradeSubmissionAccessWhere,
   gradeItemAccessWhere,
   assertGradeItemWriteAccess,
+  assertGradeSubmissionAccess,
+  assertGradeLiveMutationPermission,
 } from './grades-resource-access';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import { GradeItemUpsertPayload } from '../domain/grade-item-entry-domain';
+import { requireGradesScope } from '../../grades-context';
+import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 
 const SUBMISSION_FOR_GRADE_ITEM_SYNC_ARGS =
   Prisma.validator<Prisma.GradeSubmissionDefaultArgs>()({
@@ -95,28 +99,79 @@ export class GradesSubmissionGradeItemSyncRepository {
     return this.prisma.scoped as unknown as PrismaService;
   }
 
+  /** Serialize current review/lifecycle, the existing GradeItem and its audit. */
+  async withSyncTransaction<T>(
+    submissionId: string,
+    operation: (transaction: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    return this.scopedPrisma.$transaction(
+      async (tx) => {
+        await assertGradeLiveMutationPermission(tx, 'grades.items.manage');
+        // The existing access predicate holds Teacher allocation rows before parent locks.
+        await assertGradeSubmissionAccess(tx, submissionId);
+        const reference = await tx.gradeSubmission.findFirst({
+          where: { id: submissionId },
+          select: { assessmentId: true, studentId: true },
+        });
+        if (!reference)
+          throw new NotFoundDomainException('Grade submission not found');
+        const { schoolId } = requireGradesScope();
+        const assessments = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM grade_assessments
+        WHERE id=${reference.assessmentId}::uuid AND school_id=${schoolId}::uuid
+          AND deleted_at IS NULL FOR UPDATE
+      `;
+        if (!assessments.length)
+          throw new NotFoundDomainException('Grade assessment not found');
+        const submissions = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT g.id FROM grade_submissions g
+        JOIN grade_assessments a ON a.id=g.assessment_id AND a.school_id=g.school_id
+        JOIN students s ON s.id=g.student_id AND s.school_id=g.school_id
+        JOIN student_enrollments e ON e.id=g.enrollment_id AND e.student_id=s.id AND e.school_id=g.school_id
+        JOIN terms t ON t.id=a.term_id AND t.school_id=g.school_id
+        WHERE g.id=${submissionId}::uuid AND g.school_id=${schoolId}::uuid
+        FOR UPDATE OF g FOR SHARE OF s, e, t
+      `;
+        if (!submissions.length)
+          throw new NotFoundDomainException('Grade submission not found');
+        await assertGradeSubmissionAccess(tx, submissionId);
+        await tx.$queryRaw`
+        SELECT id FROM grade_items WHERE school_id=${schoolId}::uuid
+          AND assessment_id=${reference.assessmentId}::uuid
+          AND student_id=${reference.studentId}::uuid FOR UPDATE
+      `;
+        return operation(tx);
+      },
+      { maxWait: 5000, timeout: 5000 },
+    );
+  }
+
   async findSubmissionForGradeItemSync(
     submissionId: string,
+    client: Prisma.TransactionClient = this.scopedPrisma,
   ): Promise<GradeSubmissionForGradeItemSyncRecord | null> {
-    return this.scopedPrisma.gradeSubmission.findFirst({
+    return client.gradeSubmission.findFirst({
       where: {
         id: submissionId,
         assessment: { deletedAt: null },
-        AND: [await gradeSubmissionAccessWhere(this.scopedPrisma)],
+        AND: [await gradeSubmissionAccessWhere(client)],
       },
       ...SUBMISSION_FOR_GRADE_ITEM_SYNC_ARGS,
     });
   }
 
-  async findGradeItemForSubmission(params: {
-    assessmentId: string;
-    studentId: string;
-  }): Promise<GradeItemSyncRecord | null> {
-    return this.scopedPrisma.gradeItem.findFirst({
+  async findGradeItemForSubmission(
+    params: {
+      assessmentId: string;
+      studentId: string;
+    },
+    client: Prisma.TransactionClient = this.scopedPrisma,
+  ): Promise<GradeItemSyncRecord | null> {
+    return client.gradeItem.findFirst({
       where: {
         assessmentId: params.assessmentId,
         studentId: params.studentId,
-        AND: [await gradeItemAccessWhere(this.scopedPrisma)],
+        AND: [await gradeItemAccessWhere(client)],
       },
       ...GRADE_ITEM_SYNC_ARGS,
     });
@@ -124,21 +179,20 @@ export class GradesSubmissionGradeItemSyncRepository {
 
   async upsertGradeItemFromSubmission(
     input: GradeItemUpsertPayload,
+    tx: Prisma.TransactionClient,
   ): Promise<GradeItemSyncRecord> {
-    return this.scopedPrisma.$transaction(async (tx) => {
-      await assertGradeItemWriteAccess(tx, input);
-      return tx.gradeItem.upsert({
-        where: {
-          schoolId_assessmentId_studentId: {
-            schoolId: input.schoolId,
-            assessmentId: input.assessmentId,
-            studentId: input.studentId,
-          },
+    await assertGradeItemWriteAccess(tx, input);
+    return tx.gradeItem.upsert({
+      where: {
+        schoolId_assessmentId_studentId: {
+          schoolId: input.schoolId,
+          assessmentId: input.assessmentId,
+          studentId: input.studentId,
         },
-        create: this.buildGradeItemCreateInput(input),
-        update: this.buildGradeItemUpdateInput(input),
-        ...GRADE_ITEM_SYNC_ARGS,
-      });
+      },
+      create: this.buildGradeItemCreateInput(input),
+      update: this.buildGradeItemUpdateInput(input),
+      ...GRADE_ITEM_SYNC_ARGS,
     });
   }
 

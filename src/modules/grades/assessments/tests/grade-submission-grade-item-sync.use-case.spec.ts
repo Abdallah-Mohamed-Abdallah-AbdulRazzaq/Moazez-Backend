@@ -26,6 +26,7 @@ const SUBMISSION_ID = 'submission-1';
 const STUDENT_ID = 'student-1';
 const ENROLLMENT_ID = 'enrollment-1';
 const TERM_ID = 'term-1';
+const TRANSACTION = {} as Prisma.TransactionClient;
 
 describe('SyncGradeSubmissionToGradeItemUseCase', () => {
   async function withGradesReviewScope<T>(fn: () => Promise<T>): Promise<T> {
@@ -170,6 +171,14 @@ describe('SyncGradeSubmissionToGradeItemUseCase', () => {
 
   function repository(overrides?: Partial<Record<string, jest.Mock>>) {
     return {
+      withSyncTransaction: jest.fn(
+        (
+          _submissionId: string,
+          operation: (
+            transaction: Prisma.TransactionClient,
+          ) => Promise<unknown>,
+        ) => operation(TRANSACTION),
+      ),
       findSubmissionForGradeItemSync: jest
         .fn()
         .mockResolvedValue(submissionRecord()),
@@ -216,6 +225,7 @@ describe('SyncGradeSubmissionToGradeItemUseCase', () => {
         enteredById: 'reviewer-1',
         enteredAt: expect.any(Date),
       }),
+      TRANSACTION,
     );
     expect(result).toMatchObject({
       synced: true,
@@ -262,6 +272,7 @@ describe('SyncGradeSubmissionToGradeItemUseCase', () => {
         status: GradeItemStatus.ENTERED,
         enteredAt: existingEnteredAt,
       }),
+      TRANSACTION,
     );
     expect(result.idempotent).toBe(true);
   });
@@ -285,28 +296,29 @@ describe('SyncGradeSubmissionToGradeItemUseCase', () => {
 
     expect(repo.upsertGradeItemFromSubmission).toHaveBeenCalledWith(
       expect.objectContaining({ score: 8 }),
+      TRANSACTION,
     );
   });
 
-  it.each([
-    GradeSubmissionStatus.IN_PROGRESS,
-    GradeSubmissionStatus.SUBMITTED,
-  ])('rejects %s submissions', async (status) => {
-    const repo = repository({
-      findSubmissionForGradeItemSync: jest
-        .fn()
-        .mockResolvedValue(submissionRecord({ status })),
-    });
-    const useCase = new SyncGradeSubmissionToGradeItemUseCase(
-      repo,
-      authRepository(),
-    );
+  it.each([GradeSubmissionStatus.IN_PROGRESS, GradeSubmissionStatus.SUBMITTED])(
+    'rejects %s submissions',
+    async (status) => {
+      const repo = repository({
+        findSubmissionForGradeItemSync: jest
+          .fn()
+          .mockResolvedValue(submissionRecord({ status })),
+      });
+      const useCase = new SyncGradeSubmissionToGradeItemUseCase(
+        repo,
+        authRepository(),
+      );
 
-    await expect(
-      withGradesReviewScope(() => useCase.execute(SUBMISSION_ID)),
-    ).rejects.toMatchObject({ code: 'grades.submission.not_submitted' });
-    expect(repo.upsertGradeItemFromSubmission).not.toHaveBeenCalled();
-  });
+      await expect(
+        withGradesReviewScope(() => useCase.execute(SUBMISSION_ID)),
+      ).rejects.toMatchObject({ code: 'grades.submission.not_submitted' });
+      expect(repo.upsertGradeItemFromSubmission).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects SCORE_ONLY assessments', async () => {
     const repo = repository({
@@ -413,6 +425,10 @@ describe('SyncGradeSubmissionToGradeItemUseCase', () => {
 
     await withGradesReviewScope(() => useCase.execute(SUBMISSION_ID));
 
+    expect(repo.withSyncTransaction).toHaveBeenCalledWith(
+      SUBMISSION_ID,
+      expect.any(Function),
+    );
     expect(auth.createAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'grades.submission.grade_item.sync',
@@ -430,6 +446,7 @@ describe('SyncGradeSubmissionToGradeItemUseCase', () => {
           }),
         }),
       }),
+      TRANSACTION,
     );
   });
 });

@@ -1045,6 +1045,9 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
     ['test/e2e/st12-review-release.e2e-spec.ts', 'e2e'],
     ['test/e2e/st12-grades-scoring.e2e-spec.ts', 'e2e'],
   ];
+  const st13Files = [
+    ['test/e2e/st13-certification.e2e-spec.ts', 'e2e'],
+  ];
   assert.equal(
     assignments.length,
     1019 +
@@ -1056,7 +1059,8 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
       st10bFiles.length +
       st11aFiles.length +
       st11bFiles.length +
-      st12Files.length,
+      st12Files.length +
+      st13Files.length,
   );
   assert.equal(
     assignments.filter((item) => item.execution === 'manual').length,
@@ -1073,7 +1077,8 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
       st10bFiles.length +
       st11aFiles.length +
       st11bFiles.length +
-      st12Files.length,
+      st12Files.length +
+      st13Files.length,
   );
   for (const [file, profile] of [
     ['src/common/rich-content/rich-content.spec.ts', 'unit'],
@@ -1090,6 +1095,7 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
     ...st11aFiles,
     ...st11bFiles,
     ...st12Files,
+    ...st13Files,
   ]) {
     const matches = assignments.filter((item) => item.file === file);
     assert.equal(matches.length, 1);

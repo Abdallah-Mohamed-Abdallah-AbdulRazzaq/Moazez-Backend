@@ -23,46 +23,61 @@ export class SyncGradeSubmissionToGradeItemUseCase {
   ) {}
 
   async execute(submissionId: string) {
-    const scope = requireGradesScope();
-    const submission =
-      await this.syncRepository.findSubmissionForGradeItemSync(submissionId);
+    return this.syncRepository.withSyncTransaction(
+      submissionId,
+      async (transaction) => {
+        const scope = requireGradesScope();
+        const submission =
+          await this.syncRepository.findSubmissionForGradeItemSync(
+            submissionId,
+            transaction,
+          );
 
-    if (!submission) {
-      throw new NotFoundDomainException('Grade submission not found', {
-        submissionId,
-      });
-    }
+        if (!submission) {
+          throw new NotFoundDomainException('Grade submission not found', {
+            submissionId,
+          });
+        }
 
-    assertSubmissionSyncableToGradeItem(submission);
+        assertSubmissionSyncableToGradeItem(submission);
 
-    const before = await this.syncRepository.findGradeItemForSubmission({
-      assessmentId: submission.assessmentId,
-      studentId: submission.studentId,
-    });
-    const built = buildGradeItemFromCorrectedSubmission({
-      submission,
-      existing: before,
-      enteredById: scope.actorId,
-      enteredAt: new Date(),
-    });
-    const gradeItem =
-      await this.syncRepository.upsertGradeItemFromSubmission(built.payload);
+        const before = await this.syncRepository.findGradeItemForSubmission(
+          {
+            assessmentId: submission.assessmentId,
+            studentId: submission.studentId,
+          },
+          transaction,
+        );
+        const built = buildGradeItemFromCorrectedSubmission({
+          submission,
+          existing: before,
+          enteredById: scope.actorId,
+          enteredAt: new Date(),
+        });
+        const gradeItem =
+          await this.syncRepository.upsertGradeItemFromSubmission(
+            built.payload,
+            transaction,
+          );
 
-    await this.authRepository.createAuditLog(
-      buildGradeSubmissionGradeItemSyncAuditEntry({
-        scope,
-        submission,
-        before,
-        after: gradeItem,
-      }),
+        await this.authRepository.createAuditLog(
+          buildGradeSubmissionGradeItemSyncAuditEntry({
+            scope,
+            submission,
+            before,
+            after: gradeItem,
+          }),
+          transaction,
+        );
+
+        return presentGradeSubmissionGradeItemSync({
+          submission,
+          gradeItem,
+          synced: true,
+          idempotent: built.idempotent,
+        });
+      },
     );
-
-    return presentGradeSubmissionGradeItemSync({
-      submission,
-      gradeItem,
-      synced: true,
-      idempotent: built.idempotent,
-    });
   }
 }
 

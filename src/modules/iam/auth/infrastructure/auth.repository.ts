@@ -220,22 +220,25 @@ export class AuthRepository {
     });
   }
 
-  createAuditLog(entry: {
-    actorId?: string | null;
-    userType?: UserType | null;
-    organizationId?: string | null;
-    schoolId?: string | null;
-    module: string;
-    action: string;
-    resourceType: string;
-    resourceId?: string | null;
-    outcome: AuditOutcome;
-    ipAddress?: string | null;
-    userAgent?: string | null;
-    before?: Record<string, unknown>;
-    after?: Record<string, unknown>;
-  }): Promise<unknown> {
-    return this.prisma.auditLog.create({
+  createAuditLog(
+    entry: {
+      actorId?: string | null;
+      userType?: UserType | null;
+      organizationId?: string | null;
+      schoolId?: string | null;
+      module: string;
+      action: string;
+      resourceType: string;
+      resourceId?: string | null;
+      outcome: AuditOutcome;
+      ipAddress?: string | null;
+      userAgent?: string | null;
+      before?: Record<string, unknown>;
+      after?: Record<string, unknown>;
+    },
+    client: Pick<Prisma.TransactionClient, 'auditLog'> = this.prisma,
+  ): Promise<unknown> {
+    return client.auditLog.create({
       data: {
         actorId: entry.actorId ?? null,
         userType: entry.userType ?? null,
