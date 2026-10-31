@@ -266,6 +266,12 @@ export async function assertGradeSubmissionAccess(
 }
 
 export function canReadGradeAuthoring(): boolean {
+  const userType = getRequestContext()?.actor?.userType;
+  if (
+    userType !== UserType.SCHOOL_USER &&
+    userType !== UserType.ORGANIZATION_USER
+  )
+    return false;
   return (
     getRequestContext()?.activeMembership?.permissions.includes(
       'grades.questions.manage',

@@ -1,5 +1,11 @@
 # Error Catalog
 
+## ST12 Grades review
+
+| Code | HTTP | Meaning |
+| --- | --- | --- |
+| `grades.review.conflict` | 409 | A bounded reason identifies stale policy/suggestion state, missing finalization/approval/key approval, duplicate application, or a required explicit manual decision. No key, answer, proof or foreign resource value is included. |
+
 ## ST11 multipart question groups
 
 | Code | HTTP | Meaning |

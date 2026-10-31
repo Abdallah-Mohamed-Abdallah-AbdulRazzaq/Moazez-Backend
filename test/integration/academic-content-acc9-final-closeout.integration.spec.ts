@@ -1,4 +1,10 @@
 import {
+  ST12_TEACHER_ROUTES,
+  ST12_TEACHER_CONTRACTS,
+  expectSt12TeacherMetadata,
+  expectDefaultPermissionContract,
+} from '../fixtures/st12-contract-expectations';
+import {
   ST11_TEACHER_ANSWER_MEDIA_ROUTES,
   ST11B_TEACHER_GROUP_ROUTES,
 } from '../fixtures/st11-answer-media-routes.fixture';
@@ -152,8 +158,22 @@ describe('ACC-9 final cross-slice exported contracts', () => {
     expect(routes).toHaveLength(
       189 +
         ST11_TEACHER_ANSWER_MEDIA_ROUTES.length +
-        ST11B_TEACHER_GROUP_ROUTES.length,
+        ST11B_TEACHER_GROUP_ROUTES.length +
+        ST12_TEACHER_ROUTES.length,
     );
+    expectSt12TeacherMetadata(routes);
+    const additions = routes.filter((r) =>
+      ST12_TEACHER_CONTRACTS.some((e) => e.controller === r.controller),
+    );
+    expect(
+      additions
+        .map((r) =>
+          ('/api/v1/' + r.prefix + '/' + r.path)
+            .replace(/\/+/g, '/')
+            .replace(/\/$/, ''),
+        )
+        .sort(),
+    ).toEqual(ST12_TEACHER_CONTRACTS.map((r) => r.path).sort());
     const groupRoutes = routes.filter((route) =>
       [
         'TeacherGradeQuestionGroupsController',
@@ -275,7 +295,8 @@ describe('ACC-9 final cross-slice exported contracts', () => {
     );
   });
   it('discovers permission catalogs and withholds Management approval/settings/analytics', () => {
-    expect(PERMISSIONS).toHaveLength(243);
+    expect(PERMISSIONS).toHaveLength(244);
+    expectDefaultPermissionContract();
     expect(TEACHER_PERMISSIONS).toHaveLength(58);
     expect(
       TEACHER_PERMISSIONS.filter((code) =>

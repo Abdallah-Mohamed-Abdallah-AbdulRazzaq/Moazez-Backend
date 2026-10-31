@@ -101,6 +101,7 @@ export class QuestionGroupMedia {
     purpose: GroupMediaPurpose,
     parentId: string,
     input: CreateQuestionGroupAssetDto,
+    teacherAuthoringClassId?: string,
   ) {
     const scope = requireFilesScope(),
       policy = await this.policy(tx, true);
@@ -113,7 +114,12 @@ export class QuestionGroupMedia {
           'Managed group asset source is invalid',
         );
       this.runtime.assertUploadExecutionEnabled();
-      const owner = assessmentMediaOwner(purpose, parentId);
+      const owner = assessmentMediaOwner(
+        purpose,
+        parentId,
+        undefined,
+        teacherAuthoringClassId,
+      );
       const ready = await this.ready(
         tx,
         purpose,

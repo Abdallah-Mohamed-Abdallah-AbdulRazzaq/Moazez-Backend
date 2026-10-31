@@ -286,6 +286,18 @@ test('the current repository fixture contract passes end-to-end inputs', async (
     runRepositoryGate,
   } = require('../ci/ci-fixture-contract.cjs');
   const production = loadProductionContracts(repositoryRoot);
+  assert.equal(
+    production.permissionCodes.filter(
+      (code) => code === 'grades.teacher_authoring.manage',
+    ).length,
+    1,
+  );
+  assert.equal(production.systemRoles.length, 7);
+  assert.ok(
+    production.systemRoles.every(
+      (role) => !role.permissions.includes('grades.teacher_authoring.manage'),
+    ),
+  );
   const evidence = await runRepositoryGate(repositoryRoot, { production });
   assert.equal(evidence.status, 'PASS', stableStringify(evidence));
   assert.equal(evidence.schemaVersion, 1);
@@ -293,4 +305,154 @@ test('the current repository fixture contract passes end-to-end inputs', async (
   assert.ok(evidence.counts.permissionCodes > 0);
   assert.ok(evidence.counts.systemRoles > 0);
   assert.equal(evidence.counts.negativeRequestBodiesExcluded, 1);
+});
+
+const teacherAuthoringOptIn = 'grades.teacher_authoring.manage';
+function optInCatalogFixture() {
+  const permissionCodes = [
+    'platform.settings.manage',
+    'schools.view',
+    teacherAuthoringOptIn,
+  ];
+  const systemRoles = [
+    'dismissal_staff',
+    'organization_admin',
+    'parent',
+    'platform_super_admin',
+    'school_admin',
+    'student',
+    'teacher',
+  ].map((key) => ({
+    key,
+    permissions:
+      key === 'platform_super_admin'
+        ? ['platform.settings.manage', 'schools.view']
+        : ['organization_admin', 'school_admin'].includes(key)
+          ? ['schools.view']
+          : [],
+  }));
+  return { permissionCodes, systemRoles };
+}
+test('ST12 accepts the registered exact opt-in capability absent from every default role', () => {
+  const { permissionCodes, systemRoles } = optInCatalogFixture();
+  const result = validateRolePermissionCatalog(permissionCodes, systemRoles);
+  assert.deepEqual(result.failures, []);
+  assert.equal(result.counts.permissionCodes, 3);
+  assert.equal(result.counts.systemRoles, 7);
+});
+for (const key of [
+  'dismissal_staff',
+  'organization_admin',
+  'parent',
+  'platform_super_admin',
+  'school_admin',
+  'student',
+  'teacher',
+]) {
+  test('ST12 rejects an opt-in default grant on ' + key, () => {
+    const { permissionCodes, systemRoles } = optInCatalogFixture();
+    systemRoles
+      .find((role) => role.key === key)
+      .permissions.push(teacherAuthoringOptIn);
+    const result = validateRolePermissionCatalog(permissionCodes, systemRoles);
+    assert.ok(
+      result.failures.some(
+        (f) => f.reasonCode === 'OPT_IN_PERMISSION_DEFAULT_GRANT',
+      ),
+    );
+  });
+}
+test('ST12 keeps exact ordinary-permission coverage required for every administrator', () => {
+  for (const key of [
+    'platform_super_admin',
+    'organization_admin',
+    'school_admin',
+  ]) {
+    const { permissionCodes, systemRoles } = optInCatalogFixture();
+    systemRoles.find((role) => role.key === key).permissions = [];
+    const result = validateRolePermissionCatalog(permissionCodes, systemRoles);
+    assert.ok(
+      result.failures.some(
+        (f) =>
+          f.reasonCode ===
+          (key === 'platform_super_admin'
+            ? 'PLATFORM_ROLE_PERMISSION_MISMATCH'
+            : 'TENANT_ADMIN_PERMISSION_MISMATCH'),
+      ),
+    );
+  }
+});
+test('ST12 does not exempt arbitrary newly registered permission codes from default coverage', () => {
+  const { permissionCodes, systemRoles } = optInCatalogFixture();
+  permissionCodes.push('grades.other_future.manage');
+  const result = validateRolePermissionCatalog(permissionCodes, systemRoles);
+  assert.equal(
+    result.failures.filter(
+      (f) => f.reasonCode === 'PLATFORM_ROLE_PERMISSION_MISMATCH',
+    ).length,
+    1,
+  );
+  assert.equal(
+    result.failures.filter(
+      (f) => f.reasonCode === 'TENANT_ADMIN_PERMISSION_MISMATCH',
+    ).length,
+    2,
+  );
+});
+test('ST12 preserves unknown, duplicate, and tenant platform-leak rejection', () => {
+  for (const [code, reason] of [
+    ['unknown.code', 'UNKNOWN_ROLE_PERMISSION_REFERENCE'],
+    ['schools.view', 'DUPLICATE_ROLE_PERMISSION_REFERENCE'],
+    ['platform.settings.manage', 'TENANT_ROLE_PLATFORM_SCOPE_LEAK'],
+  ]) {
+    const { permissionCodes, systemRoles } = optInCatalogFixture();
+    if (reason === 'DUPLICATE_ROLE_PERMISSION_REFERENCE')
+      systemRoles.find((r) => r.key === 'teacher').permissions.push(code);
+    systemRoles.find((r) => r.key === 'teacher').permissions.push(code);
+    const result = validateRolePermissionCatalog(permissionCodes, systemRoles);
+    assert.ok(result.failures.some((f) => f.reasonCode === reason));
+  }
+  const { permissionCodes, systemRoles } = optInCatalogFixture();
+  permissionCodes.push('schools.view');
+  assert.ok(
+    validateRolePermissionCatalog(permissionCodes, systemRoles).failures.some(
+      (f) => f.reasonCode === 'DUPLICATE_PERMISSION_CODE',
+    ),
+  );
+});
+
+test('ST12 rejects a missing production opt-in catalog entry', () => {
+  const { permissionCodes, systemRoles } = optInCatalogFixture();
+  const result = validateRolePermissionCatalog(
+    permissionCodes.filter((code) => code !== teacherAuthoringOptIn),
+    systemRoles,
+  );
+  assert.ok(
+    result.failures.some(
+      (f) => f.reasonCode === 'OPT_IN_PERMISSION_CATALOG_COUNT_MISMATCH',
+    ),
+  );
+});
+test('ST12 rejects duplicate opt-in registration without hiding the duplicate catalog check', () => {
+  const { permissionCodes, systemRoles } = optInCatalogFixture();
+  permissionCodes.push(teacherAuthoringOptIn);
+  const result = validateRolePermissionCatalog(permissionCodes, systemRoles);
+  assert.ok(
+    result.failures.some(
+      (f) => f.reasonCode === 'OPT_IN_PERMISSION_CATALOG_COUNT_MISMATCH',
+    ),
+  );
+  assert.ok(
+    result.failures.some((f) => f.reasonCode === 'DUPLICATE_PERMISSION_CODE'),
+  );
+});
+test('ST12 preserves exact default-role key equality', () => {
+  const { permissionCodes, systemRoles } = optInCatalogFixture();
+  const result = validateRolePermissionCatalog(
+    permissionCodes,
+    systemRoles.filter((role) => role.key !== 'teacher'),
+  );
+  assert.ok(
+    result.failures.some((f) => f.reasonCode === 'ROLE_KEY_SET_MISMATCH'),
+  );
 });

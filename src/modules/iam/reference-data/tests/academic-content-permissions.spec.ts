@@ -233,3 +233,16 @@ function createInMemoryReferenceDataClient() {
     }),
   };
 }
+
+it('ST12 authoring is a registered opt-in capability excluded from every default role', () => {
+  expect(
+    PERMISSIONS.filter(
+      (permission) => permission.code === 'grades.teacher_authoring.manage',
+    ),
+  ).toHaveLength(1);
+  for (const role of SYSTEM_ROLES)
+    expect(role.permissions).not.toContain('grades.teacher_authoring.manage');
+  const teacher = SYSTEM_ROLES.find((role) => role.key === 'teacher');
+  expect(teacher).toBeDefined();
+  expect(teacher?.permissions).not.toContain('grades.questions.manage');
+});

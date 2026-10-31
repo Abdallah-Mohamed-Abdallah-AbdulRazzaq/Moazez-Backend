@@ -1,3 +1,6 @@
+import { AssessmentsModule } from '../grades/assessments/assessments.module';
+import { ParentGradeReviewService } from './grades/application/parent-grade-review.service';
+import { ParentGradeReviewController } from './grades/controller/parent-grade-review.controller';
 import { GetParentRewardImageContentUseCase } from './rewards/application/get-parent-reward-image-content.use-case';
 import { GetParentChildFileContentUseCase } from './files/application/get-parent-child-file-content.use-case';
 import { GetParentMessageAttachmentContentUseCase } from './messages/application/get-parent-message-attachment-content.use-case';
@@ -145,6 +148,7 @@ import { ParentSmartPickupRecentCallsRepository } from './smart-pickup/infrastru
 
 @Module({
   imports: [
+    AssessmentsModule,
     AcademicContentModule,
     AppCalendarReadModelModule,
     LessonContentPlaybackModule,
@@ -158,6 +162,7 @@ import { ParentSmartPickupRecentCallsRepository } from './smart-pickup/infrastru
     StorageModule,
   ],
   controllers: [
+    ParentGradeReviewController,
     ParentAcademicContentAcknowledgementController,
     ParentAcademicContentEngagementController,
     ParentAcademicContentController,
@@ -182,6 +187,7 @@ import { ParentSmartPickupRecentCallsRepository } from './smart-pickup/infrastru
     ParentSmartPickupController,
   ],
   providers: [
+    ParentGradeReviewService,
     GetParentRewardImageContentUseCase,
     GetParentChildFileContentUseCase,
     GetParentMessageAttachmentContentUseCase,

@@ -5198,7 +5198,7 @@ describe('Grades tenancy isolation (security)', () => {
         .expect(200);
       expect((wrongGradebook.body as GradebookResponseDto).rows).toEqual([]);
 
-      // Explicit authoring permission still requires exact live allocation ownership.
+      // A broad Core manage grant never makes an ordinary Teacher an author.
       await prisma.membership.update({
         where: { id: membership.id },
         data: { roleId: authorRole.id },
@@ -5210,13 +5210,11 @@ describe('Grades tenancy isolation (security)', () => {
       expect(
         (author.body as GradeAssessmentQuestionsListResponseDto).questions[0]
           .answerKey,
-      ).toEqual({
-        secret: 'ST02_AUTHOR_ONLY',
-      });
+      ).toBeUndefined();
       expect(
         (author.body as GradeAssessmentQuestionsListResponseDto).questions[0]
           .options[0].isCorrect,
-      ).toBe(true);
+      ).toBeUndefined();
       await call(token)
         .post(
           '/grades/assessments/' + assessmentIds[0] + '/submissions/resolve',
@@ -5241,7 +5239,19 @@ describe('Grades tenancy isolation (security)', () => {
         },
       });
       assessmentIds.push(draft.id);
-      const created = await call(token)
+      await call(token)
+        .post('/grades/assessments/' + draft.id + '/questions')
+        .send({
+          type: 'ESSAY',
+          prompt: 'Denied broad Teacher Core bypass',
+          points: 5,
+        })
+        .expect(404);
+      const { accessToken: managementToken } = await login(
+        DEMO_ADMIN_EMAIL,
+        DEMO_ADMIN_PASSWORD,
+      );
+      const created = await call(managementToken)
         .post('/grades/assessments/' + draft.id + '/questions')
         .send({
           type: 'ESSAY',
@@ -5251,23 +5261,23 @@ describe('Grades tenancy isolation (security)', () => {
         })
         .expect(201);
       const qid = (created.body as GradeAssessmentQuestionResponseDto).id;
-      await call(token)
+      await call(managementToken)
         .patch('/grades/questions/' + qid)
         .send({ prompt: 'Revised' })
         .expect(200);
-      await call(token)
+      await call(managementToken)
         .post('/grades/assessments/' + draft.id + '/questions/reorder')
         .send({ questionIds: [qid] })
         .expect(201);
-      await call(token)
+      await call(managementToken)
         .post('/grades/assessments/' + draft.id + '/questions/points/bulk')
         .send({ items: [{ questionId: qid, points: 5 }] })
         .expect(201);
-      await call(token)
+      await call(managementToken)
         .patch('/grades/questions/' + qid)
         .send({ metadata: { nested: [{ href: 'http://example.com/unsafe' }] } })
         .expect(400);
-      await call(token)
+      await call(managementToken)
         .post('/grades/assessments/' + draft.id + '/questions')
         .send({
           type: 'ESSAY',
@@ -5276,7 +5286,7 @@ describe('Grades tenancy isolation (security)', () => {
           metadata: { assets: [{ href: 'javascript:(alert(1))' }] },
         })
         .expect(400);
-      await call(token)
+      await call(managementToken)
         .post('/grades/assessments/' + draft.id + '/questions')
         .send({
           type: 'MCQ_SINGLE',
@@ -5328,7 +5338,7 @@ describe('Grades tenancy isolation (security)', () => {
           })
         ).approvalStatus,
       ).toBe(GradeAssessmentApprovalStatus.DRAFT);
-      await call(token)
+      await call(managementToken)
         .patch('/grades/questions/' + qid)
         .send({ metadata: { mediaUrl: 'https://example.com/media' } })
         .expect(200);

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { GradeTeacherAuthoringActor } from '../domain/grade-teacher-authoring';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { requireGradesScope } from '../../grades-context';
 import { DeleteGradeAssessmentQuestionResponseDto } from '../dto/grade-assessment-question.dto';
@@ -19,6 +20,7 @@ export class DeleteGradeAssessmentQuestionUseCase {
 
   async execute(
     questionId: string,
+    actor?: GradeTeacherAuthoringActor,
   ): Promise<DeleteGradeAssessmentQuestionResponseDto> {
     const scope = requireGradesScope();
     const existing = await loadQuestionOrThrow(
@@ -32,20 +34,22 @@ export class DeleteGradeAssessmentQuestionUseCase {
 
     const deletedAt = new Date().toISOString();
     await this.questionsRepository.softDeleteQuestionAndOptions({
+      actor,
       questionId: existing.id,
       assessmentId: existing.assessmentId,
     });
 
-    await this.authRepository.createAuditLog(
-      buildQuestionAuditEntry({
-        scope,
-        action: 'grades.question.delete',
-        resourceType: 'grade_assessment_question',
-        resourceId: existing.id,
-        before: summarizeQuestionForAudit(existing),
-        after: { ...summarizeQuestionForAudit(existing), deletedAt },
-      }),
-    );
+    if (!actor)
+      await this.authRepository.createAuditLog(
+        buildQuestionAuditEntry({
+          scope,
+          action: 'grades.question.delete',
+          resourceType: 'grade_assessment_question',
+          resourceId: existing.id,
+          before: summarizeQuestionForAudit(existing),
+          after: { ...summarizeQuestionForAudit(existing), deletedAt },
+        }),
+      );
 
     return { ok: true };
   }

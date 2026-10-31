@@ -131,7 +131,12 @@ export class AssessmentMediaRepository {
     ownershipOnly: boolean,
   ): Promise<void> {
     const ctx = getRequestContext();
-    const resolved = assessmentMediaOwner(owner.purpose, owner.contextId);
+    const resolved = assessmentMediaOwner(
+      owner.purpose,
+      owner.contextId,
+      owner.questionId,
+      owner.teacherAuthoringClassId,
+    );
     if (
       owner.permission !== resolved.permission ||
       owner.studentPurpose !== resolved.studentPurpose ||
@@ -192,6 +197,7 @@ export class AssessmentMediaRepository {
         owner.studentPurpose,
         this.gate,
         ownershipOnly,
+        owner.teacherAuthoringClassId,
       );
   }
 

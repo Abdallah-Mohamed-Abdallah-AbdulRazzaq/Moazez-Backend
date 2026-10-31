@@ -178,11 +178,12 @@ describe('ST-04 eight existing Grades types — real HTTP/PostgreSQL certificati
       .expect(201);
     return json<{ id: string }>(response).id;
   }
+  // ST12: Core structural authoring belongs to management; Teacher review stays on api().
   async function author(type: GradeQuestionType) {
     const assessmentId = await assessment();
     const created = await http()
       .post(`${prefix}/grades/assessments/${assessmentId}/questions`)
-      .set(api())
+      .set(api('admin'))
       .send(gradeEightAuthor(type))
       .expect(201);
     return { assessmentId, question: json<Question>(created) };
@@ -214,18 +215,18 @@ describe('ST-04 eight existing Grades types — real HTTP/PostgreSQL certificati
       const authorInput = gradeEightAuthor(type);
       await http()
         .post(`${prefix}/grades/assessments/${assessmentId}/questions`)
-        .set(api())
+        .set(api('admin'))
         .send({ ...authorInput, prompt: '' })
         .expect(400);
       const created = await http()
         .post(`${prefix}/grades/assessments/${assessmentId}/questions`)
-        .set(api())
+        .set(api('admin'))
         .send(authorInput)
         .expect(201);
       let question = json<Question>(created);
       const edited = await http()
         .patch(`${prefix}/grades/questions/${question.id}`)
-        .set(api())
+        .set(api('admin'))
         .send({ prompt: 'Edited typed prompt' })
         .expect(200);
       expect(json<Question>(edited).id).toBe(question.id);
@@ -234,7 +235,7 @@ describe('ST-04 eight existing Grades types — real HTTP/PostgreSQL certificati
       );
       await http()
         .patch(`${prefix}/grades/questions/${question.id}`)
-        .set(api())
+        .set(api('admin'))
         .send({ points: -1 })
         .expect(400);
       await http()
@@ -249,7 +250,7 @@ describe('ST-04 eight existing Grades types — real HTTP/PostgreSQL certificati
         .expect(201);
       await http()
         .patch(`${prefix}/grades/questions/${question.id}`)
-        .set(api())
+        .set(api('admin'))
         .send({ prompt: 'Forbidden published edit' })
         .expect(409);
 
@@ -298,7 +299,7 @@ describe('ST-04 eight existing Grades types — real HTTP/PostgreSQL certificati
       });
       await http()
         .patch(`${prefix}/grades/questions/${question.id}`)
-        .set(api())
+        .set(api('admin'))
         .send({ prompt: 'Forbidden edit after an existing attempt' })
         .expect(409);
       expect(
@@ -625,7 +626,7 @@ describe('ST-04 eight existing Grades types — real HTTP/PostgreSQL certificati
     const reordered = json<Question>(
       await http()
         .patch(`${prefix}/grades/questions/${question.id}`)
-        .set(api())
+        .set(api('admin'))
         .send({ options: explicit })
         .expect(200),
     );
@@ -641,7 +642,7 @@ describe('ST-04 eight existing Grades types — real HTTP/PostgreSQL certificati
     const edited = json<Question>(
       await http()
         .patch(`${prefix}/grades/questions/${question.id}`)
-        .set(api())
+        .set(api('admin'))
         .send({ options: legacy })
         .expect(200),
     );
@@ -650,7 +651,7 @@ describe('ST-04 eight existing Grades types — real HTTP/PostgreSQL certificati
     );
     await http()
       .patch(`${prefix}/grades/questions/${question.id}`)
-      .set(api())
+      .set(api('admin'))
       .send({ options: [{ ...explicit[0], id: randomUUID() }, explicit[1]] })
       .expect(404);
   });

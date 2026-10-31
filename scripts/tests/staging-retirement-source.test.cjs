@@ -964,46 +964,99 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
     ['test/e2e/st09bc-homework-authoring.e2e-spec.ts', 'e2e'],
     ['test/e2e/homework-eight-type-runtime.e2e-spec.ts', 'e2e'],
     ['test/e2e/homework-eight-type-concurrency.e2e-spec.ts', 'e2e'],
-    ['scripts/tests/st09bc-homework-transaction-boundaries.test.cjs', 'runtime-governance'],
+    [
+      'scripts/tests/st09bc-homework-transaction-boundaries.test.cjs',
+      'runtime-governance',
+    ],
   ];
   const st10aFiles = [
     ['src/common/question-evaluation/ordering.spec.ts', 'unit'],
     ['src/common/question-evaluation/numeric.spec.ts', 'unit'],
     ['src/common/question-evaluation/math-expression.spec.ts', 'unit'],
     ['src/common/question-evaluation/strict-data.spec.ts', 'unit'],
-    ['src/modules/grades/assessments/tests/grade-runtime-types.spec.ts', 'unit'],
-    ['test/integration/st10a-question-enum-boundary.integration.spec.ts', 'integration-general'],
-    ['test/security/st10a-inactive-question-types.security.spec.ts', 'security'],
+    [
+      'src/modules/grades/assessments/tests/grade-runtime-types.spec.ts',
+      'unit',
+    ],
+    [
+      'test/integration/st10a-question-enum-boundary.integration.spec.ts',
+      'integration-general',
+    ],
+    [
+      'test/security/st10a-inactive-question-types.security.spec.ts',
+      'security',
+    ],
   ];
   const st10bFiles = [
     ['src/modules/homework/tests/homework-st10b-adapters.spec.ts', 'unit'],
-    ['src/modules/grades/assessments/tests/grade-st10b-adapters.spec.ts', 'unit'],
+    [
+      'src/modules/grades/assessments/tests/grade-st10b-adapters.spec.ts',
+      'unit',
+    ],
     ['test/e2e/st10b-authoring-publication.e2e-spec.ts', 'e2e'],
     ['test/e2e/st10b-student-review.e2e-spec.ts', 'e2e'],
     ['test/e2e/st10b-concurrency.e2e-spec.ts', 'e2e'],
     ['test/e2e/st10b-eleven-type-runtime.e2e-spec.ts', 'e2e'],
   ];
   const st11aFiles = [
-    ['src/common/assessment-answer/response-config.spec.ts','unit'],
-    ['test/integration/learning-media-st11-answer-audio.integration.spec.ts','media-storage'],
-    ['test/integration/st11-answer-media-integrity.integration.spec.ts','integration-general'],
-    ['test/integration/st11-legacy-migration.integration.spec.ts','integration-general'],
-    ['test/e2e/st11-answer-media.e2e-spec.ts','e2e'],
-    ['test/e2e/st11-answer-media-security.e2e-spec.ts','e2e'],
-    ['test/e2e/st11-response-authoring.e2e-spec.ts','e2e'],
-    ['test/e2e/st11-response-modalities.e2e-spec.ts','e2e'],
-    ['test/e2e/st11-answer-manual-review.e2e-spec.ts','e2e'],
+    ['src/common/assessment-answer/response-config.spec.ts', 'unit'],
+    [
+      'test/integration/learning-media-st11-answer-audio.integration.spec.ts',
+      'media-storage',
+    ],
+    [
+      'test/integration/st11-answer-media-integrity.integration.spec.ts',
+      'integration-general',
+    ],
+    [
+      'test/integration/st11-legacy-migration.integration.spec.ts',
+      'integration-general',
+    ],
+    ['test/e2e/st11-answer-media.e2e-spec.ts', 'e2e'],
+    ['test/e2e/st11-answer-media-security.e2e-spec.ts', 'e2e'],
+    ['test/e2e/st11-response-authoring.e2e-spec.ts', 'e2e'],
+    ['test/e2e/st11-response-modalities.e2e-spec.ts', 'e2e'],
+    ['test/e2e/st11-answer-manual-review.e2e-spec.ts', 'e2e'],
   ];
   const st11bFiles = [
     ['src/common/question-groups/question-group.spec.ts', 'unit'],
     ['test/e2e/st11-multipart-runtime.e2e-spec.ts', 'e2e'],
     ['test/e2e/st11-multipart-security.e2e-spec.ts', 'e2e'],
     ['test/e2e/st11-multipart-media.e2e-spec.ts', 'e2e'],
-    ['test/integration/st11-multipart-integrity.integration.spec.ts', 'integration-general'],
+    [
+      'test/integration/st11-multipart-integrity.integration.spec.ts',
+      'integration-general',
+    ],
+  ];
+  const st12Files = [
+    [
+      'src/modules/grades/assessments/tests/grade-objective-scoring.spec.ts',
+      'unit',
+    ],
+    [
+      'test/integration/st12-review-evidence.integration.spec.ts',
+      'integration-general',
+    ],
+    [
+      'test/integration/st12-legacy-migration.integration.spec.ts',
+      'integration-general',
+    ],
+    ['test/e2e/st12-teacher-authoring.e2e-spec.ts', 'e2e'],
+    ['test/e2e/st12-review-release.e2e-spec.ts', 'e2e'],
+    ['test/e2e/st12-grades-scoring.e2e-spec.ts', 'e2e'],
   ];
   assert.equal(
     assignments.length,
-    1019 + st08bFiles.length + st08cFiles.length + st09aFiles.length + st09bcFiles.length + st10aFiles.length + st10bFiles.length + st11aFiles.length + st11bFiles.length,
+    1019 +
+      st08bFiles.length +
+      st08cFiles.length +
+      st09aFiles.length +
+      st09bcFiles.length +
+      st10aFiles.length +
+      st10bFiles.length +
+      st11aFiles.length +
+      st11bFiles.length +
+      st12Files.length,
   );
   assert.equal(
     assignments.filter((item) => item.execution === 'manual').length,
@@ -1011,7 +1064,16 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
   );
   assert.equal(
     assignments.filter((item) => item.execution !== 'manual').length,
-    1009 + st08bFiles.length + st08cFiles.length + st09aFiles.length + st09bcFiles.length + st10aFiles.length + st10bFiles.length + st11aFiles.length + st11bFiles.length,
+    1009 +
+      st08bFiles.length +
+      st08cFiles.length +
+      st09aFiles.length +
+      st09bcFiles.length +
+      st10aFiles.length +
+      st10bFiles.length +
+      st11aFiles.length +
+      st11bFiles.length +
+      st12Files.length,
   );
   for (const [file, profile] of [
     ['src/common/rich-content/rich-content.spec.ts', 'unit'],
@@ -1027,6 +1089,7 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
     ...st10bFiles,
     ...st11aFiles,
     ...st11bFiles,
+    ...st12Files,
   ]) {
     const matches = assignments.filter((item) => item.file === file);
     assert.equal(matches.length, 1);
@@ -1052,17 +1115,25 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
     },
   );
   let restoredPlanner = readCurrentSource('scripts/ci/plan-ci.cjs');
-  const st11AudioOwner = "  'test/integration/learning-media-st11-answer-audio.integration.spec.ts',\n";
+  const st11AudioOwner =
+    "  'test/integration/learning-media-st11-answer-audio.integration.spec.ts',\n";
   assert.equal(restoredPlanner.split(st11AudioOwner).length, 2);
   restoredPlanner = restoredPlanner.replace(st11AudioOwner, '');
-  const st09bcOwner = "  'scripts/tests/st09bc-homework-transaction-boundaries.test.cjs': Object.freeze({\n" +
+  const st09bcOwner =
+    "  'scripts/tests/st09bc-homework-transaction-boundaries.test.cjs': Object.freeze({\n" +
     "    owner: 'st09bc-homework-transaction-boundaries',\n" +
     "    profile: 'runtime-governance',\n" +
-    "  }),\n";
+    '  }),\n';
   assert.equal(restoredPlanner.split(st09bcOwner).length, 2);
-  assert.deepEqual(planner.ACTIVE_TAP_OWNERS['scripts/tests/st09bc-homework-transaction-boundaries.test.cjs'], {
-    owner: 'st09bc-homework-transaction-boundaries', profile: 'runtime-governance',
-  });
+  assert.deepEqual(
+    planner.ACTIVE_TAP_OWNERS[
+      'scripts/tests/st09bc-homework-transaction-boundaries.test.cjs'
+    ],
+    {
+      owner: 'st09bc-homework-transaction-boundaries',
+      profile: 'runtime-governance',
+    },
+  );
   restoredPlanner = restoredPlanner.replace(st09bcOwner, '');
   for (const file of ACTIONS.ADD.filter((item) => item.endsWith('.test.cjs'))) {
     const escaped = file.replace(/[.*+?^$(){}|[\]\\]/gu, '\\$&');

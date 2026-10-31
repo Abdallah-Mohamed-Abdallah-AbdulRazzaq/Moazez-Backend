@@ -20,6 +20,7 @@ const COMMUNICATION_PLATFORM_PERMISSIONS = new Set([
   'communication.platform.manage',
   'communication.platform.view',
 ]);
+const TEACHER_AUTHORING_OPT_IN_PERMISSION = 'grades.teacher_authoring.manage';
 const PRISMA_MUTATIONS = new Set([
   'create',
   'createMany',
@@ -712,6 +713,14 @@ function validateRolePermissionCatalog(
         );
       }
       referenced.add(code);
+      if (code === TEACHER_AUTHORING_OPT_IN_PERMISSION) {
+        failures.push(
+          makeFailure(
+            'role_permission_catalog',
+            'OPT_IN_PERMISSION_DEFAULT_GRANT',
+          ),
+        );
+      }
       if (!permissionSet.has(code)) {
         failures.push(
           makeFailure(
@@ -730,10 +739,27 @@ function validateRolePermissionCatalog(
   }
 
   if (enforceHierarchy) {
+    if (
+      permissionCodes.filter(
+        (code) => code === TEACHER_AUTHORING_OPT_IN_PERMISSION,
+      ).length !== 1
+    ) {
+      failures.push(
+        makeFailure(
+          'role_permission_catalog',
+          'OPT_IN_PERMISSION_CATALOG_COUNT_MISMATCH',
+        ),
+      );
+    }
+    const defaultPermissionSet = new Set(
+      [...permissionSet].filter(
+        (code) => code !== TEACHER_AUTHORING_OPT_IN_PERMISSION,
+      ),
+    );
     const platformPermissions = new Set(
       rolesByKey.get('platform_super_admin')?.permissions ?? [],
     );
-    if (!compareStringSets(platformPermissions, permissionSet)) {
+    if (!compareStringSets(platformPermissions, defaultPermissionSet)) {
       failures.push(
         makeFailure(
           'role_permission_catalog',
@@ -742,7 +768,7 @@ function validateRolePermissionCatalog(
       );
     }
     const tenantPermissionSet = new Set(
-      [...permissionSet].filter(
+      [...defaultPermissionSet].filter(
         (code) =>
           !code.startsWith('platform.') &&
           !COMMUNICATION_PLATFORM_PERMISSIONS.has(code),

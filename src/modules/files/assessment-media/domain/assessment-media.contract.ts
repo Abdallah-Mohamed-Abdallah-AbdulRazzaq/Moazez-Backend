@@ -71,11 +71,21 @@ export function assessmentMediaOwner(
   purpose: AssessmentMediaPurpose,
   contextId: string,
   questionId?: string,
+  teacherAuthoringClassId?: string,
 ) {
   if (!(ASSESSMENT_MEDIA_PURPOSES as readonly string[]).includes(purpose))
     throw new AssessmentMediaException('invalid_request');
   assertAssessmentUuid(contextId);
   const scope = requireFilesScope();
+  if (teacherAuthoringClassId !== undefined) {
+    assertAssessmentUuid(teacherAuthoringClassId);
+    if (
+      purpose !== FileUploadPurpose.GRADE_ASSESSMENT_MEDIA ||
+      scope.userType !== UserType.TEACHER ||
+      questionId !== undefined
+    )
+      throw new AssessmentMediaException('upload_not_found');
+  }
   const membershipId = getRequestContext()?.activeMembership?.membershipId;
   if (!membershipId) throw new AssessmentMediaException('upload_not_found');
   const studentPurpose =
@@ -96,12 +106,14 @@ export function assessmentMediaOwner(
       : !managementActors.includes(scope.userType)
   )
     throw new AssessmentMediaException('upload_not_found');
-  const permission = {
-    HOMEWORK_ASSIGNMENT_MEDIA: 'homework.attachments.manage',
-    GRADE_ASSESSMENT_MEDIA: 'grades.questions.manage',
-    HOMEWORK_SUBMISSION_MEDIA: 'homework.submission_attachments.manage',
-    GRADE_SUBMISSION_MEDIA: 'grades.submissions.submit',
-  }[purpose];
+  const permission = teacherAuthoringClassId
+    ? 'grades.teacher_authoring.manage'
+    : {
+        HOMEWORK_ASSIGNMENT_MEDIA: 'homework.attachments.manage',
+        GRADE_ASSESSMENT_MEDIA: 'grades.questions.manage',
+        HOMEWORK_SUBMISSION_MEDIA: 'homework.submission_attachments.manage',
+        GRADE_SUBMISSION_MEDIA: 'grades.submissions.submit',
+      }[purpose];
   if (!getRequestContext()?.activeMembership?.permissions.includes(permission))
     throw new AssessmentMediaException('upload_not_found');
   return {
@@ -115,6 +127,9 @@ export function assessmentMediaOwner(
     contextId: contextId.toLowerCase(),
     permission,
     studentPurpose,
+    ...(teacherAuthoringClassId
+      ? { teacherAuthoringClassId: teacherAuthoringClassId.toLowerCase() }
+      : {}),
     ...(questionId === undefined
       ? {}
       : { questionId: questionId.toLowerCase() }),

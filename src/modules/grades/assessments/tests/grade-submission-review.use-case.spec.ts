@@ -374,8 +374,7 @@ describe('grade submission review use cases', () => {
 
   it('single review succeeds for a SUBMITTED submission and sets review fields', async () => {
     const repository = baseRepository();
-    const auth = authRepository();
-    const useCase = new ReviewGradeSubmissionAnswerUseCase(repository, auth);
+    const useCase = new ReviewGradeSubmissionAnswerUseCase(repository);
 
     const result = await withGradesReviewScope(() =>
       useCase.execute(SUBMISSION_ID, ANSWER_ID, {
@@ -403,13 +402,7 @@ describe('grade submission review use cases', () => {
       reviewedAt: expect.any(String),
       reviewedById: 'reviewer-1',
     });
-    expect(auth.createAuditLog).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: 'grades.submission.answer.review',
-        before: expect.objectContaining({ awardedPoints: null }),
-        after: expect.objectContaining({ awardedPoints: 4 }),
-      }),
-    );
+    // Transactional audit values/rollback are covered by the real ST12 PostgreSQL suites.
   });
 
   it('single review rejects IN_PROGRESS submission', async () => {
@@ -420,10 +413,7 @@ describe('grade submission review use cases', () => {
           submissionRecord({ status: GradeSubmissionStatus.IN_PROGRESS }),
         ),
     });
-    const useCase = new ReviewGradeSubmissionAnswerUseCase(
-      repository,
-      authRepository(),
-    );
+    const useCase = new ReviewGradeSubmissionAnswerUseCase(repository);
 
     await expect(
       withGradesReviewScope(() =>
@@ -441,10 +431,7 @@ describe('grade submission review use cases', () => {
           submissionRecord({ status: GradeSubmissionStatus.CORRECTED }),
         ),
     });
-    const useCase = new ReviewGradeSubmissionAnswerUseCase(
-      repository,
-      authRepository(),
-    );
+    const useCase = new ReviewGradeSubmissionAnswerUseCase(repository);
 
     await expect(
       withGradesReviewScope(() =>
@@ -461,10 +448,7 @@ describe('grade submission review use cases', () => {
         }),
       ),
     });
-    const useCase = new ReviewGradeSubmissionAnswerUseCase(
-      repository,
-      authRepository(),
-    );
+    const useCase = new ReviewGradeSubmissionAnswerUseCase(repository);
 
     await expect(
       withGradesReviewScope(() =>
@@ -481,10 +465,7 @@ describe('grade submission review use cases', () => {
         }),
       ),
     });
-    const useCase = new ReviewGradeSubmissionAnswerUseCase(
-      repository,
-      authRepository(),
-    );
+    const useCase = new ReviewGradeSubmissionAnswerUseCase(repository);
 
     await expect(
       withGradesReviewScope(() =>
@@ -495,10 +476,7 @@ describe('grade submission review use cases', () => {
 
   it('single review rejects awardedPoints outside the answer max points', async () => {
     const repository = baseRepository();
-    const useCase = new ReviewGradeSubmissionAnswerUseCase(
-      repository,
-      authRepository(),
-    );
+    const useCase = new ReviewGradeSubmissionAnswerUseCase(repository);
 
     await expect(
       withGradesReviewScope(() =>
@@ -519,10 +497,7 @@ describe('grade submission review use cases', () => {
         .fn()
         .mockResolvedValue(answerRecord({ submissionId: 'submission-other' })),
     });
-    const useCase = new ReviewGradeSubmissionAnswerUseCase(
-      repository,
-      authRepository(),
-    );
+    const useCase = new ReviewGradeSubmissionAnswerUseCase(repository);
 
     await expect(
       withGradesReviewScope(() =>
@@ -532,13 +507,9 @@ describe('grade submission review use cases', () => {
     expect(repository.updateAnswerReview).not.toHaveBeenCalled();
   });
 
-  it('bulk review succeeds all-or-nothing and audits once', async () => {
+  it('bulk review delegates one atomic repository correction', async () => {
     const repository = baseRepository();
-    const auth = authRepository();
-    const useCase = new BulkReviewGradeSubmissionAnswersUseCase(
-      repository,
-      auth,
-    );
+    const useCase = new BulkReviewGradeSubmissionAnswersUseCase(repository);
 
     const result = await withGradesReviewScope(() =>
       useCase.execute(SUBMISSION_ID, {
@@ -556,23 +527,12 @@ describe('grade submission review use cases', () => {
         expect.objectContaining({ answerId: ANSWER_TWO_ID }),
       ]),
     );
-    expect(auth.createAuditLog).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: 'grades.submission.answers.bulk_review',
-        after: expect.objectContaining({
-          reviewedCount: 2,
-          answerIds: [ANSWER_ID, ANSWER_TWO_ID],
-        }),
-      }),
-    );
+    // Transactional audit values/rollback are covered by the real ST12 PostgreSQL suites.
   });
 
   it('bulk review rejects duplicate answerIds', async () => {
     const repository = baseRepository();
-    const useCase = new BulkReviewGradeSubmissionAnswersUseCase(
-      repository,
-      authRepository(),
-    );
+    const useCase = new BulkReviewGradeSubmissionAnswersUseCase(repository);
 
     await expect(
       withGradesReviewScope(() =>
@@ -589,10 +549,7 @@ describe('grade submission review use cases', () => {
 
   it('bulk review rejects invalid awardedPoints and writes nothing', async () => {
     const repository = baseRepository();
-    const useCase = new BulkReviewGradeSubmissionAnswersUseCase(
-      repository,
-      authRepository(),
-    );
+    const useCase = new BulkReviewGradeSubmissionAnswersUseCase(repository);
 
     await expect(
       withGradesReviewScope(() =>
@@ -626,8 +583,7 @@ describe('grade submission review use cases', () => {
         .fn()
         .mockResolvedValue(submissionRecord({ answers: correctedAnswers })),
     });
-    const auth = authRepository();
-    const useCase = new FinalizeGradeSubmissionReviewUseCase(repository, auth);
+    const useCase = new FinalizeGradeSubmissionReviewUseCase(repository);
 
     const result = await withGradesReviewScope(() =>
       useCase.execute(SUBMISSION_ID),
@@ -654,16 +610,7 @@ describe('grade submission review use cases', () => {
       totalScore: 9,
       maxScore: 10,
     });
-    expect(auth.createAuditLog).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: 'grades.submission.review.finalize',
-        before: expect.objectContaining({ status: GradeSubmissionStatus.SUBMITTED }),
-        after: expect.objectContaining({
-          status: GradeSubmissionStatus.CORRECTED,
-          totalScore: 9,
-        }),
-      }),
-    );
+    // Transactional audit values/rollback are covered by the real ST12 PostgreSQL suites.
   });
 
   it('finalize rejects when a required answer is missing', async () => {
@@ -679,10 +626,7 @@ describe('grade submission review use cases', () => {
         }),
       ),
     });
-    const useCase = new FinalizeGradeSubmissionReviewUseCase(
-      repository,
-      authRepository(),
-    );
+    const useCase = new FinalizeGradeSubmissionReviewUseCase(repository);
 
     await expect(
       withGradesReviewScope(() => useCase.execute(SUBMISSION_ID)),
@@ -710,10 +654,7 @@ describe('grade submission review use cases', () => {
         }),
       ),
     });
-    const useCase = new FinalizeGradeSubmissionReviewUseCase(
-      repository,
-      authRepository(),
-    );
+    const useCase = new FinalizeGradeSubmissionReviewUseCase(repository);
 
     await expect(
       withGradesReviewScope(() => useCase.execute(SUBMISSION_ID)),
@@ -776,16 +717,16 @@ describe('grade submission review use cases', () => {
     });
 
     await withGradesReviewScope(() =>
-      new ReviewGradeSubmissionAnswerUseCase(
-        repository,
-        authRepository(),
-      ).execute(SUBMISSION_ID, ANSWER_ID, { awardedPoints: 4 }),
+      new ReviewGradeSubmissionAnswerUseCase(repository).execute(
+        SUBMISSION_ID,
+        ANSWER_ID,
+        { awardedPoints: 4 },
+      ),
     );
     await withGradesReviewScope(() =>
-      new FinalizeGradeSubmissionReviewUseCase(
-        repository,
-        authRepository(),
-      ).execute(SUBMISSION_ID),
+      new FinalizeGradeSubmissionReviewUseCase(repository).execute(
+        SUBMISSION_ID,
+      ),
     );
 
     expect(repository.countGradeItemsForAssessment).not.toHaveBeenCalled();

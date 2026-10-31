@@ -7,7 +7,10 @@ export type SystemRoleSeed = {
   permissions: string[];
 };
 
-const ALL = PERMISSION_CODES;
+// This capability requires an explicit school-managed opt-in, never a default grant.
+const ALL = PERMISSION_CODES.filter(
+  (code) => code !== 'grades.teacher_authoring.manage',
+);
 
 const COMMUNICATION_PLATFORM_PERMISSIONS = [
   'communication.platform.view',

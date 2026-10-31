@@ -49,7 +49,12 @@ import type {
   CreateGradeAssetDto,
   UpdateGradeAssetDto,
 } from '../dto/grade-asset.dto';
-import { authorizeGradeAssets } from './grade-asset-authorization';
+import {
+  authorizeGradeAssets,
+  lockGradeTeacherScopedAllocation,
+} from './grade-asset-authorization';
+import type { GradeTeacherAuthoringActor } from '../domain/grade-teacher-authoring';
+import { GRADE_TEACHER_AUTHORING_PERMISSION } from '../domain/grade-teacher-authoring';
 
 type Asset = GradeAssessmentAsset | GradeAssessmentQuestionAsset;
 export interface GradeAssetView {
@@ -100,8 +105,23 @@ export class GradeAssetsRepository implements RichAssetResolver<
     parentId: string,
     questions?: readonly { id: string }[],
     publication = false,
+    includeMedia = true,
   ) {
-    return this.groups?.project(tx, parentId, questions, publication);
+    return this.groups?.project(
+      tx,
+      parentId,
+      questions,
+      publication,
+      includeMedia,
+    );
+  }
+  lockTeacherReviewAllocation(tx: Prisma.TransactionClient, classId: string) {
+    return lockGradeTeacherScopedAllocation(
+      tx,
+      this.gate,
+      classId,
+      'grades.submissions.review',
+    );
   }
   private transaction<T>(
     operation: (tx: Prisma.TransactionClient) => Promise<T>,
@@ -168,10 +188,18 @@ export class GradeAssetsRepository implements RichAssetResolver<
   async assertRichWrite(
     tx: Prisma.TransactionClient,
     assessmentId: string,
+    teacherActor?: GradeTeacherAuthoringActor,
   ): Promise<void> {
     const scope = requireGradesScope();
     let actor: GradeAssetActor = { surface: 'core' };
-    if (scope.userType === 'TEACHER') {
+    if (teacherActor) {
+      if (
+        scope.userType !== 'TEACHER' ||
+        teacherActor.assessmentId !== assessmentId
+      )
+        throw absent();
+      actor = teacherActor;
+    } else if (scope.userType === 'TEACHER') {
       const assessment = await tx.gradeAssessment.findFirst({
         where: { id: assessmentId },
         select: { classroomId: true, subjectId: true, termId: true },
@@ -232,7 +260,10 @@ export class GradeAssetsRepository implements RichAssetResolver<
       getRequestContext()?.activeMembership?.permissions ?? [];
     const permission =
       audience === 'author'
-        ? 'grades.questions.manage'
+        ? scope.userType === 'TEACHER' &&
+          permissions.includes(GRADE_TEACHER_AUTHORING_PERMISSION)
+          ? GRADE_TEACHER_AUTHORING_PERMISSION
+          : 'grades.questions.manage'
         : audience === 'student'
           ? 'grades.assessments.view'
           : [
@@ -244,6 +275,41 @@ export class GradeAssetsRepository implements RichAssetResolver<
             ].find((value) => permissions.includes(value));
     if (!permission) throw absent();
     await assertGradeLiveMutationPermission(tx, permission);
+    if (permission === GRADE_TEACHER_AUTHORING_PERMISSION) {
+      const assessment = await tx.gradeAssessment.findFirst({
+        where: {
+          id: owner.assessmentId,
+          schoolId: scope.schoolId,
+          scopeType: 'CLASSROOM',
+          createdById: scope.actorId,
+          deletedAt: null,
+        },
+        select: {
+          scopeKey: true,
+          subjectId: true,
+          termId: true,
+          academicYearId: true,
+        },
+      });
+      if (
+        !assessment ||
+        !(await tx.teacherSubjectAllocation.findFirst({
+          where: {
+            AND: [
+              ownedAllocationWhere(scope.actorId),
+              {
+                classroomId: assessment.scopeKey,
+                subjectId: assessment.subjectId,
+                termId: assessment.termId,
+                term: { academicYearId: assessment.academicYearId },
+              },
+            ],
+          },
+          select: { id: true },
+        }))
+      )
+        throw absent();
+    }
     const question = await tx.gradeAssessmentQuestion.findFirst({
       where: {
         id: owner.questionId,
@@ -391,6 +457,10 @@ export class GradeAssetsRepository implements RichAssetResolver<
           const owner = assessmentMediaOwner(
             'GRADE_ASSESSMENT_MEDIA',
             input.assessmentId,
+            undefined,
+            actor.surface === 'teacher' && actor.authoring
+              ? actor.classId
+              : undefined,
           );
           const ready = await this.media.readyGradeAssessmentFile(tx, {
             fileId: data.fileId!,

@@ -714,6 +714,14 @@ export const PERMISSIONS: PermissionSeed[] = [
     description: 'Create and update assessment questions',
   },
   {
+    code: 'grades.teacher_authoring.manage',
+    module: 'grades',
+    resource: 'teacher_authoring',
+    action: 'manage',
+    description:
+      'Opt-in Teacher authoring of own draft classroom assessments under exact live allocation',
+  },
+  {
     code: 'grades.submissions.view',
     module: 'grades',
     resource: 'submissions',

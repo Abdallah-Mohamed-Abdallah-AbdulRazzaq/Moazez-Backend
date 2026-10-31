@@ -52,8 +52,15 @@ export class AssessmentMediaService {
   createGradeAssessmentUpload(
     assessmentId: string,
     command: CreateAssessmentMediaCommand,
+    teacherAuthoringClassId?: string,
   ) {
-    return this.create('GRADE_ASSESSMENT_MEDIA', assessmentId, command);
+    return this.create(
+      'GRADE_ASSESSMENT_MEDIA',
+      assessmentId,
+      command,
+      undefined,
+      teacherAuthoringClassId,
+    );
   }
   createHomeworkSubmissionUpload(
     targetId: string,
@@ -98,9 +105,15 @@ export class AssessmentMediaService {
     contextId: string,
     command: CreateAssessmentMediaCommand,
     questionId?: string,
+    teacherAuthoringClassId?: string,
   ): Promise<AssessmentMediaUploadDto> {
     this.runtime.assertUploadExecutionEnabled();
-    const owner = assessmentMediaOwner(purpose, contextId, questionId);
+    const owner = assessmentMediaOwner(
+      purpose,
+      contextId,
+      questionId,
+      teacherAuthoringClassId,
+    );
     if (!command || typeof command !== 'object')
       throw new AssessmentMediaException('invalid_request');
     assertAssessmentUuid(command.clientRequestId);
@@ -186,9 +199,15 @@ export class AssessmentMediaService {
     contextId: string,
     uploadId: string,
     questionId?: string,
+    teacherAuthoringClassId?: string,
   ): Promise<AssessmentMediaUploadDto> {
     this.runtime.assertUploadExecutionEnabled();
-    const owner = assessmentMediaOwner(purpose, contextId, questionId);
+    const owner = assessmentMediaOwner(
+      purpose,
+      contextId,
+      questionId,
+      teacherAuthoringClassId,
+    );
     assertAssessmentUuid(uploadId);
     const claim = await this.repository.claim(owner, uploadId);
     if (claim.kind === 'expired') throw new AssessmentMediaException('expired');
@@ -230,8 +249,14 @@ export class AssessmentMediaService {
     contextId: string,
     uploadId: string,
     questionId?: string,
+    teacherAuthoringClassId?: string,
   ): Promise<AssessmentMediaUploadDto> {
-    const owner = assessmentMediaOwner(purpose, contextId, questionId);
+    const owner = assessmentMediaOwner(
+      purpose,
+      contextId,
+      questionId,
+      teacherAuthoringClassId,
+    );
     assertAssessmentUuid(uploadId);
     return present(await this.repository.find(owner, uploadId));
   }
@@ -241,8 +266,14 @@ export class AssessmentMediaService {
     contextId: string,
     uploadId: string,
     questionId?: string,
+    teacherAuthoringClassId?: string,
   ): Promise<AssessmentMediaUploadDto> {
-    const owner = assessmentMediaOwner(purpose, contextId, questionId);
+    const owner = assessmentMediaOwner(
+      purpose,
+      contextId,
+      questionId,
+      teacherAuthoringClassId,
+    );
     assertAssessmentUuid(uploadId);
     return present(await this.repository.cancel(owner, uploadId));
   }

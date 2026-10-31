@@ -1,4 +1,7 @@
-import { lockGradeTeacherAcademicHierarchy } from './grade-asset-authorization';
+import {
+  authorizeGradeAssets,
+  lockGradeTeacherAcademicHierarchy,
+} from './grade-asset-authorization';
 import { Prisma, UserType } from '@prisma/client';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 import { requireGradesScope } from '../../grades-context';
@@ -22,9 +25,23 @@ export async function assertGradesMediaAuthorization(
   submission: boolean,
   gate: TeacherAllocationOperationalWriteGate,
   ownershipOnly = false,
+  teacherAuthoringClassId?: string,
 ): Promise<void> {
   const scope = requireGradesScope();
   const absent = () => new NotFoundDomainException();
+  if (teacherAuthoringClassId !== undefined) {
+    if (submission) throw absent();
+    await authorizeGradeAssets(
+      tx,
+      gate,
+      { surface: 'teacher', classId: teacherAuthoringClassId, authoring: true },
+      { assessmentId: contextId },
+      true,
+      true,
+      true,
+    );
+    return;
+  }
   if (submission) {
     if (scope.userType !== UserType.STUDENT) throw absent();
     const reference = await tx.gradeSubmission.findFirst({

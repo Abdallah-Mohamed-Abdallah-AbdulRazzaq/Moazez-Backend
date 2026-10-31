@@ -62,7 +62,12 @@ export class GradeQuestionGroupsRepository {
     write = false,
     managed = false,
   ) {
-    if (write && actor.surface !== 'core') throw absent();
+    if (
+      write &&
+      actor.surface !== 'core' &&
+      !(actor.surface === 'teacher' && actor.authoring === true)
+    )
+      throw absent();
     const readPermission =
       actor.surface === 'teacher'
         ? 'grades.submissions.view'
@@ -112,6 +117,7 @@ export class GradeQuestionGroupsRepository {
     parentId: string,
     records?: readonly { id: string }[],
     publication = false,
+    includeMedia = true,
   ) {
     const scope = requireGradesScope();
     const parents = await tx.$queryRaw<
@@ -127,7 +133,10 @@ export class GradeQuestionGroupsRepository {
       orderBy: [{ layoutOrder: 'asc' }, { id: 'asc' }],
       include: {
         assets: {
-          where: { deletedAt: null },
+          where: {
+            deletedAt: null,
+            ...(!includeMedia ? { id: { in: [] } } : {}),
+          },
           orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
         },
       },
@@ -459,6 +468,9 @@ export class GradeQuestionGroupsRepository {
             'GRADE_ASSESSMENT_MEDIA',
             parentId,
             command,
+            actor.surface === 'teacher' && actor.authoring
+              ? actor.classId
+              : undefined,
           )),
           groupId: input.groupId,
         },

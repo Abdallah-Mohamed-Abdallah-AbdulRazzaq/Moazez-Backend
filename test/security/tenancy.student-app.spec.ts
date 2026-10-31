@@ -1,3 +1,8 @@
+import type { Server } from 'node:http';
+import {
+  exerciseLegacyStudentReviewRelease,
+  disposeLegacyReviewEvidence,
+} from '../fixtures/st12-legacy-review-contract';
 import { StudentGradesQuestionAssetsController } from '../../src/modules/student-app/assessment-assets/student-grades-question-assets.controller';
 import { StudentGradesAssessmentAssetsController } from '../../src/modules/student-app/assessment-assets/student-grades-assessment-assets.controller';
 import { StudentExamsQuestionAssetsController } from '../../src/modules/student-app/assessment-assets/student-exams-question-assets.controller';
@@ -1541,6 +1546,7 @@ describe('Student App Home/Profile routes (security)', () => {
 
   afterAll(async () => {
     try {
+      await disposeLegacyReviewEvidence(prisma, [ownAssessmentId]);
       await prisma.session.deleteMany({
         where: { userId: { in: createdUserIds } },
       });
@@ -2381,7 +2387,9 @@ describe('Student App Home/Profile routes (security)', () => {
         answers: [
           expect.objectContaining({
             answerText: 'A',
-            awardedPoints: 8,
+            awardedPoints: null, // Per-question review remains private before an explicit DETAILS release.
+            correctionStatus: 'pending',
+            reviewerComment: null,
             maxPoints: 10,
             selectedOptions: expect.arrayContaining([
               expect.objectContaining({
@@ -2471,7 +2479,8 @@ describe('Student App Home/Profile routes (security)', () => {
         answers: [
           expect.objectContaining({
             answerText: 'A',
-            score: 8,
+            score: null, // Alias of private per-question marks; summaries above remain 8.
+            feedback: null,
             selectedOptions: expect.arrayContaining([
               expect.objectContaining({
                 label: 'Correct visible label',
@@ -2483,6 +2492,14 @@ describe('Student App Home/Profile routes (security)', () => {
     });
     assertNoForbiddenStudentAppFields(examSubmission.body);
     assertNoAnswerKeysOrCorrectAnswers(examSubmission.body);
+    const { accessToken: reviewAdminToken } = await login(adminEmail);
+    await exerciseLegacyStudentReviewRelease({
+      server: app.getHttpServer<Server>(),
+      prisma,
+      assessmentId: ownAssessmentId,
+      studentToken: accessToken,
+      adminToken: reviewAdminToken,
+    });
   });
 
   it('returns safe empty exam submission state without creating a submission', async () => {
@@ -6370,6 +6387,15 @@ describe('Student App Home/Profile routes (security)', () => {
       select: { id: true },
     });
     createdGradeSubmissionAnswerIds.push(otherAnswer.id);
+    // The privacy sentinel is also a valid submitted choice for real finalization.
+    // Its hidden text/JSON and cross-student denial assertions remain unchanged.
+    await prisma.gradeSubmissionAnswerOption.create({
+      data: {
+        schoolId,
+        answerId: otherAnswer.id,
+        optionId: incorrectOption.id,
+      },
+    });
 
     return {
       assessmentId: assessment.id,

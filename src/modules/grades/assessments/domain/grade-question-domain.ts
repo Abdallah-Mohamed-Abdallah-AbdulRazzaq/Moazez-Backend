@@ -127,6 +127,16 @@ export class GradeQuestionStructureLockedException extends DomainException {
   }
 }
 
+export class GradeQuestionLastQuestionException extends DomainException {
+  constructor() {
+    super({
+      code: 'grades.question.last_question',
+      message: 'Assessment must keep at least one question',
+      httpStatus: HttpStatus.CONFLICT,
+    });
+  }
+}
+
 export class GradeAnswerInvalidOptionException extends DomainException {
   constructor(details?: Record<string, unknown>) {
     super({

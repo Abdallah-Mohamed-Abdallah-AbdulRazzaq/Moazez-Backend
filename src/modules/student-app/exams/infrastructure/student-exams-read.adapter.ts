@@ -1,6 +1,7 @@
 import { GRADE_ANSWER_MEDIA_SELECT } from '../../../grades/assessments/infrastructure/grade-answer-media.select';
 import { GradeAssetsRepository } from '../../../grades/assessments/infrastructure/grade-assets.repository';
 import { projectGradeAnswerNullFacts } from '../../../grades/assessments/infrastructure/grade-typed-answer.projection';
+import { GradeReviewReleaseRepository } from '../../../grades/assessments/infrastructure/grade-review-release.repository';
 import {
   hasGradeRichSelection,
   projectGradeRichContent,
@@ -247,6 +248,7 @@ export class StudentExamsReadAdapter {
   constructor(
     private readonly prisma: PrismaService,
     private readonly richAssets?: GradeAssetsRepository,
+    private readonly reviewRelease?: GradeReviewReleaseRepository,
   ) {}
 
   private get scopedPrisma(): PrismaService {
@@ -371,6 +373,11 @@ export class StudentExamsReadAdapter {
     });
     if (submission)
       await projectGradeAnswerNullFacts(this.scopedPrisma, submission.answers);
+    if (submission)
+      await this.reviewRelease?.markLegacyStudentDisclosure(
+        submission,
+        detail.exam.id,
+      );
 
     return {
       exam: detail.exam,

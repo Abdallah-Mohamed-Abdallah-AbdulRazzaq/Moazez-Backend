@@ -1,3 +1,7 @@
+import {
+  ST12_ASSET_OPERATIONS,
+  ST12_HISTORICAL_ASSET_OPERATIONS,
+} from '../fixtures/st12-contract-expectations';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { get as httpGet } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -466,9 +470,16 @@ describe('ST-07 Grades asset contracts and actual private HTTP bytes', () => {
           )
           .map((method) => `${method.toUpperCase()} ${path}`),
       );
+    expect(ST12_HISTORICAL_ASSET_OPERATIONS).toHaveLength(56);
+    const additionalNonGroups = ST12_ASSET_OPERATIONS.filter(
+      (r) => !r.includes('/groups/'),
+    );
+    expect(additionalNonGroups).toHaveLength(50);
     expect(
-      operations(paths.filter(([path]) => !path.includes('/groups/'))),
-    ).toHaveLength(56);
+      operations(paths.filter(([path]) => !path.includes('/groups/'))).sort(),
+    ).toEqual(
+      [...ST12_HISTORICAL_ASSET_OPERATIONS, ...additionalNonGroups].sort(),
+    );
     const groupAuthor =
       '/api/v1/grades/assessments/{assessmentId}/groups/{groupId}/assets';
     const groupPrefixes = [
@@ -492,8 +503,19 @@ describe('ST-07 Grades asset contracts and actual private HTTP bytes', () => {
     expect(expectedGroups).toHaveLength(19);
     expect(
       operations(paths.filter(([path]) => path.includes('/groups/'))).sort(),
-    ).toEqual(expectedGroups.sort());
-    expect(operations(paths)).toHaveLength(56 + expectedGroups.length);
+    ).toEqual(
+      [
+        ...expectedGroups,
+        ...ST12_ASSET_OPERATIONS.filter((r) => r.includes('/groups/')),
+      ].sort(),
+    );
+    expect(operations(paths).sort()).toEqual(
+      [
+        ...ST12_HISTORICAL_ASSET_OPERATIONS,
+        ...expectedGroups,
+        ...ST12_ASSET_OPERATIONS,
+      ].sort(),
+    );
     expect(JSON.stringify(doc.components?.schemas?.GradeAssetDto)).not.toMatch(
       /bucket|objectKey|checksumSha256|assessmentSecurityEvidence|uploadId/u,
     );

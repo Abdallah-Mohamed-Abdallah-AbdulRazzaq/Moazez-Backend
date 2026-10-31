@@ -217,7 +217,7 @@ test('G05 current CI mode runs disposable migration behavior without historical 
     Object.keys(inspectRepositoryState(VERIFICATION_MODES.CURRENT_CI)).sort(),
     ['indexClean', 'nodeDirectory', 'nodeVersion', 'platform'],
   );
-  assert.equal(FOCUSED_TEST_COUNT, 22);
+  assert.equal(FOCUSED_TEST_COUNT, 23);
   assert.equal(CURRENT_CI_SKIPPED_TEST_COUNT, 8);
   assert.match(
     harnessSource,
@@ -798,6 +798,58 @@ historicalTest(
     }
   },
 );
+
+test('ST12 seed inventory matches every canonical permission and exact default grant set', () => {
+  const {
+    assertCanonicalSeedPermissions,
+  } = require('../ci/prd3-g05-clean-start.cjs');
+  const { loadProductionContracts } = require('../ci/ci-fixture-contract.cjs');
+  const production = loadProductionContracts(REPOSITORY_ROOT);
+  assert.equal(production.permissionCodes.length, 244);
+  assert.equal(production.systemRoles.length, 7);
+  assert.equal(
+    production.systemRoles.reduce((sum, r) => sum + r.permissions.length, 0),
+    874,
+  );
+  assert.doesNotThrow(() =>
+    assertCanonicalSeedPermissions(
+      production.permissionCodes,
+      production.systemRoles,
+    ),
+  );
+  for (const role of production.systemRoles) {
+    const changed = structuredClone(production.systemRoles);
+    changed
+      .find((r) => r.key === role.key)
+      .permissions.push('grades.teacher_authoring.manage');
+    assert.throws(() =>
+      assertCanonicalSeedPermissions(production.permissionCodes, changed),
+    );
+  }
+  const missing = structuredClone(production.systemRoles);
+  missing.find((r) => r.key === 'platform_super_admin').permissions.pop();
+  assert.throws(() =>
+    assertCanonicalSeedPermissions(production.permissionCodes, missing),
+  );
+  assert.throws(() =>
+    assertCanonicalSeedPermissions(
+      production.permissionCodes.slice(1),
+      production.systemRoles,
+    ),
+  );
+  assert.throws(() =>
+    assertCanonicalSeedPermissions(
+      [...production.permissionCodes, production.permissionCodes[0]],
+      production.systemRoles,
+    ),
+  );
+  assert.throws(() =>
+    assertCanonicalSeedPermissions(
+      [...production.permissionCodes, 'unknown.permission'],
+      production.systemRoles,
+    ),
+  );
+});
 
 module.exports = {
   BASE_SHA,

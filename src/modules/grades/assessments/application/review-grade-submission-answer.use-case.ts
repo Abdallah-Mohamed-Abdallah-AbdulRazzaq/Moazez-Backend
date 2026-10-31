@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { requireGradesScope } from '../../grades-context';
 import { assertSubmissionReviewable } from '../domain/grade-submission-review-domain';
 import { ReviewGradeSubmissionAnswerDto } from '../dto/grade-submission-review.dto';
@@ -7,7 +6,6 @@ import { GradesSubmissionsRepository } from '../infrastructure/grades-submission
 import { presentGradeSubmissionAnswer } from '../presenters/grade-submission.presenter';
 import { hasGradeRichSelection } from '../infrastructure/grade-rich-content.projection';
 import {
-  buildSingleAnswerReviewAuditEntry,
   findReviewAnswerOrThrow,
   findReviewSubmissionOrThrow,
   prepareSingleAnswerReviewInput,
@@ -17,7 +15,6 @@ import {
 export class ReviewGradeSubmissionAnswerUseCase {
   constructor(
     private readonly gradesSubmissionsRepository: GradesSubmissionsRepository,
-    private readonly authRepository: AuthRepository,
   ) {}
 
   async execute(
@@ -44,14 +41,6 @@ export class ReviewGradeSubmissionAnswerUseCase {
     });
     const updated =
       await this.gradesSubmissionsRepository.updateAnswerReview(input);
-
-    await this.authRepository.createAuditLog(
-      buildSingleAnswerReviewAuditEntry({
-        scope,
-        before: answer,
-        after: updated,
-      }),
-    );
 
     const displayQuestions = hasGradeRichSelection([updated.question])
       ? await this.gradesSubmissionsRepository.listActiveQuestionsForSubmission(

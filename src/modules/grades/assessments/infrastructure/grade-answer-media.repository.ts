@@ -222,18 +222,39 @@ export class GradeAnswerMediaRepository {
     });
   }
 
-  read(input: GradeAnswerMediaResource) {
+  read(
+    input: GradeAnswerMediaResource,
+    released?: {
+      audience: 'STUDENT' | 'PARENT';
+      authorize: (tx: Prisma.TransactionClient) => Promise<void>;
+    },
+  ) {
     return (this.prisma.scoped as unknown as PrismaClient).$transaction(
       async (tx) => {
         const scope = requireGradesScope();
-        if (
-          !['STUDENT', 'TEACHER', 'SCHOOL_USER', 'ORGANIZATION_USER'].includes(
-            scope.userType,
+        if (released) {
+          if (scope.userType !== released.audience) throw absent();
+          await assertGradeLiveMutationPermission(
+            tx,
+            'grades.assessments.view',
+          );
+          await released.authorize(tx);
+        } else {
+          if (
+            ![
+              'STUDENT',
+              'TEACHER',
+              'SCHOOL_USER',
+              'ORGANIZATION_USER',
+            ].includes(scope.userType)
           )
-        )
-          throw absent();
-        await assertGradeLiveMutationPermission(tx, 'grades.submissions.view');
-        await assertGradeSubmissionAccess(tx, input.submissionId);
+            throw absent();
+          await assertGradeLiveMutationPermission(
+            tx,
+            'grades.submissions.view',
+          );
+          await assertGradeSubmissionAccess(tx, input.submissionId);
+        }
         const submission = await tx.gradeSubmission.findFirst({
           where: {
             id: input.submissionId,

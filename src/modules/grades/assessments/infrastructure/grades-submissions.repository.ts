@@ -21,6 +21,11 @@ import {
   gradeEnrollmentAccessWhere,
 } from './grades-resource-access';
 import { Injectable } from '@nestjs/common';
+import type {
+  GradeReviewerActor,
+  GradeReviewAnswerResource,
+} from '../domain/grade-reviewer-actor';
+import { recordGradeReviewAudit } from './grade-key-approvals.repository';
 import {
   GradeAnswerCorrectionStatus,
   GradeSubmissionStatus,
@@ -133,7 +138,7 @@ const ASSESSMENT_FOR_SUBMISSION_ARGS =
     },
   });
 
-const QUESTION_FOR_SUBMISSION_ARGS =
+export const QUESTION_FOR_SUBMISSION_ARGS =
   Prisma.validator<Prisma.GradeAssessmentQuestionDefaultArgs>()({
     select: {
       id: true,
@@ -183,7 +188,7 @@ const SELECTED_ANSWER_OPTION_SELECT = {
   },
 } satisfies Prisma.GradeSubmissionAnswerOptionSelect;
 
-const ANSWER_WITH_OPTIONS_ARGS =
+export const ANSWER_WITH_OPTIONS_ARGS =
   Prisma.validator<Prisma.GradeSubmissionAnswerDefaultArgs>()({
     select: {
       id: true,
@@ -393,6 +398,117 @@ export class GradesSubmissionsRepository {
 
   private get scopedPrisma(): PrismaService {
     return this.prisma.scoped as unknown as PrismaService;
+  }
+
+  /** Shared final review fence; the callback is a Core repository operation. */
+  async withReviewerTransaction<T>(
+    actor: GradeReviewerActor,
+    resource: GradeReviewAnswerResource,
+    operation: (
+      tx: Prisma.TransactionClient,
+      submission: GradeSubmissionDetailRecord,
+    ) => Promise<T>,
+    readOnly = false,
+  ): Promise<T> {
+    return this.scopedPrisma.$transaction(
+      async (tx) => {
+        const scope = requireGradesScope();
+        if (
+          (actor.surface === 'core' &&
+            !['SCHOOL_USER', 'ORGANIZATION_USER'].includes(scope.userType)) ||
+          (actor.surface === 'teacher' && scope.userType !== 'TEACHER')
+        )
+          throw new NotFoundDomainException();
+        await assertGradeLiveMutationPermission(
+          tx,
+          'grades.submissions.review',
+        );
+        const allocation =
+          actor.surface === 'teacher'
+            ? await this.richAssets?.lockTeacherReviewAllocation(
+                tx,
+                actor.classId,
+              )
+            : null;
+        if (actor.surface === 'teacher' && !allocation)
+          throw new NotFoundDomainException();
+        const submission = await this.lockSubmissionMutation(
+          tx,
+          resource.submissionId,
+          'grades.submissions.review',
+        );
+        if (
+          submission.assessmentId !== resource.assessmentId ||
+          (allocation &&
+            (allocation.classroomId !== submission.enrollment?.classroomId ||
+              allocation.subjectId !== submission.assessment.subjectId ||
+              allocation.termId !== submission.assessment.termId ||
+              allocation.term.academicYearId !==
+                submission.assessment.academicYearId))
+        )
+          throw new NotFoundDomainException();
+        if (
+          allocation &&
+          !(await tx.academicYear.findFirst({
+            where: { id: submission.assessment.academicYearId, isActive: true },
+            select: { id: true },
+          }))
+        )
+          throw new NotFoundDomainException();
+        if (readOnly) {
+          if (
+            !['SUBMITTED', 'CORRECTED'].includes(submission.status) ||
+            submission.assessment.deliveryMode !== 'QUESTION_BASED' ||
+            !['PUBLISHED', 'APPROVED', 'LOCKED'].includes(
+              submission.assessment.approvalStatus,
+            )
+          )
+            throw new NotFoundDomainException();
+        } else assertSubmissionReviewable(submission);
+        return operation(tx, submission);
+      },
+      { maxWait: 5000, timeout: 15000 },
+    );
+  }
+
+  /** Existing manual validation and mutation, usable inside the same scoring transaction. */
+  async writeReviewerDecision(
+    tx: Prisma.TransactionClient,
+    submission: GradeSubmissionDetailRecord,
+    input: AnswerReviewUpdateInput,
+  ) {
+    const before = await this.validateReviewWrite(tx, submission, input);
+    const updated = await tx.gradeSubmissionAnswer.update({
+      where: { id: input.answerId },
+      data: {
+        awardedPoints: input.awardedPoints,
+        correctionStatus: input.correctionStatus,
+        reviewerComment: input.reviewerComment,
+        reviewerCommentAr: input.reviewerCommentAr,
+        reviewedById: input.reviewedById,
+        reviewedAt: input.reviewedAt,
+      },
+      ...ANSWER_WITH_OPTIONS_ARGS,
+    });
+    await recordGradeReviewAudit(
+      tx,
+      'grades.submission.answer.review',
+      'grade_submission_answer',
+      updated.id,
+      {
+        awardedPoints: before.awardedPoints?.toFixed(2) ?? null,
+        correctionStatus: before.correctionStatus,
+        reviewedAt: before.reviewedAt?.toISOString() ?? null,
+      },
+      {
+        awardedPoints: updated.awardedPoints?.toFixed(2) ?? null,
+        correctionStatus: updated.correctionStatus,
+        reviewedAt: updated.reviewedAt?.toISOString() ?? null,
+        reviewerCommentPresent: !!updated.reviewerComment,
+        reviewerCommentArPresent: !!updated.reviewerCommentAr,
+      },
+    );
+    return updated;
   }
 
   async findAssessmentForSubmission(
@@ -822,21 +938,7 @@ export class GradesSubmissionsRepository {
         input.submissionId,
         'grades.submissions.review',
       );
-      await this.validateReviewWrite(tx, submission, input);
-      await tx.gradeSubmissionAnswer.updateMany({
-        where: {
-          id: input.answerId,
-          submissionId: input.submissionId,
-        },
-        data: {
-          awardedPoints: input.awardedPoints,
-          correctionStatus: input.correctionStatus,
-          reviewerComment: input.reviewerComment,
-          reviewerCommentAr: input.reviewerCommentAr,
-          reviewedById: input.reviewedById,
-          reviewedAt: input.reviewedAt,
-        },
-      });
+      await this.writeReviewerDecision(tx, submission, input);
     });
 
     return this.findAnswerResult(input.answerId);
@@ -873,6 +975,17 @@ export class GradesSubmissionsRepository {
           input,
         );
       const updatedAnswerIds: string[] = [];
+      const before = submissions.flatMap((submission) =>
+        submission.answers
+          .filter((answer) =>
+            inputs.some((input) => input.answerId === answer.id),
+          )
+          .map((answer) => ({
+            id: answer.id,
+            awardedPoints: answer.awardedPoints?.toFixed(2) ?? null,
+            correctionStatus: answer.correctionStatus,
+          })),
+      );
 
       for (const input of inputs) {
         await tx.gradeSubmissionAnswer.updateMany({
@@ -891,6 +1004,29 @@ export class GradesSubmissionsRepository {
         });
         updatedAnswerIds.push(input.answerId);
       }
+      for (const submission of submissions)
+        await recordGradeReviewAudit(
+          tx,
+          'grades.submission.answers.bulk_review',
+          'grade_submission',
+          submission.id,
+          {
+            answers: before.filter((answer) =>
+              submission.answers.some((row) => row.id === answer.id),
+            ),
+          },
+          {
+            answers: inputs
+              .filter((input) => input.submissionId === submission.id)
+              .map((input) => ({
+                id: input.answerId,
+                awardedPoints: input.awardedPoints?.toFixed(2) ?? null,
+                correctionStatus: input.correctionStatus,
+                reviewerCommentPresent: !!input.reviewerComment,
+                reviewerCommentArPresent: !!input.reviewerCommentAr,
+              })),
+          },
+        );
 
       return updatedAnswerIds;
     });
@@ -1029,6 +1165,23 @@ export class GradesSubmissionsRepository {
           maxScore: input.maxScore,
         },
       });
+      await recordGradeReviewAudit(
+        tx,
+        'grades.submission.review.finalize',
+        'grade_submission',
+        submission.id,
+        {
+          status: submission.status,
+          totalScore: submission.totalScore?.toFixed(2) ?? null,
+          correctedAt: submission.correctedAt?.toISOString() ?? null,
+        },
+        {
+          status: input.status,
+          totalScore: input.totalScore?.toFixed(2) ?? null,
+          maxScore: input.maxScore?.toFixed(2) ?? null,
+          correctedAt: input.correctedAt?.toISOString() ?? null,
+        },
+      );
     });
 
     return this.findSubmissionDetailResult(input.submissionId);
@@ -1152,7 +1305,7 @@ export class GradesSubmissionsRepository {
     tx: Prisma.TransactionClient,
     submission: GradeSubmissionDetailRecord,
     input: AnswerReviewUpdateInput,
-  ): Promise<void> {
+  ): Promise<GradeSubmissionAnswerRecord> {
     assertSubmissionReviewable(submission);
     const answer = await tx.gradeSubmissionAnswer.findFirst({
       where: { id: input.answerId, submissionId: submission.id },
@@ -1171,6 +1324,7 @@ export class GradesSubmissionsRepository {
     if (isGradeEvaluationType(answer.question.type))
       await this.validateStoredEvaluationAnswers(tx, submission);
     assertReviewAwardedPoints({ answer, awardedPoints: input.awardedPoints });
+    return answer;
   }
 
   /** Existing submission/assessment locks and authorization already hold. No key read. */

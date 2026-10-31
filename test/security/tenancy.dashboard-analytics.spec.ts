@@ -1,3 +1,4 @@
+import { expectDefaultPermissionContract } from '../fixtures/st12-contract-expectations';
 import 'reflect-metadata';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -79,7 +80,7 @@ describe('Dashboard analytics tenancy/security contracts', () => {
 
     expect(permissionsSeed).toContain("'dashboard.analytics.view'");
     expect(permissionsSeed).toContain("resource: 'analytics'");
-    expect(rolesSeed).toContain('const ALL = PERMISSION_CODES;');
+    expectDefaultPermissionContract();
     expect(rolesSeed).toContain('const NON_PLATFORM = ALL.filter');
     expect(rolesSeed).toContain('const SCHOOL_LEVEL = NON_PLATFORM;');
     expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
@@ -111,9 +112,9 @@ describe('Dashboard analytics tenancy/security contracts', () => {
       ]),
     );
 
-    expect(catalogResponse.catalog.sources.map((source) => source.source)).not.toContain(
-      'platform',
-    );
+    expect(
+      catalogResponse.catalog.sources.map((source) => source.source),
+    ).not.toContain('platform');
     expect(chartsResponse.filters).toEqual({
       source: 'attendance',
       type: 'line',

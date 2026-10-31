@@ -1,3 +1,4 @@
+import { expectDefaultPermissionContract } from '../fixtures/st12-contract-expectations';
 import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -299,7 +300,7 @@ describe('Dashboard command center tenancy/security contracts', () => {
     expect(permissionsSeed).toContain("resource: 'command_center'");
     expect(permissionsSeed).toContain("resource: 'analytics'");
     expect(permissionsSeed).toContain("resource: 'widgets'");
-    expect(rolesSeed).toContain('const ALL = PERMISSION_CODES;');
+    expectDefaultPermissionContract();
     expect(rolesSeed).toContain('const SCHOOL_LEVEL = NON_PLATFORM;');
     expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
       'dashboard.command_center.view',

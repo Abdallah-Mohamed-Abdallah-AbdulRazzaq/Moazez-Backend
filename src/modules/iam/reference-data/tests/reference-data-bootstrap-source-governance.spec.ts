@@ -167,7 +167,7 @@ describe('authorization reference-data bootstrap source governance', () => {
     expect(adapters.match(/console\.log/gu)).toHaveLength(2);
   });
 
-  it('preserves the existing Platform Administrator prerequisite unchanged', () => {
+  it('verifies the exact canonical authorization contract before initial User creation', () => {
     const repository = read(
       join(
         REPOSITORY_ROOT,
@@ -175,14 +175,26 @@ describe('authorization reference-data bootstrap source governance', () => {
       ),
     );
 
-    expect(repository).toContain('take: 2');
-    expect(repository).toMatch(/roles\.length !== 1/u);
-    expect(repository).toMatch(/permissionCount === 0/u);
-    expect(repository).toMatch(
-      /roles\[0\]\._count\.rolePermissions !== permissionCount/u,
+    expect(repository).toContain(
+      'verifyAuthorizationReferenceData(transaction)',
     );
-    expect(repository.indexOf('permissionCount === 0')).toBeLessThan(
+    expect(repository).toContain('if (!referenceData.ready)');
+    expect(repository.indexOf('if (!referenceData.ready)')).toBeLessThan(
       repository.indexOf('transaction.user.create'),
+    );
+    const verification = read(
+      join(
+        REFERENCE_DATA_ROOT,
+        'infrastructure/authorization-reference-data.repository.ts',
+      ),
+    );
+    expect(verification).toContain('permissionCount === PERMISSIONS.length');
+    expect(verification).toContain('systemRoleCount === SYSTEM_ROLES.length');
+    expect(verification).toContain(
+      'sameValues(platformPermissionCodes, defaultPlatformPermissions)',
+    );
+    expect(verification).toContain(
+      'sameValues(actualPermissionCodes, definition.permissions)',
     );
   });
 });
