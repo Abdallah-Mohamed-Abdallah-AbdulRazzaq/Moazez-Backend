@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import type { GradeTeacherAuthoringActor } from '../domain/grade-teacher-authoring';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { requireGradesScope } from '../../grades-context';
 import { ReorderGradeAssessmentQuestionsDto } from '../dto/grade-assessment-question.dto';
@@ -22,6 +24,7 @@ export class ReorderGradeAssessmentQuestionsUseCase {
   async execute(
     assessmentId: string,
     command: ReorderGradeAssessmentQuestionsDto,
+    actor?: GradeTeacherAuthoringActor,
   ) {
     const scope = requireGradesScope();
     const assessment = await loadQuestionAssessmentOrThrow(
@@ -42,24 +45,34 @@ export class ReorderGradeAssessmentQuestionsUseCase {
     });
 
     const questions = await this.questionsRepository.reorderQuestions({
+      actor,
       assessmentId: assessment.id,
       questionIds: command.questionIds,
     });
 
-    await this.authRepository.createAuditLog(
-      buildQuestionAuditEntry({
-        scope,
-        action: 'grades.question.reorder',
-        resourceType: 'grade_assessment',
-        resourceId: assessment.id,
-        before: summarizeQuestionListForAudit(before),
-        after: summarizeQuestionListForAudit(questions),
-      }),
-    );
+    if (!actor)
+      await this.authRepository.createAuditLog(
+        buildQuestionAuditEntry({
+          scope,
+          action: 'grades.question.reorder',
+          resourceType: 'grade_assessment',
+          resourceId: assessment.id,
+          before: summarizeQuestionListForAudit(before),
+          after: summarizeQuestionListForAudit(questions),
+        }),
+      );
 
     return presentGradeAssessmentQuestions({
       authoring: true,
-      assessment,
+      assessment: actor
+        ? {
+            ...assessment,
+            maxScore: questions.reduce(
+              (sum, question) => sum.plus(question.points),
+              new Prisma.Decimal(0),
+            ),
+          }
+        : assessment,
       questions,
     });
   }

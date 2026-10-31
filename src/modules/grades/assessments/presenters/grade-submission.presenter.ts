@@ -1,3 +1,5 @@
+import { getRequestContext } from '../../../../common/context/request-context';
+import { canDiscloseGradeReview } from '../domain/grade-review-disclosure';
 import { presentQuestionGroupContext } from '../../../../common/question-groups/question-group.projection';
 import { presentGradeRichContent } from '../infrastructure/grade-rich-content.projection';
 import { sanitizeGradeQuestionContent } from '../domain/grade-question-content-policy';
@@ -54,14 +56,23 @@ export function presentGradeSubmissionsList(params: {
   };
 }
 
+function isCurrentManagementReviewer(): boolean {
+  return ['TEACHER', 'SCHOOL_USER', 'ORGANIZATION_USER'].includes(
+    getRequestContext()?.actor?.userType ?? '',
+  );
+}
+
 export function presentGradeSubmissionDetail(params: {
   submission: GradeSubmissionDetailRecord;
   questions: GradeSubmissionQuestionRecord[];
 }): GradeSubmissionResponseDto {
+  const discloseReview =
+    isCurrentManagementReviewer() || canDiscloseGradeReview(params.submission);
   const answers = params.submission.answers.map((answer) =>
     presentGradeSubmissionAnswer(
       answer,
       params.questions.find((q) => q.id === answer.questionId),
+      discloseReview,
     ),
   );
   const answerByQuestionId = new Map(
@@ -94,6 +105,7 @@ export function presentGradeSubmissionDetail(params: {
       presentSubmissionQuestion({
         question,
         answer: answerByQuestionId.get(question.id) ?? null,
+        discloseReview,
       }),
     ),
   };
@@ -102,6 +114,8 @@ export function presentGradeSubmissionDetail(params: {
 export function presentGradeSubmissionAnswer(
   answer: GradeSubmissionAnswerRecord,
   displayQuestion?: GradeSubmissionQuestionRecord,
+  discloseReview = isCurrentManagementReviewer() ||
+    canDiscloseGradeReview(answer),
 ): GradeSubmissionAnswerResponseDto {
   return {
     id: answer.id,
@@ -115,11 +129,13 @@ export function presentGradeSubmissionAnswer(
         (option) => option.optionId,
       ),
     }),
-    correctionStatus: presentAnswerCorrectionStatus(answer.correctionStatus),
-    awardedPoints: presentDecimal(answer.awardedPoints),
+    correctionStatus: discloseReview
+      ? presentAnswerCorrectionStatus(answer.correctionStatus)
+      : 'pending',
+    awardedPoints: discloseReview ? presentDecimal(answer.awardedPoints) : null,
     maxPoints: presentDecimal(answer.maxPoints),
-    reviewerComment: answer.reviewerComment,
-    reviewerCommentAr: answer.reviewerCommentAr,
+    reviewerComment: discloseReview ? answer.reviewerComment : null,
+    reviewerCommentAr: discloseReview ? answer.reviewerCommentAr : null,
     selectedOptions: (presentGradeQuestionContract(answer.question.type)
       .interaction.kind === 'choice'
       ? answer.selectedOptions
@@ -131,8 +147,8 @@ export function presentGradeSubmissionAnswer(
           selected.option,
       ),
     })),
-    reviewedAt: presentNullableDate(answer.reviewedAt),
-    reviewedById: answer.reviewedById,
+    reviewedAt: discloseReview ? presentNullableDate(answer.reviewedAt) : null,
+    reviewedById: discloseReview ? answer.reviewedById : null,
     createdAt: answer.createdAt.toISOString(),
     updatedAt: answer.updatedAt.toISOString(),
   };
@@ -192,6 +208,7 @@ function presentGradeSubmissionListRow(params: {
 function presentSubmissionQuestion(params: {
   question: GradeSubmissionQuestionRecord;
   answer: GradeSubmissionAnswerRecord | null;
+  discloseReview?: boolean;
 }): GradeSubmissionQuestionResponseDto {
   return {
     ...presentGradeRichContent(params.question),
@@ -215,7 +232,11 @@ function presentSubmissionQuestion(params: {
     sortOrder: params.question.sortOrder,
     required: params.question.required,
     answer: params.answer
-      ? presentGradeSubmissionAnswer(params.answer, params.question)
+      ? presentGradeSubmissionAnswer(
+          params.answer,
+          params.question,
+          params.discloseReview,
+        )
       : null,
   };
 }

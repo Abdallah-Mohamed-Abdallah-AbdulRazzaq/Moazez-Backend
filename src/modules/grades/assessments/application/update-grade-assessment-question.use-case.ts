@@ -3,6 +3,7 @@ import { validateGradeQuestionContent } from '../domain/grade-question-content-p
 import { validateGradeQuestionDefinition } from '../domain/grade-question-interaction';
 import { isGradeEvaluationType } from '../domain/grade-question-evaluation';
 import { Injectable } from '@nestjs/common';
+import type { GradeTeacherAuthoringActor } from '../domain/grade-teacher-authoring';
 import { ValidationDomainException } from '../../../../common/exceptions/domain-exception';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { requireGradesScope } from '../../grades-context';
@@ -29,7 +30,11 @@ export class UpdateGradeAssessmentQuestionUseCase {
     private readonly authRepository: AuthRepository,
   ) {}
 
-  async execute(questionId: string, command: UpdateGradeAssessmentQuestionDto) {
+  async execute(
+    questionId: string,
+    command: UpdateGradeAssessmentQuestionDto,
+    actor?: GradeTeacherAuthoringActor,
+  ) {
     const scope = requireGradesScope();
     const existing = await loadQuestionOrThrow(
       this.questionsRepository,
@@ -127,22 +132,24 @@ export class UpdateGradeAssessmentQuestionUseCase {
       await this.questionsRepository.updateQuestionAndReplaceOptions(
         existing.id,
         {
+          actor,
           data: payload,
           options: normalizedOptions,
           ...(metadataPatch ? { metadataPatch } : {}),
         },
       );
 
-    await this.authRepository.createAuditLog(
-      buildQuestionAuditEntry({
-        scope,
-        action: 'grades.question.update',
-        resourceType: 'grade_assessment_question',
-        resourceId: updated.id,
-        before: summarizeQuestionForAudit(existing),
-        after: summarizeQuestionForAudit(updated),
-      }),
-    );
+    if (!actor)
+      await this.authRepository.createAuditLog(
+        buildQuestionAuditEntry({
+          scope,
+          action: 'grades.question.update',
+          resourceType: 'grade_assessment_question',
+          resourceId: updated.id,
+          before: summarizeQuestionForAudit(existing),
+          after: summarizeQuestionForAudit(updated),
+        }),
+      );
 
     return presentGradeAssessmentQuestion(updated, true);
   }

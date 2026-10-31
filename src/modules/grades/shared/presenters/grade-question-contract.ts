@@ -1,10 +1,11 @@
 import { presentQuestionGroupMembership } from '../../../../common/question-groups/question-group.projection';
 import { gradeResponseConfig } from '../../assessments/domain/grade-response-config';
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { RESPONSE_CONFIG_OPENAPI } from '../../../../common/assessment-answer/response-config.openapi';
 import type { ResponseConfigV1 } from '../../../../common/assessment-answer/response-config';
 import type { RichContent } from '../../../../common/rich-content/rich-content.types';
 import { GradeQuestionType } from '@prisma/client';
+import { GRADE_RUNTIME_QUESTION_TYPES } from '../../assessments/domain/grade-runtime-types';
 import type { ActiveGradeQuestionType } from '../../assessments/domain/grade-runtime-types';
 import type { Phase } from '../../../../common/question-evaluation';
 import { isGradeEvaluationType } from '../../assessments/domain/grade-question-evaluation';
@@ -21,6 +22,19 @@ import {
 } from '../../assessments/domain/grade-question-content-policy';
 
 export class GradeQuestionInteractionDto {
+  @ApiProperty({
+    enum: [
+      'choice',
+      'text',
+      'fill',
+      'matching',
+      'media',
+      'ordering',
+      'numeric',
+      'math_expression',
+      'unsupported',
+    ],
+  })
   kind!:
     | 'choice'
     | 'text'
@@ -31,9 +45,19 @@ export class GradeQuestionInteractionDto {
     | 'numeric'
     | 'math_expression'
     | 'unsupported';
+  @ApiProperty({ enum: ['single', 'multiple'], nullable: true })
   selectionMode!: 'single' | 'multiple' | null;
+  @ApiProperty()
   multiline!: boolean;
+  @ApiProperty()
   supported!: boolean;
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    nullable: true,
+    description:
+      'Closed public interaction definition for canonicalType; private keys are excluded',
+  })
   definition?: GradePublicDefinition | null;
 }
 
@@ -96,9 +120,17 @@ export class GradeQuestionContractDto {
   @ApiPropertyOptional({ format: 'uuid' }) groupId?: string;
   @ApiPropertyOptional(RESPONSE_CONFIG_OPENAPI)
   responseConfig?: ResponseConfigV1;
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    description: 'Safe RichQuestionContent V1',
+  })
   richContent?: RichContent;
+  @ApiProperty({ description: 'Legacy presentation type' })
   type!: string;
+  @ApiProperty({ enum: GRADE_RUNTIME_QUESTION_TYPES, nullable: true })
   canonicalType!: GradeQuestionType | null;
+  @ApiProperty({ type: () => GradeQuestionInteractionDto })
   interaction!: GradeQuestionInteractionDto;
 }
 

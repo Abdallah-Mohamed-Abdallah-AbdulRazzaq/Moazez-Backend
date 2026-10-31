@@ -1,3 +1,6 @@
+import { StudentGradeReviewService } from './grades/application/student-grade-review.service';
+import { StudentGradeReviewController } from './grades/controller/student-grade-review.controller';
+import { StudentExamReviewController } from './grades/controller/student-exam-review.controller';
 import { StudentGradesQuestionGroupsController } from './assessment-assets/student-grades-question-groups.controller';
 import { StudentExamsQuestionGroupsController } from './assessment-assets/student-exams-question-groups.controller';
 import { AssessmentMediaModule } from '../files/assessment-media/assessment-media.module';
@@ -187,6 +190,8 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     StudentHomeworksModule,
   ],
   controllers: [
+    StudentGradeReviewController,
+    StudentExamReviewController,
     StudentGradesQuestionGroupsController,
     StudentExamsQuestionGroupsController,
     StudentGradeAnswerMediaController,
@@ -217,6 +222,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     StudentRewardsController,
   ],
   providers: [
+    StudentGradeReviewService,
     StudentGradeAssetsService,
     GetStudentAvatarContentUseCase,
     GetStudentRewardImageContentUseCase,

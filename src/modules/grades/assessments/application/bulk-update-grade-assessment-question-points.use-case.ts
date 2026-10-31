@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import type { GradeTeacherAuthoringActor } from '../domain/grade-teacher-authoring';
 import { ValidationDomainException } from '../../../../common/exceptions/domain-exception';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { requireGradesScope } from '../../grades-context';
@@ -23,6 +25,7 @@ export class BulkUpdateGradeAssessmentQuestionPointsUseCase {
   async execute(
     assessmentId: string,
     command: BulkUpdateGradeAssessmentQuestionPointsDto,
+    actor?: GradeTeacherAuthoringActor,
   ) {
     const scope = requireGradesScope();
     const assessment = await loadQuestionAssessmentOrThrow(
@@ -50,24 +53,34 @@ export class BulkUpdateGradeAssessmentQuestionPointsUseCase {
 
     const before = await this.questionsRepository.listQuestions(assessment.id);
     const questions = await this.questionsRepository.bulkUpdateQuestionPoints({
+      actor,
       assessmentId: assessment.id,
       items,
     });
 
-    await this.authRepository.createAuditLog(
-      buildQuestionAuditEntry({
-        scope,
-        action: 'grades.question.points.bulk_update',
-        resourceType: 'grade_assessment',
-        resourceId: assessment.id,
-        before: summarizeQuestionListForAudit(before),
-        after: summarizeQuestionListForAudit(questions),
-      }),
-    );
+    if (!actor)
+      await this.authRepository.createAuditLog(
+        buildQuestionAuditEntry({
+          scope,
+          action: 'grades.question.points.bulk_update',
+          resourceType: 'grade_assessment',
+          resourceId: assessment.id,
+          before: summarizeQuestionListForAudit(before),
+          after: summarizeQuestionListForAudit(questions),
+        }),
+      );
 
     return presentGradeAssessmentQuestions({
       authoring: true,
-      assessment,
+      assessment: actor
+        ? {
+            ...assessment,
+            maxScore: questions.reduce(
+              (sum, question) => sum.plus(question.points),
+              new Prisma.Decimal(0),
+            ),
+          }
+        : assessment,
       questions,
     });
   }

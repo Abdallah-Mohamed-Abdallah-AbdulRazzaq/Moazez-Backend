@@ -16,6 +16,7 @@ import type {
   GradeAssetResource,
 } from '../domain/grade-asset';
 import { isGradeAssetStudent } from '../domain/grade-asset';
+import { GRADE_TEACHER_AUTHORING_PERMISSION } from '../domain/grade-teacher-authoring';
 import {
   assertGradeLiveMutationPermission,
   lockGradeAssessmentMutation,
@@ -39,6 +40,9 @@ export async function authorizeGradeAssets(
 ) {
   const scope = requireGradesScope();
   const ctx = getRequestContext();
+  const teacherAuthoring =
+    actor.surface === 'teacher' && actor.authoring === true;
+  const structuralWrite = write || teacherAuthoring;
   if (
     !ctx?.activeMembership ||
     ctx.bypass.bypassSchoolScope ||
@@ -48,19 +52,35 @@ export async function authorizeGradeAssets(
       scope.userType !== UserType.ORGANIZATION_USER) ||
     (actor.surface === 'teacher' && scope.userType !== UserType.TEACHER) ||
     (isGradeAssetStudent(actor) &&
-      (scope.userType !== UserType.STUDENT || write))
+      (write ||
+        scope.userType !==
+          (actor.surface === 'released-review'
+            ? actor.audience
+            : UserType.STUDENT)))
   )
     throw absent();
   if (write && readPermission) throw absent();
   const permission =
-    readPermission ??
+    (teacherAuthoring ? GRADE_TEACHER_AUTHORING_PERMISSION : readPermission) ??
     (isGradeAssetStudent(actor)
       ? 'grades.assessments.view'
       : `grades.${input.questionId || questionAuthoring ? 'questions' : 'assessments'}.${write ? 'manage' : 'view'}`);
   await assertGradeLiveMutationPermission(tx, permission);
   if (managedBinding)
-    await assertGradeLiveMutationPermission(tx, 'grades.questions.manage');
-  if (actor.surface === 'teacher' && write) {
+    await assertGradeLiveMutationPermission(
+      tx,
+      teacherAuthoring
+        ? GRADE_TEACHER_AUTHORING_PERMISSION
+        : 'grades.questions.manage',
+    );
+  if (teacherAuthoring && actor.surface === 'teacher') {
+    await lockGradeTeacherScopedAllocation(
+      tx,
+      gate,
+      actor.classId,
+      GRADE_TEACHER_AUTHORING_PERMISSION,
+    );
+  } else if (actor.surface === 'teacher' && write) {
     // Match existing Grades upload lock order. Fence all owned allocations in
     // stable order before the shared broad-read helper locks those same rows.
     const allocations = await tx.teacherSubjectAllocation.findMany({
@@ -82,15 +102,17 @@ export async function authorizeGradeAssets(
       throw error;
     }
   }
-  if (write) await lockGradeAssessmentMutation(tx, input.assessmentId);
+  if (structuralWrite)
+    await lockGradeAssessmentMutation(tx, input.assessmentId);
   else if (
     actor.surface === 'student-exams' ||
-    actor.surface === 'student-grades'
+    actor.surface === 'student-grades' ||
+    actor.surface === 'released-review'
   )
     await actor.authorize(tx, input.assessmentId);
   else await assertGradeAssessmentAccess(tx, input.assessmentId);
   // Lock academic parents so retirement and term changes serialize with a mutation.
-  if (write) {
+  if (structuralWrite) {
     const live = await tx.$queryRaw<
       Array<{ id: string }>
     >`SELECT a.id FROM grade_assessments a
@@ -99,6 +121,7 @@ export async function authorizeGradeAssets(
     JOIN academic_years y ON y.id = a.academic_year_id AND y.school_id = a.school_id
     WHERE a.id = ${input.assessmentId}::uuid AND a.school_id = ${scope.schoolId}::uuid AND a.deleted_at IS NULL
       AND t.deleted_at IS NULL AND s.deleted_at IS NULL AND s.is_active = true AND y.deleted_at IS NULL
+      ${teacherAuthoring ? Prisma.sql`AND t.is_active = true AND y.is_active = true` : Prisma.empty}
     FOR SHARE OF t, s, y`;
     if (!live.length) throw absent();
   }
@@ -112,7 +135,7 @@ export async function authorizeGradeAssets(
   });
   if (!assessment) throw absent();
   if (actor.surface === 'teacher') {
-    if (write)
+    if (structuralWrite)
       await lockGradeTeacherAcademicHierarchy(
         tx,
         scope.schoolId,
@@ -143,13 +166,13 @@ export async function authorizeGradeAssets(
     };
     if (
       scopes[assessment.scopeType] !== assessment.scopeKey ||
-      (write &&
+      (structuralWrite &&
         (assessment.scopeType !== 'CLASSROOM' ||
           assessment.createdById !== scope.actorId))
     )
       throw absent();
   }
-  if (write)
+  if (structuralWrite)
     assertQuestionStructureMutable({
       assessment,
       term: assessment.term,
@@ -175,6 +198,59 @@ export async function authorizeGradeAssets(
       throw absent();
   }
   return { scope, assessment };
+}
+
+/** Allocation gate precedes the existing assessment/academic-parent lock order. */
+export async function lockGradeTeacherScopedAllocation(
+  tx: Prisma.TransactionClient,
+  gate: TeacherAllocationOperationalWriteGate,
+  classId: string,
+  permission: string,
+) {
+  const scope = requireGradesScope();
+  if (scope.userType !== UserType.TEACHER) throw absent();
+  await assertGradeLiveMutationPermission(tx, permission);
+  const allocations = await tx.teacherSubjectAllocation.findMany({
+    where: ownedAllocationWhere(scope.actorId),
+    select: { id: true },
+    orderBy: { id: 'asc' },
+  });
+  if (!allocations.some((allocation) => allocation.id === classId))
+    throw absent();
+  try {
+    await gate.lock(tx, {
+      schoolId: scope.schoolId,
+      allocationIds: allocations.map((allocation) => allocation.id),
+      expectedTeacherUserId: scope.actorId,
+    });
+  } catch (error) {
+    if (error instanceof TeacherAllocationOperationalWriteGateError)
+      throw absent();
+    throw error;
+  }
+  const allocation = await tx.teacherSubjectAllocation.findFirst({
+    where: {
+      AND: [{ id: classId }, ownedAllocationWhere(scope.actorId)],
+      subject: { isActive: true },
+      term: {
+        isActive: true,
+        academicYear: { isActive: true, deletedAt: null },
+      },
+    },
+    include: {
+      term: { include: { academicYear: true } },
+      classroom: { include: { section: { include: { grade: true } } } },
+    },
+  });
+  const academic = getRequestContext()?.academicContext;
+  if (
+    !allocation ||
+    (academic?.termId && academic.termId !== allocation.termId) ||
+    (academic?.academicYearId &&
+      academic.academicYearId !== allocation.term.academicYearId)
+  )
+    throw absent();
+  return allocation;
 }
 
 /** Hold the live classroom hierarchy through the final Teacher write. */

@@ -98,8 +98,15 @@ export async function projectGradeRichContent(
   questions: Question[],
   resolver: GradeAssetsRepository | undefined,
   audience: 'author' | 'student' | 'review',
+  includeMedia = true,
 ): Promise<void> {
-  await resolver?.projectGroups?.(tx, assessmentId, questions);
+  await resolver?.projectGroups?.(
+    tx,
+    assessmentId,
+    questions,
+    false,
+    includeMedia,
+  );
   if (!questions.length) return;
   if (questions.length > 200) {
     for (let start = 0; start < questions.length; start += 200)
@@ -109,6 +116,7 @@ export async function projectGradeRichContent(
         questions.slice(start, start + 200),
         resolver,
         audience,
+        includeMedia,
       );
     return;
   }
@@ -163,7 +171,8 @@ export async function projectGradeRichContent(
             )
               throw new ValidationDomainException('Stored display mismatch');
           const refs = gradeRichReferences(stored.content);
-          if (refs.length && !resolver) throw new NotFoundDomainException();
+          if (refs.length && (!resolver || !includeMedia))
+            throw new NotFoundDomainException();
           for (const reference of refs)
             await resolver!.assertReference({
               transaction: tx,

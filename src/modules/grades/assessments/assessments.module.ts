@@ -1,4 +1,11 @@
 import { CoreGradeQuestionGroupsController } from './controller/core-grade-question-groups.controller';
+import { GradeTeacherAuthoringService } from './application/grade-teacher-authoring.service';
+import { GradeKeyApprovalsRepository } from './infrastructure/grade-key-approvals.repository';
+import { GradeReviewReleaseRepository } from './infrastructure/grade-review-release.repository';
+import { GradeScoringRepository } from './infrastructure/grade-scoring.repository';
+import { GradeReviewService } from './application/grade-review.service';
+import { GradeReviewManagementController } from './controller/grade-review-management.controller';
+import { GradeScoringController } from './controller/grade-scoring.controller';
 import { GradeQuestionGroupsRepository } from './infrastructure/grade-question-groups.repository';
 import { GradeQuestionGroupsService } from './application/grade-question-groups.service';
 import { CoreGradeAnswerMediaController } from './controller/core-grade-answer-media.controller';
@@ -56,6 +63,8 @@ import { GradesSubmissionsRepository } from './infrastructure/grades-submissions
 @Module({
   imports: [AuthModule, StorageModule, AssessmentMediaModule],
   controllers: [
+    GradeReviewManagementController,
+    GradeScoringController,
     CoreGradeQuestionGroupsController,
     CoreGradeAnswerMediaController,
     GradeAssessmentAssetsController,
@@ -66,6 +75,11 @@ import { GradesSubmissionsRepository } from './infrastructure/grades-submissions
     GradesSubmissionsController,
   ],
   providers: [
+    GradeReviewReleaseRepository,
+    GradeScoringRepository,
+    GradeReviewService,
+    GradeTeacherAuthoringService,
+    GradeKeyApprovalsRepository,
     GradeQuestionGroupsRepository,
     GradeQuestionGroupsService,
     CoreGradeAnswerMediaService,
@@ -112,6 +126,9 @@ import { GradesSubmissionsRepository } from './infrastructure/grades-submissions
     SyncGradeSubmissionToGradeItemUseCase,
   ],
   exports: [
+    GradeReviewReleaseRepository,
+    GradeReviewService,
+    GradeTeacherAuthoringService,
     GradeQuestionGroupsRepository,
     GradeQuestionGroupsService,
     GradeAnswerMediaRepository,

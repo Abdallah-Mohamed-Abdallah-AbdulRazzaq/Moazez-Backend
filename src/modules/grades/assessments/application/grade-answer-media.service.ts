@@ -61,9 +61,12 @@ export class GradeAnswerMediaService {
   remove(input: GradeAnswerMediaResource & { assetId: string }) {
     return this.repository.remove(input);
   }
-  async list(input: GradeAnswerMediaResource) {
+  async list(
+    input: GradeAnswerMediaResource,
+    released?: Parameters<GradeAnswerMediaRepository['read']>[1],
+  ) {
     return {
-      assets: (await this.repository.read(input)).map((v) => ({
+      assets: (await this.repository.read(input, released)).map((v) => ({
         ...presentAnswerAsset(v.asset),
         originalName: v.file.originalName,
         mimeType: v.file.mimeType,
@@ -76,10 +79,11 @@ export class GradeAnswerMediaService {
   open(
     input: GradeAnswerMediaResource & { assetId: string },
     request: PrivateMediaContentRequest,
+    released?: Parameters<GradeAnswerMediaRepository['read']>[1],
   ) {
     return this.content.openAuthorized(
       async () => {
-        const [view] = await this.repository.read(input);
+        const [view] = await this.repository.read(input, released);
         if (
           !view ||
           !(request.disposition === 'inline'

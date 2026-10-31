@@ -1,0 +1,29 @@
+# ADR-0025: Scoped Grades authoring, review release and scoring suggestions
+
+Status: ST12 implementation contract under `MOAZEZ-ST12-FULL-IMPLEMENTATION-2026-10-31`; independent review and operational release remain pending.
+
+## Authority and source findings
+
+The initial authority is main `5edd73b197bfaad2e186d7a9d2fe41a8d19e4063`, with 38 immutable migrations. ST11 remains accepted. The Teacher role has existing read/review grants, but no question-management grant. Core Grades owns authoring, review, finalization and explicit GradeItem synchronization. ST07 already supplies the exact CLASSROOM/creator asset fence; ST11 groups and response configuration have explicit Teacher mutation denials. ST10 supplies bounded, deterministic Ordering/Numeric/Expression evaluators without marking authority.
+
+Student Exams and Student Grades currently compose per-answer marks and reviewer comments directly from stored answers. Those fields must not become an alternate route around the new disclosure policy. Existing response shapes, own draft/submitted answers and authorized result/GradeItem summaries remain compatible; private review fields are withheld until release. Parents retain their existing child-access service and summary contracts.
+
+## Decisions
+
+1. Register an opt-in `grades.teacher_authoring.manage` permission through the governed permission catalog. Exclude it from every default role bundle, including platform roles. Possession alone grants no resource authority. Teacher adapters pass an explicit allocation/assessment actor to Core use cases. At the final transaction, revalidate live membership, permission, the exact TeacherSubjectAllocation, subject/year/term and academic hierarchy, CLASSROOM scope and creator identity, DRAFT/unlocked state and absence of attempts. Broad assessment read scope never becomes write authority. Reuse the allocation gate and existing question/asset/group mutation fences. Teacher question mutations maintain the canonical active question-point total as assessment maxScore.
+
+2. Keep private key approval separate from question-paper publication and audience release. An authorized School/Organization manager explicitly approves a validated current question/key fingerprint, using both existing question-management and assessment-approval permissions. Approval evidence is retained; a changed question/key or revoked approval cannot authorize scoring or disclosure. A missing/invalid key yields manual review, never inferred correctness.
+
+3. Add one versioned assessment release policy with independent Student and Parent levels: NONE, DETAILS and KEYS. No row, SQL NULL, invalid state or missing approval means no new disclosure. Existing result summaries remain governed by their existing authorization. Release requires the assessment approval condition and finalized current reviews; every detailed read additionally requires the exact current audience, enrollment/relationship and finalized target submission. KEYS adds only validated, currently approved key projections and explanations. Revocation is immediately effective for later reads and does not revoke legitimately downloaded bytes. Version checks and request identity provide explicit retry/conflict behavior. Release/revocation and their safe audit record commit together.
+
+4. Evaluate canonical child questions individually. Reuse all existing answer/definition validation and ST10 exact-decimal/proof semantics. Choice questions use complete exact sets, TRUE_FALSE uses its canonical options, Matching uses complete validated mappings, and Fill uses an explicit bounded V1 NFC/trim exact accepted-text policy. No partial credit, unit conversion or implicit tolerance is introduced. SHORT_ANSWER, ESSAY, MEDIA and subjective responses remain manual. Unknown, invalid and undefined mathematical outcomes have no suggested points.
+
+5. Persist bounded scoring suggestions with evaluator/policy version, approval identity and question/answer fingerprints. Evaluation does not change marks. A reviewer explicitly applies a current deterministic suggestion or explicitly overrides with bounded manual points and a reason. The existing review transaction/lifecycle, answer point validation and finalization remain authoritative. Answer/key/approval changes, duplicate application, concurrent reviewer decisions and finalization invalidate stale application. Safe before/after marks and reviewer authority are audited transactionally. Group records are never scored, and no scoring or submit operation implicitly synchronizes GradeItems.
+
+6. Use additive School/exact-parent foreign keys and restrictive identities. Preserve all inherited migration bytes and historical marks. Apply no backfill, live migration, storage policy, production permission grant, worker, queue or DR07 release. Private bytes retain existing provenance, policy, GET/HEAD/Range and reauthorization boundaries; a release level cannot manufacture READY or security evidence.
+
+## Verification obligations
+
+Require meaningful unit/domain tests across all eleven Grades types; real disposable PostgreSQL authorization, integrity, audit, stale-write and concurrency tests; authenticated Teacher/management/Student/Parent HTTP tests; actual owned private-storage bytes where media is involved; ST10/ST11 and legacy Homework/Grades regressions. Validate/generate Prisma, preserve the original 38 hashes, replay the complete chain, prove second-deploy no-op and runtime privilege invariants, run build and non-mutating exact-base lint comparison, and verify candidate-discovered CI parity plus the exact-head Required artifact. These obligations are not claims that validation has already passed.
+
+The canonical implemented client contract is `docs/assessments/st12-client-api-handoff.md`, linked to the existing ST11 contract. Only Draft PR delivery is authorized; Ready, merge, deployment, live migrations, DR07 and ST13/ST14 remain Owner-controlled.
