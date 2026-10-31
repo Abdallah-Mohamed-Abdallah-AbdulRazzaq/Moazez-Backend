@@ -2,8 +2,7 @@ name: CI
 
 on:
   pull_request:
-    # ST11-B is reviewed as a stack while ST11-A remains Draft/unmerged.
-    branches: [main, agent/st11a-question-answer-media]
+    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
