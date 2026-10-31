@@ -10,6 +10,7 @@ import {
 } from '../domain/grade-submission-grade-item-sync-domain';
 import {
   GradeItemSyncRecord,
+  GradeSubmissionSyncPermission,
   GradeSubmissionForGradeItemSyncRecord,
   GradesSubmissionGradeItemSyncRepository,
 } from '../infrastructure/grades-submission-grade-item-sync.repository';
@@ -22,7 +23,10 @@ export class SyncGradeSubmissionToGradeItemUseCase {
     private readonly authRepository: AuthRepository,
   ) {}
 
-  async execute(submissionId: string) {
+  async execute(
+    submissionId: string,
+    permission: GradeSubmissionSyncPermission = 'grades.submissions.review',
+  ) {
     return this.syncRepository.withSyncTransaction(
       submissionId,
       async (transaction) => {
@@ -77,6 +81,7 @@ export class SyncGradeSubmissionToGradeItemUseCase {
           idempotent: built.idempotent,
         });
       },
+      permission,
     );
   }
 }

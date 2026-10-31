@@ -417,7 +417,14 @@ describe('SyncGradeSubmissionToGradeItemUseCase', () => {
 
   it('audits the sync with previous and new GradeItem state', async () => {
     const before = gradeItemRecord({ score: 5 });
+    const withSyncTransaction = jest.fn(
+      (
+        _submissionId: string,
+        operation: (transaction: Prisma.TransactionClient) => Promise<unknown>,
+      ) => operation(TRANSACTION),
+    );
     const repo = repository({
+      withSyncTransaction,
       findGradeItemForSubmission: jest.fn().mockResolvedValue(before),
     });
     const auth = authRepository();
@@ -425,9 +432,10 @@ describe('SyncGradeSubmissionToGradeItemUseCase', () => {
 
     await withGradesReviewScope(() => useCase.execute(SUBMISSION_ID));
 
-    expect(repo.withSyncTransaction).toHaveBeenCalledWith(
+    expect(withSyncTransaction).toHaveBeenCalledWith(
       SUBMISSION_ID,
       expect.any(Function),
+      'grades.submissions.review',
     );
     expect(auth.createAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({

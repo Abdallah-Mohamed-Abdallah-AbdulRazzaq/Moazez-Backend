@@ -91,6 +91,10 @@ export type GradeItemSyncRecord = Prisma.GradeItemGetPayload<
   typeof GRADE_ITEM_SYNC_ARGS
 >;
 
+export type GradeSubmissionSyncPermission =
+  | 'grades.submissions.review'
+  | 'grades.items.manage';
+
 @Injectable()
 export class GradesSubmissionGradeItemSyncRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -103,10 +107,11 @@ export class GradesSubmissionGradeItemSyncRepository {
   async withSyncTransaction<T>(
     submissionId: string,
     operation: (transaction: Prisma.TransactionClient) => Promise<T>,
+    permission: GradeSubmissionSyncPermission = 'grades.submissions.review',
   ): Promise<T> {
     return this.scopedPrisma.$transaction(
       async (tx) => {
-        await assertGradeLiveMutationPermission(tx, 'grades.items.manage');
+        await assertGradeLiveMutationPermission(tx, permission);
         // The existing access predicate holds Teacher allocation rows before parent locks.
         await assertGradeSubmissionAccess(tx, submissionId);
         const reference = await tx.gradeSubmission.findFirst({
