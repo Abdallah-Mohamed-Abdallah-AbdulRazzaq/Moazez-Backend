@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { GradeTeacherAuthoringActor } from '../domain/grade-teacher-authoring';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { requireGradesScope } from '../../grades-context';
 import { CreateGradeAssessmentQuestionDto } from '../dto/grade-assessment-question.dto';
@@ -23,6 +24,7 @@ export class CreateGradeAssessmentQuestionUseCase {
   async execute(
     assessmentId: string,
     command: CreateGradeAssessmentQuestionDto,
+    actor?: GradeTeacherAuthoringActor,
   ) {
     const scope = requireGradesScope();
     const assessment = await loadQuestionAssessmentOrThrow(
@@ -46,6 +48,9 @@ export class CreateGradeAssessmentQuestionUseCase {
     });
 
     const question = await this.questionsRepository.createQuestionWithOptions({
+      actor,
+      sortOrderIsExplicit:
+        command.sortOrder !== undefined || command.order !== undefined,
       schoolId: assessment.schoolId,
       assessmentId: assessment.id,
       type: payload.type,
@@ -63,15 +68,16 @@ export class CreateGradeAssessmentQuestionUseCase {
       options: payload.options ?? [],
     });
 
-    await this.authRepository.createAuditLog(
-      buildQuestionAuditEntry({
-        scope,
-        action: 'grades.question.create',
-        resourceType: 'grade_assessment_question',
-        resourceId: question.id,
-        after: summarizeQuestionForAudit(question),
-      }),
-    );
+    if (!actor)
+      await this.authRepository.createAuditLog(
+        buildQuestionAuditEntry({
+          scope,
+          action: 'grades.question.create',
+          resourceType: 'grade_assessment_question',
+          resourceId: question.id,
+          after: summarizeQuestionForAudit(question),
+        }),
+      );
 
     return presentGradeAssessmentQuestion(question, true);
   }

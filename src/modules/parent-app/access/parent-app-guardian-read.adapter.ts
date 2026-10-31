@@ -1,11 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import {
-  Prisma,
-  StudentEnrollmentStatus,
-  StudentStatus,
-  UserStatus,
-  UserType,
-} from '@prisma/client';
+import { currentParentGuardianWhere } from '../../students/guardians/domain/current-parent-guardian';
+import { Prisma, StudentEnrollmentStatus, StudentStatus } from '@prisma/client';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
 import type {
   ParentAppEnrollmentRecord,
@@ -181,23 +176,6 @@ export class ParentAppGuardianReadAdapter {
       ...PARENT_APP_ENROLLMENT_ARGS,
     });
   }
-}
-
-function currentParentGuardianWhere(
-  parentUserId: string,
-): Prisma.GuardianWhereInput {
-  return {
-    userId: parentUserId,
-    deletedAt: null,
-    user: {
-      is: {
-        id: parentUserId,
-        userType: UserType.PARENT,
-        status: UserStatus.ACTIVE,
-        deletedAt: null,
-      },
-    },
-  };
 }
 
 function currentGuardianByIdsWhere(

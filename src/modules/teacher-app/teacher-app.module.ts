@@ -1,3 +1,10 @@
+import { TeacherGradeAuthoringService } from './classroom/grades/application/teacher-grade-authoring.service';
+import { TeacherGradeAuthoringController } from './classroom/grades/controller/teacher-grade-authoring.controller';
+import { TeacherGradeAuthoringUploadsController } from './classroom/grades/controller/teacher-grade-authoring-uploads.controller';
+import { TeacherGradeAuthoringGroupsController } from './classroom/grades/controller/teacher-grade-authoring-groups.controller';
+import { TeacherGradeAuthoringQuestionAssetsController } from './classroom/grades/controller/teacher-grade-authoring-question-assets.controller';
+import { TeacherGradeAuthoringAssessmentAssetsController } from './classroom/grades/controller/teacher-grade-authoring-assessment-assets.controller';
+import { TeacherGradeScoringController } from './classroom/grades/controller/teacher-grade-scoring.controller';
 import { TeacherGradeQuestionGroupsController } from './classroom/grades/controller/teacher-grade-question-groups.controller';
 import { TeacherGradeAnswerMediaController } from './classroom/grades/controller/teacher-grade-answer-media.controller';
 import { TeacherGradeAssetsService } from './classroom/grades/application/teacher-grade-assets.service';
@@ -169,6 +176,12 @@ import {
     TeacherHomeworksModule,
   ],
   controllers: [
+    TeacherGradeAuthoringController,
+    TeacherGradeAuthoringUploadsController,
+    TeacherGradeAuthoringGroupsController,
+    TeacherGradeAuthoringQuestionAssetsController,
+    TeacherGradeAuthoringAssessmentAssetsController,
+    TeacherGradeScoringController,
     TeacherGradeQuestionGroupsController,
     TeacherGradeAnswerMediaController,
     TeacherGradeAssessmentAssetsController,
@@ -198,6 +211,7 @@ import {
     TeacherLessonPreparationController,
   ],
   providers: [
+    TeacherGradeAuthoringService,
     TeacherGradeAssetsService,
     GetTeacherTaskProofContentUseCase,
     GetTeacherOwnedTaskProofContentUseCase,

@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { requireGradesScope } from '../../grades-context';
 import {
   assertAllRequiredAnswersReviewed,
@@ -8,7 +7,6 @@ import {
 import { GradesSubmissionsRepository } from '../infrastructure/grades-submissions.repository';
 import { presentGradeSubmissionDetail } from '../presenters/grade-submission.presenter';
 import {
-  buildFinalizeSubmissionReviewAuditEntry,
   findReviewSubmissionOrThrow,
   prepareFinalizeSubmissionInput,
 } from './grade-submission-review-use-case.helpers';
@@ -17,7 +15,6 @@ import {
 export class FinalizeGradeSubmissionReviewUseCase {
   constructor(
     private readonly gradesSubmissionsRepository: GradesSubmissionsRepository,
-    private readonly authRepository: AuthRepository,
   ) {}
 
   async execute(submissionId: string) {
@@ -44,14 +41,6 @@ export class FinalizeGradeSubmissionReviewUseCase {
     });
     const finalized =
       await this.gradesSubmissionsRepository.finalizeSubmission(input);
-
-    await this.authRepository.createAuditLog(
-      buildFinalizeSubmissionReviewAuditEntry({
-        scope,
-        before: submission,
-        after: finalized,
-      }),
-    );
 
     return presentGradeSubmissionDetail({
       submission: finalized,

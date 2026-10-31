@@ -1,3 +1,10 @@
+import type { Server } from 'node:http';
+import { expectSt12SurfaceMetadata } from '../fixtures/st12-contract-expectations';
+import {
+  exerciseLegacyStudentReviewRelease,
+  disposeLegacyReviewEvidence,
+} from '../fixtures/st12-legacy-review-contract';
+import { ST12_STUDENT_ROUTES } from '../fixtures/st12-contract-expectations';
 import {
   ST11_STUDENT_ANSWER_MEDIA_ROUTES,
   ST11B_STUDENT_GROUP_ROUTES,
@@ -595,6 +602,7 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
 
   afterAll(async () => {
     try {
+      await disposeLegacyReviewEvidence(prisma, [ownAssessmentId]);
       await prisma.session.deleteMany({
         where: { userId: { in: createdUserIds } },
       });
@@ -762,6 +770,7 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
   });
 
   it('registers the Sprint 8F Student App route set and keeps deferred routes absent', async () => {
+    expectSt12SurfaceMetadata('student');
     const routes = listRegisteredStudentRoutes();
 
     expect(routes).toEqual(
@@ -898,6 +907,7 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
         'PUT /api/v1/student/homeworks/:homeworkId/submission/answers',
         ...ST11_STUDENT_ANSWER_MEDIA_ROUTES,
         ...ST11B_STUDENT_GROUP_ROUTES,
+        ...ST12_STUDENT_ROUTES,
       ].sort(),
     );
 
@@ -1082,7 +1092,9 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
         answers: [
           expect.objectContaining({
             answerText: 'A',
-            awardedPoints: 8,
+            awardedPoints: null, // Per-question review remains private before an explicit DETAILS release.
+            correctionStatus: 'pending',
+            reviewerComment: null,
             maxPoints: 10,
             selectedOptions: expect.arrayContaining([
               expect.objectContaining({
@@ -1172,7 +1184,8 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
         answers: [
           expect.objectContaining({
             answerText: 'A',
-            score: 8,
+            score: null, // Alias of private per-question marks; summaries above remain 8.
+            feedback: null,
             selectedOptions: expect.arrayContaining([
               expect.objectContaining({
                 label: 'Correct visible label',
@@ -1184,6 +1197,14 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
     });
     assertNoForbiddenStudentAppFields(examSubmission.body);
     assertNoAnswerKeysOrCorrectAnswers(examSubmission.body);
+    const { accessToken: reviewAdminToken } = await login(adminEmail);
+    await exerciseLegacyStudentReviewRelease({
+      server: app.getHttpServer<Server>(),
+      prisma,
+      assessmentId: ownAssessmentId,
+      studentToken: accessToken,
+      adminToken: reviewAdminToken,
+    });
   });
 
   it('returns safe empty exam submission state without creating a submission', async () => {
@@ -3219,6 +3240,15 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       select: { id: true },
     });
     createdGradeSubmissionAnswerIds.push(otherAnswer.id);
+    // The privacy sentinel is also a valid submitted choice for real finalization.
+    // Its hidden text/JSON and cross-student denial assertions remain unchanged.
+    await prisma.gradeSubmissionAnswerOption.create({
+      data: {
+        schoolId,
+        answerId: otherAnswer.id,
+        optionId: incorrectOption.id,
+      },
+    });
 
     return {
       assessmentId: assessment.id,

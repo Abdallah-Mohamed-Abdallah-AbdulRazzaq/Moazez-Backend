@@ -23,9 +23,13 @@ export function gradeAssetPath(
   input: GradeAssetResource & { assetId: string },
 ): string {
   const suffix = `${input.assessmentId}${input.questionId ? `/questions/${input.questionId}` : ''}/assets/${input.assetId}`;
+  if (actor.surface === 'released-review')
+    return actor.audience === 'PARENT'
+      ? `/api/v1/parent/children/${actor.studentId}/grades/assessments/${input.assessmentId}/review${input.questionId ? `/questions/${input.questionId}` : ''}/assets/${input.assetId}`
+      : `/api/v1/student/grades/assessments/${input.assessmentId}/review${input.questionId ? `/questions/${input.questionId}` : ''}/assets/${input.assetId}`;
   if (actor.surface === 'core') return `/api/v1/grades/assessments/${suffix}`;
   if (actor.surface === 'teacher')
-    return `/api/v1/teacher/classroom/${actor.classId}/grades/assessments/${suffix}`;
+    return `/api/v1/teacher/classroom/${actor.classId}/grades/assessments/${input.assessmentId}${actor.authoring ? '/authoring' : ''}${input.questionId ? `/questions/${input.questionId}` : ''}/assets/${input.assetId}`;
   if (actor.surface === 'student-exams')
     return `/api/v1/student/exams/${suffix}`;
   return `/api/v1/student/grades/assessments/${suffix}`;

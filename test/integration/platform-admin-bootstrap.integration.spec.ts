@@ -1,3 +1,4 @@
+import { AuthorizationReferenceDataRepository } from '../../src/modules/iam/reference-data/infrastructure/authorization-reference-data.repository';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import {
@@ -9,6 +10,7 @@ import {
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { Env } from '../../src/config/env.validation';
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
+import { SYSTEM_ROLES } from '../../src/modules/iam/reference-data/system-role-catalog';
 import { LoginUseCase } from '../../src/modules/iam/auth/application/login.use-case';
 import { PasswordService } from '../../src/modules/iam/auth/domain/password.service';
 import { assertDisposablePostgresTarget } from '../helpers/disposable-postgres-target';
@@ -169,7 +171,18 @@ describe('Stage 20B initial Platform Administrator bootstrap (integration)', () 
     expect(role.schoolId).toBeNull();
     expect(
       role.rolePermissions.map((entry) => entry.permission.code).sort(),
-    ).toEqual([...PERMISSION_CODES].sort());
+    ).toEqual(
+      [
+        ...SYSTEM_ROLES.find((r) => r.key === PLATFORM_ADMIN_ROLE_CODE)!
+          .permissions,
+      ].sort(),
+    );
+    expect(PERMISSION_CODES).toHaveLength(244);
+    expect(
+      role.rolePermissions.some(
+        (entry) => entry.permission.code === 'grades.teacher_authoring.manage',
+      ),
+    ).toBe(false);
 
     expect(auditEntries.length).toBeGreaterThan(0);
     expect(
@@ -187,6 +200,88 @@ describe('Stage 20B initial Platform Administrator bootstrap (integration)', () 
     expect(safeEvidence).not.toContain(password);
     expect(safeEvidence).not.toContain(user.passwordHash!);
   });
+
+  it.each(SYSTEM_ROLES.map((role) => role.key))(
+    'rejects opt-in grants on default role %s before User creation',
+    async (key) => {
+      const references = new AuthorizationReferenceDataRepository(
+        prisma as unknown as PrismaService,
+      );
+      const role = await prisma.role.findFirstOrThrow({
+        where: { key, schoolId: null, isSystem: true, deletedAt: null },
+      });
+      const permission = await prisma.permission.findUniqueOrThrow({
+        where: { code: 'grades.teacher_authoring.manage' },
+      });
+      const command = validCommand('opt-in-default-' + key);
+      const beforeUsers = await prisma.user.count();
+      await prisma.rolePermission.create({
+        data: { roleId: role.id, permissionId: permission.id },
+      });
+      try {
+        expect(await references.verify()).toMatchObject({
+          ready: false,
+          systemRolesReady: false,
+        });
+        await expectBootstrapFailure(
+          useCase.execute(command),
+          /^REFERENCE_DATA_INVALID$/u,
+        );
+        await expectUserMissing(command.email);
+        expect(await prisma.user.count()).toBe(beforeUsers);
+      } finally {
+        await prisma.rolePermission.deleteMany({
+          where: { roleId: role.id, permissionId: permission.id },
+        });
+      }
+      expect(await references.verify()).toMatchObject({ ready: true });
+    },
+  );
+
+  it.each(['missing', 'same-count-substitution', 'unexpected'] as const)(
+    'rejects %s canonical platform grants before creating a User',
+    async (drift) => {
+      const role = await prisma.role.findFirstOrThrow({
+        where: {
+          key: PLATFORM_ADMIN_ROLE_CODE,
+          schoolId: null,
+          isSystem: true,
+          deletedAt: null,
+        },
+      });
+      const ordinary = await prisma.permission.findUniqueOrThrow({
+        where: { code: 'platform.overview.view' },
+      });
+      const optIn = await prisma.permission.findUniqueOrThrow({
+        where: { code: 'grades.teacher_authoring.manage' },
+      });
+      const command = validCommand('reference-drift-' + drift);
+      try {
+        if (drift !== 'unexpected')
+          await prisma.rolePermission.deleteMany({
+            where: { roleId: role.id, permissionId: ordinary.id },
+          });
+        if (drift !== 'missing')
+          await prisma.rolePermission.create({
+            data: { roleId: role.id, permissionId: optIn.id },
+          });
+        await expectBootstrapFailure(
+          useCase.execute(command),
+          /^REFERENCE_DATA_INVALID$/u,
+        );
+        await expectUserMissing(command.email);
+        expect(await loadBootstrapAuditEntries(command.email)).toEqual([]);
+      } finally {
+        await prisma.rolePermission.deleteMany({
+          where: { roleId: role.id, permissionId: optIn.id },
+        });
+        await prisma.rolePermission.createMany({
+          data: [{ roleId: role.id, permissionId: ordinary.id }],
+          skipDuplicates: true,
+        });
+      }
+    },
+  );
 
   it.each([
     ['invalid email', { email: 'not-an-email' }],
@@ -416,7 +511,12 @@ describe('Stage 20B initial Platform Administrator bootstrap (integration)', () 
     expect(login.refreshToken).toEqual(expect.any(String));
     await expect(
       authRepository.findSystemRolePermissionCodes(PLATFORM_ADMIN_ROLE_CODE),
-    ).resolves.toEqual(expect.arrayContaining(PERMISSION_CODES));
+    ).resolves.toEqual(
+      expect.arrayContaining(
+        SYSTEM_ROLES.find((r) => r.key === PLATFORM_ADMIN_ROLE_CODE)!
+          .permissions,
+      ),
+    );
   });
 
   function validCommand(

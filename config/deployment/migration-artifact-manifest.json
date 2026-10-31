@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "prismaSchema": {
     "path": "prisma/schema.prisma",
-    "sha256": "64a96f6ca253087f8544f9fe7cfb460a85645ae649dc1202a12b9133895f70a7"
+    "sha256": "34ae0228e6cb7d009677872d7864e4929fb92dfe5a90516215275873c1dd9997"
   },
   "prismaConfig": {
     "path": "prisma.config.ts",
@@ -46,7 +46,8 @@
     "20261030131316_st11a_answer_response_and_provenance",
     "20261030141000_st11a_answer_media_history_guards",
     "20261030141931_st11a_answer_asset_creator_guard",
-    "20261030163220_st11b_multipart_question_groups"
+    "20261030163220_st11b_multipart_question_groups",
+    "20261031120322_st12_grades_review_release_scoring"
   ],
   "migrations": [
     {
@@ -238,7 +239,12 @@
       "directory": "20261030163220_st11b_multipart_question_groups",
       "path": "prisma/migrations/20261030163220_st11b_multipart_question_groups/migration.sql",
       "sha256": "da2b97aaa91d451b21877055165a13899c251016ea81c56bb431cdec7316d549"
+    },
+    {
+      "directory": "20261031120322_st12_grades_review_release_scoring",
+      "path": "prisma/migrations/20261031120322_st12_grades_review_release_scoring/migration.sql",
+      "sha256": "3311350d985bf0ea9e958639cbbc3d89297ddf5bed8a6b32ea4906b4a6abda22"
     }
   ],
-  "aggregateMigrationChainSha256": "23f4983c337a443ab1ac1dae27cf7ed3d99881e735ef0b9b6f29e9769545ccf8"
+  "aggregateMigrationChainSha256": "00236bbdfa80b6f26effc04574841d92fc6fa18f31a93ae1a83bf45f16119214"
 }

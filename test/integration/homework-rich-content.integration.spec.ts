@@ -719,7 +719,8 @@ describe('ST08-C real PostgreSQL Homework Rich transactions and cross-domain iso
       { type: 'ESSAY', points: 1, richContent: questionRich() },
       { requirePrompt: true },
     );
-    const g = await teacher(() =>
+    // Cross-domain Grades persistence uses the authorized Core management path.
+    const g = await fixture.asMediaActor('admin', () =>
       grades.createQuestionWithOptions({
         schoolId: fixture.school.schoolId,
         assessmentId: gradeGraph.assessment.id,

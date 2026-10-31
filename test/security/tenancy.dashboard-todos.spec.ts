@@ -1,3 +1,4 @@
+import { expectDefaultPermissionContract } from '../fixtures/st12-contract-expectations';
 import 'reflect-metadata';
 import type { ExecutionContext } from '@nestjs/common';
 import { RequestMethod } from '@nestjs/common';
@@ -279,7 +280,7 @@ describe('Dashboard todos tenancy and security contracts', () => {
         expect(extractArrayLiteral(roles, role)).not.toContain(permission);
       }
     }
-    expect(roles).toContain('const ALL = PERMISSION_CODES;');
+    expectDefaultPermissionContract();
     expect(roles).toContain('const SCHOOL_LEVEL = NON_PLATFORM;');
   });
 

@@ -11,8 +11,9 @@ export async function projectGradeAuthorKeyNullFacts(
   client: Pick<Prisma.TransactionClient, '$queryRaw'>,
   assessmentId: string,
   questions: readonly QuestionRow[],
+  verifiedTeacherAuthoring = false,
 ): Promise<void> {
-  if (!canReadGradeAuthoring()) return;
+  if (!canReadGradeAuthoring() && !verifiedTeacherAuthoring) return;
   const candidates = questions.filter(
     (question) =>
       isGradeEvaluationType(question.type) && question.answerKey === null,

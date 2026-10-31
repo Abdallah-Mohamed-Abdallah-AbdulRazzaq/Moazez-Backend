@@ -15,6 +15,7 @@ import { StudentExamsReadAdapter } from '../../src/modules/student-app/exams/inf
 import { StudentGradesReadAdapter } from '../../src/modules/student-app/grades/infrastructure/student-grades-read.adapter';
 import { StudentAppAccessService } from '../../src/modules/student-app/access/student-app-access.service';
 import { StudentAppStudentReadAdapter } from '../../src/modules/student-app/access/student-app-student-read.adapter';
+import type { GradeTeacherAuthoringActor } from '../../src/modules/grades/assessments/domain/grade-teacher-authoring';
 
 const doc = (text: string) => ({
   language: 'und',
@@ -55,14 +56,24 @@ describe('ST08-B real PostgreSQL Grades Rich authorization and persistence', () 
   let graph: Awaited<ReturnType<GradeAssetsFixture['gradeGraph']>>;
   const teacher = <T>(operation: () => Promise<T>) =>
     fixture.asMediaActor('teacher', operation);
+  const management = <T>(operation: () => Promise<T>) =>
+    fixture.asMediaActor('admin', operation);
+  const author = (): GradeTeacherAuthoringActor => ({
+    surface: 'teacher',
+    authoring: true,
+    classId: fixture.allocations.teacher,
+    assessmentId: graph.assessment.id,
+  });
   const update = (
     id: string,
     command: Parameters<typeof normalizeQuestionPayload>[0],
+    actor: GradeTeacherAuthoringActor | null = author(),
   ) => {
     const data = normalizeQuestionPayload(command);
     return repository.updateQuestionAndReplaceOptions(id, {
       data,
       options: data.options,
+      ...(actor ? { actor } : {}),
     });
   };
   const create = (options = false) =>
@@ -84,6 +95,7 @@ describe('ST08-B real PostgreSQL Grades Rich authorization and persistence', () 
         { requirePrompt: true },
       );
       return repository.createQuestionWithOptions({
+        actor: author(),
         schoolId: fixture.school.schoolId,
         assessmentId: graph.assessment.id,
         type: data.type!,
@@ -100,6 +112,10 @@ describe('ST08-B real PostgreSQL Grades Rich authorization and persistence', () 
   beforeEach(async () => {
     fixture = new GradeAssetsFixture(prisma);
     await fixture.create();
+    await fixture.grantAssets(fixture.actors.teacher.roleId, [
+      'grades.teacher_authoring.manage',
+    ]);
+    fixture.actors.teacher.permissions.push('grades.teacher_authoring.manage');
     graph = await fixture.gradeGraph();
     assets = new GradeAssetsRepository(
       prisma,
@@ -154,6 +170,7 @@ describe('ST08-B real PostgreSQL Grades Rich authorization and persistence', () 
       await expect(
         teacher(() =>
           repository.updateQuestionAndReplaceOptions(q.id, {
+            actor: author(),
             data,
             options: data.options,
             metadataPatch: { rejected: true },
@@ -211,29 +228,40 @@ describe('ST08-B real PostgreSQL Grades Rich authorization and persistence', () 
     expect(changed.options[0].richContent).toEqual(optionRich('B'));
   });
 
-  it('ST08B-REV-01 preserves Rich content for unrelated and unchanged legacy edits without requiring creator ownership', async () => {
+  it('preserves management legacy edits across creator changes while Teacher authoring remains creator-bound', async () => {
     const q = await create(true);
     await prisma.gradeAssessment.update({
       where: { id: q.assessmentId },
       data: { createdById: fixture.actors.otherTeacher.userId },
     });
-    await teacher(() =>
-      update(q.id, { points: 2, sortOrder: 5, metadata: { unrelated: true } }),
+    await expect(
+      teacher(() => update(q.id, { points: 2 })),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    await management(() =>
+      update(
+        q.id,
+        { points: 2, sortOrder: 5, metadata: { unrelated: true } },
+        null,
+      ),
     );
-    const unchanged = await teacher(() =>
-      update(q.id, {
-        questionTextEn: q.prompt,
-        questionTextAr: q.promptAr,
-        options: [
-          {
-            id: q.options[1].id,
-            label: 'B',
-            sortOrder: 1,
-            metadata: { unrelated: true },
-          },
-          { id: q.options[0].id, label: 'A', isCorrect: true, sortOrder: 2 },
-        ],
-      }),
+    const unchanged = await management(() =>
+      update(
+        q.id,
+        {
+          questionTextEn: q.prompt,
+          questionTextAr: q.promptAr,
+          options: [
+            {
+              id: q.options[1].id,
+              label: 'B',
+              sortOrder: 1,
+              metadata: { unrelated: true },
+            },
+            { id: q.options[0].id, label: 'A', isCorrect: true, sortOrder: 2 },
+          ],
+        },
+        null,
+      ),
     );
     expect(unchanged).toMatchObject({
       points: new Prisma.Decimal(2),
@@ -248,10 +276,11 @@ describe('ST08-B real PostgreSQL Grades Rich authorization and persistence', () 
   });
 
   it.each(['CREATOR', 'SCHOOL_SCOPE'] as const)(
-    'ST08B-REV-01 preserves ordinary legacy question/option replacement with a differing %s boundary',
+    'preserves Core management legacy replacement across %s while denying Teacher writes',
     async (boundary) => {
       const q = await teacher(() =>
         repository.createQuestionWithOptions({
+          actor: author(),
           schoolId: fixture.school.schoolId,
           assessmentId: graph.assessment.id,
           type: 'MCQ_SINGLE',
@@ -278,14 +307,21 @@ describe('ST08-B real PostgreSQL Grades Rich authorization and persistence', () 
                 classroomId: null,
               },
       });
-      const changed = await teacher(() =>
-        update(q.id, {
-          prompt: 'Updated legacy question',
-          options: [
-            { label: 'Updated legacy A', isCorrect: true },
-            { label: 'Updated legacy B' },
-          ],
-        }),
+      await expect(
+        teacher(() => update(q.id, { prompt: 'Denied Teacher edit' })),
+      ).rejects.toMatchObject({ code: 'not_found' });
+      const changed = await management(() =>
+        update(
+          q.id,
+          {
+            prompt: 'Updated legacy question',
+            options: [
+              { label: 'Updated legacy A', isCorrect: true },
+              { label: 'Updated legacy B' },
+            ],
+          },
+          null,
+        ),
       );
       expect(changed.prompt).toBe('Updated legacy question');
       expect(changed.richContent).toBeNull();
@@ -353,7 +389,7 @@ describe('ST08-B real PostgreSQL Grades Rich authorization and persistence', () 
   );
 
   it.each(['question', 'option'] as const)(
-    'ST08B-REV-01 distinguishes stored JSON null from SQL NULL for an implicit %s clear',
+    'distinguishes stored JSON null from SQL NULL while retaining Teacher denial and management legacy %s edits',
     async (target) => {
       const q = await create(true);
       const option = q.options[0];
@@ -394,7 +430,9 @@ describe('ST08-B real PostgreSQL Grades Rich authorization and persistence', () 
               ],
             };
       await setNull(Prisma.JsonNull);
-      await teacher(() => update(q.id, { points: 2 }));
+      await expect(
+        teacher(() => update(q.id, { points: 2 })),
+      ).rejects.toMatchObject({ code: 'not_found' });
       expect(await sqlNull()).toBe(false);
       const before = await prisma.gradeAssessmentQuestion.findUniqueOrThrow({
         where: { id: q.id },
@@ -411,7 +449,10 @@ describe('ST08-B real PostgreSQL Grades Rich authorization and persistence', () 
         }),
       ).toEqual(before);
       await setNull(Prisma.DbNull);
-      const changed = await teacher(() => update(q.id, command));
+      await expect(teacher(() => update(q.id, command))).rejects.toMatchObject({
+        code: 'not_found',
+      });
+      const changed = await management(() => update(q.id, command, null));
       expect(await sqlNull()).toBe(true);
       expect(
         target === 'question' ? changed.prompt : changed.options[0].label,
@@ -439,13 +480,9 @@ describe('ST08-B real PostgreSQL Grades Rich authorization and persistence', () 
     throw new Error('Expected real PostgreSQL assessment lock wait was absent');
   }
   it.each(['question', 'option'] as const)(
-    'ST08B-REV-01 rechecks concurrent %s Rich introduction after waiting on the assessment lock',
+    'rechecks concurrent creator revocation and %s Rich introduction after waiting on the assessment lock',
     async (target) => {
       const q = await create(true);
-      await prisma.gradeAssessment.update({
-        where: { id: q.assessmentId },
-        data: { createdById: fixture.actors.otherTeacher.userId },
-      });
       if (target === 'question')
         await prisma.gradeAssessmentQuestion.update({
           where: { id: q.id },
@@ -465,6 +502,10 @@ describe('ST08-B real PostgreSQL Grades Rich authorization and persistence', () 
       const blocker = prisma.$transaction(
         async (tx) => {
           await tx.$queryRaw`SELECT id FROM grade_assessments WHERE id=${q.assessmentId}::uuid FOR UPDATE`;
+          await tx.gradeAssessment.update({
+            where: { id: q.assessmentId },
+            data: { createdById: fixture.actors.otherTeacher.userId },
+          });
           const [connection] = await tx.$queryRaw<
             Array<{ pid: number }>
           >`SELECT pg_backend_pid() AS pid`;
@@ -893,6 +934,7 @@ describe('ST08-B real PostgreSQL Grades Rich authorization and persistence', () 
   it('preserves legacy option replacement and rejects revoked permission after a successful read', async () => {
     const q = await teacher(() =>
       repository.createQuestionWithOptions({
+        actor: author(),
         schoolId: fixture.school.schoolId,
         assessmentId: graph.assessment.id,
         type: 'MCQ_SINGLE',
@@ -915,7 +957,7 @@ describe('ST08-B real PostgreSQL Grades Rich authorization and persistence', () 
     );
     expect(replaced.options.every((o) => o.richContent === null)).toBe(true);
     const permission = await prisma.permission.findUniqueOrThrow({
-      where: { code: 'grades.questions.manage' },
+      where: { code: 'grades.teacher_authoring.manage' },
     });
     await prisma.rolePermission.deleteMany({
       where: {
@@ -1037,7 +1079,7 @@ describe('ST08-B real PostgreSQL Grades Rich authorization and persistence', () 
               : state === 'SUBMISSION'
                 ? 'grades.question.structure_locked'
                 : state === 'TERM'
-                  ? 'grades.term.closed'
+                  ? 'not_found'
                   : 'not_found',
       });
       expect(

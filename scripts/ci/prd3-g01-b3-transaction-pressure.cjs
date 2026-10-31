@@ -317,7 +317,113 @@ const PURE_METHODS = new Set([
   'reduce', 'replace', 'slice', 'some', 'sort', 'startsWith', 'stringify', 'toISOString',
   'toLowerCase', 'trim', 'values',
 ]);
+const ST12_REVIEWED_CALL_EVIDENCE = Object.freeze({
+  "author": {
+    "reason": "ST12 authoring branches cannot invoke an audience callback.",
+    "resolvedCallers": [
+      "authorizeGradeAssets",
+      "lockGradeTeacherScopedAllocation"
+    ],
+    "evidence": "These exact owners construct a core actor or an explicit teacher actor with authoring=true. authorizeGradeAssets computes structuralWrite=true and takes the assessment mutation fence before the audience-callback else-if branch. AssessmentMediaRepository reaches this path only with the server-bound teacherAuthoringClassId. Student/released-review actors cannot enter these writers. No callback/provider wait is reachable on these paths."
+  },
+  "released": {
+    "reason": "ST12 released media callbacks revalidate only scoped database authority.",
+    "resolvedCallers": [
+      "GradeReviewService.answerAssets",
+      "GradeReviewService.openAnswer",
+      "GradeReviewReleaseRepository.authorizeMedia"
+    ],
+    "evidence": "Only GradeReviewService.answerAssets and openAnswer construct the internal released authorization object. Their callbacks call GradeReviewReleaseRepository.authorizeMedia on the supplied transaction, intersecting live membership, exact submission/enrollment, current guardian relationship, finalization/approval, audience release and guardian media policy. These methods contain no transaction creation or network/storage/provider operation. Actual bytes use PrivateMediaContentService after authorization commits."
+  },
+  "intrinsic": {
+    "reason": "ST12 uses a bounded synchronous evidence/projection intrinsic.",
+    "resolvedCallers": [
+      "bits"
+    ],
+    "evidence": "The exact helper and expression below perform memory-only work: closed bounded canonical SHA256 snapshots, immutable Decimal formatting/projection, the unchanged ST10 BigInt proof budget, closed Rich UTF-8 length checking, URL canonicalization or request-local WeakMap lookup. Source inspection confirms no provider, filesystem, network, queue, timer, capability or transaction creation. Private evidence hashes are never projected or audited. The exception is restricted to this exact transaction owner, helper origin and call expression."
+  },
+  "allocation": {
+    "reason": "ST12 reuses the existing transaction-bound allocation fence.",
+    "resolvedCallers": [
+      "PrismaTeacherAllocationOperationalWriteGate.lock",
+      "lockGradeTeacherScopedAllocation"
+    ],
+    "evidence": "lockGradeTeacherScopedAllocation accepts the active Prisma.TransactionClient and invokes the unchanged PrismaTeacherAllocationOperationalWriteGate. Its sorted advisory/row/no-data-update locks and academic hierarchy checks are database-only. The dedicated gate audit remains enabled. No nested transaction or provider operation is added."
+  },
+  "reviewer": {
+    "reason": "ST12 reviewer facade has exactly three bounded database-only scoring callbacks.",
+    "resolvedCallers": [
+      "GradeScoringRepository.evaluate",
+      "GradeScoringRepository.get",
+      "GradeScoringRepository.apply"
+    ],
+    "evidence": "GradeScoringRepository.evaluate/get/apply are the only withReviewerTransaction consumers. They use the supplied scoped transaction for current answers, private revision hashes, approved keys, retained suggestions, existing review validation/writes and atomic audit. Evaluation uses only bounded synchronous ST10 primitives and exact Decimal operations. The facade holds allocation, assessment/submission and academic locks with maxWait=5000/timeout=15000. No callback invokes network/storage/signing/queue, timers or a nested transaction."
+  }
+});
+const ST12_REVIEWED_CALLS = Object.freeze([
+  ["src/modules/files/assessment-media/infrastructure/assessment-media.repository.ts","AssessmentMediaRepository.transaction","authorizeGradeAssets","^actor\\.authorize$","author"],
+  ["src/modules/grades/assessments/infrastructure/grade-answer-media.repository.ts","GradeAnswerMediaRepository.read","transaction-callback","^released\\.authorize$","released"],
+  ["src/modules/grades/assessments/infrastructure/grade-key-approvals.repository.ts","GradeKeyApprovalsRepository.approve","bits","^abs\\(n\\)\\.toString$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grade-key-approvals.repository.ts","GradeKeyApprovalsRepository.approve","gradeReviewFingerprint","^createHash\\('sha256'\\)\\.update\\(canonical\\(value,0\\)\\)\\.digest$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grade-key-approvals.repository.ts","GradeKeyApprovalsRepository.approve","gradeReviewFingerprint","^createHash$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grade-key-approvals.repository.ts","GradeKeyApprovalsRepository.approve","gradeKeyQuestionFingerprint","^question\\.points\\.toFixed$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grade-review-release.repository.ts","GradeReviewReleaseRepository.read","stringBytes","^Buffer\\.byteLength$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grade-review-release.repository.ts","GradeReviewReleaseRepository.read","classifyPersistedUrl","^parsed\\.toString$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grade-review-release.repository.ts","GradeReviewReleaseRepository.read","gradeReviewFingerprint","^createHash\\('sha256'\\)\\.update\\(canonical\\(value,0\\)\\)\\.digest$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grade-review-release.repository.ts","GradeReviewReleaseRepository.read","gradeReviewFingerprint","^createHash$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grade-review-release.repository.ts","GradeReviewReleaseRepository.read","gradeKeyQuestionFingerprint","^question\\.points\\.toFixed$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grade-review-release.repository.ts","GradeReviewReleaseRepository.read","bits","^abs\\(n\\)\\.toString$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grade-review-release.repository.ts","GradeReviewReleaseRepository.read","presentReleasedGradeReviewQuestion","^question\\.points\\.toNumber$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grade-review-release.repository.ts","GradeReviewReleaseRepository.read","gradeAnswerNullFact","^nullFacts\\.get$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grade-review-release.repository.ts","GradeReviewReleaseRepository.read","presentReleasedGradeReviewQuestion","^answer\\.awardedPoints\\?\\.toNumber$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grade-review-release.repository.ts","GradeReviewReleaseRepository.read","presentReleasedGradeReviewQuestion","^answer\\.maxPoints\\?\\.toNumber$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grade-review-release.repository.ts","GradeReviewReleaseRepository.read","transaction-callback","^submission\\.totalScore\\?\\.toNumber$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grade-review-release.repository.ts","GradeReviewReleaseRepository.read","transaction-callback","^submission\\.maxScore\\?\\.toNumber$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grade-review-release.repository.ts","GradeReviewReleaseRepository.setPolicy","bits","^abs\\(n\\)\\.toString$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grade-review-release.repository.ts","GradeReviewReleaseRepository.setPolicy","gradeReviewFingerprint","^createHash\\('sha256'\\)\\.update\\(canonical\\(value,0\\)\\)\\.digest$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grade-review-release.repository.ts","GradeReviewReleaseRepository.setPolicy","gradeReviewFingerprint","^createHash$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grade-review-release.repository.ts","GradeReviewReleaseRepository.setPolicy","gradeKeyQuestionFingerprint","^question\\.points\\.toFixed$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.assertTeacherAuthoring","lockGradeTeacherScopedAllocation","^gate\\.lock$","allocation"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.assertTeacherAuthoring","authorizeGradeAssets","^actor\\.authorize$","author"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.bulkUpdateQuestionPoints","lockGradeTeacherScopedAllocation","^gate\\.lock$","allocation"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.bulkUpdateQuestionPoints","authorizeGradeAssets","^actor\\.authorize$","author"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.bulkUpdateQuestionPoints","this.teacherMutationAuditAndTotal","^points\\.toFixed$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.bulkUpdateQuestionPoints","stringBytes","^Buffer\\.byteLength$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.bulkUpdateQuestionPoints","classifyPersistedUrl","^parsed\\.toString$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.createQuestionWithOptions","lockGradeTeacherScopedAllocation","^gate\\.lock$","allocation"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.createQuestionWithOptions","this.teacherMutationAuditAndTotal","^points\\.toFixed$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.reorderQuestions","lockGradeTeacherScopedAllocation","^gate\\.lock$","allocation"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.reorderQuestions","authorizeGradeAssets","^actor\\.authorize$","author"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.reorderQuestions","this.teacherMutationAuditAndTotal","^points\\.toFixed$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.reorderQuestions","stringBytes","^Buffer\\.byteLength$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.reorderQuestions","classifyPersistedUrl","^parsed\\.toString$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.softDeleteQuestionAndOptions","lockGradeTeacherScopedAllocation","^gate\\.lock$","allocation"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.softDeleteQuestionAndOptions","authorizeGradeAssets","^actor\\.authorize$","author"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.softDeleteQuestionAndOptions","this.teacherMutationAuditAndTotal","^points\\.toFixed$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.softDeleteQuestionAndOptions","stringBytes","^Buffer\\.byteLength$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.softDeleteQuestionAndOptions","classifyPersistedUrl","^parsed\\.toString$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.teacherAuthoringView","lockGradeTeacherScopedAllocation","^gate\\.lock$","allocation"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.teacherAuthoringView","authorizeGradeAssets","^actor\\.authorize$","author"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.teacherAuthoringView","stringBytes","^Buffer\\.byteLength$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.teacherAuthoringView","classifyPersistedUrl","^parsed\\.toString$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.updateQuestionAndReplaceOptions","lockGradeTeacherScopedAllocation","^gate\\.lock$","allocation"],
+  ["src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts","GradesAssessmentQuestionsRepository.updateQuestionAndReplaceOptions","this.teacherMutationAuditAndTotal","^points\\.toFixed$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grades-submissions.repository.ts","GradesSubmissionsRepository.finalizeSubmission","transaction-callback","^submission\\.totalScore\\?\\.toFixed$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grades-submissions.repository.ts","GradesSubmissionsRepository.finalizeSubmission","transaction-callback","^input\\.totalScore\\?\\.toFixed$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grades-submissions.repository.ts","GradesSubmissionsRepository.finalizeSubmission","transaction-callback","^input\\.maxScore\\?\\.toFixed$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grades-submissions.repository.ts","GradesSubmissionsRepository.updateAnswerReview","this.writeReviewerDecision","^before\\.awardedPoints\\?\\.toFixed$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grades-submissions.repository.ts","GradesSubmissionsRepository.updateAnswerReview","this.writeReviewerDecision","^updated\\.awardedPoints\\?\\.toFixed$","intrinsic"],
+  ["src/modules/grades/assessments/infrastructure/grades-submissions.repository.ts","GradesSubmissionsRepository.withReviewerTransaction","lockGradeTeacherScopedAllocation","^gate\\.lock$","allocation"],
+  ["src/modules/grades/assessments/infrastructure/grades-submissions.repository.ts","GradesSubmissionsRepository.withReviewerTransaction","transaction-callback","^operation$","reviewer"]
+]);
+
 const REVIEWED_CALL_OVERRIDES = Object.freeze([
+  // ST12: source-reviewed exact owners/origins/expressions; no global exemption.
+  ...ST12_REVIEWED_CALLS.map(([path, owner, origin, pattern, category]) => Object.freeze({
+    ...ST12_REVIEWED_CALL_EVIDENCE[category], path, owner, origin, target: new RegExp(pattern),
+    resolvedCallers: category === 'intrinsic' ? [origin] : ST12_REVIEWED_CALL_EVIDENCE[category].resolvedCallers,
+    classification: 'LOCK_CONTENTION_SENSITIVE', explicitLock: true,
+  })),
   Object.freeze({
     path: 'src/modules/grades/assessments/infrastructure/grades-assessments.repository.ts',
     owner: 'GradesAssessmentsRepository.publishAssessment',

@@ -1,6 +1,11 @@
+import { QuestionEvaluationInputError } from '../../../../common/question-evaluation';
 import { gradeResponseConfig } from '../domain/grade-response-config';
 import type { ResponseConfigV1 } from '../../../../common/assessment-answer/response-config';
 import { randomUUID } from 'node:crypto';
+import { getRequestContext } from '../../../../common/context/request-context';
+import type { GradeTeacherAuthoringActor } from '../domain/grade-teacher-authoring';
+import { GradeReviewConflictException } from '../domain/grade-review-policy';
+import { gradeScoringKey } from '../domain/grade-objective-scoring';
 import { projectGradeAuthorKeyNullFacts } from './grade-author-key.projection';
 import { GradeAssetsRepository } from './grade-assets.repository';
 import {
@@ -16,18 +21,21 @@ import {
 } from './grade-rich-content.projection';
 import {
   assertGradeQuestionStructureWrite,
-  assertGradeQuestionAccess,
   gradeAssessmentAccessWhere,
   gradeQuestionAccessWhere,
 } from './grades-resource-access';
 import { Injectable } from '@nestjs/common';
-import { GradeQuestionType, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { withSoftDeleted } from '../../../../common/context/request-context';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import {
   NormalizedQuestionOptionPayload,
   NormalizedQuestionPayload,
   validateQuestionOptionsForType,
+  validateQuestionPoints,
+  assertNoDuplicateQuestionIds,
+  assertReorderIncludesExactlyActiveQuestions,
+  GradeQuestionLastQuestionException,
 } from '../domain/grade-question-domain';
 import { validateGradeQuestionDefinition } from '../domain/grade-question-interaction';
 import {
@@ -166,6 +174,8 @@ export interface CreateQuestionWithOptionsInput extends Required<
     'type' | 'prompt' | 'points' | 'sortOrder' | 'required'
   >
 > {
+  actor?: GradeTeacherAuthoringActor;
+  sortOrderIsExplicit?: boolean;
   schoolId: string;
   assessmentId: string;
   responseConfig?: ResponseConfigV1 | null;
@@ -179,6 +189,7 @@ export interface CreateQuestionWithOptionsInput extends Required<
 }
 
 export interface UpdateQuestionAndReplaceOptionsInput {
+  actor?: GradeTeacherAuthoringActor;
   data: NormalizedQuestionPayload;
   options?: NormalizedQuestionOptionPayload[];
   metadataPatch?: Record<string, unknown>;
@@ -214,7 +225,13 @@ export class GradesAssessmentQuestionsRepository {
 
   async listQuestions(
     assessmentId: string,
+    actor?: GradeTeacherAuthoringActor,
   ): Promise<GradeAssessmentQuestionRecord[]> {
+    if (actor) {
+      if (actor.assessmentId !== assessmentId)
+        throw new NotFoundDomainException();
+      return (await this.teacherAuthoringView(actor)).questions;
+    }
     const questions = await this.scopedPrisma.gradeAssessmentQuestion.findMany({
       where: {
         AND: [
@@ -305,17 +322,39 @@ export class GradesAssessmentQuestionsRepository {
   async createQuestionWithOptions(
     input: CreateQuestionWithOptionsInput,
   ): Promise<GradeAssessmentQuestionRecord> {
+    let teacherResult: GradeAssessmentQuestionRecord | undefined;
     const created = await this.scopedPrisma.$transaction(async (tx) => {
       if (input.schoolId !== requireGradesScope().schoolId)
         throw new NotFoundDomainException();
+      if (input.actor) {
+        await this.authorizeMutation(tx, input.assessmentId, input.actor);
+        if (!input.sortOrderIsExplicit)
+          input = {
+            ...input,
+            sortOrder:
+              (await this.getMaxQuestionSortOrder(tx, input.assessmentId)) + 1,
+          };
+        else if (
+          await withSoftDeleted(() =>
+            tx.gradeAssessmentQuestion.count({
+              where: {
+                assessmentId: input.assessmentId,
+                sortOrder: input.sortOrder,
+              },
+            }),
+          )
+        )
+          throw new GradeReviewConflictException('stale_version');
+      }
       if (
-        input.richContent !== undefined ||
-        input.options.some((option) => option.richContent !== undefined)
+        !input.actor &&
+        (input.richContent !== undefined ||
+          input.options.some((option) => option.richContent !== undefined))
       ) {
         if (!this.richAssets) throw new NotFoundDomainException();
         await this.richAssets.assertRichWrite(tx, input.assessmentId);
       }
-      await assertGradeQuestionStructureWrite(tx, input.assessmentId);
+      if (!input.actor) await this.authorizeMutation(tx, input.assessmentId);
       if (input.options.some((option) => option.id))
         throw new NotFoundDomainException(
           'Grade assessment question option not found',
@@ -334,11 +373,29 @@ export class GradesAssessmentQuestionsRepository {
         input.type,
         input.responseConfig,
       );
-      if (responseConfig && requireGradesScope().userType === 'TEACHER')
+      if (
+        responseConfig &&
+        requireGradesScope().userType === 'TEACHER' &&
+        !input.actor
+      )
         throw new NotFoundDomainException();
       validateGradeQuestionContent(gradeLegacyContent(input));
       validateQuestionOptionsForType(input);
       validateGradeQuestionDefinition(input);
+      if (
+        input.actor &&
+        input.answerKey != null &&
+        !['MCQ_SINGLE', 'MCQ_MULTI', 'TRUE_FALSE'].includes(input.type)
+      )
+        try {
+          gradeScoringKey(input);
+        } catch (error) {
+          if (error instanceof QuestionEvaluationInputError)
+            throw new ValidationDomainException(
+              'Answer key is not valid for this question',
+            );
+          throw error;
+        }
       const question = await tx.gradeAssessmentQuestion.create({
         data: {
           schoolId: input.schoolId,
@@ -383,17 +440,29 @@ export class GradesAssessmentQuestionsRepository {
         questionId: question.id,
         options: input.options,
       });
+      await this.teacherMutationAuditAndTotal(
+        tx,
+        input.actor,
+        'create',
+        question.id,
+      );
+      if (input.actor)
+        teacherResult = (
+          await this.teacherAuthoringSnapshot(tx, input.actor)
+        ).questions.find((row) => row.id === question.id);
 
       return question;
     });
 
-    return this.findQuestionResult(created.id);
+    if (input.actor && !teacherResult) throw new NotFoundDomainException();
+    return teacherResult ?? this.findQuestionResult(created.id);
   }
 
   async updateQuestionAndReplaceOptions(
     questionId: string,
     input: UpdateQuestionAndReplaceOptionsInput,
   ): Promise<GradeAssessmentQuestionRecord> {
+    let teacherResult: GradeAssessmentQuestionRecord | undefined;
     let richAuthorizationRequired =
       input.data.richContent !== undefined ||
       input.options?.some((option) => option.richContent !== undefined);
@@ -401,8 +470,15 @@ export class GradesAssessmentQuestionsRepository {
       this.scopedPrisma.$transaction(async (tx) => {
         // Each attempt plans from the original command and its final locked row.
         let mutation = input;
+        const parent = await tx.gradeAssessmentQuestion.findFirst({
+          where: { id: questionId },
+          select: { assessmentId: true },
+        });
+        if (!parent) throw new NotFoundDomainException();
+        if (input.actor)
+          await this.authorizeMutation(tx, parent.assessmentId, input.actor);
         let richAssessmentId: string | undefined;
-        if (richAuthorizationRequired) {
+        if (richAuthorizationRequired && !input.actor) {
           const parent = await tx.gradeAssessmentQuestion.findFirst({
             where: { id: questionId },
             select: { assessmentId: true },
@@ -411,16 +487,23 @@ export class GradesAssessmentQuestionsRepository {
           richAssessmentId = parent.assessmentId;
           await this.richAssets.assertRichWrite(tx, parent.assessmentId);
         }
-        await assertGradeQuestionAccess(tx, questionId);
+        if (!input.actor) await this.authorizeMutation(tx, parent.assessmentId);
         const current = await tx.gradeAssessmentQuestion.findFirst({
           where: { id: questionId },
           ...QUESTION_WITH_OPTIONS_ARGS,
         });
         if (
           !current ||
+          current.assessmentId !== parent.assessmentId ||
           (richAssessmentId && current.assessmentId !== richAssessmentId)
         )
           throw new NotFoundDomainException();
+        if (
+          input.actor?.expectedQuestionUpdatedAt &&
+          current.updatedAt.getTime() !==
+            new Date(input.actor.expectedQuestionUpdatedAt).getTime()
+        )
+          throw new GradeReviewConflictException('stale_version');
         const rich = gradeRichChange('gradeQuestion', mutation.data, current);
         if (rich.action === 'write') {
           mutation = {
@@ -443,7 +526,8 @@ export class GradesAssessmentQuestionsRepository {
         if (
           (current.responseConfig != null ||
             mutation.data.responseConfig !== undefined) &&
-          requireGradesScope().userType === 'TEACHER'
+          requireGradesScope().userType === 'TEACHER' &&
+          !input.actor
         )
           throw new NotFoundDomainException();
         if (
@@ -507,6 +591,20 @@ export class GradesAssessmentQuestionsRepository {
         validateGradeQuestionContent(gradeLegacyContent(effective));
         validateQuestionOptionsForType(effective);
         validateGradeQuestionDefinition(effective);
+        if (
+          input.actor &&
+          effective.answerKey != null &&
+          !['MCQ_SINGLE', 'MCQ_MULTI', 'TRUE_FALSE'].includes(effective.type)
+        )
+          try {
+            gradeScoringKey(effective);
+          } catch (error) {
+            if (error instanceof QuestionEvaluationInputError)
+              throw new ValidationDomainException(
+                'Answer key is not valid for this question',
+              );
+            throw error;
+          }
         if (isGradeEvaluationType(effective.type)) {
           // Normalize exactly the state just validated under the existing mutation lock.
           mutation = {
@@ -525,12 +623,17 @@ export class GradesAssessmentQuestionsRepository {
             ? undefined
             : this.planOptionReplacement(current, mutation.options);
         if (
+          !input.actor &&
           !richAuthorizationRequired &&
           (await this.hasImplicitRichClear(tx, current, rich, optionPlan))
         )
           throw new RichWriteAuthorizationRequired();
-        if (Object.keys(mutation.data).length > 0) {
+        if (input.actor || Object.keys(mutation.data).length > 0) {
           const data = this.buildQuestionUpdateInput(mutation.data);
+          if (input.actor)
+            data.updatedAt = new Date(
+              Math.max(Date.now(), current.updatedAt.getTime() + 1),
+            );
           if (
             isGradeEvaluationType(effective.type) &&
             mutation.data.answerKey === null
@@ -552,6 +655,16 @@ export class GradesAssessmentQuestionsRepository {
 
           await this.replaceOptionsPreservingIdentity(tx, current, optionPlan);
         }
+        await this.teacherMutationAuditAndTotal(
+          tx,
+          input.actor,
+          'update',
+          questionId,
+        );
+        if (input.actor)
+          teacherResult = (
+            await this.teacherAuthoringSnapshot(tx, input.actor)
+          ).questions.find((row) => row.id === questionId);
       });
     try {
       await mutate();
@@ -563,15 +676,32 @@ export class GradesAssessmentQuestionsRepository {
       await mutate();
     }
 
-    return this.findQuestionResult(questionId);
+    if (input.actor && !teacherResult) throw new NotFoundDomainException();
+    return teacherResult ?? this.findQuestionResult(questionId);
   }
 
   async softDeleteQuestionAndOptions(params: {
+    actor?: GradeTeacherAuthoringActor;
     questionId: string;
     assessmentId: string;
   }): Promise<GradeAssessmentQuestionRecord[]> {
+    let teacherResult: GradeAssessmentQuestionRecord[] | undefined;
     await this.scopedPrisma.$transaction(async (tx) => {
-      await assertGradeQuestionAccess(tx, params.questionId);
+      await this.authorizeMutation(tx, params.assessmentId, params.actor);
+      if (
+        !(await tx.gradeAssessmentQuestion.findFirst({
+          where: { id: params.questionId, assessmentId: params.assessmentId },
+          select: { id: true },
+        }))
+      )
+        throw new NotFoundDomainException();
+      if (
+        params.actor &&
+        (await tx.gradeAssessmentQuestion.count({
+          where: { assessmentId: params.assessmentId },
+        })) <= 1
+      )
+        throw new GradeQuestionLastQuestionException();
       const now = new Date();
       const nextRetiredSortOrder =
         (await this.getMaxQuestionSortOrder(tx, params.assessmentId)) + 1;
@@ -596,32 +726,77 @@ export class GradesAssessmentQuestionsRepository {
         assessmentId: params.assessmentId,
         orderedQuestionIds: remaining.map((question) => question.id),
       });
+      await this.teacherMutationAuditAndTotal(
+        tx,
+        params.actor,
+        'delete',
+        params.questionId,
+      );
+      if (params.actor)
+        teacherResult = (await this.teacherAuthoringSnapshot(tx, params.actor))
+          .questions;
     });
 
-    return this.listQuestions(params.assessmentId);
+    return teacherResult ?? this.listQuestions(params.assessmentId);
   }
 
   async reorderQuestions(params: {
+    actor?: GradeTeacherAuthoringActor;
     assessmentId: string;
     questionIds: string[];
   }): Promise<GradeAssessmentQuestionRecord[]> {
+    let teacherResult: GradeAssessmentQuestionRecord[] | undefined;
     await this.scopedPrisma.$transaction(async (tx) => {
-      await assertGradeQuestionStructureWrite(tx, params.assessmentId);
+      await this.authorizeMutation(tx, params.assessmentId, params.actor);
+      if (params.actor) {
+        assertNoDuplicateQuestionIds(params.questionIds);
+        const questions = await tx.gradeAssessmentQuestion.findMany({
+          where: { assessmentId: params.assessmentId },
+          select: { id: true },
+        });
+        assertReorderIncludesExactlyActiveQuestions({
+          requestedQuestionIds: params.questionIds,
+          activeQuestionIds: questions.map((question) => question.id),
+        });
+      }
       await this.rewriteQuestionSortOrders(tx, {
         assessmentId: params.assessmentId,
         orderedQuestionIds: params.questionIds,
       });
+      await this.teacherMutationAuditAndTotal(
+        tx,
+        params.actor,
+        'reorder',
+        params.assessmentId,
+      );
+      if (params.actor)
+        teacherResult = (await this.teacherAuthoringSnapshot(tx, params.actor))
+          .questions;
     });
 
-    return this.listQuestions(params.assessmentId);
+    return teacherResult ?? this.listQuestions(params.assessmentId);
   }
 
   async bulkUpdateQuestionPoints(params: {
+    actor?: GradeTeacherAuthoringActor;
     assessmentId: string;
     items: Array<{ questionId: string; points: number }>;
   }): Promise<GradeAssessmentQuestionRecord[]> {
+    let teacherResult: GradeAssessmentQuestionRecord[] | undefined;
     await this.scopedPrisma.$transaction(async (tx) => {
-      await assertGradeQuestionStructureWrite(tx, params.assessmentId);
+      await this.authorizeMutation(tx, params.assessmentId, params.actor);
+      if (params.actor) {
+        const ids = params.items.map((item) => item.questionId);
+        assertNoDuplicateQuestionIds(ids);
+        if (
+          !ids.length ||
+          (await tx.gradeAssessmentQuestion.count({
+            where: { assessmentId: params.assessmentId, id: { in: ids } },
+          })) !== ids.length
+        )
+          throw new NotFoundDomainException();
+        for (const item of params.items) validateQuestionPoints(item.points);
+      }
       for (const item of params.items) {
         await tx.gradeAssessmentQuestion.updateMany({
           where: {
@@ -631,9 +806,142 @@ export class GradesAssessmentQuestionsRepository {
           data: { points: new Prisma.Decimal(item.points) },
         });
       }
+      await this.teacherMutationAuditAndTotal(
+        tx,
+        params.actor,
+        'points',
+        params.assessmentId,
+      );
+      if (params.actor)
+        teacherResult = (await this.teacherAuthoringSnapshot(tx, params.actor))
+          .questions;
     });
 
-    return this.listQuestions(params.assessmentId);
+    return teacherResult ?? this.listQuestions(params.assessmentId);
+  }
+
+  async assertTeacherAuthoring(
+    actor: GradeTeacherAuthoringActor,
+    questionId?: string,
+  ): Promise<void> {
+    await this.scopedPrisma.$transaction(async (tx) => {
+      await this.authorizeMutation(tx, actor.assessmentId, actor);
+      if (
+        questionId &&
+        !(await tx.gradeAssessmentQuestion.findFirst({
+          where: { id: questionId, assessmentId: actor.assessmentId },
+          select: { id: true },
+        }))
+      )
+        throw new NotFoundDomainException();
+    });
+  }
+
+  async teacherAuthoringView(actor: GradeTeacherAuthoringActor) {
+    return this.scopedPrisma.$transaction(
+      async (tx) => {
+        await this.authorizeMutation(tx, actor.assessmentId, actor);
+        return this.teacherAuthoringSnapshot(tx, actor);
+      },
+      { maxWait: 5000, timeout: 15000 },
+    );
+  }
+
+  private async teacherAuthoringSnapshot(
+    tx: Prisma.TransactionClient,
+    actor: GradeTeacherAuthoringActor,
+  ) {
+    const assessment = await tx.gradeAssessment.findFirstOrThrow({
+      where: { id: actor.assessmentId },
+      ...ASSESSMENT_FOR_QUESTION_MANAGEMENT_ARGS,
+    });
+    const questions = await tx.gradeAssessmentQuestion.findMany({
+      where: { assessmentId: actor.assessmentId },
+      orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+      take: 201,
+      ...QUESTION_WITH_OPTIONS_ARGS,
+    });
+    if (questions.length > 200)
+      throw new ValidationDomainException('Question capacity exceeded');
+    await projectGradeAuthorKeyNullFacts(
+      tx,
+      actor.assessmentId,
+      questions,
+      true,
+    );
+    if (hasGradeRichSelection(questions))
+      await projectGradeRichContent(
+        tx,
+        actor.assessmentId,
+        questions,
+        this.richAssets,
+        'author',
+      );
+    await this.richAssets?.projectGroups(tx, actor.assessmentId, questions);
+    return { assessment, questions };
+  }
+
+  private async authorizeMutation(
+    tx: Prisma.TransactionClient,
+    assessmentId: string,
+    actor?: GradeTeacherAuthoringActor,
+  ) {
+    if (requireGradesScope().userType === 'TEACHER') {
+      if (!actor || actor.assessmentId !== assessmentId || !this.richAssets)
+        throw new NotFoundDomainException();
+      await this.richAssets.assertRichWrite(tx, assessmentId, actor);
+    } else {
+      if (actor) throw new NotFoundDomainException();
+      await assertGradeQuestionStructureWrite(tx, assessmentId);
+    }
+  }
+
+  private async teacherMutationAuditAndTotal(
+    tx: Prisma.TransactionClient,
+    actor: GradeTeacherAuthoringActor | undefined,
+    action: string,
+    resourceId: string,
+  ) {
+    if (!actor) return;
+    const scope = requireGradesScope();
+    const total = await tx.gradeAssessmentQuestion.aggregate({
+      where: { assessmentId: actor.assessmentId },
+      _sum: { points: true },
+      _count: { _all: true },
+    });
+    const points = total._sum.points ?? new Prisma.Decimal(0);
+    if (
+      points.isNegative() ||
+      points.greaterThan('99999.99') ||
+      total._count._all > 200
+    )
+      throw new ValidationDomainException(
+        'Question points or capacity exceed assessment bounds',
+      );
+    await tx.gradeAssessment.updateMany({
+      where: { id: actor.assessmentId },
+      data: { maxScore: points },
+    });
+    await tx.auditLog.create({
+      data: {
+        actorId: scope.actorId,
+        userType: scope.userType,
+        organizationId: scope.organizationId,
+        schoolId: scope.schoolId,
+        module: 'grades',
+        action: `grades.teacher_authoring.question.${action}`,
+        resourceType: 'grade_assessment_question',
+        resourceId,
+        outcome: 'SUCCESS',
+        after: {
+          assessmentId: actor.assessmentId,
+          allocationId: actor.classId,
+          questionCount: total._count._all,
+          maxScore: points.toFixed(2),
+          requestId: getRequestContext()?.requestId ?? null,
+        },
+      },
+    });
   }
 
   private async findQuestionResult(

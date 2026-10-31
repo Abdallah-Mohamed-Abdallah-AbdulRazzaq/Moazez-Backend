@@ -187,7 +187,11 @@ describe('grade submission presenter', () => {
   }
 
   it('maps statuses and selected options correctly', () => {
-    const result = presentGradeSubmissionAnswer(answer() as never);
+    const result = presentGradeSubmissionAnswer(
+      answer() as never,
+      undefined,
+      true,
+    );
 
     expect(result).toMatchObject({
       id: 'answer-1',
@@ -257,5 +261,16 @@ describe('grade submission presenter', () => {
       },
     });
     expect(result.items[0]).not.toHaveProperty('schoolId');
+  });
+  it('denies private review fields on a raw record without audience authorization', () => {
+    const result = presentGradeSubmissionAnswer(answer() as never);
+    expect(result).toMatchObject({
+      correctionStatus: 'pending',
+      awardedPoints: null,
+      reviewerComment: null,
+      reviewerCommentAr: null,
+      reviewedAt: null,
+      reviewedById: null,
+    });
   });
 });

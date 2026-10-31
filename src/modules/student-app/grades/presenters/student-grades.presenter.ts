@@ -1,3 +1,4 @@
+import { canDiscloseGradeReview } from '../../../grades/assessments/domain/grade-review-disclosure';
 import { presentQuestionGroupContext } from '../../../../common/question-groups/question-group.projection';
 import { presentGradeRichContent } from '../../../grades/assessments/infrastructure/grade-rich-content.projection';
 import type { GradeAssetDto } from '../../../grades/assessments/dto/grade-asset.dto';
@@ -255,12 +256,22 @@ function presentSubmission(
               | string
               | null,
           })),
-          correctionStatus: lowerEnum(answer.correctionStatus),
-          awardedPoints: decimalToNumber(answer.awardedPoints),
+          correctionStatus: canDiscloseGradeReview(submission)
+            ? lowerEnum(answer.correctionStatus)
+            : 'pending',
+          awardedPoints: canDiscloseGradeReview(submission)
+            ? decimalToNumber(answer.awardedPoints)
+            : null,
           maxPoints: decimalToNumber(answer.maxPoints),
-          reviewerComment: answer.reviewerComment,
-          reviewerCommentAr: answer.reviewerCommentAr,
-          reviewedAt: nullableDate(answer.reviewedAt),
+          reviewerComment: canDiscloseGradeReview(submission)
+            ? answer.reviewerComment
+            : null,
+          reviewerCommentAr: canDiscloseGradeReview(submission)
+            ? answer.reviewerCommentAr
+            : null,
+          reviewedAt: canDiscloseGradeReview(submission)
+            ? nullableDate(answer.reviewedAt)
+            : null,
         }))
       : [],
   };

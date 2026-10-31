@@ -7,6 +7,7 @@ import {
   UserType,
 } from '@prisma/client';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
+import { verifyAuthorizationReferenceData } from '../../iam/reference-data/infrastructure/authorization-reference-data.repository';
 import {
   PLATFORM_ADMIN_BOOTSTRAP_AUDIT_ACTION,
   PLATFORM_ADMIN_BOOTSTRAP_AUDIT_MODULE,
@@ -106,27 +107,8 @@ export class PlatformAdminBootstrapRepository {
       throw new PlatformAdminBootstrapError('ALREADY_INITIALIZED');
     }
 
-    const [roles, permissionCount] = await Promise.all([
-      transaction.role.findMany({
-        where: {
-          key: PLATFORM_ADMIN_ROLE_CODE,
-          schoolId: null,
-          isSystem: true,
-          deletedAt: null,
-        },
-        select: {
-          id: true,
-          _count: { select: { rolePermissions: true } },
-        },
-        take: 2,
-      }),
-      transaction.permission.count(),
-    ]);
-    if (
-      roles.length !== 1 ||
-      permissionCount === 0 ||
-      roles[0]._count.rolePermissions !== permissionCount
-    ) {
+    const referenceData = await verifyAuthorizationReferenceData(transaction);
+    if (!referenceData.ready) {
       throw new PlatformAdminBootstrapError('REFERENCE_DATA_INVALID');
     }
 
