@@ -118,6 +118,7 @@ const STUDENT_HOMEWORK_TARGET_ARGS =
               id: true,
               homeworkAssignmentId: true,
               type: true,
+              responseConfig: true,
               metadata: true,
               prompt: true,
               richContent: true,
@@ -206,6 +207,7 @@ const STUDENT_HOMEWORK_TARGET_ARGS =
                 select: {
                   id: true,
                   type: true,
+                  responseConfig: true,
                   prompt: true,
                   richContent: true,
                   points: true,

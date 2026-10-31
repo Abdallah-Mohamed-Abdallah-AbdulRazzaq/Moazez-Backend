@@ -1,3 +1,4 @@
+import { GRADE_ANSWER_MEDIA_SELECT } from '../../../../grades/assessments/infrastructure/grade-answer-media.select';
 import { GradeAssetsRepository } from '../../../../grades/assessments/infrastructure/grade-assets.repository';
 import { projectGradeAnswerNullFacts } from '../../../../grades/assessments/infrastructure/grade-typed-answer.projection';
 import {
@@ -105,6 +106,7 @@ const ASSESSMENT_DETAIL_ARGS =
         select: {
           id: true,
           type: true,
+          responseConfig: true,
           prompt: true,
           promptAr: true,
           richContent: true,
@@ -211,6 +213,7 @@ const ASSIGNMENT_SUBMISSION_DETAIL_ARGS =
           questionId: true,
           answerText: true,
           answerJson: true,
+          assets: GRADE_ANSWER_MEDIA_SELECT,
           correctionStatus: true,
           awardedPoints: true,
           maxPoints: true,

@@ -58,7 +58,13 @@ describe('ST-05 additive asset relationships and conservative lifetime on Postgr
         sourceType: 'MANAGED_FILE',
         category: 'DOCUMENT',
         sortOrder: 4,
-        createdByUserId: fixture.authorId,
+        createdByUserId: family.dual
+          ? fixture.authorId
+          : (
+              await prisma.student.findUniqueOrThrow({
+                where: { id: fixture.parents[0].studentId },
+              })
+            ).userId,
         deletedAt: null,
       });
       expect(row.id).toMatch(/^[0-9a-f-]{36}$/u);
@@ -107,10 +113,19 @@ describe('ST-05 additive asset relationships and conservative lifetime on Postgr
       expect(await retained()).toBe(false);
     },
   );
-  it('accounts for all five consumers of one File and remains global under another School context', async () => {
+  it('accounts for all five consumers, with exclusive answer Files, globally under another School context', async () => {
     const rows: Array<{ family: AssetFamily; row: AssetRow }> = [];
-    for (const family of ASSET_FAMILIES)
+    for (const family of ASSET_FAMILIES.filter((f) => f.dual))
       rows.push({ family, row: await fixture.insert(family, { fileId }) });
+    const answerFile = await fixture.file(),
+      gradeFile = await fixture.file();
+    await fixture.insert(ASSET_FAMILIES[3], { fileId: answerFile.id });
+    await expect(
+      fixture.insert(ASSET_FAMILIES[4], { fileId: answerFile.id }),
+    ).rejects.toThrow();
+    await fixture.insert(ASSET_FAMILIES[4], { fileId: gradeFile.id });
+    expect(await retained(answerFile.id)).toBe(true);
+    expect(await retained(gradeFile.id)).toBe(true);
     expect(await retained()).toBe(true);
     expect(
       await fixture.asActor(
@@ -120,11 +135,13 @@ describe('ST-05 additive asset relationships and conservative lifetime on Postgr
         2,
       ),
     ).toBe(true);
-    for (const { family, row } of rows.slice(0, -1))
+    for (const { family, row } of rows)
       await prisma.$executeRaw(
         Prisma.sql`DELETE FROM public.${Prisma.raw(family.table)} WHERE id = ${row.id}::uuid`,
       );
-    expect(await retained()).toBe(true);
+    expect(await retained()).toBe(false);
+    expect(await retained(answerFile.id)).toBe(true);
+    expect(await retained(gradeFile.id)).toBe(true);
     await fixture.resetAssets();
     expect(await retained()).toBe(false);
   });
@@ -165,7 +182,9 @@ describe('ST-05 additive asset relationships and conservative lifetime on Postgr
         expect(scalars).not.toContain(unwanted);
     }
     const hw = await fixture.insert(ASSET_FAMILIES[3], { fileId });
-    const grade = await fixture.insert(ASSET_FAMILIES[4], { fileId });
+    const grade = await fixture.insert(ASSET_FAMILIES[4], {
+      fileId: (await fixture.file()).id,
+    });
     const [homework] = await prisma.$queryRaw<
       Array<{ answer: string; student: string; question: string }>
     >`
@@ -225,7 +244,29 @@ describe('ST-05 additive asset relationships and conservative lifetime on Postgr
       SELECT tablename AS "table", indexname AS name, indexdef AS definition FROM pg_catalog.pg_indexes WHERE schemaname = 'public'`;
     for (const family of ASSET_FAMILIES) {
       const rows = fks.filter((row) => row.table === family.table);
-      expect(rows).toHaveLength(4);
+      expect(rows).toHaveLength(family.dual ? 4 : 5);
+      if (!family.dual)
+        expect(
+          rows.find((row) => row.parent === 'assessment_answer_media_claims'),
+        ).toMatchObject({
+          columns: [
+            'answer_media_claim_id',
+            'school_id',
+            'file_id',
+            family.parentColumn,
+          ],
+          references: [
+            'id',
+            'school_id',
+            'file_id',
+            family.model === 'HomeworkAnswerAsset'
+              ? 'homework_answer_id'
+              : 'grade_answer_id',
+          ],
+          deleted: 'r',
+          updated: 'r',
+          valid: true,
+        });
       expect(
         rows.find((row) => row.name === `${family.prefix}_parent_fk`),
       ).toMatchObject({
@@ -266,8 +307,16 @@ describe('ST-05 additive asset relationships and conservative lifetime on Postgr
             ?.valid,
         ).toBe(true);
       expect(indexes.filter((row) => row.table === family.table)).toHaveLength(
-        4,
-      ); // PK plus the three documented access/FK indexes
+        family.dual ? 4 : 6,
+      ); // Existing PK/access indexes plus exact immutable claim uniqueness for answer assets.
+      if (!family.dual)
+        expect(
+          indexes.find(
+            (row) =>
+              row.table === family.table &&
+              row.definition.endsWith('(answer_media_claim_id)'),
+          )?.definition,
+        ).toContain('CREATE UNIQUE INDEX');
       expect(
         indexes.find((row) => row.name === `${family.prefix}_parent_order_idx`)
           ?.definition,

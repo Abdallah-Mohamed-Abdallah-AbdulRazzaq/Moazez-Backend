@@ -1,3 +1,4 @@
+import { gradeResponseConfig } from '../domain/grade-response-config';
 import { presentGradeRichContent } from '../infrastructure/grade-rich-content.projection';
 import { gradeAuthorKeyNullFact } from '../infrastructure/grade-author-key.projection';
 import { ValidationDomainException } from '../../../../common/exceptions/domain-exception';
@@ -45,6 +46,14 @@ export function presentGradeAssessmentQuestion(
       { field: 'answerKey' },
     );
   return {
+    ...(gradeResponseConfig(question.type, question.responseConfig)
+      ? {
+          responseConfig: gradeResponseConfig(
+            question.type,
+            question.responseConfig,
+          )!,
+        }
+      : {}),
     ...presentGradeRichContent(question),
     id: question.id,
     assessmentId: question.assessmentId,

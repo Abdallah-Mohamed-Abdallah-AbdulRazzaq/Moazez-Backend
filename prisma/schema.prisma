@@ -1507,6 +1507,7 @@ model Organization {
   studentCredentialBatches           StudentCredentialBatch[]
   studentProfileCorrectionRequests   StudentProfileCorrectionRequest[]
   guardians                          Guardian[]
+  answerUploadIntents                AssessmentAnswerUploadIntent[]
 
   @@index([status])
   @@index([deletedAt])
@@ -1698,8 +1699,11 @@ model School {
   gradeAssessmentAssets         GradeAssessmentAsset[]
   homeworkAnswerAssets          HomeworkAnswerAsset[]
   gradeSubmissionAnswerAssets   GradeSubmissionAnswerAsset[]
+  answerUploadIntents           AssessmentAnswerUploadIntent[]
+  answerMediaClaims             AssessmentAnswerMediaClaim[]
 
   @@unique([organizationId, slug])
+  @@unique([id, organizationId], map: "answer_intent_school_organization_key")
   @@index([organizationId])
   @@index([status])
   @@index([deletedAt])
@@ -1931,6 +1935,7 @@ model User {
   gradeAssessmentAssetsCreated         GradeAssessmentAsset[]         @relation("GradeAssessmentAssetCreatedBy")
   homeworkAnswerAssetsCreated          HomeworkAnswerAsset[]          @relation("HomeworkAnswerAssetCreatedBy")
   gradeSubmissionAnswerAssetsCreated   GradeSubmissionAnswerAsset[]   @relation("GradeSubmissionAnswerAssetCreatedBy")
+  answerUploadIntents                  AssessmentAnswerUploadIntent[] @relation("AssessmentAnswerUploadActor")
 
   @@index([userType])
   @@index([status])
@@ -4785,9 +4790,11 @@ model Student {
   academicContentAudienceRecipients AcademicContentAudienceRecipient[]
   academicContentEngagementEvents   AcademicContentEngagementEvent[]
   academicContentAcknowledgements   AcademicContentAcknowledgement[]
+  answerUploadIntents               AssessmentAnswerUploadIntent[]
 
   @@unique([id, schoolId])
   @@unique([applicationId, schoolId])
+  @@unique([id, schoolId, userId], map: "answer_intent_student_actor_key")
   @@index([schoolId])
   @@index([organizationId])
   @@index([applicationId])
@@ -5591,10 +5598,13 @@ model GradeAssessmentQuestion {
   options    GradeAssessmentQuestionOption[]
   answers    GradeSubmissionAnswer[]
 
-  assets GradeAssessmentQuestionAsset[]
+  assets              GradeAssessmentQuestionAsset[]
+  responseConfig      Json?                          @map("response_config")
+  answerUploadIntents AssessmentAnswerUploadIntent[] @relation("GradeAnswerUploadQuestion")
 
   @@unique([id, schoolId])
   @@unique([schoolId, assessmentId, sortOrder])
+  @@unique([id, schoolId, assessmentId], map: "answer_intent_grade_question_key")
   @@index([schoolId])
   @@index([assessmentId])
   @@index([schoolId, assessmentId, deletedAt])
@@ -5679,16 +5689,18 @@ model GradeSubmission {
   createdAt    DateTime              @default(now()) @map("created_at")
   updatedAt    DateTime              @updatedAt @map("updated_at")
 
-  school     School                  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  assessment GradeAssessment         @relation(fields: [assessmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  term       Term                    @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  student    Student                 @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  enrollment Enrollment              @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  reviewedBy User?                   @relation("GradeSubmissionReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
-  answers    GradeSubmissionAnswer[]
+  school              School                         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  assessment          GradeAssessment                @relation(fields: [assessmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term                Term                           @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  student             Student                        @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  enrollment          Enrollment                     @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  reviewedBy          User?                          @relation("GradeSubmissionReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  answers             GradeSubmissionAnswer[]
+  answerUploadIntents AssessmentAnswerUploadIntent[] @relation("GradeAnswerUploadSubmission")
 
   @@unique([id, schoolId])
   @@unique([schoolId, assessmentId, studentId])
+  @@unique([id, schoolId, assessmentId, studentId], map: "answer_intent_grade_submission_key")
   @@index([schoolId])
   @@index([assessmentId])
   @@index([termId])
@@ -5727,10 +5739,12 @@ model GradeSubmissionAnswer {
   reviewedBy      User?                         @relation("GradeSubmissionAnswerReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
   selectedOptions GradeSubmissionAnswerOption[]
 
-  assets GradeSubmissionAnswerAsset[]
+  assets      GradeSubmissionAnswerAsset[]
+  mediaClaims AssessmentAnswerMediaClaim[] @relation("GradeAnswerMediaClaim")
 
   @@unique([id, schoolId])
   @@unique([schoolId, submissionId, questionId])
+  @@unique([id, schoolId, submissionId, questionId, studentId, assessmentId], map: "answer_claim_grade_answer_key")
   @@index([schoolId])
   @@index([submissionId])
   @@index([assessmentId])
@@ -5757,11 +5771,14 @@ model GradeSubmissionAnswerAsset {
   updatedAt       DateTime                  @updatedAt @map("updated_at")
   deletedAt       DateTime?                 @map("deleted_at")
 
-  school                School                @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "grade_answer_asset_school_fk")
-  gradeSubmissionAnswer GradeSubmissionAnswer @relation(fields: [answerId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "grade_answer_asset_parent_fk")
-  file                  File                  @relation(fields: [fileId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "grade_answer_asset_file_fk")
-  createdBy             User                  @relation("GradeSubmissionAnswerAssetCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "grade_answer_asset_creator_fk")
+  school                School                      @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "grade_answer_asset_school_fk")
+  gradeSubmissionAnswer GradeSubmissionAnswer       @relation(fields: [answerId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "grade_answer_asset_parent_fk")
+  file                  File                        @relation(fields: [fileId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "grade_answer_asset_file_fk")
+  createdBy             User                        @relation("GradeSubmissionAnswerAssetCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "grade_answer_asset_creator_fk")
+  answerMediaClaimId    String?                     @unique @map("answer_media_claim_id") @db.Uuid
+  mediaClaim            AssessmentAnswerMediaClaim? @relation("GradeAnswerClaimAsset", fields: [answerMediaClaimId, schoolId, fileId, answerId], references: [id, schoolId, fileId, gradeAnswerId], onDelete: Restrict, onUpdate: Restrict)
 
+  @@unique([answerMediaClaimId, schoolId, fileId, answerId])
   @@index([schoolId, answerId, deletedAt, sortOrder, id], map: "grade_answer_asset_parent_order_idx")
   @@index([fileId, schoolId], map: "grade_answer_asset_file_idx")
   @@index([createdByUserId], map: "grade_answer_asset_creator_idx")
@@ -5916,9 +5933,11 @@ model HomeworkTarget {
   submissions           HomeworkSubmission[]
   submissionAnswers     HomeworkSubmissionAnswer[]
   submissionAttachments HomeworkSubmissionAttachment[]
+  answerUploadIntents   AssessmentAnswerUploadIntent[] @relation("HomeworkAnswerUploadTarget")
 
   @@unique([id, schoolId])
   @@unique([schoolId, homeworkAssignmentId, studentId])
+  @@unique([id, schoolId, homeworkAssignmentId, studentId], map: "answer_intent_homework_target_key")
   @@index([schoolId])
   @@index([homeworkAssignmentId])
   @@index([studentId])
@@ -5955,9 +5974,11 @@ model HomeworkSubmission {
   reviewedByUser     User?                          @relation("HomeworkSubmissionReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
   answers            HomeworkSubmissionAnswer[]
   attachments        HomeworkSubmissionAttachment[]
+  mediaClaims        AssessmentAnswerMediaClaim[]   @relation("HomeworkMediaClaimSubmission")
 
   @@unique([id, schoolId])
   @@unique([schoolId, homeworkTargetId])
+  @@unique([id, schoolId, homeworkTargetId, studentId, homeworkAssignmentId], map: "answer_claim_homework_submission_key")
   @@index([schoolId])
   @@index([homeworkAssignmentId])
   @@index([homeworkTargetId])
@@ -6004,9 +6025,12 @@ model HomeworkQuestion {
   options            HomeworkQuestionOption[]
   submissionAnswers  HomeworkSubmissionAnswer[]
 
-  assets HomeworkQuestionAsset[]
+  assets              HomeworkQuestionAsset[]
+  responseConfig      Json?                          @map("response_config")
+  answerUploadIntents AssessmentAnswerUploadIntent[] @relation("HomeworkAnswerUploadQuestion")
 
   @@unique([id, schoolId])
+  @@unique([id, schoolId, homeworkAssignmentId], map: "answer_intent_homework_question_key")
   @@index([schoolId])
   @@index([schoolId, homeworkAssignmentId], map: "hw_question_school_assignment_idx")
   @@index([schoolId, homeworkAssignmentId, sortOrder], map: "hw_question_school_assignment_sort_idx")
@@ -6071,9 +6095,11 @@ model HomeworkSubmissionAnswer {
   homeworkQuestion   HomeworkQuestion   @relation(fields: [homeworkQuestionId, schoolId], references: [id, schoolId], onDelete: Restrict)
   reviewedByUser     User?              @relation("HomeworkSubmissionAnswerReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
 
-  assets HomeworkAnswerAsset[]
+  assets      HomeworkAnswerAsset[]
+  mediaClaims AssessmentAnswerMediaClaim[] @relation("HomeworkAnswerMediaClaim")
 
   @@unique([id, schoolId])
+  @@unique([id, schoolId, homeworkSubmissionId, homeworkTargetId, homeworkQuestionId, homeworkAssignmentId], map: "answer_claim_homework_answer_key")
   @@index([schoolId])
   @@index([schoolId, homeworkSubmissionId])
   @@index([schoolId, homeworkAssignmentId])
@@ -6099,11 +6125,14 @@ model HomeworkAnswerAsset {
   updatedAt                  DateTime                  @updatedAt @map("updated_at")
   deletedAt                  DateTime?                 @map("deleted_at")
 
-  school                   School                   @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "hw_answer_asset_school_fk")
-  homeworkSubmissionAnswer HomeworkSubmissionAnswer @relation(fields: [homeworkSubmissionAnswerId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "hw_answer_asset_parent_fk")
-  file                     File                     @relation(fields: [fileId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "hw_answer_asset_file_fk")
-  createdBy                User                     @relation("HomeworkAnswerAssetCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "hw_answer_asset_creator_fk")
+  school                   School                      @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "hw_answer_asset_school_fk")
+  homeworkSubmissionAnswer HomeworkSubmissionAnswer    @relation(fields: [homeworkSubmissionAnswerId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "hw_answer_asset_parent_fk")
+  file                     File                        @relation(fields: [fileId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "hw_answer_asset_file_fk")
+  createdBy                User                        @relation("HomeworkAnswerAssetCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "hw_answer_asset_creator_fk")
+  answerMediaClaimId       String?                     @unique @map("answer_media_claim_id") @db.Uuid
+  mediaClaim               AssessmentAnswerMediaClaim? @relation("HomeworkAnswerClaimAsset", fields: [answerMediaClaimId, schoolId, fileId, homeworkSubmissionAnswerId], references: [id, schoolId, fileId, homeworkAnswerId], onDelete: Restrict, onUpdate: Restrict)
 
+  @@unique([answerMediaClaimId, schoolId, fileId, homeworkSubmissionAnswerId])
   @@index([schoolId, homeworkSubmissionAnswerId, deletedAt, sortOrder, id], map: "hw_answer_asset_parent_order_idx")
   @@index([fileId, schoolId], map: "hw_answer_asset_file_idx")
   @@index([createdByUserId], map: "hw_answer_asset_creator_idx")
@@ -8011,9 +8040,11 @@ model File {
   gradeAssessmentAssets         GradeAssessmentAsset[]
   homeworkAnswerAssets          HomeworkAnswerAsset[]
   gradeSubmissionAnswerAssets   GradeSubmissionAnswerAsset[]
+  answerMediaClaims             AssessmentAnswerMediaClaim[]
 
   @@unique([bucket, objectKey])
   @@unique([id, schoolId])
+  @@unique([id, schoolId, organizationId, uploaderId], map: "answer_claim_file_owner_key")
   @@index([organizationId])
   @@index([schoolId])
   @@index([uploaderId])
@@ -8064,14 +8095,16 @@ model FileUploadSession {
   createdAt                     DateTime                @default(now()) @map("created_at")
   updatedAt                     DateTime                @updatedAt @map("updated_at")
 
-  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  school        School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  createdByUser User         @relation("FileUploadSessionCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  file          File?        @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  organization       Organization                  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  school             School                        @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  createdByUser      User                          @relation("FileUploadSessionCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  file               File?                         @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  answerUploadIntent AssessmentAnswerUploadIntent?
 
   @@unique([stagingBucket, stagingObjectKey], map: "file_upload_sessions_staging_bucket_object_key_key")
   @@unique([finalBucket, finalObjectKey], map: "file_upload_sessions_final_bucket_object_key_key")
   @@unique([schoolId, createdByUserId, purpose, clientRequestId], map: "file_upload_sessions_school_creator_purpose_request_key")
+  @@unique([id, schoolId, organizationId, createdByUserId, purpose, purposeContextId, clientRequestId], map: "answer_upload_session_owner_key")
   @@index([schoolId, status, expiresAt], map: "file_upload_sessions_school_status_expiry_idx")
   @@index([schoolId, purpose, status], map: "file_upload_sessions_school_purpose_status_idx")
   @@index([createdByUserId], map: "file_upload_sessions_creator_idx")
@@ -8153,4 +8186,82 @@ model ImportJob {
   @@index([uploadedFileId])
   @@index([createdById])
   @@map("import_jobs")
+}
+
+/// ST11 immutable question-bound reservation, persisted before any provider capability.
+model AssessmentAnswerUploadIntent {
+  id                   String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId             String                      @map("school_id") @db.Uuid
+  organizationId       String                      @map("organization_id") @db.Uuid
+  actorId              String                      @map("actor_id") @db.Uuid
+  studentId            String                      @map("student_id") @db.Uuid
+  purpose              FileUploadPurpose
+  contextId            String                      @map("context_id") @db.Uuid
+  questionId           String                      @map("question_id") @db.Uuid
+  uploadId             String                      @unique @map("upload_id") @db.Uuid
+  clientRequestId      String                      @map("client_request_id") @db.Uuid
+  homeworkTargetId     String?                     @map("homework_target_id") @db.Uuid
+  homeworkQuestionId   String?                     @map("homework_question_id") @db.Uuid
+  gradeSubmissionId    String?                     @map("grade_submission_id") @db.Uuid
+  gradeQuestionId      String?                     @map("grade_question_id") @db.Uuid
+  createdAt            DateTime                    @default(now()) @map("created_at")
+  school               School                      @relation(fields: [schoolId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  organization         Organization                @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actor                User                        @relation("AssessmentAnswerUploadActor", fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  student              Student                     @relation(fields: [studentId, schoolId, actorId], references: [id, schoolId, userId], onDelete: Restrict, onUpdate: Restrict)
+  upload               FileUploadSession           @relation(fields: [uploadId, schoolId, organizationId, actorId, purpose, contextId, clientRequestId], references: [id, schoolId, organizationId, createdByUserId, purpose, purposeContextId, clientRequestId], onDelete: Restrict, onUpdate: Restrict, map: "answer_upload_intent_session_owner_fk")
+  homeworkTarget       HomeworkTarget?             @relation("HomeworkAnswerUploadTarget", fields: [homeworkTargetId, schoolId, homeworkAssignmentId, studentId], references: [id, schoolId, homeworkAssignmentId, studentId], onDelete: Restrict, onUpdate: Restrict)
+  homeworkQuestion     HomeworkQuestion?           @relation("HomeworkAnswerUploadQuestion", fields: [homeworkQuestionId, schoolId, homeworkAssignmentId], references: [id, schoolId, homeworkAssignmentId], onDelete: Restrict, onUpdate: Restrict)
+  gradeSubmission      GradeSubmission?            @relation("GradeAnswerUploadSubmission", fields: [gradeSubmissionId, schoolId, gradeAssessmentId, studentId], references: [id, schoolId, assessmentId, studentId], onDelete: Restrict, onUpdate: Restrict)
+  gradeQuestion        GradeAssessmentQuestion?    @relation("GradeAnswerUploadQuestion", fields: [gradeQuestionId, schoolId, gradeAssessmentId], references: [id, schoolId, assessmentId], onDelete: Restrict, onUpdate: Restrict)
+  claim                AssessmentAnswerMediaClaim?
+  homeworkAssignmentId String?                     @map("homework_assignment_id") @db.Uuid
+  gradeAssessmentId    String?                     @map("grade_assessment_id") @db.Uuid
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, actorId, purpose, clientRequestId], map: "answer_upload_intent_request_key")
+  @@unique([uploadId, schoolId, organizationId, actorId, purpose, contextId, clientRequestId], map: "answer_upload_intent_owner_key")
+  @@unique([id, schoolId, organizationId, actorId, studentId, purpose, contextId, questionId], map: "answer_intent_complete_owner_key")
+  @@unique([id, schoolId, homeworkAssignmentId], map: "answer_intent_homework_root_key")
+  @@unique([id, schoolId, gradeAssessmentId], map: "answer_intent_grade_root_key")
+  @@index([schoolId, contextId, questionId])
+  @@map("assessment_answer_upload_intents")
+}
+
+/// One immutable consumption record per physical File across both answer asset families.
+model AssessmentAnswerMediaClaim {
+  id                   String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId             String                       @map("school_id") @db.Uuid
+  intentId             String                       @unique @map("intent_id") @db.Uuid
+  fileId               String                       @unique @map("file_id") @db.Uuid
+  homeworkAnswerId     String?                      @map("homework_answer_id") @db.Uuid
+  gradeAnswerId        String?                      @map("grade_answer_id") @db.Uuid
+  createdAt            DateTime                     @default(now()) @map("created_at")
+  school               School                       @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  intent               AssessmentAnswerUploadIntent @relation(fields: [intentId, schoolId, organizationId, actorId, studentId, purpose, contextId, questionId], references: [id, schoolId, organizationId, actorId, studentId, purpose, contextId, questionId], onDelete: Restrict, onUpdate: Restrict)
+  file                 File                         @relation(fields: [fileId, schoolId, organizationId, actorId], references: [id, schoolId, organizationId, uploaderId], onDelete: Restrict, onUpdate: Restrict, map: "answer_media_claim_file_fk")
+  homeworkAnswer       HomeworkSubmissionAnswer?    @relation("HomeworkAnswerMediaClaim", fields: [homeworkAnswerId, schoolId, homeworkSubmissionId, contextId, questionId, homeworkAssignmentId], references: [id, schoolId, homeworkSubmissionId, homeworkTargetId, homeworkQuestionId, homeworkAssignmentId], onDelete: Restrict, onUpdate: Restrict)
+  gradeAnswer          GradeSubmissionAnswer?       @relation("GradeAnswerMediaClaim", fields: [gradeAnswerId, schoolId, contextId, questionId, studentId, gradeAssessmentId], references: [id, schoolId, submissionId, questionId, studentId, assessmentId], onDelete: Restrict, onUpdate: Restrict)
+  homeworkAsset        HomeworkAnswerAsset?         @relation("HomeworkAnswerClaimAsset")
+  gradeAsset           GradeSubmissionAnswerAsset?  @relation("GradeAnswerClaimAsset")
+  organizationId       String                       @map("organization_id") @db.Uuid
+  actorId              String                       @map("actor_id") @db.Uuid
+  studentId            String                       @map("student_id") @db.Uuid
+  purpose              FileUploadPurpose
+  contextId            String                       @map("context_id") @db.Uuid
+  questionId           String                       @map("question_id") @db.Uuid
+  homeworkAssignmentId String?                      @map("homework_assignment_id") @db.Uuid
+  homeworkSubmissionId String?                      @map("homework_submission_id") @db.Uuid
+  gradeAssessmentId    String?                      @map("grade_assessment_id") @db.Uuid
+
+  homeworkSubmission HomeworkSubmission? @relation("HomeworkMediaClaimSubmission", fields: [homeworkSubmissionId, schoolId, contextId, studentId, homeworkAssignmentId], references: [id, schoolId, homeworkTargetId, studentId, homeworkAssignmentId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([id, schoolId])
+  @@unique([intentId, schoolId])
+  @@unique([intentId, schoolId, organizationId, actorId, studentId, purpose, contextId, questionId], map: "answer_claim_intent_complete_owner_key")
+  @@unique([id, schoolId, fileId, homeworkAnswerId], map: "answer_claim_homework_asset_key")
+  @@unique([id, schoolId, fileId, gradeAnswerId], map: "answer_claim_grade_asset_key")
+  @@index([schoolId, homeworkAnswerId])
+  @@index([schoolId, gradeAnswerId])
+  @@map("assessment_answer_media_claims")
 }

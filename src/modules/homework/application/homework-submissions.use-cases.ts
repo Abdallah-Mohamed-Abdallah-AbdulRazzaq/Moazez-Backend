@@ -477,8 +477,9 @@ export class ReviewHomeworkSubmissionUseCase {
       reviewedAt,
       reviewNote,
       awardedMarks,
-      ...(submission.homeworkAssignment.questions.some((question) =>
-        isHomeworkTypedType(question.type),
+      ...(submission.homeworkAssignment.questions.some(
+        (question) =>
+          isHomeworkTypedType(question.type) || question.responseConfig != null,
       )
         ? { awardedMarksExplicit: command.awardedMarks !== undefined }
         : {}),

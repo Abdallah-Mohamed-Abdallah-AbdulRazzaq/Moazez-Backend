@@ -1,3 +1,4 @@
+import { homeworkResponseConfig } from '../domain/homework-response-config';
 import { Injectable } from '@nestjs/common';
 import { assertHomeworkRuntimeQuestionType } from '../domain/homework-runtime-types';
 import {
@@ -685,6 +686,10 @@ async function normalizeCreateQuestionCommand(input: {
       schoolId: input.scope.schoolId,
       homeworkAssignmentId: input.homeworkId,
       type: input.command.type,
+      responseConfig: homeworkResponseConfig(
+        input.command.type,
+        input.command.responseConfig,
+      ),
       prompt,
       instructions: normalizeNullableText(
         Object.hasOwn(rich.display, 'instructions')
@@ -742,6 +747,14 @@ function normalizeUpdateQuestionCommand(
   const data: UpdateHomeworkQuestionData = command.type
     ? { type: nextType }
     : {};
+  const responseConfig = homeworkResponseConfig(
+    nextType,
+    command.responseConfig !== undefined
+      ? command.responseConfig
+      : existing.responseConfig,
+  );
+  if (command.responseConfig !== undefined)
+    data.responseConfig = responseConfig;
   const rich = homeworkRichInput(command, 'homeworkQuestion');
   if (rich.richContent !== undefined) {
     data.richContent = rich.richContent;

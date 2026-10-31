@@ -1,3 +1,7 @@
+import { gradeResponseConfig } from '../../assessments/domain/grade-response-config';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { RESPONSE_CONFIG_OPENAPI } from '../../../../common/assessment-answer/response-config.openapi';
+import type { ResponseConfigV1 } from '../../../../common/assessment-answer/response-config';
 import type { RichContent } from '../../../../common/rich-content/rich-content.types';
 import { GradeQuestionType } from '@prisma/client';
 import type { ActiveGradeQuestionType } from '../../assessments/domain/grade-runtime-types';
@@ -88,6 +92,8 @@ export function presentSafeGradeAnswer(
 }
 
 export class GradeQuestionContractDto {
+  @ApiPropertyOptional(RESPONSE_CONFIG_OPENAPI)
+  responseConfig?: ResponseConfigV1;
   richContent?: RichContent;
   type!: string;
   canonicalType!: GradeQuestionType | null;
@@ -149,7 +155,11 @@ export function presentGradeQuestionContract(
       definition = null;
     }
   }
+  const responseConfig = question
+    ? gradeResponseConfig(type, question.responseConfig)
+    : null;
   return {
+    ...(responseConfig ? { responseConfig } : {}),
     type: legacyType,
     canonicalType,
     interaction: {

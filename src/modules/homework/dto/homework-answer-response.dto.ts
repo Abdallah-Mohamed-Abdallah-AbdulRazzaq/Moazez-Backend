@@ -3,6 +3,8 @@ import type {
   RichOptionContent,
 } from '../../../common/rich-content/rich-content.types';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import type { ResponseConfigV1 } from '../../../common/assessment-answer/response-config';
+import { RESPONSE_CONFIG_OPENAPI } from '../../../common/assessment-answer/response-config.openapi';
 
 export class HomeworkAnswerSelectedOptionResponseDto {
   @ApiPropertyOptional({
@@ -39,6 +41,8 @@ export class HomeworkAnswerReviewedByDto {
 }
 
 export class HomeworkAnswerResponseDto {
+  @ApiPropertyOptional(RESPONSE_CONFIG_OPENAPI)
+  responseConfig?: ResponseConfigV1;
   answerJson?: unknown;
   answerId!: string;
   homeworkId!: string;

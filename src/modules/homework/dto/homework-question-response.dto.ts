@@ -1,3 +1,5 @@
+import type { ResponseConfigV1 } from '../../../common/assessment-answer/response-config';
+import { RESPONSE_CONFIG_OPENAPI } from '../../../common/assessment-answer/response-config.openapi';
 import type {
   RichQuestionContent,
   RichOptionContent,
@@ -25,6 +27,8 @@ export class HomeworkQuestionOptionResponseDto {
 }
 
 export class HomeworkQuestionResponseDto {
+  @ApiPropertyOptional(RESPONSE_CONFIG_OPENAPI)
+  responseConfig?: ResponseConfigV1;
   @ApiPropertyOptional({
     type: Object,
     description:

@@ -70,6 +70,7 @@ export function assertAssessmentUuid(value: string): void {
 export function assessmentMediaOwner(
   purpose: AssessmentMediaPurpose,
   contextId: string,
+  questionId?: string,
 ) {
   if (!(ASSESSMENT_MEDIA_PURPOSES as readonly string[]).includes(purpose))
     throw new AssessmentMediaException('invalid_request');
@@ -80,6 +81,10 @@ export function assessmentMediaOwner(
   const studentPurpose =
     purpose === FileUploadPurpose.HOMEWORK_SUBMISSION_MEDIA ||
     purpose === FileUploadPurpose.GRADE_SUBMISSION_MEDIA;
+  if (questionId !== undefined) {
+    assertAssessmentUuid(questionId);
+    if (!studentPurpose) throw new AssessmentMediaException('invalid_request');
+  }
   const managementActors: readonly UserType[] = [
     UserType.SCHOOL_USER,
     UserType.ORGANIZATION_USER,
@@ -110,9 +115,35 @@ export function assessmentMediaOwner(
     contextId: contextId.toLowerCase(),
     permission,
     studentPurpose,
+    ...(questionId === undefined
+      ? {}
+      : { questionId: questionId.toLowerCase() }),
   };
 }
 export type AssessmentMediaOwner = ReturnType<typeof assessmentMediaOwner>;
+
+export type AssessmentAnswerUploadBinding = {
+  studentId: string;
+  questionId: string;
+  responseConfig: import('../../../../common/assessment-answer/response-config').ResponseConfigV1;
+} & (
+  | {
+      homeworkTargetId: string;
+      homeworkQuestionId: string;
+      homeworkAssignmentId: string;
+      gradeSubmissionId?: never;
+      gradeQuestionId?: never;
+      gradeAssessmentId?: never;
+    }
+  | {
+      gradeSubmissionId: string;
+      gradeQuestionId: string;
+      gradeAssessmentId: string;
+      homeworkTargetId?: never;
+      homeworkQuestionId?: never;
+      homeworkAssignmentId?: never;
+    }
+);
 
 const TRANSITIONS: Partial<
   Record<FileUploadSessionStatus, readonly FileUploadSessionStatus[]>

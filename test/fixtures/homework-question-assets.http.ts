@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Test } from '@nestjs/testing';
+import { Test, type TestingModuleBuilder } from '@nestjs/testing';
 import * as argon2 from 'argon2';
 import request, { type Response } from 'supertest';
 import { AppModule } from '../../src/app.module';
@@ -21,6 +21,9 @@ export type HttpHomeworkGraph = Awaited<
 /** Actual JWT/login + Nest HTTP. Only runtime upload enablement is test-wired;
  * the application's unapproved attestation provider is never replaced. */
 export class HomeworkQuestionAssetsHttp {
+  protected configure(builder: TestingModuleBuilder): TestingModuleBuilder {
+    return builder;
+  }
   readonly prisma = new PrismaService();
   app!: INestApplication<Server>;
   fixture!: HomeworkQuestionAssetsFixture;
@@ -36,7 +39,9 @@ export class HomeworkQuestionAssetsHttp {
       timeCost: 2,
       parallelism: 1,
     });
-    const module = await Test.createTestingModule({ imports: [AppModule] })
+    const module = await this.configure(
+      Test.createTestingModule({ imports: [AppModule] }),
+    )
       .overrideProvider(AssessmentMediaRuntimePolicy)
       .useValue(
         new AssessmentMediaRuntimePolicy(

@@ -87,7 +87,9 @@ export async function expectSqlState(
   });
 }
 
-/** Real DB identities only, never READY or verification attestations. No media API is enabled. */
+/** Structural SQL fixture only. Answer inserts now include the ST11 immutable registry.
+ * Synthetic persisted evidence below tests FKs/triggers, never runtime verification or bytes.
+ * Real READY/streaming authority is tested separately with the owned ST11 HTTP/MinIO fixture. */
 export class AssessmentAssetsFixture extends AcademicContentEngagementFixture {
   readonly files: string[] = [];
   readonly parents: Array<
@@ -277,10 +279,15 @@ export class AssessmentAssetsFixture extends AcademicContentEngagementFixture {
     if (!ASSET_FAMILIES.includes(family))
       throw new Error('Unknown static asset family');
     const row = this.parents[0];
-    const columns = family.dual ? Prisma.sql`, external_url` : Prisma.empty;
+    const claim = family.dual
+      ? null
+      : await this.answerClaim(family, input, tx);
+    const columns = family.dual
+      ? Prisma.sql`, external_url`
+      : Prisma.sql`, answer_media_claim_id`;
     const values = family.dual
       ? Prisma.sql`, ${input.externalUrl ?? null}`
-      : Prisma.empty;
+      : Prisma.sql`, ${claim!.id}::uuid`;
     const rows = await tx.$queryRaw<AssetRow[]>(Prisma.sql`
       INSERT INTO public.${Prisma.raw(family.table)}
         (id, school_id, ${Prisma.raw(family.parentColumn)}, file_id, source_type, category,
@@ -289,7 +296,7 @@ export class AssessmentAssetsFixture extends AcademicContentEngagementFixture {
         ${input.schoolId === undefined ? row.schoolId : input.schoolId}::uuid,
         ${input.parentId === undefined ? row[family.key] : input.parentId}::uuid,
         ${input.fileId ?? null}::uuid, ${input.sourceType ?? 'MANAGED_FILE'}::public."AssessmentAssetSourceType",
-        'DOCUMENT', ${input.sortOrder ?? 0}, ${input.createdByUserId ?? this.authorId}::uuid,
+        'DOCUMENT', ${input.sortOrder ?? 0}, ${input.createdByUserId ?? claim?.actorId ?? this.authorId}::uuid,
         'Owned resource', ${input.deletedAt ?? null}, CURRENT_TIMESTAMP${values})
       RETURNING id, school_id AS "schoolId", ${Prisma.raw(family.parentColumn)} AS "parentId",
         file_id AS "fileId", source_type::text AS "sourceType", category::text, sort_order AS "sortOrder",
@@ -324,6 +331,9 @@ export class AssessmentAssetsFixture extends AcademicContentEngagementFixture {
     }
   }
   async resetAssets(): Promise<void> {
+    // Constructor rejects non-disposable DBs. Serial fixture teardown may discard append-only test history.
+    await this.prisma
+      .$executeRaw`TRUNCATE TABLE assessment_answer_media_claims, assessment_answer_upload_intents CASCADE`;
     const schoolIds = this.schools.map((s) => s.schoolId);
     for (const family of ASSET_FAMILIES)
       await this.prisma.$executeRaw(
@@ -349,7 +359,177 @@ export class AssessmentAssetsFixture extends AcademicContentEngagementFixture {
     await this.prisma.gradeAssessment.deleteMany({ where });
     await this.prisma.teacherSubjectAllocation.deleteMany({ where });
     await this.prisma.attachment.deleteMany({ where });
+    await this.prisma.fileUploadSession.deleteMany({ where });
     await this.prisma.file.deleteMany({ where: { id: { in: this.files } } });
     await super.dispose();
+  }
+
+  private async answerClaim(
+    family: AssetFamily,
+    input: AssetInsert,
+    tx: Prisma.TransactionClient,
+  ) {
+    const base = this.parents[0];
+    const parent =
+      this.parents.find(
+        (p) =>
+          p[family.key] === input.parentId &&
+          p.schoolId === (input.schoolId ?? base.schoolId),
+      ) ?? base;
+    const student = await tx.student.findUniqueOrThrow({
+      where: { id: parent.studentId },
+      select: { userId: true },
+    });
+    if (!student.userId)
+      throw new Error('Owned answer identity requires Student user');
+    const actorId = student.userId;
+    const requested = input.fileId
+      ? await tx.file.findUnique({ where: { id: input.fileId } })
+      : null;
+    let file =
+      requested?.schoolId === parent.schoolId && requested.deletedAt === null
+        ? requested
+        : null;
+    if (!file) {
+      file = await tx.file.create({
+        data: {
+          schoolId: parent.schoolId,
+          organizationId: parent.organizationId,
+          uploaderId: actorId,
+          bucket: 'owned-st11-schema-only',
+          objectKey: 'structural/' + randomUUID(),
+          originalName: 'identity-only.txt',
+          mimeType: 'text/plain',
+          sizeBytes: 12,
+          visibility: 'PRIVATE',
+        },
+      });
+      this.files.push(file.id);
+    }
+    const existing = await tx.assessmentAnswerMediaClaim.findUnique({
+      where: { fileId: file.id },
+    });
+    if (existing) return { id: existing.id, actorId: existing.actorId };
+    const checksum = 'a'.repeat(64),
+      uploadId = randomUUID();
+    file = await tx.file.update({
+      where: { id: file.id },
+      data: {
+        uploaderId: actorId,
+        checksumSha256: checksum,
+        objectKey: `assessment-media/${parent.schoolId}/verified/${uploadId}`,
+      },
+    });
+    const hw = family.model === 'HomeworkAnswerAsset';
+    const config = { version: 1, mode: 'TEXT_OR_FILE', maxFiles: 3 };
+    if (hw)
+      await tx.homeworkQuestion.update({
+        where: { id: parent.homeworkQuestionId },
+        data: { responseConfig: config },
+      });
+    else
+      await tx.gradeAssessmentQuestion.update({
+        where: { id: parent.questionId },
+        data: { responseConfig: config },
+      });
+    const now = new Date(Date.now() - 60000),
+      created = new Date(now.getTime() - 1000);
+    const purpose = hw ? 'HOMEWORK_SUBMISSION_MEDIA' : 'GRADE_SUBMISSION_MEDIA';
+    const contextId = hw ? parent.homeworkTargetId : parent.submissionId;
+    const questionId = hw ? parent.homeworkQuestionId : parent.questionId;
+    const upload = await tx.fileUploadSession.create({
+      data: {
+        id: uploadId,
+        schoolId: parent.schoolId,
+        organizationId: parent.organizationId,
+        createdByUserId: actorId,
+        clientRequestId: randomUUID(),
+        purpose,
+        purposeContextId: contextId,
+        originalName: file.originalName,
+        expectedMimeType: file.mimeType,
+        expectedSizeBytes: file.sizeBytes,
+        stagingBucket: file.bucket,
+        stagingObjectKey: `assessment-media/${parent.schoolId}/staging/${uploadId}`,
+        finalBucket: file.bucket,
+        finalObjectKey: file.objectKey,
+        status: 'CREATED',
+        createdAt: created,
+        expiresAt: new Date(now.getTime() + 120000),
+      },
+    });
+    const intent = await tx.assessmentAnswerUploadIntent.create({
+      data: {
+        schoolId: parent.schoolId,
+        organizationId: parent.organizationId,
+        actorId,
+        studentId: parent.studentId,
+        purpose,
+        contextId,
+        questionId,
+        uploadId: upload.id,
+        clientRequestId: upload.clientRequestId,
+        ...(hw
+          ? {
+              homeworkTargetId: contextId,
+              homeworkQuestionId: questionId,
+              homeworkAssignmentId: parent.homeworkAssignmentId,
+            }
+          : {
+              gradeSubmissionId: contextId,
+              gradeQuestionId: questionId,
+              gradeAssessmentId: parent.assessmentId,
+            }),
+      },
+    });
+    await tx.fileUploadSession.update({
+      where: { id: upload.id },
+      data: {
+        status: 'UPLOADING',
+        latestUploadUrlExpiresAt: new Date(now.getTime() + 120000),
+      },
+    });
+    await tx.fileUploadSession.update({
+      where: { id: upload.id },
+      data: {
+        status: 'VERIFYING',
+        assessmentVerificationClaimId: randomUUID(),
+      },
+    });
+    const evidence = {
+      verdict: 'CLEAN',
+      provider: 'schema-only-fixture',
+      version: 'structural-test-v1',
+      checksumSha256: checksum,
+      verifiedAt: now.toISOString(),
+    };
+    await tx.$executeRaw`UPDATE file_upload_sessions SET status='READY', file_id=${file.id}::uuid, actual_size_bytes=${file.sizeBytes},
+      verified_mime_type=${file.mimeType}, checksum_sha256=${checksum}, verified_at=${now}, completed_at=${now},
+      verification_version='assessment-media-attested-v1', assessment_verification_claim_id=NULL,
+      assessment_security_evidence=${JSON.stringify(evidence)}::jsonb WHERE id=${upload.id}::uuid`;
+    const claim = await tx.assessmentAnswerMediaClaim.create({
+      data: {
+        schoolId: parent.schoolId,
+        organizationId: parent.organizationId,
+        actorId,
+        studentId: parent.studentId,
+        purpose,
+        contextId,
+        questionId,
+        intentId: intent.id,
+        fileId: file.id,
+        ...(hw
+          ? {
+              homeworkAnswerId: parent.homeworkAnswerId,
+              homeworkSubmissionId: parent.homeworkSubmissionId,
+              homeworkAssignmentId: parent.homeworkAssignmentId,
+            }
+          : {
+              gradeAnswerId: parent.answerId,
+              gradeAssessmentId: parent.assessmentId,
+            }),
+      },
+    });
+    return { id: claim.id, actorId };
   }
 }

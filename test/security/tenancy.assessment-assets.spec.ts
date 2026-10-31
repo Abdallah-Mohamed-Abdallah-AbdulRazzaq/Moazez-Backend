@@ -147,7 +147,8 @@ describe('ST-05 five-family asset database tenant boundary', () => {
         () =>
           prisma.$executeRaw(Prisma.sql`
         UPDATE public.${Prisma.raw(family.table)} SET created_by_user_id = ${fixture.parentId}::uuid WHERE id = ${row.id}::uuid`),
-        '23514',
+        // Claimed answer assets also enforce the immutable uploader/creator FK before the older identity trigger.
+        family.dual ? '23514' : '23503',
       );
       await expectSqlState(
         () =>

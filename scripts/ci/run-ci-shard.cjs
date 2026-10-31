@@ -106,9 +106,11 @@ const HEALTH_SCENARIOS = Object.freeze([
 
 const MEDIA_CONTAINER_ENVIRONMENT_KEYS = Object.freeze([
   'NODE_ENV',
+  'APP_URL',
   'DATABASE_URL',
   'QUEUE_REDIS_URL',
   'REALTIME_REDIS_URL',
+  'TEST_QUEUE_REDIS_URL',
   'JWT_ACCESS_SECRET',
   'JWT_REFRESH_SECRET',
   'JWT_ACCESS_TTL',
@@ -1787,7 +1789,9 @@ async function runMediaRuntime(context, files) {
       files: integrationRuntimeFiles,
       resultFileName: 'media-verifier-integration-jest.json',
       configPath: './test/jest-e2e.json',
-      generatePrisma: false,
+      // ST11 exercises the real AppModule and disposable PostgreSQL in this
+      // canonical FFprobe image; its dependencies contain an ungenerated stub.
+      generatePrisma: true,
     }),
   ];
   context.evidence.testSuiteCount = runtimeCounts.reduce(

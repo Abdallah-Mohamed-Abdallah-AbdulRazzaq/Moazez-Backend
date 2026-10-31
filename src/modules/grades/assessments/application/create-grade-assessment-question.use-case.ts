@@ -57,6 +57,7 @@ export class CreateGradeAssessmentQuestionUseCase {
       points: payload.points,
       sortOrder: payload.sortOrder,
       required: payload.required,
+      responseConfig: payload.responseConfig,
       answerKey: payload.answerKey,
       metadata: payload.metadata,
       options: payload.options ?? [],

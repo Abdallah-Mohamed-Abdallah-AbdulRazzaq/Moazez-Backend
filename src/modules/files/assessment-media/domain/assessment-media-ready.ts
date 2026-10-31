@@ -12,6 +12,10 @@ import {
 export type AssessmentAuthoringPurpose =
   | 'HOMEWORK_ASSIGNMENT_MEDIA'
   | 'GRADE_ASSESSMENT_MEDIA';
+export type AssessmentReadyPurpose =
+  | AssessmentAuthoringPurpose
+  | 'HOMEWORK_SUBMISSION_MEDIA'
+  | 'GRADE_SUBMISSION_MEDIA';
 
 /** Consumer validation of server-owned terminal evidence, never HTTP attestation JSON. */
 export function assertAssessmentReadyEvidence(
@@ -23,7 +27,7 @@ export function assertAssessmentReadyEvidence(
     contextId: string;
     creatorId: string;
     privateBucket: string;
-    expectedPurpose?: AssessmentAuthoringPurpose;
+    expectedPurpose?: AssessmentReadyPurpose;
   },
 ): void {
   const evidence = session.assessmentSecurityEvidence;

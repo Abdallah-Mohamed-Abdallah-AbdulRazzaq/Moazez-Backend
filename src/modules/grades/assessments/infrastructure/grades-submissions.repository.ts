@@ -1,4 +1,8 @@
 import { GradeAssetsRepository } from './grade-assets.repository';
+import { Optional } from '@nestjs/common';
+import { AnswerMediaRegistry } from '../../../files/assessment-media/infrastructure/answer-media-registry';
+import { validateGradeAnswerMedia } from './grade-answer-media.validation';
+import { GRADE_ANSWER_MEDIA_SELECT } from './grade-answer-media.select';
 import { isGradeEvaluationType } from '../domain/grade-question-evaluation';
 import { gradeQuestionDefinition } from '../domain/grade-question-interaction';
 import { projectGradeAnswerNullFacts } from './grade-typed-answer.projection';
@@ -136,6 +140,7 @@ const QUESTION_FOR_SUBMISSION_ARGS =
       schoolId: true,
       assessmentId: true,
       type: true,
+      responseConfig: true,
       prompt: true,
       promptAr: true,
       richContent: true,
@@ -189,6 +194,7 @@ const ANSWER_WITH_OPTIONS_ARGS =
       studentId: true,
       answerText: true,
       answerJson: true,
+      assets: GRADE_ANSWER_MEDIA_SELECT,
       correctionStatus: true,
       awardedPoints: true,
       maxPoints: true,
@@ -203,6 +209,7 @@ const ANSWER_WITH_OPTIONS_ARGS =
           id: true,
           assessmentId: true,
           type: true,
+          responseConfig: true,
           points: true,
           metadata: true,
           required: true,
@@ -381,6 +388,7 @@ export class GradesSubmissionsRepository {
   constructor(
     private readonly prisma: PrismaService,
     private readonly richAssets?: GradeAssetsRepository,
+    @Optional() private readonly answerMedia?: AnswerMediaRegistry,
   ) {}
 
   private get scopedPrisma(): PrismaService {
@@ -917,6 +925,14 @@ export class GradesSubmissionsRepository {
         where: { assessmentId: submission.assessmentId },
         ...QUESTION_FOR_SUBMISSION_ARGS,
       });
+      for (const question of questions)
+        await validateGradeAnswerMedia(
+          tx,
+          this.answerMedia,
+          question,
+          submission.id,
+          'final',
+        );
       assertRequiredQuestionsAnswered({
         questions,
         answers: submission.answers,
@@ -974,6 +990,14 @@ export class GradesSubmissionsRepository {
         where: { assessmentId: submission.assessmentId },
         ...QUESTION_FOR_SUBMISSION_ARGS,
       });
+      for (const question of questions)
+        await validateGradeAnswerMedia(
+          tx,
+          this.answerMedia,
+          question,
+          submission.id,
+          'final',
+        );
       assertRequiredQuestionsAnswered({
         questions,
         answers: submission.answers,
@@ -1118,7 +1142,9 @@ export class GradesSubmissionsRepository {
       maxPoints: question.points,
       payload,
       answerJsonDbNull:
-        isGradeEvaluationType(question.type) && payload.answerJson === null,
+        (isGradeEvaluationType(question.type) ||
+          question.responseConfig != null) &&
+        payload.answerJson === null,
     };
   }
 
@@ -1134,6 +1160,14 @@ export class GradesSubmissionsRepository {
     });
     if (!answer || answer.question.deletedAt)
       throw new NotFoundDomainException();
+    await validateGradeAnswerMedia(
+      tx,
+      this.answerMedia,
+      { ...answer.question, schoolId: submission.schoolId },
+      submission.id,
+      'final',
+      true,
+    );
     if (isGradeEvaluationType(answer.question.type))
       await this.validateStoredEvaluationAnswers(tx, submission);
     assertReviewAwardedPoints({ answer, awardedPoints: input.awardedPoints });

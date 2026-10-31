@@ -1,3 +1,4 @@
+import { gradeResponseConfig } from './grade-response-config';
 import { validateGradeQuestionContent } from './grade-question-content-policy';
 import { validateGradeQuestionDefinition } from './grade-question-interaction';
 import { HttpStatus } from '@nestjs/common';
@@ -48,6 +49,7 @@ export interface QuestionPublishOptionLike {
 }
 
 export interface QuestionPublishQuestionLike {
+  responseConfig?: unknown;
   id: string;
   type: GradeQuestionType | string;
   points: unknown;
@@ -204,6 +206,7 @@ export function assertQuestionPointsMatchAssessmentMaxScore(params: {
 export function validateQuestionForPublish(
   question: QuestionPublishQuestionLike,
 ): void {
+  gradeResponseConfig(String(question.type), question.responseConfig);
   validateGradeQuestionContent(question);
   if (question.prompt !== undefined && !question.prompt.trim())
     throw new ValidationDomainException('Question prompt is required', {

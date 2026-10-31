@@ -1,3 +1,7 @@
+import { homeworkResponseConfig } from '../domain/homework-response-config';
+import { AnswerMediaRegistry } from '../../files/assessment-media/infrastructure/answer-media-registry';
+import { validateHomeworkAnswerMedia } from './homework-answer-media.validation';
+import type { ResponseConfigV1 } from '../../../common/assessment-answer/response-config';
 import { Injectable, Optional } from '@nestjs/common';
 import {
   assertHomeworkRuntimeQuestionType,
@@ -130,6 +134,7 @@ const HOMEWORK_QUESTION_OPTION_SELECT = {
 } satisfies Prisma.HomeworkQuestionOptionSelect;
 
 const HOMEWORK_QUESTION_SELECT = {
+  responseConfig: true,
   richContent: true,
   id: true,
   schoolId: true,
@@ -685,12 +690,18 @@ export type CreateHomeworkTargetData =
   Prisma.HomeworkTargetUncheckedCreateInput;
 export type CreateHomeworkQuestionData = Omit<
   Prisma.HomeworkQuestionUncheckedCreateInput,
-  'richContent' | 'answerKey'
-> & { richContent?: RichContent | null };
+  'richContent' | 'answerKey' | 'responseConfig'
+> & {
+  richContent?: RichContent | null;
+  responseConfig?: ResponseConfigV1 | null;
+};
 export type UpdateHomeworkQuestionData = Omit<
   Prisma.HomeworkQuestionUncheckedUpdateInput,
-  'richContent' | 'answerKey'
-> & { richContent?: RichContent | null };
+  'richContent' | 'answerKey' | 'responseConfig'
+> & {
+  richContent?: RichContent | null;
+  responseConfig?: ResponseConfigV1 | null;
+};
 export type CreateHomeworkQuestionOptionData = Omit<
   Prisma.HomeworkQuestionOptionUncheckedCreateInput,
   'richContent'
@@ -736,6 +747,7 @@ export class HomeworkRepository {
     private readonly prisma: PrismaService,
     private readonly teacherAllocationWriteGate: TeacherAllocationOperationalWriteGate,
     @Optional() private readonly richContent?: HomeworkRichContentService,
+    @Optional() private readonly answerMedia?: AnswerMediaRegistry,
   ) {}
 
   private get scopedPrisma(): PrismaService {
@@ -1472,6 +1484,11 @@ export class HomeworkRepository {
           await tx.homeworkQuestion.create({
             data: {
               ...input.question,
+              responseConfig:
+                homeworkResponseConfig(
+                  input.question.type,
+                  input.question.responseConfig,
+                ) ?? Prisma.DbNull,
               ...(typed
                 ? { metadata: typed.metadata, answerKey: typed.answerKey }
                 : {}),
@@ -1530,7 +1547,8 @@ export class HomeworkRepository {
   }): Promise<HomeworkQuestionRecord> {
     await this.questionMutation(
       input,
-      input.data.richContent !== undefined ||
+      input.data.responseConfig !== undefined ||
+        input.data.richContent !== undefined ||
         input.typedMutation === true ||
         isHomeworkTypedType(input.data.type) ||
         input.keyWrite !== undefined,
@@ -1551,6 +1569,12 @@ export class HomeworkRepository {
             ? input.data.type
             : (input.data.type?.set ?? current.type),
         );
+        if (
+          (current.responseConfig != null ||
+            input.data.responseConfig !== undefined) &&
+          !protectedWrite
+        )
+          throw new HomeworkRichAuthorizationRequired();
         const nextTypedType =
           typeof input.data.type === 'string'
             ? input.data.type
@@ -1661,6 +1685,12 @@ export class HomeworkRepository {
           throw new HomeworkQuestionInvalidTypePayloadException({
             reason: 'text_question_cannot_keep_options',
           });
+        const responseConfig = homeworkResponseConfig(
+          nextType,
+          input.data.responseConfig !== undefined
+            ? input.data.responseConfig
+            : current.responseConfig,
+        );
         const changed = await tx.homeworkQuestion.updateMany({
           where: {
             id: current.id,
@@ -1669,6 +1699,9 @@ export class HomeworkRepository {
           },
           data: {
             ...input.data,
+            ...(input.data.responseConfig !== undefined
+              ? { responseConfig: responseConfig ?? Prisma.DbNull }
+              : {}),
             ...typedData,
             ...richStorage(plan),
           } as Prisma.HomeworkQuestionUncheckedUpdateManyInput,
@@ -2101,6 +2134,16 @@ export class HomeworkRepository {
       });
     for (const question of questions) {
       const answer = stored.find((row) => row.questionId === question.id);
+      if (
+        await validateHomeworkAnswerMedia(
+          tx,
+          this.answerMedia,
+          question,
+          submissionId,
+          'final',
+        )
+      )
+        continue;
       normalizeAnswerForQuestion({
         question,
         final: true,
@@ -2296,6 +2339,14 @@ export class HomeworkRepository {
           if (!question)
             throw new HomeworkAnswerInvalidSubmissionScopeException();
           const current = stored.find((row) => row.questionId === question.id);
+          if (command.clearAnswer && current)
+            await tx.homeworkAnswerAsset.updateMany({
+              where: {
+                homeworkSubmissionAnswerId: current.id,
+                deletedAt: null,
+              },
+              data: { deletedAt: new Date() },
+            });
           const normalized = normalizeAnswerForQuestion({
             question,
             input: command,
@@ -2351,6 +2402,14 @@ export class HomeworkRepository {
               },
             });
         }
+        for (const question of questions)
+          await validateHomeworkAnswerMedia(
+            tx,
+            this.answerMedia,
+            question,
+            submission.id,
+            input.finalAnswers ? 'final' : 'draft',
+          );
         if (input.finalize) {
           await this.assertFinalTypedAnswers(
             tx,
@@ -2473,11 +2532,11 @@ export class HomeworkRepository {
           homeworkAssignmentId: String(input.data.homeworkAssignmentId),
           deletedAt: null,
         },
-        select: { type: true },
+        select: { type: true, responseConfig: true },
       });
       if (!question) throw new HomeworkQuestionNotFoundException();
       assertHomeworkRuntimeQuestionType(question.type);
-      if (isHomeworkTypedType(question.type))
+      if (isHomeworkTypedType(question.type) || question.responseConfig != null)
         throw new HomeworkAnswerInvalidPayloadException({
           reason: 'typed_answer_requires_atomic_path',
         });
@@ -2776,8 +2835,10 @@ export class HomeworkRepository {
         ...HOMEWORK_REVIEW_SUBMISSION_ARGS,
       });
       const typed =
-        snapshot?.homeworkAssignment.questions.some((question) =>
-          isHomeworkTypedType(question.type),
+        snapshot?.homeworkAssignment.questions.some(
+          (question) =>
+            isHomeworkTypedType(question.type) ||
+            question.responseConfig != null,
         ) === true;
       const current = typed
         ? await this.lockTypedReview(
@@ -2803,6 +2864,14 @@ export class HomeworkRepository {
               item.homeworkQuestionId === review.homeworkQuestionId,
           );
           if (!answer) throw new HomeworkAnswerReviewInvalidScopeException();
+          await validateHomeworkAnswerMedia(
+            tx,
+            this.answerMedia,
+            answer.homeworkQuestion,
+            current.id,
+            'final',
+            true,
+          );
           const points =
             review.awardedPointsChanged === false
               ? answer.awardedPoints === null
@@ -3015,8 +3084,10 @@ export class HomeworkRepository {
       });
       assertHomeworkRuntimeQuestions(target.homeworkAssignment.questions);
       if (
-        target.homeworkAssignment.questions.some((question) =>
-          isHomeworkTypedType(question.type),
+        target.homeworkAssignment.questions.some(
+          (question) =>
+            isHomeworkTypedType(question.type) ||
+            question.responseConfig != null,
         )
       )
         throw new HomeworkAnswerInvalidPayloadException({
@@ -3133,8 +3204,10 @@ export class HomeworkRepository {
 
       let awardedMarks = input.awardedMarks;
       if (
-        existing.homeworkAssignment.questions.some((question) =>
-          isHomeworkTypedType(question.type),
+        existing.homeworkAssignment.questions.some(
+          (question) =>
+            isHomeworkTypedType(question.type) ||
+            question.responseConfig != null,
         )
       ) {
         existing = await this.lockTypedReview(

@@ -24,6 +24,8 @@ import {
   SubmissionAssessmentLike,
   SubmissionQuestionLike,
   normalizeSubmissionStatus,
+  isAnswerMeaningfulForQuestion,
+  type SubmissionAnswerLike,
 } from './grade-submission-domain';
 
 export interface ReviewSubmissionLike {
@@ -37,7 +39,7 @@ export interface ReviewSubmissionLike {
   };
 }
 
-export interface ReviewAnswerLike {
+export interface ReviewAnswerLike extends SubmissionAnswerLike {
   id: string;
   submissionId: string;
   assessmentId: string;
@@ -228,6 +230,13 @@ export function assertAllRequiredAnswersReviewed(params: {
 
   for (const answer of params.answers) {
     if (!activeQuestionIds.has(answer.questionId)) continue;
+    const question = params.questions.find((q) => q.id === answer.questionId);
+    if (
+      question?.responseConfig != null &&
+      !question.required &&
+      !isAnswerMeaningfulForQuestion(question, answer)
+    )
+      continue;
     if (!isAnswerCorrected(answer)) {
       pendingAnswerIds.push(answer.id);
     }

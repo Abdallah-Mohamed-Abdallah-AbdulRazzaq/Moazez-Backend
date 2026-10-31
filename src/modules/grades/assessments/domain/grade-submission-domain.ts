@@ -1,3 +1,5 @@
+import { gradeResponseConfig } from './grade-response-config';
+import { assertResponseModalities } from '../../../../common/assessment-answer/response-config';
 import { HttpStatus } from '@nestjs/common';
 import {
   GradeAnswerCorrectionStatus,
@@ -87,6 +89,7 @@ export interface SubmissionOptionLike {
 }
 
 export interface SubmissionAnswerLike {
+  assets?: Array<{ file: { mimeType: string } }>;
   questionId: string;
   answerText?: string | null;
   answerJson?: unknown;
@@ -306,6 +309,12 @@ export function calculateSubmissionAnswerProgress(params: {
   }).length;
 
   const pendingCorrectionCount = params.answers.filter((answer) => {
+    const question = params.questions.find((q) => q.id === answer.questionId);
+    if (
+      question?.responseConfig != null &&
+      !isAnswerMeaningfulForQuestion(question, answer)
+    )
+      return false;
     return (
       String(answer.correctionStatus ?? GradeAnswerCorrectionStatus.PENDING)
         .trim()
@@ -415,10 +424,39 @@ export function normalizeSubmissionStatus(
   }
 }
 
-function isAnswerMeaningfulForQuestion(
+export function isAnswerMeaningfulForQuestion(
   question: SubmissionQuestionLike,
   answer: SubmissionAnswerLike,
 ): boolean {
+  if (question.responseConfig != null) {
+    try {
+      const config = gradeResponseConfig(
+        question.type,
+        question.responseConfig,
+      )!;
+      validateStoredAnswerPayloadForQuestion({
+        question,
+        payload: normalizeAnswerPayload({
+          answerText: answer.answerText,
+          answerJson: answer.answerJson,
+          selectedOptionIds:
+            answer.selectedOptions?.map((o) => o.optionId) ?? [],
+        }),
+      });
+      const assets = answer.assets?.map((a) => a.file) ?? [];
+      if (!answer.answerText?.trim() && assets.length === 0) return false;
+      assertResponseModalities({
+        config,
+        hasText: !!answer.answerText?.trim(),
+        assets,
+        required: true,
+        phase: 'final',
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
   if (isGradeEvaluationType(question.type) && answer.answerJson == null)
     return false;
   const payload = normalizeAnswerPayload({

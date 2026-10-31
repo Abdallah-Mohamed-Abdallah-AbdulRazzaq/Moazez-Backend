@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { homeworkResponseConfig } from '../domain/homework-response-config';
 import { assertHomeworkRuntimeQuestionType } from '../domain/homework-runtime-types';
 import { presentHomeworkTypedAnswer } from '../infrastructure/homework-typed-answer.projection';
 import {
@@ -42,6 +43,7 @@ export interface HomeworkAnswerPresenterModel {
   createdAt: Date;
   updatedAt: Date;
   homeworkQuestion: {
+    responseConfig?: unknown;
     id: string;
     type: string;
     prompt: string;
@@ -158,6 +160,18 @@ function presentHomeworkAnswer(
     submissionId: answer.homeworkSubmissionId,
     questionId: answer.homeworkQuestionId,
     type: answer.homeworkQuestion.type.toLowerCase(),
+    ...(options.includeRich &&
+    homeworkResponseConfig(
+      answer.homeworkQuestion.type,
+      answer.homeworkQuestion.responseConfig,
+    )
+      ? {
+          responseConfig: homeworkResponseConfig(
+            answer.homeworkQuestion.type,
+            answer.homeworkQuestion.responseConfig,
+          )!,
+        }
+      : {}),
     ...(options.includePrompt
       ? {
           prompt: {

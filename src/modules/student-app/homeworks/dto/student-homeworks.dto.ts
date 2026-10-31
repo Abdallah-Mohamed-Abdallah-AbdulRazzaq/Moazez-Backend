@@ -1,4 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import type { ResponseConfigV1 } from '../../../../common/assessment-answer/response-config';
+import { RESPONSE_CONFIG_OPENAPI } from '../../../../common/assessment-answer/response-config.openapi';
 import type {
   RichQuestionContent,
   RichOptionContent,
@@ -160,6 +162,8 @@ export class StudentHomeworkQuestionOptionDto {
 }
 
 export class StudentHomeworkQuestionDto {
+  @ApiPropertyOptional(RESPONSE_CONFIG_OPENAPI)
+  responseConfig?: ResponseConfigV1;
   metadata?: import('../../../homework/domain/homework-typed-contract').HomeworkPublicDefinition;
   @ApiPropertyOptional({
     type: Object,

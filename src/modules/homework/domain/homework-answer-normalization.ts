@@ -1,4 +1,6 @@
 import { HomeworkQuestionType } from '@prisma/client';
+import { assertResponseModalities } from '../../../common/assessment-answer/response-config';
+import { homeworkResponseConfig } from './homework-response-config';
 import type {
   HomeworkAnswerInput,
   NormalizedHomeworkAnswerInput,
@@ -18,6 +20,7 @@ import {
 } from './homework-answer.exceptions';
 
 export interface HomeworkAnswerQuestion {
+  responseConfig?: unknown;
   id: string;
   type: HomeworkQuestionType;
   isRequired: boolean;
@@ -70,6 +73,45 @@ export function normalizeAnswerForQuestion(input: {
     question.type === 'ORDERING' ||
     question.type === 'NUMERIC' ||
     question.type === 'MATH_EXPRESSION';
+  const responseConfig = homeworkResponseConfig(
+    question.type,
+    question.responseConfig,
+  );
+  if (responseConfig) {
+    if (
+      command.answerJson !== undefined ||
+      command.selectedOptionIds?.length ||
+      (command.clearAnswer && command.textAnswer !== undefined)
+    )
+      return invalid('invalid_response_modalities');
+    const raw = command.clearAnswer
+      ? null
+      : command.textAnswer === undefined
+        ? existing?.textAnswer
+        : command.textAnswer;
+    if (
+      raw != null &&
+      (typeof raw !== 'string' ||
+        Array.from(raw).length >
+          (question.type === 'SHORT_TEXT' ? 1000 : 10000) ||
+        /[\p{Cs}]/u.test(raw))
+    )
+      return invalid('invalid_response_text');
+    const textAnswer = raw?.trim() || null;
+    try {
+      assertResponseModalities({
+        config: responseConfig,
+        hasText: !!textAnswer,
+        assets: [],
+        required: question.isRequired,
+        phase: 'draft',
+      });
+    } catch {
+      return invalid('invalid_response_modalities');
+    }
+    // Final completeness includes current eligible assets in the owning transaction.
+    return { questionId: question.id, textAnswer, selectedOptionIds: null };
+  }
   if (!typed && command.answerJson !== undefined)
     return invalid('typed_answer_for_legacy_question');
   if (

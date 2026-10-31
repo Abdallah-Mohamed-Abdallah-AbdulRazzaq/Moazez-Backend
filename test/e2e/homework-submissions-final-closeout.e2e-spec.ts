@@ -1,3 +1,4 @@
+import { ST11_STUDENT_ANSWER_MEDIA_ROUTES } from '../fixtures/st11-answer-media-routes.fixture';
 import { randomUUID } from 'node:crypto';
 import { get as httpGet, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -308,6 +309,7 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
     }
 
     for (const route of routes) {
+      if (ST11_STUDENT_ANSWER_MEDIA_ROUTES.includes(route)) continue;
       expect(route).not.toMatch(
         /^.+ \/api\/v1\/homework\/.*(file|proof|upload|sync-grade|notification|xp|reward)/,
       );

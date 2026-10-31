@@ -1,3 +1,6 @@
+import { RESPONSE_CONFIG_OPENAPI } from '../../../../common/assessment-answer/response-config.openapi';
+import { IsResponseConfig } from '../../../../common/assessment-answer/response-config.validator';
+import { ApiPropertyOptional as ResponseApiProperty } from '@nestjs/swagger';
 import type { RichContent } from '../../../../common/rich-content/rich-content.types';
 import { Type, Transform } from 'class-transformer';
 import {
@@ -98,6 +101,9 @@ export class GradeQuestionOptionDto {
 }
 
 export class CreateGradeAssessmentQuestionDto {
+  @ResponseApiProperty(RESPONSE_CONFIG_OPENAPI)
+  @IsResponseConfig()
+  responseConfig?: unknown;
   @Allow()
   richContent?: unknown;
   @IsOptional()
@@ -227,6 +233,9 @@ export class CreateGradeAssessmentQuestionDto {
 }
 
 export class UpdateGradeAssessmentQuestionDto {
+  @ResponseApiProperty(RESPONSE_CONFIG_OPENAPI)
+  @IsResponseConfig()
+  responseConfig?: unknown;
   @Allow()
   richContent?: unknown;
   @IsOptional()

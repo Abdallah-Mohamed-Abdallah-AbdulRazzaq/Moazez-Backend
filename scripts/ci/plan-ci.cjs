@@ -44,6 +44,7 @@ const MEDIA_RUNTIME_JEST_FILES = new Set([
   'src/modules/settings/branding/tests/public-school-branding-logo.spec.ts',
   'src/modules/settings/branding/tests/public-school-branding-lifecycle.integration.spec.ts',
   'test/integration/learning-media-verification.integration.spec.ts',
+  'test/integration/learning-media-st11-answer-audio.integration.spec.ts',
 ]);
 
 const ACTIVE_TAP_OWNERS = Object.freeze({

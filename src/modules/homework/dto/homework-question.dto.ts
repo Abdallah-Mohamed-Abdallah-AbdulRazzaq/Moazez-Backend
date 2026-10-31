@@ -1,3 +1,6 @@
+import { RESPONSE_CONFIG_OPENAPI } from '../../../common/assessment-answer/response-config.openapi';
+import { IsResponseConfig } from '../../../common/assessment-answer/response-config.validator';
+import { ApiPropertyOptional as ResponseApiProperty } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
@@ -71,6 +74,9 @@ export class CreateHomeworkQuestionOptionDto {
 }
 
 export class CreateHomeworkQuestionDto {
+  @ResponseApiProperty(RESPONSE_CONFIG_OPENAPI)
+  @IsResponseConfig()
+  responseConfig?: unknown;
   @ApiPropertyOptional({
     type: Object,
     description:
@@ -148,6 +154,9 @@ export class CreateHomeworkQuestionDto {
 }
 
 export class UpdateHomeworkQuestionDto {
+  @ResponseApiProperty(RESPONSE_CONFIG_OPENAPI)
+  @IsResponseConfig()
+  responseConfig?: unknown;
   @ApiPropertyOptional({
     type: Object,
     description:

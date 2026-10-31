@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "prismaSchema": {
     "path": "prisma/schema.prisma",
-    "sha256": "34a1d9c4f4207c6f2083fad9e3200621c517149581851f36014b633c5e8fc6b6"
+    "sha256": "1dd445dbd4ee87682f08da2feb559302cb659982cc4c8fb9a2638b6c7a6338ac"
   },
   "prismaConfig": {
     "path": "prisma.config.ts",
@@ -42,7 +42,10 @@
     "20261024200456_homework_grades_asset_relations_foundation",
     "20261025223827_safe_rich_content_v1_foundation",
     "20261027194623_st09a_homework_typed_foundation",
-    "20261028184644_st10a_question_types_foundation"
+    "20261028184644_st10a_question_types_foundation",
+    "20261030131316_st11a_answer_response_and_provenance",
+    "20261030141000_st11a_answer_media_history_guards",
+    "20261030141931_st11a_answer_asset_creator_guard"
   ],
   "migrations": [
     {
@@ -214,7 +217,22 @@
       "directory": "20261028184644_st10a_question_types_foundation",
       "path": "prisma/migrations/20261028184644_st10a_question_types_foundation/migration.sql",
       "sha256": "6d0d8eb7e2628561891b9591403484e6acf04d9094a3a13e13be45596b15169a"
+    },
+    {
+      "directory": "20261030131316_st11a_answer_response_and_provenance",
+      "path": "prisma/migrations/20261030131316_st11a_answer_response_and_provenance/migration.sql",
+      "sha256": "866a6968f38e42093b5698fda651250588abde16018163ddfab82f9af2887bbb"
+    },
+    {
+      "directory": "20261030141000_st11a_answer_media_history_guards",
+      "path": "prisma/migrations/20261030141000_st11a_answer_media_history_guards/migration.sql",
+      "sha256": "2381a442bd72d76a97c7f08c0eccdce1656fd38eaffcf6f65de53699283603a7"
+    },
+    {
+      "directory": "20261030141931_st11a_answer_asset_creator_guard",
+      "path": "prisma/migrations/20261030141931_st11a_answer_asset_creator_guard/migration.sql",
+      "sha256": "a439a72382f23acb52e1fc2abf7935504d4907e97ab4d3db63bf7bf147a2e8e1"
     }
   ],
-  "aggregateMigrationChainSha256": "17f49533efb3f60904e1132b692fbc6482b014b2df15d2eba7f406f50d2c230a"
+  "aggregateMigrationChainSha256": "ca9ea1ca62a587bd99de9c904212a64bce9f4e5327fa04b77ba063c128d0cc9a"
 }

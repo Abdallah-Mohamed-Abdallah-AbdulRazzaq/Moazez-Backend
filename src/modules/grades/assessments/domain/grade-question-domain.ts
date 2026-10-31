@@ -1,3 +1,5 @@
+import { gradeResponseConfig } from './grade-response-config';
+import type { ResponseConfigV1 } from '../../../../common/assessment-answer/response-config';
 import { gradeRichInput, gradeLegacyContent } from './grade-rich-content';
 import type { RichContent } from '../../../../common/rich-content/rich-content.types';
 import { validateGradeQuestionContent } from './grade-question-content-policy';
@@ -41,6 +43,7 @@ export interface QuestionAssessmentLike {
 }
 
 export interface QuestionCommandLike {
+  responseConfig?: unknown;
   richContent?: unknown;
   type?: GradeQuestionType | string;
   questionType?: GradeQuestionType | string;
@@ -86,6 +89,7 @@ export interface QuestionOptionCommandLike {
 }
 
 export interface NormalizedQuestionPayload {
+  responseConfig?: ResponseConfigV1 | null;
   richContent?: RichContent | null;
   type?: GradeQuestionType;
   prompt?: string;
@@ -272,6 +276,12 @@ export function normalizeQuestionPayload(
     });
   }
 
+  if (command.responseConfig !== undefined) {
+    // The final repository repeats the type check using its locked current row.
+    payload.responseConfig = payload.type
+      ? gradeResponseConfig(payload.type, command.responseConfig)
+      : gradeResponseConfig('SHORT_ANSWER', command.responseConfig);
+  }
   const promptInput = command.prompt ?? command.questionTextEn;
   if (promptInput !== undefined) {
     payload.prompt = requireText(promptInput, 'prompt');

@@ -983,9 +983,20 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
     ['test/e2e/st10b-concurrency.e2e-spec.ts', 'e2e'],
     ['test/e2e/st10b-eleven-type-runtime.e2e-spec.ts', 'e2e'],
   ];
+  const st11aFiles = [
+    ['src/common/assessment-answer/response-config.spec.ts','unit'],
+    ['test/integration/learning-media-st11-answer-audio.integration.spec.ts','media-storage'],
+    ['test/integration/st11-answer-media-integrity.integration.spec.ts','integration-general'],
+    ['test/integration/st11-legacy-migration.integration.spec.ts','integration-general'],
+    ['test/e2e/st11-answer-media.e2e-spec.ts','e2e'],
+    ['test/e2e/st11-answer-media-security.e2e-spec.ts','e2e'],
+    ['test/e2e/st11-response-authoring.e2e-spec.ts','e2e'],
+    ['test/e2e/st11-response-modalities.e2e-spec.ts','e2e'],
+    ['test/e2e/st11-answer-manual-review.e2e-spec.ts','e2e'],
+  ];
   assert.equal(
     assignments.length,
-    1019 + st08bFiles.length + st08cFiles.length + st09aFiles.length + st09bcFiles.length + st10aFiles.length + st10bFiles.length,
+    1019 + st08bFiles.length + st08cFiles.length + st09aFiles.length + st09bcFiles.length + st10aFiles.length + st10bFiles.length + st11aFiles.length,
   );
   assert.equal(
     assignments.filter((item) => item.execution === 'manual').length,
@@ -993,7 +1004,7 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
   );
   assert.equal(
     assignments.filter((item) => item.execution !== 'manual').length,
-    1009 + st08bFiles.length + st08cFiles.length + st09aFiles.length + st09bcFiles.length + st10aFiles.length + st10bFiles.length,
+    1009 + st08bFiles.length + st08cFiles.length + st09aFiles.length + st09bcFiles.length + st10aFiles.length + st10bFiles.length + st11aFiles.length,
   );
   for (const [file, profile] of [
     ['src/common/rich-content/rich-content.spec.ts', 'unit'],
@@ -1007,6 +1018,7 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
     ...st09bcFiles,
     ...st10aFiles,
     ...st10bFiles,
+    ...st11aFiles,
   ]) {
     const matches = assignments.filter((item) => item.file === file);
     assert.equal(matches.length, 1);
@@ -1032,6 +1044,9 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
     },
   );
   let restoredPlanner = readCurrentSource('scripts/ci/plan-ci.cjs');
+  const st11AudioOwner = "  'test/integration/learning-media-st11-answer-audio.integration.spec.ts',\n";
+  assert.equal(restoredPlanner.split(st11AudioOwner).length, 2);
+  restoredPlanner = restoredPlanner.replace(st11AudioOwner, '');
   const st09bcOwner = "  'scripts/tests/st09bc-homework-transaction-boundaries.test.cjs': Object.freeze({\n" +
     "    owner: 'st09bc-homework-transaction-boundaries',\n" +
     "    profile: 'runtime-governance',\n" +
