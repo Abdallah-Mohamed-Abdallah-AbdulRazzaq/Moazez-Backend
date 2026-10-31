@@ -1,3 +1,5 @@
+import { StudentGradesQuestionGroupsController } from './assessment-assets/student-grades-question-groups.controller';
+import { StudentExamsQuestionGroupsController } from './assessment-assets/student-exams-question-groups.controller';
 import { AssessmentMediaModule } from '../files/assessment-media/assessment-media.module';
 import { StudentGradeAnswerMediaController } from './controller/student-grade-answer-media.controller';
 import { AssessmentsModule } from '../grades/assessments/assessments.module';
@@ -185,6 +187,8 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     StudentHomeworksModule,
   ],
   controllers: [
+    StudentGradesQuestionGroupsController,
+    StudentExamsQuestionGroupsController,
     StudentGradeAnswerMediaController,
     StudentExamsAssessmentAssetsController,
     StudentExamsQuestionAssetsController,

@@ -1,3 +1,4 @@
+import { presentQuestionGroupContext } from '../../../common/question-groups/question-group.projection';
 import { HomeworkSubmissionStatus, Prisma } from '@prisma/client';
 import {
   HomeworkSubmissionDto,
@@ -38,6 +39,7 @@ function presentSubmission(
   submission: HomeworkReviewSubmissionRecord,
 ): HomeworkSubmissionDto {
   return {
+    ...presentQuestionGroupContext(submission.homeworkAssignment.questions),
     id: submission.id,
     homeworkId: submission.homeworkAssignmentId,
     targetId: submission.homeworkTargetId,
@@ -64,7 +66,9 @@ function fullName(user: {
   firstName?: string | null;
   lastName?: string | null;
 }): string {
-  return [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || user.id;
+  return (
+    [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || user.id
+  );
 }
 
 function presentDateTime(date: Date | null): string | null {

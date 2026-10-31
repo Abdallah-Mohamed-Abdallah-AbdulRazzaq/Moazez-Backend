@@ -439,7 +439,7 @@ describe('ST-07 Grades asset contracts and actual private HTTP bytes', () => {
         .every((q) => q.assets.length === 0),
     ).toBe(true);
   });
-  it('documents all 56 additive operations with safe asset response schemas', () => {
+  it('documents the original 56 asset operations and exactly 19 group operations with safe response schemas', () => {
     const doc = SwaggerModule.createDocument(
       h.app,
       new DocumentBuilder().setTitle('ST07').build(),
@@ -450,19 +450,62 @@ describe('ST-07 Grades asset contracts and actual private HTTP bytes', () => {
         (path.includes('/grades/assessments/') ||
           path.includes('/student/exams/')),
     );
+    const operations = (entries: typeof paths) =>
+      entries.flatMap(([path, item]) =>
+        Object.keys(item)
+          .filter((method) =>
+            [
+              'get',
+              'head',
+              'post',
+              'patch',
+              'delete',
+              'put',
+              'options',
+            ].includes(method),
+          )
+          .map((method) => `${method.toUpperCase()} ${path}`),
+      );
     expect(
-      paths.reduce(
-        (n, [, path]) =>
-          n +
-          Object.keys(path).filter((k) =>
-            ['get', 'head', 'post', 'patch', 'delete'].includes(k),
-          ).length,
-        0,
+      operations(paths.filter(([path]) => !path.includes('/groups/'))),
+    ).toHaveLength(56);
+    const groupAuthor =
+      '/api/v1/grades/assessments/{assessmentId}/groups/{groupId}/assets';
+    const groupPrefixes = [
+      groupAuthor,
+      '/api/v1/teacher/classroom/{classId}/grades/assessments/{assessmentId}/groups/{groupId}/assets',
+      '/api/v1/student/exams/{assessmentId}/groups/{groupId}/assets',
+      '/api/v1/student/grades/assessments/{assessmentId}/groups/{groupId}/assets',
+    ];
+    const expectedGroups = [
+      ...groupPrefixes.flatMap((prefix) =>
+        ['preview', 'download'].flatMap((action) =>
+          ['GET', 'HEAD'].map(
+            (method) => `${method} ${prefix}/{assetId}/${action}`,
+          ),
+        ),
       ),
-    ).toBe(56);
+      `POST ${groupAuthor}`,
+      `PATCH ${groupAuthor}/{assetId}`,
+      `DELETE ${groupAuthor}/{assetId}`,
+    ];
+    expect(expectedGroups).toHaveLength(19);
+    expect(
+      operations(paths.filter(([path]) => path.includes('/groups/'))).sort(),
+    ).toEqual(expectedGroups.sort());
+    expect(operations(paths)).toHaveLength(56 + expectedGroups.length);
     expect(JSON.stringify(doc.components?.schemas?.GradeAssetDto)).not.toMatch(
       /bucket|objectKey|checksumSha256|assessmentSecurityEvidence|uploadId/u,
     );
+    for (const name of [
+      'QuestionGroupAssetResponseDto',
+      'QuestionGroupFileResponseDto',
+    ]) {
+      expect(doc.components?.schemas?.[name]).toBeDefined();
+      expect(JSON.stringify(doc.components?.schemas?.[name])).not.toMatch(
+        /bucket|objectKey|checksumSha256|assessmentSecurityEvidence|uploadId/u,
+      );
+    }
   });
   it.each(['image/png', 'application/pdf'] as const)(
     'fails closed for actual %s bytes while approved deep verification is unavailable',

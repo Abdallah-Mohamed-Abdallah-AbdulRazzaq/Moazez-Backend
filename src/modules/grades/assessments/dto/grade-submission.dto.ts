@@ -1,3 +1,5 @@
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import type { QuestionGroupContext } from '../../../../common/question-groups/question-group.projection';
 import type { RichContent } from '../../../../common/rich-content/rich-content.types';
 import { Transform, Type } from 'class-transformer';
 import {
@@ -160,6 +162,14 @@ export class GradeSubmissionQuestionResponseDto extends GradeQuestionContractDto
 }
 
 export class GradeSubmissionResponseDto {
+  @ApiPropertyOptional({
+    type: [Object],
+    description:
+      'Authorized multipart groups with derived child points; omitted for legacy flat content.',
+  })
+  groups?: QuestionGroupContext['groups'];
+  @ApiPropertyOptional({ type: [Object] })
+  displayItems?: QuestionGroupContext['displayItems'];
   id!: string;
   assessmentId!: string;
   termId!: string;

@@ -1,3 +1,7 @@
+import {
+  presentQuestionGroupContext,
+  presentQuestionGroupMembership,
+} from '../../../../../common/question-groups/question-group.projection';
 import { presentGradeRichContent } from '../../../../grades/assessments/infrastructure/grade-rich-content.projection';
 import { isGradeEvaluationType } from '../../../../grades/assessments/domain/grade-question-evaluation';
 import { gradeAnswerNullFact } from '../../../../grades/assessments/infrastructure/grade-typed-answer.projection';
@@ -67,6 +71,7 @@ export class TeacherClassroomGradesPresenter {
     const assessment = params.result.assessment;
 
     return {
+      ...presentQuestionGroupContext(assessment.questions),
       classId: params.classId,
       assessment: {
         ...presentAssessmentCard(assessment),
@@ -103,6 +108,7 @@ export class TeacherClassroomGradesPresenter {
       },
       questions: assessment.questions.map((question) => ({
         ...presentGradeRichContent(question),
+        ...presentQuestionGroupMembership(question),
         questionId: question.id,
         type: toLowerEnum(question.type),
         prompt: question.prompt,
@@ -249,6 +255,7 @@ export class TeacherClassroomGradesPresenter {
     );
 
     return {
+      ...presentQuestionGroupContext(params.result.assignment.questions),
       classId: params.classId,
       assignmentId: params.result.assignment.id,
       source: 'grades_assessment',

@@ -1,3 +1,5 @@
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import type { QuestionGroupContext } from '../../../../common/question-groups/question-group.projection';
 import type { RichContent } from '../../../../common/rich-content/rich-content.types';
 import { ApiProperty } from '@nestjs/swagger';
 import { GradeAssetDto } from '../../../grades/assessments/dto/grade-asset.dto';
@@ -147,6 +149,14 @@ export class StudentExamStageDto {
 }
 
 export class StudentExamDetailResponseDto {
+  @ApiPropertyOptional({
+    type: [Object],
+    description:
+      'Authorized multipart groups with derived child points; omitted for legacy flat content.',
+  })
+  groups?: QuestionGroupContext['groups'];
+  @ApiPropertyOptional({ type: [Object] })
+  displayItems?: QuestionGroupContext['displayItems'];
   @ApiProperty({ type: () => [GradeAssetDto] }) assets!: GradeAssetDto[];
   id!: string;
   assessmentId!: string;

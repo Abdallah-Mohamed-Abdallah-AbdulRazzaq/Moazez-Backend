@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AnswerMediaRegistry } from './infrastructure/answer-media-registry';
+import { QuestionGroupMedia } from './infrastructure/question-group-media';
 import { StorageModule } from '../../../infrastructure/storage/storage.module';
 import { TeacherAllocationOperationalWriteGate } from '../../academics/teacher-allocation/application/teacher-allocation-operational-write-gate';
 import { PrismaTeacherAllocationOperationalWriteGate } from '../../academics/teacher-allocation/infrastructure/prisma-teacher-allocation-operational-write-gate';
@@ -16,6 +17,7 @@ import { AssessmentMediaRepository } from './infrastructure/assessment-media.rep
 @Module({
   imports: [StorageModule, UploadsModule],
   providers: [
+    QuestionGroupMedia,
     AnswerMediaRegistry,
     AssessmentMediaService,
     AssessmentMediaRuntimePolicy,
@@ -31,6 +33,7 @@ import { AssessmentMediaRepository } from './infrastructure/assessment-media.rep
     },
   ],
   exports: [
+    QuestionGroupMedia,
     AnswerMediaRegistry,
     AssessmentMediaService,
     AssessmentMediaRepository,

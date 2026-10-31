@@ -4,6 +4,8 @@ import { Prisma } from '@prisma/client';
 import { hasRetainedFileReferences } from '../infrastructure/file-lifetime.repository';
 
 const physicalReferences = [
+  'HomeworkQuestionGroupAsset.fileId',
+  'GradeAssessmentQuestionGroupAsset.fileId',
   'SchoolProfile.logoFileId',
   'ApplicationDocument.fileId',
   'ApplicantAdmissionRequestDocument.fileId',

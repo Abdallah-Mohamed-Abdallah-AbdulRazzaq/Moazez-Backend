@@ -1,3 +1,4 @@
+import { presentQuestionGroupContext } from '../../../../common/question-groups/question-group.projection';
 import { presentGradeRichContent } from '../../../grades/assessments/infrastructure/grade-rich-content.projection';
 import { gradeAnswerNullFact } from '../../../grades/assessments/infrastructure/grade-typed-answer.projection';
 import type { GradeAssetDto } from '../../../grades/assessments/dto/grade-asset.dto';
@@ -118,6 +119,7 @@ export class StudentExamsPresenter {
     }));
 
     return {
+      ...presentQuestionGroupContext(result.exam.questions),
       assets: assets.assessment,
       id: result.exam.id,
       assessmentId: result.exam.id,

@@ -318,6 +318,26 @@ const PURE_METHODS = new Set([
   'toLowerCase', 'trim', 'values',
 ]);
 const REVIEWED_CALL_OVERRIDES = Object.freeze([
+  Object.freeze({
+    path: 'src/modules/grades/assessments/infrastructure/grades-assessments.repository.ts',
+    owner: 'GradesAssessmentsRepository.publishAssessment',
+    origin: 'stringBytes', target: /^Buffer\.byteLength$/,
+    reason: 'ST11-B publication validates shared group stimulus with the unchanged bounded UTF-8 intrinsic.',
+    classification: 'LOCK_CONTENTION_SENSITIVE',
+    resolvedCallers: Object.freeze(['normalizeRichContent', 'stringBytes']),
+    evidence: 'The exact publication transaction reaches the existing closed Rich validator through the group display validator. Buffer.byteLength performs synchronous bounded memory-only UTF-8 counting. No network, provider, filesystem, queue, timer, database operation or nested transaction occurs in this intrinsic. Only this path, owner, helper origin and call expression are covered; all other unresolved calls remain fail-closed.',
+  }),
+  ...[
+    ['src/modules/homework/infrastructure/homework-question-groups.repository.ts','HomeworkQuestionGroupsRepository'],
+    ['src/modules/grades/assessments/infrastructure/grade-question-groups.repository.ts','GradeQuestionGroupsRepository'],
+  ].map(([path,repository])=>Object.freeze({
+    path, owner:repository+'.transaction', target:/^operation$/, explicitLock:true,
+    reason:'ST11-B multipart facade has exactly eight scoped DB-only author/read callbacks.',
+    classification:'LOCK_CONTENTION_SENSITIVE',
+    resolvedCallers:Object.freeze(['read','create','update','remove','layout','createAsset','changeAsset','asset'].map(method=>repository+'.'+method)),
+    evidence:'The eight callbacks authorize live existing membership/permission and exact Homework allocation or Grades parent on the supplied scoped transaction. School/allocation and parent locks precede sorted group/question locks and Upload/File/asset reads. Membership uses an explicit expected group and preserves legacy sortOrder; delete detaches children and soft-deletes references. Shared Rich normalization, reference ownership, Decimal display sums, URL classification and precomputed private-bucket selection are synchronous memory-only operations. READY provenance and quotas use only database facts. Actual upload, verification and private-content streaming occur outside these callbacks. No callback contains a nested transaction, provider operation, scanner, timer, queue, signed capability or transaction escape. Facade maxWait is 5000 ms and timeout 15000 ms.',
+  })),
+
   // ST10-B: only the observed owners reaching the frozen ST10-A BigInt budget.
   ...[
     ['src/modules/grades/assessments/infrastructure/grades-assessment-questions.repository.ts', ['GradesAssessmentQuestionsRepository.createQuestionWithOptions', 'GradesAssessmentQuestionsRepository.updateQuestionAndReplaceOptions']],

@@ -1,4 +1,7 @@
-import { ST11_STUDENT_ANSWER_MEDIA_ROUTES } from '../fixtures/st11-answer-media-routes.fixture';
+import {
+  ST11_STUDENT_ANSWER_MEDIA_ROUTES,
+  ST11B_STUDENT_GROUP_ROUTES,
+} from '../fixtures/st11-answer-media-routes.fixture';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
@@ -894,6 +897,7 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
         'PUT /api/v1/student/homeworks/:homeworkId/submission',
         'PUT /api/v1/student/homeworks/:homeworkId/submission/answers',
         ...ST11_STUDENT_ANSWER_MEDIA_ROUTES,
+        ...ST11B_STUDENT_GROUP_ROUTES,
       ].sort(),
     );
 

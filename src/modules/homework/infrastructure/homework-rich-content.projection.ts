@@ -71,6 +71,7 @@ export async function projectHomeworkRichContent(
   audience: 'author' | 'student' | 'review',
   resourceActor: HomeworkAssetActor,
 ): Promise<void> {
+  await resolver?.projectGroups?.(tx, homeworkId, questions);
   if (!questions.length) return;
   if (questions.length > 200) {
     for (let start = 0; start < questions.length; start += 200)

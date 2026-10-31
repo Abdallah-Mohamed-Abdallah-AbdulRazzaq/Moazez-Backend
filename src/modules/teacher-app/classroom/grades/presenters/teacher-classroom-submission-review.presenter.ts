@@ -62,6 +62,9 @@ export class TeacherClassroomSubmissionReviewPresenter {
     );
 
     return {
+      ...(submission.groups
+        ? { groups: submission.groups, displayItems: submission.displayItems }
+        : {}),
       classId: params.classId,
       assignmentId: params.assignmentId,
       source: 'grades_assessment',

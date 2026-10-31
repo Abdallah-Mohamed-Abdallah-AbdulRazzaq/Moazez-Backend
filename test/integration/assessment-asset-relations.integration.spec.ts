@@ -347,8 +347,24 @@ describe('ST-05 additive asset relationships and conservative lifetime on Postgr
         pg_catalog.encode(t.tgargs, 'escape') AS args, t.tgenabled::text AS enabled
       FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
       WHERE t.tgfoid = 'public.enforce_assessment_asset_identity()'::regprocedure AND NOT t.tgisinternal`;
-    expect(triggers).toHaveLength(ASSET_FAMILIES.length);
-    for (const family of ASSET_FAMILIES)
+    const identities = [
+      ...ASSET_FAMILIES,
+      {
+        table: 'homework_question_groups',
+        parentColumn: 'homework_assignment_id',
+      },
+      {
+        table: 'grade_assessment_question_groups',
+        parentColumn: 'assessment_id',
+      },
+      { table: 'homework_question_group_assets', parentColumn: 'group_id' },
+      {
+        table: 'grade_assessment_question_group_assets',
+        parentColumn: 'group_id',
+      },
+    ];
+    expect(triggers).toHaveLength(identities.length);
+    for (const family of identities)
       expect(triggers.find((row) => row.table === family.table)).toEqual({
         table: family.table,
         name: `asset_identity_${family.table}`,

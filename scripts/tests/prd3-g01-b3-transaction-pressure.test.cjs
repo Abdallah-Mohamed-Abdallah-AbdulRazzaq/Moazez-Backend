@@ -200,6 +200,34 @@ test('ST-03 assessment facade has exactly the reviewed DB-only callbacks and all
   assert.deepEqual(allocation.resolvedCallers, ['PrismaTeacherAllocationOperationalWriteGate.lock', 'assertGradesMediaAuthorization', 'assertHomeworkMediaAuthorization']);
 });
 
+test('ST11-B group transaction facades retain exactly eight scoped DB-only callbacks per domain', () => {
+  for (const [repositoryPath, repositoryName] of [
+    ['src/modules/homework/infrastructure/homework-question-groups.repository.ts', 'HomeworkQuestionGroupsRepository'],
+    ['src/modules/grades/assessments/infrastructure/grade-question-groups.repository.ts', 'GradeQuestionGroupsRepository'],
+  ]) {
+    const row = INVENTORY.find(item => item.path === repositoryPath && item.entryOwner === repositoryName + '.transaction');
+    assert.ok(row);
+    assert.equal(row.classification, 'LOCK_CONTENTION_SENSITIVE');
+    assert.equal(row.explicitLock, true);
+    assert.equal(row.externalWaitInsideTransaction, false);
+    assert.deepEqual(row.unresolvedCalls, []);
+    assert.equal(row.maxWaitMs, 5000);
+    assert.equal(row.timeoutMs, 15000);
+    const callback = row.manualOverrides.find(item => item.unresolvedCallExpression === 'operation');
+    assert.ok(callback);
+    const repository = fs.readFileSync(path.join(__dirname, '..', '..', repositoryPath), 'utf8');
+    const methods = [...repository.matchAll(/^  (?:private )?(?:async )?(\w+)(?:<[^>]+>)?\(/gmu)];
+    const callers = methods.filter((match, index) => {
+      const body = repository.slice(match.index, methods[index + 1]?.index ?? repository.length);
+      if (!body.includes('this.transaction(')) return false;
+      assert.doesNotMatch(body, /\b(?:storage|verifier|scanner|queue|http)\./u);
+      return true;
+    }).map(match => repositoryName + '.' + match[1]).sort();
+    assert.equal(callers.length, 8);
+    assert.deepEqual([...callback.resolvedCallers].sort(), callers);
+  }
+});
+
 test('a storage dependency named getStore remains an external wait outside the exact Node context lookup', () => {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'moazez-st03-audit-'));
   try {

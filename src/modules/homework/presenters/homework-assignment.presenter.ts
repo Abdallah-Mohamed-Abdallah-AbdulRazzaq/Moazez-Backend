@@ -1,3 +1,4 @@
+import { presentQuestionGroupContext } from '../../../common/question-groups/question-group.projection';
 import { HomeworkTargetStatus, Prisma } from '@prisma/client';
 import {
   HomeworkAssignmentResponseDto,
@@ -124,6 +125,7 @@ export function presentHomeworkAssignment(
     isGraded: assignment.isGraded,
     questionCount: assignment.questions.length,
     attachmentsCount: assignment.attachments.length,
+    ...presentQuestionGroupContext(assignment.questions),
     questions: assignment.questions.map((question) =>
       presentHomeworkQuestionAdmin(question),
     ),

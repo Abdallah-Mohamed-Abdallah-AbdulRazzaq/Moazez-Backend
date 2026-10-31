@@ -1,3 +1,4 @@
+import { presentQuestionGroupContext } from '../../../../common/question-groups/question-group.projection';
 import { presentGradeRichContent } from '../../../grades/assessments/infrastructure/grade-rich-content.projection';
 import type { GradeAssetDto } from '../../../grades/assessments/dto/grade-asset.dto';
 type AssetProjection = {
@@ -120,6 +121,7 @@ export class StudentGradesPresenter {
     };
 
     return {
+      ...presentQuestionGroupContext(assessment.questions),
       assessment: {
         assets: assets.assessment,
         assessmentId: assessment.id,

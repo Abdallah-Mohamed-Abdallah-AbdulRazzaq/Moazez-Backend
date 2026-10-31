@@ -1,3 +1,5 @@
+import { Optional } from '@nestjs/common';
+import { HomeworkQuestionGroupsRepository } from './homework-question-groups.repository';
 import {
   getCurrentRequestId,
   getRequestContext,
@@ -86,11 +88,20 @@ export class HomeworkQuestionAssetsRepository implements RichAssetResolver<
     private readonly runtime: AssessmentMediaRuntimePolicy,
     storage: StorageService,
     private readonly urls: PersistedUrlPolicy,
+    @Optional() private readonly groups?: HomeworkQuestionGroupsRepository,
   ) {
     this.privateBucket = storage.resolveBucket(FileVisibility.PRIVATE);
   }
   private get scoped(): PrismaService {
     return this.prisma.scoped as unknown as PrismaService;
+  }
+  projectGroups(
+    tx: Prisma.TransactionClient,
+    parentId: string,
+    questions?: readonly { id: string }[],
+    publication = false,
+  ) {
+    return this.groups?.project(tx, parentId, questions, publication);
   }
   private transaction<T>(
     operation: (tx: Prisma.TransactionClient) => Promise<T>,
@@ -349,6 +360,33 @@ export class HomeworkQuestionAssetsRepository implements RichAssetResolver<
           data.sourceType === 'MANAGED_FILE',
         );
         const policy = await this.policy(tx, scope.schoolId, true);
+        if (
+          await tx.homeworkQuestionGroup.count({
+            where: { homeworkAssignmentId: input.homeworkId, deletedAt: null },
+          })
+        ) {
+          const references =
+            (await tx.homeworkQuestionAsset.count({
+              where: {
+                deletedAt: null,
+                homeworkQuestion: {
+                  homeworkAssignmentId: input.homeworkId,
+                  deletedAt: null,
+                },
+              },
+            })) +
+            (await tx.homeworkQuestionGroupAsset.count({
+              where: {
+                deletedAt: null,
+                group: {
+                  homeworkAssignmentId: input.homeworkId,
+                  deletedAt: null,
+                },
+              },
+            }));
+          if (references >= policy.maximumFilesPerResource)
+            throw new AssessmentMediaException('quota_exceeded');
+        }
         let category = data.category ?? 'OTHER';
         if (data.sourceType === 'MANAGED_FILE') {
           this.runtime.assertUploadExecutionEnabled();

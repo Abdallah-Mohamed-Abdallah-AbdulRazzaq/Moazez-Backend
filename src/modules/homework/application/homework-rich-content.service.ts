@@ -309,6 +309,7 @@ export class HomeworkRichContentService {
       options: Array<{ id: string; text: string }>;
     }>,
   ): Promise<void> {
+    await this.assets.projectGroups(tx, homeworkId, undefined, true);
     if (!questions.length) return;
     const scope = requireHomeworkScope();
     const rows = await tx.$queryRaw<

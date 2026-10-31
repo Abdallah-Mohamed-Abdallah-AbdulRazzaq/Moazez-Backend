@@ -1,3 +1,4 @@
+import { presentQuestionGroupMembership } from '../../../../common/question-groups/question-group.projection';
 import { gradeResponseConfig } from '../../assessments/domain/grade-response-config';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { RESPONSE_CONFIG_OPENAPI } from '../../../../common/assessment-answer/response-config.openapi';
@@ -92,6 +93,7 @@ export function presentSafeGradeAnswer(
 }
 
 export class GradeQuestionContractDto {
+  @ApiPropertyOptional({ format: 'uuid' }) groupId?: string;
   @ApiPropertyOptional(RESPONSE_CONFIG_OPENAPI)
   responseConfig?: ResponseConfigV1;
   richContent?: RichContent;
@@ -159,6 +161,7 @@ export function presentGradeQuestionContract(
     ? gradeResponseConfig(type, question.responseConfig)
     : null;
   return {
+    ...(question ? presentQuestionGroupMembership(question) : {}),
     ...(responseConfig ? { responseConfig } : {}),
     type: legacyType,
     canonicalType,

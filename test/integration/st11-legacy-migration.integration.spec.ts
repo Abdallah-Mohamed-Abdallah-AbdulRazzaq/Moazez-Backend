@@ -57,8 +57,16 @@ describe('ST11 real migration compatibility with unclaimed historical answer ass
     const options = {
       datasourceUrl: url.toString(),
       omit: {
-        homeworkQuestion: { responseConfig: true },
-        gradeAssessmentQuestion: { responseConfig: true },
+        homeworkQuestion: {
+          responseConfig: true,
+          groupId: true,
+          layoutOrder: true,
+        },
+        gradeAssessmentQuestion: {
+          responseConfig: true,
+          groupId: true,
+          layoutOrder: true,
+        },
         homeworkAnswerAsset: { answerMediaClaimId: true },
         gradeSubmissionAnswerAsset: { answerMediaClaimId: true },
       },

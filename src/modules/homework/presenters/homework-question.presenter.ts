@@ -1,3 +1,7 @@
+import {
+  presentQuestionGroupMembership,
+  presentQuestionGroupContext,
+} from '../../../common/question-groups/question-group.projection';
 import { homeworkResponseConfig } from '../domain/homework-response-config';
 import { Prisma } from '@prisma/client';
 import { assertHomeworkRuntimeQuestionType } from '../domain/homework-runtime-types';
@@ -58,6 +62,7 @@ export function presentHomeworkQuestionsAdmin(
   questions: HomeworkQuestionPresenterModel[],
 ): HomeworkQuestionsListResponseDto {
   return {
+    ...presentQuestionGroupContext(questions),
     items: questions.map((question) => presentHomeworkQuestionAdmin(question)),
   };
 }
@@ -66,6 +71,7 @@ export function presentHomeworkQuestionsSafe(
   questions: HomeworkQuestionPresenterModel[],
 ): HomeworkQuestionsListResponseDto {
   return {
+    ...presentQuestionGroupContext(questions),
     items: questions.map((question) => presentHomeworkQuestionSafe(question)),
   };
 }
@@ -90,6 +96,7 @@ function presentHomeworkQuestion(
           )!,
         }
       : {}),
+    ...presentQuestionGroupMembership(question),
     questionId: question.id,
     ...presentHomeworkTypedDefinition(question),
     ...(options.includeAnswers ? presentHomeworkAuthorKey(question) : {}),

@@ -1,3 +1,4 @@
+import { presentQuestionGroupMembership } from '../../../common/question-groups/question-group.projection';
 import { Prisma } from '@prisma/client';
 import { homeworkResponseConfig } from '../domain/homework-response-config';
 import { assertHomeworkRuntimeQuestionType } from '../domain/homework-runtime-types';
@@ -175,6 +176,9 @@ function presentHomeworkAnswer(
     ...(options.includePrompt
       ? {
           prompt: {
+            ...(options.includeRich
+              ? presentQuestionGroupMembership(answer.homeworkQuestion)
+              : {}),
             questionId: answer.homeworkQuestion.id,
             ...presentHomeworkTypedDefinition(answer.homeworkQuestion),
             ...(options.includeRich

@@ -1,3 +1,4 @@
+import { StudentHomeworkQuestionGroupsController } from './controller/student-homework-question-groups.controller';
 import { StudentHomeworkAnswerMediaController } from './controller/student-homework-answer-media.controller';
 import { StudentHomeworkQuestionAssetsService } from './application/student-homework-question-assets.service';
 import { StudentHomeworkQuestionAssetsController } from './controller/student-homework-question-assets.controller';
@@ -29,6 +30,7 @@ import { GetStudentHomeworkAttachmentContentUseCase } from './application/get-st
 @Module({
   imports: [HomeworkModule, StorageModule],
   controllers: [
+    StudentHomeworkQuestionGroupsController,
     StudentHomeworkAnswerMediaController,
     StudentHomeworksController,
     StudentHomeworkQuestionAssetsController,

@@ -1,4 +1,9 @@
-import { ST11_TEACHER_ANSWER_MEDIA_ROUTES } from '../fixtures/st11-answer-media-routes.fixture';
+import { TeacherHomeworkQuestionGroupsController } from '../../src/modules/teacher-app/homeworks/controller/teacher-homework-question-groups.controller';
+import { TeacherGradeQuestionGroupsController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-question-groups.controller';
+import {
+  ST11_TEACHER_ANSWER_MEDIA_ROUTES,
+  ST11B_TEACHER_GROUP_ROUTES,
+} from '../fixtures/st11-answer-media-routes.fixture';
 import { TeacherGradeAnswerMediaController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-answer-media.controller';
 import { TeacherHomeworkAnswerMediaController } from '../../src/modules/teacher-app/homeworks/controller/teacher-homework-answer-media.controller';
 import { TeacherGradeQuestionAssetsController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-question-assets.controller';
@@ -270,6 +275,8 @@ const TEACHER_APP_CONTROLLER_CLASSES = [
   TeacherGradeQuestionAssetsController,
   TeacherGradeAnswerMediaController,
   TeacherHomeworkAnswerMediaController,
+  TeacherHomeworkQuestionGroupsController,
+  TeacherGradeQuestionGroupsController,
   TeacherTasksController,
   TeacherTaskReviewQueueController,
   TeacherXpController,
@@ -700,12 +707,20 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       (entry) => entry.permissions,
     );
 
-    expect(routes).toHaveLength(189 + ST11_TEACHER_ANSWER_MEDIA_ROUTES.length);
+    expect(routes).toHaveLength(
+      189 +
+        ST11_TEACHER_ANSWER_MEDIA_ROUTES.length +
+        ST11B_TEACHER_GROUP_ROUTES.length,
+    );
     expect(inventory).toHaveLength(
-      189 + ST11_TEACHER_ANSWER_MEDIA_ROUTES.length,
+      189 +
+        ST11_TEACHER_ANSWER_MEDIA_ROUTES.length +
+        ST11B_TEACHER_GROUP_ROUTES.length,
     );
     expect(decorated).toHaveLength(
-      189 + ST11_TEACHER_ANSWER_MEDIA_ROUTES.length,
+      189 +
+        ST11_TEACHER_ANSWER_MEDIA_ROUTES.length +
+        ST11B_TEACHER_GROUP_ROUTES.length,
     );
     for (const handler of ['content', 'publication']) {
       expect(
@@ -721,6 +736,7 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     expect(routes).toEqual(
       expect.arrayContaining(ST11_TEACHER_ANSWER_MEDIA_ROUTES),
     );
+    expect(routes).toEqual(expect.arrayContaining(ST11B_TEACHER_GROUP_ROUTES));
     expect(undecorated).toEqual([]);
     for (const [controller, family] of [
       [TeacherGradeAssessmentAssetsController, 'assessments'],

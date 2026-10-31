@@ -1,3 +1,5 @@
+import { TeacherGradeQuestionGroupsController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-question-groups.controller';
+import { TeacherHomeworkQuestionGroupsController } from '../../src/modules/teacher-app/homeworks/controller/teacher-homework-question-groups.controller';
 import { TeacherGradeAnswerMediaController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-answer-media.controller';
 import { TeacherHomeworkAnswerMediaController } from '../../src/modules/teacher-app/homeworks/controller/teacher-homework-answer-media.controller';
 import { TeacherGradeQuestionAssetsController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-question-assets.controller';
@@ -303,6 +305,8 @@ const TEACHER_APP_CONTROLLER_CLASSES = [
   TeacherGradeQuestionAssetsController,
   TeacherGradeAnswerMediaController,
   TeacherHomeworkAnswerMediaController,
+  TeacherGradeQuestionGroupsController,
+  TeacherHomeworkQuestionGroupsController,
   TeacherTasksController,
   TeacherTaskReviewQueueController,
   TeacherXpController,
@@ -908,6 +912,35 @@ const TEACHER_APP_DEFERRED_ACTION_CASES: TeacherAppDeferredCase[] = [];
 
 const TEACHER_APP_DECORATED_PERMISSION_CASES: TeacherAppPermissionCase[] = [
   ...[
+    TeacherGradeQuestionGroupsController,
+    TeacherHomeworkQuestionGroupsController,
+  ].flatMap((controller) =>
+    ['list', 'getpreview', 'headpreview', 'getdownload', 'headdownload'].map(
+      (method) => ({
+        controller,
+        method,
+        permissions: [
+          controller === TeacherGradeQuestionGroupsController
+            ? 'grades.submissions.view'
+            : 'homework.submissions.view',
+        ],
+      }),
+    ),
+  ),
+  ...[
+    'create',
+    'layout',
+    'update',
+    'remove',
+    'createAsset',
+    'updateAsset',
+    'removeAsset',
+  ].map((method) => ({
+    controller: TeacherHomeworkQuestionGroupsController,
+    method,
+    permissions: ['homework.questions.manage'],
+  })),
+  ...[
     TeacherGradeAnswerMediaController,
     TeacherHomeworkAnswerMediaController,
   ].flatMap((controller) =>
@@ -1429,8 +1462,8 @@ describe('Teacher App route permission metadata (security)', () => {
           .map((method) => `${controller.name}.${method}`),
     ).sort();
 
-    expect(discoveredRouteHandlers).toHaveLength(199);
-    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(199);
+    expect(discoveredRouteHandlers).toHaveLength(216);
+    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(216);
     expect(TEACHER_APP_DEFERRED_ACTION_CASES).toHaveLength(0);
     expect(discoveredRouteHandlers).toEqual(
       Array.from(expectedKnownHandlers).sort(),
