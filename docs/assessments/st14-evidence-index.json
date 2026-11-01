@@ -1,0 +1,1075 @@
+{
+  "mandate": "MOAZEZ-ST14-FINAL-PROGRAM-CLOSEOUT-2026-11-01",
+  "startingMainSha": "789fb5311a0d2a182468808b6aafe050ae72164e",
+  "historyVerification": "GitHub authenticated REST; every merge commit ancestor of starting main; migration additions from merge first-parent diff, not stacked PR diff",
+  "history": [
+    {
+      "number": 213,
+      "title": "fix(grades): enforce ST-02 ownership and safe question contracts",
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/213",
+      "state": "closed",
+      "merged": true,
+      "mergedAt": "2026-10-23T19:11:22Z",
+      "headSha": "33f869df543ccc7674a27f656f5ef75a60fa7b87",
+      "baseSha": "5a16a5e061c333b1160bc90afa4d391e9a41238e",
+      "mergeSha": "60b18bd623ed3b41563773230e1a86066112d077",
+      "headCi": [
+        {
+          "id": 39999300472,
+          "attempt": 2,
+          "name": "CI",
+          "event": "pull_request",
+          "head": "33f869df543ccc7674a27f656f5ef75a60fa7b87",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/39999300472"
+        }
+      ],
+      "mergeCi": [
+        {
+          "id": 40009421076,
+          "attempt": 1,
+          "name": "CI",
+          "event": "push",
+          "head": "60b18bd623ed3b41563773230e1a86066112d077",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40009421076"
+        }
+      ],
+      "migrationAdditions": []
+    },
+    {
+      "number": 214,
+      "title": "feat(homework): secure teacher submission files and file-only submission",
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/214",
+      "state": "closed",
+      "merged": true,
+      "mergedAt": "2026-10-23T22:00:05Z",
+      "headSha": "d3902160b8030a7041c644b1941ac028b5e139f5",
+      "baseSha": "60b18bd623ed3b41563773230e1a86066112d077",
+      "mergeSha": "876a7a2a24bd7fe5f6ab6911e12efebeb542765d",
+      "headCi": [
+        {
+          "id": 40025212227,
+          "attempt": 2,
+          "name": "CI",
+          "event": "pull_request",
+          "head": "d3902160b8030a7041c644b1941ac028b5e139f5",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40025212227"
+        }
+      ],
+      "mergeCi": [
+        {
+          "id": 40030700475,
+          "attempt": 1,
+          "name": "CI",
+          "event": "push",
+          "head": "876a7a2a24bd7fe5f6ab6911e12efebeb542765d",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40030700475"
+        }
+      ],
+      "migrationAdditions": []
+    },
+    {
+      "number": 215,
+      "title": "feat(files): add disabled ST-03 assessment media foundation",
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/215",
+      "state": "closed",
+      "merged": true,
+      "mergedAt": "2026-10-24T14:25:27Z",
+      "headSha": "fdab135fae8e8ceece0555c97c3abed92db296ed",
+      "baseSha": "876a7a2a24bd7fe5f6ab6911e12efebeb542765d",
+      "mergeSha": "57b83966b1c57fd7f57cb7fdd62f39b0103a2c81",
+      "headCi": [
+        {
+          "id": 40099207619,
+          "attempt": 1,
+          "name": "CI",
+          "event": "pull_request",
+          "head": "fdab135fae8e8ceece0555c97c3abed92db296ed",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40099207619"
+        }
+      ],
+      "mergeCi": [
+        {
+          "id": 40102428764,
+          "attempt": 1,
+          "name": "CI",
+          "event": "push",
+          "head": "57b83966b1c57fd7f57cb7fdd62f39b0103a2c81",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40102428764"
+        }
+      ],
+      "migrationAdditions": [
+        "prisma/migrations/20261024085802_assessment_media_upload_purposes/migration.sql",
+        "prisma/migrations/20261024085803_assessment_media_foundation/migration.sql"
+      ]
+    },
+    {
+      "number": 216,
+      "title": "feat(grades): certify ST-04 eight question contracts",
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/216",
+      "state": "closed",
+      "merged": true,
+      "mergedAt": "2026-10-24T18:35:14Z",
+      "headSha": "b39df47dd3245ad3ce5fa882f62e2847d1253aaa",
+      "baseSha": "57b83966b1c57fd7f57cb7fdd62f39b0103a2c81",
+      "mergeSha": "0d89519008879e393822a22f246224c5388a3cb0",
+      "headCi": [
+        {
+          "id": 40114739035,
+          "attempt": 1,
+          "name": "CI",
+          "event": "pull_request",
+          "head": "b39df47dd3245ad3ce5fa882f62e2847d1253aaa",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40114739035"
+        }
+      ],
+      "mergeCi": [
+        {
+          "id": 40121391030,
+          "attempt": 1,
+          "name": "CI",
+          "event": "push",
+          "head": "0d89519008879e393822a22f246224c5388a3cb0",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40121391030"
+        }
+      ],
+      "migrationAdditions": []
+    },
+    {
+      "number": 217,
+      "title": "feat(assessments): ST-05 asset relations and File lifetime foundation",
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/217",
+      "state": "closed",
+      "merged": true,
+      "mergedAt": "2026-10-24T23:28:55Z",
+      "headSha": "a2b3c16219a89b14472b0fc608e20bb772e105b2",
+      "baseSha": "0d89519008879e393822a22f246224c5388a3cb0",
+      "mergeSha": "4b148a5131500bdf39930bb3aa9c1e4a2c971b12",
+      "headCi": [
+        {
+          "id": 40130916780,
+          "attempt": 1,
+          "name": "CI",
+          "event": "pull_request",
+          "head": "a2b3c16219a89b14472b0fc608e20bb772e105b2",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40130916780"
+        }
+      ],
+      "mergeCi": [
+        {
+          "id": 40142912397,
+          "attempt": 1,
+          "name": "CI",
+          "event": "push",
+          "head": "4b148a5131500bdf39930bb3aa9c1e4a2c971b12",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40142912397"
+        }
+      ],
+      "migrationAdditions": [
+        "prisma/migrations/20261024200456_homework_grades_asset_relations_foundation/migration.sql"
+      ]
+    },
+    {
+      "number": 218,
+      "title": "feat(homework): ST-06 governed question assets and private student access",
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/218",
+      "state": "closed",
+      "merged": true,
+      "mergedAt": "2026-10-25T08:41:55Z",
+      "headSha": "2c01cece54533f714bd31624e6092f080faa8934",
+      "baseSha": "4b148a5131500bdf39930bb3aa9c1e4a2c971b12",
+      "mergeSha": "b4333aeaa43d645d07aad68fd9c0d330c47fc896",
+      "headCi": [
+        {
+          "id": 40173327694,
+          "attempt": 1,
+          "name": "CI",
+          "event": "pull_request",
+          "head": "2c01cece54533f714bd31624e6092f080faa8934",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40173327694"
+        }
+      ],
+      "mergeCi": [
+        {
+          "id": 40177652561,
+          "attempt": 1,
+          "name": "CI",
+          "event": "push",
+          "head": "b4333aeaa43d645d07aad68fd9c0d330c47fc896",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40177652561"
+        }
+      ],
+      "migrationAdditions": []
+    },
+    {
+      "number": 219,
+      "title": "feat(grades): ST-07 governed assessment and question assets",
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/219",
+      "state": "closed",
+      "merged": true,
+      "mergedAt": "2026-10-25T15:49:36Z",
+      "headSha": "4e91b70c8994824954959810ef7f7a6e79afdfbf",
+      "baseSha": "b4333aeaa43d645d07aad68fd9c0d330c47fc896",
+      "mergeSha": "4a885e7de6ff5b7f716f88b82ab0fb2ca3dc821e",
+      "headCi": [
+        {
+          "id": 40200775220,
+          "attempt": 1,
+          "name": "CI",
+          "event": "pull_request",
+          "head": "4e91b70c8994824954959810ef7f7a6e79afdfbf",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40200775220"
+        }
+      ],
+      "mergeCi": [
+        {
+          "id": 40208771396,
+          "attempt": 1,
+          "name": "CI",
+          "event": "push",
+          "head": "4a885e7de6ff5b7f716f88b82ab0fb2ca3dc821e",
+          "status": "completed",
+          "conclusion": "failure",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40208771396"
+        }
+      ],
+      "migrationAdditions": []
+    },
+    {
+      "number": 220,
+      "title": "test(ci): stabilize ST-07 post-merge integration races",
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/220",
+      "state": "closed",
+      "merged": true,
+      "mergedAt": "2026-10-25T18:36:54Z",
+      "headSha": "76f5cb4e633ad8baeadc958380588c6fffa37542",
+      "baseSha": "4a885e7de6ff5b7f716f88b82ab0fb2ca3dc821e",
+      "mergeSha": "0f28b3ae637670b0db1e5ccab0f90259b25e40e2",
+      "headCi": [
+        {
+          "id": 40217504857,
+          "attempt": 1,
+          "name": "CI",
+          "event": "pull_request",
+          "head": "76f5cb4e633ad8baeadc958380588c6fffa37542",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40217504857"
+        }
+      ],
+      "mergeCi": [
+        {
+          "id": 40222087391,
+          "attempt": 1,
+          "name": "CI",
+          "event": "push",
+          "head": "0f28b3ae637670b0db1e5ccab0f90259b25e40e2",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40222087391"
+        }
+      ],
+      "migrationAdditions": []
+    },
+    {
+      "number": 221,
+      "title": "feat(assessments): establish ST08-A safe rich AST contract",
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/221",
+      "state": "closed",
+      "merged": true,
+      "mergedAt": "2026-10-26T14:01:18Z",
+      "headSha": "c0546102a626cc0e782d4325ef8618cbe7302e17",
+      "baseSha": "0f28b3ae637670b0db1e5ccab0f90259b25e40e2",
+      "mergeSha": "aaa12c81933b78710c25a8dbdf6c6b0c3bb0545c",
+      "headCi": [
+        {
+          "id": 40302123636,
+          "attempt": 1,
+          "name": "CI",
+          "event": "pull_request",
+          "head": "c0546102a626cc0e782d4325ef8618cbe7302e17",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40302123636"
+        }
+      ],
+      "mergeCi": [
+        {
+          "id": 40335777753,
+          "attempt": 1,
+          "name": "CI",
+          "event": "push",
+          "head": "aaa12c81933b78710c25a8dbdf6c6b0c3bb0545c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40335777753"
+        }
+      ],
+      "migrationAdditions": [
+        "prisma/migrations/20261025223827_safe_rich_content_v1_foundation/migration.sql"
+      ]
+    },
+    {
+      "number": 222,
+      "title": "feat(grades): integrate Safe Rich AST V1 across authoring and student reviews",
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/222",
+      "state": "closed",
+      "merged": true,
+      "mergedAt": "2026-10-27T07:17:44Z",
+      "headSha": "0ccb96b9d4040b55184805297393a3e2f264527a",
+      "baseSha": "aaa12c81933b78710c25a8dbdf6c6b0c3bb0545c",
+      "mergeSha": "0e46e78d97b1fdd594b968a0c0cf205f224ee581",
+      "headCi": [
+        {
+          "id": 40411458163,
+          "attempt": 2,
+          "name": "CI",
+          "event": "pull_request",
+          "head": "0ccb96b9d4040b55184805297393a3e2f264527a",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40411458163"
+        }
+      ],
+      "mergeCi": [
+        {
+          "id": 40466265664,
+          "attempt": 1,
+          "name": "CI",
+          "event": "push",
+          "head": "0e46e78d97b1fdd594b968a0c0cf205f224ee581",
+          "status": "completed",
+          "conclusion": "failure",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40466265664"
+        }
+      ],
+      "migrationAdditions": []
+    },
+    {
+      "number": 223,
+      "title": "test(academic-content): stabilize post-merge audience snapshot ordering",
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/223",
+      "state": "closed",
+      "merged": true,
+      "mergedAt": "2026-10-27T09:37:14Z",
+      "headSha": "3a3d587bf3461acba3d7ae04060d9363697428ef",
+      "baseSha": "0e46e78d97b1fdd594b968a0c0cf205f224ee581",
+      "mergeSha": "8db111993602f89a3baa974436fa102d86eb5350",
+      "headCi": [
+        {
+          "id": 40473395609,
+          "attempt": 1,
+          "name": "CI",
+          "event": "pull_request",
+          "head": "3a3d587bf3461acba3d7ae04060d9363697428ef",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40473395609"
+        }
+      ],
+      "mergeCi": [
+        {
+          "id": 40482170550,
+          "attempt": 1,
+          "name": "CI",
+          "event": "push",
+          "head": "8db111993602f89a3baa974436fa102d86eb5350",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40482170550"
+        }
+      ],
+      "migrationAdditions": []
+    },
+    {
+      "number": 224,
+      "title": "feat(homework): integrate Safe Rich AST V1 and ST08 cross-domain verification",
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/224",
+      "state": "closed",
+      "merged": true,
+      "mergedAt": "2026-10-27T16:50:09Z",
+      "headSha": "277805eb79624adb86ec88796c9ef00f9321def0",
+      "baseSha": "8db111993602f89a3baa974436fa102d86eb5350",
+      "mergeSha": "0bf87c83d7617038df33b6fdfd7b40e63d2948ba",
+      "headCi": [
+        {
+          "id": 40525337901,
+          "attempt": 1,
+          "name": "CI",
+          "event": "pull_request",
+          "head": "277805eb79624adb86ec88796c9ef00f9321def0",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40525337901"
+        }
+      ],
+      "mergeCi": [
+        {
+          "id": 40544802591,
+          "attempt": 1,
+          "name": "CI",
+          "event": "push",
+          "head": "0bf87c83d7617038df33b6fdfd7b40e63d2948ba",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40544802591"
+        }
+      ],
+      "migrationAdditions": []
+    },
+    {
+      "number": 225,
+      "title": "feat(homework): establish ST09-A typed question foundation",
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/225",
+      "state": "closed",
+      "merged": true,
+      "mergedAt": "2026-10-27T22:24:20Z",
+      "headSha": "462fd1901ad62aa372b3dc9b7ae40caf4b4d0a28",
+      "baseSha": "0bf87c83d7617038df33b6fdfd7b40e63d2948ba",
+      "mergeSha": "0f55de8d875ba4e0ffb67514b3b8a6f3bc270c0e",
+      "headCi": [
+        {
+          "id": 40583787383,
+          "attempt": 1,
+          "name": "CI",
+          "event": "pull_request",
+          "head": "462fd1901ad62aa372b3dc9b7ae40caf4b4d0a28",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40583787383"
+        }
+      ],
+      "mergeCi": [
+        {
+          "id": 40594567754,
+          "attempt": 1,
+          "name": "CI",
+          "event": "push",
+          "head": "0f55de8d875ba4e0ffb67514b3b8a6f3bc270c0e",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40594567754"
+        }
+      ],
+      "migrationAdditions": [
+        "prisma/migrations/20261027194623_st09a_homework_typed_foundation/migration.sql"
+      ]
+    },
+    {
+      "number": 226,
+      "title": "feat(homework): complete ST09-B/C eight-type runtime integration",
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/226",
+      "state": "closed",
+      "merged": true,
+      "mergedAt": "2026-10-28T12:52:29Z",
+      "headSha": "7a222007c7eff6290861f12e292855ffabf57103",
+      "baseSha": "0f55de8d875ba4e0ffb67514b3b8a6f3bc270c0e",
+      "mergeSha": "db1b4b694852daac12a096f2d7b6628c284afd5d",
+      "headCi": [
+        {
+          "id": 40643501397,
+          "attempt": 1,
+          "name": "CI",
+          "event": "pull_request",
+          "head": "7a222007c7eff6290861f12e292855ffabf57103",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40643501397"
+        }
+      ],
+      "mergeCi": [
+        {
+          "id": 40691448469,
+          "attempt": 1,
+          "name": "CI",
+          "event": "push",
+          "head": "db1b4b694852daac12a096f2d7b6628c284afd5d",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40691448469"
+        }
+      ],
+      "migrationAdditions": []
+    },
+    {
+      "number": 227,
+      "title": "feat(assessments): ST10-A inactive question evaluation foundation",
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/227",
+      "state": "closed",
+      "merged": true,
+      "mergedAt": "2026-10-28T22:08:20Z",
+      "headSha": "42b714541a5d7e2770f58a48efa45b22daa1e21b",
+      "baseSha": "db1b4b694852daac12a096f2d7b6628c284afd5d",
+      "mergeSha": "460f706c137a1d793b2e78ab216e1a40a07001c7",
+      "headCi": [
+        {
+          "id": 40747189094,
+          "attempt": 1,
+          "name": "CI",
+          "event": "pull_request",
+          "head": "42b714541a5d7e2770f58a48efa45b22daa1e21b",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40747189094"
+        }
+      ],
+      "mergeCi": [
+        {
+          "id": 40777615573,
+          "attempt": 1,
+          "name": "CI",
+          "event": "push",
+          "head": "460f706c137a1d793b2e78ab216e1a40a07001c7",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40777615573"
+        }
+      ],
+      "migrationAdditions": [
+        "prisma/migrations/20261028184644_st10a_question_types_foundation/migration.sql"
+      ]
+    },
+    {
+      "number": 228,
+      "title": "feat(assessments): integrate ST10-B eleven-type Homework and Grades runtime",
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/228",
+      "state": "closed",
+      "merged": true,
+      "mergedAt": "2026-10-29T18:39:36Z",
+      "headSha": "28b70028b52788839ca8d8666d77bc8684c28c4e",
+      "baseSha": "460f706c137a1d793b2e78ab216e1a40a07001c7",
+      "mergeSha": "5f42c4937a4c5bb50680cf78a7b23d2783cf32b2",
+      "headCi": [
+        {
+          "id": 40917366067,
+          "attempt": 1,
+          "name": "CI",
+          "event": "pull_request",
+          "head": "28b70028b52788839ca8d8666d77bc8684c28c4e",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40917366067"
+        }
+      ],
+      "mergeCi": [
+        {
+          "id": 40932893987,
+          "attempt": 1,
+          "name": "CI",
+          "event": "push",
+          "head": "5f42c4937a4c5bb50680cf78a7b23d2783cf32b2",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/40932893987"
+        }
+      ],
+      "migrationAdditions": []
+    },
+    {
+      "number": 229,
+      "title": "feat(assessments): question-bound file and audio answers (ST11-A)",
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/229",
+      "state": "closed",
+      "merged": true,
+      "mergedAt": "2026-10-31T08:57:59Z",
+      "headSha": "58a62e012362e0ac15107420f371b9d86873fc06",
+      "baseSha": "5f42c4937a4c5bb50680cf78a7b23d2783cf32b2",
+      "mergeSha": "d5838ae090c6f4b3c5590540f06fd5ffe574947b",
+      "headCi": [
+        {
+          "id": 41137828534,
+          "attempt": 1,
+          "name": "CI",
+          "event": "pull_request",
+          "head": "58a62e012362e0ac15107420f371b9d86873fc06",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/41137828534"
+        }
+      ],
+      "mergeCi": [
+        {
+          "id": 41186712772,
+          "attempt": 1,
+          "name": "CI",
+          "event": "push",
+          "head": "d5838ae090c6f4b3c5590540f06fd5ffe574947b",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/41186712772"
+        }
+      ],
+      "migrationAdditions": [
+        "prisma/migrations/20261030131316_st11a_answer_response_and_provenance/migration.sql",
+        "prisma/migrations/20261030141000_st11a_answer_media_history_guards/migration.sql",
+        "prisma/migrations/20261030141931_st11a_answer_asset_creator_guard/migration.sql"
+      ]
+    },
+    {
+      "number": 230,
+      "title": "feat(assessments): non-answerable multipart question groups (ST11-B)",
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/230",
+      "state": "closed",
+      "merged": true,
+      "mergedAt": "2026-10-31T10:07:34Z",
+      "headSha": "01859b8aac417bbee0d54b863a16bd77db078e3e",
+      "baseSha": "d5838ae090c6f4b3c5590540f06fd5ffe574947b",
+      "mergeSha": "5edd73b197bfaad2e186d7a9d2fe41a8d19e4063",
+      "headCi": [
+        {
+          "id": 41189223997,
+          "attempt": 1,
+          "name": "CI",
+          "event": "pull_request",
+          "head": "01859b8aac417bbee0d54b863a16bd77db078e3e",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/41189223997"
+        }
+      ],
+      "mergeCi": [
+        {
+          "id": 41191466266,
+          "attempt": 1,
+          "name": "CI",
+          "event": "push",
+          "head": "5edd73b197bfaad2e186d7a9d2fe41a8d19e4063",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/41191466266"
+        }
+      ],
+      "migrationAdditions": [
+        "prisma/migrations/20261030163220_st11b_multipart_question_groups/migration.sql"
+      ]
+    },
+    {
+      "number": 231,
+      "title": "feat(grades): scoped authoring, review release and scoring suggestions (ST12)",
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/231",
+      "state": "closed",
+      "merged": true,
+      "mergedAt": "2026-10-31T19:46:18Z",
+      "headSha": "3c9dc300da1bbd3422eae29584e1b846fa4e7e0b",
+      "baseSha": "5edd73b197bfaad2e186d7a9d2fe41a8d19e4063",
+      "mergeSha": "e517b3d6e464b23babde6db28cf0f80d6bbcc865",
+      "headCi": [
+        {
+          "id": 41230344078,
+          "attempt": 1,
+          "name": "CI",
+          "event": "pull_request",
+          "head": "3c9dc300da1bbd3422eae29584e1b846fa4e7e0b",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/41230344078"
+        }
+      ],
+      "mergeCi": [
+        {
+          "id": 41235767642,
+          "attempt": 1,
+          "name": "CI",
+          "event": "push",
+          "head": "e517b3d6e464b23babde6db28cf0f80d6bbcc865",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/41235767642"
+        }
+      ],
+      "migrationAdditions": [
+        "prisma/migrations/20261031120322_st12_grades_review_release_scoring/migration.sql"
+      ]
+    },
+    {
+      "number": 232,
+      "title": "fix(assessments): certify ST13 and serialize explicit GradeItem sync",
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/232",
+      "state": "closed",
+      "merged": true,
+      "mergedAt": "2026-11-01T07:53:04Z",
+      "headSha": "e4128f14e9cde6c2d8ee92cb1a0900887eb129d2",
+      "baseSha": "e517b3d6e464b23babde6db28cf0f80d6bbcc865",
+      "mergeSha": "789fb5311a0d2a182468808b6aafe050ae72164e",
+      "headCi": [
+        {
+          "id": 41282717997,
+          "attempt": 1,
+          "name": "CI",
+          "event": "pull_request",
+          "head": "e4128f14e9cde6c2d8ee92cb1a0900887eb129d2",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/41282717997"
+        }
+      ],
+      "mergeCi": [
+        {
+          "id": 41286544889,
+          "attempt": 1,
+          "name": "CI",
+          "event": "push",
+          "head": "789fb5311a0d2a182468808b6aafe050ae72164e",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/41286544889"
+        }
+      ],
+      "migrationAdditions": []
+    }
+  ],
+  "st00": {
+    "implementationPr": null,
+    "sourceSha": "5a16a5e061c333b1160bc90afa4d391e9a41238e",
+    "ci": {
+      "id": 39280231099,
+      "attempt": 2,
+      "status": "success",
+      "event": "push",
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/39280231099"
+    },
+    "provenance": "Owner supplied approved ST00 read-only handoff; no original implementation PR",
+    "handoffSha256": "8324a10a8ad7ae7679e09cf8b28b3ba03d202b1e553e459b197f7f5e3c9ffb40"
+  },
+  "protectedStartingFiles": [
+    {
+      "file": "prisma/schema.prisma",
+      "sha256": "34ae0228e6cb7d009677872d7864e4929fb92dfe5a90516215275873c1dd9997"
+    },
+    {
+      "file": "config/deployment/migration-artifact-manifest.json",
+      "sha256": "9c2a757aa83d581df075ed73e954056c4aa2738023b1220181a763e80f99d8e8"
+    },
+    {
+      "file": "prisma/migrations/20260710135222_baseline_v1/migration.sql",
+      "sha256": "85db692f4d92808ae621c37634247977cb35c4f7270bcbc4058325bd1fb40747"
+    },
+    {
+      "file": "prisma/migrations/20260711162248_dashboard_todos/migration.sql",
+      "sha256": "767d6af988f96a18b113bfddb686575d6d7f048960578171b176974e0165cd3a"
+    },
+    {
+      "file": "prisma/migrations/20260716120000_school_branding_logo_asset/migration.sql",
+      "sha256": "577f65a5150c4809a5b6dd583300ae6a83c172325842656605cbab339db54654"
+    },
+    {
+      "file": "prisma/migrations/20260718115332_teacher_directory_data_foundation/migration.sql",
+      "sha256": "5d856ce0c59237e52be624a34708866fafe35f46c17abe68b1751c00f0e7c2fa"
+    },
+    {
+      "file": "prisma/migrations/20260720182221_membership_suspended_open_state/migration.sql",
+      "sha256": "683b0df4a774e177f9ace13866c1d466f49fefb1947ada8b52105202269cf3ff"
+    },
+    {
+      "file": "prisma/migrations/20260721224852_lesson_content_publication_lifecycle/migration.sql",
+      "sha256": "b0b1d0b66b76614fd7a1132d4550f11c8a2a570bd5832856542ed7f8fac40b62"
+    },
+    {
+      "file": "prisma/migrations/20260722160000_learning_media_runtime_upload_foundation/migration.sql",
+      "sha256": "56ca9dce071d8f880920b758bd2a1ea2ce3b87d522de2f602de2525443a8f32d"
+    },
+    {
+      "file": "prisma/migrations/20260825152406_student_bulk_registration_domain/migration.sql",
+      "sha256": "252a12a8c53efbc350dbe6e0a24e4f81968e54e6cd26f83e442431a8c7fc3131"
+    },
+    {
+      "file": "prisma/migrations/20260827101533_student_credential_batch_domain/migration.sql",
+      "sha256": "7515b7eaeb089b8a8a9007c166307894b52db78cd9d94671e6d8fe39761d70f8"
+    },
+    {
+      "file": "prisma/migrations/20260829223100_student_credential_admin_mode_placement_context/migration.sql",
+      "sha256": "69d0e3b448e98c8b6647202a43173720860dc973bd283b00f92feed724424782"
+    },
+    {
+      "file": "prisma/migrations/20260906024439_timetable_stage_scope/migration.sql",
+      "sha256": "f5b4b02edb5a22d93f9b85790ac7ec3b59746698978b76cfd6de7baff43689c6"
+    },
+    {
+      "file": "prisma/migrations/20260922163843_academic_content_core_foundation/migration.sql",
+      "sha256": "24c7597a618831f0ae64b9aa1b25d3a06e322424114e49b810e511135f854e02"
+    },
+    {
+      "file": "prisma/migrations/20260922220822_academic_content_targeting_audience_foundation/migration.sql",
+      "sha256": "c7745e9bac44138adb579268f4847cdaad72f5f19b89e112697c08a88e405f87"
+    },
+    {
+      "file": "prisma/migrations/20260923165955_academic_content_upload_purpose_enum/migration.sql",
+      "sha256": "f1f1bbe98ce6d6b882b5303607c16427aad277505e1856cf047053e423d77fe5"
+    },
+    {
+      "file": "prisma/migrations/20260923165956_academic_content_purpose_safe_files_foundation/migration.sql",
+      "sha256": "7b15702886f248f5d18b4e49564a5b747d0580936463b58d848de4d7edbee3e4"
+    },
+    {
+      "file": "prisma/migrations/20260925120000_academic_content_draft_lifecycle/migration.sql",
+      "sha256": "4f8f87ef016a86f1c4a0361f7849ea278b7434345e815326686985cf7e26d21b"
+    },
+    {
+      "file": "prisma/migrations/20260926002741_academic_content_links_tags_revisions/migration.sql",
+      "sha256": "62055908dd0dabb138f8af77110391132a1104e44a04ad7162b8b5a8f8e2103a"
+    },
+    {
+      "file": "prisma/migrations/20260926175931_academic_content_type_specific_authoring_foundation/migration.sql",
+      "sha256": "232234ffe443ba9e32983bc59435d891a5d2f94c19391eda429d80cff8918ad4"
+    },
+    {
+      "file": "prisma/migrations/20260927122703_academic_content_workflow_approval_foundation/migration.sql",
+      "sha256": "3d154440de1f33fedde8ecf84904393fbabbb0c029e43c68abbbfd840143ef74"
+    },
+    {
+      "file": "prisma/migrations/20260927202842_academic_content_preparation_templates/migration.sql",
+      "sha256": "505c6b34729de92a245115cc534d1ff3d6e3c10e2422620e3a02a4f4c95cd97d"
+    },
+    {
+      "file": "prisma/migrations/20261002162000_academic_content_publication_foundation/migration.sql",
+      "sha256": "1a92eb757c3f0db5f88be874f25d757568dfad62a2ea35b770369cf9ae671d99"
+    },
+    {
+      "file": "prisma/migrations/20261003045105_academic_content_publication_runtime_indexes/migration.sql",
+      "sha256": "7166010cd4d80776081544a3c70f5d1bf0fd6672ca93f2071b8bd1f075e0d2b4"
+    },
+    {
+      "file": "prisma/migrations/20261003165648_academic_content_notification_contract_policy/migration.sql",
+      "sha256": "ec4f211066300845e54bc9f4c3cbf824c0ed6a55645ca25df49817ab4ceb43b2"
+    },
+    {
+      "file": "prisma/migrations/20261004002712_academic_content_published_revision_updates/migration.sql",
+      "sha256": "928bdf61e672dd647f9ff03233f5e47d959c409da09e55b480d3d8835f21ce14"
+    },
+    {
+      "file": "prisma/migrations/20261005184814_academic_content_review_decision_notification_types/migration.sql",
+      "sha256": "d11334b71f092bc570fd7d952ea6b73bd9864376a0dd1800063869f3febfa1a2"
+    },
+    {
+      "file": "prisma/migrations/20261006155322_file_live_reference_integrity/migration.sql",
+      "sha256": "957aa76226c10e7fbb8d349b3abce050741d90de643a1fa4f55382ddc5b23d87"
+    },
+    {
+      "file": "prisma/migrations/20261008064934_academic_content_engagement_acknowledgement_foundation/migration.sql",
+      "sha256": "bca21aa56272e03fd69965e8595962bfd690777d14a3eb870482ddb7aab6e094"
+    },
+    {
+      "file": "prisma/migrations/20261008093728_academic_content_engagement_admission/migration.sql",
+      "sha256": "68b1f5140c36a2b5a2290d2309debdeac86e58464c85721bc516e43231d9e1c1"
+    },
+    {
+      "file": "prisma/migrations/20261024085802_assessment_media_upload_purposes/migration.sql",
+      "sha256": "6c38a4ff282c359dbcea00e5e9ec430fa4514be1ae07080a5d709adc1d17512a"
+    },
+    {
+      "file": "prisma/migrations/20261024085803_assessment_media_foundation/migration.sql",
+      "sha256": "71e9f99b22a3a14025cd9f5e2e861a6917217834b3d05ed9fff0bd5338906268"
+    },
+    {
+      "file": "prisma/migrations/20261024200456_homework_grades_asset_relations_foundation/migration.sql",
+      "sha256": "db2220b81136c0baaab82ce1dba2ddd5c1ddf6ec10852a12d53816942c6c68a5"
+    },
+    {
+      "file": "prisma/migrations/20261025223827_safe_rich_content_v1_foundation/migration.sql",
+      "sha256": "673cfefeb092939af2c87e94e56e5b3382db2b656faf81e9a28090d6147c72ea"
+    },
+    {
+      "file": "prisma/migrations/20261027194623_st09a_homework_typed_foundation/migration.sql",
+      "sha256": "ec5702e4d216ff2840f2cc436928cfb2c52656fe70f43edd4091a84d1a245265"
+    },
+    {
+      "file": "prisma/migrations/20261028184644_st10a_question_types_foundation/migration.sql",
+      "sha256": "6d0d8eb7e2628561891b9591403484e6acf04d9094a3a13e13be45596b15169a"
+    },
+    {
+      "file": "prisma/migrations/20261030131316_st11a_answer_response_and_provenance/migration.sql",
+      "sha256": "866a6968f38e42093b5698fda651250588abde16018163ddfab82f9af2887bbb"
+    },
+    {
+      "file": "prisma/migrations/20261030141000_st11a_answer_media_history_guards/migration.sql",
+      "sha256": "2381a442bd72d76a97c7f08c0eccdce1656fd38eaffcf6f65de53699283603a7"
+    },
+    {
+      "file": "prisma/migrations/20261030141931_st11a_answer_asset_creator_guard/migration.sql",
+      "sha256": "a439a72382f23acb52e1fc2abf7935504d4907e97ab4d3db63bf7bf147a2e8e1"
+    },
+    {
+      "file": "prisma/migrations/20261030163220_st11b_multipart_question_groups/migration.sql",
+      "sha256": "da2b97aaa91d451b21877055165a13899c251016ea81c56bb431cdec7316d549"
+    },
+    {
+      "file": "prisma/migrations/20261031120322_st12_grades_review_release_scoring/migration.sql",
+      "sha256": "3311350d985bf0ea9e958639cbbc3d89297ddf5bed8a6b32ea4906b4a6abda22"
+    },
+    {
+      "file": "docs/assessments/st13-requirements-traceability.csv",
+      "sha256": "bc16cea669b5c6abf29ed3f3ef826f0bac777f2fd8ef8c9936ccc45e92bf894f"
+    },
+    {
+      "file": "docs/assessments/st13-question-actor-state-coverage.csv",
+      "sha256": "3e52e2507aadf6cdfaa3e93f18f1ef2225804b96831351e59d4fc9e4ad513965"
+    }
+  ],
+  "manifestIdentity": {
+    "fileSha256": "9c2a757aa83d581df075ed73e954056c4aa2738023b1220181a763e80f99d8e8",
+    "internalHashes": {
+      "aggregateMigrationChainSha256": "00236bbdfa80b6f26effc04574841d92fc6fa18f31a93ae1a83bf45f16119214"
+    }
+  },
+  "openapi": {
+    "before": {
+      "mode": "before",
+      "sourceBaseline": "789fb5311a0d2a182468808b6aafe050ae72164e",
+      "generation": "Actual installed SwaggerModule.createDocument; isolated real controllers with nonexecuting use-case providers; same compiler metadata/no Swagger plugin as nest-cli.json",
+      "paths": {
+        "core": {
+          "route": "/api/v1/grades/submissions/{submissionId}/sync-grade-item",
+          "operation": {
+            "operationId": "GradesSubmissionReviewController_syncGradeItem",
+            "parameters": [
+              {
+                "name": "submissionId",
+                "required": true,
+                "in": "path",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            ],
+            "responses": {
+              "201": {
+                "description": ""
+              }
+            },
+            "security": [
+              {
+                "bearer": []
+              }
+            ],
+            "tags": [
+              "grades-submission-review"
+            ]
+          }
+        },
+        "teacher": {
+          "route": "/api/v1/teacher/classroom/{classId}/assignments/{assignmentId}/submissions/{submissionId}/sync-grade-item",
+          "operation": {
+            "operationId": "TeacherClassroomSubmissionReviewController_syncGradeItem",
+            "parameters": [],
+            "responses": {
+              "200": {
+                "description": "",
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "$ref": "#/components/schemas/TeacherClassroomSubmissionGradeItemSyncResponseDto"
+                    }
+                  }
+                }
+              }
+            },
+            "security": [
+              {
+                "bearer": []
+              }
+            ],
+            "tags": [
+              "teacher-app"
+            ]
+          }
+        }
+      },
+      "teacherResponseSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "after": {
+      "mode": "after",
+      "sourceBaseline": "789fb5311a0d2a182468808b6aafe050ae72164e",
+      "generation": "Actual installed SwaggerModule.createDocument; isolated real controllers with nonexecuting use-case providers; same compiler metadata/no Swagger plugin as nest-cli.json",
+      "paths": {
+        "core": {
+          "route": "/api/v1/grades/submissions/{submissionId}/sync-grade-item",
+          "operation": {
+            "operationId": "GradesSubmissionReviewController_syncGradeItem",
+            "parameters": [
+              {
+                "name": "submissionId",
+                "required": true,
+                "in": "path",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            ],
+            "responses": {
+              "201": {
+                "description": ""
+              }
+            },
+            "security": [
+              {
+                "bearer": []
+              }
+            ],
+            "tags": [
+              "grades-submission-review"
+            ]
+          }
+        },
+        "teacher": {
+          "route": "/api/v1/teacher/classroom/{classId}/assignments/{assignmentId}/submissions/{submissionId}/sync-grade-item",
+          "operation": {
+            "operationId": "TeacherClassroomSubmissionReviewController_syncGradeItem",
+            "parameters": [],
+            "responses": {
+              "201": {
+                "description": "",
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "$ref": "#/components/schemas/TeacherClassroomSubmissionGradeItemSyncResponseDto"
+                    }
+                  }
+                }
+              }
+            },
+            "security": [
+              {
+                "bearer": []
+              }
+            ],
+            "tags": [
+              "teacher-app"
+            ]
+          }
+        }
+      },
+      "teacherResponseSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  }
+}
