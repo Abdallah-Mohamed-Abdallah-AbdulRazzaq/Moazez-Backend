@@ -3290,9 +3290,26 @@ describeDatabase(
             .obliterate({ force: true });
           const f = await fixture();
           await addStudent(f);
+          // This case runs a real worker clock; keep its owned calendar valid at execution.
+          const runtimeNow = new Date();
+          const dayMs = 24 * 60 * 60 * 1000;
+          await prisma.academicYear.update({
+            where: { id: f.academicYearId },
+            data: {
+              startDate: new Date(runtimeNow.getTime() - 183 * dayMs),
+              endDate: new Date(runtimeNow.getTime() + 183 * dayMs),
+            },
+          });
+          await prisma.term.update({
+            where: { id: f.termId },
+            data: {
+              startDate: new Date(runtimeNow.getTime() - dayMs),
+              endDate: new Date(runtimeNow.getTime() + dayMs),
+            },
+          });
           const p = await intentRepo().schedule({
             ...mutation(f),
-            now: new Date(),
+            now: runtimeNow,
             command: { clientRequestId: randomUUID() },
           });
           const client = prisma.$extends({

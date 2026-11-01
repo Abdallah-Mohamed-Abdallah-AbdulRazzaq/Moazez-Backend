@@ -183,6 +183,7 @@ describe('Teacher classroom submission review use-cases', () => {
     );
     expect(coreUseCases.syncGradeItem.execute).toHaveBeenCalledWith(
       'submission-1',
+      'grades.items.manage',
     );
     expect(finalized).toMatchObject({
       classId: 'allocation-1',

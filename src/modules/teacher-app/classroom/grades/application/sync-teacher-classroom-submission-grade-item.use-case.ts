@@ -28,7 +28,10 @@ export class SyncTeacherClassroomSubmissionGradeItemUseCase {
       submissionId,
     });
 
-    const result = await this.syncGradeItemUseCase.execute(submissionId);
+    const result = await this.syncGradeItemUseCase.execute(
+      submissionId,
+      'grades.items.manage',
+    );
 
     return TeacherClassroomSubmissionReviewPresenter.presentGradeItemSync({
       classId: allocation.id,

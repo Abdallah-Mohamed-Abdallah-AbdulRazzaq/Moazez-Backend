@@ -1,0 +1,1667 @@
+{
+  "verification": {
+    "status": "PASS",
+    "candidateSource": "a30a1c0ab4fd18cbcffaf886ed3f6c0ff9e498ca",
+    "baselineSource": "e517b3d6e464b23babde6db28cf0f80d6bbcc865",
+    "helperSha256": "6070e90a9b4bb85844110ccb197acbd6f1c3e35df5e93cba70e84ed70a5cc4cc",
+    "workloadsPerSource": 15,
+    "samplesPerSource": 300,
+    "warmupsPerSource": 45,
+    "candidateSha256": "279b6e65bd431ac7df345e9dd1964e84c601f03116c4c6797b6f885270532aa8",
+    "baselineSha256": "0648b8cfcab3bfe5024a846c403e849ea1ba3a4a64ca495ac07f04f60a141561",
+    "method": "Separate fresh owned 39-migration disposable databases, same helper/runtime/fixture sizes/concurrency; sequential bounded runs on the same constrained Windows desktop. No latency SLO certification or performance improvement inference.",
+    "performanceSlo": "NOT_CERTIFIED",
+    "receipts": [
+      {
+        "label": "candidate",
+        "steps": [
+          {
+            "phase": "fresh-database",
+            "exitCode": 0,
+            "elapsedMs": 3066
+          },
+          {
+            "phase": "deploy",
+            "exitCode": 0,
+            "elapsedMs": 8480
+          },
+          {
+            "phase": "generate",
+            "exitCode": 0,
+            "elapsedMs": 46833
+          },
+          {
+            "phase": "seed",
+            "exitCode": 0,
+            "elapsedMs": 10758
+          },
+          {
+            "phase": "verify-replay",
+            "exitCode": 0,
+            "elapsedMs": 11725
+          },
+          {
+            "phase": "measure",
+            "exitCode": 0,
+            "elapsedMs": 112244
+          }
+        ]
+      },
+      {
+        "label": "baseline",
+        "steps": [
+          {
+            "phase": "fresh-database",
+            "exitCode": 0,
+            "elapsedMs": 3136
+          },
+          {
+            "phase": "deploy",
+            "exitCode": 0,
+            "elapsedMs": 9270
+          },
+          {
+            "phase": "generate",
+            "exitCode": 0,
+            "elapsedMs": 45738
+          },
+          {
+            "phase": "seed",
+            "exitCode": 0,
+            "elapsedMs": 10740
+          },
+          {
+            "phase": "verify-replay",
+            "exitCode": 0,
+            "elapsedMs": 11594
+          },
+          {
+            "phase": "measure",
+            "exitCode": 0,
+            "elapsedMs": 162688
+          }
+        ]
+      }
+    ]
+  },
+  "candidate": {
+    "source_sha": "a30a1c0ab4fd18cbcffaf886ed3f6c0ff9e498ca",
+    "checked_out_sha": "a30a1c0ab4fd18cbcffaf886ed3f6c0ff9e498ca",
+    "source_tree": "1648db2222110213f83dfcfe774cda1025e8354c",
+    "runtime_patch_sha256": null,
+    "measurement_helper_sha256": "6070e90a9b4bb85844110ccb197acbd6f1c3e35df5e93cba70e84ed70a5cc4cc",
+    "measured_at": "2026-10-31T23:40:39.120Z",
+    "process_heap_budget_mib": 4096,
+    "host": {
+      "platform": "win32",
+      "arch": "x64",
+      "logical_cpus": 16,
+      "total_memory_bytes": 8399794176,
+      "available_memory_bytes": 1793007616
+    },
+    "methodology": "20 samples and 3 warmups per workload; actual JWT/loopback HTTP; numeric-only query events and transparent transaction timing; no p95 pass threshold",
+    "postgres_version": "16.15",
+    "private_transfer_bytes": 294912,
+    "workloads": [
+      {
+        "workload_id": "PERF-G-AUTHOR-200",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 244.15329999999813,
+        "p95_ms": 267.4282000000021,
+        "max_ms": 301.2234000000026,
+        "error_count": 0,
+        "database_query_count": 1440,
+        "observed_query_duration_total_ms": 1968,
+        "transaction_duration": {
+          "sampleCount": 20,
+          "p50_ms": 163.6093000000037,
+          "p95_ms": 175.995600000002,
+          "max_ms": 196.6270000000004
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 964501504,
+            "heapTotal": 851005440,
+            "heapUsed": 298280136,
+            "external": 38234076,
+            "arrayBuffers": 34621003
+          },
+          "after": {
+            "rss": 967630848,
+            "heapTotal": 855453696,
+            "heapUsed": 330445208,
+            "external": 38242448,
+            "arrayBuffers": 34629335
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-STUDENT-LIST",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 47.59120000000257,
+        "p95_ms": 56.41870000000199,
+        "max_ms": 57.596099999995204,
+        "error_count": 0,
+        "database_query_count": 520,
+        "observed_query_duration_total_ms": 183,
+        "transaction_duration": {
+          "sampleCount": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 963489792,
+            "heapTotal": 856838144,
+            "heapUsed": 328912256,
+            "external": 37721030,
+            "arrayBuffers": 34107917
+          },
+          "after": {
+            "rss": 963518464,
+            "heapTotal": 856838144,
+            "heapUsed": 333099200,
+            "external": 37721170,
+            "arrayBuffers": 34108057
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-STUDENT-DETAIL-200",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 180.92799999999988,
+        "p95_ms": 237.58520000000135,
+        "max_ms": 238.63990000000194,
+        "error_count": 0,
+        "database_query_count": 1701,
+        "observed_query_duration_total_ms": 1286,
+        "transaction_duration": {
+          "sampleCount": 60,
+          "p50_ms": 45.25450000001001,
+          "p95_ms": 55.73800000000483,
+          "max_ms": 60.715199999991455
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 964161536,
+            "heapTotal": 857690112,
+            "heapUsed": 345200128,
+            "external": 38144204,
+            "arrayBuffers": 34531091
+          },
+          "after": {
+            "rss": 968167424,
+            "heapTotal": 861450240,
+            "heapUsed": 362511312,
+            "external": 38152536,
+            "arrayBuffers": 34539423
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-GROUP-DISPLAY-20",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 176.46199999999953,
+        "p95_ms": 193.43519999999262,
+        "max_ms": 194.5625,
+        "error_count": 0,
+        "database_query_count": 1700,
+        "observed_query_duration_total_ms": 872,
+        "transaction_duration": {
+          "sampleCount": 60,
+          "p50_ms": 40.40179999999236,
+          "p95_ms": 51.97330000001239,
+          "max_ms": 53.730100000000675
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 968630272,
+            "heapTotal": 861892608,
+            "heapUsed": 374501712,
+            "external": 38152557,
+            "arrayBuffers": 34539444
+          },
+          "after": {
+            "rss": 973017088,
+            "heapTotal": 866553856,
+            "heapUsed": 392283632,
+            "external": 38020584,
+            "arrayBuffers": 34407471
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-QUESTION-ASSET-METADATA",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 107.80920000000333,
+        "p95_ms": 125.50879999999597,
+        "max_ms": 164.55079999999725,
+        "error_count": 0,
+        "database_query_count": 800,
+        "observed_query_duration_total_ms": 1074,
+        "transaction_duration": {
+          "sampleCount": 20,
+          "p50_ms": 55.86579999999958,
+          "p95_ms": 72.67209999999614,
+          "max_ms": 89.55379999999423
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 973025280,
+            "heapTotal": 866553856,
+            "heapUsed": 401398376,
+            "external": 37744373,
+            "arrayBuffers": 34131260
+          },
+          "after": {
+            "rss": 972918784,
+            "heapTotal": 866553856,
+            "heapUsed": 407792584,
+            "external": 37777281,
+            "arrayBuffers": 34164168
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-TEACHER-QUEUE",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 60.115499999999884,
+        "p95_ms": 62.49790000000212,
+        "max_ms": 66.4945999999909,
+        "error_count": 0,
+        "database_query_count": 460,
+        "observed_query_duration_total_ms": 531,
+        "transaction_duration": {
+          "sampleCount": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 972939264,
+            "heapTotal": 866553856,
+            "heapUsed": 400580384,
+            "external": 37782135,
+            "arrayBuffers": 34169022
+          },
+          "after": {
+            "rss": 973004800,
+            "heapTotal": 866553856,
+            "heapUsed": 404720816,
+            "external": 37806851,
+            "arrayBuffers": 34193738
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-TEACHER-PAGINATION",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 62.24309999999241,
+        "p95_ms": 66.21319999999832,
+        "max_ms": 74.35280000000785,
+        "error_count": 0,
+        "database_query_count": 460,
+        "observed_query_duration_total_ms": 561,
+        "transaction_duration": {
+          "sampleCount": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 973012992,
+            "heapTotal": 866553856,
+            "heapUsed": 411771512,
+            "external": 37808153,
+            "arrayBuffers": 34195040
+          },
+          "after": {
+            "rss": 972972032,
+            "heapTotal": 866553856,
+            "heapUsed": 415008112,
+            "external": 37832869,
+            "arrayBuffers": 34219756
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-TEACHER-DETAIL-200",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 141.09790000000794,
+        "p95_ms": 169.30309999999008,
+        "max_ms": 172.6768000000011,
+        "error_count": 0,
+        "database_query_count": 1001,
+        "observed_query_duration_total_ms": 1103,
+        "transaction_duration": {
+          "sampleCount": 20,
+          "p50_ms": 55.72929999999178,
+          "p95_ms": 70.6255999999994,
+          "max_ms": 74.8871000000072
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 973713408,
+            "heapTotal": 867250176,
+            "heapUsed": 417839448,
+            "external": 38224478,
+            "arrayBuffers": 34611365
+          },
+          "after": {
+            "rss": 976273408,
+            "heapTotal": 868331520,
+            "heapUsed": 431442552,
+            "external": 38232691,
+            "arrayBuffers": 34619578
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-OBJECTIVE-EVALUATION",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 136.2554999999993,
+        "p95_ms": 207.36840000000666,
+        "max_ms": 211.83490000000165,
+        "error_count": 0,
+        "database_query_count": 1340,
+        "observed_query_duration_total_ms": 1047,
+        "transaction_duration": {
+          "sampleCount": 20,
+          "p50_ms": 113.3637000000017,
+          "p95_ms": 184.28360000000976,
+          "max_ms": 188.7659999999887
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 976076800,
+            "heapTotal": 868052992,
+            "heapUsed": 434866368,
+            "external": 37849552,
+            "arrayBuffers": 34236439
+          },
+          "after": {
+            "rss": 976080896,
+            "heapTotal": 868052992,
+            "heapUsed": 444144800,
+            "external": 37874128,
+            "arrayBuffers": 34261015
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-CONCURRENT-MANUAL-REVIEW",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 4,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 285.33729999999923,
+        "p95_ms": 648.5971999999892,
+        "max_ms": 1211.714399999997,
+        "error_count": 0,
+        "database_query_count": 1400,
+        "observed_query_duration_total_ms": 3607,
+        "transaction_duration": {
+          "sampleCount": 20,
+          "p50_ms": 165.40170000000217,
+          "p95_ms": 346.9713999999949,
+          "max_ms": 489.47639999999956
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 976031744,
+            "heapTotal": 868052992,
+            "heapUsed": 444688664,
+            "external": 37874924,
+            "arrayBuffers": 34261811
+          },
+          "after": {
+            "rss": 976384000,
+            "heapTotal": 868052992,
+            "heapUsed": 451589792,
+            "external": 37909562,
+            "arrayBuffers": 34296449
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-PARENT-RELEASED-200",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 107.57210000000487,
+        "p95_ms": 145.63999999999942,
+        "max_ms": 150.27010000000882,
+        "error_count": 0,
+        "database_query_count": 780,
+        "observed_query_duration_total_ms": 706,
+        "transaction_duration": {
+          "sampleCount": 20,
+          "p50_ms": 65.66879999999946,
+          "p95_ms": 102.54589999999735,
+          "max_ms": 105.0002999999997
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 976699392,
+            "heapTotal": 868315136,
+            "heapUsed": 444730336,
+            "external": 38290242,
+            "arrayBuffers": 34677129
+          },
+          "after": {
+            "rss": 980156416,
+            "heapTotal": 871747584,
+            "heapUsed": 460187040,
+            "external": 38298434,
+            "arrayBuffers": 34685321
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-PRIVATE-BYTES",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 149.80659999999625,
+        "p95_ms": 183.02680000000692,
+        "max_ms": 183.221000000005,
+        "error_count": 0,
+        "database_query_count": 1060,
+        "observed_query_duration_total_ms": 935,
+        "transaction_duration": {
+          "sampleCount": 40,
+          "p50_ms": 42.666199999992386,
+          "p95_ms": 54.9265000000014,
+          "max_ms": 59.63539999999921
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 981590016,
+            "heapTotal": 873222144,
+            "heapUsed": 475037000,
+            "external": 40288748,
+            "arrayBuffers": 36675635
+          },
+          "after": {
+            "rss": 785592320,
+            "heapTotal": 873181184,
+            "heapUsed": 472672568,
+            "external": 39526959,
+            "arrayBuffers": 35913846
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-EXPLICIT-SYNC",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 72.62069999999949,
+        "p95_ms": 103.52489999998943,
+        "max_ms": 109.00069999998959,
+        "error_count": 0,
+        "database_query_count": 600,
+        "observed_query_duration_total_ms": 516,
+        "transaction_duration": {
+          "sampleCount": 20,
+          "p50_ms": 40.05079999999725,
+          "p95_ms": 64.60890000000654,
+          "max_ms": 68.25319999999192
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 756350976,
+            "heapTotal": 872878080,
+            "heapUsed": 482008976,
+            "external": 38359679,
+            "arrayBuffers": 34746566
+          },
+          "after": {
+            "rss": 464068608,
+            "heapTotal": 872878080,
+            "heapUsed": 486229784,
+            "external": 38392447,
+            "arrayBuffers": 34779334
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-ANSWER-ASSET-METADATA",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 2,
+          "groupCount": 0,
+          "studentCount": 1,
+          "assetCount": 1,
+          "physicalFileCount": 1
+        },
+        "question_count": 2,
+        "group_count": 0,
+        "student_count": 1,
+        "asset_count": 1,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 58.74169999999867,
+        "p95_ms": 65.75370000000112,
+        "max_ms": 69.39770000000135,
+        "error_count": 0,
+        "database_query_count": 620,
+        "observed_query_duration_total_ms": 294,
+        "transaction_duration": {
+          "sampleCount": 20,
+          "p50_ms": 33.34659999998985,
+          "p95_ms": 39.19229999999516,
+          "max_ms": 43.84870000000228
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 456499200,
+            "heapTotal": 873140224,
+            "heapUsed": 486610576,
+            "external": 38402915,
+            "arrayBuffers": 34789827
+          },
+          "after": {
+            "rss": 457334784,
+            "heapTotal": 873140224,
+            "heapUsed": 492291480,
+            "external": 38419439,
+            "arrayBuffers": 34806351
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-H-GROUPED-ELEVEN-TYPE-DETAIL",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 11,
+          "groupCount": 1,
+          "studentCount": 1,
+          "assetCount": 1,
+          "physicalFileCount": 0
+        },
+        "question_count": 11,
+        "group_count": 1,
+        "student_count": 1,
+        "asset_count": 1,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 87.89409999999043,
+        "p95_ms": 94.42870000000403,
+        "max_ms": 95.17199999999139,
+        "error_count": 0,
+        "database_query_count": 1000,
+        "observed_query_duration_total_ms": 338,
+        "transaction_duration": {
+          "sampleCount": 40,
+          "p50_ms": 17.63760000000184,
+          "p95_ms": 22.730200000005425,
+          "max_ms": 24.164899999988847
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 440008704,
+            "heapTotal": 874082304,
+            "heapUsed": 506145624,
+            "external": 38507211,
+            "arrayBuffers": 34894123
+          },
+          "after": {
+            "rss": 436338688,
+            "heapTotal": 874082304,
+            "heapUsed": 513103656,
+            "external": 38515473,
+            "arrayBuffers": 34902385
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      }
+    ],
+    "performance_measured": true,
+    "performance_slo_certification": "NOT_CERTIFIED",
+    "dr07_security_provider_approval": "PENDING",
+    "production_mutation": false
+  },
+  "baseline": {
+    "source_sha": "e517b3d6e464b23babde6db28cf0f80d6bbcc865",
+    "checked_out_sha": "3c9dc300da1bbd3422eae29584e1b846fa4e7e0b",
+    "source_tree": "9aacef2d3540926f51ae4294c7ad85f22ea8c225",
+    "runtime_patch_sha256": null,
+    "measurement_helper_sha256": "6070e90a9b4bb85844110ccb197acbd6f1c3e35df5e93cba70e84ed70a5cc4cc",
+    "measured_at": "2026-10-31T23:43:57.109Z",
+    "process_heap_budget_mib": 4096,
+    "host": {
+      "platform": "win32",
+      "arch": "x64",
+      "logical_cpus": 16,
+      "total_memory_bytes": 8399794176,
+      "available_memory_bytes": 1819729920
+    },
+    "methodology": "20 samples and 3 warmups per workload; actual JWT/loopback HTTP; numeric-only query events and transparent transaction timing; no p95 pass threshold",
+    "postgres_version": "16.15",
+    "private_transfer_bytes": 294912,
+    "workloads": [
+      {
+        "workload_id": "PERF-G-AUTHOR-200",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 260.89860000000044,
+        "p95_ms": 287.39160000000265,
+        "max_ms": 294.1944999999978,
+        "error_count": 0,
+        "database_query_count": 1440,
+        "observed_query_duration_total_ms": 2152,
+        "transaction_duration": {
+          "sampleCount": 20,
+          "p50_ms": 170.34560000000056,
+          "p95_ms": 195.27380000000994,
+          "max_ms": 198.23619999999937
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 1137422336,
+            "heapTotal": 1212686336,
+            "heapUsed": 896319248,
+            "external": 58664701,
+            "arrayBuffers": 55060466
+          },
+          "after": {
+            "rss": 1152425984,
+            "heapTotal": 1217396736,
+            "heapUsed": 928767048,
+            "external": 58673073,
+            "arrayBuffers": 55068798
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-STUDENT-LIST",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 50.119599999990896,
+        "p95_ms": 56.52689999999711,
+        "max_ms": 58.16139999999723,
+        "error_count": 0,
+        "database_query_count": 520,
+        "observed_query_duration_total_ms": 220,
+        "transaction_duration": {
+          "sampleCount": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 1154777088,
+            "heapTotal": 1218256896,
+            "heapUsed": 927610184,
+            "external": 58151655,
+            "arrayBuffers": 54547380
+          },
+          "after": {
+            "rss": 1155928064,
+            "heapTotal": 1218256896,
+            "heapUsed": 931694688,
+            "external": 58151795,
+            "arrayBuffers": 54547520
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-STUDENT-DETAIL-200",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 205.00680000000284,
+        "p95_ms": 236.35060000000522,
+        "max_ms": 244.85680000000866,
+        "error_count": 0,
+        "database_query_count": 1701,
+        "observed_query_duration_total_ms": 1477,
+        "transaction_duration": {
+          "sampleCount": 60,
+          "p50_ms": 45.0622000000003,
+          "p95_ms": 63.710599999991246,
+          "max_ms": 65.03119999999763
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 1155788800,
+            "heapTotal": 1218846720,
+            "heapUsed": 943656968,
+            "external": 58574829,
+            "arrayBuffers": 54970554
+          },
+          "after": {
+            "rss": 1165692928,
+            "heapTotal": 1223131136,
+            "heapUsed": 964436664,
+            "external": 58583161,
+            "arrayBuffers": 54978886
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-GROUP-DISPLAY-20",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 184.30419999999867,
+        "p95_ms": 192.8125,
+        "max_ms": 193.91629999999714,
+        "error_count": 0,
+        "database_query_count": 1700,
+        "observed_query_duration_total_ms": 931,
+        "transaction_duration": {
+          "sampleCount": 60,
+          "p50_ms": 41.849500000011176,
+          "p95_ms": 52.102900000012596,
+          "max_ms": 54.2902000000031
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 1166958592,
+            "heapTotal": 1223573504,
+            "heapUsed": 976030096,
+            "external": 58583182,
+            "arrayBuffers": 54978907
+          },
+          "after": {
+            "rss": 1182478336,
+            "heapTotal": 1228382208,
+            "heapUsed": 991122088,
+            "external": 58591514,
+            "arrayBuffers": 54987239
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-QUESTION-ASSET-METADATA",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 110.64560000000347,
+        "p95_ms": 121.27629999999772,
+        "max_ms": 127.24710000000778,
+        "error_count": 0,
+        "database_query_count": 800,
+        "observed_query_duration_total_ms": 1042,
+        "transaction_duration": {
+          "sampleCount": 20,
+          "p50_ms": 58.47830000000249,
+          "p95_ms": 64.29469999999856,
+          "max_ms": 65.60399999999208
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 1182797824,
+            "heapTotal": 1228234752,
+            "heapUsed": 999945448,
+            "external": 58174998,
+            "arrayBuffers": 54570723
+          },
+          "after": {
+            "rss": 1185710080,
+            "heapTotal": 1228234752,
+            "heapUsed": 1006330192,
+            "external": 58207906,
+            "arrayBuffers": 54603631
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-TEACHER-QUEUE",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 61.9033000000054,
+        "p95_ms": 64.97990000000573,
+        "max_ms": 81.69569999999658,
+        "error_count": 0,
+        "database_query_count": 461,
+        "observed_query_duration_total_ms": 572,
+        "transaction_duration": {
+          "sampleCount": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 1186639872,
+            "heapTotal": 1228234752,
+            "heapUsed": 999228064,
+            "external": 58212760,
+            "arrayBuffers": 54608485
+          },
+          "after": {
+            "rss": 1187438592,
+            "heapTotal": 1228234752,
+            "heapUsed": 1003299144,
+            "external": 58237476,
+            "arrayBuffers": 54633201
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-TEACHER-PAGINATION",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 59.324500000002445,
+        "p95_ms": 62.92009999998845,
+        "max_ms": 65.51539999998931,
+        "error_count": 0,
+        "database_query_count": 460,
+        "observed_query_duration_total_ms": 522,
+        "transaction_duration": {
+          "sampleCount": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 1187659776,
+            "heapTotal": 1228234752,
+            "heapUsed": 1010473480,
+            "external": 58238778,
+            "arrayBuffers": 54634503
+          },
+          "after": {
+            "rss": 1187753984,
+            "heapTotal": 1228234752,
+            "heapUsed": 1013771912,
+            "external": 58263494,
+            "arrayBuffers": 54659219
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-TEACHER-DETAIL-200",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 164.4826999999932,
+        "p95_ms": 229.40540000000328,
+        "max_ms": 232.43790000000445,
+        "error_count": 0,
+        "database_query_count": 1001,
+        "observed_query_duration_total_ms": 1540,
+        "transaction_duration": {
+          "sampleCount": 20,
+          "p50_ms": 68.32839999999851,
+          "p95_ms": 100.03399999999965,
+          "max_ms": 101.95470000000205
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 1189449728,
+            "heapTotal": 1228931072,
+            "heapUsed": 1016454472,
+            "external": 58655103,
+            "arrayBuffers": 55050828
+          },
+          "after": {
+            "rss": 1156685824,
+            "heapTotal": 1229488128,
+            "heapUsed": 1030094240,
+            "external": 58663316,
+            "arrayBuffers": 55059041
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-OBJECTIVE-EVALUATION",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 162.54189999999653,
+        "p95_ms": 225.77200000001176,
+        "max_ms": 234.4305000000022,
+        "error_count": 0,
+        "database_query_count": 1340,
+        "observed_query_duration_total_ms": 1339,
+        "transaction_duration": {
+          "sampleCount": 20,
+          "p50_ms": 137.06060000001162,
+          "p95_ms": 195.12889999999607,
+          "max_ms": 199.04899999999907
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 1155350528,
+            "heapTotal": 1229209600,
+            "heapUsed": 1033477352,
+            "external": 58280177,
+            "arrayBuffers": 54675902
+          },
+          "after": {
+            "rss": 802103296,
+            "heapTotal": 1229471744,
+            "heapUsed": 1042737840,
+            "external": 58304753,
+            "arrayBuffers": 54700478
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-CONCURRENT-MANUAL-REVIEW",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 4,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 291.55079999999725,
+        "p95_ms": 923.6803999999975,
+        "max_ms": 959.0679999999993,
+        "error_count": 0,
+        "database_query_count": 1400,
+        "observed_query_duration_total_ms": 3302,
+        "transaction_duration": {
+          "sampleCount": 20,
+          "p50_ms": 174.24349999999686,
+          "p95_ms": 311.5433000000048,
+          "max_ms": 365.00800000000163
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 803164160,
+            "heapTotal": 1229471744,
+            "heapUsed": 1043474024,
+            "external": 58305549,
+            "arrayBuffers": 54701274
+          },
+          "after": {
+            "rss": 710991872,
+            "heapTotal": 1229471744,
+            "heapUsed": 1040924136,
+            "external": 58338354,
+            "arrayBuffers": 54734079
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-PARENT-RELEASED-200",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 114.4592999999877,
+        "p95_ms": 148.47729999999865,
+        "max_ms": 150.68549999999232,
+        "error_count": 0,
+        "database_query_count": 780,
+        "observed_query_duration_total_ms": 703,
+        "transaction_duration": {
+          "sampleCount": 20,
+          "p50_ms": 67.91289999999572,
+          "p95_ms": 97.51699999999255,
+          "max_ms": 98.04239999997662
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 714313728,
+            "heapTotal": 1229733888,
+            "heapUsed": 1049038784,
+            "external": 58720867,
+            "arrayBuffers": 55116592
+          },
+          "after": {
+            "rss": 595673088,
+            "heapTotal": 1233166336,
+            "heapUsed": 1063967088,
+            "external": 58729059,
+            "arrayBuffers": 55124784
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-PRIVATE-BYTES",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 124.31429999999818,
+        "p95_ms": 133.75809999997728,
+        "max_ms": 135.60399999999208,
+        "error_count": 0,
+        "database_query_count": 1060,
+        "observed_query_duration_total_ms": 510,
+        "transaction_duration": {
+          "sampleCount": 40,
+          "p50_ms": 34.72019999998156,
+          "p95_ms": 39.45999999999185,
+          "max_ms": 44.897899999981746
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 593563648,
+            "heapTotal": 1234296832,
+            "heapUsed": 1066409408,
+            "external": 59540624,
+            "arrayBuffers": 55936349
+          },
+          "after": {
+            "rss": 580788224,
+            "heapTotal": 1234903040,
+            "heapUsed": 1079840936,
+            "external": 60988313,
+            "arrayBuffers": 57384038
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-EXPLICIT-SYNC",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 200,
+          "groupCount": 20,
+          "studentCount": 1,
+          "assetCount": 3,
+          "physicalFileCount": 1
+        },
+        "question_count": 200,
+        "group_count": 20,
+        "student_count": 1,
+        "asset_count": 3,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 43.28740000000107,
+        "p95_ms": 47.20819999999367,
+        "max_ms": 52.51259999998729,
+        "error_count": 0,
+        "database_query_count": 461,
+        "observed_query_duration_total_ms": 160,
+        "transaction_duration": {
+          "sampleCount": 20,
+          "p50_ms": 8.33609999998589,
+          "p95_ms": 9.553599999984726,
+          "max_ms": 9.950199999992037
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 581046272,
+            "heapTotal": 1233993728,
+            "heapUsed": 1071863568,
+            "external": 58632457,
+            "arrayBuffers": 55028182
+          },
+          "after": {
+            "rss": 574795776,
+            "heapTotal": 1233993728,
+            "heapUsed": 1075220648,
+            "external": 58665225,
+            "arrayBuffers": 55060950
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-G-ANSWER-ASSET-METADATA",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 2,
+          "groupCount": 0,
+          "studentCount": 1,
+          "assetCount": 1,
+          "physicalFileCount": 1
+        },
+        "question_count": 2,
+        "group_count": 0,
+        "student_count": 1,
+        "asset_count": 1,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 62.21390000000247,
+        "p95_ms": 70.7329000000027,
+        "max_ms": 72.25359999999637,
+        "error_count": 0,
+        "database_query_count": 620,
+        "observed_query_duration_total_ms": 309,
+        "transaction_duration": {
+          "sampleCount": 20,
+          "p50_ms": 36.19099999999162,
+          "p95_ms": 40.67819999999483,
+          "max_ms": 44.501699999993434
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 571600896,
+            "heapTotal": 1234255872,
+            "heapUsed": 1086122264,
+            "external": 58685520,
+            "arrayBuffers": 55081270
+          },
+          "after": {
+            "rss": 576282624,
+            "heapTotal": 1234255872,
+            "heapUsed": 1091799504,
+            "external": 58702044,
+            "arrayBuffers": 55097794
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      },
+      {
+        "workload_id": "PERF-H-GROUPED-ELEVEN-TYPE-DETAIL",
+        "environment": "owned disposable loopback PostgreSQL/Redis/MinIO + actual Nest HTTP",
+        "node_version": "v22.23.1",
+        "fixture_size": {
+          "questionCount": 11,
+          "groupCount": 1,
+          "studentCount": 1,
+          "assetCount": 1,
+          "physicalFileCount": 0
+        },
+        "question_count": 11,
+        "group_count": 1,
+        "student_count": 1,
+        "asset_count": 1,
+        "concurrency": 1,
+        "sample_count": 20,
+        "warmup_count": 3,
+        "sampleCount": 20,
+        "p50_ms": 87.0685999999987,
+        "p95_ms": 99.65570000000298,
+        "max_ms": 104.60289999999804,
+        "error_count": 0,
+        "database_query_count": 1000,
+        "observed_query_duration_total_ms": 349,
+        "transaction_duration": {
+          "sampleCount": 40,
+          "p50_ms": 18.673299999994924,
+          "p95_ms": 26.490200000000186,
+          "max_ms": 27.9826999999932
+        },
+        "transaction_timing_definition": "caller-observed scoped transaction elapsed, including queue/commit; transparent delegation, not pure lock hold time",
+        "memory_or_resource_observations": {
+          "before": {
+            "rss": 573341696,
+            "heapTotal": 1234780160,
+            "heapUsed": 1103936592,
+            "external": 58781624,
+            "arrayBuffers": 55177374
+          },
+          "after": {
+            "rss": 576745472,
+            "heapTotal": 1235042304,
+            "heapUsed": 1110889096,
+            "external": 58789886,
+            "arrayBuffers": 55185636
+          }
+        },
+        "approved_budget_or_baseline": "No approved workload-specific latency SLO; equivalent baseline is recorded separately when executed",
+        "result_classification": "MEASURED_NO_APPROVED_SLO"
+      }
+    ],
+    "performance_measured": true,
+    "performance_slo_certification": "NOT_CERTIFIED",
+    "dr07_security_provider_approval": "PENDING",
+    "production_mutation": false
+  }
+}

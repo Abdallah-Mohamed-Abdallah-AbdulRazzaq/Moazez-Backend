@@ -194,7 +194,7 @@ export class St11AnswerMediaHttp extends St10bRuntimeHttp {
   }
   async prepare(
     path: string,
-    bytes = Buffer.from('ST11 private answer bytes'),
+    bytes: Buffer = Buffer.from('ST11 private answer bytes'),
     mime = 'text/plain',
     requestId = randomUUID(),
   ) {

@@ -79,6 +79,25 @@ const {
 const ROOT = path.resolve(__dirname, '..', '..');
 const INVENTORY = inventoryTransactions();
 const INVENTORY_SUMMARY = inventorySummary(INVENTORY);
+test('ST13 registers only the exact DB-only GradeItem synchronization callback', () => {
+  const rows = INVENTORY.filter(row => row.manualOverrides.some(item => item.reason.startsWith('ST13 synchronization')));
+  assert.equal(rows.length, 1);
+  const row = rows[0];
+  assert.equal(row.path, 'src/modules/grades/assessments/infrastructure/grades-submission-grade-item-sync.repository.ts');
+  assert.equal(row.entryOwner, 'GradesSubmissionGradeItemSyncRepository.withSyncTransaction');
+  assert.equal(row.classification, 'LOCK_CONTENTION_SENSITIVE');
+  assert.equal(row.externalWaitInsideTransaction, false);
+  assert.deepEqual(row.unresolvedCalls, []);
+  const record = row.manualOverrides.find(item => item.reason.startsWith('ST13 synchronization'));
+  assert.equal(record.unresolvedCallExpression, 'operation');
+  assert.deepEqual(record.resolvedCallers, ['SyncGradeSubmissionToGradeItemUseCase.execute']);
+  assert.ok(record.reviewEvidence.length > 200);
+  const source = fs.readFileSync(path.join(ROOT, 'src/modules/grades/assessments/application/sync-grade-submission-to-grade-item.use-case.ts'), 'utf8');
+  assert.equal((source.match(/\.withSyncTransaction\(/gu) || []).length, 1);
+  assert.match(source, /findSubmissionForGradeItemSync\(\s*submissionId,\s*transaction/u);
+  assert.match(source, /upsertGradeItemFromSubmission\(\s*built\.payload,\s*transaction/u);
+  assert.match(source, /after: gradeItem,[\s\S]*?transaction,\s*\)/u);
+});
 const R3_STRICT_MUTATIONS = Object.freeze({
   classification_inside_mismatch: (value) => { value.inventory.classifications.EXTERNAL_WAIT_SENSITIVE = 1;value.inventory.classifications.SHORT_DB_ONLY = 1; },
   wrong_business_entry_class: (value) => { value.businessPaths[0].productionEntryClass = 'ForgedProductionEntry'; },

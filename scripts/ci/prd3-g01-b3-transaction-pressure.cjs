@@ -419,6 +419,17 @@ const ST12_REVIEWED_CALLS = Object.freeze([
 
 const REVIEWED_CALL_OVERRIDES = Object.freeze([
   // ST12: source-reviewed exact owners/origins/expressions; no global exemption.
+  Object.freeze({
+    path: 'src/modules/grades/assessments/infrastructure/grades-submission-grade-item-sync.repository.ts',
+    owner: 'GradesSubmissionGradeItemSyncRepository.withSyncTransaction',
+    origin: 'transaction-callback',
+    target: /^operation$/,
+    explicitLock: true,
+    reason: 'ST13 synchronization has one source-reviewed application callback using its active scoped transaction.',
+    classification: 'LOCK_CONTENTION_SENSITIVE',
+    resolvedCallers: Object.freeze(['SyncGradeSubmissionToGradeItemUseCase.execute']),
+    evidence: 'The sole callback repeats current submission lifecycle validation, reads the locked existing GradeItem, builds the unchanged domain payload, upserts through the supplied transaction and writes the safe audit using that same transaction client. Live permission and allocation locks precede assessment/submission/enrollment/term/GradeItem locks. The callback contains no storage, queue, HTTP, provider call, nested transaction or unbounded computation. The existing five-second transaction budget is preserved; source and real PostgreSQL race/audit regressions govern the exact callback.',
+  }),
   ...ST12_REVIEWED_CALLS.map(([path, owner, origin, pattern, category]) => Object.freeze({
     ...ST12_REVIEWED_CALL_EVIDENCE[category], path, owner, origin, target: new RegExp(pattern),
     resolvedCallers: category === 'intrinsic' ? [origin] : ST12_REVIEWED_CALL_EVIDENCE[category].resolvedCallers,
