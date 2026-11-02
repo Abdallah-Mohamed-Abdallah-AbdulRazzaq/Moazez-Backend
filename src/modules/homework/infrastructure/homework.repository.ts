@@ -81,8 +81,13 @@ import {
   HomeworkAnswerReviewExceedsQuestionPointsException,
   HomeworkAnswerReviewExceedsAssignmentMarksException,
   HomeworkAnswerReviewIncompleteRequiredAnswersException,
+  HomeworkAnswerReviewNotSubmittedException,
+  HomeworkAnswerReviewInvalidPointsException,
 } from '../domain/homework-answer-review.exceptions';
-import { HomeworkSubmissionReviewInvalidException } from '../domain/homework.exceptions';
+import {
+  HomeworkSubmissionReviewInvalidException,
+  HomeworkSubmissionNotReviewableException,
+} from '../domain/homework.exceptions';
 
 class HomeworkRichAuthorizationRequired extends Error {}
 
@@ -2167,43 +2172,71 @@ export class HomeworkRepository {
     }
   }
 
-  private async lockTypedReview(
+  private async lockReviewSubmission(
     tx: Prisma.TransactionClient,
-    homeworkId: string,
-    targetId: string,
-    submissionId: string,
+    input: {
+      schoolId: string;
+      homeworkAssignmentId: string;
+      homeworkTargetId: string;
+      submissionId: string;
+      studentId: string;
+      enrollmentId: string;
+    },
     allowReviewed = false,
   ): Promise<HomeworkReviewSubmissionRecord> {
     const scope = requireHomeworkScope();
+    if (scope.schoolId !== input.schoolId)
+      throw new HomeworkAnswerReviewInvalidScopeException();
+    const homeworkId = input.homeworkAssignmentId;
     await this.requireRichIntegration().assertReviewWrite(
       tx,
       homeworkId,
-      allowReviewed && scope.userType !== 'TEACHER'
-        ? 'homework.assignments.manage'
-        : 'homework.submissions.review',
+      scope.userType === 'TEACHER'
+        ? 'homework.submissions.review'
+        : 'homework.assignments.manage',
     );
-    await tx.$queryRaw`SELECT id FROM homework_targets WHERE id=${targetId}::uuid AND school_id=${scope.schoolId}::uuid AND homework_assignment_id=${homeworkId}::uuid FOR UPDATE`;
-    await tx.$queryRaw`SELECT id FROM homework_submissions WHERE id=${submissionId}::uuid AND school_id=${scope.schoolId}::uuid AND homework_assignment_id=${homeworkId}::uuid AND homework_target_id=${targetId}::uuid FOR UPDATE`;
+    // Reuse the Student writer's parent -> target/live enrollment -> submission
+    // order. Authorization/allocation and the assignment are already locked.
+    await this.lockEditableStudentTarget(tx, input, undefined, true);
+    const locked = await tx.$queryRaw<
+      Array<{ id: string }>
+    >`SELECT id FROM homework_submissions
+      WHERE id=${input.submissionId}::uuid AND school_id=${scope.schoolId}::uuid
+        AND homework_assignment_id=${homeworkId}::uuid AND homework_target_id=${input.homeworkTargetId}::uuid
+        AND student_id=${input.studentId}::uuid AND enrollment_id=${input.enrollmentId}::uuid FOR UPDATE`;
+    if (locked.length !== 1)
+      throw new HomeworkAnswerReviewInvalidScopeException();
     const current = await tx.homeworkSubmission.findFirst({
       where: {
-        id: submissionId,
+        id: input.submissionId,
         schoolId: scope.schoolId,
         homeworkAssignmentId: homeworkId,
-        homeworkTargetId: targetId,
+        homeworkTargetId: input.homeworkTargetId,
+        studentId: input.studentId,
+        enrollmentId: input.enrollmentId,
       },
       ...HOMEWORK_REVIEW_SUBMISSION_ARGS,
     });
     if (!current) throw new HomeworkAnswerReviewInvalidScopeException();
-    if (allowReviewed && current.status === 'REVIEWED') return current;
+    assertHomeworkRuntimeQuestions(current.homeworkAssignment.questions);
+    if (!['PUBLISHED', 'CLOSED'].includes(current.homeworkAssignment.status))
+      throw allowReviewed
+        ? new HomeworkSubmissionNotReviewableException()
+        : new HomeworkAnswerReviewReadOnlyException();
+    // Finalization retains its own already_reviewed / not_reviewable outcomes.
     if (
-      !['PUBLISHED', 'CLOSED'].includes(current.homeworkAssignment.status) ||
-      !['SUBMITTED', 'LATE'].includes(current.status)
+      allowReviewed &&
+      !REVIEWABLE_SUBMISSION_STATUSES.includes(current.status)
     )
+      return current;
+    if (current.status === 'DRAFT')
+      throw new HomeworkAnswerReviewNotSubmittedException();
+    if (!REVIEWABLE_SUBMISSION_STATUSES.includes(current.status))
       throw new HomeworkAnswerReviewReadOnlyException();
     await this.assertFinalTypedAnswers(
       tx,
       homeworkId,
-      submissionId,
+      input.submissionId,
       current.homeworkAssignment.questions,
     );
     return current;
@@ -2790,19 +2823,6 @@ export class HomeworkRepository {
     });
   }
 
-  private async assertReviewQuestionTypes(
-    tx: Prisma.TransactionClient,
-    homeworkId: string,
-  ): Promise<void> {
-    const { schoolId } = requireHomeworkScope();
-    await tx.$queryRaw`SELECT id FROM homework_assignments WHERE id=${homeworkId}::uuid AND school_id=${schoolId}::uuid FOR UPDATE`;
-    const questions = await tx.homeworkQuestion.findMany({
-      where: { homeworkAssignmentId: homeworkId, schoolId, deletedAt: null },
-      select: { type: true },
-    });
-    assertHomeworkRuntimeQuestions(questions);
-  }
-
   async reviewSubmissionAnswers(input: {
     schoolId: string;
     homeworkAssignmentId: string;
@@ -2811,6 +2831,10 @@ export class HomeworkRepository {
     studentId: string;
     enrollmentId: string;
     awardedMarks: number;
+    audit: (
+      submission: HomeworkReviewSubmissionRecord,
+      tx: Prisma.TransactionClient,
+    ) => Promise<unknown>;
     reviews: {
       answerId: string;
       homeworkQuestionId: string;
@@ -2823,90 +2847,59 @@ export class HomeworkRepository {
     }[];
   }): Promise<ReviewHomeworkSubmissionAnswersResult> {
     return this.scopedPrisma.$transaction(async (tx) => {
-      const snapshot = await tx.homeworkSubmission.findFirst({
-        where: {
-          id: input.submissionId,
-          schoolId: input.schoolId,
-          homeworkAssignmentId: input.homeworkAssignmentId,
-          homeworkTargetId: input.homeworkTargetId,
-          studentId: input.studentId,
-          enrollmentId: input.enrollmentId,
-        },
-        ...HOMEWORK_REVIEW_SUBMISSION_ARGS,
-      });
-      const typed =
-        snapshot?.homeworkAssignment.questions.some(
-          (question) =>
-            isHomeworkTypedType(question.type) ||
-            question.responseConfig != null,
-        ) === true;
-      const current = typed
-        ? await this.lockTypedReview(
-            tx,
-            input.homeworkAssignmentId,
-            input.homeworkTargetId,
-            input.submissionId,
-          )
-        : null;
-      await this.assertReviewQuestionTypes(tx, input.homeworkAssignmentId);
-      if (current) {
+      const current = await this.lockReviewSubmission(tx, input);
+      if (
+        new Set(input.reviews.map((review) => review.answerId)).size !==
+        input.reviews.length
+      )
+        throw new HomeworkAnswerReviewInvalidScopeException();
+      if (
+        input.reviews.some(
+          (review) =>
+            review.reviewedByUserId !== requireHomeworkScope().actorId,
+        )
+      )
+        throw new HomeworkAnswerReviewInvalidScopeException();
+      for (const review of input.reviews) {
+        const answer = current.answers.find(
+          (item) =>
+            item.id === review.answerId &&
+            item.homeworkQuestionId === review.homeworkQuestionId,
+        );
         if (
-          input.reviews.some(
-            (review) =>
-              review.reviewedByUserId !== requireHomeworkScope().actorId,
+          !answer ||
+          !current.homeworkAssignment.questions.some(
+            (question) => question.id === review.homeworkQuestionId,
           )
         )
           throw new HomeworkAnswerReviewInvalidScopeException();
-        for (const review of input.reviews) {
-          const answer = current.answers.find(
-            (item) =>
-              item.id === review.answerId &&
-              item.homeworkQuestionId === review.homeworkQuestionId,
-          );
-          if (!answer) throw new HomeworkAnswerReviewInvalidScopeException();
-          await validateHomeworkAnswerMedia(
-            tx,
-            this.answerMedia,
-            answer.homeworkQuestion,
-            current.id,
-            'final',
-            true,
-          );
-          const points =
-            review.awardedPointsChanged === false
-              ? answer.awardedPoints === null
-                ? null
-                : Number(answer.awardedPoints)
-              : review.awardedPoints;
-          if (
-            points !== null &&
-            (!Number.isFinite(points) ||
-              points < 0 ||
-              points > Number(answer.homeworkQuestion.points))
-          )
-            throw new HomeworkAnswerReviewExceedsQuestionPointsException();
-        }
-      }
-      const matchingAnswers = await tx.homeworkSubmissionAnswer.count({
-        where: {
-          schoolId: input.schoolId,
-          id: { in: input.reviews.map((review) => review.answerId) },
-          homeworkSubmissionId: input.submissionId,
-          homeworkAssignmentId: input.homeworkAssignmentId,
-          homeworkTargetId: input.homeworkTargetId,
-          homeworkQuestionId: {
-            in: input.reviews.map((review) => review.homeworkQuestionId),
-          },
-          deletedAt: null,
-        },
-      });
-
-      if (matchingAnswers !== input.reviews.length) {
-        return { outcome: 'not_found' };
+        await validateHomeworkAnswerMedia(
+          tx,
+          this.answerMedia,
+          answer.homeworkQuestion,
+          current.id,
+          'final',
+          true,
+        );
+        const points =
+          review.awardedPointsChanged === false
+            ? answer.awardedPoints === null
+              ? null
+              : Number(answer.awardedPoints)
+            : review.awardedPoints;
+        if (
+          points !== null &&
+          (!Number.isFinite(points) ||
+            points < 0 ||
+            Math.round(points * 100) / 100 !== points)
+        )
+          throw new HomeworkAnswerReviewInvalidPointsException();
+        if (points !== null && points > Number(answer.homeworkQuestion.points))
+          throw new HomeworkAnswerReviewExceedsQuestionPointsException();
       }
 
       for (const review of input.reviews) {
-        await tx.homeworkSubmissionAnswer.updateMany({
+        const updated = await tx.homeworkSubmissionAnswer.updateMany({
           where: {
             schoolId: input.schoolId,
             id: review.answerId,
@@ -2917,38 +2910,37 @@ export class HomeworkRepository {
             deletedAt: null,
           },
           data: {
-            ...(current && review.teacherCommentChanged === false
+            ...(review.teacherCommentChanged === false
               ? {}
               : { teacherComment: review.teacherComment }),
-            ...(current && review.awardedPointsChanged === false
+            ...(review.awardedPointsChanged === false
               ? {}
               : { awardedPoints: review.awardedPoints }),
             reviewedAt: review.reviewedAt,
             reviewedByUserId: review.reviewedByUserId,
           },
         });
+        if (updated.count !== 1)
+          throw new HomeworkAnswerReviewInvalidScopeException();
       }
 
-      let awardedMarks = input.awardedMarks;
-      if (current) {
-        const totals = await tx.homeworkSubmissionAnswer.aggregate({
-          where: {
-            schoolId: input.schoolId,
-            homeworkSubmissionId: input.submissionId,
-            homeworkAssignmentId: input.homeworkAssignmentId,
-            deletedAt: null,
-          },
-          _sum: { awardedPoints: true },
-        });
-        awardedMarks = Number(totals._sum.awardedPoints ?? 0);
-        if (
-          current.homeworkAssignment.totalMarks !== null &&
-          awardedMarks > Number(current.homeworkAssignment.totalMarks)
-        )
-          throw new HomeworkAnswerReviewExceedsAssignmentMarksException();
-      }
+      const totals = await tx.homeworkSubmissionAnswer.aggregate({
+        where: {
+          schoolId: input.schoolId,
+          homeworkSubmissionId: input.submissionId,
+          homeworkAssignmentId: input.homeworkAssignmentId,
+          deletedAt: null,
+        },
+        _sum: { awardedPoints: true },
+      });
+      const awardedMarks = Number(totals._sum.awardedPoints ?? 0);
+      if (
+        current.homeworkAssignment.totalMarks !== null &&
+        awardedMarks > Number(current.homeworkAssignment.totalMarks)
+      )
+        throw new HomeworkAnswerReviewExceedsAssignmentMarksException();
 
-      await tx.homeworkSubmission.updateMany({
+      const updatedSubmission = await tx.homeworkSubmission.updateMany({
         where: {
           schoolId: input.schoolId,
           id: input.submissionId,
@@ -2956,11 +2948,14 @@ export class HomeworkRepository {
           homeworkTargetId: input.homeworkTargetId,
           studentId: input.studentId,
           enrollmentId: input.enrollmentId,
+          status: { in: REVIEWABLE_SUBMISSION_STATUSES },
         },
         data: {
           awardedMarks,
         },
       });
+      if (updatedSubmission.count !== 1)
+        throw new HomeworkAnswerReviewInvalidScopeException();
 
       const submission = await tx.homeworkSubmission.findFirst({
         where: {
@@ -2974,9 +2969,9 @@ export class HomeworkRepository {
         ...HOMEWORK_REVIEW_SUBMISSION_ARGS,
       });
 
-      return submission
-        ? { outcome: 'reviewed', submission }
-        : { outcome: 'not_found' };
+      if (!submission) throw new HomeworkAnswerReviewInvalidScopeException();
+      await input.audit(submission, tx);
+      return { outcome: 'reviewed', submission };
     });
   }
 
@@ -3184,68 +3179,15 @@ export class HomeworkRepository {
     reviewNote: string | null;
     awardedMarks: number | null;
     awardedMarksExplicit?: boolean;
+    audit: (
+      submission: HomeworkReviewSubmissionRecord,
+      tx: Prisma.TransactionClient,
+    ) => Promise<unknown>;
   }): Promise<ReviewHomeworkSubmissionResult> {
     return this.scopedPrisma.$transaction(async (tx) => {
-      let existing = await tx.homeworkSubmission.findFirst({
-        where: {
-          schoolId: input.schoolId,
-          id: input.submissionId,
-          homeworkAssignmentId: input.homeworkAssignmentId,
-          homeworkTargetId: input.homeworkTargetId,
-          studentId: input.studentId,
-          enrollmentId: input.enrollmentId,
-        },
-        ...HOMEWORK_REVIEW_SUBMISSION_ARGS,
-      });
-
-      if (!existing) {
-        return { outcome: 'not_found' };
-      }
-
-      let awardedMarks = input.awardedMarks;
-      if (
-        existing.homeworkAssignment.questions.some(
-          (question) =>
-            isHomeworkTypedType(question.type) ||
-            question.responseConfig != null,
-        )
-      ) {
-        existing = await this.lockTypedReview(
-          tx,
-          input.homeworkAssignmentId,
-          input.homeworkTargetId,
-          input.submissionId,
-          true,
-        );
-        if (input.reviewedByUserId !== requireHomeworkScope().actorId)
-          throw new HomeworkAnswerReviewInvalidScopeException();
-        if (existing.status !== 'REVIEWED') {
-          for (const question of existing.homeworkAssignment.questions)
-            if (
-              question.isRequired &&
-              !existing.answers.find(
-                (answer) => answer.homeworkQuestionId === question.id,
-              )?.reviewedAt
-            )
-              throw new HomeworkAnswerReviewIncompleteRequiredAnswersException();
-          const total = existing.answers.reduce(
-            (sum, answer) => sum + Number(answer.awardedPoints ?? 0),
-            0,
-          );
-          awardedMarks = Math.round(total * 100) / 100;
-          if (input.awardedMarksExplicit && input.awardedMarks !== awardedMarks)
-            throw new HomeworkSubmissionReviewInvalidException({
-              reason: 'review_rollup_changed',
-            });
-          if (
-            existing.homeworkAssignment.totalMarks !== null &&
-            awardedMarks > Number(existing.homeworkAssignment.totalMarks)
-          )
-            throw new HomeworkAnswerReviewExceedsAssignmentMarksException();
-        }
-      }
-
-      await this.assertReviewQuestionTypes(tx, input.homeworkAssignmentId);
+      const existing = await this.lockReviewSubmission(tx, input, true);
+      if (input.reviewedByUserId !== requireHomeworkScope().actorId)
+        throw new HomeworkAnswerReviewInvalidScopeException();
       if (existing.status === HomeworkSubmissionStatus.REVIEWED) {
         return { outcome: 'already_reviewed', submission: existing };
       }
@@ -3254,7 +3196,58 @@ export class HomeworkRepository {
         return { outcome: 'not_reviewable', submission: existing };
       }
 
-      await tx.homeworkSubmission.updateMany({
+      let awardedMarks = input.awardedMarks;
+      if (existing.homeworkAssignment.questions.length) {
+        for (const question of existing.homeworkAssignment.questions)
+          if (
+            question.isRequired &&
+            !existing.answers.find(
+              (answer) => answer.homeworkQuestionId === question.id,
+            )?.reviewedAt
+          )
+            throw new HomeworkAnswerReviewIncompleteRequiredAnswersException();
+        const total = await tx.homeworkSubmissionAnswer.aggregate({
+          where: {
+            schoolId: input.schoolId,
+            homeworkSubmissionId: input.submissionId,
+            homeworkAssignmentId: input.homeworkAssignmentId,
+            deletedAt: null,
+          },
+          _sum: { awardedPoints: true },
+        });
+        awardedMarks = Number(total._sum.awardedPoints ?? 0);
+        if (input.awardedMarksExplicit && input.awardedMarks !== awardedMarks)
+          throw new HomeworkSubmissionReviewInvalidException({
+            reason: 'review_rollup_changed',
+          });
+        if (
+          existing.homeworkAssignment.totalMarks !== null &&
+          awardedMarks > Number(existing.homeworkAssignment.totalMarks)
+        )
+          throw new HomeworkAnswerReviewExceedsAssignmentMarksException();
+      } else if (awardedMarks !== null) {
+        // Historical zero-question Homework retains manual assignment marks.
+        if (!Number.isFinite(awardedMarks) || awardedMarks < 0)
+          throw new HomeworkSubmissionReviewInvalidException({
+            awardedMarks: 'min',
+            min: 0,
+          });
+        if (!existing.homeworkAssignment.isGraded)
+          throw new HomeworkSubmissionReviewInvalidException({
+            awardedMarks: 'not_allowed_for_ungraded_homework',
+            isGraded: false,
+          });
+        if (
+          existing.homeworkAssignment.totalMarks !== null &&
+          awardedMarks > Number(existing.homeworkAssignment.totalMarks)
+        )
+          throw new HomeworkSubmissionReviewInvalidException({
+            awardedMarks: 'max',
+            max: Number(existing.homeworkAssignment.totalMarks),
+          });
+      }
+
+      const updatedSubmission = await tx.homeworkSubmission.updateMany({
         where: {
           schoolId: input.schoolId,
           id: input.submissionId,
@@ -3262,6 +3255,7 @@ export class HomeworkRepository {
           homeworkTargetId: input.homeworkTargetId,
           studentId: input.studentId,
           enrollmentId: input.enrollmentId,
+          status: { in: REVIEWABLE_SUBMISSION_STATUSES },
         },
         data: {
           status: HomeworkSubmissionStatus.REVIEWED,
@@ -3271,8 +3265,10 @@ export class HomeworkRepository {
           awardedMarks,
         },
       });
+      if (updatedSubmission.count !== 1)
+        throw new HomeworkAnswerReviewInvalidScopeException();
 
-      await tx.homeworkTarget.updateMany({
+      const updatedTarget = await tx.homeworkTarget.updateMany({
         where: {
           schoolId: input.schoolId,
           id: input.homeworkTargetId,
@@ -3285,6 +3281,8 @@ export class HomeworkRepository {
           reviewedAt: input.reviewedAt,
         },
       });
+      if (updatedTarget.count !== 1)
+        throw new HomeworkAnswerReviewInvalidScopeException();
 
       const submission = await tx.homeworkSubmission.findFirst({
         where: {
@@ -3298,9 +3296,9 @@ export class HomeworkRepository {
         ...HOMEWORK_REVIEW_SUBMISSION_ARGS,
       });
 
-      return submission
-        ? { outcome: 'reviewed', submission }
-        : { outcome: 'not_found' };
+      if (!submission) throw new HomeworkAnswerReviewInvalidScopeException();
+      await input.audit(submission, tx);
+      return { outcome: 'reviewed', submission };
     });
   }
 

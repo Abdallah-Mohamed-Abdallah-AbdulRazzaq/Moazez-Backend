@@ -601,6 +601,7 @@ describe('ST10-B preserves ST10-A malformed/future-data, privacy and mutation bo
         reviewedAt: new Date(),
         reviewNote: 'Review',
         awardedMarks: null,
+        audit: () => Promise.resolve(),
       };
       const final = await h
         .http()

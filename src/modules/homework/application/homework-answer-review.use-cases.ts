@@ -1,12 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import type { HomeworkAssetActor } from '../domain/homework-question-asset';
 import { projectHomeworkAnswerRich } from './homework-answers.use-cases';
-import { isHomeworkTypedType } from './homework-typed-runtime';
 import { assertHomeworkRuntimeQuestions } from '../domain/homework-runtime-types';
 import {
   AuditOutcome,
   HomeworkAssignmentStatus,
   HomeworkSubmissionStatus,
+  Prisma,
 } from '@prisma/client';
 import { AuthRepository } from '../../iam/auth/infrastructure/auth.repository';
 import { HomeworkScope, requireHomeworkScope } from '../homework-context';
@@ -69,6 +69,7 @@ export class ReviewHomeworkSubmissionAnswerUseCase {
     const reviewedByUserId = command.reviewedByUserId ?? scope.actorId;
     const result = await reviewAnswers({
       homeworkRepository: this.homeworkRepository,
+      authRepository: this.authRepository,
       homeworkId: command.homeworkId,
       submissionId: command.submissionId,
       reviewedByUserId,
@@ -86,15 +87,6 @@ export class ReviewHomeworkSubmissionAnswerUseCase {
         answerId: command.answerId,
       });
     }
-
-    await this.authRepository.createAuditLog(
-      buildAnswerReviewAuditEntry({
-        scope,
-        action: 'homework.answer_review.review',
-        submission: result.submission,
-        answerIds: [command.answerId],
-      }),
-    );
 
     await projectHomeworkAnswerRich(
       this.homeworkRepository,
@@ -121,6 +113,7 @@ export class BulkReviewHomeworkSubmissionAnswersUseCase {
     const reviewedByUserId = command.reviewedByUserId ?? scope.actorId;
     const result = await reviewAnswers({
       homeworkRepository: this.homeworkRepository,
+      authRepository: this.authRepository,
       homeworkId: command.homeworkId,
       submissionId: command.submissionId,
       reviewedByUserId,
@@ -132,15 +125,6 @@ export class BulkReviewHomeworkSubmissionAnswersUseCase {
     );
     const reviewedAnswers = result.submission.answers.filter((answer) =>
       reviewedAnswerIds.has(answer.id),
-    );
-
-    await this.authRepository.createAuditLog(
-      buildAnswerReviewAuditEntry({
-        scope,
-        action: 'homework.answer_review.bulk_review',
-        submission: result.submission,
-        answerIds: [...reviewedAnswerIds],
-      }),
     );
 
     await projectHomeworkAnswerRich(
@@ -202,6 +186,7 @@ export function assertAnswerReviewRollupWithinAssignmentMarks(input: {
 
 async function reviewAnswers(input: {
   homeworkRepository: HomeworkRepository;
+  authRepository: AuthRepository;
   homeworkId: string;
   submissionId: string;
   reviewedByUserId: string;
@@ -246,21 +231,31 @@ async function reviewAnswers(input: {
     studentId: submission.studentId,
     enrollmentId: submission.enrollmentId,
     awardedMarks,
+    audit: (
+      current: HomeworkReviewSubmissionRecord,
+      tx: Prisma.TransactionClient,
+    ) =>
+      input.authRepository.createAuditLog(
+        buildAnswerReviewAuditEntry({
+          scope: requireHomeworkScope(),
+          action: input.singleAnswer
+            ? 'homework.answer_review.review'
+            : 'homework.answer_review.bulk_review',
+          submission: current,
+          answerIds: normalizedReviews.map((review) => review.answerId),
+        }),
+        tx,
+      ),
     reviews: normalizedReviews.map((review) => ({
       ...review,
-      ...(submission.homeworkAssignment.questions.some(
-        (question) =>
-          isHomeworkTypedType(question.type) || question.responseConfig != null,
-      )
-        ? {
-            awardedPointsChanged:
-              input.reviews.find((item) => item.answerId === review.answerId)!
-                .awardedPoints !== undefined,
-            teacherCommentChanged:
-              input.reviews.find((item) => item.answerId === review.answerId)!
-                .teacherComment !== undefined,
-          }
-        : {}),
+      awardedPointsChanged: hasOwn(
+        input.reviews.find((item) => item.answerId === review.answerId)!,
+        'awardedPoints',
+      ),
+      teacherCommentChanged: hasOwn(
+        input.reviews.find((item) => item.answerId === review.answerId)!,
+        'teacherComment',
+      ),
       homeworkQuestionId:
         submission.answers.find((answer) => answer.id === review.answerId)
           ?.homeworkQuestionId ?? '',

@@ -418,6 +418,20 @@ const ST12_REVIEWED_CALLS = Object.freeze([
 ]);
 
 const REVIEWED_CALL_OVERRIDES = Object.freeze([
+  // Post-closeout repair: the two approved, transaction-scoped review Audit callbacks.
+  ...['HomeworkRepository.reviewSubmissionAnswers', 'HomeworkRepository.reviewSubmission'].map(owner => Object.freeze({
+    path: 'src/modules/homework/infrastructure/homework.repository.ts',
+    owner,
+    origin: 'transaction-callback',
+    target: /^input\.audit$/,
+    explicitLock: true,
+    classification: 'LOCK_CONTENTION_SENSITIVE',
+    reason: 'Homework review state and its mandatory success Audit commit on one supplied transaction.',
+    resolvedCallers: Object.freeze(owner.endsWith('reviewSubmissionAnswers')
+      ? ['ReviewHomeworkSubmissionAnswerUseCase.execute', 'BulkReviewHomeworkSubmissionAnswersUseCase.execute', 'reviewAnswers']
+      : ['ReviewHomeworkSubmissionUseCase.execute']),
+    evidence: 'The exact application callbacks build the unchanged safe summary from the committed submission and call AuthRepository.createAuditLog(entry, tx) using the supplied Prisma.TransactionClient. AuthRepository performs only tx.auditLog.create. The callbacks perform no network, object-storage, provider, queue, timer or nested transaction operation. Current membership/permission, allocation, assignment, target/live enrollment and submission locks precede answer updates, authoritative aggregation and Audit. Real disposable PostgreSQL/HTTP Audit insertion faults prove rollback of Single, Bulk and Finalize; measured pg_blocking_pids barriers prove review/state/revocation serialization. Existing transaction budgets remain unchanged. No other callback expression or owner is exempted.',
+  })),
   // ST12: source-reviewed exact owners/origins/expressions; no global exemption.
   Object.freeze({
     path: 'src/modules/grades/assessments/infrastructure/grades-submission-grade-item-sync.repository.ts',

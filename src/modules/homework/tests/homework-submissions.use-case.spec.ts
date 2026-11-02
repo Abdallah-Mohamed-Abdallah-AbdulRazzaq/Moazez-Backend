@@ -5,6 +5,7 @@ import {
   HomeworkSubmissionStatus,
   HomeworkTargetStatus,
   UserType,
+  Prisma,
 } from '@prisma/client';
 import {
   createRequestContext,
@@ -32,6 +33,7 @@ import {
   HomeworkRepository,
   type HomeworkTargetForSubmissionRecord,
   type HomeworkSubmissionRecord,
+  type HomeworkReviewSubmissionRecord,
 } from '../infrastructure/homework.repository';
 
 describe('Homework submission use cases', () => {
@@ -66,7 +68,22 @@ describe('Homework submission use cases', () => {
   }
 
   function createRepository(overrides?: Record<string, unknown>): any {
+    const auditTransaction = {} as Prisma.TransactionClient;
+    const audited = async (
+      input: Pick<
+        Parameters<HomeworkRepository['reviewSubmission']>[0],
+        'audit'
+      >,
+      current: unknown,
+    ) => {
+      await input.audit(
+        current as HomeworkReviewSubmissionRecord,
+        auditTransaction,
+      );
+      return { outcome: 'reviewed', submission: current };
+    };
     return {
+      auditTransaction,
       findStudentTargetForSubmission: jest.fn().mockResolvedValue(seedTarget()),
       saveDraftSubmission: jest.fn().mockImplementation(async (input) => ({
         outcome: 'saved',
@@ -94,16 +111,23 @@ describe('Homework submission use cases', () => {
           status: HomeworkSubmissionStatus.SUBMITTED,
         }),
       ),
-      reviewSubmission: jest.fn().mockImplementation(async (input) => ({
-        outcome: 'reviewed',
-        submission: seedReviewSubmission({
-          status: HomeworkSubmissionStatus.REVIEWED,
-          reviewedAt: input.reviewedAt,
-          reviewedByUserId: input.reviewedByUserId,
-          reviewNote: input.reviewNote,
-          awardedMarks: input.awardedMarks,
-        }),
-      })),
+      reviewSubmission: jest
+        .fn()
+        .mockImplementation(
+          async (
+            input: Parameters<HomeworkRepository['reviewSubmission']>[0],
+          ) =>
+            audited(
+              input,
+              seedReviewSubmission({
+                status: HomeworkSubmissionStatus.REVIEWED,
+                reviewedAt: input.reviewedAt,
+                reviewedByUserId: input.reviewedByUserId,
+                reviewNote: input.reviewNote,
+                awardedMarks: input.awardedMarks,
+              }),
+            ),
+        ),
       ...overrides,
     };
   }
@@ -756,6 +780,8 @@ describe('Homework submission use cases', () => {
     expect(submission.status).toBe(HomeworkSubmissionStatus.REVIEWED);
     expect(authRepository.createAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'homework.submission.review' }),
+      (repository as { auditTransaction: Prisma.TransactionClient })
+        .auditTransaction,
     );
   });
 
@@ -1146,6 +1172,16 @@ describe('HomeworkRepository submission review methods', () => {
 
   it('updates submission and target together with school-safe transaction bounds', async () => {
     const { repository, prismaMocks, txMocks } = createPrismaBackedRepository();
+    txMocks.homeworkTarget.findFirst.mockResolvedValue(
+      seedTarget({
+        submissions: [
+          seedSubmission({ status: HomeworkSubmissionStatus.SUBMITTED }),
+        ],
+      }),
+    );
+    txMocks.homeworkSubmission.updateMany.mockResolvedValue({ count: 1 });
+    txMocks.homeworkTarget.updateMany.mockResolvedValue({ count: 1 });
+    const audit = jest.fn().mockResolvedValue(undefined);
     txMocks.homeworkSubmission.findFirst
       .mockResolvedValueOnce(
         seedReviewSubmission({ status: HomeworkSubmissionStatus.SUBMITTED }),
@@ -1166,6 +1202,7 @@ describe('HomeworkRepository submission review methods', () => {
         reviewedAt: new Date('2026-05-25T08:30:00.000Z'),
         reviewNote: 'Done',
         awardedMarks: 8,
+        audit,
       }),
     );
 
@@ -1179,6 +1216,12 @@ describe('HomeworkRepository submission review methods', () => {
           homeworkTargetId: 'target-1',
           studentId: 'student-1',
           enrollmentId: 'enrollment-1',
+          status: {
+            in: [
+              HomeworkSubmissionStatus.SUBMITTED,
+              HomeworkSubmissionStatus.LATE,
+            ],
+          },
         },
         data: expect.objectContaining({
           status: HomeworkSubmissionStatus.REVIEWED,
@@ -1204,6 +1247,10 @@ describe('HomeworkRepository submission review methods', () => {
       }),
     );
     expect(result.outcome).toBe('reviewed');
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({ status: HomeworkSubmissionStatus.REVIEWED }),
+      txMocks,
+    );
   });
 });
 
@@ -1360,7 +1407,12 @@ function modelMocks() {
 function createPrismaBackedRepository(): {
   repository: HomeworkRepository;
   prismaMocks: any;
-  txMocks: any;
+  txMocks: {
+    $queryRaw: jest.Mock;
+    homeworkQuestion: { findMany: jest.Mock };
+    homeworkSubmission: ReturnType<typeof modelMocks>;
+    homeworkTarget: ReturnType<typeof modelMocks>;
+  };
 } {
   const txMocks = {
     $queryRaw: jest.fn().mockResolvedValue([{ id: 'homework-1' }]),
@@ -1383,6 +1435,9 @@ function createPrismaBackedRepository(): {
       {
         lock: jest.fn(),
       } as any,
+      {
+        assertReviewWrite: jest.fn().mockResolvedValue(undefined),
+      } as unknown as ConstructorParameters<typeof HomeworkRepository>[2],
     ),
     prismaMocks,
     txMocks,
