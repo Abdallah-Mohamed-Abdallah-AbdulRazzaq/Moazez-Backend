@@ -51,6 +51,13 @@ call-graph validation: the callbacks resolve solely to the existing database
 Audit insert on the supplied transaction. No generic callback exemption,
 transaction-budget change, workflow, routing or aggregator change was made.
 
+The first exact-head CI exposed one inherited inventory assertion that counted
+all later approved test additions explicitly. Its existing list now also names
+this repair's E2E file, asserts its unique pull-request/E2E ownership and includes
+it in total/active counts. Baseline retirement obligations, ten manual owners,
+planner equivalence and every other assertion remain intact. This test-only
+registration reflects the authorized new file; discovery/routing is unchanged.
+
 ## Executed verification and evidence ownership
 
 The focused new PostgreSQL/HTTP suite covers 65 cases: all four fixture kinds,
