@@ -4,7 +4,12 @@ import {
   HomeworkSubmissionStatus,
   HomeworkTargetStatus,
   UserType,
+  Prisma,
 } from '@prisma/client';
+import type {
+  HomeworkRepository,
+  HomeworkReviewSubmissionRecord,
+} from '../infrastructure/homework.repository';
 import {
   createRequestContext,
   runWithRequestContext,
@@ -38,41 +43,70 @@ describe('Homework answer review use cases', () => {
     const submission = seedReviewSubmission({
       answers: [seedAnswer()],
     });
+    const auditTransaction = {} as Prisma.TransactionClient;
+    const audited = async (
+      input: Pick<
+        Parameters<HomeworkRepository['reviewSubmission']>[0],
+        'audit'
+      >,
+      current: unknown,
+    ) => {
+      await input.audit(
+        current as HomeworkReviewSubmissionRecord,
+        auditTransaction,
+      );
+      return { outcome: 'reviewed', submission: current };
+    };
 
     return {
+      auditTransaction,
       findSubmissionForAnswerReview: jest.fn().mockResolvedValue(submission),
-      reviewSubmissionAnswers: jest.fn().mockImplementation(async (input) => ({
-        outcome: 'reviewed',
-        submission: seedReviewSubmission({
-          awardedMarks: input.awardedMarks,
-          answers: submission.answers.map((answer: any) => {
-            const review = input.reviews.find(
-              (item: any) => item.answerId === answer.id,
-            );
-            return review
-              ? {
-                  ...answer,
-                  awardedPoints: review.awardedPoints,
-                  teacherComment: review.teacherComment,
-                  reviewedAt: review.reviewedAt,
-                  reviewedByUserId: review.reviewedByUserId,
-                }
-              : answer;
-          }),
-        }),
-      })),
+      reviewSubmissionAnswers: jest
+        .fn()
+        .mockImplementation(
+          async (
+            input: Parameters<HomeworkRepository['reviewSubmissionAnswers']>[0],
+          ) =>
+            audited(
+              input,
+              seedReviewSubmission({
+                awardedMarks: input.awardedMarks,
+                answers: submission.answers.map((answer: any) => {
+                  const review = input.reviews.find(
+                    (item: any) => item.answerId === answer.id,
+                  );
+                  return review
+                    ? {
+                        ...answer,
+                        awardedPoints: review.awardedPoints,
+                        teacherComment: review.teacherComment,
+                        reviewedAt: review.reviewedAt,
+                        reviewedByUserId: review.reviewedByUserId,
+                      }
+                    : answer;
+                }),
+              }),
+            ),
+        ),
       findReviewableSubmission: jest.fn().mockResolvedValue(submission),
-      reviewSubmission: jest.fn().mockImplementation(async (input) => ({
-        outcome: 'reviewed',
-        submission: seedReviewSubmission({
-          status: HomeworkSubmissionStatus.REVIEWED,
-          awardedMarks: input.awardedMarks,
-          reviewNote: input.reviewNote,
-          reviewedAt: input.reviewedAt,
-          reviewedByUserId: input.reviewedByUserId,
-          answers: submission.answers,
-        }),
-      })),
+      reviewSubmission: jest
+        .fn()
+        .mockImplementation(
+          async (
+            input: Parameters<HomeworkRepository['reviewSubmission']>[0],
+          ) =>
+            audited(
+              input,
+              seedReviewSubmission({
+                status: HomeworkSubmissionStatus.REVIEWED,
+                awardedMarks: input.awardedMarks,
+                reviewNote: input.reviewNote,
+                reviewedAt: input.reviewedAt,
+                reviewedByUserId: input.reviewedByUserId,
+                answers: submission.answers,
+              }),
+            ),
+        ),
       ...overrides,
     };
   }
@@ -80,6 +114,75 @@ describe('Homework answer review use cases', () => {
   function createAuthRepository(): any {
     return { createAuditLog: jest.fn().mockResolvedValue(undefined) };
   }
+
+  it('distinguishes omitted review properties from own undefined, null and zero commands', async () => {
+    const cases = [
+      {
+        review: {},
+        points: 1,
+        comment: 'Retained',
+        pointsPresent: false,
+        commentPresent: false,
+      },
+      {
+        review: { awardedPoints: undefined, teacherComment: undefined },
+        points: null,
+        comment: null,
+        pointsPresent: true,
+        commentPresent: true,
+      },
+      {
+        review: { awardedPoints: null, teacherComment: null },
+        points: null,
+        comment: null,
+        pointsPresent: true,
+        commentPresent: true,
+      },
+      {
+        review: { awardedPoints: 0, teacherComment: '  ' },
+        points: 0,
+        comment: null,
+        pointsPresent: true,
+        commentPresent: true,
+      },
+    ];
+    for (const example of cases) {
+      const snapshot = seedReviewSubmission({
+        answers: [seedAnswer({ awardedPoints: 1, teacherComment: 'Retained' })],
+      });
+      const repository = createRepository({
+        findSubmissionForAnswerReview: jest.fn().mockResolvedValue(snapshot),
+      }) as HomeworkRepository;
+      const auth = createAuthRepository() as ConstructorParameters<
+        typeof ReviewHomeworkSubmissionAnswerUseCase
+      >[1];
+      const useCase = new ReviewHomeworkSubmissionAnswerUseCase(
+        repository,
+        auth,
+      );
+      const write = jest.spyOn(repository, 'reviewSubmissionAnswers');
+      await withTeacherScope(() =>
+        useCase.execute({
+          homeworkId: 'homework-1',
+          submissionId: 'submission-1',
+          answerId: 'answer-1',
+          review: example.review,
+        }),
+      );
+      expect(write).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reviews: [
+            expect.objectContaining({
+              awardedPoints: example.points,
+              teacherComment: example.comment,
+              awardedPointsChanged: example.pointsPresent,
+              teacherCommentChanged: example.commentPresent,
+            }),
+          ],
+        }),
+      );
+    }
+  });
 
   it('lets a teacher review one answer and recomputes the submission score', async () => {
     const repository = createRepository();
@@ -130,6 +233,8 @@ describe('Homework answer review use cases', () => {
         action: 'homework.answer_review.review',
         resourceType: 'homework_submission_answer',
       }),
+      (repository as { auditTransaction: Prisma.TransactionClient })
+        .auditTransaction,
     );
   });
 
@@ -321,6 +426,8 @@ describe('Homework answer review use cases', () => {
     );
     expect(authRepository.createAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'homework.submission.review' }),
+      (repository as { auditTransaction: Prisma.TransactionClient })
+        .auditTransaction,
     );
   });
 

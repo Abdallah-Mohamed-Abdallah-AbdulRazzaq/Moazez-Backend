@@ -493,12 +493,16 @@ export class ReviewHomeworkSubmissionUseCase {
       reviewedAt,
       reviewNote,
       awardedMarks,
-      ...(submission.homeworkAssignment.questions.some(
-        (question) =>
-          isHomeworkTypedType(question.type) || question.responseConfig != null,
-      )
-        ? { awardedMarksExplicit: command.awardedMarks !== undefined }
-        : {}),
+      awardedMarksExplicit: command.awardedMarks !== undefined,
+      audit: (current, tx) =>
+        this.authRepository.createAuditLog(
+          buildSubmissionAuditEntry({
+            scope,
+            action: 'homework.submission.review',
+            submission: current,
+          }),
+          tx,
+        ),
     });
 
     if (result.outcome === 'not_found') {
@@ -522,14 +526,6 @@ export class ReviewHomeworkSubmissionUseCase {
         status: result.submission.status,
       });
     }
-
-    await this.authRepository.createAuditLog(
-      buildSubmissionAuditEntry({
-        scope,
-        action: 'homework.submission.review',
-        submission: result.submission,
-      }),
-    );
 
     if (
       result.submission.answers.some((answer) =>

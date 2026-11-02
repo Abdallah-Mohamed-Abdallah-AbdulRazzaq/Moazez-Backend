@@ -95,6 +95,58 @@ describe('ST11-A real audio answers in the canonical media runtime', () => {
         .set(h.headers('student'))
         .send({})
         .expect(domain === 'Homework' ? 200 : 201);
+      if (domain === 'Homework') {
+        // The repaired review fence must accept actual verified Audio answers,
+        // under the existing Teacher review grant, without a Core manage grant.
+        await h.prisma.rolePermission.deleteMany({
+          where: {
+            roleId: h.fixture.actors.teacher.roleId,
+            permission: {
+              code: {
+                notIn: [
+                  'homework.submissions.review',
+                  'homework.assignments.view',
+                  'homework.submissions.view',
+                ],
+              },
+            },
+          },
+        });
+        const submission = await h.prisma.homeworkSubmission.findFirstOrThrow({
+          where: { homeworkTargetId: f.contextId },
+        });
+        const answer = await h.prisma.homeworkSubmissionAnswer.findFirstOrThrow(
+          {
+            where: {
+              homeworkSubmissionId: submission.id,
+              homeworkQuestionId: f.questionId,
+            },
+          },
+        );
+        const review = f.author + '/submissions/' + submission.id;
+        await h
+          .http()
+          .patch(review + '/answers/' + answer.id + '/review')
+          .set(h.headers())
+          .send({ awardedPoints: 1 })
+          .expect(200);
+        await h
+          .http()
+          .post(review + '/review')
+          .set(h.headers())
+          .send({})
+          .expect(200);
+        const reviewed = await h.prisma.homeworkSubmission.findUniqueOrThrow({
+          where: { id: submission.id },
+        });
+        expect(reviewed.status).toBe('REVIEWED');
+        expect(Number(reviewed.awardedMarks)).toBe(1);
+        expect(
+          await h.prisma.gradeItem.count({
+            where: { schoolId: submission.schoolId },
+          }),
+        ).toBe(0);
+      }
       const session = await h.prisma.fileUploadSession.findUniqueOrThrow({
         where: { id: upload.ready.uploadId },
       });

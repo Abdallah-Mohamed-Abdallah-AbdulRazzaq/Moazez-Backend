@@ -80,13 +80,13 @@ export class ReviewHomeworkAnswerDto {
   @Type(() => Number)
   @IsNumber({ allowInfinity: false, allowNaN: false, maxDecimalPlaces: 2 })
   @Min(0)
-  awardedPoints?: number | null;
+  declare awardedPoints?: number | null;
 
   @IsOptional()
   @Transform(({ value }) => trimText(value))
   @IsString()
   @MaxLength(2000)
-  teacherComment?: string | null;
+  declare teacherComment?: string | null;
 }
 
 export class BulkReviewHomeworkAnswerItemDto extends ReviewHomeworkAnswerDto {
