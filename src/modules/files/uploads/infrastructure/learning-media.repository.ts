@@ -8,6 +8,7 @@ import {
   UserType,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import { hasRetainedFileReferences } from '../../shared/infrastructure/file-lifetime.repository';
 import type {
   LearningMediaAuditContext,
   LearningMediaFinalizeInput,
@@ -232,28 +233,6 @@ export class LearningMediaRepository {
           session.finalCleanupClaimedAt < staleBefore ||
           allowExistingClaim);
 
-      if (cleanFinal && session.status === FileUploadSessionStatus.READY) {
-        if (
-          session.stagingObjectKey !== null &&
-          session.stagingObjectDeletedAt === null
-        ) {
-          cleanFinal = false;
-        }
-        if (!session.fileId) return null;
-        const file = await tx.file.findFirst({
-          where: {
-            id: session.fileId,
-            schoolId: session.schoolId,
-            deletedAt: null,
-          },
-          select: { id: true },
-        });
-        if (!file) cleanFinal = false;
-        const references = await tx.lessonContentItem.count({
-          where: { fileId: session.fileId, deletedAt: null },
-        });
-        if (references !== 0) cleanFinal = false;
-      }
       if (
         cleanFinal &&
         ((target === 'final' &&
@@ -265,6 +244,33 @@ export class LearningMediaRepository {
             )))
       ) {
         cleanFinal = false;
+      }
+      if (cleanFinal && session.status === FileUploadSessionStatus.READY) {
+        if (
+          session.stagingObjectKey !== null &&
+          session.stagingObjectDeletedAt === null
+        ) {
+          cleanFinal = false;
+        }
+        if (!session.fileId) return null;
+        if (!cleanFinal) return null;
+        // File is the serialization parent used by every live-reference trigger.
+        // Retire before releasing the lock or requesting physical deletion.
+        const file = await this.lockCleanupFile(
+          tx,
+          session.fileId,
+          session.schoolId,
+        );
+        if (!file || (await hasRetainedFileReferences(tx, file.id)))
+          return null;
+        if (file.deletedAt === null) {
+          const retired = await tx.file.updateMany({
+            where: { id: file.id, schoolId: session.schoolId, deletedAt: null },
+            data: { deletedAt: now },
+          });
+          if (retired.count !== 1)
+            throw new Error('learning_media_cleanup_file_retirement_failed');
+        }
       }
       if (!cleanStaging && !cleanFinal) return null;
 
@@ -307,10 +313,15 @@ export class LearningMediaRepository {
         session.status === FileUploadSessionStatus.READY &&
         session.fileId
       ) {
-        await tx.file.updateMany({
-          where: { id: session.fileId, deletedAt: null },
-          data: { deletedAt: input.now },
-        });
+        const file = await this.lockCleanupFile(
+          tx,
+          session.fileId,
+          session.schoolId,
+        );
+        if (!file || file.deletedAt === null)
+          throw new Error('learning_media_cleanup_file_not_retired');
+        if (await hasRetainedFileReferences(tx, file.id))
+          throw new Error('learning_media_cleanup_retained_file');
         status = FileUploadSessionStatus.PURGED;
       } else if (
         input.finalDeleted &&
@@ -358,6 +369,19 @@ export class LearningMediaRepository {
         },
       );
     });
+  }
+
+  private async lockCleanupFile(
+    tx: Prisma.TransactionClient,
+    fileId: string,
+    schoolId: string,
+  ): Promise<{ id: string; deletedAt: Date | null } | null> {
+    const rows = await tx.$queryRaw<
+      Array<{ id: string; deletedAt: Date | null }>
+    >`
+      SELECT id, deleted_at AS "deletedAt" FROM files
+      WHERE id = ${fileId}::uuid AND school_id = ${schoolId}::uuid FOR UPDATE`;
+    return rows[0] ?? null;
   }
 
   private async createOrFindIntent(

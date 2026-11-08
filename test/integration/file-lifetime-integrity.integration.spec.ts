@@ -29,6 +29,8 @@ import { AcademicContentCleanupWorker } from '../../src/modules/academics/academ
 import { AcademicContentFileRepository } from '../../src/modules/academics/academic-content/files/infrastructure/academic-content-file.repository';
 import { AttachmentsRepository } from '../../src/modules/files/attachments/infrastructure/attachments.repository';
 import { hasRetainedFileReferences } from '../../src/modules/files/shared/infrastructure/file-lifetime.repository';
+import { LearningMediaCleanupService } from '../../src/modules/files/uploads/application/learning-media-cleanup.service';
+import { LearningMediaRepository } from '../../src/modules/files/uploads/infrastructure/learning-media.repository';
 
 function barrier() {
   let release = () => {};
@@ -109,6 +111,56 @@ describe('G13 shared File lifetime integrity on PostgreSQL', () => {
     storage,
   );
   const attachments = new AttachmentsRepository(prisma);
+  const mediaRepository = new LearningMediaRepository(prisma);
+  const mediaCleanup = new LearningMediaCleanupService(
+    {} as BullmqService,
+    mediaRepository,
+    storage,
+  );
+
+  async function readyLessonFile() {
+    const createdAt = new Date(Date.now() - 8 * 86_400_000);
+    const file = await prisma.file.create({
+      data: {
+        organizationId: ids.organization,
+        schoolId: ids.school,
+        bucket: `acc9fr4-${tag}`,
+        objectKey: `lesson/${randomUUID()}.pdf`,
+        originalName: 'lesson.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: BigInt(pdf.length),
+        checksumSha256: 'a'.repeat(64),
+        uploaderId: ids.user,
+      },
+    });
+    objects.set(file.objectKey, pdf);
+    const session = await prisma.fileUploadSession.create({
+      data: {
+        organizationId: ids.organization,
+        schoolId: ids.school,
+        createdByUserId: ids.user,
+        clientRequestId: randomUUID(),
+        purpose: 'LESSON_CONTENT',
+        originalName: file.originalName,
+        expectedMimeType: file.mimeType,
+        expectedSizeBytes: file.sizeBytes,
+        verifiedMimeType: file.mimeType,
+        actualSizeBytes: file.sizeBytes,
+        checksumSha256: file.checksumSha256,
+        finalBucket: file.bucket,
+        finalObjectKey: file.objectKey,
+        status: 'READY',
+        fileId: file.id,
+        createdAt,
+        expiresAt: createdAt,
+        completedAt: createdAt,
+        verifiedAt: createdAt,
+        finalCleanupEligibleAt: new Date(createdAt.getTime() + 7 * 86_400_000),
+        verificationVersion: 'ffprobe-5.1.9-debian12-learning-media-v1',
+      },
+    });
+    return { file, uploadId: session.id };
+  }
 
   function asManager<T>(action: () => Promise<T>) {
     return runWithRequestContext(createRequestContext(), () => {
@@ -299,6 +351,19 @@ describe('G13 shared File lifetime integrity on PostgreSQL', () => {
       await prisma.academicContentRevisionAsset.deleteMany({
         where: { schoolId: ids.school },
       });
+      await prisma.lessonContentItem.deleteMany({
+        where: { schoolId: ids.school },
+      });
+      await prisma.curriculumLesson.deleteMany({
+        where: { schoolId: ids.school },
+      });
+      await prisma.curriculumUnit.deleteMany({
+        where: { schoolId: ids.school },
+      });
+      await prisma.curriculum.deleteMany({ where: { schoolId: ids.school } });
+      await prisma.subject.deleteMany({ where: { schoolId: ids.school } });
+      await prisma.grade.deleteMany({ where: { schoolId: ids.school } });
+      await prisma.stage.deleteMany({ where: { schoolId: ids.school } });
       await prisma.academicContentAsset.deleteMany({
         where: { schoolId: ids.school },
       });
@@ -324,6 +389,229 @@ describe('G13 shared File lifetime integrity on PostgreSQL', () => {
     } finally {
       await prisma.$disconnect();
     }
+  });
+
+  it('Media retains a READY lesson File referenced by a generic attachment', async () => {
+    const upload = await readyLessonFile();
+    await attachments.createAttachment(attachmentData(upload.file.id));
+    expect(await mediaCleanup.cleanUpload(upload.uploadId, 'final')).toBe(
+      false,
+    );
+    expect(deleteObject).not.toHaveBeenCalled();
+    expect(
+      (await prisma.file.findUniqueOrThrow({ where: { id: upload.file.id } }))
+        .deletedAt,
+    ).toBeNull();
+  });
+
+  it.each([false, true])(
+    'Media retains a lesson consumer including historical deleted=%s',
+    async (deleted) => {
+      const upload = await readyLessonFile();
+      const name = `${tag}-${deleted}`;
+      const stage = await prisma.stage.create({
+        data: { schoolId: ids.school, nameAr: name, nameEn: name },
+      });
+      const grade = await prisma.grade.create({
+        data: {
+          schoolId: ids.school,
+          stageId: stage.id,
+          nameAr: tag,
+          nameEn: tag,
+        },
+      });
+      const subject = await prisma.subject.create({
+        data: { schoolId: ids.school, nameAr: name, nameEn: name },
+      });
+      const curriculum = await prisma.curriculum.create({
+        data: {
+          schoolId: ids.school,
+          academicYearId: ids.year,
+          termId: ids.term,
+          gradeId: grade.id,
+          subjectId: subject.id,
+          title: tag,
+          createdByUserId: ids.user,
+        },
+      });
+      const unit = await prisma.curriculumUnit.create({
+        data: { schoolId: ids.school, curriculumId: curriculum.id, title: tag },
+      });
+      const lesson = await prisma.curriculumLesson.create({
+        data: {
+          schoolId: ids.school,
+          curriculumId: curriculum.id,
+          unitId: unit.id,
+          title: tag,
+        },
+      });
+      await prisma.lessonContentItem.create({
+        data: {
+          schoolId: ids.school,
+          curriculumId: curriculum.id,
+          unitId: unit.id,
+          lessonId: lesson.id,
+          type: 'FILE',
+          title: tag,
+          fileId: upload.file.id,
+          createdByUserId: ids.user,
+          deletedAt: deleted ? new Date() : null,
+        },
+      });
+      expect(await mediaCleanup.cleanUpload(upload.uploadId, 'final')).toBe(
+        false,
+      );
+      expect(deleteObject).not.toHaveBeenCalled();
+      expect(
+        (await prisma.file.findUniqueOrThrow({ where: { id: upload.file.id } }))
+          .deletedAt,
+      ).toBeNull();
+    },
+  );
+
+  it('Media commits the File retirement fence before a late attachment or physical deletion', async () => {
+    const upload = await readyLessonFile();
+    const originalClaim = mediaRepository.claimCleanup.bind(mediaRepository);
+    jest
+      .spyOn(mediaRepository, 'claimCleanup')
+      .mockImplementation(async (...args) => {
+        const claim = await originalClaim(...args);
+        // On the unfixed source this fails before storage can delete retained data.
+        expect(
+          (
+            await prisma.file.findUniqueOrThrow({
+              where: { id: upload.file.id },
+            })
+          ).deletedAt,
+        ).not.toBeNull();
+        await expect(
+          attachments.createAttachment(attachmentData(upload.file.id)),
+        ).rejects.toMatchObject({ code: 'P2003' });
+        return claim;
+      });
+    beforeDelete = async () => {
+      expect(await hasRetainedFileReferences(prisma, upload.file.id)).toBe(
+        false,
+      );
+      expect(
+        (await prisma.file.findUniqueOrThrow({ where: { id: upload.file.id } }))
+          .deletedAt,
+      ).not.toBeNull();
+    };
+    expect(await mediaCleanup.cleanUpload(upload.uploadId, 'final')).toBe(true);
+    expect(deleteObject).toHaveBeenCalledTimes(1);
+    expect(
+      (
+        await prisma.fileUploadSession.findUniqueOrThrow({
+          where: { id: upload.uploadId },
+        })
+      ).status,
+    ).toBe('PURGED');
+  });
+
+  it('Media waits for a real File linker and retains its committed attachment', async () => {
+    const upload = await readyLessonFile();
+    const linked = barrier();
+    const allowCommit = barrier();
+    let linkerPid = 0;
+    const linking = prisma.$transaction(
+      async (tx) => {
+        const [backend] = await tx.$queryRaw<
+          Array<{ pid: number }>
+        >`SELECT pg_catalog.pg_backend_pid() AS pid`;
+        linkerPid = backend.pid;
+        await new AttachmentsRepository(tx as never).createAttachment(
+          attachmentData(upload.file.id),
+        );
+        linked.release();
+        await allowCommit.promise;
+      },
+      { timeout: 30_000 },
+    );
+    await linked.promise;
+    const cleaning = mediaCleanup.cleanUpload(upload.uploadId, 'final');
+    try {
+      const deadline = Date.now() + 10_000;
+      let cleanupPid = 0;
+      while (!cleanupPid && Date.now() < deadline) {
+        const rows = await prisma.$queryRaw<Array<{ pid: number }>>`
+          SELECT pid FROM pg_catalog.pg_stat_activity
+          WHERE wait_event_type = 'Lock' AND query LIKE '%FROM files%FOR UPDATE%'
+            AND ${linkerPid} = ANY(pg_catalog.pg_blocking_pids(pid))`;
+        cleanupPid = rows[0]?.pid ?? 0;
+      }
+      expect(cleanupPid).not.toBe(0);
+      await waitingAtLock(cleanupPid, 'FROM files', linkerPid);
+      expect(deleteObject).not.toHaveBeenCalled();
+      allowCommit.release();
+      await linking;
+      expect(await cleaning).toBe(false);
+      expect(deleteObject).not.toHaveBeenCalled();
+      expect(await hasRetainedFileReferences(prisma, upload.file.id)).toBe(
+        true,
+      );
+      expect(
+        (await prisma.file.findUniqueOrThrow({ where: { id: upload.file.id } }))
+          .deletedAt,
+      ).toBeNull();
+    } finally {
+      allowCommit.release();
+      await Promise.allSettled([linking, cleaning]);
+    }
+  });
+
+  it('Media retries a provider failure without reopening the retired File', async () => {
+    const upload = await readyLessonFile();
+    deleteObject.mockRejectedValueOnce(new Error('provider unavailable'));
+    await expect(
+      mediaCleanup.cleanUpload(upload.uploadId, 'final'),
+    ).rejects.toThrow('provider unavailable');
+    const retired = await prisma.file.findUniqueOrThrow({
+      where: { id: upload.file.id },
+    });
+    expect(retired.deletedAt).not.toBeNull();
+    expect(objects.has(upload.file.objectKey)).toBe(true);
+    await expect(
+      attachments.createAttachment(attachmentData(upload.file.id)),
+    ).rejects.toMatchObject({ code: 'P2003' });
+    expect(await mediaCleanup.cleanUpload(upload.uploadId, 'final')).toBe(true);
+    expect(
+      (await prisma.file.findUniqueOrThrow({ where: { id: upload.file.id } }))
+        .deletedAt,
+    ).toEqual(retired.deletedAt);
+    expect(
+      (
+        await prisma.fileUploadSession.findUniqueOrThrow({
+          where: { id: upload.uploadId },
+        })
+      ).status,
+    ).toBe('PURGED');
+  });
+
+  it('Media recovers an absent object after finalization interruption without reopening the File', async () => {
+    const upload = await readyLessonFile();
+    jest
+      .spyOn(mediaRepository, 'finishCleanup')
+      .mockRejectedValueOnce(new Error('finalization interrupted'));
+    await expect(
+      mediaCleanup.cleanUpload(upload.uploadId, 'final'),
+    ).rejects.toThrow('finalization interrupted');
+    expect(objects.has(upload.file.objectKey)).toBe(false);
+    expect(
+      (await prisma.file.findUniqueOrThrow({ where: { id: upload.file.id } }))
+        .deletedAt,
+    ).not.toBeNull();
+    expect(await mediaCleanup.cleanUpload(upload.uploadId, 'final')).toBe(true);
+    expect(
+      (
+        await prisma.fileUploadSession.findUniqueOrThrow({
+          where: { id: upload.uploadId },
+        })
+      ).status,
+    ).toBe('PURGED');
+    expect(await mediaCleanup.cleanUpload(upload.uploadId, 'final')).toBe(
+      false,
+    );
   });
 
   it('matches every DMMF physical File FK with exact BEFORE INSERT/UPDATE catalog triggers', async () => {
