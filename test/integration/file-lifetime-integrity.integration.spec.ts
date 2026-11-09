@@ -31,6 +31,9 @@ import { AttachmentsRepository } from '../../src/modules/files/attachments/infra
 import { hasRetainedFileReferences } from '../../src/modules/files/shared/infrastructure/file-lifetime.repository';
 import { LearningMediaCleanupService } from '../../src/modules/files/uploads/application/learning-media-cleanup.service';
 import { LearningMediaRepository } from '../../src/modules/files/uploads/infrastructure/learning-media.repository';
+import { BrandingRepository } from '../../src/modules/settings/branding/infrastructure/branding.repository';
+import { ProcessBrandingLogoCleanupUseCase } from '../../src/modules/settings/branding/application/process-branding-logo-cleanup.use-case';
+import type { BrandingLogoCleanupQueueService } from '../../src/modules/settings/branding/application/branding-logo-cleanup-queue.service';
 
 function barrier() {
   let release = () => {};
@@ -47,10 +50,11 @@ describe('G13 shared File lifetime integrity on PostgreSQL', () => {
   const tag = randomUUID().slice(0, 8);
   const pdf = Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\n');
   const objects = new Map<string, Buffer>();
+  let physicalDeleteEffects = 0;
   let beforeDelete: (() => Promise<void>) | undefined;
   const deleteObject = jest.fn(async (input: { objectKey: string }) => {
     if (beforeDelete) await beforeDelete();
-    objects.delete(input.objectKey);
+    if (objects.delete(input.objectKey)) physicalDeleteEffects += 1;
   });
   const storage = new StorageService(
     {
@@ -117,6 +121,46 @@ describe('G13 shared File lifetime integrity on PostgreSQL', () => {
     mediaRepository,
     storage,
   );
+  const branding = new BrandingRepository(prisma);
+  const brandingCleanup = new ProcessBrandingLogoCleanupUseCase(
+    branding,
+    storage,
+    {} as BrandingLogoCleanupQueueService,
+  );
+  function logoScope() {
+    return {
+      actorId: ids.user,
+      userType: UserType.SCHOOL_USER,
+      organizationId: ids.organization,
+      schoolId: ids.school,
+    };
+  }
+  function logoMetadata() {
+    const body = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64',
+    );
+    const objectKey = `schools/${ids.school}/branding/logos/${randomUUID()}.png`;
+    objects.set(objectKey, body);
+    return {
+      bucket: `acc9fr4-${tag}`,
+      objectKey,
+      originalName: 'owned.png',
+      mimeType: 'image/png',
+      sizeBytes: BigInt(body.length),
+      checksumSha256: 'a'.repeat(64),
+    };
+  }
+  async function readyLogo() {
+    const result = await branding.replaceManagedLogo({
+      scope: logoScope(),
+      file: logoMetadata(),
+      expectedPrivateBucket: `acc9fr4-${tag}`,
+    });
+    return prisma.file.findUniqueOrThrow({
+      where: { id: result.profile.logoFileId! },
+    });
+  }
 
   async function readyLessonFile() {
     const createdAt = new Date(Date.now() - 8 * 86_400_000);
@@ -335,6 +379,7 @@ describe('G13 shared File lifetime integrity on PostgreSQL', () => {
     jest.restoreAllMocks();
     jest.clearAllMocks();
     beforeDelete = undefined;
+    physicalDeleteEffects = 0;
   });
 
   afterAll(async () => {
@@ -377,6 +422,9 @@ describe('G13 shared File lifetime integrity on PostgreSQL', () => {
       await prisma.academicContent.deleteMany({
         where: { schoolId: ids.school },
       });
+      await prisma.schoolProfile.deleteMany({
+        where: { schoolId: ids.school },
+      });
       await prisma.file.deleteMany({ where: { schoolId: ids.school } });
       await prisma.term.deleteMany({ where: { schoolId: ids.school } });
       await prisma.academicYear.deleteMany({ where: { schoolId: ids.school } });
@@ -389,6 +437,176 @@ describe('G13 shared File lifetime integrity on PostgreSQL', () => {
     } finally {
       await prisma.$disconnect();
     }
+  });
+
+  it.each(['delete', 'replace'] as const)(
+    'Branding retains an attached File on %s',
+    async (operation) => {
+      const file = await readyLogo();
+      await attachments.createAttachment(attachmentData(file.id));
+      const result =
+        operation === 'delete'
+          ? await branding.deleteManagedLogo(logoScope(), `acc9fr4-${tag}`)
+          : await branding.replaceManagedLogo({
+              scope: logoScope(),
+              file: logoMetadata(),
+              expectedPrivateBucket: `acc9fr4-${tag}`,
+            });
+      // The original implementation fails before any storage request is made.
+      expect(result.previousFile).toBeNull();
+      expect(
+        (await prisma.file.findUniqueOrThrow({ where: { id: file.id } }))
+          .deletedAt,
+      ).toBeNull();
+      await brandingCleanup.cleanup(file.id);
+      expect(deleteObject).not.toHaveBeenCalled();
+      expect(objects.has(file.objectKey)).toBe(true);
+    },
+  );
+
+  it('Branding queued cleanup preserves a previously retired but retained File', async () => {
+    const file = await readyLogo();
+    await attachments.createAttachment(attachmentData(file.id));
+    await prisma.schoolProfile.update({
+      where: { schoolId: ids.school },
+      data: { logoFileId: null },
+    });
+    // Model retained history produced by the old implementation; do not reopen it.
+    const retiredAt = new Date();
+    await prisma.file.update({
+      where: { id: file.id },
+      data: { deletedAt: retiredAt },
+    });
+    await brandingCleanup.cleanup(file.id);
+    expect(deleteObject).not.toHaveBeenCalled();
+    expect(objects.has(file.objectKey)).toBe(true);
+    expect(
+      (await prisma.file.findUniqueOrThrow({ where: { id: file.id } }))
+        .deletedAt,
+    ).toEqual(retiredAt);
+  });
+
+  it('Branding retires a true orphan, rejects a late linker and tolerates repeated provider deletion', async () => {
+    const file = await readyLogo();
+    expect(
+      (await branding.deleteManagedLogo(logoScope(), `acc9fr4-${tag}`))
+        .previousFile?.id,
+    ).toBe(file.id);
+    await expect(
+      attachments.createAttachment(attachmentData(file.id)),
+    ).rejects.toMatchObject({ code: 'P2003' });
+    await brandingCleanup.cleanup(file.id);
+    await brandingCleanup.cleanup(file.id);
+    expect(deleteObject).toHaveBeenCalledTimes(2);
+    expect(physicalDeleteEffects).toBe(1);
+    expect(objects.has(file.objectKey)).toBe(false);
+  });
+
+  it('Branding waits at File for a linker and observes the committed child', async () => {
+    const file = await readyLogo();
+    const linked = barrier(),
+      allowCommit = barrier();
+    let linkerPid = 0;
+    const linking = prisma.$transaction(
+      async (tx) => {
+        const [backend] = await tx.$queryRaw<
+          Array<{ pid: number }>
+        >`SELECT pg_backend_pid() AS pid`;
+        linkerPid = backend.pid;
+        await new AttachmentsRepository(tx as never).createAttachment(
+          attachmentData(file.id),
+        );
+        linked.release();
+        await allowCommit.promise;
+      },
+      { timeout: 30_000 },
+    );
+    await linked.promise;
+    const clearing = branding.deleteManagedLogo(logoScope(), `acc9fr4-${tag}`);
+    try {
+      let cleanupPid = 0;
+      const deadline = Date.now() + 10_000;
+      while (!cleanupPid && Date.now() < deadline) {
+        const rows = await prisma.$queryRaw<Array<{ pid: number }>>`
+          SELECT pid FROM pg_stat_activity WHERE wait_event_type='Lock'
+          AND query LIKE '%FROM files%FOR UPDATE%'
+          AND ${linkerPid}=ANY(pg_blocking_pids(pid))`;
+        cleanupPid = rows[0]?.pid ?? 0;
+      }
+      expect(cleanupPid).not.toBe(0);
+      await waitingAtLock(cleanupPid, 'FROM files', linkerPid);
+      allowCommit.release();
+      await linking;
+      expect((await clearing).previousFile).toBeNull();
+      expect(
+        (await prisma.file.findUniqueOrThrow({ where: { id: file.id } }))
+          .deletedAt,
+      ).toBeNull();
+      expect(await hasRetainedFileReferences(prisma, file.id)).toBe(true);
+      expect(deleteObject).not.toHaveBeenCalled();
+    } finally {
+      allowCommit.release();
+      await Promise.allSettled([linking, clearing]);
+    }
+  });
+
+  it('Branding concurrent replacements leave exactly one current unretired logo', async () => {
+    const initial = await readyLogo();
+    const results = await Promise.all(
+      [0, 1].map(() =>
+        branding.replaceManagedLogo({
+          scope: logoScope(),
+          file: logoMetadata(),
+          expectedPrivateBucket: `acc9fr4-${tag}`,
+        }),
+      ),
+    );
+    const fileIds = [initial.id, ...results.map((r) => r.profile.logoFileId!)];
+    const files = await prisma.file.findMany({
+      where: { id: { in: fileIds } },
+    });
+    const profile = await prisma.schoolProfile.findUniqueOrThrow({
+      where: { schoolId: ids.school },
+    });
+    expect(files).toHaveLength(3);
+    expect(files.filter((f) => f.deletedAt === null).map((f) => f.id)).toEqual([
+      profile.logoFileId,
+    ]);
+    expect(new Set(results.map((r) => r.previousFile?.id))).toEqual(
+      new Set(fileIds.filter((id) => id !== profile.logoFileId)),
+    );
+  });
+
+  it('Media resumes a committed claim after interruption before any provider call', async () => {
+    const upload = await readyLessonFile(),
+      now = new Date();
+    const claim = await mediaRepository.claimCleanup(
+      upload.uploadId,
+      'final',
+      now,
+      new Date(now.getTime() - 900_000),
+    );
+    expect(claim?.cleanFinal).toBe(true);
+    expect(deleteObject).not.toHaveBeenCalled();
+    expect(
+      (await prisma.file.findUniqueOrThrow({ where: { id: upload.file.id } }))
+        .deletedAt,
+    ).not.toBeNull();
+    const restarted = new LearningMediaCleanupService(
+      {} as BullmqService,
+      new LearningMediaRepository(prisma),
+      storage,
+    );
+    expect(await restarted.cleanUpload(upload.uploadId, 'final')).toBe(true);
+    expect(await restarted.cleanUpload(upload.uploadId, 'final')).toBe(false);
+    expect(physicalDeleteEffects).toBe(1);
+    expect(
+      (
+        await prisma.fileUploadSession.findUniqueOrThrow({
+          where: { id: upload.uploadId },
+        })
+      ).status,
+    ).toBe('PURGED');
   });
 
   it('Media retains a READY lesson File referenced by a generic attachment', async () => {
