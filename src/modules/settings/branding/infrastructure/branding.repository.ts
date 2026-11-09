@@ -9,6 +9,7 @@ import {
 } from '@prisma/client';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import { hasRetainedFileReferences } from '../../../files/shared/infrastructure/file-lifetime.repository';
 import {
   BrandingLogoActorScope,
   BrandingLogoCleanupCursor,
@@ -124,7 +125,7 @@ export class BrandingRepository {
     profile: SchoolProfile;
     previousFile: ManagedBrandingLogoFile | null;
   }> {
-    return this.runSerializable(async (tx) => {
+    return this.runLogoTransaction(async (tx) => {
       await this.requireActiveSchoolOrganization(tx, input.scope);
 
       const previousProfile = await tx.schoolProfile.findUnique({
@@ -174,7 +175,11 @@ export class BrandingRepository {
       });
 
       let previousFile: ManagedBrandingLogoFile | null = null;
-      if (previousFileIsEligibleManagedLogo && previousLinkedFile) {
+      if (
+        previousFileIsEligibleManagedLogo &&
+        previousLinkedFile &&
+        (await this.canRetireLogoFile(tx, previousLinkedFile.id, input.scope))
+      ) {
         const deletedAt = new Date();
         const updateResult = await tx.file.updateMany({
           where: {
@@ -236,7 +241,7 @@ export class BrandingRepository {
     changed: boolean;
     previousFile: ManagedBrandingLogoFile | null;
   }> {
-    return this.runSerializable(async (tx) => {
+    return this.runLogoTransaction(async (tx) => {
       await this.requireActiveSchoolOrganization(tx, input);
 
       const profile = await tx.schoolProfile.findUnique({
@@ -270,7 +275,11 @@ export class BrandingRepository {
       }
 
       let previousFile: ManagedBrandingLogoFile | null = null;
-      if (previousFileIsEligibleManagedLogo && linkedFile) {
+      if (
+        previousFileIsEligibleManagedLogo &&
+        linkedFile &&
+        (await this.canRetireLogoFile(tx, linkedFile.id, input))
+      ) {
         const deletedAt = new Date();
         const updateResult = await tx.file.updateMany({
           where: {
@@ -363,6 +372,10 @@ export class BrandingRepository {
         school: { select: { organizationId: true } },
       },
     });
+    // Old cleanup jobs may name Files retired while a consumer still retained
+    // them. Retirement prevents new links; it does not erase existing ones.
+    if (file && (await hasRetainedFileReferences(this.prisma, file.id)))
+      return null;
     return file
       ? {
           ...file,
@@ -417,6 +430,13 @@ export class BrandingRepository {
     tx: Prisma.TransactionClient,
     scope: BrandingLogoActorScope,
   ): Promise<void> {
+    // Serialize logo changes before reading the profile. NO KEY UPDATE stays
+    // compatible with child School FK checks while we wait for their File lock.
+    await tx.$queryRaw`
+      SELECT id FROM schools
+      WHERE id = ${scope.schoolId}::uuid
+        AND organization_id = ${scope.organizationId}::uuid
+      FOR NO KEY UPDATE`;
     const school = await tx.school.findFirst({
       where: {
         id: scope.schoolId,
@@ -431,6 +451,22 @@ export class BrandingRepository {
       select: { id: true },
     });
     if (!school) throw new NotFoundDomainException('Resource not found');
+  }
+
+  private async canRetireLogoFile(
+    tx: Prisma.TransactionClient,
+    fileId: string,
+    scope: BrandingLogoActorScope,
+  ): Promise<boolean> {
+    const locked = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM files
+      WHERE id = ${fileId}::uuid AND school_id = ${scope.schoolId}::uuid
+        AND organization_id = ${scope.organizationId}::uuid
+        AND deleted_at IS NULL
+      FOR UPDATE`;
+    return (
+      locked.length === 1 && !(await hasRetainedFileReferences(tx, fileId))
+    );
   }
 
   private isEligiblePreviousManagedFile(
@@ -452,7 +488,7 @@ export class BrandingRepository {
     );
   }
 
-  private async runSerializable<T>(
+  private async runLogoTransaction<T>(
     operation: (tx: Prisma.TransactionClient) => Promise<T>,
   ): Promise<T> {
     for (
@@ -462,7 +498,9 @@ export class BrandingRepository {
     ) {
       try {
         return await this.prisma.$transaction(operation, {
-          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          // After waiting for a File linker, the retention query must see that
+          // linker's committed child. The School lock serializes logo changes.
+          isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
         });
       } catch (error: unknown) {
         if (

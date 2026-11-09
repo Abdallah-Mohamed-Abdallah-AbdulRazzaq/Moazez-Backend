@@ -49,7 +49,7 @@ const INELIGIBLE_LINKED_FILE_CASES = [
 ] as const;
 
 describe('BrandingRepository serialized lifecycle', () => {
-  it('retries P2034 conflicts at Serializable isolation and succeeds within the bound', async () => {
+  it('retries P2034 conflicts at ReadCommitted isolation and succeeds within the bound', async () => {
     const state = createSerializedPrisma();
     state.prisma.$transaction
       .mockRejectedValueOnce(transactionConflict())
@@ -69,7 +69,7 @@ describe('BrandingRepository serialized lifecycle', () => {
     expect(state.prisma.$transaction).toHaveBeenCalledTimes(3);
     for (const call of state.prisma.$transaction.mock.calls) {
       expect(call[1]).toEqual({
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
       });
     }
     expect(activeFiles(state)).toHaveLength(1);
@@ -346,6 +346,20 @@ function createSerializedPrisma() {
   const audits: Array<Record<string, unknown>> = [];
 
   const transaction = {
+    $queryRaw: jest.fn((query: TemplateStringsArray, ...values: unknown[]) => {
+      const sql = query.join('?');
+      if (sql.includes('FROM schools'))
+        return Promise.resolve([{ id: SCHOOL_ID }]);
+      if (sql.includes('AS retained'))
+        return Promise.resolve([{ retained: false }]);
+      if (sql.includes('FROM files') && sql.includes('FOR UPDATE')) {
+        const file = files.get(String(values[0]));
+        return Promise.resolve(
+          file && file.deletedAt === null ? [{ id: file.id }] : [],
+        );
+      }
+      throw new Error('unexpected_branding_query');
+    }),
     school: {
       findFirst: jest.fn().mockResolvedValue({ id: SCHOOL_ID }),
     },
