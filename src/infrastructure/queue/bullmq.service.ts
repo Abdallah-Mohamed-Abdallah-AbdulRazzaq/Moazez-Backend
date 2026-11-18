@@ -8,6 +8,7 @@ import {
   resolveRedisConnectionConfiguration,
   type RedisConnectionConfiguration,
 } from '../../config/redis-connection.options';
+import { createCoreQueueAttribution } from './queue-attribution.events';
 
 const DEFAULT_REMOVE_ON_COMPLETE = 100;
 const DEFAULT_REMOVE_ON_FAIL = 500;
@@ -189,6 +190,7 @@ class BullmqWorkerRedisClient extends IORedis {
 @Injectable()
 export class BullmqService implements OnModuleDestroy {
   private readonly logger = new Logger(BullmqService.name);
+  private readonly recordCoreAttribution: boolean;
   private readonly redisConnectionConfiguration: RedisConnectionConfiguration;
   private readonly connection: IORedis;
   private readonly sharedStreamSettlement: () => Promise<void>;
@@ -228,6 +230,8 @@ export class BullmqService implements OnModuleDestroy {
   private shutdownPromise: Promise<void> | null = null;
 
   constructor(configService: ConfigService) {
+    this.recordCoreAttribution =
+      configService.get<string>('DATABASE_RUNTIME_ROLE') === 'core-worker';
     this.redisConnectionConfiguration = resolveRedisConnectionConfiguration(
       configService,
       'queue',
@@ -433,13 +437,17 @@ export class BullmqService implements OnModuleDestroy {
   hasAvailableWorkers(queueNames: readonly string[]): boolean {
     return queueNames.every((queueName) =>
       this.workers.some(
-        (worker) =>
-          worker.name === queueName &&
-          this.workerRunAvailable.get(worker) === true &&
-          worker.closing === undefined &&
-          worker.isRunning() &&
-          !worker.isPaused(),
+        (worker) => worker.name === queueName && this.isWorkerAvailable(worker),
       ),
+    );
+  }
+
+  private isWorkerAvailable(worker: Worker): boolean {
+    return (
+      this.workerRunAvailable.get(worker) === true &&
+      worker.closing === undefined &&
+      worker.isRunning() &&
+      !worker.isPaused()
     );
   }
 
@@ -528,13 +536,17 @@ export class BullmqService implements OnModuleDestroy {
     };
   }
 
+
   createWorker<TData extends object, TResult = unknown>(
     queueName: string,
     processor: Processor<TData, TResult, string>,
   ): Worker<TData, TResult, string> {
+    const attribution = this.recordCoreAttribution
+      ? createCoreQueueAttribution(queueName, processor)
+      : undefined;
     const worker = new Worker<TData, TResult, string>(
       queueName,
-      processor,
+      attribution?.processor ?? processor,
       { connection: this.getWorkerConnection(), autorun: false },
       WorkerShutdownRedisConnection,
     );
@@ -585,7 +597,22 @@ export class BullmqService implements OnModuleDestroy {
         worker.emit('error', error);
       },
     );
-    this.workerRuns.set(worker as unknown as Worker, run);
+    const registeredWorker = worker as unknown as Worker;
+    this.workerRuns.set(registeredWorker, run);
+    if (attribution) {
+      void worker
+        .waitUntilReady()
+        .then(() => {
+          if (
+            !this.isShuttingDown &&
+            worker.name === queueName &&
+            this.isWorkerAvailable(registeredWorker)
+          ) {
+            attribution.recordRegistration();
+          }
+        })
+        .catch(() => undefined);
+    }
     return worker;
   }
 
