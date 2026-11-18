@@ -190,7 +190,6 @@ class BullmqWorkerRedisClient extends IORedis {
 @Injectable()
 export class BullmqService implements OnModuleDestroy {
   private readonly logger = new Logger(BullmqService.name);
-  private readonly recordCoreAttribution: boolean;
   private readonly redisConnectionConfiguration: RedisConnectionConfiguration;
   private readonly connection: IORedis;
   private readonly sharedStreamSettlement: () => Promise<void>;
@@ -230,8 +229,6 @@ export class BullmqService implements OnModuleDestroy {
   private shutdownPromise: Promise<void> | null = null;
 
   constructor(configService: ConfigService) {
-    this.recordCoreAttribution =
-      configService.get<string>('DATABASE_RUNTIME_ROLE') === 'core-worker';
     this.redisConnectionConfiguration = resolveRedisConnectionConfiguration(
       configService,
       'queue',
@@ -536,12 +533,12 @@ export class BullmqService implements OnModuleDestroy {
     };
   }
 
-
   createWorker<TData extends object, TResult = unknown>(
     queueName: string,
     processor: Processor<TData, TResult, string>,
+    options?: { attribution: 'core-worker' },
   ): Worker<TData, TResult, string> {
-    const attribution = this.recordCoreAttribution
+    const attribution = options?.attribution === 'core-worker'
       ? createCoreQueueAttribution(queueName, processor)
       : undefined;
     const worker = new Worker<TData, TResult, string>(

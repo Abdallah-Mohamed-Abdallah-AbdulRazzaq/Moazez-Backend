@@ -57,6 +57,7 @@ export class CommunicationNotificationPushWorker implements OnModuleInit {
           }),
         );
       },
+      { attribution: 'core-worker' },
     );
   }
 }

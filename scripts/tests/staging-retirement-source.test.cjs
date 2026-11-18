@@ -1051,6 +1051,9 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
   const postCloseoutReviewFiles = [
     ['test/e2e/homework-review-integrity-postcloseout.e2e-spec.ts', 'e2e'],
   ];
+  const a07Files = [
+    ['src/infrastructure/queue/queue-attribution.events.spec.ts', 'unit'],
+  ];
   assert.equal(
     assignments.length,
     1019 +
@@ -1064,7 +1067,8 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
       st11bFiles.length +
       st12Files.length +
       st13Files.length +
-      postCloseoutReviewFiles.length,
+      postCloseoutReviewFiles.length +
+      a07Files.length,
   );
   assert.equal(
     assignments.filter((item) => item.execution === 'manual').length,
@@ -1083,7 +1087,8 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
       st11bFiles.length +
       st12Files.length +
       st13Files.length +
-      postCloseoutReviewFiles.length,
+      postCloseoutReviewFiles.length +
+      a07Files.length,
   );
   for (const [file, profile] of [
     ['src/common/rich-content/rich-content.spec.ts', 'unit'],
@@ -1102,6 +1107,7 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
     ...st12Files,
     ...st13Files,
     ...postCloseoutReviewFiles,
+    ...a07Files,
   ]) {
     const matches = assignments.filter((item) => item.file === file);
     assert.equal(matches.length, 1);

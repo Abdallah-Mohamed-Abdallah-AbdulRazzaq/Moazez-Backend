@@ -134,8 +134,10 @@ describe('BullmqService lifecycle', () => {
         return worker;
       });
 
-      const service = createService('core-worker');
-      service.createWorker(queue, () => Promise.resolve());
+      const service = createService();
+      service.createWorker(queue, () => Promise.resolve(), {
+        attribution: 'core-worker',
+      });
       await flushPromises();
       expect(log).not.toHaveBeenCalled();
 
@@ -166,8 +168,10 @@ describe('BullmqService lifecycle', () => {
         workers[0].waitUntilReady.mockReturnValue(ready.promise);
         return worker;
       });
-      const service = createService('core-worker');
-      service.createWorker(queue, () => Promise.resolve());
+      const service = createService();
+      service.createWorker(queue, () => Promise.resolve(), {
+        attribution: 'core-worker',
+      });
 
       const worker = workers[0];
       if (condition === 'rejected') {
@@ -190,8 +194,9 @@ describe('BullmqService lifecycle', () => {
     const service = createService();
     const processor = () => Promise.resolve();
     service.createWorker('communication-notifications', processor);
-    const coreService = createService('core-worker');
-    coreService.createWorker('outside-scope', processor);
+    service.createWorker('outside-scope', processor, {
+      attribution: 'core-worker',
+    });
     await flushPromises();
     expect(
       workers.every((worker) => worker.waitUntilReady.mock.calls.length === 0),
@@ -202,7 +207,6 @@ describe('BullmqService lifecycle', () => {
       processor,
     ]);
     await service.onModuleDestroy();
-    await coreService.onModuleDestroy();
   });
 
   it('closes a not-ready worker without waiting for readiness', async () => {
