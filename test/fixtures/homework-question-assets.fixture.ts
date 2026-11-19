@@ -1,5 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
-import type { AssessmentMediaPurpose } from '../../src/modules/files/assessment-media/domain/assessment-media.contract';
+import {
+  assessmentMediaOwner,
+  ASSESSMENT_MEDIA_VERSION,
+  type AssessmentMediaPurpose,
+} from '../../src/modules/files/assessment-media/domain/assessment-media.contract';
 import {
   AssessmentMediaFixture,
   type MediaFixtureActor,
@@ -147,6 +151,68 @@ export class HomeworkQuestionAssetsFixture extends AssessmentMediaFixture {
       return { uploadId: result.uploadId, fileId: result.fileId, file, bytes };
     });
   }
+
+  /** Reconstructs historical evidence in a disposable database for read compatibility tests. */
+  async historicalHomeworkReady(homeworkId: string) {
+    const purpose = 'HOMEWORK_ASSIGNMENT_MEDIA';
+    const { session, bytes } = await this.asMediaActor('teacher', async () => {
+      const uploaded = await this.upload(homeworkId);
+      await this.repository.claim(
+        assessmentMediaOwner(purpose, homeworkId),
+        uploaded.intent.uploadId,
+      );
+      return uploaded;
+    });
+    await this.storage.saveObject({
+      bucket: session.finalBucket,
+      objectKey: session.finalObjectKey,
+      body: bytes,
+      contentType: session.expectedMimeType,
+    });
+    const checksumSha256 = createHash('sha256').update(bytes).digest('hex');
+    const verifiedAt = new Date();
+    const evidence = {
+      verdict: 'CLEAN',
+      provider: 'historical-fixture',
+      version: 'historical-v1',
+      checksumSha256,
+      verifiedAt: verifiedAt.toISOString(),
+    };
+    const file = await this.prisma.$transaction(async (tx) => {
+      const stored = await tx.file.create({
+        data: {
+          organizationId: session.organizationId,
+          schoolId: session.schoolId,
+          uploaderId: session.createdByUserId,
+          bucket: session.finalBucket,
+          objectKey: session.finalObjectKey,
+          originalName: session.originalName,
+          mimeType: session.expectedMimeType,
+          sizeBytes: session.expectedSizeBytes,
+          visibility: 'PRIVATE',
+          checksumSha256,
+        },
+      });
+      await tx.fileUploadSession.update({
+        where: { id: session.id },
+        data: {
+          status: 'READY',
+          fileId: stored.id,
+          completedAt: verifiedAt,
+          verifiedAt,
+          actualSizeBytes: stored.sizeBytes,
+          verifiedMimeType: stored.mimeType,
+          checksumSha256,
+          assessmentVerificationClaimId: null,
+          verificationVersion: ASSESSMENT_MEDIA_VERSION,
+          assessmentSecurityEvidence: evidence,
+        },
+      });
+      return stored;
+    });
+    return { uploadId: session.id, fileId: file.id, file, bytes, evidence };
+  }
+
   async dispose(): Promise<void> {
     const where = {
       schoolId: { in: this.schools.map((school) => school.schoolId) },

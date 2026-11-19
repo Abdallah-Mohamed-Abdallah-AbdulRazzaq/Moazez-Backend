@@ -1,13 +1,11 @@
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { createHash } from 'node:crypto';
 import { get as httpGet } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { Transform } from 'node:stream';
 import { setTimeout as delay } from 'node:timers/promises';
 import { StorageService } from '../../src/infrastructure/storage/storage.service';
 import { AssessmentMediaRuntimePolicy } from '../../src/modules/files/assessment-media/application/assessment-media-runtime.policy';
-import { assessmentMediaOwner } from '../../src/modules/files/assessment-media/domain/assessment-media.contract';
 import {
   HomeworkQuestionAssetsHttp,
   st06Json,
@@ -155,64 +153,7 @@ describe('ST-06 complete Homework question assets over actual JWT/HTTP and priva
 
   it('binds and serves a historical attested record with its original evidence', async () => {
     const graph = await h.fixture.graph();
-    const purpose = 'HOMEWORK_ASSIGNMENT_MEDIA';
-    const prior = await h.fixture.asMediaActor('teacher', async () => {
-      const uploaded = await h.fixture.upload(graph.homework.id);
-      await h.fixture.repository.claim(
-        assessmentMediaOwner(purpose, graph.homework.id),
-        uploaded.intent.uploadId,
-      );
-      return uploaded;
-    });
-    const snapshot = prior.session;
-    await h.fixture.storage.saveObject({
-      bucket: snapshot.finalBucket,
-      objectKey: snapshot.finalObjectKey,
-      body: prior.bytes,
-      contentType: snapshot.expectedMimeType,
-    });
-    const checksum = createHash('sha256').update(prior.bytes).digest('hex');
-    const verifiedAt = new Date();
-    // Isolated fixture with the schema and evidence shape of historical rows.
-    const evidence = {
-      verdict: 'CLEAN',
-      provider: 'historical-fixture',
-      version: 'historical-v1',
-      checksumSha256: checksum,
-      verifiedAt: verifiedAt.toISOString(),
-    };
-    const file = await h.prisma.$transaction(async (tx) => {
-      const stored = await tx.file.create({
-        data: {
-          organizationId: snapshot.organizationId,
-          schoolId: snapshot.schoolId,
-          uploaderId: snapshot.createdByUserId,
-          bucket: snapshot.finalBucket,
-          objectKey: snapshot.finalObjectKey,
-          originalName: snapshot.originalName,
-          mimeType: snapshot.expectedMimeType,
-          sizeBytes: snapshot.expectedSizeBytes,
-          visibility: 'PRIVATE',
-          checksumSha256: checksum,
-        },
-      });
-      await tx.fileUploadSession.update({
-        where: { id: snapshot.id },
-        data: {
-          status: 'READY',
-          fileId: stored.id,
-          completedAt: verifiedAt,
-          verifiedAt,
-          actualSizeBytes: stored.sizeBytes,
-          verifiedMimeType: stored.mimeType,
-          checksumSha256: checksum,
-          assessmentVerificationClaimId: null,
-          verificationVersion: 'assessment-media-attested-v1',
-          assessmentSecurityEvidence: evidence,
-        },
-      });
-      return stored;
-    });
+    const prior = await h.fixture.historicalHomeworkReady(graph.homework.id);
     const { asset } = st06Json<{ asset: HomeworkQuestionAssetDto }>(
       await h
         .http()
@@ -220,8 +161,8 @@ describe('ST-06 complete Homework question assets over actual JWT/HTTP and priva
         .set(h.headers())
         .send({
           sourceType: 'MANAGED_FILE',
-          fileId: file.id,
-          uploadId: snapshot.id,
+          fileId: prior.fileId,
+          uploadId: prior.uploadId,
         })
         .expect(201),
     );
@@ -234,9 +175,9 @@ describe('ST-06 complete Homework question assets over actual JWT/HTTP and priva
       .expect(prior.bytes.toString());
     expect(
       await h.prisma.fileUploadSession.findUniqueOrThrow({
-        where: { id: snapshot.id },
+        where: { id: prior.uploadId },
       }),
-    ).toMatchObject({ assessmentSecurityEvidence: evidence });
+    ).toMatchObject({ assessmentSecurityEvidence: prior.evidence });
   });
 
   it('keeps distinct question assets and an empty question in the existing student detail wrapper', async () => {

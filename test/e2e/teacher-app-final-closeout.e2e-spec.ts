@@ -11,10 +11,12 @@ import {
   expectDefaultPermissionContract,
 } from '../fixtures/st12-contract-expectations';
 import { TeacherHomeworkQuestionGroupsController } from '../../src/modules/teacher-app/homeworks/controller/teacher-homework-question-groups.controller';
+import { TeacherHomeworkAuthoringUploadsController } from '../../src/modules/teacher-app/homeworks/controller/teacher-homework-authoring-uploads.controller';
 import { TeacherGradeQuestionGroupsController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-question-groups.controller';
 import {
   ST11_TEACHER_ANSWER_MEDIA_ROUTES,
   ST11B_TEACHER_GROUP_ROUTES,
+  TEACHER_HOMEWORK_AUTHORING_UPLOAD_ROUTES,
 } from '../fixtures/st11-answer-media-routes.fixture';
 import { TeacherGradeAnswerMediaController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-answer-media.controller';
 import { TeacherHomeworkAnswerMediaController } from '../../src/modules/teacher-app/homeworks/controller/teacher-homework-answer-media.controller';
@@ -288,6 +290,7 @@ const TEACHER_APP_CONTROLLER_CLASSES = [
   TeacherClassroomAssignmentsController,
   TeacherClassroomSubmissionReviewController,
   TeacherHomeworksController,
+  TeacherHomeworkAuthoringUploadsController,
   TeacherHomeworkQuestionAssetsController,
   TeacherGradeAssessmentAssetsController,
   TeacherGradeQuestionAssetsController,
@@ -729,7 +732,12 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       routes
         .filter((r) => r.includes('/authoring/') || r.includes('/scoring/'))
         .sort(),
-    ).toEqual([...ST12_TEACHER_ROUTES].sort());
+    ).toEqual(
+      [
+        ...ST12_TEACHER_ROUTES,
+        ...TEACHER_HOMEWORK_AUTHORING_UPLOAD_ROUTES,
+      ].sort(),
+    );
     const decorated = inventory.filter((entry) => entry.permissions.length > 0);
     const undecorated = inventory.filter(
       (entry) => entry.permissions.length === 0,
@@ -738,23 +746,28 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       (entry) => entry.permissions,
     );
 
-    expect(routes).toHaveLength(
+    const expectedRouteCount =
       189 +
-        ST11_TEACHER_ANSWER_MEDIA_ROUTES.length +
-        ST11B_TEACHER_GROUP_ROUTES.length +
-        ST12_TEACHER_ROUTES.length,
-    );
-    expect(inventory).toHaveLength(
-      189 +
-        ST11_TEACHER_ANSWER_MEDIA_ROUTES.length +
-        ST11B_TEACHER_GROUP_ROUTES.length +
-        ST12_TEACHER_ROUTES.length,
-    );
-    expect(decorated).toHaveLength(
-      189 +
-        ST11_TEACHER_ANSWER_MEDIA_ROUTES.length +
-        ST11B_TEACHER_GROUP_ROUTES.length +
-        ST12_TEACHER_ROUTES.length,
+      ST11_TEACHER_ANSWER_MEDIA_ROUTES.length +
+      ST11B_TEACHER_GROUP_ROUTES.length +
+      ST12_TEACHER_ROUTES.length +
+      TEACHER_HOMEWORK_AUTHORING_UPLOAD_ROUTES.length;
+    expect(routes).toHaveLength(expectedRouteCount);
+    expect(inventory).toHaveLength(expectedRouteCount);
+    expect(decorated).toHaveLength(expectedRouteCount);
+    expect(
+      inventory
+        .filter(
+          (entry) =>
+            entry.controllerName ===
+            TeacherHomeworkAuthoringUploadsController.name,
+        )
+        .map(({ methodName, permissions }) => ({ methodName, permissions })),
+    ).toEqual(
+      ['cancel', 'complete', 'create', 'status'].map((methodName) => ({
+        methodName,
+        permissions: ['homework.attachments.manage'],
+      })),
     );
     for (const handler of ['content', 'publication']) {
       expect(

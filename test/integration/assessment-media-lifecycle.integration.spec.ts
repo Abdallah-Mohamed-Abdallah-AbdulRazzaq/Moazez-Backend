@@ -285,6 +285,15 @@ describe('ST-03 real PostgreSQL and bounded private storage lifecycle', () => {
     expect(file.checksumSha256).toBe(
       createHash('sha256').update(uploaded.bytes).digest('hex'),
     );
+    await expect(
+      prisma.file.update({
+        where: { id: file.id },
+        data: { checksumSha256: 'b'.repeat(64) },
+      }),
+    ).rejects.toThrow('Verified assessment File identity is immutable');
+    await expect(
+      prisma.file.findUniqueOrThrow({ where: { id: file.id } }),
+    ).resolves.toMatchObject({ checksumSha256: file.checksumSha256 });
     expect(file.visibility).toBe('PRIVATE');
     const persisted = await row(ready.uploadId);
     expect(persisted).toMatchObject({
