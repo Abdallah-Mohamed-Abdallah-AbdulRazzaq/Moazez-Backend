@@ -71,7 +71,9 @@ describe('student credential API and secret file boundary', () => {
   });
 
   it('excludes credential secret artifacts from generic file lookup', async () => {
-    const findFirst = jest.fn().mockResolvedValue(null);
+    const findFirst = jest
+      .fn<Promise<null>, [unknown]>()
+      .mockResolvedValue(null);
     const prisma = {
       scoped: { file: { findFirst } },
     } as unknown as PrismaService;
@@ -80,14 +82,12 @@ describe('student credential API and secret file boundary', () => {
     await expect(
       repository.findScopedFileById('secret-file'),
     ).resolves.toBeNull();
-    expect(findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          id: 'secret-file',
-          studentCredentialSecretArtifacts: { none: {} },
-        },
-      }),
-    );
+    expect(findFirst.mock.lastCall?.[0]).toMatchObject({
+      where: {
+        id: 'secret-file',
+        studentCredentialSecretArtifacts: { none: {} },
+      },
+    });
   });
 
   it('returns the sensitive CSV with exact non-cacheable response headers and no ETag', async () => {

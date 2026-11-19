@@ -14,6 +14,7 @@ import { Module } from '@nestjs/common';
 import { TeacherAllocationModule } from '../academics/teacher-allocation/teacher-allocation.module';
 import { AssessmentsModule } from '../grades/assessments/assessments.module';
 import { AuthModule } from '../iam/auth/auth.module';
+import { HomeworkAuthoringUploadsController } from './controller/homework-authoring-uploads.controller';
 import {
   CancelHomeworkAssignmentUseCase,
   CloseHomeworkAssignmentUseCase,
@@ -100,6 +101,7 @@ import { HomeworkRepository } from './infrastructure/homework.repository';
     AssessmentMediaModule,
   ],
   controllers: [
+    HomeworkAuthoringUploadsController,
     CoreHomeworkQuestionGroupsController,
     CoreHomeworkAnswerMediaController,
     HomeworkQuestionAssetsController,

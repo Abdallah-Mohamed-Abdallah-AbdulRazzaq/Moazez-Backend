@@ -25,6 +25,7 @@ import {
   assertGradeSubmissionAccess,
 } from './grades-resource-access';
 import { ownedAllocationWhere } from '../../../academics/teacher-allocation/domain/owned-allocation';
+import { assessmentInlinePreviewAllowed } from '../../../files/assessment-media/domain/assessment-media-ready';
 
 const absent = () => new NotFoundDomainException();
 export interface GradeAnswerMediaResource {
@@ -344,7 +345,7 @@ export class GradeAnswerMediaRepository {
           views.push({
             asset,
             file,
-            previewAllowed: policy.allowInlinePreview,
+            previewAllowed: assessmentInlinePreviewAllowed(policy, file),
             downloadAllowed: policy.allowDownload,
           });
         }

@@ -622,3 +622,15 @@ The three new functions are SECURITY INVOKER, use pg_catalog search_path, and ha
 Forward migration `20261030141000_st11a_answer_media_history_guards` preserves the already applied initial ST11-A migration. It rejects consumption of Files in legacy answer links, including deleted links, prevents soft-deleted asset revival, and retains claimed asset rows against hard deletion. It replaces two existing ST11-A function bodies and their trigger event sets; the function inventory remains seven. Disposable test teardown uses guarded TRUNCATE of the new registries and dependent asset tables; the application has no history-delete operation.
 
 Forward migration `20261030141931_st11a_answer_asset_creator_guard` also binds a claimed asset's creator to the immutable claim actor. Existing asset identities retain their earlier immutable trigger; mismatching claimed creators fail the added provenance constraint before that trigger. No legacy row or grant changes. The function count remains seven.
+## Assessment Media technical verification
+
+`20261119091622_assessment_media_technical_verification` replaces the validated
+session CHECK and updates the READY/File and answer-claim invoker predicates.
+The CHECK supports the original attested version and the closed technical
+evidence record. Technical File identity is enforced by
+`enforce_assessment_verified_file_identity()` with the new
+`assessment_verified_file_identity_guard` trigger. It protects File provenance
+and permits existing soft retirement. No new grants or schema model changes.
+This raises the G01-C public-schema function inventory from nine to ten.
+Lifecycle, asset binding and answer claim integration suites exercise these
+constraints on disposable PostgreSQL.

@@ -1,11 +1,19 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
-import { UnapprovedAssessmentMediaSecurityGate } from '../../src/modules/files/assessment-media/application/assessment-media-verifier';
+import {
+  assessmentMediaOwner,
+  ASSESSMENT_MEDIA_TECHNICAL_VERSION,
+  ASSESSMENT_VERIFICATION_LEASE_MS,
+} from '../../src/modules/files/assessment-media/domain/assessment-media.contract';
 import {
   AssessmentMediaFixture,
   deferred,
   postAssessmentUpload,
 } from '../fixtures/assessment-media.fixture';
+import {
+  assessmentJpeg,
+  assessmentPng,
+} from '../fixtures/assessment-media-formats.fixture';
 
 jest.setTimeout(120_000);
 const purpose = 'HOMEWORK_ASSIGNMENT_MEDIA' as const;
@@ -85,7 +93,7 @@ describe('ST-03 real PostgreSQL and bounded private storage lifecycle', () => {
       );
       const write = jest.spyOn(fixture.storage, 'saveObject');
       const read = jest.spyOn(fixture.storage, 'getObject');
-      const calls = fixture.security.calls;
+      const calls = fixture.verification.calls;
       const create = (input = uploaded.command) =>
         grade
           ? fixture.service.createGradeAssessmentUpload(resource.id, input)
@@ -107,7 +115,7 @@ describe('ST-03 real PostgreSQL and bounded private storage lifecycle', () => {
       ).rejects.toMatchObject({
         httpStatus: change === 'published' ? 404 : 409,
       });
-      expect(fixture.security.calls).toBe(calls);
+      expect(fixture.verification.calls).toBe(calls);
       expect(issue).not.toHaveBeenCalled();
       expect(write).not.toHaveBeenCalled();
       expect(read).not.toHaveBeenCalled();
@@ -178,7 +186,7 @@ describe('ST-03 real PostgreSQL and bounded private storage lifecycle', () => {
       const uploaded = await asTeacher(() => fixture.upload(homework.id));
       const reached = deferred(),
         release = deferred();
-      fixture.security.beforeAttest = async () => {
+      fixture.verification.beforeFinish = async () => {
         reached.resolve();
         await release.promise;
       };
@@ -256,7 +264,7 @@ describe('ST-03 real PostgreSQL and bounded private storage lifecycle', () => {
     },
   );
 
-  it('streams actual uploaded bytes to an immutable final object and creates exactly one attested File', async () => {
+  it('streams actual uploaded bytes to an immutable final object and creates exactly one technically verified File', async () => {
     const homework = await fixture.homework();
     const uploaded = await asTeacher(() => fixture.upload(homework.id));
     const ready = await asTeacher(() =>
@@ -278,12 +286,24 @@ describe('ST-03 real PostgreSQL and bounded private storage lifecycle', () => {
       createHash('sha256').update(uploaded.bytes).digest('hex'),
     );
     expect(file.visibility).toBe('PRIVATE');
+    const persisted = await row(ready.uploadId);
+    expect(persisted).toMatchObject({
+      verificationVersion: ASSESSMENT_MEDIA_TECHNICAL_VERSION,
+      assessmentSecurityEvidence: {
+        kind: 'TECHNICAL',
+        checksumSha256: file.checksumSha256,
+      },
+    });
+    expect(persisted.assessmentSecurityEvidence).toHaveProperty(
+      'objectIdentity',
+      expect.stringMatching(/^[a-f0-9]{64}$/u),
+    );
     expect(file.objectKey).not.toBe(uploaded.session.stagingObjectKey);
     const replay = await asTeacher(() =>
       fixture.service.complete(purpose, homework.id, ready.uploadId),
     );
     expect(replay.fileId).toBe(file.id);
-    expect(fixture.security.calls).toBe(1);
+    expect(fixture.verification.calls).toBe(1);
     expect(
       await prisma.file.count({ where: { schoolId: fixture.school.schoolId } }),
     ).toBe(1);
@@ -298,35 +318,126 @@ describe('ST-03 real PostgreSQL and bounded private storage lifecycle', () => {
     expect(auditText.includes(file.objectKey)).toBe(false);
   });
 
-  it('the default unapproved security gate rejects real bytes without READY or a File', async () => {
+  it('recovers an abandoned verification claim and fences its late result', async () => {
     const homework = await fixture.homework();
-    const service = fixture.serviceWithSecurity(
-      new UnapprovedAssessmentMediaSecurityGate(),
+    const uploaded = await asTeacher(() => fixture.upload(homework.id));
+    const entered = deferred();
+    const release = deferred();
+    fixture.verification.beforeFinish = async () => {
+      entered.resolve();
+      await release.promise;
+    };
+    const completing = asTeacher(() =>
+      fixture.service.complete(purpose, homework.id, uploaded.intent.uploadId),
     );
-    const uploaded = await asTeacher(() =>
-      fixture.upload(
-        homework.id,
-        undefined,
-        purpose,
-        undefined,
-        undefined,
-        service,
-      ),
-    );
+    const late = expect(completing).rejects.toMatchObject({
+      reason: 'state_conflict',
+    });
+    try {
+      await entered.promise;
+      await prisma.fileUploadSession.update({
+        where: { id: uploaded.intent.uploadId },
+        data: {
+          updatedAt: new Date(
+            Date.now() - ASSESSMENT_VERIFICATION_LEASE_MS - 1000,
+          ),
+        },
+      });
+      await expect(
+        asTeacher(() =>
+          fixture.service.complete(
+            purpose,
+            homework.id,
+            uploaded.intent.uploadId,
+          ),
+        ),
+      ).rejects.toMatchObject({ reason: 'verification_timeout' });
+      expect(await row(uploaded.intent.uploadId)).toMatchObject({
+        status: 'FAILED',
+        fileId: null,
+        assessmentVerificationClaimId: null,
+        failureReason: 'verification_timeout',
+      });
+    } finally {
+      release.resolve();
+    }
+    await late;
+    await noFiles();
+    fixture.verification.beforeFinish = undefined;
+    const retry = await asTeacher(() => fixture.upload(homework.id));
     await expect(
       asTeacher(() =>
-        service.complete(purpose, homework.id, uploaded.intent.uploadId),
+        fixture.service.complete(purpose, homework.id, retry.intent.uploadId),
       ),
-    ).rejects.toMatchObject({ reason: 'security_verification_unavailable' });
-    expect((await row(uploaded.intent.uploadId)).status).toBe('FAILED');
+    ).resolves.toMatchObject({ status: 'READY' });
+  });
+
+  it('rejects a partial or mixed technical READY commit and rolls back its File', async () => {
+    const homework = await fixture.homework();
+    const uploaded = await asTeacher(() => fixture.upload(homework.id));
+    const claim = await asTeacher(() =>
+      fixture.repository.claim(
+        assessmentMediaOwner(purpose, homework.id),
+        uploaded.intent.uploadId,
+      ),
+    );
+    expect(claim.kind).toBe('claimed');
+    const verifiedAt = new Date();
+    const checksum = createHash('sha256').update(uploaded.bytes).digest('hex');
+    const evidence = {
+      kind: 'TECHNICAL',
+      checksumSha256: checksum,
+      verifiedAt: verifiedAt.toISOString(),
+      objectIdentity: 'a'.repeat(64),
+    };
+    for (const invalid of [
+      {},
+      { ...evidence, checksumSha256: 'b'.repeat(64) },
+      { ...evidence, verifiedAt: new Date(0).toISOString() },
+      { ...evidence, verdict: 'CLEAN' },
+      { ...evidence, objectIdentity: '' },
+    ]) {
+      await expect(
+        prisma.$transaction(async (tx) => {
+          const upload = uploaded.session;
+          const file = await tx.file.create({
+            data: {
+              schoolId: upload.schoolId,
+              organizationId: upload.organizationId,
+              uploaderId: upload.createdByUserId,
+              bucket: upload.finalBucket,
+              objectKey: upload.finalObjectKey,
+              originalName: upload.originalName,
+              mimeType: upload.expectedMimeType,
+              sizeBytes: upload.expectedSizeBytes,
+              checksumSha256: checksum,
+              visibility: 'PRIVATE',
+            },
+          });
+          await tx.fileUploadSession.update({
+            where: { id: upload.id },
+            data: {
+              status: 'READY',
+              fileId: file.id,
+              completedAt: verifiedAt,
+              verifiedAt,
+              verifiedMimeType: upload.expectedMimeType,
+              actualSizeBytes: upload.expectedSizeBytes,
+              checksumSha256: checksum,
+              verificationVersion: ASSESSMENT_MEDIA_TECHNICAL_VERSION,
+              assessmentVerificationClaimId: null,
+              assessmentSecurityEvidence: invalid,
+            },
+          });
+        }),
+      ).rejects.toThrow(/assessment_upload_contract_check/u);
+    }
     await noFiles();
-    // Lack of deletion authority preserves both private transient objects.
-    expect(
-      await fixture.storage.objectExists({
-        bucket: uploaded.session.finalBucket,
-        objectKey: uploaded.session.finalObjectKey,
-      }),
-    ).toBe(true);
+    expect(await row(uploaded.intent.uploadId)).toMatchObject({
+      status: 'VERIFYING',
+      fileId: null,
+      assessmentSecurityEvidence: null,
+    });
   });
 
   it('enforces exact length and MIME in the actual storage capability before completion', async () => {
@@ -398,7 +509,7 @@ describe('ST-03 real PostgreSQL and bounded private storage lifecycle', () => {
     const uploaded = await asTeacher(() => fixture.upload(homework.id));
     const reached = deferred(),
       release = deferred();
-    fixture.security.beforeAttest = async () => {
+    fixture.verification.beforeFinish = async () => {
       reached.resolve();
       await release.promise;
     };
@@ -429,7 +540,7 @@ describe('ST-03 real PostgreSQL and bounded private storage lifecycle', () => {
         )
       ).fileId,
     ).toBe(ready.fileId);
-    expect(fixture.security.calls).toBe(1);
+    expect(fixture.verification.calls).toBe(1);
   });
 
   it('cancellation wins against in-flight verification and cannot be reopened or replayed', async () => {
@@ -437,7 +548,7 @@ describe('ST-03 real PostgreSQL and bounded private storage lifecycle', () => {
     const uploaded = await asTeacher(() => fixture.upload(homework.id));
     const reached = deferred(),
       release = deferred();
-    fixture.security.beforeAttest = async () => {
+    fixture.verification.beforeFinish = async () => {
       reached.resolve();
       await release.promise;
     };
@@ -674,17 +785,24 @@ describe('ST-03 real PostgreSQL and bounded private storage lifecycle', () => {
     },
   );
 
-  it('rejects final-object mutation while security verification is pending', async () => {
+  it('rejects same-size final-object replacement before the checksum read', async () => {
     const homework = await fixture.homework();
     const uploaded = await asTeacher(() => fixture.upload(homework.id));
-    fixture.security.beforeAttest = async (input) => {
-      await fixture.storage.saveObject({
-        bucket: input.bucket,
-        objectKey: input.objectKey,
-        body: Buffer.alloc(uploaded.bytes.length, 65),
-        contentType: 'text/plain',
+    const read = fixture.storage.getObject.bind(
+      fixture.storage,
+    ) as typeof fixture.storage.getObject;
+    jest
+      .spyOn(fixture.storage, 'getObject')
+      .mockImplementation(async (input) => {
+        if (input.objectKey === uploaded.session.finalObjectKey)
+          await fixture.storage.saveObject({
+            bucket: input.bucket,
+            objectKey: input.objectKey,
+            body: Buffer.alloc(uploaded.bytes.length, 65),
+            contentType: 'text/plain',
+          });
+        return read(input);
       });
-    };
     await expect(
       asTeacher(() =>
         fixture.service.complete(
@@ -699,6 +817,8 @@ describe('ST-03 real PostgreSQL and bounded private storage lifecycle', () => {
 
   it.each([
     ['document.pdf', 'application/pdf', Buffer.from('%PDF-1.7\ntruncated\n')],
+    ['truncated.jpg', 'image/jpeg', assessmentJpeg.subarray(0, -2)],
+    ['wide-valid.png', 'image/png', assessmentPng(1921)],
     [
       'image.png',
       'image/png',
@@ -710,7 +830,7 @@ describe('ST-03 real PostgreSQL and bounded private storage lifecycle', () => {
       Buffer.from('89504e470d0a1a0a0000000d494844520000200000002000', 'hex'),
     ],
   ])(
-    'never releases signature-only or oversized-dimension %s without required deep verification',
+    'never releases signature-only or oversized-dimension %s during technical verification',
     async (name, mime, bytes) => {
       const homework = await fixture.homework();
       await prisma.schoolAssessmentMediaPolicy.update({
@@ -730,7 +850,7 @@ describe('ST-03 real PostgreSQL and bounded private storage lifecycle', () => {
         ),
       ).rejects.toMatchObject({ httpStatus: 409 });
       expect((await row(uploaded.intent.uploadId)).status).toBe('FAILED');
-      expect(fixture.security.calls).toBe(0);
+      expect(fixture.verification.calls).toBe(0);
       await noFiles();
     },
   );
@@ -760,14 +880,14 @@ describe('ST-03 real PostgreSQL and bounded private storage lifecycle', () => {
         ),
       ),
     ).rejects.toMatchObject({ reason: 'verifier_unavailable' });
-    expect(fixture.security.calls).toBe(0);
+    expect(fixture.verification.calls).toBe(0);
     await noFiles();
   });
 
   it('rechecks revoked policy at the final transaction', async () => {
     const homework = await fixture.homework();
     const uploaded = await asTeacher(() => fixture.upload(homework.id));
-    fixture.security.beforeAttest = async () => {
+    fixture.verification.beforeFinish = async () => {
       await prisma.schoolAssessmentMediaPolicy.update({
         where: { schoolId: fixture.school.schoolId },
         data: { uploadsEnabled: false },
@@ -875,7 +995,7 @@ describe('ST-03 real PostgreSQL and bounded private storage lifecycle', () => {
     },
   );
 
-  it('enforces database identity, state and attestation constraints without rewriting historical purposes', async () => {
+  it('enforces database identity, state and evidence constraints without rewriting historical purposes', async () => {
     const homework = await fixture.homework();
     const intent = await asTeacher(() =>
       fixture.service.createHomeworkAssignmentUpload(homework.id, command()),

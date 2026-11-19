@@ -1,18 +1,25 @@
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { createHash } from 'node:crypto';
 import { get as httpGet } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { Transform } from 'node:stream';
 import { setTimeout as delay } from 'node:timers/promises';
 import { StorageService } from '../../src/infrastructure/storage/storage.service';
 import { AssessmentMediaRuntimePolicy } from '../../src/modules/files/assessment-media/application/assessment-media-runtime.policy';
-import { UnapprovedAssessmentMediaSecurityGate } from '../../src/modules/files/assessment-media/application/assessment-media-verifier';
+import { assessmentMediaOwner } from '../../src/modules/files/assessment-media/domain/assessment-media.contract';
 import {
   HomeworkQuestionAssetsHttp,
   st06Json,
 } from '../fixtures/homework-question-assets.http';
 import type { HomeworkQuestionAssetDto } from '../../src/modules/homework/dto/homework-question-asset.dto';
 import type { StudentHomeworkResponseDto } from '../../src/modules/student-app/homeworks/dto/student-homeworks.dto';
+import {
+  assessmentJpeg,
+  assessmentPdf,
+  assessmentPng,
+  completeAssessmentAuthoringUpload,
+} from '../fixtures/assessment-media-formats.fixture';
 
 jest.setTimeout(180000);
 describe('ST-06 complete Homework question assets over actual JWT/HTTP and private bytes', () => {
@@ -28,6 +35,208 @@ describe('ST-06 complete Homework question assets over actual JWT/HTTP and priva
   });
   afterAll(async () => {
     await h.close();
+  });
+
+  it.each([
+    ['teacher', 'reference.jpg', 'image/jpeg', assessmentJpeg],
+    ['organization', 'reference.png', 'image/png', assessmentPng()],
+    ['admin', 'reference.pdf', 'application/pdf', assessmentPdf()],
+  ] as const)(
+    'uploads and binds a %s-authored %s over the public Homework API',
+    async (actor, name, mime, bytes) => {
+      const graph = await h.fixture.graph();
+      await h.prisma.schoolAssessmentMediaPolicy.update({
+        where: { schoolId: h.fixture.school.schoolId },
+        data: { allowedMimeTypes: [mime] },
+      });
+      const upload =
+        actor === 'teacher'
+          ? `/api/v1/teacher/homeworks/classes/${h.fixture.allocations.teacher}/assignments/${graph.homework.id}/authoring/uploads`
+          : `/api/v1/homework/assignments/${graph.homework.id}/authoring/uploads`;
+      if (actor === 'teacher') {
+        const wrongAllocation = upload.replace(
+          h.fixture.allocations.teacher,
+          h.fixture.allocations.otherTeacher,
+        );
+        await h
+          .http()
+          .post(wrongAllocation)
+          .set(h.headers(actor))
+          .send({
+            clientRequestId: graph.homework.id,
+            originalName: name,
+            expectedMimeType: mime,
+            expectedSizeBytes: String(bytes.length),
+          })
+          .expect(404);
+      }
+      const ready = await completeAssessmentAuthoringUpload(
+        h.http(),
+        upload,
+        h.headers(actor),
+        name,
+        mime,
+        bytes,
+      );
+      await h.fixture.grantAssets(h.fixture.actors.admin.roleId, [
+        'files.downloads.view',
+      ]);
+      for (const suffix of ['/download', '/download/content']) {
+        await h
+          .http()
+          .get(`/api/v1/files/${ready.fileId}${suffix}`)
+          .set(h.headers('admin'))
+          .expect(404);
+      }
+      const binding = actor === 'teacher' ? h.teacher(graph) : h.core(graph);
+      const { asset } = st06Json<{ asset: HomeworkQuestionAssetDto }>(
+        await h
+          .http()
+          .post(binding)
+          .set(h.headers(actor))
+          .send({
+            sourceType: 'MANAGED_FILE',
+            fileId: ready.fileId,
+            uploadId: ready.uploadId,
+          })
+          .expect(201),
+      );
+      await h.publish(graph);
+      const preview = h.student(graph, 0, asset.assetId);
+      const download = h.student(graph, 0, asset.assetId, 'download');
+      await h
+        .http()
+        .head(preview)
+        .set(h.headers('student'))
+        .expect(mime === 'application/pdf' ? 404 : 200);
+      const response = await h
+        .http()
+        .get(download)
+        .set(h.headers('student'))
+        .responseType('blob')
+        .expect(200);
+      expect(response.headers['content-disposition']).toMatch(/^attachment;/u);
+      expect(response.body).toEqual(bytes);
+      expect(JSON.stringify(asset)).not.toContain('verifiedObjectIdentity');
+      if (actor === 'teacher') {
+        const fixture = h.fixture;
+        await h.app.close();
+        try {
+          await h.start();
+        } finally {
+          h.fixture = fixture;
+        }
+        const afterRestart = await h
+          .http()
+          .get(download)
+          .set(h.headers('student'))
+          .responseType('blob')
+          .expect(200);
+        expect(afterRestart.body).toEqual(bytes);
+        const file = await h.prisma.file.findUniqueOrThrow({
+          where: { id: ready.fileId! },
+        });
+        await h.fixture.storage.saveObject({
+          bucket: file.bucket,
+          objectKey: file.objectKey,
+          contentType: file.mimeType,
+          body: Buffer.alloc(bytes.length, 65),
+        });
+        await h
+          .http()
+          .get(download)
+          .set(h.headers('student'))
+          .set('Range', 'bytes=0-5')
+          .expect(404);
+        await h.http().head(download).set(h.headers('student')).expect(404);
+      }
+    },
+  );
+
+  it('binds and serves a historical attested record with its original evidence', async () => {
+    const graph = await h.fixture.graph();
+    const purpose = 'HOMEWORK_ASSIGNMENT_MEDIA';
+    const prior = await h.fixture.asMediaActor('teacher', async () => {
+      const uploaded = await h.fixture.upload(graph.homework.id);
+      await h.fixture.repository.claim(
+        assessmentMediaOwner(purpose, graph.homework.id),
+        uploaded.intent.uploadId,
+      );
+      return uploaded;
+    });
+    const snapshot = prior.session;
+    await h.fixture.storage.saveObject({
+      bucket: snapshot.finalBucket,
+      objectKey: snapshot.finalObjectKey,
+      body: prior.bytes,
+      contentType: snapshot.expectedMimeType,
+    });
+    const checksum = createHash('sha256').update(prior.bytes).digest('hex');
+    const verifiedAt = new Date();
+    // Isolated fixture with the schema and evidence shape of historical rows.
+    const evidence = {
+      verdict: 'CLEAN',
+      provider: 'historical-fixture',
+      version: 'historical-v1',
+      checksumSha256: checksum,
+      verifiedAt: verifiedAt.toISOString(),
+    };
+    const file = await h.prisma.$transaction(async (tx) => {
+      const stored = await tx.file.create({
+        data: {
+          organizationId: snapshot.organizationId,
+          schoolId: snapshot.schoolId,
+          uploaderId: snapshot.createdByUserId,
+          bucket: snapshot.finalBucket,
+          objectKey: snapshot.finalObjectKey,
+          originalName: snapshot.originalName,
+          mimeType: snapshot.expectedMimeType,
+          sizeBytes: snapshot.expectedSizeBytes,
+          visibility: 'PRIVATE',
+          checksumSha256: checksum,
+        },
+      });
+      await tx.fileUploadSession.update({
+        where: { id: snapshot.id },
+        data: {
+          status: 'READY',
+          fileId: stored.id,
+          completedAt: verifiedAt,
+          verifiedAt,
+          actualSizeBytes: stored.sizeBytes,
+          verifiedMimeType: stored.mimeType,
+          checksumSha256: checksum,
+          assessmentVerificationClaimId: null,
+          verificationVersion: 'assessment-media-attested-v1',
+          assessmentSecurityEvidence: evidence,
+        },
+      });
+      return stored;
+    });
+    const { asset } = st06Json<{ asset: HomeworkQuestionAssetDto }>(
+      await h
+        .http()
+        .post(h.teacher(graph))
+        .set(h.headers())
+        .send({
+          sourceType: 'MANAGED_FILE',
+          fileId: file.id,
+          uploadId: snapshot.id,
+        })
+        .expect(201),
+    );
+    await h.publish(graph);
+    await h
+      .http()
+      .get(h.student(graph, 0, asset.assetId, 'download'))
+      .set(h.headers('student'))
+      .expect(200)
+      .expect(prior.bytes.toString());
+    expect(
+      await h.prisma.fileUploadSession.findUniqueOrThrow({
+        where: { id: snapshot.id },
+      }),
+    ).toMatchObject({ assessmentSecurityEvidence: evidence });
   });
 
   it('keeps distinct question assets and an empty question in the existing student detail wrapper', async () => {
@@ -403,13 +612,13 @@ describe('ST-06 complete Homework question assets over actual JWT/HTTP and priva
     expect(tracked?.source.destroyed).toBe(true);
     expect(tracked!.sent).toBeLessThan(8192);
   });
-  it('denies genuine managed binding through the production release gate', async () => {
+  it('denies genuine managed binding when the runtime flag is off', async () => {
     const graph = await h.fixture.graph(),
       ready = await h.fixture.ready(graph.homework.id);
     const production = new AssessmentMediaRuntimePolicy(
       new ConfigService({
         NODE_ENV: 'production',
-        ASSESSMENT_MEDIA_UPLOADS_ENABLED: true,
+        ASSESSMENT_MEDIA_UPLOADS_ENABLED: false,
       }),
     );
     jest
@@ -475,20 +684,15 @@ describe('ST-06 complete Homework question assets over actual JWT/HTTP and priva
         .expect(404);
     },
   );
-  it('keeps the production runtime/security gate denied and documents every new GET/HEAD route', async () => {
+  it('keeps upload execution default-off and documents every GET/HEAD route', () => {
     expect(() =>
       new AssessmentMediaRuntimePolicy(
         new ConfigService({
           NODE_ENV: 'production',
-          ASSESSMENT_MEDIA_UPLOADS_ENABLED: true,
+          ASSESSMENT_MEDIA_UPLOADS_ENABLED: false,
         }),
       ).assertUploadExecutionEnabled(),
     ).toThrow();
-    await expect(
-      new UnapprovedAssessmentMediaSecurityGate().attest(),
-    ).rejects.toMatchObject({
-      code: 'assessment_media.security_verification_unavailable',
-    });
     const document = SwaggerModule.createDocument(
       h.app,
       new DocumentBuilder().setTitle('Owned ST06 contracts').build(),

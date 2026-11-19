@@ -6,6 +6,7 @@ import {
   NotFoundDomainException,
 } from '../../common/exceptions/domain-exception';
 import { isObjectStorageNotFoundError } from './object-storage.errors';
+import { storageObjectIdentity } from './object-storage.identity';
 import {
   resolvePrivateMediaRange,
   type PrivateMediaByteRange,
@@ -19,6 +20,7 @@ export interface PrivateMediaFileDescriptor {
   originalName: string;
   mimeType: string;
   sizeBytes: bigint | number;
+  verifiedObjectIdentity?: string;
 }
 export interface PrivateMediaContentRequest {
   range?: string;
@@ -94,7 +96,8 @@ export class PrivateMediaContentService {
           current.objectKey !== file.objectKey ||
           current.mimeType !== file.mimeType ||
           current.originalName !== file.originalName ||
-          current.sizeBytes !== file.sizeBytes
+          current.sizeBytes !== file.sizeBytes ||
+          current.verifiedObjectIdentity !== file.verifiedObjectIdentity
         )
           throw notFound();
       },
@@ -141,7 +144,12 @@ export class PrivateMediaContentService {
     try {
       if (request.signal?.aborted) throw serviceUnavailable();
       const stat = await bounded(this.storageService.statObject(location));
-      if (stat.size !== totalSizeBytes) throw notFound();
+      if (
+        stat.size !== totalSizeBytes ||
+        (file.verifiedObjectIdentity &&
+          storageObjectIdentity(stat) !== file.verifiedObjectIdentity)
+      )
+        throw notFound();
       const etag =
         stat.generation || stat.version || stat.etag
           ? '"' +
@@ -215,7 +223,9 @@ export class PrivateMediaContentService {
           current.size !== stat.size ||
           current.etag !== stat.etag ||
           current.generation !== stat.generation ||
-          current.version !== stat.version
+          current.version !== stat.version ||
+          (file.verifiedObjectIdentity &&
+            storageObjectIdentity(current) !== file.verifiedObjectIdentity)
         )
           throw notFound();
       }

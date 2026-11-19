@@ -1,5 +1,10 @@
 # Assessment Media foundation — ST-03
 
+This page records the historical ST-03 boundary. Current technical verification,
+authoring routes and operational controls are specified in
+[ADR-0026](../../adr/ADR-0026-assessment-media-technical-verification.md) and the
+[DevOps handoff](../assessments/assessment-media-technical-devops-handoff.md).
+
 ST-03 adds **no public REST route**, no generic assessment download, no policy
 mutation API and no question/answer Asset link. Existing `/api/v1/files`,
 Homework, Grades, Academic Content and Learning Media contracts stay in place.

@@ -35,6 +35,14 @@ describe('ST11-A actual question answer bytes and transactional provenance', () 
         data: { allowInlinePreview: true, allowDownload: true },
       });
       const uploaded = await h.ready(f.media);
+      if (domain === 'Homework') {
+        await h
+          .http()
+          .post(f.student + '/submission/attachments')
+          .set(h.headers('student'))
+          .send({ fileId: uploaded.ready.fileId })
+          .expect(404);
+      }
       expect(await h.prisma.homeworkSubmissionAnswer.count()).toBe(0);
       expect(await h.prisma.gradeSubmissionAnswer.count()).toBe(0);
       const first = await h
@@ -112,12 +120,20 @@ describe('ST11-A actual question answer bytes and transactional provenance', () 
         .get(reviewer + '/answer-assets/' + asset.id + '/download')
         .set(h.headers())
         .expect(404);
-      await h
+      const submitted = await h
         .http()
         .post(f.student + '/submission/submit')
         .set(h.headers('student'))
         .send({})
         .expect(domain === 'Homework' ? 200 : 201);
+      if (domain === 'Grades') {
+        expect(submitted.body).toMatchObject({
+          submission: {
+            status: 'submitted',
+            answers: [{ questionId: f.questionId, answerText: null }],
+          },
+        });
+      }
       const reviewBytes = await h
         .http()
         .get(reviewer + '/answer-assets/' + asset.id + '/download')

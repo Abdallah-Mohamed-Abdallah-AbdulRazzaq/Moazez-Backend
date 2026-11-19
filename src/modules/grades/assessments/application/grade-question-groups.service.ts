@@ -86,13 +86,7 @@ export class GradeQuestionGroupsService {
         )
           throw new NotFoundDomainException();
         const file = view.file;
-        return {
-          bucket: file.bucket,
-          objectKey: file.objectKey,
-          originalName: file.originalName,
-          mimeType: file.mimeType,
-          sizeBytes: file.sizeBytes,
-        };
+        return file;
       },
       () => new NotFoundDomainException(),
       request,

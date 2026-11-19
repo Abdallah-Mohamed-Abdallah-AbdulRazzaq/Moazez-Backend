@@ -2,6 +2,7 @@ import { FileVisibility, Prisma } from '@prisma/client';
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import { StoredFileMetadata } from '../domain/stored-file-metadata';
+import { nonAssessmentFileFilter } from '../../shared/domain/non-assessment-file';
 
 const FILE_RECORD_ARGS = Prisma.validator<Prisma.FileDefaultArgs>()({
   select: {
@@ -57,6 +58,7 @@ export class FilesRepository {
       where: {
         id: fileId,
         studentCredentialSecretArtifacts: { none: {} },
+        ...nonAssessmentFileFilter,
       },
       ...FILE_RECORD_ARGS,
     });

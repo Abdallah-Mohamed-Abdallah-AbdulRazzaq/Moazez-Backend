@@ -56,7 +56,7 @@ object coordinates, file bytes or foreign resource identifiers.
 | `assessment_media.capability_failed` | 409 | Private upload capability could not be safely issued |
 | `assessment_media.verification_failed` | 409 | Required content facts were rejected |
 | `assessment_media.verifier_unavailable` | 409 | Required technical verifier or bounded execution slot unavailable |
-| `assessment_media.security_verification_unavailable` | 409 | DR-07 release verification is unavailable or unapproved |
+| `assessment_media.security_verification_unavailable` | 409 | Historical DR-07 gate failure under the attested upload contract |
 | `assessment_media.object_changed` | 409 | Object identity changed or could not be established |
 | `assessment_media.verification_timeout` | 409 | Completion exceeded its caller deadline; no READY release |
 | `assessment_media.ready_relationship_invalid` | 409 | READY provenance no longer matches its live private File |

@@ -320,7 +320,7 @@ describe('ST-03 Assessment Media real tenant/resource authorization', () => {
       );
       const reached = deferred(),
         release = deferred();
-      fixture.security.beforeAttest = async () => {
+      fixture.verification.beforeFinish = async () => {
         reached.resolve();
         await release.promise;
       };
@@ -380,7 +380,7 @@ describe('ST-03 Assessment Media real tenant/resource authorization', () => {
     );
     const reached = deferred(),
       release = deferred();
-    fixture.security.beforeAttest = async () => {
+    fixture.verification.beforeFinish = async () => {
       reached.resolve();
       await release.promise;
     };
@@ -446,7 +446,7 @@ describe('ST-03 Assessment Media real tenant/resource authorization', () => {
         uploaded.intent.uploadId,
       ),
     );
-    fixture.security.beforeAttest = async () => {
+    fixture.verification.beforeFinish = async () => {
       await prisma.term.update({
         where: { id: fixture.school.termId },
         data: { deletedAt: new Date() },
@@ -472,7 +472,7 @@ describe('ST-03 Assessment Media real tenant/resource authorization', () => {
     const uploaded = await fixture.asMediaActor('teacher', () =>
       fixture.upload(assessment.id, undefined, 'GRADE_ASSESSMENT_MEDIA'),
     );
-    fixture.security.beforeAttest = async () => {
+    fixture.verification.beforeFinish = async () => {
       await prisma.gradeAssessment.update({
         where: { id: assessment.id },
         data: { lockedAt: new Date() },
@@ -515,7 +515,7 @@ describe('ST-03 Assessment Media real tenant/resource authorization', () => {
     const report = jest
       .spyOn(Logger.prototype, 'error')
       .mockImplementation(() => undefined);
-    fixture.security.beforeAttest = async () => {
+    fixture.verification.beforeFinish = async () => {
       await prisma.membership.update({
         where: { id: fixture.actors.teacher.membershipId },
         data: { status: 'SUSPENDED' },
@@ -613,7 +613,7 @@ describe('ST-03 Assessment Media real tenant/resource authorization', () => {
       ).rejects.toMatchObject({ httpStatus: 404 });
       expect(issue).not.toHaveBeenCalled();
       expect(write).not.toHaveBeenCalled();
-      expect(fixture.security.calls).toBe(1);
+      expect(fixture.verification.calls).toBe(1);
       expect(
         await prisma.fileUploadSession.findUniqueOrThrow({
           where: { id: ready.uploadId },
@@ -694,7 +694,7 @@ describe('ST-03 Assessment Media real tenant/resource authorization', () => {
         ),
       ),
     ).rejects.toMatchObject({ reason: 'idempotency_conflict' });
-    expect(fixture.security.calls).toBe(1);
+    expect(fixture.verification.calls).toBe(1);
     expect(
       await prisma.file.count({ where: { schoolId: fixture.school.schoolId } }),
     ).toBe(1);

@@ -3,7 +3,6 @@ import {
   HomeworkQuestionAssetsHttp,
   st06Json,
 } from '../fixtures/homework-question-assets.http';
-import { UnapprovedAssessmentMediaSecurityGate } from '../../src/modules/files/assessment-media/application/assessment-media-verifier';
 import type { HomeworkQuestionAssetDto } from '../../src/modules/homework/dto/homework-question-asset.dto';
 
 jest.setTimeout(180000);
@@ -265,31 +264,28 @@ describe('ST-06 Homework question asset ownership, provenance and private-conten
         })
         .expect(404);
   });
-  it('does not turn a failed/unapproved verification into READY or a bindable File', async () => {
+  it('does not turn malformed bytes into READY or a bindable File', async () => {
     const graph = await h.fixture.graph();
-    const blocked = h.fixture.serviceWithSecurity(
-      new UnapprovedAssessmentMediaSecurityGate(),
-    );
+    const service = h.fixture.service;
     const uploaded = await h.fixture.asMediaActor('teacher', () =>
       h.fixture.upload(
         graph.homework.id,
-        Buffer.from('Owned gate denial text\n'),
+        Buffer.from([0x00, 0xff, 0x00]),
         'HOMEWORK_ASSIGNMENT_MEDIA',
         'blocked.txt',
         'text/plain',
-        blocked,
       ),
     );
     await expect(
       h.fixture.asMediaActor('teacher', () =>
-        blocked.complete(
+        service.complete(
           'HOMEWORK_ASSIGNMENT_MEDIA',
           graph.homework.id,
           uploaded.intent.uploadId,
         ),
       ),
     ).rejects.toMatchObject({
-      code: 'assessment_media.security_verification_unavailable',
+      code: 'assessment_media.verification_failed',
     });
     const persisted = await h.prisma.fileUploadSession.findUniqueOrThrow({
       where: { id: uploaded.intent.uploadId },

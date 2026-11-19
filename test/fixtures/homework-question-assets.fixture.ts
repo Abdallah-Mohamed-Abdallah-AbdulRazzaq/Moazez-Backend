@@ -4,7 +4,6 @@ import {
   AssessmentMediaFixture,
   type MediaFixtureActor,
 } from './assessment-media.fixture';
-import type { PrismaService } from '../../src/infrastructure/database/prisma.service';
 
 const authorPermissions = [
   'homework.assignments.view',
@@ -18,87 +17,8 @@ const authorPermissions = [
   'homework.submissions.view',
 ];
 
-/** Test-only owned graph and attestation hook; never imported by runtime application code. */
+/** Owned academic graph for managed Homework and Grades files. */
 export class HomeworkQuestionAssetsFixture extends AssessmentMediaFixture {
-  private readonly permittedAttestations = new Map<
-    string,
-    { creatorId: string; contextId: string | null; purpose: string }
-  >();
-  constructor(prisma: PrismaService) {
-    super(prisma); // disposable PostgreSQL + owned MinIO guard runs before DB access
-    this.security.beforeAttest = async (input) => {
-      const expected = this.permittedAttestations.get(input.uploadId);
-      const session = await this.prisma.fileUploadSession.findUniqueOrThrow({
-        where: { id: input.uploadId },
-      });
-      const schoolOwned = this.schools.some(
-        (school) => school.schoolId === session.schoolId,
-      );
-      if (
-        !expected ||
-        !schoolOwned ||
-        expected.creatorId !== session.createdByUserId ||
-        expected.contextId !== session.purposeContextId ||
-        expected.purpose !== session.purpose ||
-        session.status !== 'VERIFYING' ||
-        !session.assessmentVerificationClaimId ||
-        input.bucket !== this.storage.resolveBucket('PRIVATE') ||
-        input.bucket !== session.finalBucket ||
-        input.objectKey !== session.finalObjectKey ||
-        input.objectKey !==
-          `assessment-media/${session.schoolId}/verified/${input.uploadId}`
-      )
-        throw new Error(
-          'Test attestation refuses an unregistered or unrelated object',
-        );
-      const stat = await this.storage.statObject({
-        bucket: input.bucket,
-        objectKey: input.objectKey,
-      });
-      if (
-        stat.size !== Number(input.facts.actualSizeBytes) ||
-        stat.contentType !== input.facts.verifiedMimeType ||
-        stat.contentType !== session.expectedMimeType ||
-        BigInt(stat.size) !== session.expectedSizeBytes ||
-        input.objectIdentity !==
-          JSON.stringify([
-            stat.etag,
-            stat.generation,
-            stat.version,
-            stat.size,
-            stat.contentType,
-          ])
-      )
-        throw new Error(
-          'Test attestation rejects inconsistent object/MIME/size identity',
-        );
-      const source = await this.storage.getObject({
-        bucket: input.bucket,
-        objectKey: input.objectKey,
-        raw: true,
-      });
-      const hash = createHash('sha256');
-      let size = 0;
-      try {
-        for await (const chunk of source) {
-          const bytes = Buffer.isBuffer(chunk)
-            ? chunk
-            : Buffer.from(chunk as Uint8Array);
-          size += bytes.length;
-          if (size > stat.size)
-            throw new Error('Test attestation rejects oversized content');
-          hash.update(bytes);
-        }
-      } finally {
-        source.destroy();
-      }
-      if (
-        size !== stat.size ||
-        hash.digest('hex') !== input.facts.checksumSha256
-      )
-        throw new Error('Test attestation rejects real-byte checksum mismatch');
-    };
-  }
   async create(): Promise<void> {
     await super.create();
     // Existing Homework Core requires an active School scope, including Organization users.
@@ -200,18 +120,13 @@ export class HomeworkQuestionAssetsFixture extends AssessmentMediaFixture {
   ) {
     return this.asMediaActor(actor, async () => {
       const uploaded = await this.upload(contextId, bytes, purpose, filename);
-      this.permittedAttestations.set(uploaded.intent.uploadId, {
-        creatorId: uploaded.session.createdByUserId,
-        contextId: uploaded.session.purposeContextId,
-        purpose: uploaded.session.purpose,
-      });
       const result = await this.service.complete(
         purpose,
         contextId,
         uploaded.intent.uploadId,
       );
       if (result.status !== 'READY' || !result.fileId)
-        throw new Error('Owned attested upload did not produce READY');
+        throw new Error('Owned verified upload did not produce READY');
       const file = await this.prisma.file.findUniqueOrThrow({
         where: { id: result.fileId },
       });

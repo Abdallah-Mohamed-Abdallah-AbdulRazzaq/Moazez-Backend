@@ -59,10 +59,12 @@ import { GradesAssessmentQuestionsRepository } from './infrastructure/grades-ass
 import { GradesAssessmentsRepository } from './infrastructure/grades-assessments.repository';
 import { GradesSubmissionGradeItemSyncRepository } from './infrastructure/grades-submission-grade-item-sync.repository';
 import { GradesSubmissionsRepository } from './infrastructure/grades-submissions.repository';
+import { GradeAuthoringUploadsController } from './controller/grade-authoring-uploads.controller';
 
 @Module({
   imports: [AuthModule, StorageModule, AssessmentMediaModule],
   controllers: [
+    GradeAuthoringUploadsController,
     GradeReviewManagementController,
     GradeScoringController,
     CoreGradeQuestionGroupsController,

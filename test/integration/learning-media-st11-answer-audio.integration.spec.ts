@@ -151,7 +151,7 @@ describe('ST11-A real audio answers in the canonical media runtime', () => {
         where: { id: upload.ready.uploadId },
       });
       expect(session.durationSeconds).toBeGreaterThan(0);
-      expect(session.verificationVersion).toBe('assessment-media-attested-v1');
+      expect(session.verificationVersion).toBe('assessment-media-technical-v1');
     },
   );
 });

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
+import type { Prisma } from '@prisma/client';
 import { AssessmentMediaRuntimePolicy } from '../../src/modules/files/assessment-media/application/assessment-media-runtime.policy';
-import { UnapprovedAssessmentMediaSecurityGate } from '../../src/modules/files/assessment-media/application/assessment-media-verifier';
 import { GradeAssetsHttp, st07Json } from '../fixtures/grade-assets.http';
 jest.setTimeout(180000);
 describe('ST-07 tenant, Teacher decision and verified provenance security', () => {
@@ -272,45 +272,41 @@ describe('ST-07 tenant, Teacher decision and verified provenance security', () =
     async (changed) => {
       const graph = await h.fixture.gradeGraph(),
         ready = await h.fixture.readyGrade(graph.assessment.id);
-      if (changed === 'public')
-        await h.prisma.file.update({
-          where: { id: ready.fileId },
-          data: { visibility: 'PUBLIC' },
-        });
+      const changes: Partial<
+        Record<typeof changed, Prisma.FileUncheckedUpdateInput>
+      > = {
+        public: { visibility: 'PUBLIC' },
+        uploader: { uploaderId: h.fixture.actors.otherTeacher.userId },
+        bucket: { bucket: 'owned-negative' },
+        name: { originalName: 'changed.txt' },
+        checksum: { checksumSha256: '0'.repeat(64) },
+        mime: { mimeType: 'application/pdf' },
+        size: { sizeBytes: 1n },
+      };
+      const mutation = changes[changed];
+      if (mutation) {
+        await expect(
+          h.prisma.file.update({
+            where: { id: ready.fileId },
+            data: mutation,
+          }),
+        ).rejects.toThrow(/Verified assessment File identity is immutable/u);
+        await h
+          .http()
+          .post(h.teacher(graph))
+          .set(h.headers())
+          .send({
+            sourceType: 'MANAGED_FILE',
+            uploadId: ready.uploadId,
+            fileId: ready.fileId,
+          })
+          .expect(201);
+        return;
+      }
       if (changed === 'retired')
         await h.prisma.file.update({
           where: { id: ready.fileId },
           data: { deletedAt: new Date() },
-        });
-      if (changed === 'uploader')
-        await h.prisma.file.update({
-          where: { id: ready.fileId },
-          data: { uploaderId: h.fixture.actors.otherTeacher.userId },
-        });
-      if (changed === 'bucket')
-        await h.prisma.file.update({
-          where: { id: ready.fileId },
-          data: { bucket: 'owned-negative' },
-        });
-      if (changed === 'name')
-        await h.prisma.file.update({
-          where: { id: ready.fileId },
-          data: { originalName: 'changed.txt' },
-        });
-      if (changed === 'checksum')
-        await h.prisma.file.update({
-          where: { id: ready.fileId },
-          data: { checksumSha256: '0'.repeat(64) },
-        });
-      if (changed === 'mime')
-        await h.prisma.file.update({
-          where: { id: ready.fileId },
-          data: { mimeType: 'application/pdf' },
-        });
-      if (changed === 'size')
-        await h.prisma.file.update({
-          where: { id: ready.fileId },
-          data: { sizeBytes: 1n },
         });
       if (
         [
@@ -472,28 +468,23 @@ describe('ST-07 tenant, Teacher decision and verified provenance security', () =
       .set(h.headers('student'))
       .expect(404);
   });
-  it('preserves disabled Production release and unapproved security provider', async () => {
+  it('preserves default-off upload execution', () => {
     expect(() =>
       new AssessmentMediaRuntimePolicy(
         new ConfigService({
           NODE_ENV: 'production',
-          ASSESSMENT_MEDIA_UPLOADS_ENABLED: true,
+          ASSESSMENT_MEDIA_UPLOADS_ENABLED: false,
         }),
       ).assertUploadExecutionEnabled(),
     ).toThrow();
-    await expect(
-      new UnapprovedAssessmentMediaSecurityGate().attest(),
-    ).rejects.toMatchObject({
-      code: 'assessment_media.security_verification_unavailable',
-    });
   });
-  it('denies an actual verified binding when Production execution is selected', async () => {
+  it('denies an actual verified binding when the runtime flag is off', async () => {
     const graph = await h.fixture.gradeGraph(),
       ready = await h.fixture.readyGrade(graph.assessment.id);
     const production = new AssessmentMediaRuntimePolicy(
       new ConfigService({
         NODE_ENV: 'production',
-        ASSESSMENT_MEDIA_UPLOADS_ENABLED: true,
+        ASSESSMENT_MEDIA_UPLOADS_ENABLED: false,
       }),
     );
     jest

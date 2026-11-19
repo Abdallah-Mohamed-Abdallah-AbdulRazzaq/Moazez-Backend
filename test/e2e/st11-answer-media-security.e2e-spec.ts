@@ -141,7 +141,7 @@ describe('ST11-A real transactional answer media denial and concurrency', () => 
     },
   );
   it.each(domains)(
-    '%s performs provider attestation outside locks and settles upload-versus-cancel safely',
+    '%s verifies real storage bytes outside locks and settles upload-versus-cancel safely',
     async (domain) => {
       const f = await h.setupResponse(domain),
         upload = await h.prepare(f.media);
@@ -156,9 +156,8 @@ describe('ST11-A real transactional answer media denial and concurrency', () => 
       ).toBe(204);
       const entered = deferred(),
         release = deferred();
-      const original = h.testSecurity.beforeAttest;
-      h.testSecurity.beforeAttest = async (input) => {
-        await original?.(input);
+      const original = h.verification.beforeFinish;
+      h.verification.beforeFinish = async () => {
         entered.resolve();
         await release.promise;
       };
@@ -190,7 +189,7 @@ describe('ST11-A real transactional answer media denial and concurrency', () => 
           .expect(201);
       } finally {
         release.resolve();
-        h.testSecurity.beforeAttest = original;
+        h.verification.beforeFinish = original;
       }
       expect([404, 409]).toContain((await completing).status);
       const row = await h.prisma.fileUploadSession.findUniqueOrThrow({

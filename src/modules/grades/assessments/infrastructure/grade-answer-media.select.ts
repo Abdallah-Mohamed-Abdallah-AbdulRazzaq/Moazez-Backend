@@ -1,4 +1,8 @@
 import { Prisma } from '@prisma/client';
+import {
+  ASSESSMENT_MEDIA_TECHNICAL_VERSION,
+  ASSESSMENT_MEDIA_VERSION,
+} from '../../../files/assessment-media/domain/assessment-media.contract';
 
 /** Progress is additive only for opted-in questions; mutation validation rechecks full evidence. */
 export const GRADE_ANSWER_MEDIA_SELECT = {
@@ -10,7 +14,12 @@ export const GRADE_ANSWER_MEDIA_SELECT = {
         intent: {
           upload: {
             status: 'READY',
-            verificationVersion: 'assessment-media-attested-v1',
+            verificationVersion: {
+              in: [
+                ASSESSMENT_MEDIA_VERSION,
+                ASSESSMENT_MEDIA_TECHNICAL_VERSION,
+              ],
+            },
           },
         },
       },

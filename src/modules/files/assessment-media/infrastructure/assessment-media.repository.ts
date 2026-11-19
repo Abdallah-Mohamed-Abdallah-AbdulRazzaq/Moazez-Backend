@@ -12,7 +12,6 @@ import {
   Prisma,
   PrismaClient,
   type FileUploadSession,
-  type File as ManagedFile,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import { getRequestContext } from '../../../../common/context/request-context';
@@ -22,7 +21,8 @@ import { assertGradesMediaAuthorization } from '../../../grades/assessments/infr
 import { hasRetainedFileReferences } from '../../shared/infrastructure/file-lifetime.repository';
 import {
   assessmentMediaOwner,
-  ASSESSMENT_MEDIA_VERSION,
+  ASSESSMENT_MEDIA_TECHNICAL_VERSION,
+  ASSESSMENT_VERIFICATION_LEASE_MS,
   AssessmentMediaException,
   assertAssessmentTransition,
   type AssessmentMediaOwner,
@@ -33,7 +33,11 @@ import {
   effectiveAssessmentMediaPolicy,
   type EffectiveAssessmentMediaPolicy,
 } from '../domain/assessment-media.policy';
-import { assertAssessmentReadyEvidence } from '../domain/assessment-media-ready';
+import {
+  assertAssessmentReadyEvidence,
+  matchesTechnicalEvidence,
+  type AssessmentReadyFile,
+} from '../domain/assessment-media-ready';
 import { requireFilesScope } from '../../uploads/files-scope';
 import type { AssessmentVerifiedObject } from '../application/assessment-media-verifier';
 
@@ -51,6 +55,7 @@ type ReservedUpload = {
 };
 type ClaimResult =
   | { kind: 'expired' }
+  | { kind: 'stalled' }
   | { kind: 'ready'; session: FileUploadSession }
   | {
       kind: 'claimed';
@@ -189,6 +194,7 @@ export class AssessmentMediaRepository {
         owner.studentPurpose,
         this.gate,
         ownershipOnly,
+        owner.teacherAuthoringClassId,
       );
     else
       await assertGradesMediaAuthorization(
@@ -399,16 +405,18 @@ export class AssessmentMediaRepository {
           session.expectedMimeType,
           session.expectedSizeBytes,
         );
-        if (session.expiresAt <= new Date()) {
-          if (['CREATED', 'UPLOADING', 'VERIFYING'].includes(session.status))
-            await tx.fileUploadSession.update({
-              where: { id: uploadId },
-              data: { status: 'EXPIRED', assessmentVerificationClaimId: null },
-            });
+        const now = new Date();
+        if (session.expiresAt <= now) {
+          await this.settleAbandonedUpload(tx, owner, session, now);
           return { kind: 'expired' };
         }
-        if (session.status === 'VERIFYING')
+        if (session.status === 'VERIFYING') {
+          if (this.verificationLeaseElapsed(session, now)) {
+            await this.settleAbandonedUpload(tx, owner, session, now);
+            return { kind: 'stalled' };
+          }
           throw new AssessmentMediaException('verification_in_progress');
+        }
         assertAssessmentTransition(
           session.status,
           FileUploadSessionStatus.VERIFYING,
@@ -418,7 +426,11 @@ export class AssessmentMediaRepository {
         const claimId = randomUUID();
         const claimed = await tx.fileUploadSession.update({
           where: { id: uploadId },
-          data: { status: 'VERIFYING', assessmentVerificationClaimId: claimId },
+          data: {
+            status: 'VERIFYING',
+            assessmentVerificationClaimId: claimId,
+            updatedAt: now,
+          },
         });
         return { kind: 'claimed', session: claimed, claimId, policy };
       },
@@ -502,12 +514,19 @@ export class AssessmentMediaRepository {
         throw new AssessmentMediaException('state_conflict');
       if (session.expiresAt <= new Date())
         throw new AssessmentMediaException('expired');
+      const now = new Date();
+      if (this.verificationLeaseElapsed(session, now))
+        throw new AssessmentMediaException('verification_timeout');
       const facts = verified.facts;
       if (
         facts.actualSizeBytes !== session.expectedSizeBytes ||
         facts.verifiedMimeType !== session.expectedMimeType ||
-        verified.securityEvidence.verdict !== 'CLEAN' ||
-        verified.securityEvidence.checksumSha256 !== facts.checksumSha256 ||
+        !(facts.verifiedAt >= session.updatedAt && facts.verifiedAt <= now) ||
+        !matchesTechnicalEvidence(
+          verified.technicalEvidence,
+          facts.checksumSha256,
+          facts.verifiedAt,
+        ) ||
         (facts.durationSeconds !== null &&
           facts.durationSeconds > policy.maximumDurationSeconds) ||
         (facts.width !== null && facts.width > policy.maximumWidth) ||
@@ -534,7 +553,7 @@ export class AssessmentMediaRepository {
         data: {
           status: 'READY',
           fileId: file.id,
-          completedAt: new Date(),
+          completedAt: now,
           verifiedMimeType: facts.verifiedMimeType,
           actualSizeBytes: facts.actualSizeBytes,
           checksumSha256: facts.checksumSha256,
@@ -542,9 +561,9 @@ export class AssessmentMediaRepository {
           width: facts.width,
           height: facts.height,
           verifiedAt: facts.verifiedAt,
-          verificationVersion: ASSESSMENT_MEDIA_VERSION,
+          verificationVersion: ASSESSMENT_MEDIA_TECHNICAL_VERSION,
           assessmentVerificationClaimId: null,
-          assessmentSecurityEvidence: verified.securityEvidence,
+          assessmentSecurityEvidence: verified.technicalEvidence,
         },
       });
       await this.audit(tx, owner, ready, 'ready');
@@ -625,23 +644,60 @@ export class AssessmentMediaRepository {
     return this.transaction(
       owner,
       async (tx) => {
-        let session = await this.lock(tx, owner, uploadId);
-        if (
-          ['CREATED', 'UPLOADING', 'VERIFYING'].includes(session.status) &&
-          session.expiresAt <= now
-        ) {
-          session = await tx.fileUploadSession.update({
-            where: { id: uploadId },
-            data: { status: 'EXPIRED', assessmentVerificationClaimId: null },
-          });
-          await this.audit(tx, owner, session, 'expired');
-        }
+        const session = await this.settleAbandonedUpload(
+          tx,
+          owner,
+          await this.lock(tx, owner, uploadId),
+          now,
+        );
         if (session.status === 'READY')
           await this.assertReadyRelationship(tx, session);
         return session;
       },
       true,
     );
+  }
+
+  private verificationLeaseElapsed(
+    session: FileUploadSession,
+    now: Date,
+  ): boolean {
+    return (
+      session.status === 'VERIFYING' &&
+      now.getTime() - session.updatedAt.getTime() >=
+        ASSESSMENT_VERIFICATION_LEASE_MS
+    );
+  }
+
+  private async settleAbandonedUpload(
+    tx: Prisma.TransactionClient,
+    owner: AssessmentMediaOwner,
+    session: FileUploadSession,
+    now: Date,
+  ): Promise<FileUploadSession> {
+    if (!['CREATED', 'UPLOADING', 'VERIFYING'].includes(session.status))
+      return session;
+    const expired = session.expiresAt <= now;
+    if (!expired && !this.verificationLeaseElapsed(session, now))
+      return session;
+    const reason = expired ? undefined : 'verification_timeout';
+    const terminal = await tx.fileUploadSession.update({
+      where: { id: session.id },
+      data: {
+        status: expired ? 'EXPIRED' : 'FAILED',
+        failedAt: expired ? null : now,
+        failureReason: reason ?? null,
+        assessmentVerificationClaimId: null,
+      },
+    });
+    await this.audit(
+      tx,
+      owner,
+      terminal,
+      expired ? 'expired' : 'failed',
+      reason,
+    );
+    return terminal;
   }
 
   async cleanupEligibility(
@@ -730,7 +786,7 @@ export class AssessmentMediaRepository {
       lock?: boolean;
       expectedPurpose: AssessmentReadyPurpose;
     },
-  ): Promise<{ file: ManagedFile; session: FileUploadSession }> {
+  ): Promise<{ file: AssessmentReadyFile; session: FileUploadSession }> {
     const scope = requireFilesScope();
     if (input.lock) {
       await tx.$queryRaw`SELECT id FROM file_upload_sessions
@@ -752,12 +808,11 @@ export class AssessmentMediaRepository {
     });
     if (!session)
       throw new AssessmentMediaException('ready_relationship_invalid');
-    const file = await this.assertReadyRelationship(tx, session);
-    assertAssessmentReadyEvidence(session, file, {
-      ...input,
-      schoolId: scope.schoolId,
-      organizationId: scope.organizationId,
-    });
+    const file = await this.assertReadyRelationship(
+      tx,
+      session,
+      input.privateBucket,
+    );
     return { file, session };
   }
 
@@ -807,7 +862,8 @@ export class AssessmentMediaRepository {
   private async assertReadyRelationship(
     tx: Prisma.TransactionClient,
     session: FileUploadSession,
-  ): Promise<ManagedFile> {
+    privateBucket = session.finalBucket,
+  ): Promise<AssessmentReadyFile> {
     const file = session.fileId
       ? await tx.file.findFirst({
           where: {
@@ -824,13 +880,21 @@ export class AssessmentMediaRepository {
           },
         })
       : null;
-    if (
-      !file ||
-      session.verificationVersion !== ASSESSMENT_MEDIA_VERSION ||
-      !session.assessmentSecurityEvidence
-    )
+    if (!file || !session.purposeContextId)
       throw new AssessmentMediaException('ready_relationship_invalid');
-    return file;
+    const verifiedObjectIdentity = assertAssessmentReadyEvidence(
+      session,
+      file,
+      {
+        schoolId: session.schoolId,
+        organizationId: session.organizationId,
+        contextId: session.purposeContextId,
+        creatorId: session.createdByUserId,
+        expectedPurpose: session.purpose as AssessmentReadyPurpose,
+        privateBucket,
+      },
+    );
+    return verifiedObjectIdentity ? { ...file, verifiedObjectIdentity } : file;
   }
 
   private questionBinding(
@@ -881,7 +945,7 @@ export class AssessmentMediaRepository {
       expectedPurpose: 'HOMEWORK_SUBMISSION_MEDIA' | 'GRADE_SUBMISSION_MEDIA';
       lock?: boolean;
     },
-  ): Promise<{ file: ManagedFile; session: FileUploadSession }> {
+  ): Promise<{ file: AssessmentReadyFile; session: FileUploadSession }> {
     const scope = requireFilesScope();
     if (input.lock)
       await tx.$queryRaw`SELECT id FROM assessment_answer_upload_intents

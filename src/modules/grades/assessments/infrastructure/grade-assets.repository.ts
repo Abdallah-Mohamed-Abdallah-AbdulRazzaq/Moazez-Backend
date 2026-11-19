@@ -10,7 +10,6 @@ import { ConfigService } from '@nestjs/config';
 import {
   AuditOutcome,
   Prisma,
-  type File as ManagedFile,
   type GradeAssessmentAsset,
   type GradeAssessmentQuestionAsset,
 } from '@prisma/client';
@@ -27,7 +26,11 @@ import {
   assessmentMediaOwner,
   AssessmentMediaException,
 } from '../../../files/assessment-media/domain/assessment-media.contract';
-import { assertAssessmentReadyContentPolicy } from '../../../files/assessment-media/domain/assessment-media-ready';
+import {
+  assessmentInlinePreviewAllowed,
+  assertAssessmentReadyContentPolicy,
+  type AssessmentReadyFile,
+} from '../../../files/assessment-media/domain/assessment-media-ready';
 import {
   assertAssessmentUploadPolicy,
   effectiveAssessmentMediaPolicy,
@@ -59,7 +62,7 @@ import { GRADE_TEACHER_AUTHORING_PERMISSION } from '../domain/grade-teacher-auth
 type Asset = GradeAssessmentAsset | GradeAssessmentQuestionAsset;
 export interface GradeAssetView {
   asset: Asset;
-  file: ManagedFile | null;
+  file: AssessmentReadyFile | null;
   externalUrl: string | null;
   previewAllowed: boolean;
   downloadAllowed: boolean;
@@ -147,7 +150,7 @@ export class GradeAssetsRepository implements RichAssetResolver<
     policy: EffectiveAssessmentMediaPolicy,
     lock = false,
   ): Promise<GradeAssetView> {
-    let file: ManagedFile | null = null;
+    let file: AssessmentReadyFile | null = null;
     let externalUrl: string | null = null;
     if (asset.sourceType === 'MANAGED_FILE' && asset.fileId) {
       try {
@@ -180,7 +183,7 @@ export class GradeAssetsRepository implements RichAssetResolver<
       file,
       externalUrl,
       usable: !!file || !!externalUrl,
-      previewAllowed: !!file && policy.allowInlinePreview,
+      previewAllowed: assessmentInlinePreviewAllowed(policy, file),
       downloadAllowed: !!file && policy.allowDownload,
     };
   }

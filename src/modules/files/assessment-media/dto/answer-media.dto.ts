@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import type { File as ManagedFile } from '@prisma/client';
+import type { AssessmentReadyFile } from '../domain/assessment-media-ready';
 import {
   IsOptional,
   IsString,
@@ -85,7 +85,7 @@ export function presentAnswerAsset(asset: {
 
 export interface AnswerAssetView {
   asset: { id: string; fileId: string; category: string; createdAt: Date };
-  file: ManagedFile;
+  file: AssessmentReadyFile;
   previewAllowed: boolean;
   downloadAllowed: boolean;
 }

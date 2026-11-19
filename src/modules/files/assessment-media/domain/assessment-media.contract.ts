@@ -17,9 +17,13 @@ export const ASSESSMENT_MEDIA_PURPOSES = [
 export type AssessmentMediaPurpose = (typeof ASSESSMENT_MEDIA_PURPOSES)[number];
 
 export const ASSESSMENT_MEDIA_VERSION = 'assessment-media-attested-v1';
+export const ASSESSMENT_MEDIA_TECHNICAL_VERSION =
+  'assessment-media-technical-v1';
 export const ASSESSMENT_UPLOAD_TTL_MS = 30 * 60 * 1000;
 export const ASSESSMENT_SIGNED_CAPABILITY_TTL_SECONDS = 15 * 60;
 export const ASSESSMENT_VERIFICATION_DEADLINE_MS = 90_000;
+export const ASSESSMENT_VERIFICATION_LEASE_MS =
+  ASSESSMENT_VERIFICATION_DEADLINE_MS + 30_000;
 
 export type AssessmentMediaReason =
   | 'disabled'
@@ -35,7 +39,6 @@ export type AssessmentMediaReason =
   | 'capability_failed'
   | 'verification_failed'
   | 'verifier_unavailable'
-  | 'security_verification_unavailable'
   | 'object_changed'
   | 'verification_timeout'
   | 'ready_relationship_invalid';
@@ -80,7 +83,8 @@ export function assessmentMediaOwner(
   if (teacherAuthoringClassId !== undefined) {
     assertAssessmentUuid(teacherAuthoringClassId);
     if (
-      purpose !== FileUploadPurpose.GRADE_ASSESSMENT_MEDIA ||
+      (purpose !== FileUploadPurpose.GRADE_ASSESSMENT_MEDIA &&
+        purpose !== FileUploadPurpose.HOMEWORK_ASSIGNMENT_MEDIA) ||
       scope.userType !== UserType.TEACHER ||
       questionId !== undefined
     )
@@ -106,14 +110,16 @@ export function assessmentMediaOwner(
       : !managementActors.includes(scope.userType)
   )
     throw new AssessmentMediaException('upload_not_found');
-  const permission = teacherAuthoringClassId
-    ? 'grades.teacher_authoring.manage'
-    : {
-        HOMEWORK_ASSIGNMENT_MEDIA: 'homework.attachments.manage',
-        GRADE_ASSESSMENT_MEDIA: 'grades.questions.manage',
-        HOMEWORK_SUBMISSION_MEDIA: 'homework.submission_attachments.manage',
-        GRADE_SUBMISSION_MEDIA: 'grades.submissions.submit',
-      }[purpose];
+  const permission =
+    purpose === FileUploadPurpose.GRADE_ASSESSMENT_MEDIA &&
+    teacherAuthoringClassId
+      ? 'grades.teacher_authoring.manage'
+      : {
+          HOMEWORK_ASSIGNMENT_MEDIA: 'homework.attachments.manage',
+          GRADE_ASSESSMENT_MEDIA: 'grades.questions.manage',
+          HOMEWORK_SUBMISSION_MEDIA: 'homework.submission_attachments.manage',
+          GRADE_SUBMISSION_MEDIA: 'grades.submissions.submit',
+        }[purpose];
   if (!getRequestContext()?.activeMembership?.permissions.includes(permission))
     throw new AssessmentMediaException('upload_not_found');
   return {

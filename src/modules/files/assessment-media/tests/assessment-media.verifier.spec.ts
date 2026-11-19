@@ -1,14 +1,11 @@
 import { randomUUID, createHash } from 'node:crypto';
+import { Readable } from 'node:stream';
 import { MODULE_METADATA } from '@nestjs/common/constants';
 import type { FileUploadSession } from '@prisma/client';
 import type { StorageService } from '../../../../infrastructure/storage/storage.service';
 import { MediaVerifierService } from '../../uploads/application/media-verifier.service';
 import { AssessmentMediaModule } from '../assessment-media.module';
-import {
-  AssessmentMediaSecurityGate,
-  AssessmentMediaVerifier,
-  UnapprovedAssessmentMediaSecurityGate,
-} from '../application/assessment-media-verifier';
+import { AssessmentMediaVerifier } from '../application/assessment-media-verifier';
 import { effectiveAssessmentMediaPolicy } from '../domain/assessment-media.policy';
 
 describe('Assessment Media verification release boundary (unit)', () => {
@@ -45,40 +42,51 @@ describe('Assessment Media verification release boundary (unit)', () => {
   };
   const policy = effectiveAssessmentMediaPolicy(null);
 
-  function setup(
-    security: AssessmentMediaSecurityGate = new UnapprovedAssessmentMediaSecurityGate(),
-  ) {
+  function setup() {
     const storage = {
       statObject: jest.fn().mockResolvedValue(stat),
       readObjectRange: jest.fn().mockResolvedValue(bytes),
+      getObject: jest
+        .fn()
+        .mockImplementation(() => Promise.resolve(Readable.from([bytes]))),
     };
     const media = {
-      verifyAndStoreFinal: jest.fn().mockResolvedValue(facts),
-      verify: jest.fn().mockResolvedValue(facts),
+      verifyAndStoreFinal: jest
+        .fn<
+          ReturnType<MediaVerifierService['verifyAndStoreFinal']>,
+          Parameters<MediaVerifierService['verifyAndStoreFinal']>
+        >()
+        .mockResolvedValue(facts),
     };
     const verifier = new AssessmentMediaVerifier(
       storage as unknown as StorageService,
       media as unknown as MediaVerifierService,
-      security,
     );
     return { verifier, storage, media };
   }
 
-  it('never converts an existing object or valid technical facts into READY without DR-07 security verification', async () => {
-    const { verifier, media } = setup();
-    await expect(verifier.verify(session, policy)).rejects.toMatchObject({
-      code: 'assessment_media.security_verification_unavailable',
+  it('returns byte-bound technical evidence after reading the server-owned final object', async () => {
+    const { verifier, media, storage } = setup();
+    const result = await verifier.verify(session, policy);
+    expect(result.technicalEvidence).toMatchObject({
+      kind: 'TECHNICAL',
+      checksumSha256: hash,
+      verifiedAt: result.facts.verifiedAt.toISOString(),
     });
+    expect(result.technicalEvidence.objectIdentity).toMatch(/^[a-f0-9]{64}$/u);
     expect(media.verifyAndStoreFinal).toHaveBeenCalledTimes(1);
+    expect(storage.getObject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        objectKey: session.finalObjectKey,
+        raw: true,
+      }),
+    );
   });
 
-  it('wires only the unapproved fail-closed gate and no public Assessment Media controllers', () => {
+  it('wires the technical verifier without introducing a public controller', () => {
     expect(
       Reflect.getMetadata(MODULE_METADATA.PROVIDERS, AssessmentMediaModule),
-    ).toContainEqual({
-      provide: AssessmentMediaSecurityGate,
-      useClass: UnapprovedAssessmentMediaSecurityGate,
-    });
+    ).toContain(AssessmentMediaVerifier);
     expect(
       Reflect.getMetadata(MODULE_METADATA.CONTROLLERS, AssessmentMediaModule) ??
         [],
@@ -145,41 +153,26 @@ describe('Assessment Media verification release boundary (unit)', () => {
       settle(stat);
       await jest.advanceTimersByTimeAsync(0);
       storage.statObject.mockResolvedValue(stat);
-      await expect(verifier.verify(session, policy)).rejects.toMatchObject({
-        reason: 'security_verification_unavailable',
+      await expect(verifier.verify(session, policy)).resolves.toMatchObject({
+        technicalEvidence: { kind: 'TECHNICAL' },
       });
     } finally {
       jest.useRealTimers();
     }
   });
 
-  it('cannot accept a security receipt belonging to different bytes', async () => {
-    // Deliberate unit contract double, not a production scanner.
-    const security: AssessmentMediaSecurityGate = {
-      attest: jest.fn().mockResolvedValue({
-        verdict: 'CLEAN',
-        provider: 'test-only',
-        version: 'test-v1',
-        checksumSha256: 'a'.repeat(64),
-      }),
-    };
-    await expect(
-      setup(security).verifier.verify(session, policy),
-    ).rejects.toMatchObject({
-      code: 'assessment_media.security_verification_unavailable',
+  it('rejects a same-size final object with different bytes even when the stat stays stable', async () => {
+    const { verifier, storage } = setup();
+    storage.getObject.mockResolvedValue(
+      Readable.from([Buffer.alloc(bytes.length, 65)]),
+    );
+    await expect(verifier.verify(session, policy)).rejects.toMatchObject({
+      code: 'assessment_media.object_changed',
     });
   });
 
-  it('detects final object mutation during a security attestation', async () => {
-    const security: AssessmentMediaSecurityGate = {
-      attest: jest.fn().mockResolvedValue({
-        verdict: 'CLEAN',
-        provider: 'test-only',
-        version: 'test-v1',
-        checksumSha256: hash,
-      }),
-    };
-    const { verifier, storage } = setup(security);
+  it('detects final object mutation during the checksum read', async () => {
+    const { verifier, storage } = setup();
     storage.statObject
       .mockResolvedValueOnce(stat)
       .mockResolvedValueOnce(stat)
@@ -190,29 +183,20 @@ describe('Assessment Media verification release boundary (unit)', () => {
     });
   });
 
-  it('does not call signature/dimension checks deep image verification', async () => {
+  it('passes pinned generations to the source and final reads', async () => {
     const { verifier, storage, media } = setup();
-    const header = Buffer.from(
-      '89504e470d0a1a0a0000000d494844520000000100000001',
-      'hex',
-    );
-    storage.statObject.mockResolvedValue({
-      ...stat,
-      contentType: 'image/png',
-      size: header.length,
+    storage.statObject
+      .mockResolvedValueOnce({ ...stat, generation: '123' })
+      .mockResolvedValueOnce({ ...stat, generation: '123' })
+      .mockResolvedValue({ ...stat, generation: '456' });
+    await verifier.verify(session, policy);
+    expect(media.verifyAndStoreFinal.mock.lastCall?.[0]).toMatchObject({
+      snapshot: { read: { generation: '123' } },
     });
-    storage.readObjectRange.mockResolvedValue(header);
-    await expect(
-      verifier.verify(
-        {
-          ...session,
-          originalName: 'image.png',
-          expectedMimeType: 'image/png',
-          expectedSizeBytes: BigInt(header.length),
-        },
-        policy,
-      ),
-    ).rejects.toMatchObject({ code: 'assessment_media.verifier_unavailable' });
-    expect(media.verifyAndStoreFinal).not.toHaveBeenCalled();
+    expect(storage.getObject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        generation: '456',
+      }),
+    );
   });
 });

@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import type { FileUploadSession, Prisma } from '@prisma/client';
+import { createHash } from 'node:crypto';
+import { addAbortSignal } from 'node:stream';
+import type { FileUploadSession } from '@prisma/client';
 import { StorageService } from '../../../../infrastructure/storage/storage.service';
 import type { ObjectStorageStat } from '../../../../infrastructure/storage/object-storage.port';
+import { isObjectStorageNotFoundError } from '../../../../infrastructure/storage/object-storage.errors';
+import { storageObjectIdentity } from '../../../../infrastructure/storage/object-storage.identity';
 import {
   MediaVerifierService,
   MediaVerificationError,
@@ -16,48 +20,18 @@ import {
   ASSESSMENT_VERIFICATION_DEADLINE_MS,
 } from '../domain/assessment-media.contract';
 import type { EffectiveAssessmentMediaPolicy } from '../domain/assessment-media.policy';
-
-export interface AssessmentSecurityAttestation {
-  verdict: 'CLEAN';
-  provider: string;
-  version: string;
-  checksumSha256: string;
-}
-export abstract class AssessmentMediaSecurityGate {
-  abstract attest(input: {
-    uploadId: string;
-    bucket: string;
-    objectKey: string;
-    facts: MediaVerificationFacts;
-    objectIdentity: string;
-  }): Promise<AssessmentSecurityAttestation>;
-}
-
-/** DR-07 has not approved a scanner. This is deliberately not a scan adapter. */
-@Injectable()
-export class UnapprovedAssessmentMediaSecurityGate extends AssessmentMediaSecurityGate {
-  attest(): Promise<AssessmentSecurityAttestation> {
-    return Promise.reject(
-      new AssessmentMediaException('security_verification_unavailable'),
-    );
-  }
-}
+import { inspectAssessmentArtifact } from './assessment-artifact-verification';
+import type { AssessmentTechnicalEvidence } from '../domain/assessment-media-ready';
 
 function identity(stat: ObjectStorageStat): string {
-  if (!stat.etag && !stat.generation && !stat.version)
-    throw new AssessmentMediaException('object_changed');
-  return JSON.stringify([
-    stat.etag,
-    stat.generation,
-    stat.version,
-    stat.size,
-    stat.contentType,
-  ]);
+  const value = storageObjectIdentity(stat);
+  if (!value) throw new AssessmentMediaException('object_changed');
+  return value;
 }
 
 export interface AssessmentVerifiedObject {
   facts: MediaVerificationFacts;
-  securityEvidence: Prisma.InputJsonObject;
+  technicalEvidence: AssessmentTechnicalEvidence;
 }
 
 @Injectable()
@@ -67,7 +41,6 @@ export class AssessmentMediaVerifier {
   constructor(
     private readonly storage: StorageService,
     private readonly media: MediaVerifierService,
-    private readonly security: AssessmentMediaSecurityGate,
   ) {}
 
   async verify(
@@ -79,12 +52,9 @@ export class AssessmentMediaVerifier {
     if (this.inFlight >= 2)
       throw new AssessmentMediaException('verifier_unavailable');
     this.inFlight++;
-    let timedOut = false;
+    const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const assertLive = () => {
-      if (timedOut) throw new AssessmentMediaException('verification_timeout');
-    };
-    const work = this.verifyObject(session, policy, assertLive);
+    const work = this.verifyObject(session, policy, controller.signal);
     void work.then(
       () => {
         this.inFlight--;
@@ -98,15 +68,19 @@ export class AssessmentMediaVerifier {
         work,
         new Promise<never>((_resolve, reject) => {
           timer = setTimeout(() => {
-            timedOut = true;
-            reject(new AssessmentMediaException('verification_timeout'));
+            const error = new AssessmentMediaException('verification_timeout');
+            reject(error);
+            controller.abort(error);
           }, ASSESSMENT_VERIFICATION_DEADLINE_MS);
           timer.unref();
         }),
       ]);
     } catch (error) {
       if (error instanceof AssessmentMediaException) throw error;
-      if (error instanceof MediaVerificationError)
+      if (
+        error instanceof MediaVerificationError ||
+        isObjectStorageNotFoundError(error)
+      )
         throw new AssessmentMediaException('verification_failed');
       throw new AssessmentMediaException('verifier_unavailable');
     } finally {
@@ -117,7 +91,7 @@ export class AssessmentMediaVerifier {
   private async verifyObject(
     session: FileUploadSession,
     policy: EffectiveAssessmentMediaPolicy,
-    assertLive: () => void,
+    signal: AbortSignal,
   ): Promise<AssessmentVerifiedObject> {
     if (!session.stagingBucket || !session.stagingObjectKey)
       throw new AssessmentMediaException('verification_failed');
@@ -145,27 +119,15 @@ export class AssessmentMediaVerifier {
       offset: 0,
       length: Math.min(before.size, 4096),
     });
-    if (!verifyFileContentSignature(type, head))
+    let signatureMatches = false;
+    try {
+      signatureMatches = verifyFileContentSignature(type, head);
+    } catch {
       throw new AssessmentMediaException('verification_failed');
-    assertLive();
-    if (
-      type.category === 'IMAGE' ||
-      session.expectedMimeType === 'application/pdf'
-    ) {
-      // Reuse bounded dimension/signature checks, but never promote their
-      // result into a deep image/PDF integrity or malware attestation.
-      const inspected = await this.media.verify({
-        ...source,
-        expectedMimeType: session.expectedMimeType,
-        expectedSizeBytes: session.expectedSizeBytes,
-      });
-      if (
-        (inspected.width !== null && inspected.width > policy.maximumWidth) ||
-        (inspected.height !== null && inspected.height > policy.maximumHeight)
-      )
-        throw new AssessmentMediaException('verification_failed');
-      throw new AssessmentMediaException('verifier_unavailable');
     }
+    if (!signatureMatches)
+      throw new AssessmentMediaException('verification_failed');
+    signal.throwIfAborted();
     const facts = await this.media.verifyAndStoreFinal({
       stagingBucket: source.bucket,
       stagingObjectKey: source.objectKey,
@@ -173,8 +135,23 @@ export class AssessmentMediaVerifier {
       finalObjectKey: session.finalObjectKey,
       expectedMimeType: session.expectedMimeType,
       expectedSizeBytes: session.expectedSizeBytes,
+      snapshot: {
+        read: {
+          raw: true,
+          generation: before.generation ?? undefined,
+          version: before.version ?? undefined,
+        },
+        signal,
+        inspect: (path) =>
+          inspectAssessmentArtifact(
+            path,
+            session.expectedMimeType,
+            policy,
+            signal,
+          ),
+      },
     });
-    assertLive();
+    signal.throwIfAborted();
     if (
       facts.actualSizeBytes !== session.expectedSizeBytes ||
       facts.verifiedMimeType !== session.expectedMimeType ||
@@ -194,32 +171,43 @@ export class AssessmentMediaVerifier {
     const finalBefore = await this.storage.statObject(destination);
     const finalIdentity = identity(finalBefore);
     if (
-      BigInt(finalBefore.size) !== facts.actualSizeBytes ||
+      finalBefore.size !== Number(facts.actualSizeBytes) ||
       finalBefore.contentType !== facts.verifiedMimeType
     )
       throw new AssessmentMediaException('object_changed');
-    const attestation = await this.security.attest({
-      uploadId: session.id,
-      ...destination,
-      facts,
-      objectIdentity: finalIdentity,
-    });
-    assertLive();
+    const finalStream = addAbortSignal(
+      signal,
+      await this.storage.getObject({
+        ...destination,
+        raw: true,
+        generation: finalBefore.generation ?? undefined,
+        version: finalBefore.version ?? undefined,
+      }),
+    );
+    const hash = createHash('sha256');
+    let size = 0;
+    for await (const chunk of finalStream as AsyncIterable<Buffer>) {
+      size += chunk.length;
+      if (size > finalBefore.size)
+        throw new AssessmentMediaException('object_changed');
+      hash.update(chunk);
+    }
     if (
-      attestation.verdict !== 'CLEAN' ||
-      attestation.checksumSha256 !== facts.checksumSha256 ||
-      !/^[a-z0-9._-]{1,80}$/u.test(attestation.provider) ||
-      !/^[a-z0-9._-]{1,80}$/u.test(attestation.version)
+      size !== finalBefore.size ||
+      hash.digest('hex') !== facts.checksumSha256
     )
-      throw new AssessmentMediaException('security_verification_unavailable');
+      throw new AssessmentMediaException('object_changed');
     if (identity(await this.storage.statObject(destination)) !== finalIdentity)
       throw new AssessmentMediaException('object_changed');
-    assertLive();
+    signal.throwIfAborted();
+    const verifiedAt = new Date();
     return {
-      facts,
-      securityEvidence: {
-        ...attestation,
-        verifiedAt: facts.verifiedAt.toISOString(),
+      facts: { ...facts, verifiedAt },
+      technicalEvidence: {
+        kind: 'TECHNICAL',
+        checksumSha256: facts.checksumSha256,
+        verifiedAt: verifiedAt.toISOString(),
+        objectIdentity: finalIdentity,
       },
     };
   }

@@ -3,6 +3,7 @@ import { AnswerMediaRegistry } from '../../files/assessment-media/infrastructure
 import { validateHomeworkAnswerMedia } from './homework-answer-media.validation';
 import type { ResponseConfigV1 } from '../../../common/assessment-answer/response-config';
 import { Injectable, Optional } from '@nestjs/common';
+import { nonAssessmentFileFilter } from '../../files/shared/domain/non-assessment-file';
 import {
   assertHomeworkRuntimeQuestionType,
   assertHomeworkRuntimeQuestions,
@@ -2029,7 +2030,7 @@ export class HomeworkRepository {
     deletedAt: Date | null;
   } | null> {
     return this.scopedPrisma.file.findFirst({
-      where: { id: fileId, deletedAt: null },
+      where: { id: fileId, deletedAt: null, ...nonAssessmentFileFilter },
       select: { id: true, schoolId: true, uploaderId: true, deletedAt: true },
     });
   }
@@ -2670,6 +2671,7 @@ export class HomeworkRepository {
           bucket: { not: '' },
           objectKey: { not: '' },
           studentCredentialSecretArtifacts: { none: {} },
+          ...nonAssessmentFileFilter,
         },
         select: { id: true },
       });

@@ -46,8 +46,15 @@ export class AssessmentMediaService {
   createHomeworkAssignmentUpload(
     homeworkId: string,
     command: CreateAssessmentMediaCommand,
+    teacherAllocationId?: string,
   ) {
-    return this.create('HOMEWORK_ASSIGNMENT_MEDIA', homeworkId, command);
+    return this.create(
+      'HOMEWORK_ASSIGNMENT_MEDIA',
+      homeworkId,
+      command,
+      undefined,
+      teacherAllocationId,
+    );
   }
   createGradeAssessmentUpload(
     assessmentId: string,
@@ -211,6 +218,8 @@ export class AssessmentMediaService {
     assertAssessmentUuid(uploadId);
     const claim = await this.repository.claim(owner, uploadId);
     if (claim.kind === 'expired') throw new AssessmentMediaException('expired');
+    if (claim.kind === 'stalled')
+      throw new AssessmentMediaException('verification_timeout');
     if (claim.kind === 'ready') return present(claim.session);
     try {
       const verified = await this.verifier.verify(claim.session, claim.policy);

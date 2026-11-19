@@ -178,17 +178,14 @@ describe('Assessment Media policy and runtime boundaries', () => {
     },
   );
 
-  it('rejects Production even if a caller supplies a true feature setting', () => {
+  it('uses the explicit feature setting in every runtime environment', () => {
     const runtime = new AssessmentMediaRuntimePolicy(
       new ConfigService({
         NODE_ENV: 'production',
         ASSESSMENT_MEDIA_UPLOADS_ENABLED: true,
       }),
     );
-    expectCode(
-      () => runtime.assertUploadExecutionEnabled(),
-      'assessment_media.disabled',
-    );
+    expect(() => runtime.assertUploadExecutionEnabled()).not.toThrow();
   });
 
   it('allows an explicit isolated test execution setting without claiming a security provider', () => {

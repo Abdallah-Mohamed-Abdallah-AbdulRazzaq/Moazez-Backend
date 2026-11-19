@@ -1,9 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import {
-  FileVisibility,
-  Prisma,
-  type File as ManagedFile,
-} from '@prisma/client';
+import { FileVisibility, Prisma } from '@prisma/client';
 import {
   NotFoundDomainException,
   ValidationDomainException,
@@ -15,7 +11,11 @@ import {
   assessmentMediaOwner,
   AssessmentMediaException,
 } from '../domain/assessment-media.contract';
-import { assertAssessmentReadyContentPolicy } from '../domain/assessment-media-ready';
+import {
+  assessmentInlinePreviewAllowed,
+  assertAssessmentReadyContentPolicy,
+  type AssessmentReadyFile,
+} from '../domain/assessment-media-ready';
 import {
   assertAssessmentUploadPolicy,
   effectiveAssessmentMediaPolicy,
@@ -48,7 +48,7 @@ export interface GroupAssetRow {
 }
 export interface GroupAssetView {
   asset: GroupAssetRow;
-  file: ManagedFile | null;
+  file: AssessmentReadyFile | null;
   externalUrl: string | null;
   previewAllowed: boolean;
   downloadAllowed: boolean;
@@ -176,7 +176,7 @@ export class QuestionGroupMedia {
     asset: GroupAssetRow,
   ): Promise<GroupAssetView> {
     const policy = await this.policy(tx);
-    let file: ManagedFile | null = null,
+    let file: AssessmentReadyFile | null = null,
       externalUrl: string | null = null;
     try {
       if (asset.sourceType === 'MANAGED_FILE' && asset.fileId) {
@@ -209,7 +209,7 @@ export class QuestionGroupMedia {
       asset,
       file,
       externalUrl,
-      previewAllowed: !!file && policy.allowInlinePreview,
+      previewAllowed: assessmentInlinePreviewAllowed(policy, file),
       downloadAllowed: !!file && policy.allowDownload,
     };
   }

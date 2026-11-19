@@ -8,9 +8,8 @@ export class AssessmentMediaRuntimePolicy {
 
   assertUploadExecutionEnabled(): void {
     if (
-      this.config.get<string>('NODE_ENV') === 'production' ||
       this.config.get<boolean>('ASSESSMENT_MEDIA_UPLOADS_ENABLED', false) !==
-        true
+      true
     )
       throw new AssessmentMediaException('disabled');
   }

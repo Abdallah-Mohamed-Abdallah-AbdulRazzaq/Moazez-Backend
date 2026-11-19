@@ -190,13 +190,7 @@ export class HomeworkQuestionAssetsService {
         )
           throw absent();
         const file = view.file;
-        return {
-          bucket: file.bucket,
-          objectKey: file.objectKey,
-          originalName: file.originalName,
-          mimeType: file.mimeType,
-          sizeBytes: file.sizeBytes,
-        };
+        return file;
       },
       absent,
       request,

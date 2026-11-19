@@ -139,15 +139,6 @@ export const envSchema = z
       });
     }
 
-    if (env.NODE_ENV === 'production' && env.ASSESSMENT_MEDIA_UPLOADS_ENABLED) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['ASSESSMENT_MEDIA_UPLOADS_ENABLED'],
-        message:
-          'Assessment Media production enablement requires separate acceptance',
-      });
-    }
-
     if (env.APP_PROBE_PORT === env.APP_PORT) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

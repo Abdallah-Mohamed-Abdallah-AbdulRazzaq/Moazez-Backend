@@ -10,6 +10,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { isObjectStorageNotFoundError } from '../../../../infrastructure/storage/object-storage.errors';
 import { StorageService } from '../../../../infrastructure/storage/storage.service';
+import type { ObjectStorageReadInput } from '../../../../infrastructure/storage/object-storage.port';
 import {
   learningMediaMaximumSizeBytes,
   LEARNING_MEDIA_MAX_DURATION_SECONDS,
@@ -84,6 +85,12 @@ type ProbeOutput = {
   format?: { duration?: string; format_name?: string };
 };
 
+type VerificationSnapshot = {
+  read: Pick<ObjectStorageReadInput, 'generation' | 'version' | 'raw'>;
+  signal: AbortSignal;
+  inspect: (localPath: string) => Promise<void>;
+};
+
 export type MediaVerificationFacts = {
   verifiedMimeType: LearningMediaMimeType;
   actualSizeBytes: bigint;
@@ -137,6 +144,7 @@ export class MediaVerifierService {
     finalObjectKey: string;
     expectedMimeType: string;
     expectedSizeBytes: bigint;
+    snapshot?: VerificationSnapshot;
   }): Promise<MediaVerificationFacts> {
     return this.verifyObject({
       sourceBucket: input.stagingBucket,
@@ -145,6 +153,7 @@ export class MediaVerifierService {
       finalObjectKey: input.finalObjectKey,
       expectedMimeType: input.expectedMimeType,
       expectedSizeBytes: input.expectedSizeBytes,
+      snapshot: input.snapshot,
     });
   }
 
@@ -155,6 +164,7 @@ export class MediaVerifierService {
     finalObjectKey?: string;
     expectedMimeType: string;
     expectedSizeBytes: bigint;
+    snapshot?: VerificationSnapshot;
   }): Promise<MediaVerificationFacts> {
     const expectedMimeType = input.expectedMimeType as LearningMediaMimeType;
     const maximumBytes = learningMediaMaximumSizeBytes(expectedMimeType);
@@ -185,7 +195,8 @@ export class MediaVerifierService {
         bucket: input.sourceBucket,
         objectKey: input.sourceObjectKey,
         localPath,
-        maximumBytes,
+        maximumBytes: input.snapshot ? input.expectedSizeBytes : maximumBytes,
+        snapshot: input.snapshot,
       });
       if (
         streamed.actualSizeBytes !== input.expectedSizeBytes ||
@@ -197,6 +208,10 @@ export class MediaVerifierService {
         localPath,
         expectedMimeType,
       );
+      if (input.snapshot) {
+        await input.snapshot.inspect(localPath);
+        input.snapshot.signal.throwIfAborted();
+      }
       if (input.finalBucket && input.finalObjectKey) {
         try {
           await this.storage.saveObject({
@@ -236,6 +251,7 @@ export class MediaVerifierService {
     objectKey: string;
     localPath: string;
     maximumBytes: bigint;
+    snapshot?: VerificationSnapshot;
   }): Promise<{ actualSizeBytes: bigint; checksumSha256: string }> {
     const hash = createHash('sha256');
     let received = 0n;
@@ -254,11 +270,13 @@ export class MediaVerifierService {
       const stream = await this.storage.getObject({
         bucket: input.bucket,
         objectKey: input.objectKey,
+        ...input.snapshot?.read,
       });
       await pipeline(
         stream,
         limiter,
         createWriteStream(input.localPath, { flags: 'wx' }),
+        { signal: input.snapshot?.signal },
       );
     } catch (error) {
       if (error instanceof MediaVerificationError) throw error;
