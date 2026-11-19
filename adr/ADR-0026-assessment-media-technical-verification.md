@@ -58,3 +58,6 @@ Enablement requires the migrated database and a runtime that can consume both
 evidence versions. Production configuration and release are separate actions.
 Operational details and the source route audit are in the
 [DevOps handoff](../docs/assessments/assessment-media-technical-devops-handoff.md).
+
+[ADR-0027](ADR-0027-assessment-media-provenance-and-reservations.md) specifies
+the post-review isolation, reservation and recovery contracts.

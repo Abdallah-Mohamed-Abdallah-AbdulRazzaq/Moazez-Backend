@@ -1,7 +1,11 @@
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { ConfigService } from '@nestjs/config';
+import type { AssessmentMediaUploadDto } from '../../src/modules/files/assessment-media/domain/assessment-media.contract';
+import { postAssessmentUpload } from '../fixtures/assessment-media.fixture';
 import { St11AnswerMediaHttp } from '../fixtures/st11-answer-media.http';
 import { st06Json } from '../fixtures/homework-question-assets.http';
 import type { St10bDomain } from '../fixtures/st10b-runtime.http';
@@ -154,4 +158,160 @@ describe('ST11-A real audio answers in the canonical media runtime', () => {
       expect(session.verificationVersion).toBe('assessment-media-technical-v1');
     },
   );
+  it.each([
+    { test: 'H.264 MP4', format: 'mp4', codec: 'libx264', failure: null },
+    { test: 'VP8 WebM', format: 'webm', codec: 'libvpx', failure: null },
+    {
+      test: 'unapproved MPEG-4 codec',
+      format: 'mp4',
+      codec: 'mpeg4',
+      failure: 'codec',
+    },
+    {
+      test: 'School dimension limit',
+      format: 'mp4',
+      codec: 'libx264',
+      failure: 'width',
+    },
+    {
+      test: 'actual FFprobe timeout',
+      format: 'webm',
+      codec: 'libvpx',
+      failure: 'timeout',
+    },
+  ])(
+    'verifies actual authoring video for $test',
+    async ({ format, codec, failure }) => {
+      const mime = `video/${format}`;
+      const assessment = await h.fixture.assessment();
+      await h.prisma.schoolAssessmentMediaPolicy.update({
+        where: { schoolId: h.fixture.school.schoolId },
+        data: {
+          allowedMimeTypes: [mime],
+          ...(failure === 'width' ? { maximumWidth: 40 } : {}),
+        },
+      });
+      const filename = `stimulus.${format}`;
+      const local = join(directory, filename);
+      execFileSync(
+        '/usr/bin/ffmpeg',
+        [
+          '-hide_banner',
+          '-loglevel',
+          'error',
+          '-y',
+          '-f',
+          'lavfi',
+          '-i',
+          'color=c=blue:s=64x48:r=8:d=0.5',
+          '-an',
+          '-c:v',
+          codec,
+          '-threads',
+          '1',
+          '-pix_fmt',
+          'yuv420p',
+          local,
+        ],
+        { stdio: 'ignore', timeout: 15_000 },
+      );
+      const bytes = readFileSync(local);
+      const path = `/api/v1/grades/assessments/${assessment.id}/authoring/uploads`;
+      const headers = h.headers('admin');
+      const received = await h
+        .http()
+        .post(path)
+        .set(headers)
+        .send({
+          clientRequestId: randomUUID(),
+          originalName: filename,
+          expectedMimeType: mime,
+          expectedSizeBytes: String(bytes.length),
+        })
+        .expect(201);
+      const upload = st06Json<AssessmentMediaUploadDto>(received);
+      expect(
+        (await postAssessmentUpload(upload.uploadCapability!, bytes, mime))
+          .status,
+      ).toBe(204);
+      const config = h.app.get(ConfigService);
+      const deadline = config.getOrThrow<number>('FFPROBE_TIMEOUT_MS');
+      if (failure === 'timeout') config.set('FFPROBE_TIMEOUT_MS', 1);
+      try {
+        const completion = await h
+          .http()
+          .post(path + '/' + upload.uploadId + '/complete')
+          .set(headers)
+          .send({})
+          .expect(failure ? 409 : 201);
+        const row = await h.prisma.fileUploadSession.findUniqueOrThrow({
+          where: { id: upload.uploadId },
+        });
+        if (failure) {
+          expect(completion.body).toMatchObject({
+            error: { code: 'assessment_media.verification_failed' },
+          });
+          expect(row).toMatchObject({ status: 'FAILED', fileId: null });
+        } else {
+          expect(row).toMatchObject({
+            status: 'READY',
+            verifiedMimeType: mime,
+            width: 64,
+            height: 48,
+          });
+          expect(row.fileId).toEqual(expect.any(String));
+          expect(row.durationSeconds).toBeGreaterThan(0);
+        }
+      } finally {
+        config.set('FFPROBE_TIMEOUT_MS', deadline);
+      }
+    },
+  );
+
+  it('rejects a real answer audio stream above the approved School duration', async () => {
+    const f = await h.setupResponse('Homework', 'AUDIO_ONLY');
+    const mime = 'audio/mpeg';
+    await h.prisma.schoolAssessmentMediaPolicy.update({
+      where: { schoolId: h.fixture.school.schoolId },
+      data: { allowedMimeTypes: [mime], maximumDurationSeconds: 1 },
+    });
+    const local = join(directory, 'duration.mp3');
+    execFileSync(
+      '/usr/bin/ffmpeg',
+      [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-y',
+        '-f',
+        'lavfi',
+        '-i',
+        'sine=frequency=440:duration=3',
+        '-c:a',
+        'libmp3lame',
+        local,
+      ],
+      { stdio: 'ignore', timeout: 15_000 },
+    );
+    const bytes = readFileSync(local);
+    const { intent } = await h.prepare(f.media, bytes, mime);
+    expect(
+      (await postAssessmentUpload(intent.uploadCapability!, bytes, mime))
+        .status,
+    ).toBe(204);
+    const denied = await h
+      .http()
+      .post(f.media + '/answer-uploads/' + intent.uploadId + '/complete')
+      .set(h.headers('student'))
+      .send({})
+      .expect(409);
+    expect(denied.body).toMatchObject({
+      error: { code: 'assessment_media.verification_failed' },
+    });
+    expect(
+      await h.prisma.fileUploadSession.findUniqueOrThrow({
+        where: { id: intent.uploadId },
+      }),
+    ).toMatchObject({ status: 'FAILED', fileId: null });
+  });
 });

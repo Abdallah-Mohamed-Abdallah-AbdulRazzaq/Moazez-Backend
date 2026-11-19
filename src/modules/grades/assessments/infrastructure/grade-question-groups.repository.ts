@@ -435,27 +435,11 @@ export class GradeQuestionGroupsRepository {
         command.sourceType === 'MANAGED_FILE',
       );
       await this.lock(tx, input.assessmentId);
-      await this.group(tx, input);
+      const group = await this.group(tx, input);
       const parentId = input.assessmentId;
-      const count =
-        (await tx.gradeAssessmentAsset.count({
-          where: { assessmentId: parentId, deletedAt: null },
-        })) +
-        (await tx.gradeAssessmentQuestionAsset.count({
-          where: {
-            deletedAt: null,
-            gradeAssessmentQuestion: {
-              assessmentId: parentId,
-              deletedAt: null,
-            },
-          },
-        })) +
-        (await tx.gradeAssessmentQuestionGroupAsset.count({
-          where: {
-            deletedAt: null,
-            group: { assessmentId: parentId, deletedAt: null },
-          },
-        }));
+      const count = await tx.gradeAssessmentQuestionGroupAsset.count({
+        where: { groupId: group.id, deletedAt: null },
+      });
       const policy = await this.media.policy(tx, true);
       if (count >= policy.maximumFilesPerResource)
         throw new ValidationDomainException(

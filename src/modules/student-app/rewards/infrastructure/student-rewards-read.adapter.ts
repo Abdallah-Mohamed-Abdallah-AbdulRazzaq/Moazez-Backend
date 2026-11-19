@@ -6,6 +6,7 @@ import {
   RewardRedemptionStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import { nonAssessmentFileFilter } from '../../../files/shared/domain/non-assessment-file';
 import type { StudentAppContext } from '../../shared/student-app.types';
 import type { StudentRewardsQueryDto } from '../dto/student-rewards.dto';
 
@@ -39,6 +40,7 @@ const STUDENT_REWARD_CATALOG_ARGS =
       imageFileId: true,
       publishedAt: true,
       imageFile: {
+        where: nonAssessmentFileFilter,
         select: STUDENT_REWARD_FILE_SELECT,
       },
     },
@@ -111,6 +113,7 @@ export class StudentRewardsReadAdapter {
         imageFileId: fileId,
         imageFile: {
           is: {
+            ...nonAssessmentFileFilter,
             schoolId: context.schoolId,
             deletedAt: null,
             studentCredentialSecretArtifacts: { none: {} },
@@ -146,6 +149,7 @@ export class StudentRewardsReadAdapter {
             imageFileId: fileId,
             imageFile: {
               is: {
+                ...nonAssessmentFileFilter,
                 schoolId: context.schoolId,
                 deletedAt: null,
                 studentCredentialSecretArtifacts: { none: {} },

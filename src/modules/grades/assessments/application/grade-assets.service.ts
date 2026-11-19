@@ -193,7 +193,7 @@ export class GradeAssetsService {
     input: GradeAssetResource & { assetId: string },
     request: PrivateMediaContentRequest = {},
   ) {
-    return this.content.openAuthorized(
+    return this.content.openAssessmentAuthorized(
       async (): Promise<PrivateMediaFileDescriptor> => {
         const resolved = typeof actor === 'function' ? await actor() : actor;
         const [view] = await this.repository.read(resolved, input);

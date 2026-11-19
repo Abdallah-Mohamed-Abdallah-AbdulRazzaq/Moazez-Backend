@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { nonAssessmentFileFilter } from '../../files/shared/domain/non-assessment-file';
 import {
   AuditOutcome,
   CommunicationAnnouncementAudienceType,
@@ -117,12 +118,13 @@ const COMMUNICATION_ANNOUNCEMENT_DETAIL_ARGS =
         ...COMMUNICATION_ANNOUNCEMENT_AUDIENCE_ARGS,
       },
       attachments: {
+        where: { file: { is: nonAssessmentFileFilter } },
         orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
         ...COMMUNICATION_ANNOUNCEMENT_ATTACHMENT_ARGS,
       },
       _count: {
         select: {
-          attachments: true,
+          attachments: { where: { file: { is: nonAssessmentFileFilter } } },
           reads: true,
         },
       },
@@ -579,7 +581,10 @@ export class CommunicationAnnouncementRepository {
   }): Promise<CommunicationAnnouncementAttachmentListResult> {
     const items =
       await this.scopedPrisma.communicationAnnouncementAttachment.findMany({
-        where: { announcementId: input.announcementId },
+        where: {
+          announcementId: input.announcementId,
+          file: { is: nonAssessmentFileFilter },
+        },
         orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
         ...COMMUNICATION_ANNOUNCEMENT_ATTACHMENT_ARGS,
       });
@@ -675,7 +680,7 @@ export class CommunicationAnnouncementRepository {
     fileId: string,
   ): Promise<CommunicationAnnouncementFileReference | null> {
     return this.scopedPrisma.file.findFirst({
-      where: { id: fileId },
+      where: { id: fileId, ...nonAssessmentFileFilter },
       ...COMMUNICATION_ANNOUNCEMENT_FILE_ARGS,
     });
   }

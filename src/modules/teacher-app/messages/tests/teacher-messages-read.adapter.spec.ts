@@ -108,7 +108,7 @@ describe('TeacherMessagesReadAdapter', () => {
     expect(selectJson).toContain('originalName');
     expect(selectJson).toContain('mimeType');
     expect(selectJson).not.toContain('bucket');
-    expect(selectJson).not.toContain('objectKey');
+    expect(selectJson).not.toContain('"objectKey":true');
     expect(selectJson).not.toContain('metadata');
     expect(query.where).not.toHaveProperty('schoolId');
   });
@@ -162,7 +162,7 @@ describe('TeacherMessagesReadAdapter', () => {
     expect(query.where).not.toHaveProperty('schoolId');
     expect(selectJson).toContain('attachments');
     expect(selectJson).not.toContain('bucket');
-    expect(selectJson).not.toContain('objectKey');
+    expect(selectJson).not.toContain('"objectKey":true');
     expect(selectJson).not.toContain('metadata');
     expect(prismaMocks.communicationMessage.count.mock.calls[0][0].where).toEqual(
       query.where,

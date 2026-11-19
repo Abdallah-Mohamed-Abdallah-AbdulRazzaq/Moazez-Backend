@@ -14,6 +14,7 @@ import {
   type FileUploadSession,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import { MAX_RESUMABLE_UPLOAD_CAPABILITY_LIFETIME_MS } from '../../../../infrastructure/storage/object-storage.port';
 import { getRequestContext } from '../../../../common/context/request-context';
 import { TeacherAllocationOperationalWriteGate } from '../../../academics/teacher-allocation/application/teacher-allocation-operational-write-gate';
 import { assertHomeworkMediaAuthorization } from '../../../homework/infrastructure/homework-media-authorization';
@@ -249,12 +250,19 @@ export class AssessmentMediaRepository {
           )
             throw new AssessmentMediaException('idempotency_conflict');
           await this.questionBinding(tx, owner);
-          if (existing.status === 'READY') {
-            await this.assertReadyRelationship(tx, existing);
-            return { created: false, session: existing };
+          const current = await this.lock(tx, owner, existing.id);
+          if (current.status === 'READY') {
+            await this.assertReadyRelationship(tx, current);
+            return { created: false, session: current };
           }
           await this.authorize(tx, owner, false);
-          return { created: false, session: existing };
+          const session = await this.settleAbandonedUpload(
+            tx,
+            owner,
+            current,
+            new Date(),
+          );
+          return { created: false, session };
         }
         await this.authorize(tx, owner, false);
         assertAssessmentUploadPolicy(
@@ -268,34 +276,28 @@ export class AssessmentMediaRepository {
         // application buffering. The school mutex makes reservation checks atomic.
         const [usage] = await tx.$queryRaw<
           Array<{
-            resourceCount: bigint;
             resourceBytes: bigint;
             physicalBytes: bigint;
             concurrentCount: bigint;
             hourlyCount: bigint;
           }>
         >`
-        WITH reserved AS (
-          SELECT *, (latest_upload_url_expires_at > ${now}
-            OR (status IN ('CREATED', 'UPLOADING', 'VERIFYING') AND expires_at > ${now})) AS active
-          FROM file_upload_sessions
-          WHERE school_id = ${owner.schoolId}::uuid AND organization_id = ${owner.organizationId}::uuid
-            AND purpose IN ('HOMEWORK_ASSIGNMENT_MEDIA', 'GRADE_ASSESSMENT_MEDIA', 'HOMEWORK_SUBMISSION_MEDIA', 'GRADE_SUBMISSION_MEDIA')
-        )
         SELECT
-          count(*) FILTER (WHERE purpose::text = ${owner.purpose} AND purpose_context_id = ${owner.contextId}::uuid
-            AND (status = 'READY' OR active)) AS "resourceCount",
           COALESCE(sum(expected_size_bytes) FILTER (WHERE purpose::text = ${owner.purpose}
             AND purpose_context_id = ${owner.contextId}::uuid
             AND (staging_object_deleted_at IS NULL OR final_object_deleted_at IS NULL)), 0)::bigint AS "resourceBytes",
           COALESCE(sum((CASE WHEN staging_object_deleted_at IS NULL THEN expected_size_bytes ELSE 0 END)
             + (CASE WHEN final_object_deleted_at IS NULL THEN expected_size_bytes ELSE 0 END)), 0)::bigint AS "physicalBytes",
-          count(*) FILTER (WHERE created_by_user_id = ${owner.actorId}::uuid AND active) AS "concurrentCount",
+          count(*) FILTER (WHERE created_by_user_id = ${owner.actorId}::uuid
+            AND expires_at > ${now}
+            AND (status IN ('CREATED', 'UPLOADING')
+              OR (status = 'VERIFYING' AND updated_at > ${new Date(now.getTime() - ASSESSMENT_VERIFICATION_LEASE_MS)}))) AS "concurrentCount",
           count(*) FILTER (WHERE created_by_user_id = ${owner.actorId}::uuid
             AND created_at > ${new Date(now.getTime() - 3_600_000)}) AS "hourlyCount"
-        FROM reserved`;
+        FROM file_upload_sessions
+        WHERE school_id = ${owner.schoolId}::uuid AND organization_id = ${owner.organizationId}::uuid
+          AND purpose IN ('HOMEWORK_ASSIGNMENT_MEDIA', 'GRADE_ASSESSMENT_MEDIA', 'HOMEWORK_SUBMISSION_MEDIA', 'GRADE_SUBMISSION_MEDIA')`;
         if (
-          usage.resourceCount >= BigInt(policy.maximumFilesPerResource) ||
           usage.resourceBytes + data.expectedSizeBytes >
             policy.maximumResourceBytes ||
           usage.physicalBytes + 2n * data.expectedSizeBytes >
@@ -379,7 +381,8 @@ export class AssessmentMediaRepository {
         session.expiresAt <= now ||
         !Number.isFinite(expiresAt.getTime()) ||
         expiresAt <= now ||
-        expiresAt.getTime() > now.getTime() + 7 * 24 * 3_600_000
+        expiresAt.getTime() >
+          now.getTime() + MAX_RESUMABLE_UPLOAD_CAPABILITY_LIFETIME_MS
       )
         throw new AssessmentMediaException('expired');
       return tx.fileUploadSession.update({
@@ -716,8 +719,9 @@ export class AssessmentMediaRepository {
           uploadId,
           retainedReferences,
           deletionPermitted: false as const,
+          // Issuance can succeed at the provider before its deadline is recorded.
           capabilityExpired:
-            !session.latestUploadUrlExpiresAt ||
+            session.latestUploadUrlExpiresAt !== null &&
             session.latestUploadUrlExpiresAt <= now,
           reason: retainedReferences
             ? ('retained_references' as const)
@@ -762,18 +766,6 @@ export class AssessmentMediaRepository {
     });
   }
 
-  async assertHomeworkBindingCapacity(
-    tx: Prisma.TransactionClient,
-    owner: AssessmentMediaOwner,
-    policy: EffectiveAssessmentMediaPolicy,
-  ): Promise<void> {
-    return this.assertAuthoringBindingCapacity(
-      tx,
-      { ...owner, purpose: 'HOMEWORK_ASSIGNMENT_MEDIA' },
-      policy,
-    );
-  }
-
   /** Internal predicate only: caller must already authorize the exact authoring resource. */
   private async readyAuthoringFile(
     tx: Prisma.TransactionClient,
@@ -816,8 +808,8 @@ export class AssessmentMediaRepository {
     return { file, session };
   }
 
-  /** Recheck authoring reservations without charging another physical upload quota. */
-  async assertAuthoringBindingCapacity(
+  /** Recheck retained bytes after a policy change. Binding adds no physical bytes. */
+  assertAuthoringRetainedBytes(
     tx: Prisma.TransactionClient,
     owner: AssessmentMediaOwner,
     policy: EffectiveAssessmentMediaPolicy,
@@ -827,32 +819,24 @@ export class AssessmentMediaRepository {
       owner.purpose !== 'GRADE_ASSESSMENT_MEDIA'
     )
       throw new AssessmentMediaException('ready_relationship_invalid');
-    return this.assertBindingCapacity(tx, owner, policy);
+    return this.assertRetainedBytes(tx, owner, policy);
   }
 
-  private async assertBindingCapacity(
+  private async assertRetainedBytes(
     tx: Prisma.TransactionClient,
     owner: AssessmentMediaOwner,
     policy: EffectiveAssessmentMediaPolicy,
   ): Promise<void> {
-    const now = new Date();
     const [usage] = await tx.$queryRaw<
-      Array<{ count: bigint; bytes: bigint; physical: bigint }>
+      Array<{ bytes: bigint; physical: bigint }>
     >`
-      WITH reserved AS (
-        SELECT *, (latest_upload_url_expires_at > ${now}
-          OR (status IN ('CREATED', 'UPLOADING', 'VERIFYING') AND expires_at > ${now})) AS active
-        FROM file_upload_sessions WHERE school_id = ${owner.schoolId}::uuid AND organization_id = ${owner.organizationId}::uuid
-          AND purpose IN ('HOMEWORK_ASSIGNMENT_MEDIA', 'GRADE_ASSESSMENT_MEDIA', 'HOMEWORK_SUBMISSION_MEDIA', 'GRADE_SUBMISSION_MEDIA')
-      )
-      SELECT count(*) FILTER (WHERE purpose::text = ${owner.purpose} AND purpose_context_id = ${owner.contextId}::uuid
-          AND (status = 'READY' OR active)) AS count,
-        COALESCE(sum(expected_size_bytes) FILTER (WHERE purpose::text = ${owner.purpose} AND purpose_context_id = ${owner.contextId}::uuid
+      SELECT COALESCE(sum(expected_size_bytes) FILTER (WHERE purpose::text = ${owner.purpose} AND purpose_context_id = ${owner.contextId}::uuid
           AND (staging_object_deleted_at IS NULL OR final_object_deleted_at IS NULL)), 0)::bigint AS bytes,
         COALESCE(sum((CASE WHEN staging_object_deleted_at IS NULL THEN expected_size_bytes ELSE 0 END)
-          + (CASE WHEN final_object_deleted_at IS NULL THEN expected_size_bytes ELSE 0 END)), 0)::bigint AS physical FROM reserved`;
+          + (CASE WHEN final_object_deleted_at IS NULL THEN expected_size_bytes ELSE 0 END)), 0)::bigint AS physical
+      FROM file_upload_sessions WHERE school_id = ${owner.schoolId}::uuid AND organization_id = ${owner.organizationId}::uuid
+        AND purpose IN ('HOMEWORK_ASSIGNMENT_MEDIA', 'GRADE_ASSESSMENT_MEDIA', 'HOMEWORK_SUBMISSION_MEDIA', 'GRADE_SUBMISSION_MEDIA')`;
     if (
-      usage.count > BigInt(policy.maximumFilesPerResource) ||
       usage.bytes > policy.maximumResourceBytes ||
       usage.physical > policy.maximumSchoolBytes
     )
@@ -973,7 +957,7 @@ export class AssessmentMediaRepository {
   ): Promise<void> {
     if (!owner.studentPurpose || !owner.questionId)
       throw new AssessmentMediaException('ready_relationship_invalid');
-    return this.assertBindingCapacity(tx, owner, policy);
+    return this.assertRetainedBytes(tx, owner, policy);
   }
 
   private async audit(

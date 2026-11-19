@@ -27,6 +27,7 @@ const ADAM7_PASSES = [
   [1, 0, 2, 2],
   [0, 1, 1, 2],
 ];
+const MAX_PDF_XREF_DECODED_BYTES = 32 * 1024 * 1024;
 
 function invalid(): never {
   throw new AssessmentMediaException('verification_failed');
@@ -45,7 +46,7 @@ export async function inspectAssessmentArtifact(
     case 'image/jpeg':
       return inspectJpeg(await readFile(path, { signal }), bounds);
     case 'application/pdf':
-      return inspectPdf(await readFile(path, { signal }));
+      return inspectPdf(await readFile(path, { signal }), signal);
   }
 }
 
@@ -272,7 +273,7 @@ function nextJpegMarker(bytes: Buffer, start: number): number {
   return -1;
 }
 
-function inspectPdf(bytes: Buffer): void {
+async function inspectPdf(bytes: Buffer, signal: AbortSignal): Promise<void> {
   const header = bytes.toString('latin1', 0, 12);
   const tailStart = Math.max(0, bytes.length - 4096);
   const tail = bytes.toString('latin1', tailStart);
@@ -284,28 +285,107 @@ function inspectPdf(bytes: Buffer): void {
   const end = tailStart + trailer.index;
   const xref = Number(trailer[1]);
   if (xref < 9 || xref >= end) invalid();
-  const section = bytes.toString('latin1', xref, Math.min(xref + 4096, end));
-  if (
-    /^xref[ \t\r\n]+\d+[ \t]+\d+[\r\n]+[0-9]{10} [0-9]{5} [nf](?=[ \t\r\n])/u.test(
-      section,
-    )
-  ) {
-    if (
-      !/\btrailer[ \t\r\n]*<<[\s\S]*>>[ \t\r\n]*$/u.test(
-        tail.slice(0, trailer.index),
-      )
-    )
-      invalid();
+  const section = bytes.toString('latin1', xref, end);
+  const table = /^xref[ \t]*(?:\r\n?|\n)/u.exec(section);
+  if (table) {
+    inspectPdfXrefTable(section, table[0].length, bytes.length);
     return;
   }
-  const streamStart = />>[ \t\r\n]*stream[\r\n]/u.exec(section);
+  await inspectPdfXrefStream(section, bytes.subarray(xref, end), signal);
+}
+
+function inspectPdfXrefTable(
+  section: string,
+  start: number,
+  fileSize: number,
+): void {
+  const subsection = /[ \t\r\n]*(\d{1,10})[ \t]+(\d{1,10})[ \t]*(?:\r\n?|\n)/uy;
+  const entry = /([0-9]{10}) ([0-9]{5}) ([nf])[ \t]*(?:\r\n?|\n)/uy;
+  let cursor = start;
+  let hasEntries = false;
+  while (cursor < section.length) {
+    subsection.lastIndex = cursor;
+    const header = subsection.exec(section);
+    if (!header) break;
+    const count = Number(header[2]);
+    cursor = subsection.lastIndex;
+    if (count < 1 || count > (section.length - cursor) / 18) invalid();
+    for (let index = 0; index < count; index++) {
+      entry.lastIndex = cursor;
+      const row = entry.exec(section);
+      if (
+        !row ||
+        (row[3] === 'n' && (Number(row[1]) < 9 || Number(row[1]) >= fileSize))
+      )
+        invalid();
+      cursor = entry.lastIndex;
+    }
+    hasEntries = true;
+  }
+  const trailer = section.slice(cursor).trimEnd();
   if (
-    !/^\d+[ \t]+\d+[ \t]+obj[ \t\r\n]*<</u.test(section) ||
-    !streamStart ||
-    !/\/Type[ \t\r\n]*\/XRef\b/u.test(section.slice(0, streamStart.index)) ||
-    !/[\r\n]endstream[ \t\r\n]+endobj[ \t\r\n]*$/u.test(
-      tail.slice(0, trailer.index),
+    !hasEntries ||
+    !/^[ \t\r\n]*trailer[ \t\r\n]*<</u.test(trailer) ||
+    !trailer.endsWith('>>')
+  )
+    invalid();
+}
+
+async function inspectPdfXrefStream(
+  section: string,
+  bytes: Buffer,
+  signal: AbortSignal,
+): Promise<void> {
+  const header = section.slice(0, 4096);
+  const streamStart = />>[ \t\r\n]*stream(?:\r\n|\n|\r)/u.exec(header);
+  if (!streamStart) invalid();
+  const dictionary = header.slice(0, streamStart.index);
+  const length =
+    /\/Length[ \t\r\n]+([0-9]{1,10})(?=$|[ \t\r\n/>])(?![ \t\r\n]+\d+[ \t\r\n]+R\b)/u.exec(
+      dictionary,
+    );
+  const widths =
+    /\/W[ \t\r\n]*\[[ \t\r\n]*(\d+)[ \t\r\n]+(\d+)[ \t\r\n]+(\d+)[ \t\r\n]*\]/u.exec(
+      dictionary,
+    );
+  const size = /\/Size[ \t\r\n]+([0-9]{1,10})\b/u.exec(dictionary);
+  if (
+    !/^\d+[ \t]+\d+[ \t\r\n]+obj[ \t\r\n]*<</u.test(dictionary) ||
+    !/\/Type[ \t\r\n]*\/XRef\b/u.test(dictionary) ||
+    !length ||
+    Number(length[1]) < 1 ||
+    !size ||
+    Number(size[1]) < 1 ||
+    !widths ||
+    widths.slice(1).every((value) => Number(value) === 0)
+  )
+    invalid();
+  const dataStart = streamStart.index + streamStart[0].length;
+  const dataEnd = dataStart + Number(length[1]);
+  if (
+    !/^[\r\n]+endstream[ \t\r\n]+endobj[ \t\r\n]*$/u.test(
+      section.slice(dataEnd),
     )
   )
     invalid();
+  const flate =
+    /\/Filter[ \t\r\n]*(?:\/FlateDecode\b|\[[ \t\r\n]*\/FlateDecode[ \t\r\n]*\])/u;
+  if (flate.test(dictionary)) {
+    const compressed = bytes.subarray(dataStart, dataEnd);
+    const inflate = addAbortSignal(signal, createInflate());
+    let decodedBytes = 0;
+    try {
+      inflate.end(compressed);
+      for await (const chunk of inflate as AsyncIterable<Buffer>) {
+        decodedBytes += chunk.length;
+        if (decodedBytes > MAX_PDF_XREF_DECODED_BYTES) invalid();
+      }
+      if (!decodedBytes || inflate.bytesWritten !== compressed.length)
+        invalid();
+    } catch {
+      invalid();
+    } finally {
+      inflate.destroy();
+    }
+  }
 }

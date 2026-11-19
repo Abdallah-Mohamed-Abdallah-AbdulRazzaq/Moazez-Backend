@@ -435,24 +435,11 @@ export class HomeworkQuestionGroupsRepository {
         command.sourceType === 'MANAGED_FILE',
       );
       await this.lock(tx, input.homeworkId);
-      await this.group(tx, input);
+      const group = await this.group(tx, input);
       const parentId = input.homeworkId;
-      const count =
-        (await tx.homeworkQuestionAsset.count({
-          where: {
-            deletedAt: null,
-            homeworkQuestion: {
-              homeworkAssignmentId: parentId,
-              deletedAt: null,
-            },
-          },
-        })) +
-        (await tx.homeworkQuestionGroupAsset.count({
-          where: {
-            deletedAt: null,
-            group: { homeworkAssignmentId: parentId, deletedAt: null },
-          },
-        }));
+      const count = await tx.homeworkQuestionGroupAsset.count({
+        where: { groupId: group.id, deletedAt: null },
+      });
       const policy = await this.media.policy(tx, true);
       if (count >= policy.maximumFilesPerResource)
         throw new ValidationDomainException(

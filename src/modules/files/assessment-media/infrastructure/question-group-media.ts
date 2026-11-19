@@ -136,7 +136,7 @@ export class QuestionGroupMedia {
         ready.file.mimeType,
         ready.file.sizeBytes,
       );
-      await this.media.assertAuthoringBindingCapacity(tx, owner, policy);
+      await this.media.assertAuthoringRetainedBytes(tx, owner, policy);
       const content = resolveFileContentType(
         ready.file.originalName,
         ready.file.mimeType,

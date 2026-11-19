@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import { AttachmentRecord } from '../domain/attachment-record';
+import { nonAssessmentFileFilter } from '../../shared/domain/non-assessment-file';
 
 const ATTACHMENT_RECORD_ARGS = Prisma.validator<Prisma.AttachmentDefaultArgs>()(
   {
@@ -63,7 +64,10 @@ export class AttachmentsRepository {
     const attachment = await this.scopedPrisma.attachment.findFirst({
       where: {
         id: attachmentId,
-        file: { studentCredentialSecretArtifacts: { none: {} } },
+        file: {
+          ...nonAssessmentFileFilter,
+          studentCredentialSecretArtifacts: { none: {} },
+        },
       },
       ...ATTACHMENT_RECORD_ARGS,
     });
@@ -79,7 +83,10 @@ export class AttachmentsRepository {
       where: {
         resourceType: params.resourceType,
         resourceId: params.resourceId,
-        file: { studentCredentialSecretArtifacts: { none: {} } },
+        file: {
+          ...nonAssessmentFileFilter,
+          studentCredentialSecretArtifacts: { none: {} },
+        },
       },
       orderBy: { createdAt: 'asc' },
       ...ATTACHMENT_RECORD_ARGS,

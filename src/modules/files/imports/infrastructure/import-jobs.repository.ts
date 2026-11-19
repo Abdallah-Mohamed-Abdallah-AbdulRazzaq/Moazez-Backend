@@ -8,6 +8,7 @@ import {
   UserType,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import { nonAssessmentFileFilter } from '../../shared/domain/non-assessment-file';
 import { ImportJobRecord } from '../domain/import-job.types';
 
 const IMPORT_JOB_RECORD_ARGS = Prisma.validator<Prisma.ImportJobDefaultArgs>()({
@@ -29,8 +30,8 @@ const IMPORT_JOB_RECORD_ARGS = Prisma.validator<Prisma.ImportJobDefaultArgs>()({
         originalName: true,
         mimeType: true,
         sizeBytes: true,
-      visibility: true,
-      deletedAt: true,
+        visibility: true,
+        deletedAt: true,
       },
     },
   },
@@ -84,7 +85,7 @@ export class ImportJobsRepository {
     importJobId: string,
   ): Promise<ImportJobRecord | null> {
     const job = await this.scopedPrisma.importJob.findFirst({
-      where: { id: importJobId },
+      where: { id: importJobId, uploadedFile: { is: nonAssessmentFileFilter } },
       ...IMPORT_JOB_RECORD_ARGS,
     });
 
@@ -95,7 +96,7 @@ export class ImportJobsRepository {
     importJobId: string,
   ): Promise<ImportJobRecord | null> {
     const job = await this.prisma.importJob.findUnique({
-      where: { id: importJobId },
+      where: { id: importJobId, uploadedFile: { is: nonAssessmentFileFilter } },
       ...IMPORT_JOB_RECORD_ARGS,
     });
 
@@ -141,7 +142,11 @@ export class ImportJobsRepository {
       },
     ];
     const claimed = await this.prisma.importJob.updateMany({
-      where: { id: input.importJobId, OR: eligibleStates },
+      where: {
+        id: input.importJobId,
+        uploadedFile: { is: nonAssessmentFileFilter },
+        OR: eligibleStates,
+      },
       data: {
         status: ImportJobStatus.PROCESSING,
         reportJson: input.reportJson,
@@ -159,6 +164,7 @@ export class ImportJobsRepository {
     const jobs = await this.prisma.importJob.findMany({
       where: {
         createdAt: { lte: input.createdBefore },
+        uploadedFile: { is: nonAssessmentFileFilter },
         status: {
           in: [
             ImportJobStatus.PENDING,
@@ -219,7 +225,7 @@ export class ImportJobsRepository {
     importJobId: string,
   ): Promise<ImportJobRecoveryCandidate | null> {
     const job = await this.prisma.importJob.findFirst({
-      where: { id: importJobId },
+      where: { id: importJobId, uploadedFile: { is: nonAssessmentFileFilter } },
       select: {
         ...IMPORT_JOB_RECORD_ARGS.select,
         school: {

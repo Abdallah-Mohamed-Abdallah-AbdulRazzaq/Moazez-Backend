@@ -1,3 +1,4 @@
+import { nonAssessmentFileFilter } from '../../../files/shared/domain/non-assessment-file';
 import { Injectable } from '@nestjs/common';
 import {
   HomeworkAssignmentMode,
@@ -150,6 +151,7 @@ export class TeacherHomeworksReadAdapter {
               uploaderId: submission.student.userId,
               visibility: 'PRIVATE',
               deletedAt: null,
+              ...nonAssessmentFileFilter,
               studentCredentialSecretArtifacts: { none: {} },
             },
           },

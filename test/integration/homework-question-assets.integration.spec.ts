@@ -106,6 +106,46 @@ describe('ST-06 exact Homework question assets on real PostgreSQL and private Mi
     await prisma.$disconnect();
   });
 
+  it('binds nine separate private files under one homework with a one-file question limit', async () => {
+    await prisma.schoolAssessmentMediaPolicy.update({
+      where: { schoolId: fixture.school.schoolId },
+      data: { maximumFilesPerResource: 1 },
+    });
+    const files = new Set<string>();
+    for (let index = 0; index < 9; index++) {
+      const question = await fixture.question(
+        graph.homework.id,
+        `Independent file question ${index}`,
+      );
+      const ready = await fixture.ready(
+        graph.homework.id,
+        'teacher',
+        Buffer.from(`Homework file ${index}`),
+      );
+      await asTeacher(() =>
+        service.create(
+          actor(),
+          {
+            homeworkId: graph.homework.id,
+            questionId: question.id,
+          },
+          {
+            sourceType: 'MANAGED_FILE',
+            fileId: ready.fileId,
+            uploadId: ready.uploadId,
+          },
+        ),
+      );
+      files.add(ready.fileId);
+    }
+    expect(files.size).toBe(9);
+    expect(
+      await prisma.homeworkQuestionAsset.count({
+        where: { fileId: { in: [...files] }, deletedAt: null },
+      }),
+    ).toBe(9);
+  });
+
   it('binds genuinely verified distinct Files to exact questions, preserves an empty question and returns real private bytes', async () => {
     const first = await managed(),
       second = await fixture.ready(

@@ -332,7 +332,7 @@ const HOMEWORK_ASSIGNMENT_ARGS =
         select: HOMEWORK_QUESTION_SELECT,
       },
       attachments: {
-        where: { deletedAt: null },
+        where: { deletedAt: null, file: { is: nonAssessmentFileFilter } },
         orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
         select: HOMEWORK_ATTACHMENT_SELECT,
       },
@@ -489,7 +489,7 @@ const HOMEWORK_SUBMISSION_ARGS =
         select: HOMEWORK_SUBMISSION_ANSWER_SELECT,
       },
       attachments: {
-        where: { deletedAt: null },
+        where: { deletedAt: null, file: { is: nonAssessmentFileFilter } },
         orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
         select: HOMEWORK_SUBMISSION_ATTACHMENT_SELECT,
       },
@@ -520,7 +520,7 @@ const HOMEWORK_REVIEW_SUBMISSION_ARGS =
         select: HOMEWORK_SUBMISSION_ANSWER_SELECT,
       },
       attachments: {
-        where: { deletedAt: null },
+        where: { deletedAt: null, file: { is: nonAssessmentFileFilter } },
         orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
         select: HOMEWORK_SUBMISSION_ATTACHMENT_SELECT,
       },
@@ -1037,6 +1037,7 @@ export class HomeworkRepository {
             sizeBytes: { gt: 0 },
             bucket: { not: '' },
             objectKey: { not: '' },
+            ...nonAssessmentFileFilter,
             studentCredentialSecretArtifacts: { none: {} },
           },
         },
@@ -1993,7 +1994,11 @@ export class HomeworkRepository {
 
   listAttachments(homeworkId: string): Promise<HomeworkAttachmentRecord[]> {
     return this.scopedPrisma.homeworkAssignmentAttachment.findMany({
-      where: { homeworkAssignmentId: homeworkId, deletedAt: null },
+      where: {
+        homeworkAssignmentId: homeworkId,
+        deletedAt: null,
+        file: { is: nonAssessmentFileFilter },
+      },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
       select: HOMEWORK_ATTACHMENT_SELECT,
     });
@@ -2008,6 +2013,7 @@ export class HomeworkRepository {
         id: input.attachmentId,
         homeworkAssignmentId: input.homeworkId,
         deletedAt: null,
+        file: { is: nonAssessmentFileFilter },
       },
       select: HOMEWORK_ATTACHMENT_SELECT,
     });

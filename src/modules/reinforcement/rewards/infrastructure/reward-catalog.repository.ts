@@ -1,3 +1,4 @@
+import { nonAssessmentFileFilter } from '../../../files/shared/domain/non-assessment-file';
 import { Injectable } from '@nestjs/common';
 import {
   Prisma,
@@ -67,6 +68,7 @@ const REWARD_CATALOG_ITEM_ARGS =
         select: TERM_SUMMARY_SELECT,
       },
       imageFile: {
+        where: nonAssessmentFileFilter,
         select: FILE_SUMMARY_SELECT,
       },
     },
@@ -264,7 +266,7 @@ export class RewardCatalogRepository {
 
   findFile(fileId: string): Promise<RewardFileRecord | null> {
     return this.scopedPrisma.file.findFirst({
-      where: { id: fileId },
+      where: { id: fileId, ...nonAssessmentFileFilter },
       select: FILE_SUMMARY_SELECT,
     });
   }

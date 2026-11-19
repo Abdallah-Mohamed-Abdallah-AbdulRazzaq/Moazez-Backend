@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FileVisibility } from '@prisma/client';
+import { NotFoundDomainException } from '../../common/exceptions/domain-exception';
+import { isAssessmentMediaObjectKey } from './assessment-media-object-key';
 import {
   OBJECT_STORAGE_PORT,
   type ObjectStoragePort,
@@ -20,7 +22,7 @@ export class SignedUrlService {
     private readonly configService: ConfigService,
   ) {}
 
-  createDownloadUrl(input: {
+  async createDownloadUrl(input: {
     objectKey: string;
     bucket?: string;
     visibility?: FileVisibility;
@@ -29,6 +31,9 @@ export class SignedUrlService {
     contentType?: string;
     downloadFileName?: string | null;
   }): Promise<ObjectStorageSignedCapability> {
+    if (isAssessmentMediaObjectKey(input.objectKey)) {
+      return Promise.reject(new NotFoundDomainException());
+    }
     const bucket =
       input.bucket ??
       this.resolveBucket(input.visibility ?? FileVisibility.PRIVATE);

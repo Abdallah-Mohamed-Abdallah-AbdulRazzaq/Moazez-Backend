@@ -179,6 +179,8 @@ export class HomeworkAnswerMediaRepository {
         where: { homeworkSubmissionAnswerId: answer.id, deletedAt: null },
         select: { file: { select: { mimeType: true } } },
       });
+      if (assets.length >= policy.maximumFilesPerResource)
+        throw new AssessmentMediaException('quota_exceeded');
       try {
         assertResponseModalities({
           config: binding.responseConfig,

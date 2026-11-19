@@ -1,9 +1,17 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
+import { SignedUrlService } from '../../src/infrastructure/storage/signed-url.service';
+import { StorageService } from '../../src/infrastructure/storage/storage.service';
+import { AssessmentMediaService } from '../../src/modules/files/assessment-media/application/assessment-media.service';
+import { AssessmentMediaRuntimePolicy } from '../../src/modules/files/assessment-media/application/assessment-media-runtime.policy';
+import { AssessmentMediaVerifier } from '../../src/modules/files/assessment-media/application/assessment-media-verifier';
+import { MediaVerifierService } from '../../src/modules/files/uploads/application/media-verifier.service';
+import { AssessmentGcsResumableFixture } from '../fixtures/assessment-gcs-resumable.fixture';
 import {
   assessmentMediaOwner,
   ASSESSMENT_MEDIA_TECHNICAL_VERSION,
   ASSESSMENT_VERIFICATION_LEASE_MS,
+  type AssessmentMediaUploadDto,
 } from '../../src/modules/files/assessment-media/domain/assessment-media.contract';
 import {
   AssessmentMediaFixture,
@@ -11,8 +19,12 @@ import {
   postAssessmentUpload,
 } from '../fixtures/assessment-media.fixture';
 import {
+  assessmentInterlacedPng,
   assessmentJpeg,
+  assessmentPdf,
+  assessmentPdfXrefStream,
   assessmentPng,
+  assessmentProgressiveExifJpeg,
 } from '../fixtures/assessment-media-formats.fixture';
 
 jest.setTimeout(120_000);
@@ -636,12 +648,23 @@ describe('ST-03 real PostgreSQL and bounded private storage lifecycle', () => {
     });
     await prisma.fileUploadSession.update({
       where: { id },
-      data: { status: 'UPLOADING', latestUploadUrlExpiresAt: expiresAt },
+      data: {
+        status: 'UPLOADING',
+        latestUploadUrlExpiresAt: new Date(Date.now() + 60_000),
+      },
     });
     await expect(
       asTeacher(() => fixture.service.complete(purpose, homework.id, id)),
     ).rejects.toMatchObject({ reason: 'expired' });
     expect((await row(id)).status).toBe('EXPIRED');
+    await expect(
+      asTeacher(() =>
+        fixture.service.cleanupEligibility(purpose, homework.id, id),
+      ),
+    ).resolves.toMatchObject({
+      capabilityExpired: false,
+      deletionPermitted: false,
+    });
     await prisma.schoolAssessmentMediaPolicy.update({
       where: { schoolId: fixture.school.schoolId },
       data: { maximumSchoolBytes: 11n },
@@ -653,7 +676,7 @@ describe('ST-03 real PostgreSQL and bounded private storage lifecycle', () => {
     ).rejects.toMatchObject({ reason: 'quota_exceeded' });
   });
 
-  it('atomically bounds concurrent reservations and counts cancelled live capabilities', async () => {
+  it('serializes active slot reservations and accounts for a cancelled MinIO capability separately', async () => {
     const homework = await fixture.homework();
     const outcomes = await Promise.allSettled(
       Array.from({ length: 3 }, () =>
@@ -681,9 +704,223 @@ describe('ST-03 real PostgreSQL and bounded private storage lifecycle', () => {
     );
     await expect(
       asTeacher(() =>
+        fixture.service.cleanupEligibility(
+          purpose,
+          homework.id,
+          sessions[0].id,
+        ),
+      ),
+    ).resolves.toMatchObject({
+      capabilityExpired: false,
+      deletionPermitted: false,
+    });
+    await expect(
+      asTeacher(() =>
         fixture.service.createHomeworkAssignmentUpload(homework.id, command()),
       ),
-    ).rejects.toMatchObject({ reason: 'quota_exceeded' });
+    ).resolves.toMatchObject({ status: 'UPLOADING' });
+    expect(await row(sessions[0].id)).toMatchObject({
+      status: 'CANCELLED',
+      fileId: null,
+    });
+  });
+
+  it('releases two READY GCS slots while preserving create-only generations and all byte charges', async () => {
+    const gcs = new AssessmentGcsResumableFixture();
+    const storage = new StorageService(
+      gcs.adapter,
+      new SignedUrlService(gcs.adapter, fixture.config),
+    );
+    const service = new AssessmentMediaService(
+      fixture.repository,
+      storage,
+      new AssessmentMediaVerifier(
+        storage,
+        new MediaVerifierService(storage, fixture.config),
+      ),
+      new AssessmentMediaRuntimePolicy(fixture.config),
+      fixture.config,
+    );
+    const homework = await fixture.homework();
+    const create = () =>
+      asTeacher(() =>
+        service.createHomeworkAssignmentUpload(homework.id, command()),
+      );
+    const complete = (id: string) =>
+      asTeacher(() => service.complete(purpose, homework.id, id));
+    const bytes = Buffer.from('own');
+    const finished: {
+      upload: AssessmentMediaUploadDto;
+      ready: AssessmentMediaUploadDto;
+      session: Awaited<ReturnType<typeof row>>;
+    }[] = [];
+    for (let index = 0; index < 2; index++) {
+      const upload = await create();
+      expect(upload.uploadCapability?.mode).toBe('resumable');
+      expect(
+        new Date(upload.uploadCapability!.expiresAt).getTime() - Date.now(),
+      ).toBeGreaterThan(6 * 24 * 3_600_000);
+      expect(gcs.stage(upload.uploadCapability!.url, bytes)).toBe(true);
+      const ready = await complete(upload.uploadId);
+      expect(ready.status).toBe('READY');
+      expect(ready.fileId).toEqual(expect.any(String));
+      const session = await row(ready.uploadId);
+      finished.push({ upload, ready, session });
+    }
+    const third = await create();
+    const fourth = await create();
+    expect(third.status).toBe('UPLOADING');
+    expect(fourth.status).toBe('UPLOADING');
+    await expect(create()).rejects.toMatchObject({ reason: 'quota_exceeded' });
+    await asTeacher(() => service.cancel(purpose, homework.id, third.uploadId));
+    expect(gcs.stage(third.uploadCapability!.url, bytes)).toBe(true);
+    await expect(complete(third.uploadId)).rejects.toMatchObject({
+      reason: 'state_conflict',
+    });
+    const retired = await row(third.uploadId);
+    expect(
+      gcs.bytes(retired.finalBucket, retired.finalObjectKey),
+    ).toBeUndefined();
+    expect(retired.fileId).toBeNull();
+    const fifth = await create();
+    expect(fifth.status).toBe('UPLOADING');
+    expect(gcs.issuedCount).toBe(5);
+
+    for (const { upload, ready, session } of finished) {
+      expect(gcs.stage(upload.uploadCapability!.url, Buffer.from('new'))).toBe(
+        false,
+      );
+      expect(gcs.bytes(session.finalBucket, session.finalObjectKey)).toEqual(
+        bytes,
+      );
+      await expect(complete(upload.uploadId)).resolves.toEqual(ready);
+    }
+    await asTeacher(() =>
+      service.cancel(purpose, homework.id, fourth.uploadId),
+    );
+    await prisma.schoolAssessmentMediaPolicy.update({
+      where: { schoolId: fixture.school.schoolId },
+      data: { maximumSchoolBytes: 35n },
+    });
+    await expect(create()).rejects.toMatchObject({ reason: 'quota_exceeded' });
+    expect(gcs.issuedCount).toBe(5);
+    expect(
+      await prisma.file.count({ where: { schoolId: fixture.school.schoolId } }),
+    ).toBe(2);
+  });
+
+  it('recovers a lost create response using the original request ID, cancellation and a fresh intent', async () => {
+    const homework = await fixture.homework();
+    const data = command();
+    const create = () =>
+      asTeacher(() =>
+        fixture.service.createHomeworkAssignmentUpload(homework.id, data),
+      );
+    const issue = jest.spyOn(fixture.storage, 'createBoundedUploadCapability');
+    const outcomes = await Promise.all([create(), create()]);
+    expect(new Set(outcomes.map(({ uploadId }) => uploadId)).size).toBe(1);
+    expect(
+      outcomes.filter(({ uploadCapability }) => uploadCapability),
+    ).toHaveLength(1);
+    expect(issue).toHaveBeenCalledTimes(1);
+    const original = outcomes.find(({ uploadCapability }) => uploadCapability)!;
+    const replay = await create();
+    expect(replay).toMatchObject({
+      uploadId: original.uploadId,
+      status: 'UPLOADING',
+      fileId: null,
+    });
+    expect(replay.uploadCapability).toBeUndefined();
+    await expect(
+      fixture.asMediaActor('otherTeacher', () =>
+        fixture.service.status(purpose, homework.id, replay.uploadId),
+      ),
+    ).rejects.toMatchObject({ httpStatus: 404 });
+    const cancelled = await asTeacher(() =>
+      fixture.service.cancel(purpose, homework.id, replay.uploadId),
+    );
+    expect(cancelled.status).toBe('CANCELLED');
+    const retry = await asTeacher(() =>
+      fixture.upload(homework.id, Buffer.from('new')),
+    );
+    const ready = await asTeacher(() =>
+      fixture.service.complete(purpose, homework.id, retry.intent.uploadId),
+    );
+    expect(ready.fileId).toEqual(expect.any(String));
+    expect(ready.uploadId).not.toBe(original.uploadId);
+    const oldWrite = await postAssessmentUpload(
+      original.uploadCapability!,
+      Buffer.from('old'),
+      'text/plain',
+    );
+    expect(oldWrite.status).toBe(204);
+    await expect(
+      asTeacher(() =>
+        fixture.service.complete(purpose, homework.id, original.uploadId),
+      ),
+    ).rejects.toMatchObject({ reason: 'state_conflict' });
+    await expect(
+      asTeacher(() =>
+        fixture.service.complete(purpose, homework.id, ready.uploadId),
+      ),
+    ).resolves.toEqual(ready);
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          schoolId: fixture.school.schoolId,
+          module: 'assessment-media',
+          action: 'upload.ready',
+        },
+      }),
+    ).toBe(1);
+  });
+
+  it('recovers a committed reservation when the provider issued a capability before the API persisted it', async () => {
+    const homework = await fixture.homework();
+    const data = command();
+    const id = randomUUID();
+    const bucket = fixture.storage.resolveBucket('PRIVATE');
+    const key = `assessment-media/${fixture.school.schoolId}/staging/${id}`;
+    await asTeacher(() =>
+      fixture.repository.reserve(assessmentMediaOwner(purpose, homework.id), {
+        ...data,
+        id,
+        expectedSizeBytes: 3n,
+        stagingBucket: bucket,
+        stagingObjectKey: key,
+        finalBucket: bucket,
+        finalObjectKey: `assessment-media/${fixture.school.schoolId}/verified/${id}`,
+        expiresAt: new Date(Date.now() + 30 * 60_000),
+      }),
+    );
+    const gcs = new AssessmentGcsResumableFixture();
+    const unpublished = await gcs.adapter.createBoundedUploadCapability({
+      bucket,
+      objectKey: key,
+      contentType: data.expectedMimeType,
+      expectedSizeBytes: 3,
+      expiresInSeconds: 900,
+    });
+    const recovered = await asTeacher(() =>
+      fixture.service.createHomeworkAssignmentUpload(homework.id, data),
+    );
+    expect(recovered).toMatchObject({ uploadId: id, status: 'CREATED' });
+    expect(recovered.uploadCapability).toBeUndefined();
+    await asTeacher(() => fixture.service.cancel(purpose, homework.id, id));
+    expect(gcs.stage(unpublished.url, Buffer.from('old'))).toBe(true);
+    await expect(
+      asTeacher(() =>
+        fixture.service.cleanupEligibility(purpose, homework.id, id),
+      ),
+    ).resolves.toMatchObject({
+      capabilityExpired: false,
+      deletionPermitted: false,
+    });
+    await expect(
+      asTeacher(() =>
+        fixture.service.createHomeworkAssignmentUpload(homework.id, command()),
+      ),
+    ).resolves.toMatchObject({ status: 'UPLOADING' });
   });
 
   it.each(['school', 'resource', 'rate'] as const)(
@@ -861,6 +1098,93 @@ describe('ST-03 real PostgreSQL and bounded private storage lifecycle', () => {
       expect((await row(uploaded.intent.uploadId)).status).toBe('FAILED');
       expect(fixture.verification.calls).toBe(0);
       await noFiles();
+    },
+  );
+
+  it.each([
+    ['progressive.jpg', 'image/jpeg', assessmentProgressiveExifJpeg, 23, 11],
+    ['indexed.png', 'image/png', assessmentInterlacedPng(), 5, 5],
+    ['classic.pdf', 'application/pdf', assessmentPdf(), null, null],
+    [
+      'xref-stream.pdf',
+      'application/pdf',
+      assessmentPdfXrefStream(),
+      null,
+      null,
+    ],
+  ] as const)(
+    'verifies actual %s and records its measured facts',
+    async (name, mime, bytes, width, height) => {
+      const homework = await fixture.homework();
+      await prisma.schoolAssessmentMediaPolicy.update({
+        where: { schoolId: fixture.school.schoolId },
+        data: { allowedMimeTypes: [mime] },
+      });
+      const upload = await asTeacher(() =>
+        fixture.upload(homework.id, bytes, purpose, name, mime),
+      );
+      const ready = await asTeacher(() =>
+        fixture.service.complete(purpose, homework.id, upload.intent.uploadId),
+      );
+      expect(ready.status).toBe('READY');
+      expect(ready.fileId).toEqual(expect.any(String));
+      expect(await row(ready.uploadId)).toMatchObject({
+        verifiedMimeType: mime,
+        width,
+        height,
+        checksumSha256: createHash('sha256').update(bytes).digest('hex'),
+        verificationVersion: ASSESSMENT_MEDIA_TECHNICAL_VERSION,
+      });
+    },
+  );
+
+  it.each([
+    [
+      'bad-entry.pdf',
+      'application/pdf',
+      Buffer.from(
+        assessmentPdf()
+          .toString('latin1')
+          .replace(/\d{10} 00000 n (?=\ntrailer)/u, '9999999999 00000 n '),
+        'latin1',
+      ),
+    ],
+    [
+      'bad-length.pdf',
+      'application/pdf',
+      Buffer.from(
+        assessmentPdfXrefStream()
+          .toString('latin1')
+          .replace(/\/Length \d+/u, '/Length 99999'),
+        'latin1',
+      ),
+    ],
+    ['bad-stream.pdf', 'application/pdf', assessmentPdfXrefStream(true)],
+    ['wrong-type.pdf', 'application/pdf', assessmentInterlacedPng()],
+  ] as const)(
+    'fails closed for malformed %s with real staged bytes',
+    async (name, mime, bytes) => {
+      const homework = await fixture.homework();
+      await prisma.schoolAssessmentMediaPolicy.update({
+        where: { schoolId: fixture.school.schoolId },
+        data: { allowedMimeTypes: [mime] },
+      });
+      const upload = await asTeacher(() =>
+        fixture.upload(homework.id, bytes, purpose, name, mime),
+      );
+      await expect(
+        asTeacher(() =>
+          fixture.service.complete(
+            purpose,
+            homework.id,
+            upload.intent.uploadId,
+          ),
+        ),
+      ).rejects.toMatchObject({ reason: 'verification_failed' });
+      expect(await row(upload.intent.uploadId)).toMatchObject({
+        status: 'FAILED',
+        fileId: null,
+      });
     },
   );
 

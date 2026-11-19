@@ -232,6 +232,79 @@ describe('ST11-A actual question answer bytes and transactional provenance', () 
     },
   );
   it.each(domains)(
+    '%s applies the School limit to each answer and releases a logical slot after removal',
+    async (domain) => {
+      const f = await h.setupResponse(domain, 'FILE_ONLY', true, 2);
+      const other = f.media.replace(f.questionId, f.otherQuestionId);
+      await h.prisma.schoolAssessmentMediaPolicy.update({
+        where: { schoolId: h.fixture.school.schoolId },
+        data: { maximumFilesPerResource: 1 },
+      });
+      const first = await h.bindReady(f.media);
+      const second = await h.bindReady(other);
+      const path = f.media + '/answer-assets';
+      const headers = h.headers('student');
+      let current = first.asset.id;
+      for (let index = 0; index < 7; index++) {
+        const ready = await h.ready(
+          f.media,
+          Buffer.from(`Replacement ${index}`),
+        );
+        if (index === 0) {
+          const full = await h
+            .http()
+            .post(path)
+            .set(headers)
+            .send({ uploadId: ready.ready.uploadId })
+            .expect(409);
+          expect(full.body).toMatchObject({
+            error: { code: 'assessment_media.quota_exceeded' },
+          });
+        }
+        const replaced = await h
+          .http()
+          .post(path)
+          .set(headers)
+          .send({
+            uploadId: ready.ready.uploadId,
+            replaceAssetId: current,
+          })
+          .expect(201);
+        current = st06Json<{ asset: { id: string } }>(replaced).asset.id;
+      }
+      await h
+        .http()
+        .delete(other + '/answer-assets/' + second.asset.id)
+        .set(headers)
+        .expect(204);
+      const replacement = await h.bindReady(other);
+      expect(replacement.asset.id).not.toBe(second.asset.id);
+      expect(
+        await h.prisma.assessmentAnswerMediaClaim.count({
+          where: {
+            schoolId: h.fixture.school.schoolId,
+            contextId: f.contextId,
+          },
+        }),
+      ).toBe(10);
+      expect(
+        (
+          await h.prisma.file.findUniqueOrThrow({
+            where: { id: first.asset.fileId },
+          })
+        ).deletedAt,
+      ).toBeNull();
+      const current = await h.http().get(path).set(headers).expect(200);
+      expect((current.body as { assets: unknown[] }).assets).toHaveLength(1);
+      await h
+        .http()
+        .post(f.student + '/submission/submit')
+        .set(headers)
+        .send({})
+        .expect(domain === 'Homework' ? 200 : 201);
+    },
+  );
+  it.each(domains)(
     '%s removes and replaces append-only assets without resurrection or File deletion',
     async (domain) => {
       const f = await h.setupResponse(domain);

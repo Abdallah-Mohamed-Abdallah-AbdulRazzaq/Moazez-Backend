@@ -138,16 +138,6 @@ export class HomeworkQuestionAssetsFixture extends AssessmentMediaFixture {
         file.checksumSha256 !== createHash('sha256').update(bytes).digest('hex')
       )
         throw new Error('Owned verified File checksum mismatch');
-      // Simulate expiration of the already-used capability, not expiration of READY.
-      // This preserves the existing two-concurrent-capability limit across cases.
-      await this.prisma.fileUploadSession.update({
-        where: { id: result.uploadId },
-        data: {
-          latestUploadUrlExpiresAt: new Date(
-            uploaded.session.createdAt.getTime() + 1,
-          ),
-        },
-      });
       return { uploadId: result.uploadId, fileId: result.fileId, file, bytes };
     });
   }

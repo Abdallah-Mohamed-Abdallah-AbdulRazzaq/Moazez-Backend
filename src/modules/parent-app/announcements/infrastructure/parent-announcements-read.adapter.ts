@@ -5,6 +5,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import { nonAssessmentFileFilter } from '../../../files/shared/domain/non-assessment-file';
 import type { ParentAppContext } from '../../shared/parent-app.types';
 import type { ParentAnnouncementsQueryDto } from '../dto/parent-announcements.dto';
 
@@ -41,6 +42,7 @@ const ANNOUNCEMENT_SELECT = {
   createdAt: true,
   updatedAt: true,
   imageFile: {
+    where: nonAssessmentFileFilter,
     select: SAFE_FILE_SELECT,
   },
   createdBy: {
@@ -51,7 +53,7 @@ const ANNOUNCEMENT_SELECT = {
   },
   _count: {
     select: {
-      attachments: true,
+      attachments: { where: { file: { is: nonAssessmentFileFilter } } },
     },
   },
 } satisfies Prisma.CommunicationAnnouncementSelect;
@@ -252,6 +254,7 @@ export class ParentAnnouncementsReadAdapter {
     return this.scopedPrisma.communicationAnnouncementAttachment.findMany({
       where: {
         announcementId: params.announcementId,
+        file: { is: nonAssessmentFileFilter },
       },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
       select: ANNOUNCEMENT_ATTACHMENT_SELECT,

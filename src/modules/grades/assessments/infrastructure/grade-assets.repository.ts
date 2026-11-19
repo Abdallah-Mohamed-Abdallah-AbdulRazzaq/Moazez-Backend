@@ -433,25 +433,13 @@ export class GradeAssetsRepository implements RichAssetResolver<
           data.sourceType === 'MANAGED_FILE',
         );
         const policy = await this.policy(tx, scope.schoolId, true);
-        // The assessment lock serializes references across both families. Physical reservations remain producer-owned.
-        const referenceCount =
-          (await tx.gradeAssessmentQuestionGroupAsset.count({
-            where: {
-              deletedAt: null,
-              group: { assessmentId: input.assessmentId, deletedAt: null },
-            },
-          })) +
-          (await tx.gradeAssessmentAsset.count({
-            where: { assessmentId: input.assessmentId, deletedAt: null },
-          })) +
-          (await tx.gradeAssessmentQuestionAsset.count({
-            where: {
-              deletedAt: null,
-              gradeAssessmentQuestion: {
-                is: { assessmentId: input.assessmentId, deletedAt: null },
-              },
-            },
-          }));
+        const referenceCount = input.questionId
+          ? await tx.gradeAssessmentQuestionAsset.count({
+              where: { questionId: input.questionId, deletedAt: null },
+            })
+          : await tx.gradeAssessmentAsset.count({
+              where: { assessmentId: input.assessmentId, deletedAt: null },
+            });
         if (referenceCount >= policy.maximumFilesPerResource)
           throw new AssessmentMediaException('quota_exceeded');
         let category = data.category ?? 'OTHER';
@@ -480,7 +468,7 @@ export class GradeAssetsRepository implements RichAssetResolver<
             ready.file.mimeType,
             ready.file.sizeBytes,
           );
-          await this.media.assertAuthoringBindingCapacity(tx, owner, policy);
+          await this.media.assertAuthoringRetainedBytes(tx, owner, policy);
           const content = resolveFileContentType(
             ready.file.originalName,
             ready.file.mimeType,

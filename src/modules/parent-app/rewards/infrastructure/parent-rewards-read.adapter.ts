@@ -6,6 +6,7 @@ import {
   RewardRedemptionStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import { nonAssessmentFileFilter } from '../../../files/shared/domain/non-assessment-file';
 import type { ParentAppAccessibleChild } from '../../shared/parent-app.types';
 import type { ParentRewardsQueryDto } from '../dto/parent-rewards.dto';
 
@@ -39,6 +40,7 @@ const PARENT_REWARD_CATALOG_ARGS =
       imageFileId: true,
       publishedAt: true,
       imageFile: {
+        where: nonAssessmentFileFilter,
         select: PARENT_REWARD_FILE_SELECT,
       },
     },
@@ -117,6 +119,7 @@ export class ParentRewardsReadAdapter {
         imageFileId: fileId,
         imageFile: {
           is: {
+            ...nonAssessmentFileFilter,
             schoolId,
             deletedAt: null,
             studentCredentialSecretArtifacts: { none: {} },
@@ -153,6 +156,7 @@ export class ParentRewardsReadAdapter {
             imageFileId: fileId,
             imageFile: {
               is: {
+                ...nonAssessmentFileFilter,
                 schoolId,
                 deletedAt: null,
                 studentCredentialSecretArtifacts: { none: {} },

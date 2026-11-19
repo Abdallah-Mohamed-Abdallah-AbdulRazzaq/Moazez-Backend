@@ -1,3 +1,4 @@
+import { nonAssessmentFileFilter } from '../../../files/shared/domain/non-assessment-file';
 import { Injectable } from '@nestjs/common';
 import { projectHomeworkTypedAnswers } from '../../../homework/infrastructure/homework-typed-answer.projection';
 import {
@@ -151,7 +152,7 @@ const PARENT_HOMEWORK_TARGET_LIST_ARGS =
             },
           },
           attachments: {
-            where: { deletedAt: null },
+            where: { deletedAt: null, file: { is: nonAssessmentFileFilter } },
             orderBy: [
               { sortOrder: 'asc' },
               { createdAt: 'asc' },
@@ -239,7 +240,7 @@ const PARENT_HOMEWORK_TARGET_DETAIL_ARGS =
             },
           },
           attachments: {
-            where: { deletedAt: null },
+            where: { deletedAt: null, file: { is: nonAssessmentFileFilter } },
             orderBy: [
               { sortOrder: 'asc' },
               { createdAt: 'asc' },

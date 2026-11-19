@@ -5,6 +5,21 @@ import type { ObjectStoragePort } from '../object-storage.port';
 import { SignedUrlService } from '../signed-url.service';
 
 describe('SignedUrlService', () => {
+  it('rejects an Assessment key before asking the provider to sign it', async () => {
+    const createSignedGetUrl = jest.fn();
+    const service = new SignedUrlService(
+      { createSignedGetUrl } as unknown as ObjectStoragePort,
+      config(),
+    );
+    await expect(
+      service.createDownloadUrl({
+        bucket: 'private-bucket',
+        objectKey: 'assessment-media/school/verified/file',
+      }),
+    ).rejects.toMatchObject({ httpStatus: 404 });
+    expect(createSignedGetUrl).not.toHaveBeenCalled();
+  });
+
   it('creates an inline signed GET capability without filename exposure', async () => {
     const createSignedGetUrl = jest.fn().mockResolvedValue({
       url: 'https://storage.invalid/object?X-Amz-Date=20260723T120000Z&X-Amz-Expires=300',

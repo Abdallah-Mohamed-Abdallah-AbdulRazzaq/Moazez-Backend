@@ -363,33 +363,11 @@ export class HomeworkQuestionAssetsRepository implements RichAssetResolver<
           data.sourceType === 'MANAGED_FILE',
         );
         const policy = await this.policy(tx, scope.schoolId, true);
-        if (
-          await tx.homeworkQuestionGroup.count({
-            where: { homeworkAssignmentId: input.homeworkId, deletedAt: null },
-          })
-        ) {
-          const references =
-            (await tx.homeworkQuestionAsset.count({
-              where: {
-                deletedAt: null,
-                homeworkQuestion: {
-                  homeworkAssignmentId: input.homeworkId,
-                  deletedAt: null,
-                },
-              },
-            })) +
-            (await tx.homeworkQuestionGroupAsset.count({
-              where: {
-                deletedAt: null,
-                group: {
-                  homeworkAssignmentId: input.homeworkId,
-                  deletedAt: null,
-                },
-              },
-            }));
-          if (references >= policy.maximumFilesPerResource)
-            throw new AssessmentMediaException('quota_exceeded');
-        }
+        const references = await tx.homeworkQuestionAsset.count({
+          where: { homeworkQuestionId: input.questionId, deletedAt: null },
+        });
+        if (references >= policy.maximumFilesPerResource)
+          throw new AssessmentMediaException('quota_exceeded');
         let category = data.category ?? 'OTHER';
         if (data.sourceType === 'MANAGED_FILE') {
           this.runtime.assertUploadExecutionEnabled();
@@ -412,7 +390,7 @@ export class HomeworkQuestionAssetsRepository implements RichAssetResolver<
             ready.file.mimeType,
             ready.file.sizeBytes,
           );
-          await this.media.assertHomeworkBindingCapacity(tx, owner, policy);
+          await this.media.assertAuthoringRetainedBytes(tx, owner, policy);
           const content = resolveFileContentType(
             ready.file.originalName,
             ready.file.mimeType,

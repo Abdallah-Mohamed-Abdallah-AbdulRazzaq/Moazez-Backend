@@ -80,24 +80,80 @@ export const assessmentJpeg = Buffer.from(
   'base64',
 );
 
-/** A one-page PDF with a conventional cross-reference table and trailer. */
-export function assessmentPdf(): Buffer {
+/** Progressive 23×11 JPEG with EXIF orientation and software tags. */
+export const assessmentProgressiveExifJpeg = Buffer.from(
+  '/9j/4AAQSkZJRgABAQAAAQABAAD/4QA2RXhpZgAATU0AKgAAAAgAAgESAAMAAAABAAEAAAExAAIAAAAIAAAAJgAAAABGaXh0dXJlAP/bAEMABwUFBgUEBwYGBggHBwgLEgsLCgoLFg8QDRIaFhsaGRYZGBwgKCIcHiYeGBkjMCQmKistLi0bIjI1MSw1KCwtLP/bAEMBBwgICwkLFQsLFSwdGR0sLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLP/CABEIAAsAFwMBIgACEQEDEQH/xAAWAAEBAQAAAAAAAAAAAAAAAAAFAAb/xAAWAQEBAQAAAAAAAAAAAAAAAAAEAgb/2gAMAwEAAhADEAAAAcqiyjAhrVTtD//EABcQAQEBAQAAAAAAAAAAAAAAAAIAAQT/2gAIAQEAAQUCHLDkhyQOQOQOX//EABcRAAMBAAAAAAAAAAAAAAAAAAACBBH/2gAIAQMBAT8BluYS5sP/xAAWEQEBAQAAAAAAAAAAAAAAAAABAwD/2gAIAQIBAT8BnRxR3//EABUQAQEAAAAAAAAAAAAAAAAAAAAx/9oACAEBAAY/AoiIiP/EABYQAQEBAAAAAAAAAAAAAAAAAABRIP/aAAgBAQABPyHGgqUhP//aAAwDAQACAAMAAAAQ29//xAAWEQEBAQAAAAAAAAAAAAAAAAAAESH/2gAIAQMBAT8Qxp7/xAAVEQEBAAAAAAAAAAAAAAAAAAAAEf/aAAgBAgEBPxApn//EABoQAAICAwAAAAAAAAAAAAAAAAAhMcEBEdH/2gAIAQEAAT8QhoQUFcCSCQa2A//Z',
+  'base64',
+);
+
+/** Indexed 5×5 PNG with Adam7 passes, a palette and ordinary metadata. */
+export function assessmentInterlacedPng(): Buffer {
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(5);
+  header.writeUInt32BE(5, 4);
+  header[8] = 1;
+  header[9] = 3;
+  header[12] = 1;
+  return Buffer.concat([
+    Buffer.from('89504e470d0a1a0a', 'hex'),
+    pngChunk('IHDR', header),
+    pngChunk('PLTE', Buffer.from('112233ddeeff', 'hex')),
+    pngChunk('tEXt', Buffer.from('Comment\0Disposable fixture')),
+    pngChunk('IDAT', deflateSync(Buffer.alloc(22))),
+    pngChunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+function pdfObjects(version: string) {
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Count 1 /Kids [3 0 R] >>',
     '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 72 72] >>',
   ];
-  let document = '%PDF-1.4\n';
+  let document = `%PDF-${version}\n`;
   const offsets: number[] = [];
   for (const [index, object] of objects.entries()) {
     offsets.push(document.length);
     document += `${index + 1} 0 obj\n${object}\nendobj\n`;
   }
+  return { document, offsets };
+}
+
+/** A one-page PDF with a conventional cross-reference table and trailer. */
+export function assessmentPdf(): Buffer {
+  const { document, offsets } = pdfObjects('1.4');
   const xref = document.length;
   const references = offsets
     .map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`)
     .join('');
-  document += 'xref\n0 4\n0000000000 65535 f \n' + references;
-  document += `trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
-  return Buffer.from(document, 'ascii');
+  return Buffer.from(
+    document +
+      'xref\n0 4\n0000000000 65535 f \n' +
+      references +
+      `trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`,
+    'ascii',
+  );
+}
+
+/** One-page PDF 1.7 with a Flate-compressed cross-reference stream. */
+export function assessmentPdfXrefStream(corruptChecksum = false): Buffer {
+  const { document, offsets } = pdfObjects('1.7');
+  const xref = document.length;
+  const entries = [0, ...offsets, xref];
+  const table = Buffer.alloc(entries.length * 7);
+  entries.forEach((offset, index) => {
+    table[index * 7] = index === 0 ? 0 : 1;
+    table.writeUInt32BE(offset, index * 7 + 1);
+    table.writeUInt16BE(index === 0 ? 65_535 : 0, index * 7 + 5);
+  });
+  const stream = deflateSync(table);
+  if (corruptChecksum) stream[stream.length - 1] ^= 1;
+  return Buffer.concat([
+    Buffer.from(
+      document +
+        `4 0 obj\n<< /Type /XRef /Size 5 /Root 1 0 R /W [1 4 2] /Filter /FlateDecode /Length ${stream.length}>>\nstream\n`,
+    ),
+    stream,
+    Buffer.from(`\nendstream\nendobj\nstartxref\n${xref}\n%%EOF\n`),
+  ]);
 }

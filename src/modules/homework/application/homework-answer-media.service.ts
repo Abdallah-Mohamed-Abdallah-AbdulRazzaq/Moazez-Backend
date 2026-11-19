@@ -82,7 +82,7 @@ export class HomeworkAnswerMediaService {
     input: HomeworkAnswerMediaResource & { assetId: string },
     request: PrivateMediaContentRequest,
   ) {
-    return this.content.openAuthorized(
+    return this.content.openAssessmentAuthorized(
       async () => {
         const resolved = actor ?? (await this.repository.studentActor(input));
         const [view] = await this.repository.read(resolved, input);

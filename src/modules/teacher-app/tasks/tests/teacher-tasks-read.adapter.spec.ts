@@ -124,7 +124,7 @@ describe('TeacherTasksReadAdapter', () => {
     expect(selectJson).toContain('originalName');
     expect(selectJson).toContain('mimeType');
     expect(selectJson).not.toContain('bucket');
-    expect(selectJson).not.toContain('objectKey');
+    expect(selectJson).not.toContain('"objectKey":true');
     expect(selectJson).not.toContain('metadata');
   });
 

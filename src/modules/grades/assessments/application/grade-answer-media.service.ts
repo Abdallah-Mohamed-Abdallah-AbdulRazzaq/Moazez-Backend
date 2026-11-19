@@ -81,7 +81,7 @@ export class GradeAnswerMediaService {
     request: PrivateMediaContentRequest,
     released?: Parameters<GradeAnswerMediaRepository['read']>[1],
   ) {
-    return this.content.openAuthorized(
+    return this.content.openAssessmentAuthorized(
       async () => {
         const [view] = await this.repository.read(input, released);
         if (

@@ -1,3 +1,4 @@
+import { nonAssessmentFileFilter } from '../../../files/shared/domain/non-assessment-file';
 import { Injectable } from '@nestjs/common';
 import {
   AdmissionApplicationStatus,
@@ -143,7 +144,7 @@ export class ApplicationDocumentsRepository {
     applicationId: string,
   ): Promise<ApplicationDocumentRecord[]> {
     return this.scopedPrisma.applicationDocument.findMany({
-      where: { applicationId },
+      where: { applicationId, file: { is: nonAssessmentFileFilter } },
       orderBy: [{ createdAt: 'asc' }],
       ...APPLICATION_DOCUMENT_RECORD_ARGS,
     });
@@ -153,7 +154,7 @@ export class ApplicationDocumentsRepository {
     documentId: string,
   ): Promise<ApplicationDocumentRecord | null> {
     return this.scopedPrisma.applicationDocument.findFirst({
-      where: { id: documentId },
+      where: { id: documentId, file: { is: nonAssessmentFileFilter } },
       ...APPLICATION_DOCUMENT_RECORD_ARGS,
     });
   }
@@ -180,6 +181,7 @@ export class ApplicationDocumentsRepository {
       where: {
         id: params.documentId,
         applicationId: params.applicationId,
+        file: { is: nonAssessmentFileFilter },
       },
       ...APPLICATION_DOCUMENT_REVIEW_ARGS,
     });

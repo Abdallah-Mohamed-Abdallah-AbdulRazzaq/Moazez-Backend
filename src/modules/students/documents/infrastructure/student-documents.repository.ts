@@ -1,3 +1,4 @@
+import { nonAssessmentFileFilter } from '../../../files/shared/domain/non-assessment-file';
 import { Injectable } from '@nestjs/common';
 import {
   AdmissionDocumentStatus,
@@ -133,6 +134,7 @@ export class StudentDocumentsRepository {
       where: {
         studentId: params.studentId,
         ...(params.status ? { status: params.status } : {}),
+        file: { is: nonAssessmentFileFilter },
       },
       orderBy: [{ createdAt: 'desc' }],
       ...STUDENT_DOCUMENT_RECORD_ARGS,
@@ -143,7 +145,7 @@ export class StudentDocumentsRepository {
     documentId: string,
   ): Promise<StudentDocumentRecord | null> {
     return this.scopedPrisma.studentDocument.findFirst({
-      where: { id: documentId },
+      where: { id: documentId, file: { is: nonAssessmentFileFilter } },
       ...STUDENT_DOCUMENT_RECORD_ARGS,
     });
   }
@@ -243,6 +245,7 @@ export class StudentDocumentsRepository {
           id: { in: params.applicationDocumentIds },
           schoolId: params.schoolId,
           applicationId: params.applicationId,
+          file: { is: nonAssessmentFileFilter },
         },
         ...APPLICATION_DOCUMENT_IMPORT_ARGS,
       });
@@ -259,7 +262,10 @@ export class StudentDocumentsRepository {
 
       for (const documentId of params.applicationDocumentIds) {
         const sourceDocument = sourceDocumentMap.get(documentId);
-        if (!sourceDocument || !isImportableFile(sourceDocument, params.schoolId)) {
+        if (
+          !sourceDocument ||
+          !isImportableFile(sourceDocument, params.schoolId)
+        ) {
           return {
             status: 'source_file_unavailable',
             applicationDocumentId: documentId,
@@ -366,7 +372,9 @@ function isImportableFile(
   document: ApplicationDocumentImportRecord,
   schoolId: string,
 ): boolean {
-  return document.file.schoolId === schoolId && document.file.deletedAt === null;
+  return (
+    document.file.schoolId === schoolId && document.file.deletedAt === null
+  );
 }
 
 function mapImportedStudentDocumentStatus(

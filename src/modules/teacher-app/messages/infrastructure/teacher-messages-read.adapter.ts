@@ -1,3 +1,4 @@
+import { nonAssessmentFileFilter } from '../../../files/shared/domain/non-assessment-file';
 import { Injectable } from '@nestjs/common';
 import {
   CommunicationConversationStatus,
@@ -73,7 +74,7 @@ const MESSAGE_SELECT = {
     },
   },
   attachments: {
-    where: { deletedAt: null },
+    where: { deletedAt: null, file: { is: nonAssessmentFileFilter } },
     orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
     select: {
       id: true,

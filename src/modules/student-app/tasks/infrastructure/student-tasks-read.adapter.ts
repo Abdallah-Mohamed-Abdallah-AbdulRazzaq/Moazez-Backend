@@ -1,8 +1,8 @@
+import { nonAssessmentFileFilter } from '../../../files/shared/domain/non-assessment-file';
 import { Injectable } from '@nestjs/common';
 import {
   FileVisibility,
   Prisma,
-  ReinforcementSubmissionStatus,
   ReinforcementTaskStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
@@ -43,6 +43,7 @@ const STUDENT_TASK_SUBMISSION_SELECT = {
   submittedAt: true,
   reviewedAt: true,
   proofFile: {
+    where: nonAssessmentFileFilter,
     select: SAFE_PROOF_FILE_SELECT,
   },
 } satisfies Prisma.ReinforcementSubmissionSelect;
@@ -272,6 +273,7 @@ export class StudentTasksReadAdapter {
       where: {
         id: params.proofFileId,
         organizationId: params.context.organizationId,
+        ...nonAssessmentFileFilter,
         schoolId: params.context.schoolId,
         uploaderId: params.context.studentUserId,
         visibility: FileVisibility.PRIVATE,

@@ -1,8 +1,6 @@
+import { nonAssessmentFileFilter } from '../../../files/shared/domain/non-assessment-file';
 import { Injectable } from '@nestjs/common';
-import {
-  HeroMissionStatus,
-  Prisma,
-} from '@prisma/client';
+import { HeroMissionStatus, Prisma } from '@prisma/client';
 import { withSoftDeleted } from '../../../../common/context/request-context';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import { NormalizedHeroMissionObjective } from '../domain/hero-journey-domain';
@@ -149,7 +147,8 @@ export type HeroBadgeRecord = Prisma.HeroBadgeGetPayload<{
 export type HeroMissionRecord = Prisma.HeroMissionGetPayload<
   typeof HERO_MISSION_ARGS
 >;
-export type HeroMissionObjectiveRecord = HeroMissionRecord['objectives'][number];
+export type HeroMissionObjectiveRecord =
+  HeroMissionRecord['objectives'][number];
 export type HeroAcademicYearRecord = Prisma.AcademicYearGetPayload<{
   select: typeof ACADEMIC_YEAR_SELECT;
 }>;
@@ -285,11 +284,7 @@ export class HeroJourneyRepository {
       const [items, total] = await Promise.all([
         this.scopedPrisma.heroMission.findMany({
           where,
-          orderBy: [
-            { sortOrder: 'asc' },
-            { createdAt: 'desc' },
-            { id: 'asc' },
-          ],
+          orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }],
           ...(filters.limit !== undefined ? { take: filters.limit } : {}),
           ...(filters.offset !== undefined ? { skip: filters.offset } : {}),
           ...HERO_MISSION_ARGS,
@@ -361,11 +356,7 @@ export class HeroJourneyRepository {
         });
       }
 
-      return this.findMissionInTransaction(
-        tx,
-        input.schoolId,
-        input.missionId,
-      );
+      return this.findMissionInTransaction(tx, input.schoolId, input.missionId);
     });
   }
 
@@ -497,9 +488,7 @@ export class HeroJourneyRepository {
     });
   }
 
-  findAssessment(
-    assessmentId: string,
-  ): Promise<HeroAssessmentRecord | null> {
+  findAssessment(assessmentId: string): Promise<HeroAssessmentRecord | null> {
     return this.scopedPrisma.gradeAssessment.findFirst({
       where: { id: assessmentId },
       select: ASSESSMENT_SELECT,
@@ -508,7 +497,7 @@ export class HeroJourneyRepository {
 
   findFile(fileId: string): Promise<HeroFileRecord | null> {
     return this.scopedPrisma.file.findFirst({
-      where: { id: fileId },
+      where: { id: fileId, ...nonAssessmentFileFilter },
       select: FILE_SELECT,
     });
   }
