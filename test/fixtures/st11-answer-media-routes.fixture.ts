@@ -6,15 +6,21 @@ const readRoutes = (prefix: string) => [
     ),
   ),
 ];
-export const HOMEWORK_AUTHORING_UPLOAD_ROUTES = [
-  '/api/v1/homework/assignments/:homeworkId/authoring/uploads',
-  '/api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/authoring/uploads',
-].flatMap((path) => [
+const authoringUploadRoutes = (path: string) => [
   `POST ${path}`,
   `GET ${path}/:uploadId`,
   `POST ${path}/:uploadId/complete`,
   `POST ${path}/:uploadId/cancel`,
-]);
+];
+export const CORE_HOMEWORK_AUTHORING_UPLOAD_ROUTES = authoringUploadRoutes(
+  '/api/v1/homework/assignments/:homeworkId/authoring/uploads',
+);
+export const HOMEWORK_AUTHORING_UPLOAD_ROUTES = [
+  ...CORE_HOMEWORK_AUTHORING_UPLOAD_ROUTES,
+  ...authoringUploadRoutes(
+    '/api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/authoring/uploads',
+  ),
+];
 export const ST11_STUDENT_ANSWER_MEDIA_ROUTES = [
   '/api/v1/student/homeworks/:homeworkId/questions/:questionId',
   '/api/v1/student/exams/:assessmentId/submissions/:submissionId/questions/:questionId',

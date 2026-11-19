@@ -1,4 +1,5 @@
 import {
+  CORE_HOMEWORK_AUTHORING_UPLOAD_ROUTES,
   HOMEWORK_AUTHORING_UPLOAD_ROUTES,
   ST11_STUDENT_ANSWER_MEDIA_ROUTES,
   ST11_CORE_HOMEWORK_ANSWER_MEDIA_ROUTES,
@@ -12,6 +13,7 @@ import { AppModule } from '../../src/app.module';
 import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
 import { HomeworkAssignmentsController } from '../../src/modules/homework/controller/homework-assignments.controller';
 import { HomeworkAttachmentsController } from '../../src/modules/homework/controller/homework-attachments.controller';
+import { HomeworkAuthoringUploadsController } from '../../src/modules/homework/controller/homework-authoring-uploads.controller';
 import { HomeworkGradeSyncController } from '../../src/modules/homework/controller/homework-grade-sync.controller';
 import { HomeworkQuestionAssetsController } from '../../src/modules/homework/controller/homework-question-assets.controller';
 import { HomeworkQuestionsController } from '../../src/modules/homework/controller/homework-questions.controller';
@@ -33,6 +35,7 @@ type ExpressLayer = {
 };
 
 const HOMEWORK_CORE_ROUTES = [
+  ...CORE_HOMEWORK_AUTHORING_UPLOAD_ROUTES,
   ...ST11_CORE_HOMEWORK_ANSWER_MEDIA_ROUTES,
   ...ST11B_CORE_HOMEWORK_GROUP_ROUTES,
   'GET /api/v1/homework/assignments/:homeworkId/questions/:questionId/assets',
@@ -170,6 +173,10 @@ describe('Sprint 13F Homework final closeout route inventory (e2e)', () => {
 
   it('applies the core guard only to controllers with /homework paths', () => {
     const guardedCoreControllers = [
+      [
+        HomeworkAuthoringUploadsController,
+        'homework/assignments/:homeworkId/authoring/uploads',
+      ],
       [
         HomeworkQuestionAssetsController,
         'homework/assignments/:homeworkId/questions/:questionId/assets',
