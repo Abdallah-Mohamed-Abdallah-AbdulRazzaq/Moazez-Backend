@@ -1,4 +1,5 @@
 import {
+  HOMEWORK_AUTHORING_UPLOAD_ROUTES,
   ST11_STUDENT_ANSWER_MEDIA_ROUTES,
   ST11_CORE_HOMEWORK_ANSWER_MEDIA_ROUTES,
   ST11B_CORE_HOMEWORK_GROUP_ROUTES,
@@ -240,7 +241,11 @@ describe('Sprint 13F Homework final closeout route inventory (e2e)', () => {
       expect(routes).not.toContain(absentRoute);
     }
 
+    expect(routes).toEqual(
+      expect.arrayContaining(HOMEWORK_AUTHORING_UPLOAD_ROUTES),
+    );
     for (const route of routes) {
+      if (HOMEWORK_AUTHORING_UPLOAD_ROUTES.includes(route)) continue;
       if (ST11_STUDENT_ANSWER_MEDIA_ROUTES.includes(route)) continue;
       expect(route).not.toMatch(
         /^.+ \/api\/v1\/homework\/.*(proof|upload|xp|reward)/,
