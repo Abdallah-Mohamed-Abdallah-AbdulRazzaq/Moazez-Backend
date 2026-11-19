@@ -364,6 +364,7 @@ describe('critical queue persisted-truth reconciliation', () => {
     expect(bullmq.createWorker).toHaveBeenCalledWith(
       COMMUNICATION_NOTIFICATION_QUEUE_NAME,
       expect.any(Function),
+      { attribution: 'core-worker' },
     );
     expect(observedContexts[0]?.actor).toBeUndefined();
     expect(observedContexts[0]?.activeMembership).toEqual(
