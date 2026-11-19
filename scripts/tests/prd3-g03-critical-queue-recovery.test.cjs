@@ -425,9 +425,9 @@ test('R2/R3 actorless recovery and type-safe primary generation are enforced', (
     /CommunicationNotificationGenerationWorkerJobData|as unknown as CommunicationAnnouncementNotificationGenerationJobData/u,
   );
   const reviewBranch =
-    /if \(\s*job\.name ===\s*COMMUNICATION_ACADEMIC_CONTENT_REVIEW_DECISION_GENERATE_JOB_NAME\s*\) \{([\s\S]*?)\n {6}\}\n {6}if \(/u.exec(
+    /(?:^|\n)(?<indent>[ \t]+)if \(\s*job\.name ===\s*COMMUNICATION_ACADEMIC_CONTENT_REVIEW_DECISION_GENERATE_JOB_NAME\s*\) \{(?<body>[\s\S]*?)\n\k<indent>\}\n\k<indent>if \(/u.exec(
       generationWorker,
-    )?.[1];
+    )?.groups.body;
   assert.ok(
     reviewBranch,
     'dedicated review decision dispatch branch is missing',

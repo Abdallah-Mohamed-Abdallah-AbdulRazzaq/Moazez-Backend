@@ -116,6 +116,99 @@ describe('BullmqService lifecycle', () => {
     jest.clearAllMocks();
   });
 
+  it.each([
+    'communication-notifications',
+    'communication-notification-push',
+    'school-email-delivery',
+  ])(
+    'records registration only after the worker is ready for %s',
+    async (queue) => {
+      const log = jest
+        .spyOn(console, 'log')
+        .mockImplementation(() => undefined);
+      const ready = deferred<void>();
+      const construct = MockedWorker.getMockImplementation()!;
+      MockedWorker.mockImplementation((...args) => {
+        const worker = construct(...args);
+        workers[0].waitUntilReady.mockReturnValue(ready.promise);
+        return worker;
+      });
+
+      const service = createService();
+      service.createWorker(queue, () => Promise.resolve(), {
+        attribution: 'core-worker',
+      });
+      await flushPromises();
+      expect(log).not.toHaveBeenCalled();
+
+      ready.resolve(undefined);
+      await flushPromises();
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(log).toHaveBeenCalledWith(
+        expect.stringContaining('"event":"queue.consumer.registered"'),
+      );
+      expect(log).toHaveBeenCalledWith(
+        expect.stringContaining('"queue":"' + queue + '"'),
+      );
+      await service.onModuleDestroy();
+    },
+  );
+
+  it.each(['rejected', 'closing', 'paused', 'settled'] as const)(
+    'keeps core consumer registration unverified when readiness is %s',
+    async (condition) => {
+      const queue = 'communication-notifications';
+      const log = jest
+        .spyOn(console, 'log')
+        .mockImplementation(() => undefined);
+      const ready = deferred<void>();
+      const construct = MockedWorker.getMockImplementation()!;
+      MockedWorker.mockImplementation((...args) => {
+        const worker = construct(...args);
+        workers[0].waitUntilReady.mockReturnValue(ready.promise);
+        return worker;
+      });
+      const service = createService();
+      service.createWorker(queue, () => Promise.resolve(), {
+        attribution: 'core-worker',
+      });
+
+      const worker = workers[0];
+      if (condition === 'rejected') {
+        ready.reject(new Error('synthetic readiness failure'));
+      } else {
+        if (condition === 'closing') worker.closing = Promise.resolve();
+        if (condition === 'paused') worker.isPaused.mockReturnValue(true);
+        if (condition === 'settled') worker.resolveRun();
+        await flushPromises();
+        ready.resolve(undefined);
+      }
+      await flushPromises();
+      expect(log).not.toHaveBeenCalled();
+      await service.onModuleDestroy();
+    },
+  );
+
+  it('does not observe callers outside the explicit core queue scope', async () => {
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    const service = createService();
+    const processor = () => Promise.resolve();
+    service.createWorker('communication-notifications', processor);
+    service.createWorker('outside-scope', processor, {
+      attribution: 'core-worker',
+    });
+    await flushPromises();
+    expect(
+      workers.every((worker) => worker.waitUntilReady.mock.calls.length === 0),
+    ).toBe(true);
+    expect(log).not.toHaveBeenCalled();
+    expect(MockedWorker.mock.calls.map((call) => call[1])).toEqual([
+      processor,
+      processor,
+    ]);
+    await service.onModuleDestroy();
+  });
+
   it('closes a not-ready worker without waiting for readiness', async () => {
     const service = createService();
     const worker = service.createWorker('test-queue', () => Promise.resolve());

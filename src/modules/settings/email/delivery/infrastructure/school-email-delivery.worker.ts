@@ -33,37 +33,41 @@ export class SchoolEmailDeliveryWorker implements OnModuleInit {
     this.worker = this.bullmqService.createWorker<
       SchoolEmailDeliveryRecipientJobData,
       void
-    >(SCHOOL_EMAIL_DELIVERY_QUEUE_NAME, async (job) => {
-      if (job.name === SCHOOL_EMAIL_DELIVERY_RECONCILE_JOB_NAME) {
-        await this.reconciliationService.reconcile();
-        return;
-      }
-      if (job.name !== SCHOOL_EMAIL_DELIVERY_SEND_RECIPIENT_JOB_NAME) {
-        throw new Error('school_email_delivery_job_unknown');
-      }
+    >(
+      SCHOOL_EMAIL_DELIVERY_QUEUE_NAME,
+      async (job) => {
+        if (job.name === SCHOOL_EMAIL_DELIVERY_RECONCILE_JOB_NAME) {
+          await this.reconciliationService.reconcile();
+          return;
+        }
+        if (job.name !== SCHOOL_EMAIL_DELIVERY_SEND_RECIPIENT_JOB_NAME) {
+          throw new Error('school_email_delivery_job_unknown');
+        }
 
-      const context = createRequestContext(
-        `school-email-delivery:${job.id ?? job.data.recipientId}`,
-      );
-      const actorUserType = parseUserType(job.data.actorUserType);
-      if (job.data.actorUserId && actorUserType) {
-        context.actor = {
-          id: job.data.actorUserId,
-          userType: actorUserType,
+        const context = createRequestContext(
+          `school-email-delivery:${job.id ?? job.data.recipientId}`,
+        );
+        const actorUserType = parseUserType(job.data.actorUserType);
+        if (job.data.actorUserId && actorUserType) {
+          context.actor = {
+            id: job.data.actorUserId,
+            userType: actorUserType,
+          };
+        }
+        context.activeMembership = {
+          membershipId: 'queue:school-email-delivery',
+          organizationId: job.data.organizationId,
+          schoolId: job.data.schoolId,
+          roleId: 'queue:school-email-delivery',
+          permissions: [],
         };
-      }
-      context.activeMembership = {
-        membershipId: 'queue:school-email-delivery',
-        organizationId: job.data.organizationId,
-        schoolId: job.data.schoolId,
-        roleId: 'queue:school-email-delivery',
-        permissions: [],
-      };
 
-      await runWithRequestContext(context, () =>
-        this.processRecipientUseCase.execute(job.data),
-      );
-    });
+        await runWithRequestContext(context, () =>
+          this.processRecipientUseCase.execute(job.data),
+        );
+      },
+      { attribution: 'core-worker' },
+    );
   }
 }
 
