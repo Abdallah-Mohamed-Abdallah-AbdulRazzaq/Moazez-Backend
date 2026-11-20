@@ -45,7 +45,7 @@ describe('PrivateMediaContentService', () => {
       httpStatus: 404,
     });
     await expect(
-      service.openAuthorized(async () => file, notFound, {
+      service.openAuthorized(() => Promise.resolve(file), notFound, {
         range: 'bytes=0-1',
       }),
     ).rejects.toMatchObject({ httpStatus: 404 });

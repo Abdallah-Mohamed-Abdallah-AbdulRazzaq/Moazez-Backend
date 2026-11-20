@@ -48,7 +48,8 @@ describe('StudentRewardsReadAdapter', () => {
       academicYearId: 'year-1',
       termId: 'term-1',
     });
-    const selected = JSON.stringify(query.select, (key, value: unknown) =>
+    const projection = (query as { select?: unknown }).select;
+    const selected = JSON.stringify(projection, (key, value: unknown) =>
       key === 'where' ? undefined : value,
     );
     for (const forbidden of [
