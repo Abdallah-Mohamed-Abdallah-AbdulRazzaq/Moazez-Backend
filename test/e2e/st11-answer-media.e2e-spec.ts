@@ -294,8 +294,10 @@ describe('ST11-A actual question answer bytes and transactional provenance', () 
           })
         ).deletedAt,
       ).toBeNull();
-      const current = await h.http().get(path).set(headers).expect(200);
-      expect((current.body as { assets: unknown[] }).assets).toHaveLength(1);
+      const listed = st06Json<{ assets: { id: string }[] }>(
+        await h.http().get(path).set(headers).expect(200),
+      );
+      expect(listed.assets.map((asset) => asset.id)).toEqual([current]);
       await h
         .http()
         .post(f.student + '/submission/submit')
