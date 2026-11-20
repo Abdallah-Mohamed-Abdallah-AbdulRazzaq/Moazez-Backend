@@ -1054,6 +1054,9 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
   const a07Files = [
     ['src/infrastructure/queue/queue-attribution.events.spec.ts', 'unit'],
   ];
+  const assessmentMediaPostReviewFiles = [
+    ['test/e2e/assessment-media-provenance-boundary.e2e-spec.ts', 'e2e'],
+  ];
   assert.equal(
     assignments.length,
     1019 +
@@ -1068,7 +1071,8 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
       st12Files.length +
       st13Files.length +
       postCloseoutReviewFiles.length +
-      a07Files.length,
+      a07Files.length +
+      assessmentMediaPostReviewFiles.length,
   );
   assert.equal(
     assignments.filter((item) => item.execution === 'manual').length,
@@ -1088,7 +1092,8 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
       st12Files.length +
       st13Files.length +
       postCloseoutReviewFiles.length +
-      a07Files.length,
+      a07Files.length +
+      assessmentMediaPostReviewFiles.length,
   );
   for (const [file, profile] of [
     ['src/common/rich-content/rich-content.spec.ts', 'unit'],
@@ -1108,6 +1113,7 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
     ...st13Files,
     ...postCloseoutReviewFiles,
     ...a07Files,
+    ...assessmentMediaPostReviewFiles,
   ]) {
     const matches = assignments.filter((item) => item.file === file);
     assert.equal(matches.length, 1);

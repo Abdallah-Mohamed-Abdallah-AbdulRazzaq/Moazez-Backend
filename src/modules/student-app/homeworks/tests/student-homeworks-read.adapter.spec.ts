@@ -5,6 +5,7 @@ import {
   type Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import { nonAssessmentFileFilter } from '../../../files/shared/domain/non-assessment-file';
 import type { StudentAppContext } from '../../shared/student-app.types';
 import { StudentHomeworksReadAdapter } from '../infrastructure/student-homeworks-read.adapter';
 
@@ -56,6 +57,7 @@ describe('StudentHomeworksReadAdapter', () => {
         },
         file: {
           is: {
+            ...nonAssessmentFileFilter,
             schoolId: 'school-1',
             deletedAt: null,
             studentCredentialSecretArtifacts: { none: {} },
