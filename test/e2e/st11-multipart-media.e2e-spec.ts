@@ -105,7 +105,7 @@ describe('ST11-B actual group-owned private media and File lifetime', () => {
     },
   );
   it.each(domains)(
-    '%s enforces safe external group sources and the shared parent reference limit',
+    '%s enforces safe external sources and the independent group reference limit',
     async (domain) => {
       const f = await h.grouped(domain),
         assetPath = f.groups + '/' + f.groupId + '/assets';
@@ -127,22 +127,16 @@ describe('ST11-B actual group-owned private media and File lifetime', () => {
           .expect(400);
       const existingReferences =
         domain === 'Homework'
-          ? await h.prisma.homeworkQuestionAsset.count({
+          ? await h.prisma.homeworkQuestionGroupAsset.count({
               where: {
                 deletedAt: null,
-                homeworkQuestion: {
-                  homeworkAssignmentId: f.parentId,
-                  deletedAt: null,
-                },
+                groupId: f.groupId,
               },
             })
-          : await h.prisma.gradeAssessmentQuestionAsset.count({
+          : await h.prisma.gradeAssessmentQuestionGroupAsset.count({
               where: {
                 deletedAt: null,
-                gradeAssessmentQuestion: {
-                  assessmentId: f.parentId,
-                  deletedAt: null,
-                },
+                groupId: f.groupId,
               },
             });
       for (let index = 0; index < 8 - existingReferences; index++) {
@@ -181,14 +175,14 @@ describe('ST11-B actual group-owned private media and File lifetime', () => {
         )
         .set(h.headers(f.author))
         .send(command)
-        .expect(409);
+        .expect(201);
       if (domain === 'Grades')
         await h
           .http()
           .post(f.authorPath + '/assets')
           .set(h.headers(f.author))
           .send(command)
-          .expect(409);
+          .expect(201);
     },
   );
   it.each(domains)(

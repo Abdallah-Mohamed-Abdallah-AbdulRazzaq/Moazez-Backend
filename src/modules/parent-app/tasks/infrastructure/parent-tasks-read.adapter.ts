@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import {
   Prisma,
-  ReinforcementSubmissionStatus,
   ReinforcementTaskStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import { nonAssessmentFileFilter } from '../../../files/shared/domain/non-assessment-file';
 import type { ParentAppAccessibleChild } from '../../shared/parent-app.types';
 import type {
   ParentTaskStatus,
@@ -35,6 +35,7 @@ const PARENT_TASK_SUBMISSION_SELECT = {
   submittedAt: true,
   reviewedAt: true,
   proofFile: {
+    where: nonAssessmentFileFilter,
     select: SAFE_PROOF_FILE_SELECT,
   },
 } satisfies Prisma.ReinforcementSubmissionSelect;

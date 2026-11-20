@@ -14,6 +14,7 @@ export async function assertHomeworkMediaAuthorization(
   submission: boolean,
   gate: TeacherAllocationOperationalWriteGate,
   ownershipOnly = false,
+  teacherAllocationId?: string,
 ): Promise<void> {
   const scope = requireHomeworkScope();
   const absent = () => new NotFoundDomainException();
@@ -58,7 +59,7 @@ export async function assertHomeworkMediaAuthorization(
   }
 
   const reference = await tx.homeworkAssignment.findFirst({
-    where: { id: contextId },
+    where: { id: contextId, teacherSubjectAllocationId: teacherAllocationId },
     select: { teacherSubjectAllocationId: true, teacherUserId: true },
   });
   if (!reference) throw absent();
@@ -81,6 +82,7 @@ export async function assertHomeworkMediaAuthorization(
     where: {
       id: contextId,
       deletedAt: null,
+      teacherSubjectAllocationId: teacherAllocationId,
       ...(ownershipOnly ? {} : { status: 'DRAFT' as const }),
       teacherSubjectAllocation: {
         is: ownedAllocationWhere(

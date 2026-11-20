@@ -1,3 +1,4 @@
+import { nonAssessmentFileFilter } from '../../../files/shared/domain/non-assessment-file';
 import { Injectable } from '@nestjs/common';
 import {
   AuditOutcome,
@@ -233,7 +234,7 @@ export class LessonContentRepository {
 
   findFileById(fileId: string): Promise<LessonContentFileRecord | null> {
     return this.scopedPrisma.file.findFirst({
-      where: { id: fileId },
+      where: { id: fileId, ...nonAssessmentFileFilter },
       ...FILE_SUMMARY_ARGS,
     });
   }

@@ -10,7 +10,6 @@ import { ConfigService } from '@nestjs/config';
 import {
   AuditOutcome,
   Prisma,
-  type File as ManagedFile,
   type GradeAssessmentAsset,
   type GradeAssessmentQuestionAsset,
 } from '@prisma/client';
@@ -27,7 +26,11 @@ import {
   assessmentMediaOwner,
   AssessmentMediaException,
 } from '../../../files/assessment-media/domain/assessment-media.contract';
-import { assertAssessmentReadyContentPolicy } from '../../../files/assessment-media/domain/assessment-media-ready';
+import {
+  assessmentInlinePreviewAllowed,
+  assertAssessmentReadyContentPolicy,
+  type AssessmentReadyFile,
+} from '../../../files/assessment-media/domain/assessment-media-ready';
 import {
   assertAssessmentUploadPolicy,
   effectiveAssessmentMediaPolicy,
@@ -59,7 +62,7 @@ import { GRADE_TEACHER_AUTHORING_PERMISSION } from '../domain/grade-teacher-auth
 type Asset = GradeAssessmentAsset | GradeAssessmentQuestionAsset;
 export interface GradeAssetView {
   asset: Asset;
-  file: ManagedFile | null;
+  file: AssessmentReadyFile | null;
   externalUrl: string | null;
   previewAllowed: boolean;
   downloadAllowed: boolean;
@@ -147,7 +150,7 @@ export class GradeAssetsRepository implements RichAssetResolver<
     policy: EffectiveAssessmentMediaPolicy,
     lock = false,
   ): Promise<GradeAssetView> {
-    let file: ManagedFile | null = null;
+    let file: AssessmentReadyFile | null = null;
     let externalUrl: string | null = null;
     if (asset.sourceType === 'MANAGED_FILE' && asset.fileId) {
       try {
@@ -180,7 +183,7 @@ export class GradeAssetsRepository implements RichAssetResolver<
       file,
       externalUrl,
       usable: !!file || !!externalUrl,
-      previewAllowed: !!file && policy.allowInlinePreview,
+      previewAllowed: assessmentInlinePreviewAllowed(policy, file),
       downloadAllowed: !!file && policy.allowDownload,
     };
   }
@@ -430,25 +433,13 @@ export class GradeAssetsRepository implements RichAssetResolver<
           data.sourceType === 'MANAGED_FILE',
         );
         const policy = await this.policy(tx, scope.schoolId, true);
-        // The assessment lock serializes references across both families. Physical reservations remain producer-owned.
-        const referenceCount =
-          (await tx.gradeAssessmentQuestionGroupAsset.count({
-            where: {
-              deletedAt: null,
-              group: { assessmentId: input.assessmentId, deletedAt: null },
-            },
-          })) +
-          (await tx.gradeAssessmentAsset.count({
-            where: { assessmentId: input.assessmentId, deletedAt: null },
-          })) +
-          (await tx.gradeAssessmentQuestionAsset.count({
-            where: {
-              deletedAt: null,
-              gradeAssessmentQuestion: {
-                is: { assessmentId: input.assessmentId, deletedAt: null },
-              },
-            },
-          }));
+        const referenceCount = input.questionId
+          ? await tx.gradeAssessmentQuestionAsset.count({
+              where: { questionId: input.questionId, deletedAt: null },
+            })
+          : await tx.gradeAssessmentAsset.count({
+              where: { assessmentId: input.assessmentId, deletedAt: null },
+            });
         if (referenceCount >= policy.maximumFilesPerResource)
           throw new AssessmentMediaException('quota_exceeded');
         let category = data.category ?? 'OTHER';
@@ -477,7 +468,7 @@ export class GradeAssetsRepository implements RichAssetResolver<
             ready.file.mimeType,
             ready.file.sizeBytes,
           );
-          await this.media.assertAuthoringBindingCapacity(tx, owner, policy);
+          await this.media.assertAuthoringRetainedBytes(tx, owner, policy);
           const content = resolveFileContentType(
             ready.file.originalName,
             ready.file.mimeType,

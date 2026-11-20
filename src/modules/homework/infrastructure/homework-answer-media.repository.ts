@@ -23,6 +23,7 @@ import { homeworkResponseConfig } from '../domain/homework-response-config';
 import { HomeworkAnswerInvalidPayloadException } from '../domain/homework-answer.exceptions';
 import { requireHomeworkScope } from '../homework-context';
 import { authorizeHomeworkQuestionAssets } from './homework-question-asset-authorization';
+import { assessmentInlinePreviewAllowed } from '../../files/assessment-media/domain/assessment-media-ready';
 
 const absent = () => new NotFoundDomainException();
 export interface HomeworkAnswerMediaResource {
@@ -178,6 +179,8 @@ export class HomeworkAnswerMediaRepository {
         where: { homeworkSubmissionAnswerId: answer.id, deletedAt: null },
         select: { file: { select: { mimeType: true } } },
       });
+      if (assets.length >= policy.maximumFilesPerResource)
+        throw new AssessmentMediaException('quota_exceeded');
       try {
         assertResponseModalities({
           config: binding.responseConfig,
@@ -350,7 +353,7 @@ export class HomeworkAnswerMediaRepository {
             views.push({
               asset,
               file,
-              previewAllowed: policy.allowInlinePreview,
+              previewAllowed: assessmentInlinePreviewAllowed(policy, file),
               downloadAllowed: policy.allowDownload,
             });
           }

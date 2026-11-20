@@ -1,3 +1,4 @@
+import { nonAssessmentFileFilter } from '../../../files/shared/domain/non-assessment-file';
 import { Injectable } from '@nestjs/common';
 import {
   Prisma,
@@ -128,6 +129,7 @@ const TASK_SUBMISSION_SELECT = {
     },
   },
   proofFile: {
+    where: nonAssessmentFileFilter,
     select: SAFE_PROOF_FILE_SELECT,
   },
   currentReview: {
@@ -380,6 +382,7 @@ export class TeacherTasksReadAdapter {
       where: {
         id: params.fileId,
         schoolId: params.schoolId,
+        ...nonAssessmentFileFilter,
         deletedAt: null,
         studentCredentialSecretArtifacts: { none: {} },
       },

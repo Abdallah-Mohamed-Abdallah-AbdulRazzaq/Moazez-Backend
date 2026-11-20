@@ -556,8 +556,14 @@ describe('ST08-C real PostgreSQL Homework Rich transactions and cross-domain iso
     expect(await snapshot(q.id)).toEqual(before);
   });
 
-  async function managed(questionId: string) {
-    const ready = await fixture.ready(graph.homework.id);
+  async function managed(
+    questionId: string,
+    version: 'technical' | 'historical' = 'technical',
+  ) {
+    const ready =
+      version === 'historical'
+        ? await fixture.historicalHomeworkReady(graph.homework.id)
+        : await fixture.ready(graph.homework.id);
     const view = await teacher(() =>
       assets.create(actor(), resource(questionId), {
         sourceType: 'MANAGED_FILE',
@@ -645,11 +651,14 @@ describe('ST08-C real PostgreSQL Homework Rich transactions and cross-domain iso
       expect(await snapshot(q.id)).toEqual(before);
     },
   );
-  it.each(['asset', 'file', 'provenance', 'policy'] as const)(
+  it.each(['asset', 'file', 'historical provenance', 'policy'] as const)(
     'withholds a stale %s reference and rejects reuse without rewriting historical AST',
     async (mode) => {
       const q = await create(),
-        { ready, view } = await managed(q.id);
+        { ready, view } = await managed(
+          q.id,
+          mode === 'historical provenance' ? 'historical' : 'technical',
+        );
       await teacher(() =>
         repository.updateQuestion({
           ...resource(q.id),
@@ -667,7 +676,7 @@ describe('ST08-C real PostgreSQL Homework Rich transactions and cross-domain iso
           where: { id: ready.fileId },
           data: { deletedAt: new Date() },
         });
-      if (mode === 'provenance')
+      if (mode === 'historical provenance')
         await prisma.file.update({
           where: { id: ready.fileId },
           data: { checksumSha256: 'b'.repeat(64) },

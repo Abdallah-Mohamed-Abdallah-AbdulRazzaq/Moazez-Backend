@@ -72,7 +72,7 @@ export class HomeworkQuestionGroupsService {
     input: Resource & { groupId: string; assetId: string },
     request: PrivateMediaContentRequest,
   ) {
-    return this.content.openAuthorized(
+    return this.content.openAssessmentAuthorized(
       async () => {
         const view = await this.repository.asset(
           typeof actor === 'function' ? await actor() : actor,
@@ -86,13 +86,7 @@ export class HomeworkQuestionGroupsService {
         )
           throw new NotFoundDomainException();
         const file = view.file;
-        return {
-          bucket: file.bucket,
-          objectKey: file.objectKey,
-          originalName: file.originalName,
-          mimeType: file.mimeType,
-          sizeBytes: file.sizeBytes,
-        };
+        return file;
       },
       () => new NotFoundDomainException(),
       request,

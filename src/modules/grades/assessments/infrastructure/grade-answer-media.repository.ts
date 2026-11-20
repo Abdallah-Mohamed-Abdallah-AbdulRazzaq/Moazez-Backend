@@ -25,6 +25,7 @@ import {
   assertGradeSubmissionAccess,
 } from './grades-resource-access';
 import { ownedAllocationWhere } from '../../../academics/teacher-allocation/domain/owned-allocation';
+import { assessmentInlinePreviewAllowed } from '../../../files/assessment-media/domain/assessment-media-ready';
 
 const absent = () => new NotFoundDomainException();
 export interface GradeAnswerMediaResource {
@@ -150,6 +151,8 @@ export class GradeAnswerMediaRepository {
         where: { answerId: answer.id, deletedAt: null },
         select: { file: { select: { mimeType: true } } },
       });
+      if (assets.length >= policy.maximumFilesPerResource)
+        throw new AssessmentMediaException('quota_exceeded');
       try {
         assertResponseModalities({
           config: binding.responseConfig,
@@ -344,7 +347,7 @@ export class GradeAnswerMediaRepository {
           views.push({
             asset,
             file,
-            previewAllowed: policy.allowInlinePreview,
+            previewAllowed: assessmentInlinePreviewAllowed(policy, file),
             downloadAllowed: policy.allowDownload,
           });
         }

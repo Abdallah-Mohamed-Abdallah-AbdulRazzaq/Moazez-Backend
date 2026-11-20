@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { AuditOutcome, Prisma, UserType } from '@prisma/client';
 import { withSoftDeleted } from '../../../common/context/request-context';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
+import { nonAssessmentFileFilter } from '../../files/shared/domain/non-assessment-file';
 
 const COMMUNICATION_ATTACHMENT_ARGS =
   Prisma.validator<Prisma.CommunicationMessageAttachmentDefaultArgs>()({
@@ -128,8 +129,9 @@ export type CommunicationMessageAttachmentParticipantAccessRecord =
     typeof COMMUNICATION_ATTACHMENT_PARTICIPANT_ACCESS_ARGS
   >;
 
-export type CommunicationMessageAttachmentFileReference =
-  Prisma.FileGetPayload<typeof COMMUNICATION_ATTACHMENT_FILE_REFERENCE_ARGS>;
+export type CommunicationMessageAttachmentFileReference = Prisma.FileGetPayload<
+  typeof COMMUNICATION_ATTACHMENT_FILE_REFERENCE_ARGS
+>;
 
 export type CommunicationMessageAttachmentDownloadRecord =
   Prisma.CommunicationMessageAttachmentGetPayload<
@@ -170,7 +172,10 @@ export class CommunicationMessageAttachmentRepository {
   }): Promise<CommunicationMessageAttachmentListResult> {
     const items =
       await this.scopedPrisma.communicationMessageAttachment.findMany({
-        where: { messageId: input.messageId },
+        where: {
+          messageId: input.messageId,
+          file: { is: nonAssessmentFileFilter },
+        },
         orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
         ...COMMUNICATION_ATTACHMENT_ARGS,
       });
@@ -207,7 +212,7 @@ export class CommunicationMessageAttachmentRepository {
     fileId: string,
   ): Promise<CommunicationMessageAttachmentFileReference | null> {
     return this.scopedPrisma.file.findFirst({
-      where: { id: fileId },
+      where: { id: fileId, ...nonAssessmentFileFilter },
       ...COMMUNICATION_ATTACHMENT_FILE_REFERENCE_ARGS,
     });
   }
@@ -220,6 +225,7 @@ export class CommunicationMessageAttachmentRepository {
       where: {
         id: input.attachmentId,
         messageId: input.messageId,
+        file: { is: nonAssessmentFileFilter },
       },
       ...COMMUNICATION_ATTACHMENT_ARGS,
     });
@@ -236,6 +242,7 @@ export class CommunicationMessageAttachmentRepository {
         messageId: input.messageId,
         conversationId: input.conversationId,
         deletedAt: null,
+        file: { is: nonAssessmentFileFilter },
       },
       ...COMMUNICATION_ATTACHMENT_DOWNLOAD_ARGS,
     });
@@ -416,7 +423,9 @@ export class CommunicationMessageAttachmentRepository {
   }
 }
 
-function normalizeNullableText(value: string | null | undefined): string | null {
+function normalizeNullableText(
+  value: string | null | undefined,
+): string | null {
   if (value === undefined || value === null) return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;

@@ -1,3 +1,4 @@
+import { nonAssessmentFileFilter } from '../../../files/shared/domain/non-assessment-file';
 import { Injectable, Optional } from '@nestjs/common';
 import { projectHomeworkTypedAnswers } from '../../../homework/infrastructure/homework-typed-answer.projection';
 import { HomeworkRichContentService } from '../../../homework/application/homework-rich-content.service';
@@ -148,7 +149,7 @@ const STUDENT_HOMEWORK_TARGET_ARGS =
             },
           },
           attachments: {
-            where: { deletedAt: null },
+            where: { deletedAt: null, file: { is: nonAssessmentFileFilter } },
             orderBy: [
               { sortOrder: 'asc' },
               { createdAt: 'asc' },
@@ -233,7 +234,7 @@ const STUDENT_HOMEWORK_TARGET_ARGS =
             },
           },
           attachments: {
-            where: { deletedAt: null },
+            where: { deletedAt: null, file: { is: nonAssessmentFileFilter } },
             orderBy: [
               { sortOrder: 'asc' },
               { createdAt: 'asc' },
@@ -396,6 +397,7 @@ export class StudentHomeworksReadAdapter {
             is: {
               schoolId: params.context.schoolId,
               deletedAt: null,
+              ...nonAssessmentFileFilter,
               studentCredentialSecretArtifacts: { none: {} },
             },
           },

@@ -1,4 +1,5 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { HOMEWORK_AUTHORING_UPLOAD_ROUTES } from '../fixtures/st11-answer-media-routes.fixture';
 import { Test, TestingModule } from '@nestjs/testing';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
@@ -66,7 +67,7 @@ describe('Sprint 15F Homework answers and submission attachments foundation (e2e
     );
   });
 
-  it('keeps parent submit, legacy sync-grade, notifications, XP, rewards, and upload surfaces deferred', () => {
+  it('keeps upload routes scoped and preserves deferred parent submit, sync-grade, notifications, XP, and rewards', () => {
     const routes = listRegisteredRoutes();
 
     for (const absentRoute of [
@@ -87,7 +88,11 @@ describe('Sprint 15F Homework answers and submission attachments foundation (e2e
       expect(routes).not.toContain(absentRoute);
     }
 
+    expect(routes).toEqual(
+      expect.arrayContaining(HOMEWORK_AUTHORING_UPLOAD_ROUTES),
+    );
     for (const route of routes) {
+      if (HOMEWORK_AUTHORING_UPLOAD_ROUTES.includes(route)) continue;
       expect(route).not.toMatch(
         /^.+ \/api\/v1\/parent\/children\/:studentId\/homeworks\/.*(submit|proof|upload|grade-sync|sync-grade|xp|reward)/,
       );

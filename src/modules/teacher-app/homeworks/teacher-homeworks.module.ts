@@ -48,10 +48,13 @@ import {
 } from './application/teacher-homeworks.use-cases';
 import { TeacherHomeworksController } from './controller/teacher-homeworks.controller';
 import { TeacherHomeworksReadAdapter } from './infrastructure/teacher-homeworks-read.adapter';
+import { TeacherHomeworkAuthoringUploadsController } from './controller/teacher-homework-authoring-uploads.controller';
+import { AssessmentMediaModule } from '../../files/assessment-media/assessment-media.module';
 
 @Module({
-  imports: [HomeworkModule, StorageModule],
+  imports: [HomeworkModule, StorageModule, AssessmentMediaModule],
   controllers: [
+    TeacherHomeworkAuthoringUploadsController,
     TeacherHomeworkQuestionGroupsController,
     TeacherHomeworkAnswerMediaController,
     TeacherHomeworksController,

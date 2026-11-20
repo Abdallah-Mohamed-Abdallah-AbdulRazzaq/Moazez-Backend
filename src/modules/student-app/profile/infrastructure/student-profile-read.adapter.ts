@@ -1,3 +1,4 @@
+import { nonAssessmentFileFilter } from '../../../files/shared/domain/non-assessment-file';
 import { Injectable } from '@nestjs/common';
 import { Prisma, StudentStatus, UserStatus, UserType } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
@@ -11,6 +12,7 @@ const STUDENT_PROFILE_IDENTITY_ARGS =
       lastName: true,
       status: true,
       avatarFile: {
+        where: nonAssessmentFileFilter,
         select: {
           id: true,
           mimeType: true,
@@ -96,6 +98,7 @@ export class StudentProfileReadAdapter {
       where: {
         id: fileId,
         schoolId: context.schoolId,
+        ...nonAssessmentFileFilter,
         deletedAt: null,
         studentCredentialSecretArtifacts: { none: {} },
       },

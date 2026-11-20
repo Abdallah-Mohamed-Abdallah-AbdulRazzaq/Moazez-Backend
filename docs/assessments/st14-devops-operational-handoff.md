@@ -1,5 +1,9 @@
 # MOAZEZ — Homework & Assessments Modernization — DevOps Staging & Operational Readiness Handoff
 
+> Current Assessment Media operation is covered by the
+> [technical verification handoff](assessment-media-technical-devops-handoff.md).
+> This ST14 handoff records its historical release boundary.
+
 Authority: `MOAZEZ-ST14-FINAL-PROGRAM-CLOSEOUT-2026-11-01`. Starting/certified source: `789fb5311a0d2a182468808b6aafe050ae72164e`. This is a preparation/approval handoff for the independent DevOps conversation. It is not an executable authorization, cloud discovery receipt, deployment, live migration or media release.
 
 ```text

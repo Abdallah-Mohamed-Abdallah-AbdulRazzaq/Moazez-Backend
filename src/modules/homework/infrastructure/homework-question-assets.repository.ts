@@ -12,7 +12,6 @@ import {
   AuditOutcome,
   FileVisibility,
   Prisma,
-  type File as ManagedFile,
   type HomeworkQuestionAsset,
 } from '@prisma/client';
 import {
@@ -26,7 +25,11 @@ import {
   assessmentMediaOwner,
   AssessmentMediaException,
 } from '../../files/assessment-media/domain/assessment-media.contract';
-import { assertAssessmentReadyContentPolicy } from '../../files/assessment-media/domain/assessment-media-ready';
+import {
+  assessmentInlinePreviewAllowed,
+  assertAssessmentReadyContentPolicy,
+  type AssessmentReadyFile,
+} from '../../files/assessment-media/domain/assessment-media-ready';
 import {
   assertAssessmentUploadPolicy,
   effectiveAssessmentMediaPolicy,
@@ -52,7 +55,7 @@ import {
 
 export interface HomeworkQuestionAssetView {
   asset: HomeworkQuestionAsset;
-  file: ManagedFile | null;
+  file: AssessmentReadyFile | null;
   externalUrl: string | null;
   previewAllowed: boolean;
   downloadAllowed: boolean;
@@ -129,7 +132,7 @@ export class HomeworkQuestionAssetsRepository implements RichAssetResolver<
     policy: EffectiveAssessmentMediaPolicy,
     lock = false,
   ): Promise<HomeworkQuestionAssetView> {
-    let file: ManagedFile | null = null;
+    let file: AssessmentReadyFile | null = null;
     let externalUrl: string | null = null;
     if (asset.sourceType === 'MANAGED_FILE' && asset.fileId) {
       try {
@@ -162,7 +165,7 @@ export class HomeworkQuestionAssetsRepository implements RichAssetResolver<
       file,
       externalUrl,
       usable: !!file || !!externalUrl,
-      previewAllowed: !!file && policy.allowInlinePreview,
+      previewAllowed: assessmentInlinePreviewAllowed(policy, file),
       downloadAllowed: !!file && policy.allowDownload,
     };
   }
@@ -360,33 +363,11 @@ export class HomeworkQuestionAssetsRepository implements RichAssetResolver<
           data.sourceType === 'MANAGED_FILE',
         );
         const policy = await this.policy(tx, scope.schoolId, true);
-        if (
-          await tx.homeworkQuestionGroup.count({
-            where: { homeworkAssignmentId: input.homeworkId, deletedAt: null },
-          })
-        ) {
-          const references =
-            (await tx.homeworkQuestionAsset.count({
-              where: {
-                deletedAt: null,
-                homeworkQuestion: {
-                  homeworkAssignmentId: input.homeworkId,
-                  deletedAt: null,
-                },
-              },
-            })) +
-            (await tx.homeworkQuestionGroupAsset.count({
-              where: {
-                deletedAt: null,
-                group: {
-                  homeworkAssignmentId: input.homeworkId,
-                  deletedAt: null,
-                },
-              },
-            }));
-          if (references >= policy.maximumFilesPerResource)
-            throw new AssessmentMediaException('quota_exceeded');
-        }
+        const references = await tx.homeworkQuestionAsset.count({
+          where: { homeworkQuestionId: input.questionId, deletedAt: null },
+        });
+        if (references >= policy.maximumFilesPerResource)
+          throw new AssessmentMediaException('quota_exceeded');
         let category = data.category ?? 'OTHER';
         if (data.sourceType === 'MANAGED_FILE') {
           this.runtime.assertUploadExecutionEnabled();
@@ -409,7 +390,7 @@ export class HomeworkQuestionAssetsRepository implements RichAssetResolver<
             ready.file.mimeType,
             ready.file.sizeBytes,
           );
-          await this.media.assertHomeworkBindingCapacity(tx, owner, policy);
+          await this.media.assertAuthoringRetainedBytes(tx, owner, policy);
           const content = resolveFileContentType(
             ready.file.originalName,
             ready.file.mimeType,

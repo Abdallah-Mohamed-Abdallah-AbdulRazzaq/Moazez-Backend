@@ -35,6 +35,14 @@ describe('ST11-A actual question answer bytes and transactional provenance', () 
         data: { allowInlinePreview: true, allowDownload: true },
       });
       const uploaded = await h.ready(f.media);
+      if (domain === 'Homework') {
+        await h
+          .http()
+          .post(f.student + '/submission/attachments')
+          .set(h.headers('student'))
+          .send({ fileId: uploaded.ready.fileId })
+          .expect(404);
+      }
       expect(await h.prisma.homeworkSubmissionAnswer.count()).toBe(0);
       expect(await h.prisma.gradeSubmissionAnswer.count()).toBe(0);
       const first = await h
@@ -112,12 +120,20 @@ describe('ST11-A actual question answer bytes and transactional provenance', () 
         .get(reviewer + '/answer-assets/' + asset.id + '/download')
         .set(h.headers())
         .expect(404);
-      await h
+      const submitted = await h
         .http()
         .post(f.student + '/submission/submit')
         .set(h.headers('student'))
         .send({})
         .expect(domain === 'Homework' ? 200 : 201);
+      if (domain === 'Grades') {
+        expect(submitted.body).toMatchObject({
+          submission: {
+            status: 'submitted',
+            answers: [{ questionId: f.questionId, answerText: null }],
+          },
+        });
+      }
       const reviewBytes = await h
         .http()
         .get(reviewer + '/answer-assets/' + asset.id + '/download')
@@ -213,6 +229,81 @@ describe('ST11-A actual question answer bytes and transactional provenance', () 
         .set(h.headers('student'))
         .send({});
       expect([400, 409, 422]).toContain(submit.status);
+    },
+  );
+  it.each(domains)(
+    '%s applies the School limit to each answer and releases a logical slot after removal',
+    async (domain) => {
+      const f = await h.setupResponse(domain, 'FILE_ONLY', true, 2);
+      const other = f.media.replace(f.questionId, f.otherQuestionId);
+      await h.prisma.schoolAssessmentMediaPolicy.update({
+        where: { schoolId: h.fixture.school.schoolId },
+        data: { maximumFilesPerResource: 1 },
+      });
+      const first = await h.bindReady(f.media);
+      const second = await h.bindReady(other);
+      const path = f.media + '/answer-assets';
+      const headers = h.headers('student');
+      let current = first.asset.id;
+      for (let index = 0; index < 7; index++) {
+        const ready = await h.ready(
+          f.media,
+          Buffer.from(`Replacement ${index}`),
+        );
+        if (index === 0) {
+          const full = await h
+            .http()
+            .post(path)
+            .set(headers)
+            .send({ uploadId: ready.ready.uploadId })
+            .expect(409);
+          expect(full.body).toMatchObject({
+            error: { code: 'assessment_media.quota_exceeded' },
+          });
+        }
+        const replaced = await h
+          .http()
+          .post(path)
+          .set(headers)
+          .send({
+            uploadId: ready.ready.uploadId,
+            replaceAssetId: current,
+          })
+          .expect(201);
+        current = st06Json<{ asset: { id: string } }>(replaced).asset.id;
+      }
+      await h
+        .http()
+        .delete(other + '/answer-assets/' + second.asset.id)
+        .set(headers)
+        .expect(204);
+      const replacement = await h.bindReady(other);
+      expect(replacement.asset.id).not.toBe(second.asset.id);
+      expect(
+        await h.prisma.assessmentAnswerMediaClaim.count({
+          where: {
+            schoolId: h.fixture.school.schoolId,
+            contextId: f.contextId,
+          },
+        }),
+      ).toBe(10);
+      expect(
+        (
+          await h.prisma.file.findUniqueOrThrow({
+            where: { id: first.asset.fileId },
+          })
+        ).deletedAt,
+      ).toBeNull();
+      const listed = st06Json<{ assets: { id: string }[] }>(
+        await h.http().get(path).set(headers).expect(200),
+      );
+      expect(listed.assets.map((asset) => asset.id)).toEqual([current]);
+      await h
+        .http()
+        .post(f.student + '/submission/submit')
+        .set(headers)
+        .send({})
+        .expect(domain === 'Homework' ? 200 : 201);
     },
   );
   it.each(domains)(

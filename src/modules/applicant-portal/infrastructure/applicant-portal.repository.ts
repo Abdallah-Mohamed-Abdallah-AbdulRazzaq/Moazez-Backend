@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { nonAssessmentFileFilter } from '../../files/shared/domain/non-assessment-file';
 import {
   AdmissionApplicationSource,
   AdmissionApplicationStatus,
@@ -787,6 +788,7 @@ export class ApplicantPortalRepository {
         requestId: params.requestId,
         applicantUserId: params.applicantUserId,
         deletedAt: null,
+        file: { is: nonAssessmentFileFilter },
         request: {
           is: {
             id: params.requestId,

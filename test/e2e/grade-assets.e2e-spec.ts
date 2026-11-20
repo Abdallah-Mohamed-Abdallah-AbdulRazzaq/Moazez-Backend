@@ -12,6 +12,11 @@ import type { GradeAssetDto } from '../../src/modules/grades/assessments/dto/gra
 import type { StudentExamDetailResponseDto } from '../../src/modules/student-app/exams/dto/student-exams.dto';
 import type { StudentAssessmentGradeDetailResponseDto } from '../../src/modules/student-app/grades/dto/student-grades.dto';
 import { GradeAssetsHttp, st07Json } from '../fixtures/grade-assets.http';
+import {
+  assessmentPdf,
+  assessmentPng,
+  completeAssessmentAuthoringUpload,
+} from '../fixtures/assessment-media-formats.fixture';
 jest.setTimeout(180000);
 describe('ST-07 Grades asset contracts and actual private HTTP bytes', () => {
   const h = new GradeAssetsHttp();
@@ -316,7 +321,27 @@ describe('ST-07 Grades asset contracts and actual private HTTP bytes', () => {
   });
   it('supports genuine SCORE_ONLY assessment uploads and Grades-only non-exam audience without fabricating questions', async () => {
     const graph = await h.fixture.gradeGraph('teacher', 'SCORE_ONLY');
-    const { asset, ready } = await h.bind(graph);
+    const bytes = Buffer.from('Owned SCORE_ONLY stimulus\n');
+    const ready = await completeAssessmentAuthoringUpload(
+      h.http(),
+      `/api/v1/grades/assessments/${graph.assessment.id}/authoring/uploads`,
+      h.headers('admin'),
+      'reference.txt',
+      'text/plain',
+      bytes,
+    );
+    const { asset } = st07Json<{ asset: GradeAssetDto }>(
+      await h
+        .http()
+        .post(h.core(graph))
+        .set(h.headers('admin'))
+        .send({
+          sourceType: 'MANAGED_FILE',
+          fileId: ready.fileId,
+          uploadId: ready.uploadId,
+        })
+        .expect(201),
+    );
     await h
       .http()
       .post(
@@ -359,7 +384,7 @@ describe('ST-07 Grades asset contracts and actual private HTTP bytes', () => {
     expect(path).toContain('/student/grades/assessments/');
     expect(
       (await h.http().get(path).set(h.headers('student')).expect(200)).text,
-    ).toBe(ready.bytes.toString());
+    ).toBe(bytes.toString());
     await h
       .http()
       .get(h.student(graph, undefined, asset.assetId))
@@ -529,72 +554,50 @@ describe('ST-07 Grades asset contracts and actual private HTTP bytes', () => {
       );
     }
   });
-  it.each(['image/png', 'application/pdf'] as const)(
-    'fails closed for actual %s bytes while approved deep verification is unavailable',
-    async (mime) => {
+  it.each([
+    ['image/png', 'pixel.png', assessmentPng()],
+    ['application/pdf', 'page.pdf', assessmentPdf()],
+  ] as const)(
+    'verifies and delivers actual %s bytes on a Grades question',
+    async (mime, name, bytes) => {
       const graph = await h.fixture.gradeGraph();
       await h.prisma.schoolAssessmentMediaPolicy.update({
         where: { schoolId: h.fixture.school.schoolId },
-        data: {
-          allowedMimeTypes: ['text/plain', 'image/png', 'application/pdf'],
-        },
+        data: { allowedMimeTypes: [mime] },
       });
-      let pdf = '%PDF-1.4\n';
-      const offsets = [0];
-      const objects = [
-        '<< /Type /Catalog /Pages 2 0 R >>',
-        '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 72 72] /Contents 4 0 R >>',
-        '<< /Length 0 >>\nstream\n\nendstream',
-      ];
-      objects.forEach((object, index) => {
-        offsets.push(Buffer.byteLength(pdf));
-        pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
-      });
-      const xref = Buffer.byteLength(pdf);
-      pdf +=
-        'xref\n0 5\n0000000000 65535 f \n' +
-        offsets
-          .slice(1)
-          .map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`)
-          .join('') +
-        `trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
-      const bytes =
-        mime === 'image/png'
-          ? Buffer.from(
-              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jh1EAAAAASUVORK5CYII=',
-              'base64',
-            )
-          : Buffer.from(pdf);
-      const uploaded = await h.fixture.asMediaActor('teacher', async () => {
-        const intent = await h.fixture.upload(
-          graph.assessment.id,
-          bytes,
-          'GRADE_ASSESSMENT_MEDIA',
-          mime === 'image/png' ? 'pixel.png' : 'page.pdf',
-          mime,
-        );
-        await expect(
-          h.fixture.service.complete(
-            'GRADE_ASSESSMENT_MEDIA',
-            graph.assessment.id,
-            intent.intent.uploadId,
-          ),
-        ).rejects.toMatchObject({
-          code: 'assessment_media.verifier_unavailable',
-        });
-        return intent;
-      });
-      const session = await h.prisma.fileUploadSession.findUniqueOrThrow({
-        where: { id: uploaded.intent.uploadId },
-      });
-      expect(session.status).toBe('FAILED');
-      expect(session.fileId).toBeNull();
-      expect(
-        await h.prisma.gradeAssessmentAsset.count({
-          where: { assessmentId: graph.assessment.id },
-        }),
-      ).toBe(0);
+      const ready = await completeAssessmentAuthoringUpload(
+        h.http(),
+        `/api/v1/grades/assessments/${graph.assessment.id}/authoring/uploads`,
+        h.headers('admin'),
+        name,
+        mime,
+        bytes,
+      );
+      const { asset } = st07Json<{ asset: GradeAssetDto }>(
+        await h
+          .http()
+          .post(h.core(graph, 0))
+          .set(h.headers('admin'))
+          .send({
+            sourceType: 'MANAGED_FILE',
+            fileId: ready.fileId,
+            uploadId: ready.uploadId,
+          })
+          .expect(201),
+      );
+      await h.publish(graph);
+      await h
+        .http()
+        .head(h.student(graph, 0, asset.assetId))
+        .set(h.headers('student'))
+        .expect(mime === 'application/pdf' ? 404 : 200);
+      const downloaded = await h
+        .http()
+        .get(h.student(graph, 0, asset.assetId, 'download'))
+        .set(h.headers('student'))
+        .responseType('blob')
+        .expect(200);
+      expect(downloaded.body).toEqual(bytes);
     },
   );
   it.each(['allowInlinePreview', 'allowDownload'] as const)(
@@ -646,7 +649,7 @@ describe('ST-07 Grades asset contracts and actual private HTTP bytes', () => {
     await h.publish(graph);
     await h.prisma.file.update({
       where: { id: ready.fileId },
-      data: { visibility: 'PUBLIC' },
+      data: { deletedAt: new Date() },
     });
     const author = st07Json<{ asset: GradeAssetDto }>(
       await h

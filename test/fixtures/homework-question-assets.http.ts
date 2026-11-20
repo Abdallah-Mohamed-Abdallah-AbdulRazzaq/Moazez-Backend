@@ -18,8 +18,7 @@ export type HttpHomeworkGraph = Awaited<
   ReturnType<HomeworkQuestionAssetsFixture['graph']>
 >;
 
-/** Actual JWT/login + Nest HTTP. Only runtime upload enablement is test-wired;
- * the application's unapproved attestation provider is never replaced. */
+/** Actual JWT/login + Nest HTTP with the upload flag enabled in the fixture. */
 export class HomeworkQuestionAssetsHttp {
   protected configure(builder: TestingModuleBuilder): TestingModuleBuilder {
     return builder;

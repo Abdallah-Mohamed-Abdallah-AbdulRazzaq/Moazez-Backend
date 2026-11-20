@@ -1,10 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import type { TestingModuleBuilder } from '@nestjs/testing';
-import { AssessmentMediaSecurityGate } from '../../src/modules/files/assessment-media/application/assessment-media-verifier';
+import { AssessmentMediaVerifier } from '../../src/modules/files/assessment-media/application/assessment-media-verifier';
 import type { AssessmentMediaUploadDto } from '../../src/modules/files/assessment-media/domain/assessment-media.contract';
 import { assertDisposablePostgresTarget } from '../helpers/disposable-postgres-target';
 import {
-  TestOnlyAssessmentSecurityAttestation,
+  AssessmentVerificationObserver,
   postAssessmentUpload,
 } from './assessment-media.fixture';
 import { St10bRuntimeHttp, type St10bDomain } from './st10b-runtime.http';
@@ -12,27 +11,10 @@ import { st06Json } from './homework-question-assets.http';
 import { st09bcTeacher, st09bcStudent } from './homework-eight-type.fixture';
 
 export class St11AnswerMediaHttp extends St10bRuntimeHttp {
-  readonly testSecurity = new TestOnlyAssessmentSecurityAttestation();
-  protected configure(builder: TestingModuleBuilder) {
-    this.testSecurity.beforeAttest = async (input) => {
-      const intent = await this.prisma.assessmentAnswerUploadIntent.findUnique({
-        where: { uploadId: input.uploadId },
-        include: { upload: true },
-      });
-      if (
-        !intent ||
-        !this.fixture.schools.some((s) => s.schoolId === intent.schoolId) ||
-        intent.upload.status !== 'VERIFYING' ||
-        input.bucket !== this.fixture.storage.resolveBucket('PRIVATE') ||
-        input.bucket !== intent.upload.finalBucket ||
-        input.objectKey !== intent.upload.finalObjectKey ||
-        input.facts.actualSizeBytes !== intent.upload.expectedSizeBytes
-      )
-        throw new Error('Test attestor refuses unowned answer upload');
-    };
-    return builder
-      .overrideProvider(AssessmentMediaSecurityGate)
-      .useValue(this.testSecurity);
+  readonly verification = new AssessmentVerificationObserver();
+  async start() {
+    await super.start();
+    this.verification.observe(this.app.get(AssessmentMediaVerifier));
   }
   async setupResponse(
     domain: St10bDomain,
@@ -200,6 +182,9 @@ export class St11AnswerMediaHttp extends St10bRuntimeHttp {
   ) {
     const names: Record<string, string> = {
       'text/plain': 'answer.txt',
+      'image/jpeg': 'answer.jpg',
+      'image/png': 'answer.png',
+      'application/pdf': 'answer.pdf',
       'audio/mpeg': 'answer.mp3',
       'audio/mp4': 'answer.m4a',
       'audio/webm': 'answer.webm',

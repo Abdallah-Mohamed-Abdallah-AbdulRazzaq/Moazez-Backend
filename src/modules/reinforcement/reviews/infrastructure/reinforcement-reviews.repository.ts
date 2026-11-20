@@ -1,3 +1,4 @@
+import { nonAssessmentFileFilter } from '../../../files/shared/domain/non-assessment-file';
 import { Injectable } from '@nestjs/common';
 import {
   FileVisibility,
@@ -61,6 +62,7 @@ const REVIEW_ITEM_ARGS =
       createdAt: true,
       updatedAt: true,
       proofFile: {
+        where: nonAssessmentFileFilter,
         select: FILE_SAFE_SELECT,
       },
       task: {
@@ -343,6 +345,7 @@ export class ReinforcementReviewsRepository {
       where: {
         id: params.fileId,
         organizationId: params.organizationId,
+        ...nonAssessmentFileFilter,
         schoolId: params.schoolId,
         uploaderId: params.uploaderId,
         visibility: FileVisibility.PRIVATE,

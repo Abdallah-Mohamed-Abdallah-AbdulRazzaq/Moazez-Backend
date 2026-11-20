@@ -7,11 +7,7 @@ import { PrismaTeacherAllocationOperationalWriteGate } from '../../academics/tea
 import { UploadsModule } from '../uploads/uploads.module';
 import { AssessmentMediaService } from './application/assessment-media.service';
 import { AssessmentMediaRuntimePolicy } from './application/assessment-media-runtime.policy';
-import {
-  AssessmentMediaVerifier,
-  AssessmentMediaSecurityGate,
-  UnapprovedAssessmentMediaSecurityGate,
-} from './application/assessment-media-verifier';
+import { AssessmentMediaVerifier } from './application/assessment-media-verifier';
 import { AssessmentMediaRepository } from './infrastructure/assessment-media.repository';
 
 @Module({
@@ -26,10 +22,6 @@ import { AssessmentMediaRepository } from './infrastructure/assessment-media.rep
     {
       provide: TeacherAllocationOperationalWriteGate,
       useClass: PrismaTeacherAllocationOperationalWriteGate,
-    },
-    {
-      provide: AssessmentMediaSecurityGate,
-      useClass: UnapprovedAssessmentMediaSecurityGate,
     },
   ],
   exports: [

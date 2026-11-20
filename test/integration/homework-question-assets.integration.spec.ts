@@ -106,6 +106,46 @@ describe('ST-06 exact Homework question assets on real PostgreSQL and private Mi
     await prisma.$disconnect();
   });
 
+  it('binds nine separate private files under one homework with a one-file question limit', async () => {
+    await prisma.schoolAssessmentMediaPolicy.update({
+      where: { schoolId: fixture.school.schoolId },
+      data: { maximumFilesPerResource: 1 },
+    });
+    const files = new Set<string>();
+    for (let index = 0; index < 9; index++) {
+      const question = await fixture.question(
+        graph.homework.id,
+        `Independent file question ${index}`,
+      );
+      const ready = await fixture.ready(
+        graph.homework.id,
+        'teacher',
+        Buffer.from(`Homework file ${index}`),
+      );
+      await asTeacher(() =>
+        service.create(
+          actor(),
+          {
+            homeworkId: graph.homework.id,
+            questionId: question.id,
+          },
+          {
+            sourceType: 'MANAGED_FILE',
+            fileId: ready.fileId,
+            uploadId: ready.uploadId,
+          },
+        ),
+      );
+      files.add(ready.fileId);
+    }
+    expect(files.size).toBe(9);
+    expect(
+      await prisma.homeworkQuestionAsset.count({
+        where: { fileId: { in: [...files] }, deletedAt: null },
+      }),
+    ).toBe(9);
+  });
+
   it('binds genuinely verified distinct Files to exact questions, preserves an empty question and returns real private bytes', async () => {
     const first = await managed(),
       second = await fixture.ready(
@@ -457,35 +497,26 @@ describe('ST-06 exact Homework question assets on real PostgreSQL and private Mi
     ['wrong size', (file) => ({ sizeBytes: file.sizeBytes + 1n })],
     ['wrong checksum', () => ({ checksumSha256: 'b'.repeat(64) })],
   ])(
-    'rejects a %s File at the actual binding boundary',
-    async (_label, change) => {
+    'enforces a %s File change at persistence or the binding boundary',
+    async (label, change) => {
       const { ready, command } = await managed();
-      await prisma.file.update({
+      const update = prisma.file.update({
         where: { id: ready.fileId },
         data: change(ready.file),
       });
-      try {
-        await expect(
-          asTeacher(() => service.create(actor(), resource(), command)),
-        ).rejects.toMatchObject({ code: 'not_found' });
-      } finally {
-        const file = ready.file;
-        await prisma.file.update({
-          where: { id: file.id },
-          data: {
-            schoolId: file.schoolId,
-            organizationId: file.organizationId,
-            uploaderId: file.uploaderId,
-            visibility: file.visibility,
-            deletedAt: file.deletedAt,
-            bucket: file.bucket,
-            objectKey: file.objectKey,
-            mimeType: file.mimeType,
-            sizeBytes: file.sizeBytes,
-            checksumSha256: file.checksumSha256,
-          },
-        });
+      const bind = () =>
+        asTeacher(() => service.create(actor(), resource(), command));
+      if (label === 'retired') {
+        await update;
+        await expect(bind()).rejects.toMatchObject({ code: 'not_found' });
+        return;
       }
+      await expect(update).rejects.toThrow(
+        /Verified assessment File identity is immutable/u,
+      );
+      await expect(bind()).resolves.toMatchObject({
+        asset: { sourceType: 'MANAGED_FILE' },
+      });
     },
   );
   function latch<T>() {

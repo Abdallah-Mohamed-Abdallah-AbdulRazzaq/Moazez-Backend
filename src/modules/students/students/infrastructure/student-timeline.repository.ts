@@ -1,3 +1,4 @@
+import { nonAssessmentFileFilter } from '../../../files/shared/domain/non-assessment-file';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
@@ -72,6 +73,7 @@ const STUDENT_TIMELINE_ARGS = Prisma.validator<Prisma.StudentDefaultArgs>()({
       },
     },
     documents: {
+      where: { file: { is: nonAssessmentFileFilter } },
       select: {
         id: true,
         documentType: true,

@@ -193,7 +193,7 @@ export class GradeAssetsService {
     input: GradeAssetResource & { assetId: string },
     request: PrivateMediaContentRequest = {},
   ) {
-    return this.content.openAuthorized(
+    return this.content.openAssessmentAuthorized(
       async (): Promise<PrivateMediaFileDescriptor> => {
         const resolved = typeof actor === 'function' ? await actor() : actor;
         const [view] = await this.repository.read(resolved, input);
@@ -205,13 +205,7 @@ export class GradeAssetsService {
         )
           throw absent();
         const file = view.file;
-        return {
-          bucket: file.bucket,
-          objectKey: file.objectKey,
-          originalName: file.originalName,
-          mimeType: file.mimeType,
-          sizeBytes: file.sizeBytes,
-        };
+        return file;
       },
       absent,
       request,

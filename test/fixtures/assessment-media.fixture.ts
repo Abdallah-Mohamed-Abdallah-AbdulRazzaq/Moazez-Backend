@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
-import type { UserType } from '@prisma/client';
+import type { FileUploadSession, UserType } from '@prisma/client';
 import {
   createRequestContext,
   runWithRequestContext,
@@ -17,9 +17,8 @@ import { AssessmentMediaService } from '../../src/modules/files/assessment-media
 import { AssessmentMediaRuntimePolicy } from '../../src/modules/files/assessment-media/application/assessment-media-runtime.policy';
 import { AssessmentMediaRepository } from '../../src/modules/files/assessment-media/infrastructure/assessment-media.repository';
 import {
-  AssessmentMediaSecurityGate,
   AssessmentMediaVerifier,
-  type AssessmentSecurityAttestation,
+  type AssessmentVerifiedObject,
 } from '../../src/modules/files/assessment-media/application/assessment-media-verifier';
 import {
   assessmentMediaOwner,
@@ -56,23 +55,24 @@ const STUDENT_PERMISSIONS = [
   'grades.submissions.submit',
 ];
 
-/** Test contract attestation ONLY. This is not malware scanning or runtime evidence. */
-export class TestOnlyAssessmentSecurityAttestation extends AssessmentMediaSecurityGate {
+/** Observes successful real verification and lets tests pause before commit. */
+export class AssessmentVerificationObserver {
   calls = 0;
-  beforeAttest?: (
-    input: Parameters<AssessmentMediaSecurityGate['attest']>[0],
+  beforeFinish?: (
+    session: FileUploadSession,
+    verified: AssessmentVerifiedObject,
   ) => Promise<void>;
-  async attest(
-    input: Parameters<AssessmentMediaSecurityGate['attest']>[0],
-  ): Promise<AssessmentSecurityAttestation> {
-    this.calls++;
-    await this.beforeAttest?.(input);
-    return {
-      verdict: 'CLEAN',
-      provider: 'test-only-contract-attestation',
-      version: 'test-fixture-v1',
-      checksumSha256: input.facts.checksumSha256,
+  observe(verifier: AssessmentMediaVerifier): AssessmentMediaVerifier {
+    const verify = verifier.verify.bind(
+      verifier,
+    ) as AssessmentMediaVerifier['verify'];
+    verifier.verify = async (session, policy) => {
+      const result = await verify(session, policy);
+      this.calls++;
+      await this.beforeFinish?.(session, result);
+      return result;
     };
+    return verifier;
   }
 }
 
@@ -83,7 +83,7 @@ export class AssessmentMediaFixture extends AcademicContentEngagementFixture {
     'teacher' | 'otherTeacher' | 'foreignTeacher',
     string
   >;
-  readonly security = new TestOnlyAssessmentSecurityAttestation();
+  readonly verification = new AssessmentVerificationObserver();
   readonly config: ConfigService;
   readonly storage: StorageService;
   readonly repository: AssessmentMediaRepository;
@@ -129,19 +129,14 @@ export class AssessmentMediaFixture extends AcademicContentEngagementFixture {
       prisma,
       new PrismaTeacherAllocationOperationalWriteGate(),
     );
-    this.service = this.serviceWithSecurity(this.security);
-  }
-
-  serviceWithSecurity(
-    security: AssessmentMediaSecurityGate,
-  ): AssessmentMediaService {
-    return new AssessmentMediaService(
+    this.service = new AssessmentMediaService(
       this.repository,
       this.storage,
-      new AssessmentMediaVerifier(
-        this.storage,
-        new MediaVerifierService(this.storage, this.config),
-        security,
+      this.verification.observe(
+        new AssessmentMediaVerifier(
+          this.storage,
+          new MediaVerifierService(this.storage, this.config),
+        ),
       ),
       new AssessmentMediaRuntimePolicy(this.config),
       this.config,

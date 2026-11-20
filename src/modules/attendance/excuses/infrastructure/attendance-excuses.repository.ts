@@ -1,3 +1,4 @@
+import { nonAssessmentFileFilter } from '../../../files/shared/domain/non-assessment-file';
 import { Injectable } from '@nestjs/common';
 import {
   AttendanceExcuseStatus,
@@ -339,7 +340,7 @@ export class AttendanceExcusesRepository {
     if (fileIds.length === 0) return [];
 
     const files = await this.scopedPrisma.file.findMany({
-      where: { id: { in: fileIds } },
+      where: { id: { in: fileIds }, ...nonAssessmentFileFilter },
       select: { id: true },
     });
 
@@ -353,6 +354,7 @@ export class AttendanceExcusesRepository {
       where: {
         resourceType: ATTENDANCE_EXCUSE_ATTACHMENT_RESOURCE_TYPE,
         resourceId: excuseRequestId,
+        file: { is: nonAssessmentFileFilter },
       },
       orderBy: { createdAt: 'asc' },
       ...ATTENDANCE_EXCUSE_ATTACHMENT_ARGS,

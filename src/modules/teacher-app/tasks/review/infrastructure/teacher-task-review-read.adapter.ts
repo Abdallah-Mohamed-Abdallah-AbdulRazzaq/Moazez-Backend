@@ -7,6 +7,7 @@ import {
   StudentStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../../../../infrastructure/database/prisma.service';
+import { nonAssessmentFileFilter } from '../../../../files/shared/domain/non-assessment-file';
 import type { TeacherAppAllocationRecord } from '../../../shared/teacher-app.types';
 
 const DEFAULT_REVIEW_QUEUE_LIMIT = 20;
@@ -136,6 +137,7 @@ const TEACHER_TASK_REVIEW_SUBMISSION_ARGS =
         },
       },
       proofFile: {
+        where: nonAssessmentFileFilter,
         select: REVIEW_PROOF_FILE_SELECT,
       },
       currentReview: {
@@ -227,6 +229,7 @@ export class TeacherTaskReviewReadAdapter {
           ],
           proofFile: {
             is: {
+              ...nonAssessmentFileFilter,
               schoolId: params.schoolId,
               deletedAt: null,
               studentCredentialSecretArtifacts: { none: {} },

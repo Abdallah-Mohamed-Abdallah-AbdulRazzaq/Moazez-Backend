@@ -35,6 +35,25 @@ function setup() {
 }
 
 describe('PrivateMediaContentService', () => {
+  it('withholds the Assessment namespace from both general streaming entries before touching storage', async () => {
+    const { service, storage, notFound } = setup();
+    const file = {
+      ...descriptor,
+      objectKey: 'assessment-media/school/verified/file',
+    };
+    await expect(service.open(file, notFound)).rejects.toMatchObject({
+      httpStatus: 404,
+    });
+    await expect(
+      service.openAuthorized(() => Promise.resolve(file), notFound, {
+        range: 'bytes=0-1',
+      }),
+    ).rejects.toMatchObject({ httpStatus: 404 });
+    expect(storage.statObject).not.toHaveBeenCalled();
+    expect(storage.getObject).not.toHaveBeenCalled();
+    expect(storage.readObjectRange).not.toHaveBeenCalled();
+  });
+
   it('stats before reading and returns only File metadata and incremental bytes without signing', async () => {
     const { service, storage, notFound } = setup();
     let produced = 0;

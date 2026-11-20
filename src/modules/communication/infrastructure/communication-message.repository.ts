@@ -1,15 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import {
   AuditOutcome,
-  CommunicationConversationStatus,
   CommunicationMessageKind,
   CommunicationMessageStatus,
-  CommunicationParticipantRole,
   CommunicationParticipantStatus,
   Prisma,
   UserType,
 } from '@prisma/client';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
+import { nonAssessmentFileFilter } from '../../files/shared/domain/non-assessment-file';
 
 const COMMUNICATION_MESSAGE_ARGS =
   Prisma.validator<Prisma.CommunicationMessageDefaultArgs>()({
@@ -44,7 +43,7 @@ const COMMUNICATION_MESSAGE_ARGS =
         },
       },
       attachments: {
-        where: { deletedAt: null },
+        where: { deletedAt: null, file: { is: nonAssessmentFileFilter } },
         orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
         select: {
           id: true,
@@ -198,13 +197,12 @@ export type CommunicationMessageReadRecord =
     typeof COMMUNICATION_MESSAGE_READ_ARGS
   >;
 
-export type CommunicationMessageFileReference =
-  Prisma.FileGetPayload<typeof COMMUNICATION_MESSAGE_FILE_REFERENCE_ARGS>;
+export type CommunicationMessageFileReference = Prisma.FileGetPayload<
+  typeof COMMUNICATION_MESSAGE_FILE_REFERENCE_ARGS
+>;
 
 export type CommunicationMessageInfoRecord =
-  Prisma.CommunicationMessageGetPayload<
-    typeof COMMUNICATION_MESSAGE_INFO_ARGS
-  >;
+  Prisma.CommunicationMessageGetPayload<typeof COMMUNICATION_MESSAGE_INFO_ARGS>;
 
 export type CommunicationMessageReaderParticipantRecord =
   Prisma.CommunicationConversationParticipantGetPayload<
@@ -419,6 +417,7 @@ export class CommunicationMessageRepository {
     return this.scopedPrisma.file.findMany({
       where: {
         id: { in: fileIds },
+        ...nonAssessmentFileFilter,
       },
       ...COMMUNICATION_MESSAGE_FILE_REFERENCE_ARGS,
     });
@@ -639,10 +638,7 @@ export class CommunicationMessageRepository {
         where: {
           conversationId: input.conversationId,
           status: CommunicationMessageStatus.SENT,
-          OR: [
-            { senderUserId: null },
-            { senderUserId: { not: input.userId } },
-          ],
+          OR: [{ senderUserId: null }, { senderUserId: { not: input.userId } }],
           reads: {
             none: {
               userId: input.userId,
@@ -811,7 +807,8 @@ export class CommunicationMessageRepository {
       readers,
       readCount: total,
       participantsCount: participants.length,
-      fullyRead: participants.length > 0 ? total + 1 >= participants.length : false,
+      fullyRead:
+        participants.length > 0 ? total + 1 >= participants.length : false,
       total,
       limit,
       page,
@@ -1058,7 +1055,9 @@ function toNullableJson(
   return value as Prisma.InputJsonValue;
 }
 
-function normalizeNullableText(value: string | null | undefined): string | null {
+function normalizeNullableText(
+  value: string | null | undefined,
+): string | null {
   if (value === undefined || value === null) return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;

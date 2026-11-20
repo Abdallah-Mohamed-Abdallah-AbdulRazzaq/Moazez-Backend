@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
+import { ASSESSMENT_MEDIA_OBJECT_KEY_PREFIX } from '../../../../infrastructure/storage/assessment-media-object-key';
 import { FileVisibility, type FileUploadSession } from '@prisma/client';
 import { StorageService } from '../../../../infrastructure/storage/storage.service';
 import { resolveSecureUploadOrigin } from '../../../../infrastructure/storage/upload-origin.policy';
@@ -46,8 +47,15 @@ export class AssessmentMediaService {
   createHomeworkAssignmentUpload(
     homeworkId: string,
     command: CreateAssessmentMediaCommand,
+    teacherAllocationId?: string,
   ) {
-    return this.create('HOMEWORK_ASSIGNMENT_MEDIA', homeworkId, command);
+    return this.create(
+      'HOMEWORK_ASSIGNMENT_MEDIA',
+      homeworkId,
+      command,
+      undefined,
+      teacherAllocationId,
+    );
   }
   createGradeAssessmentUpload(
     assessmentId: string,
@@ -144,9 +152,9 @@ export class AssessmentMediaService {
       expectedMimeType: type.mimeType,
       expectedSizeBytes: BigInt(command.expectedSizeBytes),
       stagingBucket: bucket,
-      stagingObjectKey: `assessment-media/${owner.schoolId}/staging/${id}`,
+      stagingObjectKey: `${ASSESSMENT_MEDIA_OBJECT_KEY_PREFIX}${owner.schoolId}/staging/${id}`,
       finalBucket: bucket,
-      finalObjectKey: `assessment-media/${owner.schoolId}/verified/${id}`,
+      finalObjectKey: `${ASSESSMENT_MEDIA_OBJECT_KEY_PREFIX}${owner.schoolId}/verified/${id}`,
       expiresAt: new Date(Date.now() + ASSESSMENT_UPLOAD_TTL_MS),
     });
     if (!reserved.created) return present(reserved.session);
@@ -211,6 +219,8 @@ export class AssessmentMediaService {
     assertAssessmentUuid(uploadId);
     const claim = await this.repository.claim(owner, uploadId);
     if (claim.kind === 'expired') throw new AssessmentMediaException('expired');
+    if (claim.kind === 'stalled')
+      throw new AssessmentMediaException('verification_timeout');
     if (claim.kind === 'ready') return present(claim.session);
     try {
       const verified = await this.verifier.verify(claim.session, claim.policy);

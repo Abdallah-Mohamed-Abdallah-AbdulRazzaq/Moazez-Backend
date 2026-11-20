@@ -10,6 +10,8 @@ import {
   UserType,
 } from '@prisma/client';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
+import { FilesNotFoundException } from '../../files/uploads/domain/file-upload.exceptions';
+import { nonAssessmentFileFilter } from '../../files/shared/domain/non-assessment-file';
 import {
   ConversationCountsSummary,
   ParticipantCountsSummary,
@@ -252,6 +254,7 @@ export class CommunicationConversationRepository {
     ) => CommunicationConversationAuditInput;
   }): Promise<CommunicationConversationRecord> {
     return this.scopedPrisma.$transaction(async (tx) => {
+      await this.assertAvatarFile(tx, input.data.avatarFileId);
       const created = await tx.communicationConversation.create({
         data: {
           ...this.toConversationCreateInput(input.data),
@@ -357,6 +360,7 @@ export class CommunicationConversationRepository {
     ) => CommunicationConversationAuditInput;
   }): Promise<CommunicationConversationRecord> {
     return this.scopedPrisma.$transaction(async (tx) => {
+      await this.assertAvatarFile(tx, input.data.avatarFileId);
       if (Object.keys(input.data).length > 0) {
         await tx.communicationConversation.updateMany({
           where: { id: input.conversationId, deletedAt: null },
@@ -513,6 +517,18 @@ export class CommunicationConversationRepository {
       where: { id },
       ...CONTEXT_ID_ARGS,
     });
+  }
+
+  private async assertAvatarFile(
+    tx: Prisma.TransactionClient,
+    fileId: string | null | undefined,
+  ): Promise<void> {
+    if (!fileId) return;
+    const file = await tx.file.findFirst({
+      where: { id: fileId, deletedAt: null, ...nonAssessmentFileFilter },
+      select: { id: true },
+    });
+    if (!file) throw new FilesNotFoundException({ fileId });
   }
 
   private async transitionConversation(

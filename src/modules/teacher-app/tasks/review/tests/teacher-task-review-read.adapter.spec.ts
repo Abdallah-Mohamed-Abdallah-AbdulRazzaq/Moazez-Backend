@@ -88,7 +88,10 @@ describe('TeacherTaskReviewReadAdapter', () => {
 
     const query =
       prismaMocks.reinforcementSubmission.findFirst.mock.calls[0][0];
-    const selectJson = JSON.stringify(query.select);
+    const projection = (query as { select?: unknown }).select;
+    const selectJson = JSON.stringify(projection, (key, value: unknown) =>
+      key === 'where' ? undefined : value,
+    );
 
     expect(selectJson).toContain('proofFile');
     expect(selectJson).toContain('originalName');

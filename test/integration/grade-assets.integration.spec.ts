@@ -309,7 +309,7 @@ describe('ST-07 actual PostgreSQL transactional authorization and capacity', () 
     }
     throw new Error('Actual PostgreSQL blocking relationship absent');
   }
-  it('enforces reference capacity across both families while charging physical upload once and retaining every historical reference', async () => {
+  it('serializes competing bindings to one question and permits reuse by independent resources', async () => {
     const ready = await fixture.readyGrade(graph.assessment.id);
     const command = {
       sourceType: 'MANAGED_FILE' as const,
@@ -318,18 +318,27 @@ describe('ST-07 actual PostgreSQL transactional authorization and capacity', () 
     };
     await prisma.schoolAssessmentMediaPolicy.update({
       where: { schoolId: fixture.school.schoolId },
-      data: { maximumFilesPerResource: 3 },
+      data: { maximumFilesPerResource: 1 },
     });
     const root = await teacher(() =>
       service.create(actor(), resource(), command),
     );
     const results = await Promise.allSettled(
-      [0, 1, 2].map((q) =>
-        teacher(() => service.create(actor(), resource(q), command)),
+      [command, external].map((source) =>
+        teacher(() => service.create(actor(), resource(0), source)),
       ),
     );
-    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(2);
-    expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((r) => r.status === 'rejected')).toMatchObject([
+      { reason: { reason: 'quota_exceeded' } },
+    ]);
+    const independent = await teacher(() =>
+      service.create(actor(), resource(1), command),
+    );
+    expect(independent.asset.assetId).toEqual(expect.any(String));
+    await expect(
+      teacher(() => service.create(actor(), resource(), external)),
+    ).rejects.toMatchObject({ reason: 'quota_exceeded' });
     expect(
       await prisma.fileUploadSession.count({
         where: { purposeContextId: graph.assessment.id, status: 'READY' },
@@ -338,11 +347,61 @@ describe('ST-07 actual PostgreSQL transactional authorization and capacity', () 
     await teacher(() =>
       service.remove(actor(), { ...resource(), assetId: root.asset.assetId }),
     );
+    const replacement = await teacher(() =>
+      service.create(actor(), resource(), command),
+    );
+    expect(replacement.asset.assetId).toEqual(expect.any(String));
     expect(await hasRetainedFileReferences(prisma, ready.fileId)).toBe(true);
     expect(
       (await prisma.file.findUniqueOrThrow({ where: { id: ready.fileId } }))
         .deletedAt,
     ).toBeNull();
+  });
+
+  it('binds nine independently verified files in an assessment with one active reference per question', async () => {
+    await prisma.schoolAssessmentMediaPolicy.update({
+      where: { schoolId: fixture.school.schoolId },
+      data: { maximumFilesPerResource: 1 },
+    });
+    const files = new Set<string>();
+    for (let index = 0; index < 9; index++) {
+      const question = await prisma.gradeAssessmentQuestion.create({
+        data: {
+          schoolId: fixture.school.schoolId,
+          assessmentId: graph.assessment.id,
+          type: 'SHORT_ANSWER',
+          prompt: `Independent file question ${index}`,
+          points: 1,
+          sortOrder: 10 + index,
+        },
+      });
+      const ready = await fixture.readyGrade(
+        graph.assessment.id,
+        'teacher',
+        Buffer.from(`Grade attachment ${index}`),
+      );
+      await teacher(() =>
+        service.create(
+          actor(),
+          {
+            assessmentId: graph.assessment.id,
+            questionId: question.id,
+          },
+          {
+            sourceType: 'MANAGED_FILE',
+            fileId: ready.fileId,
+            uploadId: ready.uploadId,
+          },
+        ),
+      );
+      files.add(ready.fileId);
+    }
+    expect(files.size).toBe(9);
+    expect(
+      await prisma.gradeAssessmentQuestionAsset.count({
+        where: { fileId: { in: [...files] }, deletedAt: null },
+      }),
+    ).toBe(9);
   });
   it.each(['PUBLISHED', 'APPROVED', 'LOCKED', 'SUBMISSION'] as const)(
     'rejects stale author mutation after %s state change',

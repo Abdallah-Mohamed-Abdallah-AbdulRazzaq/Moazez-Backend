@@ -1,5 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
-import type { TestingModuleBuilder } from '@nestjs/testing';
+import { randomUUID } from 'node:crypto';
 import type { GradeQuestionType, Prisma } from '@prisma/client';
 import type { Response } from 'supertest';
 import { St11MultipartHttp } from './st11-multipart.http';
@@ -92,71 +91,8 @@ export type St12Submitted = St12Draft & {
   coreScoring: string;
 };
 
-/** Real JWT + live database and owned storage. Test attestations never enter runtime wiring. */
+/** Real JWT, live database and owned storage. */
 export class St12GradesHttp extends St11MultipartHttp {
-  private readonly paperUploads = new Map<
-    string,
-    { assessmentId: string; actorId: string }
-  >();
-  protected configure(builder: TestingModuleBuilder) {
-    const configured = super.configure(builder);
-    const answerAttestation = this.testSecurity.beforeAttest!;
-    this.testSecurity.beforeAttest = async (input) => {
-      const session = await this.prisma.fileUploadSession.findUniqueOrThrow({
-        where: { id: input.uploadId },
-      });
-      if (session.purpose !== 'GRADE_ASSESSMENT_MEDIA')
-        return answerAttestation(input);
-      const expected = this.paperUploads.get(session.id);
-      if (
-        !expected ||
-        expected.assessmentId !== session.purposeContextId ||
-        expected.actorId !== session.createdByUserId ||
-        !this.fixture.schools.some(
-          (school) => school.schoolId === session.schoolId,
-        ) ||
-        session.status !== 'VERIFYING' ||
-        input.bucket !== this.fixture.storage.resolveBucket('PRIVATE') ||
-        input.bucket !== session.finalBucket ||
-        input.objectKey !== session.finalObjectKey
-      )
-        throw new Error('ST12 test attestor refuses unrelated paper bytes');
-      const stat = await this.fixture.storage.statObject({
-        bucket: input.bucket,
-        objectKey: input.objectKey,
-      });
-      if (
-        BigInt(stat.size) !== session.expectedSizeBytes ||
-        stat.contentType !== session.expectedMimeType ||
-        input.objectIdentity !==
-          JSON.stringify([
-            stat.etag,
-            stat.generation,
-            stat.version,
-            stat.size,
-            stat.contentType,
-          ])
-      )
-        throw new Error('ST12 test object identity mismatch');
-      const source = await this.fixture.storage.getObject({
-        bucket: input.bucket,
-        objectKey: input.objectKey,
-        raw: true,
-      });
-      const hash = createHash('sha256');
-      try {
-        for await (const chunk of source)
-          hash.update(
-            Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array),
-          );
-      } finally {
-        source.destroy();
-      }
-      if (hash.digest('hex') !== input.facts.checksumSha256)
-        throw new Error('ST12 test digest mismatch');
-    };
-    return configured;
-  }
   async reset() {
     await super.reset();
     for (const name of ['teacher', 'otherTeacher', 'foreignTeacher'] as const) {
@@ -364,10 +300,6 @@ export class St12GradesHttp extends St11MultipartHttp {
     );
     if (!created.uploadCapability)
       throw new Error('Expected actual owned upload capability');
-    this.paperUploads.set(created.uploadId, {
-      assessmentId: f.assessmentId,
-      actorId: this.fixture.actors.teacher.userId,
-    });
     expect(
       (
         await postAssessmentUpload(

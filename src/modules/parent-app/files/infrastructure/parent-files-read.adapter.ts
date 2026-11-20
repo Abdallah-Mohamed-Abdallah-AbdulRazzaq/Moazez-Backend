@@ -1,3 +1,4 @@
+import { nonAssessmentFileFilter } from '../../../files/shared/domain/non-assessment-file';
 import { Injectable } from '@nestjs/common';
 import { Prisma, ReinforcementTaskStatus } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
@@ -77,6 +78,7 @@ export class ParentFilesReadAdapter {
           proofFile: {
             is: {
               deletedAt: null,
+              ...nonAssessmentFileFilter,
             },
           },
         },

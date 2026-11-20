@@ -1,3 +1,4 @@
+import { nonAssessmentFileFilter } from '../../../files/shared/domain/non-assessment-file';
 import { Injectable } from '@nestjs/common';
 import {
   StudentEnrollmentStatus,
@@ -56,6 +57,7 @@ const APPLICATION_RECORD_ARGS =
         },
       },
       documents: {
+        where: { file: { is: nonAssessmentFileFilter } },
         orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         select: {
           id: true,
@@ -215,6 +217,7 @@ const APPLICATION_REGISTRATION_HANDOFF_RECORD_ARGS =
         },
       },
       documents: {
+        where: { file: { is: nonAssessmentFileFilter } },
         orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         select: {
           id: true,
@@ -326,10 +329,9 @@ const APPLICATION_REGISTRATION_HANDOFF_RECORD_ARGS =
     },
   });
 
-export type ApplicationRegistrationHandoffRecord =
-  Prisma.ApplicationGetPayload<
-    typeof APPLICATION_REGISTRATION_HANDOFF_RECORD_ARGS
-  >;
+export type ApplicationRegistrationHandoffRecord = Prisma.ApplicationGetPayload<
+  typeof APPLICATION_REGISTRATION_HANDOFF_RECORD_ARGS
+>;
 
 @Injectable()
 export class ApplicationsRepository {
@@ -351,7 +353,9 @@ export class ApplicationsRepository {
     });
   }
 
-  findApplicationById(applicationId: string): Promise<ApplicationRecord | null> {
+  findApplicationById(
+    applicationId: string,
+  ): Promise<ApplicationRecord | null> {
     return this.scopedPrisma.application.findFirst({
       where: { id: applicationId },
       ...APPLICATION_RECORD_ARGS,
@@ -383,9 +387,7 @@ export class ApplicationsRepository {
     });
   }
 
-  findAcademicYearById(
-    academicYearId: string,
-  ): Promise<{ id: string } | null> {
+  findAcademicYearById(academicYearId: string): Promise<{ id: string } | null> {
     return this.scopedPrisma.academicYear.findFirst({
       where: { id: academicYearId },
       select: { id: true },

@@ -18,8 +18,7 @@ export type HttpGradeGraph = Awaited<
   ReturnType<GradeAssetsFixture['gradeGraph']>
 >;
 
-/** Actual JWT/login + Nest HTTP. Only runtime upload enablement is test-wired;
- * the application's unapproved attestation provider is never replaced. */
+/** Actual JWT/login + Nest HTTP with the upload flag enabled in the fixture. */
 export class GradeAssetsHttp {
   readonly prisma = new PrismaService();
   app!: INestApplication<Server>;

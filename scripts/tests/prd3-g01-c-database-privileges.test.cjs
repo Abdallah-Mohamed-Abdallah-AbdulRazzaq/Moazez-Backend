@@ -38,13 +38,15 @@ const grantsSql = read('scripts/database/prd3-g01-c-runtime-grants.sql');
 const verifier = read('scripts/ci/prd3-g01-c-database-privileges.cjs');
 
 test('ST-03 and ST-05 triggers join the exact invoker function inventory without PUBLIC or runtime EXECUTE grants', () => {
-  assert.match(verifier, /count\(\*\) = 9 AND count\(DISTINCT procedure\.proname\) = 9/u);
+  assert.match(verifier, /count\(\*\) = 10 AND count\(DISTINCT procedure\.proname\) = 10/u);
   assert.match(verifier, /WHEN 'enforce_assessment_upload_contract' THEN[\s\S]*?procedure\.pronargs = 0[\s\S]*?procedure\.prorettype = 'trigger'::regtype[\s\S]*?NOT procedure\.prosecdef[\s\S]*?search_path=public, pg_temp[\s\S]*?language\.lanname = 'plpgsql'[\s\S]*?ELSE false/u);
   assert.match(verifier, /NOT has_function_privilege\([^\n]*public\.enforce_assessment_upload_contract\(\)[^\n]*'EXECUTE'\)/u);
   assert.match(verifier, /procedure\.proname = 'enforce_assessment_upload_contract'[\s\S]*?acl\.grantee IN \(0, grantee\.oid\)/u);
   assert.match(verifier, /WHEN 'enforce_assessment_asset_identity' THEN[\s\S]*?procedure\.pronargs = 0[\s\S]*?procedure\.prorettype = 'trigger'::regtype[\s\S]*?NOT procedure\.prosecdef[\s\S]*?search_path=pg_catalog[\s\S]*?language\.lanname = 'plpgsql'/u);
   assert.match(verifier, /NOT has_function_privilege\([^\n]*public\.enforce_assessment_asset_identity\(\)[^\n]*'EXECUTE'\)/u);
-  assert.match(verifier, /procedure\.proname IN \('enforce_live_file_reference', 'enforce_assessment_asset_identity', 'enforce_answer_media_append_only', 'enforce_answer_media_claim', 'enforce_answer_asset_claim', 'enforce_question_group_binding', 'enforce_grade_review_evidence_identity'\)[\s\S]*?acl\.grantee IN \(0, grantee\.oid\)/u);
+  assert.match(verifier, /procedure\.proname IN \('enforce_live_file_reference', 'enforce_assessment_asset_identity', 'enforce_answer_media_append_only', 'enforce_answer_media_claim', 'enforce_answer_asset_claim', 'enforce_question_group_binding', 'enforce_grade_review_evidence_identity', 'enforce_assessment_verified_file_identity'\)[\s\S]*?acl\.grantee IN \(0, grantee\.oid\)/u);
+  assert.match(verifier, /WHEN 'enforce_assessment_verified_file_identity' THEN[\s\S]*?procedure\.prorettype = 'trigger'::regtype[\s\S]*?NOT procedure\.prosecdef[\s\S]*?search_path=pg_catalog/u);
+  assert.match(verifier, /NOT has_function_privilege\([^\n]*public\.enforce_assessment_verified_file_identity\(\)[^\n]*'EXECUTE'\)/u);
   assert.doesNotMatch(grantsSql, /GRANT\s+EXECUTE/iu);
 });
 
@@ -828,7 +830,7 @@ historicalTest(
     assert.ok(verifier.includes("WHEN '"+name+"' THEN"));
     assert.ok(verifier.includes("public."+name+"()', 'EXECUTE')"));
   }
-  assert.match(verifier, /count\(\*\) = 9 AND count\(DISTINCT procedure\.proname\) = 9/u);
+  assert.match(verifier, /count\(\*\) = 10 AND count\(DISTINCT procedure\.proname\) = 10/u);
 });
 
 test('ST11-B registers only its closed invoker membership trigger and preserves private execution ACLs',()=>{assert.ok(verifier.includes("WHEN 'enforce_question_group_binding' THEN"));assert.ok(verifier.includes("public.enforce_question_group_binding()', 'EXECUTE')"));});
@@ -836,6 +838,6 @@ test('ST11-B registers only its closed invoker membership trigger and preserves 
 test('ST12 registers its exact private invoker evidence trigger without runtime EXECUTE authority', () => {
   assert.match(verifier, /WHEN 'enforce_grade_review_evidence_identity' THEN[\s\S]*?procedure\.pronargs = 0[\s\S]*?procedure\.prorettype = 'trigger'::regtype[\s\S]*?NOT procedure\.prosecdef[\s\S]*?search_path=pg_catalog[\s\S]*?language\.lanname = 'plpgsql'/u);
   assert.ok(verifier.includes("public.enforce_grade_review_evidence_identity()', 'EXECUTE')"));
-  assert.match(verifier, /procedure\.proname IN \([^\n]*'enforce_grade_review_evidence_identity'\)/u);
+  assert.match(verifier, /procedure\.proname IN \([^\n]*'enforce_grade_review_evidence_identity'(?:, [^)]+)?\)/u);
   assert.doesNotMatch(grantsSql, /GRANT\s+EXECUTE/iu);
 });

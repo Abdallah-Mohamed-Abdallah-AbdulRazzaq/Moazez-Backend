@@ -47,7 +47,8 @@
     "20261030141000_st11a_answer_media_history_guards",
     "20261030141931_st11a_answer_asset_creator_guard",
     "20261030163220_st11b_multipart_question_groups",
-    "20261031120322_st12_grades_review_release_scoring"
+    "20261031120322_st12_grades_review_release_scoring",
+    "20261119091622_assessment_media_technical_verification"
   ],
   "migrations": [
     {
@@ -244,7 +245,12 @@
       "directory": "20261031120322_st12_grades_review_release_scoring",
       "path": "prisma/migrations/20261031120322_st12_grades_review_release_scoring/migration.sql",
       "sha256": "3311350d985bf0ea9e958639cbbc3d89297ddf5bed8a6b32ea4906b4a6abda22"
+    },
+    {
+      "directory": "20261119091622_assessment_media_technical_verification",
+      "path": "prisma/migrations/20261119091622_assessment_media_technical_verification/migration.sql",
+      "sha256": "181183680256212d9f0209a935198a82cf1f16fe92d664387127c5a1eced13cd"
     }
   ],
-  "aggregateMigrationChainSha256": "00236bbdfa80b6f26effc04574841d92fc6fa18f31a93ae1a83bf45f16119214"
+  "aggregateMigrationChainSha256": "bd9aca82273af1807854e0954c095a6cbe43f257bda900f47eda00b9d8f120cc"
 }

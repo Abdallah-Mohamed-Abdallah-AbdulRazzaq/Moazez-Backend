@@ -7,6 +7,7 @@ import {
 import {
   ST11_TEACHER_ANSWER_MEDIA_ROUTES,
   ST11B_TEACHER_GROUP_ROUTES,
+  TEACHER_HOMEWORK_AUTHORING_UPLOAD_ROUTES,
 } from '../fixtures/st11-answer-media-routes.fixture';
 import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
@@ -159,7 +160,8 @@ describe('ACC-9 final cross-slice exported contracts', () => {
       189 +
         ST11_TEACHER_ANSWER_MEDIA_ROUTES.length +
         ST11B_TEACHER_GROUP_ROUTES.length +
-        ST12_TEACHER_ROUTES.length,
+        ST12_TEACHER_ROUTES.length +
+        TEACHER_HOMEWORK_AUTHORING_UPLOAD_ROUTES.length,
     );
     expectSt12TeacherMetadata(routes);
     const additions = routes.filter((r) =>

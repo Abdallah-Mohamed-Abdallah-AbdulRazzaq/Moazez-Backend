@@ -3,6 +3,7 @@ import {
   CommunicationAnnouncementStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import { nonAssessmentFileFilter } from '../../../files/shared/domain/non-assessment-file';
 import type { StudentAppContext } from '../../shared/student-app.types';
 import { StudentAnnouncementsReadAdapter } from '../infrastructure/student-announcements-read.adapter';
 
@@ -81,6 +82,7 @@ describe('StudentAnnouncementsReadAdapter', () => {
 
     expect(attachmentMocks.findMany.mock.calls[0][0].where).toEqual({
       announcementId: 'announcement-1',
+      file: { is: nonAssessmentFileFilter },
     });
   });
 });
