@@ -17,6 +17,7 @@ import {
 import { ProcessImportValidationUseCase } from '../application/process-import-validation.use-case';
 import { ImportValidationReconciliationService } from '../application/import-validation-reconciliation.service';
 import { ImportJobsRepository } from './import-jobs.repository';
+import { ResultBulkProcessor } from '../../../official-results/infrastructure/result-bulk.processor';
 import { STUDENTS_BULK_REGISTRATION_IMPORT_TYPE } from '../domain/import-upload.constraints';
 import { ProcessStudentBulkRegistrationValidationUseCase } from '../../../students/registration/application/process-student-bulk-registration-validation.use-case';
 import { ProcessStudentBulkRegistrationExecutionUseCase } from '../../../students/registration/application/process-student-bulk-registration-execution.use-case';
@@ -46,6 +47,7 @@ export class ImportValidationWorker implements OnModuleInit {
     private readonly studentCredentialBatchReconciliationService?: StudentCredentialBatchReconciliationService,
     @Optional()
     private readonly studentCredentialSecretArtifactCleanupService?: StudentCredentialSecretArtifactCleanupService,
+    @Optional() private readonly officialResults?: ResultBulkProcessor,
   ) {}
 
   onModuleInit(): void {
@@ -54,12 +56,14 @@ export class ImportValidationWorker implements OnModuleInit {
       void
     >(FILES_IMPORT_QUEUE_NAME, async (job) => {
       if (job.name === FILES_IMPORT_RECONCILE_JOB_NAME) {
-        await this.reconciliationService.reconcile();
-        await this.studentBulkRegistrationExecutionReconciliationService.reconcile();
-        await this.studentCredentialBatchReconciliationService?.reconcile();
-        await this.studentCredentialSecretArtifactCleanupService?.reconcile();
+        await Promise.all([
+          this.reconcileFileImports(),
+          this.officialResults?.reconcile(),
+        ]);
         return;
       }
+      if (this.officialResults?.handles(job.name))
+        return this.officialResults.process(job.name, job.data);
       if (job.name === STUDENT_CREDENTIAL_BATCH_EXECUTE_JOB_NAME) {
         if (!isStudentCredentialBatchExecutionJobData(job.data)) {
           throw new Error('student_credential_execution_payload_invalid');
@@ -137,5 +141,12 @@ export class ImportValidationWorker implements OnModuleInit {
         throw new Error('files_import_persisted_type_unknown');
       });
     });
+  }
+
+  private async reconcileFileImports(): Promise<void> {
+    await this.reconciliationService.reconcile();
+    await this.studentBulkRegistrationExecutionReconciliationService.reconcile();
+    await this.studentCredentialBatchReconciliationService?.reconcile();
+    await this.studentCredentialSecretArtifactCleanupService?.reconcile();
   }
 }

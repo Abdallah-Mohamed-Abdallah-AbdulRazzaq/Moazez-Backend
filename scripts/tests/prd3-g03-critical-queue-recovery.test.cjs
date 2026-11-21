@@ -167,14 +167,12 @@ test('the existing queues and publication form the nine-consumer inventory', () 
       coreModule,
     )?.[1];
   assert.ok(providerBlock);
-  assert.equal((providerBlock.match(/Worker|Service/gu) || []).length, 9);
-  assert.match(providerBlock, /ResultBulkWorker/u);
-  assert.match(manifest, /resultsBulkQueue/u);
+  assert.equal((providerBlock.match(/Worker|Service/gu) || []).length, 8);
   assert.match(mediaModule, /LearningMediaCleanupService/u);
   assert.equal(queues.length, 9);
 });
 
-test('Maintenance Scheduler owns exactly ten current repeat definitions', () => {
+test('Maintenance Scheduler owns exactly nine current repeat definitions', () => {
   const schedules = read(
     'src/runtime/maintenance-scheduler/maintenance-schedules.module.ts',
   );
@@ -183,10 +181,10 @@ test('Maintenance Scheduler owns exactly ten current repeat definitions', () => 
   );
   const manifest = read('src/modules/health/operational-probe.manifests.ts');
 
-  assert.match(runtimeContract, /owns exactly ten registrations/u);
-  assert.match(runtimeContract, /toHaveBeenCalledTimes\(10\)/u);
-  assert.equal((schedules.match(/Schedule,/gu) || []).length, 10);
-  assert.equal((manifest.match(/queueName:/gu) || []).length, 10);
+  assert.match(runtimeContract, /owns exactly nine registrations/u);
+  assert.match(runtimeContract, /toHaveBeenCalledTimes\(9\)/u);
+  assert.equal((schedules.match(/Schedule,/gu) || []).length, 9);
+  assert.equal((manifest.match(/queueName:/gu) || []).length, 9);
   for (const jobName of [
     'communication.announcement.notifications.reconcile',
     'communication.notification.push.reconcile',

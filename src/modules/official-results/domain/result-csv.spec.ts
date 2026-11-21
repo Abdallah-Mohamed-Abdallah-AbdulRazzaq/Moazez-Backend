@@ -56,7 +56,7 @@ describe('Official Results CSV text transport', () => {
         'SCH-MZ001',
         '../../CON',
         'a'.repeat(200),
-        ...Array(20).fill('long-context'),
+        ...Array<string>(20).fill('long-context'),
       ],
       id,
       date,

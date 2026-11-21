@@ -9,7 +9,6 @@ import { LEARNING_MEDIA_CLEANUP_QUEUE } from '../files/uploads/application/learn
 import { FILES_IMPORT_QUEUE_NAME } from '../files/imports/domain/import-job.types';
 import { BRANDING_LOGO_CLEANUP_QUEUE } from '../settings/branding/domain/branding-logo.constants';
 import { SCHOOL_EMAIL_DELIVERY_QUEUE_NAME } from '../settings/email/delivery/domain/email-delivery.constants';
-import { resultsBulkQueue } from '../official-results/domain/result-export.contract';
 import {
   CORE_WORKER_ASSIGNED_CONSUMERS,
   createOperationalRoleManifests,
@@ -27,7 +26,6 @@ describe('operational role dependency manifests', () => {
       FILES_IMPORT_QUEUE_NAME,
       DISMISSAL_REQUEST_EXPIRY_QUEUE_NAME,
       BRANDING_LOGO_CLEANUP_QUEUE,
-      resultsBulkQueue,
     ]);
     expect(MEDIA_WORKER_ASSIGNED_CONSUMERS).toEqual([
       LEARNING_MEDIA_CLEANUP_QUEUE,

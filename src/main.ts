@@ -19,9 +19,11 @@ import {
 import type { Env } from './config/env.validation';
 import { RealtimeGateway } from './infrastructure/realtime/realtime.gateway';
 import { OperationalProbeService } from './modules/health/operational-probe.service';
+import { registerOfficialResultsJson } from './modules/official-results/infrastructure/result-json-transport';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
+  registerOfficialResultsJson(app);
   const logger = new Logger('Bootstrap');
   const config = app.get<ConfigService<Env, true>>(ConfigService);
   const lifecycle = app.get(ApplicationLifecycleState);

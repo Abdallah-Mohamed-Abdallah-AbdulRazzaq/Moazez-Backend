@@ -7,6 +7,7 @@ import {
   ValidationDomainException,
 } from '../../../common/exceptions/domain-exception';
 import { OfficialResultsError } from '../domain/official-results.error';
+import { officialResultsExposed } from '../domain/result-exposure';
 import { resultContentDigest } from '../domain/result-content-digest';
 import {
   effectiveResultPolicy,
@@ -141,7 +142,7 @@ export class ResultFamilyService {
       audience,
       studentId,
       { includeHistory: true },
-      async (_client, rows, binding) => {
+      (_client, rows, binding) => {
         const { cursor, limit: requested, ...filters } = query;
         const { limit, after } = readResultCursor(
           { cursor, limit: requested },
@@ -332,7 +333,7 @@ export class ResultFamilyService {
       audience,
       studentId,
       { periodId, includeHistory: true, ...filters },
-      async (_client, rows, binding) => {
+      (_client, rows, binding) => {
         if (!rows.length || !rows.some(historyAllowed))
           throw new NotFoundDomainException();
         const { limit, after } = readResultCursor(
@@ -398,7 +399,7 @@ export class ResultFamilyService {
       client: Prisma.TransactionClient,
       rows: EntitledRow[],
       binding: string,
-    ) => Promise<T>,
+    ) => Promise<T> | T,
   ) {
     const context = getRequestContext();
     const actor = context?.actor;
@@ -432,6 +433,7 @@ export class ResultFamilyService {
         throw new OfficialResultsError('scope.limit_exceeded');
       const rows: EntitledRow[] = [];
       for (const ownership of proof) {
+        if (!officialResultsExposed(ownership.schoolId)) continue;
         const candidates = await this.repository.publications(
           client,
           ownership,

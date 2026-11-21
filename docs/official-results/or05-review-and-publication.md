@@ -28,4 +28,3 @@ composition. Old snapshots and release events remain available for history.
 The [implementation ledger](../../verification/implementation-ledger.json) and
 [acceptance matrix](../../verification/acceptance-matrix.json) record verification
 and cross-phase results still to be checked.
-

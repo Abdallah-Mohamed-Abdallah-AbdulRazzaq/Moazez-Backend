@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ResultExposureGuard } from './domain/result-exposure';
 import { ResultIssueReportService } from './application/result-issue-report.service';
 import { ResultNoticeService } from './application/result-notice.service';
 import { ResultPeriodLifecycleService } from './application/result-period-lifecycle.service';
@@ -180,6 +181,6 @@ export class OfficialResultsServicesModule {}
     ResultConfigurationController,
     TeacherResultConfigurationController,
   ],
-  providers: [ResultErrorFilter],
+  providers: [ResultErrorFilter, ResultExposureGuard],
 })
 export class OfficialResultsModule {}

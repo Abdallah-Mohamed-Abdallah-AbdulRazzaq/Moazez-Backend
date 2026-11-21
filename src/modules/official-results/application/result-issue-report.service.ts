@@ -10,6 +10,10 @@ import { PrismaService } from '../../../infrastructure/database/prisma.service';
 import { BullmqService } from '../../../infrastructure/queue/bullmq.service';
 import { StorageService } from '../../../infrastructure/storage/storage.service';
 import { OfficialResultsError } from '../domain/official-results.error';
+import {
+  officialResultsExposed,
+  officialResultsPilotWhere,
+} from '../domain/result-exposure';
 import { csvRecord, encodeSpreadsheetText } from '../domain/result-csv';
 import { resultsBulkQueue } from '../domain/result-export.contract';
 import type {
@@ -298,7 +302,10 @@ export class ResultIssueReportService {
       return this.exports.download(surface, selection.exportId, fileId);
     if ('source' in selection && selection.source) {
       const { source } = selection;
-      const stream = await this.storage.getObject(source);
+      const stream = await this.storage.getObject({
+        bucket: source.bucket,
+        objectKey: source.objectKey,
+      });
       return {
         stream,
         filename: 'MOAZEZ_RESULTS_SOURCE_' + fileId + '.bin',
@@ -317,7 +324,12 @@ export class ResultIssueReportService {
       where: { id },
       include: exactReport,
     });
-    if (!report || report.expiresAt <= now) return;
+    if (
+      !report ||
+      report.expiresAt <= now ||
+      !officialResultsExposed(report.schoolId)
+    )
+      return;
     const key = { id, schoolId: report.schoolId };
     const leaseToken = randomUUID();
     const runnable: Prisma.ResultIssueReportWhereInput = {
@@ -441,6 +453,7 @@ export class ResultIssueReportService {
     const now = new Date();
     const jobs = await this.prisma.resultIssueReport.findMany({
       where: {
+        ...officialResultsPilotWhere(),
         expiresAt: { gt: now },
         OR: [
           { status: 'QUEUED' },

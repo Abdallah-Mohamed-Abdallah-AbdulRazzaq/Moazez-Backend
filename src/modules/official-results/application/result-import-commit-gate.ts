@@ -164,15 +164,21 @@ export class ResultImportCommitGate {
       {
         expectedDefinitionVersionId: unit.context.draftDefinitionVersionId,
         expectedSheetRevision: unit.context.sheetRevision,
-        operations: unit.changes.map(
-          ({
-            sheetId: _,
-            rowRef: __,
-            before: ___,
-            after: ____,
-            ...operation
-          }) => operation,
-        ),
+        operations: unit.changes.map((item) => {
+          const target = {
+            slotId: item.slotId,
+            fieldId: item.fieldId,
+            expectedCellVersion: item.expectedCellVersion,
+          };
+          return item.operation === 'CLEAR'
+            ? { ...target, operation: item.operation, reason: item.reason }
+            : {
+                ...target,
+                operation: item.operation,
+                value: item.value,
+                reason: item.reason,
+              };
+        }),
       },
       operationId,
       'IMPORT',

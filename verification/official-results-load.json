@@ -1,0 +1,20 @@
+{
+  "testedSha": "988301792fa25d72244f298b5b8617afefc606d4",
+  "fixture": "Windows Jest application and worker process on loopback PostgreSQL, Redis and MinIO",
+  "queryBudgetPerPhase": 600,
+  "measurements": {
+    "rows": 3333,
+    "changes": 9999,
+    "csvBytes": 1407208,
+    "exportAndFixtureMs": 8051,
+    "validationMs": 5774,
+    "confirmationAndCommitMs": 10417,
+    "concurrentSchoolReadMs": 23,
+    "exportQueries": 464,
+    "validationQueries": 408,
+    "applyQueries": 351,
+    "processHeapUsedBytes": 424894288,
+    "processResidentBytes": 337780736
+  },
+  "notes": "Export timing includes fixture creation, scope resolution and grid paging. Query counts include bounded fixture status observation. RAM is for the shared Jest and Nest process."
+}

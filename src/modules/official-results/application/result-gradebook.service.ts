@@ -365,7 +365,7 @@ export class ResultGradebookService {
     const grants = await this.auth.fieldGrants(client, actor, sheet, write);
     const fields: ResultFieldAccess = definition
       ? resultFieldAccess({ definition, accepted, teacher, grants, canEdit })
-      : new Map();
+      : new Map<string, never>();
     const loadFields = (definition?.fields ?? [])
       .filter(
         (field) =>

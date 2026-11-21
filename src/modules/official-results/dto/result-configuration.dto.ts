@@ -53,7 +53,9 @@ export class ResultLabelDto {
 
   @ApiPropertyOptional({ maxLength: 200 })
   @Expose()
-  @Transform(({ value, obj }) => (value === undefined ? obj.ar : value))
+  @Transform(({ value, obj }: { value: unknown; obj: { ar: unknown } }) =>
+    value === undefined ? obj.ar : value,
+  )
   @IsString()
   @Matches(nonBlank)
   @MaxLength(200)

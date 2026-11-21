@@ -33,7 +33,6 @@ const digest = z.string().regex(/^[a-f0-9]{64}$/u);
 const revision = z.number().int().min(1);
 const generation = z.number().int().min(0);
 const reason = z.string().trim().min(1).max(2000);
-const groupKind = z.enum(['SUBJECT', 'CUSTOM']);
 const ownership = z.enum(['SCHOOL', 'PLATFORM']);
 const preview = z.object({
   previewId: uuid,
@@ -305,7 +304,7 @@ export class ResultTemplatesQueryDto extends ResultPageQueryDto {
 
   @ApiPropertyOptional({ type: Boolean })
   @ValidateIf(whenPresent)
-  @Transform(({ value }) =>
+  @Transform(({ value }: { value: unknown }) =>
     value === 'true' ? true : value === 'false' ? false : value,
   )
   @IsBoolean()

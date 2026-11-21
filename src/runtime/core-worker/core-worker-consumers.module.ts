@@ -13,7 +13,7 @@ import { AcademicContentPublicationQueueService } from '../../modules/academics/
 import { AcademicContentPublicationReconciliationService } from '../../modules/academics/academic-content/application/academic-content-publication-reconciliation.service';
 import { Module, type Provider } from '@nestjs/common';
 import { OfficialResultsServicesModule } from '../../modules/official-results/official-results.module';
-import { ResultBulkWorker } from '../../modules/official-results/infrastructure/result-bulk.worker';
+import { ResultBulkProcessor } from '../../modules/official-results/infrastructure/result-bulk.processor';
 import { AcademicContentCleanupWorker } from '../../modules/academics/academic-content/files/infrastructure/academic-content-cleanup.worker';
 import { AcademicContentFileRepository } from '../../modules/academics/academic-content/files/infrastructure/academic-content-file.repository';
 import { FirebaseAdminModule } from '../../infrastructure/push/firebase/firebase-admin.module';
@@ -91,10 +91,10 @@ export const CORE_WORKER_CONSUMER_PROVIDERS = Object.freeze([
   ImportValidationWorker,
   DismissalRequestExpiryWorker,
   BrandingLogoCleanupWorker,
-  ResultBulkWorker,
 ] satisfies Provider[]);
 
 const CORE_WORKER_SUPPORT_PROVIDERS: Provider[] = [
+  ResultBulkProcessor,
   AcademicContentPublicationNotificationRepository,
   AcademicContentPublicationNotificationService,
   AcademicContentReviewDecisionNotificationService,

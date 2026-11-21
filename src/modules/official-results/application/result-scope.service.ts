@@ -8,7 +8,11 @@ import {
 } from '../../../common/exceptions/domain-exception';
 import { OfficialResultsError } from '../domain/official-results.error';
 import { resultContentDigest } from '../domain/result-content-digest';
-import { academicSelector, resultIdList } from '../domain/result-scope';
+import {
+  academicSelector,
+  resultIdList,
+  resultScopeTransactionTimeoutMs,
+} from '../domain/result-scope';
 import {
   resolveTemplateRule,
   templateScopeSelector,
@@ -158,27 +162,30 @@ export class ResultScopeService {
 
   resolve(surface: Surface, input: ResolveInput) {
     const actor = requireResultActor(surface);
-    return this.commands.transaction(async (client) => {
-      const access = await this.authorization.permissions(client, actor, {
-        write: true,
-      });
-      this.authorization.requirePermission(
-        access,
-        'official_results.sheets.view',
-      );
-      const plan = await this.plan(client, access, input, false);
-      const preview = await this.previews.create(
-        client,
-        actor,
-        'SCOPE_RESOLUTION',
-        null,
-        {
-          input,
-          fingerprint: plan.fingerprint,
-        },
-      );
-      return { ...preview, tuples: plan.tuples, conflicts: plan.conflicts };
-    });
+    return this.commands.transaction(
+      async (client) => {
+        const access = await this.authorization.permissions(client, actor, {
+          write: true,
+        });
+        this.authorization.requirePermission(
+          access,
+          'official_results.sheets.view',
+        );
+        const plan = await this.plan(client, access, input, false);
+        const preview = await this.previews.create(
+          client,
+          actor,
+          'SCOPE_RESOLUTION',
+          null,
+          {
+            input,
+            fingerprint: plan.fingerprint,
+          },
+        );
+        return { ...preview, tuples: plan.tuples, conflicts: plan.conflicts };
+      },
+      { timeout: resultScopeTransactionTimeoutMs },
+    );
   }
 
   materialize(
@@ -187,88 +194,91 @@ export class ResultScopeService {
     key?: string,
   ) {
     const actor = requireResultActor(surface);
-    return this.commands.transaction(async (client) => {
-      const access = await this.authorization.permissions(client, actor, {
-        write: true,
-      });
-      this.authorization.requirePermission(
-        access,
-        'official_results.sheets.create',
-      );
-      return this.commands.idempotent(
-        client,
-        actor,
-        'sheets.materialize',
-        key,
-        input,
-        async () => {
-          const binding = await this.previews.load(
-            client,
-            actor,
-            'SCOPE_RESOLUTION',
-            null,
-            input.previewId,
-            input.previewDigest,
-          );
-          const parsed = z
-            .strictObject({
-              input: resultResolutionInput,
-              fingerprint: z.string(),
-            })
-            .parse(binding);
-          const plan = await this.plan(client, access, parsed.input, true);
-          if (plan.fingerprint !== parsed.fingerprint)
-            throw new OfficialResultsError('preview.stale');
-          if (plan.conflicts.length)
-            throw new OfficialResultsError('scope.conflict', {
-              conflicts: plan.conflicts,
-            });
-          const items: MaterializationItem[] = [];
-          for (const [index, tuple] of plan.tuples.entries()) {
-            const definition = plan.definitions[index];
-            const result = await this.foundation.materializeInTransaction(
+    return this.commands.transaction(
+      async (client) => {
+        const access = await this.authorization.permissions(client, actor, {
+          write: true,
+        });
+        this.authorization.requirePermission(
+          access,
+          'official_results.sheets.create',
+        );
+        return this.commands.idempotent(
+          client,
+          actor,
+          'sheets.materialize',
+          key,
+          input,
+          async () => {
+            const binding = await this.previews.load(
               client,
-              {
+              actor,
+              'SCOPE_RESOLUTION',
+              null,
+              input.previewId,
+              input.previewDigest,
+            );
+            const parsed = z
+              .strictObject({
+                input: resultResolutionInput,
+                fingerprint: z.string(),
+              })
+              .parse(binding);
+            const plan = await this.plan(client, access, parsed.input, true);
+            if (plan.fingerprint !== parsed.fingerprint)
+              throw new OfficialResultsError('preview.stale');
+            if (plan.conflicts.length)
+              throw new OfficialResultsError('scope.conflict', {
+                conflicts: plan.conflicts,
+              });
+            const items: MaterializationItem[] = [];
+            for (const [index, tuple] of plan.tuples.entries()) {
+              const definition = plan.definitions[index];
+              const result = await this.foundation.materializeInTransaction(
+                client,
+                {
+                  reportingPeriodId: tuple.reportingPeriodId,
+                  classroomId: tuple.classroomId,
+                  groupId: tuple.groupId,
+                  rosterAsOf: new Date(parsed.input.rosterAsOf),
+                  definition,
+                  acceptsDefinition: tuple.templateVersionId !== null,
+                  deferExistingPlacements: true,
+                },
+                resultContentDigest(definition),
+                plan.rosterFingerprints[index],
+                plan.placementFingerprints[index],
+              );
+              items.push({
+                sheetId: result.sheet.id,
                 reportingPeriodId: tuple.reportingPeriodId,
                 classroomId: tuple.classroomId,
                 groupId: tuple.groupId,
-                rosterAsOf: new Date(parsed.input.rosterAsOf),
-                definition,
-                acceptsDefinition: tuple.templateVersionId !== null,
-                deferExistingPlacements: true,
-              },
-              resultContentDigest(definition),
-              plan.rosterFingerprints[index],
-              plan.placementFingerprints[index],
+                status: 'COMPLETED' as const,
+                created: result.created,
+                pendingPlacementCount: tuple.pendingPlacementCount,
+              });
+            }
+            const operation = await this.operations.createMaterialization(
+              client,
+              actor,
+              items,
             );
-            items.push({
-              sheetId: result.sheet.id,
-              reportingPeriodId: tuple.reportingPeriodId,
-              classroomId: tuple.classroomId,
-              groupId: tuple.groupId,
-              status: 'COMPLETED' as const,
-              created: result.created,
-              pendingPlacementCount: tuple.pendingPlacementCount,
-            });
-          }
-          const operation = await this.operations.createMaterialization(
-            client,
-            actor,
-            items,
-          );
-          const response = presentResultOperation(operation, actor);
-          await this.commands.audit(
-            client,
-            actor,
-            'sheets.materialize',
-            'result_operation',
-            operation.id,
-            response.counts,
-          );
-          return response;
-        },
-      );
-    });
+            const response = presentResultOperation(operation, actor);
+            await this.commands.audit(
+              client,
+              actor,
+              'sheets.materialize',
+              'result_operation',
+              operation.id,
+              response.counts,
+            );
+            return response;
+          },
+        );
+      },
+      { timeout: resultScopeTransactionTimeoutMs },
+    );
   }
 
   operation(surface: Surface, id: string) {

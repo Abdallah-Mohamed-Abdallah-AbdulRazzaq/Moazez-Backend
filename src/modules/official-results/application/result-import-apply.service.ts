@@ -9,6 +9,10 @@ import { DomainException } from '../../../common/exceptions/domain-exception';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
 import { BullmqService } from '../../../infrastructure/queue/bullmq.service';
 import { OfficialResultsError } from '../domain/official-results.error';
+import {
+  officialResultsExposed,
+  officialResultsPilotWhere,
+} from '../domain/result-exposure';
 import { resultContentDigest } from '../domain/result-content-digest';
 import type {
   ImportReviewBinding,
@@ -54,19 +58,23 @@ function transient(error: unknown) {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
   if (error.code === 'P2010') {
     // Raw PostgreSQL mutations wrap cancellation, disconnection and lock errors in P2010.
-    return [
-      '57P01',
-      '57P02',
-      '57P03',
-      '57014',
-      '55P03',
-      '40001',
-      '40P01',
-      '08000',
-      '08003',
-      '08006',
-      '08007',
-    ].includes(String(error.meta?.code ?? ''));
+    const sqlState = error.meta?.code;
+    return (
+      typeof sqlState === 'string' &&
+      [
+        '57P01',
+        '57P02',
+        '57P03',
+        '57014',
+        '55P03',
+        '40001',
+        '40P01',
+        '08000',
+        '08003',
+        '08006',
+        '08007',
+      ].includes(sqlState)
+    );
   }
   return [
     'P1001',
@@ -99,6 +107,7 @@ export class ResultImportApplyService {
     });
     if (
       !operation ||
+      !officialResultsExposed(operation.schoolId) ||
       operation.dispatchRevision !== revision ||
       (operation.status !== 'QUEUED' && operation.status !== 'APPLYING')
     )
@@ -216,6 +225,18 @@ export class ResultImportApplyService {
         const access = await this.auth.permissions(client, actor, {
           write: true,
         });
+        if (!officialResultsExposed(operation.schoolId)) {
+          await client.resultImportExecutionUnit.updateMany({
+            where: guard,
+            data: {
+              status: 'QUEUED',
+              leaseUntil: null,
+              leaseToken: null,
+              attempts: { decrement: 1 },
+            },
+          });
+          return;
+        }
         const fenced = await client.resultImportExecutionUnit.updateMany({
           where: { ...guard, leaseUntil: { gt: new Date() } },
           data: { leaseUntil: new Date(Date.now() + duration) },
@@ -333,6 +354,7 @@ export class ResultImportApplyService {
   async reconcile() {
     const candidates = await this.prisma.resultImportExecution.findMany({
       where: {
+        ...officialResultsPilotWhere(),
         status: { in: [...pendingStates] },
         units: { none: { status: 'RUNNING', leaseUntil: { gt: new Date() } } },
       },

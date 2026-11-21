@@ -171,7 +171,6 @@ export class ResultReportsService {
         );
         return {
           ...page,
-          items: page.items.map(({ id: _, ...item }) => item),
           scope: { sheetIds: [...workspaces.keys()] },
           counts: {
             missingFields: items.filter((item) => item.reason === 'MISSING')

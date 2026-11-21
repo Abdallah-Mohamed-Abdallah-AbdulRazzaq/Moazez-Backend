@@ -2,6 +2,8 @@ import { z } from 'zod/v4';
 import { OfficialResultsError } from './official-results.error';
 import { resultContentDigest } from './result-content-digest';
 
+export const resultScopeTransactionTimeoutMs = 30_000;
+
 export const resultIdList = z
   .array(z.uuid())
   .min(1)

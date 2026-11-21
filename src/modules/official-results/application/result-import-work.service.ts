@@ -15,6 +15,10 @@ import { BullmqService } from '../../../infrastructure/queue/bullmq.service';
 import { StorageService } from '../../../infrastructure/storage/storage.service';
 import { resultContentDigest } from '../domain/result-content-digest';
 import {
+  officialResultsExposed,
+  officialResultsPilotWhere,
+} from '../domain/result-exposure';
+import {
   type ImportCorrection,
   type ImportReviewBinding,
   validateImportOptions,
@@ -52,7 +56,12 @@ export class ResultImportWorkService {
     const batch = await this.prisma.resultImportBatch.findUnique({
       where: { id: batchId },
     });
-    if (!batch || batch.revision !== revision) return;
+    if (
+      !batch ||
+      batch.revision !== revision ||
+      !officialResultsExposed(batch.schoolId)
+    )
+      return;
     const source = await this.prisma.resultImportSource.findUnique({
       where: {
         batchId_schoolId_version: {
@@ -178,7 +187,18 @@ export class ResultImportWorkService {
         fields: report.permissionBinding,
         context: report.units
           .filter((unit) => unit.status !== 'EXCLUDED')
-          .map(({ context: { slots: _, ...revisions } }) => revisions),
+          .map(({ context }) => ({
+            sheetId: context.sheetId,
+            classroomId: context.classroomId,
+            groupId: context.groupId,
+            reportingPeriodId: context.reportingPeriodId,
+            rosterRevision: context.rosterRevision,
+            policyRevision: context.policyRevision,
+            draftDefinitionVersionId: context.draftDefinitionVersionId,
+            sheetRevision: context.sheetRevision,
+            snapshotDataGeneration: context.snapshotDataGeneration,
+            correctionUnitId: context.correctionUnitId,
+          })),
         changeSetSha256: resultContentDigest(
           report.units.flatMap((unit) => unit.changes),
         ),
@@ -264,10 +284,10 @@ export class ResultImportWorkService {
     }
   }
 
-  async reconcile(): Promise<void> {
-    const now = new Date();
+  async reconcile(now = new Date()): Promise<void> {
     const candidates = await this.prisma.resultImportBatch.findMany({
       where: {
+        ...officialResultsPilotWhere(),
         expiresAt: { gt: now },
         OR: [
           { status: 'UPLOADED' },
@@ -342,7 +362,7 @@ export class ResultImportWorkService {
     const parts: Buffer[] = [];
     const digest = createHash('sha256');
     let bytes = 0;
-    for await (const chunk of stream) {
+    for await (const chunk of stream as AsyncIterable<Buffer | string>) {
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       bytes += buffer.length;
       if (bytes > source.sizeBytes)
