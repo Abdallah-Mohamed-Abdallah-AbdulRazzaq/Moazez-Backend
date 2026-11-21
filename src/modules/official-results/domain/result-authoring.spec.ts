@@ -120,6 +120,29 @@ describe('Official Results authoring invariants', () => {
     ).toThrow('definition is invalid');
   });
 
+  it('T055 requires an exact school-authorized derived disclosure for a private operand', () => {
+    const definition = moazezStarterDefinition();
+    const privateInput = definition.fields[0];
+    const total = definition.fields.find((field) => field.code === 'total')!;
+    privateInput.audiences = ['STAFF'];
+    privateInput.readRule = 'SCHOOL_ONLY';
+    expect(() => validateResultDefinition(definition, true)).toThrow();
+    definition.releaseUnits[0].derivedDisclosure = [
+      {
+        outputFieldId: total.id,
+        privateOperandFieldIds: [privateInput.id],
+        audiences: ['PARENT', 'STUDENT'],
+        reason: 'Release the total without the coursework value',
+      },
+    ];
+    expect(() => validateResultDefinition(definition, false)).toThrow();
+    expect(() => validateResultDefinition(definition, true)).not.toThrow();
+    definition.releaseUnits[0].derivedDisclosure[0].privateOperandFieldIds.push(
+      definition.fields[1].id,
+    );
+    expect(() => validateResultDefinition(definition, true)).toThrow();
+  });
+
   it('T025 rejects formula cycles and dependencies crossing independent release units', () => {
     const cyclic = moazezStarterDefinition();
     const total = cyclic.fields.find((field) => field.code === 'total')!;

@@ -710,3 +710,14 @@ current release pointers, correction drafts, event history, and notification int
 | result_publication_review_check | Direct authorization has no reviewer decision. Reviewed authorization records one. |
 | result_review_comment_check, result_release_event_check | Returns and revocations require reasons. |
 | result_release_candidate_immutable, result_review_decision_immutable, result_publication_immutable, result_release_event_immutable, result_correction_draft_immutable | The existing invoker trigger rejects changes to frozen release evidence. |
+
+## OR06 Official Results family entitlement and aggregates
+
+`20261121042421_official_results_family_aggregates` adds retained read
+entitlements and versioned, published-only aggregate evidence.
+
+| PostgreSQL-specific object | Invariant |
+| --- | --- |
+| result_entitlement_revocation_check | Revocation records actor, time, and reason together. |
+| result_aggregate_candidate_payload_check | Candidate payloads carry a positive revision, object result and exact digest. |
+| result_aggregate_profile_version_immutable, result_aggregate_decision_immutable, result_aggregate_publication_immutable, result_aggregate_dependency_immutable | The existing invoker trigger protects frozen aggregate evidence. |

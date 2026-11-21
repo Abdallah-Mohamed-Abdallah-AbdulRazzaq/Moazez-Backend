@@ -12,6 +12,15 @@ import {
 } from './controller/result-authoring.controller';
 import { ResultGrantService } from './application/result-grant.service';
 import { ResultGradebookService } from './application/result-gradebook.service';
+import { ResultFamilyService } from './application/result-family.service';
+import { ResultAggregateService } from './application/result-aggregate.service';
+import { ResultAggregateController } from './controller/result-aggregate.controller';
+import { ResultAggregateRepository } from './infrastructure/repositories/result-aggregate.repository';
+import {
+  ParentOfficialResultsController,
+  StudentOfficialResultsController,
+} from './controller/result-family.controller';
+import { ResultFamilyRepository } from './infrastructure/repositories/result-family.repository';
 import { ResultReleaseService } from './application/result-release.service';
 import { ResultReleaseSnapshotService } from './application/result-release-snapshot.service';
 import {
@@ -49,6 +58,9 @@ import { ResultScopeFactsRepository } from './infrastructure/repositories/result
 @Module({
   imports: [PrismaModule, TeacherAllocationModule],
   controllers: [
+    ResultAggregateController,
+    ParentOfficialResultsController,
+    StudentOfficialResultsController,
     ResultReleaseController,
     TeacherResultReleaseController,
     ResultGradebookController,
@@ -59,6 +71,10 @@ import { ResultScopeFactsRepository } from './infrastructure/repositories/result
     TeacherResultConfigurationController,
   ],
   providers: [
+    ResultAggregateRepository,
+    ResultAggregateService,
+    ResultFamilyRepository,
+    ResultFamilyService,
     ResultReleaseRepository,
     ResultReleaseService,
     ResultReleaseSnapshotService,

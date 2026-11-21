@@ -1921,6 +1921,8 @@ model School {
   resultSlots              ResultSlot[]
   resultPlacementRevisions ResultPlacementRevision[]
   resultReleaseCandidates  ResultReleaseCandidate[]
+  resultReadEntitlements   ResultReadEntitlement[]
+  resultAggregateProfiles  ResultAggregateProfile[]
 
   officialResultPolicy    OfficialResultPolicy?
   resultPolicyPreviews    ResultPolicyPreview[]
@@ -2203,6 +2205,10 @@ model User {
   resultPublicationsIssued    ResultPublication[]          @relation("ResultPublicationIssuer")
   resultReleaseEvents         ResultReleaseEvent[]         @relation("ResultReleaseEventActor")
   resultCorrectionDrafts      ResultCorrectionDraft[]      @relation("ResultCorrectionDraftAuthor")
+  resultReadEntitlements      ResultReadEntitlement[]      @relation("ResultEntitlementPrincipal")
+  resultEntitlementsRevoked   ResultReadEntitlement[]      @relation("ResultEntitlementRevoker")
+  resultAggregateCandidates   ResultAggregateCandidate[]   @relation("ResultAggregateCandidateAuthor")
+  resultAggregateDecisions    ResultAggregateDecision[]    @relation("ResultAggregateReviewer")
   resultOperations            ResultOperation[]            @relation("ResultOperationActor")
 
   @@index([userType])
@@ -5071,7 +5077,9 @@ model Student {
   academicContentAcknowledgements   AcademicContentAcknowledgement[]
   answerUploadIntents               AssessmentAnswerUploadIntent[]
 
-  resultSlots ResultSlot[]
+  resultSlots               ResultSlot[]
+  resultReadEntitlements    ResultReadEntitlement[]
+  resultAggregateCandidates ResultAggregateCandidate[]
 
   @@unique([id, schoolId])
   @@unique([applicationId, schoolId])
@@ -6149,11 +6157,12 @@ model ResultReportingPeriod {
   createdAt      DateTime                    @default(now()) @map("created_at")
   updatedAt      DateTime                    @updatedAt @map("updated_at")
 
-  school       School        @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  academicYear AcademicYear  @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
-  term         Term?         @relation(fields: [termId, schoolId, academicYearId], references: [id, schoolId, academicYearId], onDelete: Restrict, onUpdate: Restrict)
-  sheets       ResultSheet[]
-  slots        ResultSlot[]
+  school              School                     @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  academicYear        AcademicYear               @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  term                Term?                      @relation(fields: [termId, schoolId, academicYearId], references: [id, schoolId, academicYearId], onDelete: Restrict, onUpdate: Restrict)
+  sheets              ResultSheet[]
+  slots               ResultSlot[]
+  aggregateCandidates ResultAggregateCandidate[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, academicYearId, code])
@@ -6843,17 +6852,19 @@ model ResultPublication {
   publishedAt           DateTime                   @default(now()) @map("published_at") @db.Timestamptz(3)
   updatedAt             DateTime                   @updatedAt @map("updated_at")
 
-  candidate       ResultReleaseCandidate       @relation(fields: [candidateId, schoolId, slotId, releaseUnitId, definitionVersionId], references: [id, schoolId, slotId, releaseUnitId, definitionVersionId], onDelete: Restrict, onUpdate: Restrict, map: "result_publication_candidate_fk")
-  slot            ResultSlot                   @relation(fields: [slotId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
-  predecessor     ResultPublication?           @relation("ResultPublicationPredecessor", fields: [predecessorId, schoolId, slotId, releaseUnitId], references: [id, schoolId, slotId, releaseUnitId], onDelete: Restrict, onUpdate: Restrict, map: "result_publication_predecessor_fk")
-  successors      ResultPublication[]          @relation("ResultPublicationPredecessor")
-  reviewDecision  ResultReviewDecision?        @relation(fields: [reviewDecisionId, schoolId, candidateId], references: [id, schoolId, candidateId], onDelete: Restrict, onUpdate: Restrict, map: "result_publication_decision_fk")
-  policy          OfficialResultPolicyVersion? @relation(fields: [policyVersionId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
-  publishedBy     User                         @relation("ResultPublicationIssuer", fields: [publishedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  activePointer   ResultCurrentRelease?
-  events          ResultReleaseEvent[]
-  correctionDraft ResultCorrectionDraft?
-  notice          ResultPublicationNotice?
+  candidate             ResultReleaseCandidate       @relation(fields: [candidateId, schoolId, slotId, releaseUnitId, definitionVersionId], references: [id, schoolId, slotId, releaseUnitId, definitionVersionId], onDelete: Restrict, onUpdate: Restrict, map: "result_publication_candidate_fk")
+  slot                  ResultSlot                   @relation(fields: [slotId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  predecessor           ResultPublication?           @relation("ResultPublicationPredecessor", fields: [predecessorId, schoolId, slotId, releaseUnitId], references: [id, schoolId, slotId, releaseUnitId], onDelete: Restrict, onUpdate: Restrict, map: "result_publication_predecessor_fk")
+  successors            ResultPublication[]          @relation("ResultPublicationPredecessor")
+  reviewDecision        ResultReviewDecision?        @relation(fields: [reviewDecisionId, schoolId, candidateId], references: [id, schoolId, candidateId], onDelete: Restrict, onUpdate: Restrict, map: "result_publication_decision_fk")
+  policy                OfficialResultPolicyVersion? @relation(fields: [policyVersionId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  publishedBy           User                         @relation("ResultPublicationIssuer", fields: [publishedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  activePointer         ResultCurrentRelease?
+  events                ResultReleaseEvent[]
+  correctionDraft       ResultCorrectionDraft?
+  notice                ResultPublicationNotice?
+  readEntitlements      ResultReadEntitlement[]
+  aggregateDependencies ResultAggregateDependency[]
 
   @@unique([id, schoolId])
   @@unique([id, schoolId, slotId], map: "result_publication_slot_key")
@@ -6940,6 +6951,169 @@ model ResultPublicationNotice {
   @@unique([publicationId, schoolId])
   @@index([schoolId, status, createdAt])
   @@map("result_publication_notices")
+}
+
+model ResultReadEntitlement {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String    @map("school_id") @db.Uuid
+  studentId      String    @map("student_id") @db.Uuid
+  actorId        String    @map("actor_id") @db.Uuid
+  relationshipId String?   @map("relationship_id") @db.Uuid
+  issuedFromId   String    @map("issued_from_id") @db.Uuid
+  grantedAt      DateTime  @default(now()) @map("granted_at") @db.Timestamptz(3)
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz(3)
+  revokedById    String?   @map("revoked_by_id") @db.Uuid
+  revokeReason   String?   @map("revoke_reason") @db.VarChar(2000)
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  school     School            @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  student    Student           @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  actor      User              @relation("ResultEntitlementPrincipal", fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  revokedBy  User?             @relation("ResultEntitlementRevoker", fields: [revokedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  issuedFrom ResultPublication @relation(fields: [issuedFromId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([schoolId, studentId, actorId])
+  @@index([actorId, revokedAt, schoolId])
+  @@index([issuedFromId, schoolId])
+  @@map("result_read_entitlements")
+}
+
+model ResultAggregateProfile {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId  String   @map("school_id") @db.Uuid
+  code      String   @db.VarChar(64)
+  revision  Int
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school   School                          @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  versions ResultAggregateProfileVersion[]
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, code])
+  @@map("result_aggregate_profiles")
+}
+
+model ResultAggregateProfileVersion {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId   String   @map("school_id") @db.Uuid
+  profileId  String   @map("profile_id") @db.Uuid
+  revision   Int
+  definition Json
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  profile    ResultAggregateProfile     @relation(fields: [profileId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  candidates ResultAggregateCandidate[]
+
+  @@unique([id, schoolId])
+  @@unique([id, schoolId, profileId])
+  @@unique([schoolId, profileId, revision])
+  @@map("result_aggregate_profile_versions")
+}
+
+model ResultAggregateCandidate {
+  id                   String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId             String                       @map("school_id") @db.Uuid
+  studentId            String                       @map("student_id") @db.Uuid
+  reportingPeriodId    String                       @map("reporting_period_id") @db.Uuid
+  profileId            String                       @map("profile_id") @db.Uuid
+  profileVersionId     String                       @map("profile_version_id") @db.Uuid
+  submittedById        String                       @map("submitted_by_id") @db.Uuid
+  policyVersionId      String?                      @map("policy_version_id") @db.Uuid
+  contentDigest        String                       @map("content_digest") @db.Char(64)
+  sourcePublicationIds String[]                     @map("source_publication_ids") @db.Uuid
+  computedResult       Json                         @map("computed_result")
+  status               ResultReleaseCandidateStatus
+  revision             Int                          @default(1)
+  createdAt            DateTime                     @default(now()) @map("created_at")
+  updatedAt            DateTime                     @updatedAt @map("updated_at")
+
+  student         Student                       @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  reportingPeriod ResultReportingPeriod         @relation(fields: [reportingPeriodId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  profileVersion  ResultAggregateProfileVersion @relation(fields: [profileVersionId, schoolId, profileId], references: [id, schoolId, profileId], onDelete: Restrict, onUpdate: Restrict)
+  submittedBy     User                          @relation("ResultAggregateCandidateAuthor", fields: [submittedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  dependencies    ResultAggregateDependency[]
+  decision        ResultAggregateDecision?
+  publication     ResultAggregatePublication?
+
+  @@unique([id, schoolId])
+  @@unique([id, schoolId, studentId, reportingPeriodId, profileId])
+  @@index([schoolId, reportingPeriodId, studentId, profileId])
+  @@index([schoolId, status, createdAt])
+  @@index([profileVersionId, schoolId, profileId])
+  @@map("result_aggregate_candidates")
+}
+
+model ResultAggregateDecision {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String             @map("school_id") @db.Uuid
+  candidateId       String             @map("candidate_id") @db.Uuid
+  reviewerId        String             @map("reviewer_id") @db.Uuid
+  candidateRevision Int                @map("candidate_revision")
+  contentDigest     String             @map("content_digest") @db.Char(64)
+  decision          ResultReviewChoice
+  comment           String?            @db.VarChar(2000)
+  decidedAt         DateTime           @default(now()) @map("decided_at") @db.Timestamptz(3)
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  candidate ResultAggregateCandidate @relation(fields: [candidateId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  reviewer  User                     @relation("ResultAggregateReviewer", fields: [reviewerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([candidateId, schoolId])
+  @@index([reviewerId])
+  @@map("result_aggregate_decisions")
+}
+
+model ResultAggregateDependency {
+  id            String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId      String @map("school_id") @db.Uuid
+  candidateId   String @map("candidate_id") @db.Uuid
+  publicationId String @map("publication_id") @db.Uuid
+
+  candidate   ResultAggregateCandidate @relation(fields: [candidateId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  publication ResultPublication        @relation(fields: [publicationId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([schoolId, candidateId, publicationId])
+  @@index([schoolId, publicationId, candidateId])
+  @@map("result_aggregate_dependencies")
+}
+
+model ResultAggregatePublication {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String   @map("school_id") @db.Uuid
+  candidateId       String   @map("candidate_id") @db.Uuid
+  studentId         String   @map("student_id") @db.Uuid
+  reportingPeriodId String   @map("reporting_period_id") @db.Uuid
+  profileId         String   @map("profile_id") @db.Uuid
+  revision          Int
+  publishedAt       DateTime @default(now()) @map("published_at") @db.Timestamptz(3)
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  candidate ResultAggregateCandidate @relation(fields: [candidateId, schoolId, studentId, reportingPeriodId, profileId], references: [id, schoolId, studentId, reportingPeriodId, profileId], onDelete: Restrict, onUpdate: Restrict, map: "result_aggregate_publication_candidate_fk")
+  head      ResultCurrentAggregate?
+
+  @@unique([candidateId, schoolId, studentId, reportingPeriodId, profileId], map: "result_aggregate_publication_candidate_key")
+  @@unique([id, schoolId, studentId, reportingPeriodId, profileId], map: "result_aggregate_publication_key")
+  @@unique([schoolId, studentId, reportingPeriodId, profileId, revision], map: "result_aggregate_publication_revision_key")
+  @@map("result_aggregate_publications")
+}
+
+model ResultCurrentAggregate {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String   @map("school_id") @db.Uuid
+  studentId         String   @map("student_id") @db.Uuid
+  reportingPeriodId String   @map("reporting_period_id") @db.Uuid
+  profileId         String   @map("profile_id") @db.Uuid
+  publicationId     String   @map("publication_id") @db.Uuid
+  stale             Boolean  @default(false)
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  publication ResultAggregatePublication @relation(fields: [publicationId, schoolId, studentId, reportingPeriodId, profileId], references: [id, schoolId, studentId, reportingPeriodId, profileId], onDelete: Restrict, onUpdate: Restrict, map: "result_current_aggregate_publication_fk")
+
+  @@unique([schoolId, studentId, reportingPeriodId, profileId])
+  @@unique([publicationId, schoolId, studentId, reportingPeriodId, profileId], map: "result_current_aggregate_publication_key")
+  @@map("result_current_aggregates")
 }
 
 model ResultOperation {

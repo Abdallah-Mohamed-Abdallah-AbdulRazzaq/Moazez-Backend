@@ -22,6 +22,8 @@ import { PERMISSION_CODES } from '../../src/modules/iam/reference-data/permissio
 import { TEACHER_PERMISSIONS } from '../../src/modules/iam/reference-data/system-role-catalog';
 import { requireResultActor } from '../../src/modules/official-results/application/result-actor';
 import { releaseOutputs } from '../../src/modules/official-results/dto/result-release.dto';
+import { aggregateOutputs } from '../../src/modules/official-results/dto/result-aggregate.dto';
+import { familyOutputs } from '../../src/modules/official-results/dto/result-family.dto';
 import { releaseSnapshot } from '../../src/modules/official-results/domain/result-release.contract';
 import { cloneResultDefinition } from '../../src/modules/official-results/domain/result-definition';
 import { sheetDefinitionSeed } from '../../src/modules/official-results/domain/sheet-definition-seed';
@@ -64,6 +66,10 @@ describe('Official Results policy and permission boundaries', () => {
   let school: SchoolFixture;
   let otherSchool: SchoolFixture;
   let teacher: Awaited<ReturnType<typeof createTeacher>>;
+  const familyScopes = new Map<
+    string,
+    ReturnType<typeof createRequestContext>
+  >();
   let coTeacher: Awaited<ReturnType<typeof createTeacher>>;
   let authorization: ResultAuthorizationRepository;
   let commands: ResultCommandRepository;
@@ -193,7 +199,10 @@ describe('Official Results policy and permission boundaries', () => {
         case 'Bearer co-teacher-fixture':
           return coTeacher.run(next);
         default:
-          return next();
+          const proof = familyScopes.get(req.header('authorization') ?? '');
+          return proof
+            ? runWithRequestContext(structuredClone(proof), next)
+            : next();
       }
     });
     app.useGlobalGuards(new PermissionsGuard(app.get(Reflector)));
@@ -355,7 +364,11 @@ describe('Official Results policy and permission boundaries', () => {
       Object.entries(document.paths).filter(
         ([path]) =>
           path.startsWith(management + '/') ||
-          path.startsWith(instructor + '/'),
+          path.startsWith(instructor + '/') ||
+          path.startsWith('/api/v1/student/official-results/') ||
+          path.startsWith(
+            '/api/v1/parent/children/{studentId}/official-results/',
+          ),
       ),
     );
     const catalog = JSON.parse(
@@ -407,7 +420,7 @@ describe('Official Results policy and permission boundaries', () => {
         }),
       ),
     );
-    expect(registered).toHaveLength(76);
+    expect(registered).toHaveLength(89);
     for (const endpoint of registered) {
       expect(catalog.operations).toContainEqual(
         expect.objectContaining({
@@ -2063,6 +2076,377 @@ describe('Official Results policy and permission boundaries', () => {
       policy.result.policyVersionId,
       'restore-managed-release',
     );
+  });
+
+  async function attachFamilyMembership(
+    user: { id: string; userType: 'STUDENT' | 'PARENT' },
+    schoolFixture: SchoolFixture,
+  ) {
+    const { school } = schoolFixture;
+    const role = await prisma.role.create({
+      data: {
+        schoolId: school.id,
+        key: 'family-' + user.id,
+        name: 'Official Results Family',
+      },
+    });
+    const codes = ['official_results.results.view'];
+    await attachPermissions(role.id, codes);
+    const membership = await prisma.membership.create({
+      data: {
+        schoolId: school.id,
+        organizationId: school.organizationId,
+        userId: user.id,
+        userType: user.userType,
+        roleId: role.id,
+      },
+    });
+    const token = 'Bearer family-' + randomUUID();
+    familyScopes.set(token, {
+      ...createRequestContext(),
+      actor: user,
+      activeMembership: {
+        membershipId: membership.id,
+        roleId: role.id,
+        schoolId: school.id,
+        organizationId: school.organizationId,
+        permissions: codes,
+      },
+    });
+    return { token, membership };
+  }
+
+  async function familyUser(userType: 'STUDENT' | 'PARENT') {
+    const account = await prisma.user.create({
+      data: {
+        email: 'result-family-' + randomUUID() + '@example.invalid',
+        firstName: 'Results',
+        lastName: 'Family',
+        userType,
+      },
+      select: { id: true },
+    });
+    return { ...account, userType };
+  }
+
+  it('T048–T053 and T056 project only released fields and verify live historical identity', async () => {
+    const book = await readyRelease('FAMILY-SAFE');
+    const learner = await familyUser('STUDENT');
+    const parent = await familyUser('PARENT');
+    const [access, parentAccess] = await Promise.all([
+      attachFamilyMembership(learner, school),
+      attachFamilyMembership(parent, school),
+    ]);
+    await prisma.student.update({
+      where: { id: book.child.id },
+      data: { userId: learner.id },
+    });
+    const guardian = await prisma.guardian.create({
+      data: {
+        schoolId: school.school.id,
+        organizationId: school.school.organizationId,
+        userId: parent.id,
+        firstName: 'Test',
+        lastName: 'Guardian',
+        phone: '+20000000000',
+        relation: 'MOTHER',
+      },
+    });
+    const link = await prisma.studentGuardian.create({
+      data: {
+        schoolId: school.school.id,
+        guardianId: guardian.id,
+        studentId: book.child.id,
+      },
+    });
+    const periodPath = '/official-results/periods/' + book.reportingPeriodId;
+    const studentResult = (token = access.token) =>
+      schoolApi()
+        .get(api + '/student' + periodPath + '/result')
+        .set('Authorization', token);
+    const parentResult = (childId = book.child.id) =>
+      schoolApi()
+        .get(api + '/parent/children/' + childId + periodPath + '/result')
+        .set('Authorization', parentAccess.token);
+    await studentResult().expect(404);
+    const candidate = (await book.capture())!;
+    const preview = releaseOutputs.preview.parse(
+      (
+        await withSchool(
+          'post',
+          '/candidates/' + candidate.candidateId + '/preview',
+        )
+          .send({ audience: 'STUDENT' })
+          .expect(200)
+      ).body.data,
+    );
+    await decideCandidate(candidate).expect(200);
+    await parentResult().expect(404);
+    await publishCandidate(candidate, 0, null).expect(202);
+    const verified = familyOutputs.result.parse(
+      (await studentResult().expect(200)).body.data,
+    );
+    const published = verified.groups[0].releases[0];
+    expect(published.fields).toEqual(
+      preview.result.groups[0].releases[0].fields,
+    );
+    expect(published).toMatchObject({
+      status: 'PUBLISHED',
+      revision: 1,
+      academicPlacement: { classroom: { id: school.classroom.id } },
+    });
+    expect(
+      await prisma.resultReadEntitlement.count({
+        where: { studentId: book.child.id, schoolId: school.school.id },
+      }),
+    ).toBe(2);
+    expect(JSON.stringify(verified)).not.toContain(book.internal.id);
+    expect(JSON.stringify(verified)).not.toContain('formula');
+    await withSchool('patch', book.url + '/cells')
+      .send({
+        expectedDefinitionVersionId: book.source.draftDefinitionVersionId,
+        expectedSheetRevision: book.source.sheetRevision,
+        operations: [
+          {
+            slotId: book.slot.id,
+            fieldId: book.internal.id,
+            expectedCellVersion: 0,
+            operation: 'SET',
+            value: { status: 'RECORDED', text: 'Restricted unpublished note' },
+          },
+        ],
+      })
+      .expect(200);
+    await withSchool('post', '/corrections')
+      .set('Idempotency-Key', 'pending-family-correction')
+      .send({
+        publicationId: published.publicationId,
+        expectedRevision: 1,
+        expectedPublicationGeneration: 1,
+        reason: 'Restricted correction reason',
+        operations: [
+          scoreOperation(book.slot.id, book.scores[0].id, '19.00', 1),
+        ],
+      })
+      .expect(201);
+    expect(
+      familyOutputs.result.parse((await parentResult().expect(200)).body.data)
+        .groups[0].releases[0].fields,
+    ).toEqual(verified.groups[0].releases[0].fields);
+    const peer = await school.addStudent('Unlinked peer');
+    await parentResult(peer.id).expect(404);
+    await schoolApi()
+      .get(api + '/student' + periodPath + '/result?studentId=' + peer.id)
+      .set('Authorization', access.token)
+      .expect(400);
+
+    await prisma.enrollment.update({
+      where: { id: book.enrollment.id },
+      data: {
+        status: 'COMPLETED',
+        endedAt: new Date('2026-11-21T10:02:00.000Z'),
+      },
+    });
+    expect((await studentResult().expect(200)).body.data.viewVersion).toBe(
+      verified.viewVersion,
+    );
+    await parentResult().expect(200);
+    await prisma.studentGuardian.delete({ where: { id: link.id } });
+    await parentResult().expect(404);
+
+    const moved = await otherSchool.addStudent('A separate enrollment');
+    const other = await attachFamilyMembership(learner, otherSchool);
+    await prisma.student.update({
+      where: { id: book.child.id },
+      data: { userId: null },
+    });
+    await prisma.student.update({
+      where: { id: moved.id },
+      data: { userId: learner.id },
+    });
+    await prisma.membership.update({
+      where: { id: access.membership.id },
+      data: { endedAt: new Date() },
+    });
+    expect(
+      (await studentResult(other.token).expect(200)).body.data.resultSetId,
+    ).toBe(verified.resultSetId);
+    await prisma.user.update({
+      where: { id: learner.id },
+      data: { status: 'DISABLED' },
+    });
+    await studentResult(other.token).expect(404);
+    await prisma.user.update({
+      where: { id: learner.id },
+      data: { status: 'ACTIVE' },
+    });
+    await prisma.resultReadEntitlement.updateMany({
+      where: {
+        schoolId: school.school.id,
+        studentId: book.child.id,
+        actorId: learner.id,
+      },
+      data: {
+        revokedAt: new Date(),
+        revokedById: school.actor.id,
+        revokeReason: 'Test a verified revocation',
+      },
+    });
+    await studentResult(other.token).expect(404);
+    const stranger = await familyUser('STUDENT');
+    const strangerScope = await attachFamilyMembership(stranger, otherSchool);
+    await studentResult(strangerScope.token).expect(404);
+  });
+
+  it('T054 binds aggregate review to published sources and stales an active summary on source revocation', async () => {
+    const book = await readyRelease('AGGREGATE-SAFE');
+    const learner = await familyUser('STUDENT');
+    const scope = await attachFamilyMembership(learner, school);
+    await prisma.student.update({
+      where: { id: book.child.id },
+      data: { userId: learner.id },
+    });
+    const candidate = (await book.capture())!;
+    await decideCandidate(candidate).expect(200);
+    await publishCandidate(candidate, 0, null).expect(202);
+    const active = await prisma.resultCurrentRelease.findFirstOrThrow({
+      where: { slotId: book.slot.id },
+      include: { publication: { include: { candidate: true } } },
+    });
+    const snapshot = releaseSnapshot.parse(
+      active.publication.candidate.snapshot,
+    );
+    const ref = { groupId: math.id, releaseUnitId: book.releaseUnitId };
+    const profile = aggregateOutputs.profile.parse(
+      (
+        await withSchool('post', '/aggregate-profiles')
+          .set('Idempotency-Key', 'new-summary')
+          .send({
+            expectedProfileRevision: 0,
+            definition: {
+              code: 'summary',
+              label: { ar: 'مجموع', en: 'Overall result' },
+              reportingPeriodSelector: {
+                kind: 'EXACT_PERIODS',
+                periodIds: [book.reportingPeriodId],
+              },
+              inputs: [
+                {
+                  ...ref,
+                  fieldId: snapshot.fields.find(
+                    (field) => field.definition.code === 'total',
+                  )!.definition.id,
+                },
+              ],
+              operation: 'SUM_POINTS',
+              requiredCoverage: [ref],
+              audiences: ['STUDENT', 'PARENT'],
+              calculationPolicy: {
+                displayRounding: { mode: 'HALF_UP', scale: 2 },
+              },
+            },
+          })
+          .expect(201)
+      ).body.data,
+    );
+    const capture = async (key: string) =>
+      aggregateOutputs.candidate.parse(
+        (
+          await withSchool('post', '/aggregate-candidates')
+            .set('Idempotency-Key', key)
+            .send({
+              studentId: book.child.id,
+              reportingPeriodId: book.reportingPeriodId,
+              profileVersionId: profile.profileVersionId,
+              sourcePublicationIds: [active.publicationId],
+            })
+            .expect(201)
+        ).body.data,
+      );
+    const approve = (
+      staged: ReturnType<typeof aggregateOutputs.candidate.parse>,
+      candidateKind = 'AGGREGATE',
+    ) =>
+      withSchool('post', '/reviews/decisions')
+        .set('Idempotency-Key', randomUUID())
+        .send({
+          candidateKind,
+          candidateId: staged.candidateId,
+          expectedCandidateRevision: staged.candidateRevision,
+          contentDigest: staged.contentDigest,
+          decision: 'APPROVE',
+        });
+    const publish = (
+      staged: ReturnType<typeof aggregateOutputs.candidate.parse>,
+      previous: string | null,
+    ) =>
+      withSchool('post', '/aggregate-publications')
+        .set('Idempotency-Key', randomUUID())
+        .send({
+          candidateId: staged.candidateId,
+          expectedCandidateRevision: staged.candidateRevision + 1,
+          contentDigest: staged.contentDigest,
+          expectedCurrentAggregatePublicationId: previous,
+        });
+    const staged = await capture('capture-summary');
+    await approve(staged, 'RESULT_RELEASE').expect(404);
+    await approve(staged).expect(200);
+    const aggregate = aggregateOutputs.publication.parse(
+      (await publish(staged, null).expect(201)).body.data,
+    );
+    const result = await schoolApi()
+      .get(
+        api +
+          '/student/official-results/periods/' +
+          book.reportingPeriodId +
+          '/result',
+      )
+      .set('Authorization', scope.token)
+      .expect(200);
+    expect(familyOutputs.result.parse(result.body.data).summary).toMatchObject({
+      status: 'ACTIVE',
+      overallScore: '91.00',
+      overallMaxScore: '100.00',
+    });
+    const pending = await capture('capture-summary-before-revoke');
+    await approve(pending).expect(200);
+    await withSchool('post', '/corrections')
+      .set('Idempotency-Key', 'correct-summary-input')
+      .send({
+        publicationId: active.publicationId,
+        expectedRevision: 1,
+        expectedPublicationGeneration: 1,
+        reason: 'Source superseded',
+        operations: [
+          scoreOperation(book.slot.id, book.scores[0].id, '19.00', 1),
+        ],
+      })
+      .expect(201);
+    const corrected = (await book.capture())!;
+    await decideCandidate(corrected).expect(200);
+    await publishCandidate(corrected, 1, active.publicationId).expect(202);
+    await publish(pending, aggregate.publicationId).expect(409);
+    expect(
+      (
+        await prisma.resultCurrentAggregate.findFirstOrThrow({
+          where: { publicationId: aggregate.publicationId },
+        })
+      ).stale,
+    ).toBe(true);
+    const safe = await schoolApi()
+      .get(
+        api +
+          '/student/official-results/periods/' +
+          book.reportingPeriodId +
+          '/result',
+      )
+      .set('Authorization', scope.token)
+      .expect(200);
+    expect(familyOutputs.result.parse(safe.body.data).summary).toMatchObject({
+      status: 'STALE',
+      overallScore: null,
+      overallMaxScore: null,
+    });
   });
 
   it('T013 denies an edit waiting on a concurrent allocation revocation', async () => {
