@@ -5179,6 +5179,19 @@ describe('Official Results policy and permission boundaries', () => {
   });
 
   it('T092 measures a populated 9,999-edit sheet at the atomic import budget with a second school active', async () => {
+    // Observe worker completion without counting repeated authenticated polling requests as processing queries.
+    const waitForBulk = async (
+      readStatus: () => Promise<string | undefined>,
+      pending: string[],
+    ) => {
+      const deadline = Date.now() + 35_000;
+      while (Date.now() < deadline) {
+        const status = await readStatus();
+        if (status && !pending.includes(status)) return;
+        await new Promise<void>((resolve) => setTimeout(resolve, 500));
+      }
+      throw new Error('Load operation did not reach a terminal state');
+    };
     const seedSize = 3333;
     const now = performance.now();
     const students = await prisma.student.createManyAndReturn({
@@ -5268,10 +5281,20 @@ describe('Official Results policy and permission boundaries', () => {
           .expect(202)
       ).body.data,
     );
-    const job = await waitForExport(
-      '/exports/' + receipt.exportId,
-      withTeacher,
+    await waitForBulk(
+      async () =>
+        (
+          await prisma.resultExport.findUnique({
+            where: { id: receipt.exportId },
+            select: { status: true },
+          })
+        )?.status,
+      ['QUEUED', 'GENERATING'],
     );
+    const job = exportOutputs.export.parse(
+      (await withTeacher('/exports/' + receipt.exportId).expect(200)).body.data,
+    );
+    expect(job.status).toBe('READY');
     const previewMs = Math.ceil(performance.now() - now);
     const downloaded = await exportTeacher(
       'get',
@@ -5291,7 +5314,20 @@ describe('Official Results policy and permission boundaries', () => {
         ).expect(202)
       ).body.data,
     );
-    const ready = await waitForImport('/' + staged.batchId);
+    await waitForBulk(
+      async () =>
+        (
+          await prisma.resultImportBatch.findUnique({
+            where: { id: staged.batchId },
+            select: { status: true },
+          })
+        )?.status,
+      ['UPLOADED', 'VALIDATING'],
+    );
+    const ready = importOutputs.batch.parse(
+      (await importTeacher('get', '/' + staged.batchId).expect(200)).body.data,
+    );
+    expect(ready.status).toBe('READY_TO_CONFIRM');
     expect(ready.summary.changedCells).toBe(9999);
     const validateMs = Math.ceil(performance.now() - validateStarted);
     const validationQueries = observedQueries - validationQueryBaseline;
@@ -5301,15 +5337,30 @@ describe('Official Results policy and permission boundaries', () => {
       (await confirmImport(ready.batchId, confirmation(ready)).expect(202)).body
         .data,
     );
-    expect(await waitForOperation(applied.operationId)).toMatchObject({
-      status: 'APPLIED',
-    });
+    await waitForBulk(
+      async () =>
+        (
+          await prisma.resultImportExecution.findUnique({
+            where: { id: applied.operationId },
+            select: { status: true },
+          })
+        )?.status,
+      ['QUEUED', 'APPLYING'],
+    );
+    const outcome = importOutputs.execution.parse(
+      (
+        await exportTeacher('get', '/operations/' + applied.operationId).expect(
+          200,
+        )
+      ).body.data,
+    );
+    expect(outcome.status).toBe('APPLIED');
     const applyMs = Math.ceil(performance.now() - applyStarted);
     const applyQueries = observedQueries - applyQueryBaseline;
     expect(exportQueries).toBeGreaterThan(0);
     expect(validationQueries).toBeGreaterThan(0);
     expect(applyQueries).toBeGreaterThan(0);
-    expect(exportQueries + validationQueries + applyQueries).toBeLessThan(500);
+
     expect(
       await prisma.resultCell.count({
         where: {
@@ -5349,5 +5400,6 @@ describe('Official Results policy and permission boundaries', () => {
         ) + '\n',
       );
     }
+    expect(exportQueries + validationQueries + applyQueries).toBeLessThan(500);
   }, 120_000);
 });
