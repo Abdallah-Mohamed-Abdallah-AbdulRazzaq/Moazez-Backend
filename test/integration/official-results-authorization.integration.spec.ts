@@ -21,6 +21,12 @@ import { PrismaService } from '../../src/infrastructure/database/prisma.service'
 import { PERMISSION_CODES } from '../../src/modules/iam/reference-data/permission-catalog';
 import { TEACHER_PERMISSIONS } from '../../src/modules/iam/reference-data/system-role-catalog';
 import { requireResultActor } from '../../src/modules/official-results/application/result-actor';
+import {
+  moazezStarterDefinition,
+  starterTemplateId,
+  starterVersionId,
+} from '../../src/modules/official-results/domain/moazez-starter';
+import { authoringOutputs } from '../../src/modules/official-results/dto/result-authoring.dto';
 import { resultContracts } from '../../src/modules/official-results/dto/result-openapi.contract';
 import { ResultAuthorizationRepository } from '../../src/modules/official-results/infrastructure/repositories/result-authorization.repository';
 import { ResultCommandRepository } from '../../src/modules/official-results/infrastructure/repositories/result-command.repository';
@@ -341,27 +347,47 @@ describe('Official Results policy and permission boundaries', () => {
         'utf8',
       ),
     ) as {
+      contracts: Record<string, { requiredFields: string[] }>;
       operations: {
         path: string;
         method: string;
         operationId: string;
         successStatus: number;
+        outputContract: string;
+        idempotency: string;
       }[];
     };
     const registered = Object.entries(paths).flatMap(([path, item]) =>
       Object.entries(item).map(
         ([method, operation]: [
           string,
-          { operationId: string; responses: Record<string, unknown> },
+          {
+            operationId: string;
+            parameters?: { name: string; in: string; required?: boolean }[];
+            responses: Record<
+              string,
+              {
+                content?: Record<
+                  string,
+                  {
+                    schema?: {
+                      properties?: { data?: { required?: string[] } };
+                    };
+                  }
+                >;
+              }
+            >;
+          },
         ]) => ({
           path,
           method: method.toUpperCase(),
           operationId: operation.operationId,
           responses: operation.responses,
+          parameters: operation.parameters ?? [],
         }),
       ),
     );
-    expect(registered).toHaveLength(18);
+    expect(registered).toHaveLength(49);
     for (const endpoint of registered) {
       expect(catalog.operations).toContainEqual(
         expect.objectContaining({
@@ -376,13 +402,35 @@ describe('Official Results policy and permission boundaries', () => {
       expect(endpoint.responses).toHaveProperty(
         String(operation.successStatus),
       );
+      expect(
+        endpoint.responses[operation.successStatus].content?.[
+          'application/json'
+        ].schema?.properties?.data?.required,
+      ).toEqual(
+        expect.arrayContaining(
+          catalog.contracts[operation.outputContract].requiredFields,
+        ),
+      );
+      const header = endpoint.parameters.find(
+        (parameter) =>
+          parameter.in === 'header' && parameter.name === 'Idempotency-Key',
+      );
+      expect(header?.required ?? false).toBe(
+        operation.idempotency === 'REQUIRED',
+      );
     }
     const output = process.env.OFFICIAL_RESULTS_OPENAPI_OUTPUT;
-    if (output)
-      writeFileSync(
-        output,
-        JSON.stringify({ ...document, paths }, null, 2) + '\n',
-      );
+    const generated = JSON.stringify({ ...document, paths }, null, 2) + '\n';
+    if (output) writeFileSync(output, generated);
+    else
+      expect(
+        JSON.parse(
+          readFileSync(
+            join(process.cwd(), 'docs/official-results/openapi.json'),
+            'utf8',
+          ),
+        ),
+      ).toEqual(JSON.parse(generated));
   });
 
   it('rejects foreign identifiers before returning sheet details and rejects writable tenant fields', async () => {
@@ -617,6 +665,430 @@ describe('Official Results policy and permission boundaries', () => {
         },
       }),
     ).toBe(1);
+  });
+
+  async function authoringPeriod(code: string) {
+    const created = await withSchool('post', '/periods')
+      .set('Idempotency-Key', code)
+      .send({
+        kind: 'TERM',
+        code,
+        academicYearId: school.year.id,
+        termId: school.term.id,
+        name: { ar: 'النتائج', en: 'Reporting period' },
+        startsOn: '2026-09-01',
+        endsOn: '2026-12-31',
+      })
+      .expect(201);
+    return (created.body as PeriodResponse).data.reportingPeriodId;
+  }
+
+  it('T016, T017, T021 and T022 clone, customize and pin a school version on canonical sheets', async () => {
+    const starterPath =
+      '/templates/' + starterTemplateId + '/versions/' + starterVersionId;
+    const starter = authoringOutputs.templateVersion.parse(
+      (await withSchool('get', starterPath).expect(200)).body.data,
+    );
+    const copy = authoringOutputs.template.parse(
+      (
+        await withSchool('post', '/templates/clone')
+          .set('Idempotency-Key', 'clone-starter')
+          .send({
+            sourceTemplateId: starterTemplateId,
+            sourceVersionId: starterVersionId,
+            label: { ar: 'نسخة المدرسة', en: 'School copy' },
+          })
+          .expect(201)
+      ).body.data,
+    );
+    const templatePath = '/templates/' + copy.templateId;
+    const v1Path = templatePath + '/versions/' + copy.latestVersionId;
+    const v1 = authoringOutputs.templateVersion.parse(
+      (await withSchool('get', v1Path).expect(200)).body.data,
+    );
+    expect(v1.definition.fields[0].id).not.toBe(
+      starter.definition.fields[0].id,
+    );
+    expect(
+      v1.definition.fields.find((field) => field.code === 'total')?.formula
+        ?.operands[0].fieldId,
+    ).toBe(v1.definition.fields[0].id);
+    expect(v1.origin.sourceVersionId).toBe(starterVersionId);
+    await schoolApi()
+      .get(management + v1Path)
+      .set('Authorization', 'Bearer other-school-fixture')
+      .expect(404);
+    const activate = async (versionId: string, key: string) => {
+      const template = authoringOutputs.template.parse(
+        (await withSchool('get', templatePath).expect(200)).body.data,
+      );
+      const request = {
+        versionId,
+        expectedTemplateRevision: template.revision,
+      };
+      const preview = authoringOutputs.activationPreview.parse(
+        (
+          await withSchool('post', templatePath + '/activation-preview')
+            .send(request)
+            .expect(200)
+        ).body.data,
+      );
+      await withSchool('post', templatePath + '/activate')
+        .set('Idempotency-Key', key)
+        .send({
+          ...request,
+          previewId: preview.previewId,
+          previewDigest: preview.previewDigest,
+        })
+        .expect(200);
+    };
+    await activate(v1.templateVersionId, 'activate-school-v1');
+    const reportingPeriodId = await authoringPeriod('PINNED');
+    const fixedIds = [school.classroom.id, school.otherClassroom.id];
+    await withSchool('post', '/scope-assignments')
+      .set('Idempotency-Key', 'fixed-classrooms')
+      .send({
+        expectedScopeRevision: 0,
+        assignment: {
+          academicScope: { level: 'CLASSROOM', ids: fixedIds },
+          groupScope: { kind: 'SUBJECTS', subjectIds: [school.subject.id] },
+          periodSelector: {
+            kind: 'EXACT_PERIODS',
+            periodIds: [reportingPeriodId],
+          },
+          mode: 'REPLACE',
+          templateVersionId: v1.templateVersionId,
+          enabled: true,
+        },
+      })
+      .expect(201);
+    expect(
+      (await withTeacher(v1Path).expect(200)).body.data.templateVersionId,
+    ).toBe(v1.templateVersionId);
+    const added = await prisma.classroom.create({
+      data: {
+        schoolId: school.school.id,
+        sectionId: school.section.id,
+        nameAr: 'فصل جديد',
+        nameEn: 'Later classroom',
+      },
+    });
+    const rosterStudent = await school.addStudent('Authoring Student');
+    await prisma.enrollment.create({
+      data: {
+        schoolId: school.school.id,
+        academicYearId: school.year.id,
+        termId: school.term.id,
+        studentId: rosterStudent.id,
+        classroomId: school.classroom.id,
+        enrolledAt: new Date('2026-09-01T08:00:00Z'),
+      },
+    });
+    const preview = authoringOutputs.resolution.parse(
+      (
+        await withSchool('post', '/scope-resolutions')
+          .send({
+            reportingPeriodId,
+            academicScope: { level: 'SCHOOL', ids: [] },
+            groupIds: [math.id],
+            rosterAsOf: '2026-11-21T10:00:00.000Z',
+          })
+          .expect(200)
+      ).body.data,
+    );
+    expect(preview.conflicts).toEqual([]);
+    expect(preview.tuples.map((tuple) => tuple.classroomId).sort()).toEqual(
+      [...fixedIds, added.id].sort(),
+    );
+    expect(
+      preview.tuples
+        .filter((tuple) => tuple.templateVersionId === v1.templateVersionId)
+        .map((tuple) => tuple.classroomId)
+        .sort(),
+    ).toEqual([...fixedIds].sort());
+    const materialize = () =>
+      withSchool('post', '/sheets/materialize')
+        .set('Idempotency-Key', 'pinned-materialize')
+        .send({
+          previewId: preview.previewId,
+          previewDigest: preview.previewDigest,
+        })
+        .expect(202);
+    const outcome = authoringOutputs.operation.parse(
+      (await materialize()).body.data,
+    );
+    expect((await materialize()).body.data).toEqual(outcome);
+    const items = authoringOutputs.operationItems.parse(
+      (
+        await schoolApi()
+          .get(outcome.itemsPath)
+          .set('Authorization', 'Bearer school-fixture')
+          .expect(200)
+      ).body.data,
+    );
+    const sheetId = items.items.find(
+      (item) => item.classroomId === school.classroom.id,
+    )!.sheetId;
+    const current = await prisma.resultSheet.findUniqueOrThrow({
+      where: { id: sheetId },
+      include: { draftDefinition: true, slots: true },
+    });
+    expect(current.slots).toEqual([
+      expect.objectContaining({ studentId: rosterStudent.id }),
+    ]);
+    expect(current.draftDefinition?.configuration).toMatchObject({
+      templateVersionId: v1.templateVersionId,
+    });
+    const v2 = authoringOutputs.templateVersion.parse(
+      (
+        await withSchool('post', templatePath + '/versions')
+          .set('Idempotency-Key', 'school-v2')
+          .send({
+            expectedLatestVersionId: v1.templateVersionId,
+            definition: {
+              ...v1.definition,
+              label: { ar: 'مخصص', en: 'Customized' },
+            },
+          })
+          .expect(201)
+      ).body.data,
+    );
+    await activate(v2.templateVersionId, 'activate-school-v2');
+    expect(
+      (await prisma.resultSheet.findUniqueOrThrow({ where: { id: sheetId } }))
+        .draftDefinitionVersionId,
+    ).toBe(current.draftDefinitionVersionId);
+    expect(
+      (await withSchool('get', starterPath).expect(200)).body.data,
+    ).toEqual(starter);
+  });
+
+  it('T008, T023 and T099 stage a MANAGED teacher draft, preserve scores and enforce accepted protections', async () => {
+    const reportingPeriodId = await authoringPeriod('FREEFORM');
+    const enrolled = await school.addStudent('Freeform Student');
+    await prisma.enrollment.create({
+      data: {
+        schoolId: school.school.id,
+        academicYearId: school.year.id,
+        termId: school.term.id,
+        studentId: enrolled.id,
+        classroomId: school.classroom.id,
+        enrolledAt: new Date('2026-09-01T08:00:00Z'),
+      },
+    });
+    const teacherPost = (path: string) =>
+      schoolApi()
+        .post(instructor + path)
+        .set('Authorization', 'Bearer teacher-fixture');
+    const scope = authoringOutputs.resolution.parse(
+      (
+        await teacherPost('/scope-resolutions')
+          .send({
+            reportingPeriodId,
+            academicScope: { level: 'SCHOOL', ids: [] },
+            groupIds: [math.id],
+            rosterAsOf: '2026-11-21T10:00:00.000Z',
+          })
+          .expect(200)
+      ).body.data,
+    );
+    expect(scope.tuples.map((tuple) => tuple.classroomId)).toEqual([
+      school.classroom.id,
+    ]);
+    const operation = authoringOutputs.operation.parse(
+      (
+        await teacherPost('/sheets/materialize')
+          .set('Idempotency-Key', 'freeform-materialize')
+          .send({
+            previewId: scope.previewId,
+            previewDigest: scope.previewDigest,
+          })
+          .expect(202)
+      ).body.data,
+    );
+    const list = authoringOutputs.operationItems.parse(
+      (
+        await schoolApi()
+          .get(operation.itemsPath)
+          .set('Authorization', 'Bearer teacher-fixture')
+          .expect(200)
+      ).body.data,
+    );
+    const sheetId = list.items[0].sheetId;
+    const loadSheet = () =>
+      prisma.resultSheet.findUniqueOrThrow({
+        where: { id: sheetId },
+        include: { slots: true },
+      });
+    const draftInput = {
+      label: { ar: 'شخصي', en: 'Personal' },
+      groupKind: 'SUBJECT',
+      calculationPolicy: moazezStarterDefinition().calculationPolicy,
+      fields: [
+        {
+          clientKey: 'participation',
+          code: 'participation',
+          label: { ar: 'المشاركة', en: 'Participation' },
+          kind: 'SCORE',
+          order: 1,
+          requiredForFinal: true,
+          constraints: { minScore: '0', maxScore: '20', inputScale: 2 },
+          audiences: ['STUDENT', 'PARENT', 'STAFF'],
+          readRule: 'INHERIT_SHEET',
+          editRule: 'INHERIT_SHEET',
+          clientUnitKey: 'progress',
+        },
+      ],
+      releaseUnits: [
+        {
+          clientUnitKey: 'progress',
+          code: 'PROGRESS',
+          label: { ar: 'تقدم', en: 'Progress' },
+          classification: 'PROGRESS',
+          outputFields: [{ clientFieldKey: 'participation' }],
+        },
+      ],
+    };
+    const create = async (
+      definition: object,
+      key: string,
+      schoolAuthor = false,
+      status = 201,
+    ) => {
+      const sheet = await loadSheet();
+      return (
+        schoolAuthor ? withSchool('post', '/designs') : teacherPost('/designs')
+      )
+        .set('Idempotency-Key', key)
+        .send({
+          sheetId,
+          definition,
+          reason: 'Validated draft design',
+          expectedDefinitionVersionId: sheet.draftDefinitionVersionId,
+          expectedSheetRevision: sheet.sheetRevision,
+        })
+        .expect(status);
+    };
+    const draft = authoringOutputs.design.parse(
+      (await create(draftInput, 'teacher-personal')).body.data,
+    );
+    const path = '/sheets/' + sheetId + '/draft-definition-';
+    const review = async (
+      targetDefinitionVersionId: string,
+      fieldMapping: object[],
+    ) => {
+      const sheet = await loadSheet();
+      return authoringOutputs.definitionPreview.parse(
+        (
+          await teacherPost(path + 'preview')
+            .send({
+              targetDefinitionVersionId,
+              fieldMapping,
+              expectedDefinitionVersionId: sheet.draftDefinitionVersionId,
+              expectedSheetRevision: sheet.sheetRevision,
+            })
+            .expect(200)
+        ).body.data,
+      );
+    };
+    const adopt = async (
+      preview: Awaited<ReturnType<typeof review>>,
+      key: string,
+    ) =>
+      authoringOutputs.sheet.parse(
+        (
+          await teacherPost(path + 'adopt')
+            .set('Idempotency-Key', key)
+            .send({
+              previewId: preview.previewId,
+              previewDigest: preview.previewDigest,
+              expectedSheetRevision: preview.impact.expectedSheetRevision,
+            })
+            .expect(200)
+        ).body.data,
+      );
+    const selected = await adopt(
+      await review(draft.definitionVersionId, []),
+      'adopt-in-managed',
+    );
+    expect(selected.lastAcceptedDefinitionVersionId).toBeNull();
+    const fieldId = draft.definition.fields[0].id;
+    const slot = (await loadSheet()).slots.find(
+      (row) => row.studentId === enrolled.id,
+    )!;
+    await prisma.resultCell.create({
+      data: {
+        schoolId: school.school.id,
+        slotId: slot.id,
+        definitionVersionId: draft.definitionVersionId,
+        fieldId,
+        fieldKind: 'SCORE',
+        status: 'RECORDED',
+        numericValue: '18.00',
+        updatedById: teacher.actor.id,
+      },
+    });
+    const higherLimit = {
+      ...draft.definition,
+      fields: draft.definition.fields.map((field) => ({
+        ...field,
+        constraints: { minScore: '0', maxScore: '100', inputScale: 2 },
+      })),
+    };
+    const widened = authoringOutputs.design.parse(
+      (await create(higherLimit, 'increase-maximum')).body.data,
+    );
+    expect((await review(widened.definitionVersionId, [])).blockers).toEqual([
+      { fieldId, code: 'MAPPING_REQUIRED' },
+    ]);
+    const updated = await adopt(
+      await review(widened.definitionVersionId, [
+        { fromFieldId: fieldId, toFieldId: fieldId, action: 'PRESERVE' },
+      ]),
+      'preserve-raw-score',
+    );
+    expect(updated.lastAcceptedDefinitionVersionId).toBeNull();
+    const cell = await prisma.resultCell.findFirstOrThrow({
+      where: { slotId: slot.id, fieldId },
+    });
+    expect(cell.numericValue?.toString()).toBe('18');
+    expect(cell.version).toBe(2);
+    const restricted = {
+      ...widened.definition,
+      fields: widened.definition.fields.map((field) => ({
+        ...field,
+        audiences: ['STAFF'],
+        readRule: 'SCHOOL_ONLY',
+        editRule: 'SCHOOL_ONLY',
+      })),
+    };
+    const schoolDesign = authoringOutputs.design.parse(
+      (await create(restricted, 'protect-field', true)).body.data,
+    );
+    const decision = {
+      definitionVersionId: schoolDesign.definitionVersionId,
+      contentDigest: schoolDesign.contentDigest,
+      decision: 'APPROVE',
+    };
+    const decisionPath = '/designs/' + schoolDesign.candidateId + '/decisions';
+    await withSchool('post', decisionPath)
+      .set('Idempotency-Key', 'wrong-digest')
+      .send({ ...decision, contentDigest: 'f'.repeat(64) })
+      .expect(409);
+    await withSchool('post', decisionPath)
+      .set('Idempotency-Key', 'exact-design')
+      .send(decision)
+      .expect(200);
+    const denied = await create(
+      higherLimit,
+      'try-remove-protection',
+      false,
+      403,
+    );
+    expect(denied.body.error.code).toBe('official_results.schema.protected');
+    expect((await loadSheet()).draftDefinitionVersionId).toBe(
+      widened.definitionVersionId,
+    );
   });
 
   it('T013 denies an edit waiting on a concurrent allocation revocation', async () => {

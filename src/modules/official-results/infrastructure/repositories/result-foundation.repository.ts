@@ -191,87 +191,112 @@ export class ResultFoundationRepository {
     input: MaterializeResultSheetInput,
     contentDigest: string,
   ) {
-    const { schoolId, actorId } = currentSchoolContext();
     return this.scoped.$transaction(
-      async (client) => {
-        const target = await this.roster.resolveTarget(client, schoolId, input);
-        const naturalKey = {
-          schoolId,
-          reportingPeriodId: target.period.id,
-          groupId: target.group.id,
-          classroomId: target.classroom.id,
-        };
-        const existing = await client.resultSheet.findFirst({
-          where: naturalKey,
-          select: sheetSelect,
-        });
-        if (existing) return { sheet: existing, created: false };
-        if (target.period.status !== 'OPEN') {
-          throw new OfficialResultsError('period.closed');
-        }
-
-        const enrollments = await this.roster.findRoster(
-          client,
-          target,
-          input.rosterAsOf,
-        );
-        const placed = await client.resultSlot.count({
-          where: {
-            schoolId,
-            reportingPeriodId: target.period.id,
-            groupId: target.group.id,
-            studentId: { in: enrollments.map(({ studentId }) => studentId) },
-          },
-        });
-        if (placed) throw new OfficialResultsError('roster.changed');
-
-        const sheet = await client.resultSheet.create({
-          data: { ...naturalKey, rosterAsOf: input.rosterAsOf },
-          select: { id: true },
-        });
-        const definitionId = await this.freezeDefinition(
-          client,
-          schoolId,
-          actorId,
-          sheet.id,
-          input.definition,
-          contentDigest,
-        );
-        await client.resultSlot.createMany({
-          data: enrollments.map((enrollment) => ({
-            schoolId,
-            sheetId: sheet.id,
-            reportingPeriodId: target.period.id,
-            groupId: target.group.id,
-            studentId: enrollment.studentId,
-            enrollmentId: enrollment.id,
-          })),
-        });
-        const initialized = await client.resultSheet.update({
-          where: { id_schoolId: { id: sheet.id, schoolId } },
-          data: {
-            draftDefinitionVersionId: definitionId,
-            lastAcceptedDefinitionVersionId: input.acceptsDefinition
-              ? definitionId
-              : null,
-          },
-          select: sheetSelect,
-        });
-        return { sheet: initialized, created: true };
-      },
+      (client) => this.materializeInTransaction(client, input, contentDigest),
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
   }
 
-  private async freezeDefinition(
+  async materializeInTransaction(
+    client: Prisma.TransactionClient,
+    input: MaterializeResultSheetInput,
+    contentDigest: string,
+    expectedRoster?: string,
+  ) {
+    const { schoolId, actorId } = currentSchoolContext();
+    const target = await this.roster.resolveTarget(client, schoolId, input);
+    const naturalKey = {
+      schoolId,
+      reportingPeriodId: target.period.id,
+      groupId: target.group.id,
+      classroomId: target.classroom.id,
+    };
+    const lockKey = JSON.stringify([
+      'official-results-sheet',
+      schoolId,
+      target.period.id,
+      target.group.id,
+      target.classroom.id,
+    ]);
+    await client.$queryRaw`
+      SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}::text, 0)) IS NULL AS locked
+    `;
+    const existing = await client.resultSheet.findFirst({
+      where: naturalKey,
+      select: sheetSelect,
+    });
+    if (existing) return { sheet: existing, created: false };
+    if (target.period.status !== 'OPEN') {
+      throw new OfficialResultsError('period.closed');
+    }
+
+    const enrollments = await this.roster.findRoster(
+      client,
+      target,
+      input.rosterAsOf,
+    );
+    if (
+      expectedRoster !== undefined &&
+      JSON.stringify(enrollments) !== expectedRoster
+    ) {
+      throw new OfficialResultsError('preview.stale');
+    }
+    const placed = await client.resultSlot.count({
+      where: {
+        schoolId,
+        reportingPeriodId: target.period.id,
+        groupId: target.group.id,
+        studentId: { in: enrollments.map(({ studentId }) => studentId) },
+      },
+    });
+    if (placed) throw new OfficialResultsError('roster.changed');
+
+    const sheet = await client.resultSheet.create({
+      data: { ...naturalKey, rosterAsOf: input.rosterAsOf },
+      select: { id: true },
+    });
+    const definitionId = await this.freezeDefinition(
+      client,
+      schoolId,
+      actorId,
+      sheet.id,
+      input.definition,
+      contentDigest,
+    );
+    await client.resultSlot.createMany({
+      data: enrollments.map((enrollment) => ({
+        schoolId,
+        sheetId: sheet.id,
+        reportingPeriodId: target.period.id,
+        groupId: target.group.id,
+        studentId: enrollment.studentId,
+        enrollmentId: enrollment.id,
+      })),
+    });
+    const initialized = await client.resultSheet.update({
+      where: { id_schoolId: { id: sheet.id, schoolId } },
+      data: {
+        draftDefinitionVersionId: definitionId,
+        lastAcceptedDefinitionVersionId: input.acceptsDefinition
+          ? definitionId
+          : null,
+      },
+      select: sheetSelect,
+    });
+    return { sheet: initialized, created: true };
+  }
+
+  async freezeDefinition(
     client: Prisma.TransactionClient,
     schoolId: string,
     actorId: string,
     sheetId: string,
     seed: FrozenResultDefinitionInput,
     contentDigest: string,
+    version = 1,
   ): Promise<string> {
     await client.resultFieldIdentity.createMany({
+      skipDuplicates: true,
       data: seed.fields.flatMap((field) =>
         field.newSemanticPurpose === undefined
           ? []
@@ -289,7 +314,7 @@ export class ResultFoundationRepository {
       data: {
         schoolId,
         sheetId,
-        version: 1,
+        version,
         contentDigest,
         labelAr: seed.label.ar,
         labelEn: seed.label.en,

@@ -50,6 +50,7 @@ export type ResultAcademicPath = Partial<Record<AcademicLevel, string>>;
 export interface ResultPeriodFact {
   id: string;
   academicYearId: string;
+  termId?: string | null;
   kind: z.infer<typeof kind>;
 }
 export interface ConcreteResultsScope {

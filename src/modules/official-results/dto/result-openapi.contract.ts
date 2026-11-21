@@ -90,6 +90,15 @@ export const resultContracts = {
     expectedPolicyVersionId: uuid.nullable(),
     expiresAt: instant,
     policy: resultPolicySchema,
+    impacts: z.array(
+      z.object({
+        kind: z.literal('POLICY_ACTIVATION'),
+        resourceId: uuid,
+        before: z.object({ policyVersionId: uuid.nullable() }),
+        after: z.object({ affectedScopes: z.number().int() }),
+      }),
+    ),
+    blockers: z.array(z.object({ code: z.string() })),
     impact: z.object({
       affectedSheets: z.number().int(),
       affectedScopes: z.number().int(),
@@ -116,6 +125,14 @@ export const resultContracts = {
   grant,
   grants: page(grant),
   capabilities: z.object({
+    actions: capabilities,
+    scope: z.object({
+      allowedScopeSelectors: z.array(z.string()),
+      reportingPeriodId: uuid.optional(),
+      groupId: uuid.optional(),
+      sheetId: uuid.optional(),
+      classroomId: uuid.optional(),
+    }),
     capabilities,
     allowedScopeSelectors: z.array(z.string()),
     sheetId: uuid.optional(),

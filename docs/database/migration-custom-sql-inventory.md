@@ -673,3 +673,15 @@ used by correction windows.
 | result_policy_version_immutable, result_command_receipt_immutable | Existing invoker trigger guards immutable decisions and retries. |
 
 Reference-data reconciliation uses IAM catalogs and the existing bootstrap.
+
+## OR03 Official Results authoring
+
+Migration `20261121023752_official_results_authoring` adds school templates and
+immutable versions, scoped assignments and revisions, design decisions,
+configuration previews, and materialization operation records.
+
+| PostgreSQL-specific object | Invariant |
+| --- | --- |
+| result_assignment_mode_check | EXTEND requires a distinct base version in the same school. |
+| result_one_open_design_per_sheet | At most one in-review design per canonical sheet. |
+| result_template_version_immutable | The existing invoker trigger prevents edits or removal of a frozen version. |

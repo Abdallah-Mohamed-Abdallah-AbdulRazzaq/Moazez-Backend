@@ -107,6 +107,7 @@ export class ResultAuthorizationRepository {
     action: ResultGrantAction,
     options: {
       write?: boolean;
+      review?: boolean;
       slotId?: string;
       releaseUnitId?: string;
     } = {},
@@ -154,7 +155,8 @@ export class ResultAuthorizationRepository {
       const releaseAction =
         action === 'PUBLISH' || action === 'PUBLISH_CORRECTION';
       const entryClosedRelease =
-        context.period.status === 'ENTRY_CLOSED' && releaseAction;
+        context.period.status === 'ENTRY_CLOSED' &&
+        (releaseAction || options.review);
       const correctionAllowed =
         options.slotId &&
         options.releaseUnitId &&

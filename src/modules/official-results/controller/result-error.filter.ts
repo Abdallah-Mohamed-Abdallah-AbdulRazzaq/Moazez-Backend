@@ -5,6 +5,12 @@ import { GlobalExceptionFilter } from '../../../common/exceptions/global-excepti
 import { OfficialResultsError } from '../domain/official-results.error';
 
 const ar: Record<string, string> = {
+  'cell.invalid_value': 'القيمة غير صالحة لحقل النتيجة',
+  'schema.invalid': 'تعريف كشف النتائج المقترح غير صالح',
+  'schema.stale': 'تغيّر تعريف كشف النتائج',
+  'schema.protected': 'العملية المقترحة تغيّر قواعد حماية بيانات النتائج',
+  'template.archived': 'قالب النتائج مؤرشف',
+  'preview.stale': 'تغيّرت البيانات منذ المعاينة. أعد المعاينة قبل التأكيد',
   'period.invalid_dates':
     'يجب أن تقع تواريخ التقرير ضمن السنة والفصل الدراسي المحددين',
   'period.closed': 'فترة النتائج مغلقة أمام الإدخال',
