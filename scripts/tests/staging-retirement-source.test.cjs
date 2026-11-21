@@ -1057,6 +1057,13 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
   const assessmentMediaPostReviewFiles = [
     ['test/e2e/assessment-media-provenance-boundary.e2e-spec.ts', 'e2e'],
   ];
+  const officialResultsFiles = assignments
+    .filter(({ file }) => file.startsWith('src/modules/official-results/') || file.startsWith('test/integration/official-results-'))
+    .map(({ file }) => [file, file.startsWith('src/') ? 'unit' : 'integration-general']);
+  assert.ok(officialResultsFiles.some(([file]) =>
+    file === 'test/integration/official-results-foundation.integration.spec.ts'));
+  assert.ok(officialResultsFiles.some(([file]) =>
+    file === 'test/integration/official-results-authorization.integration.spec.ts'));
   assert.equal(
     assignments.length,
     1019 +
@@ -1072,7 +1079,8 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
       st13Files.length +
       postCloseoutReviewFiles.length +
       a07Files.length +
-      assessmentMediaPostReviewFiles.length,
+      assessmentMediaPostReviewFiles.length +
+      officialResultsFiles.length,
   );
   assert.equal(
     assignments.filter((item) => item.execution === 'manual').length,
@@ -1093,7 +1101,8 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
       st13Files.length +
       postCloseoutReviewFiles.length +
       a07Files.length +
-      assessmentMediaPostReviewFiles.length,
+      assessmentMediaPostReviewFiles.length +
+      officialResultsFiles.length,
   );
   for (const [file, profile] of [
     ['src/common/rich-content/rich-content.spec.ts', 'unit'],
@@ -1114,6 +1123,7 @@ test('CI retains baseline retirement owners and includes the four ST-03 regressi
     ...postCloseoutReviewFiles,
     ...a07Files,
     ...assessmentMediaPostReviewFiles,
+    ...officialResultsFiles,
   ]) {
     const matches = assignments.filter((item) => item.file === file);
     assert.equal(matches.length, 1);

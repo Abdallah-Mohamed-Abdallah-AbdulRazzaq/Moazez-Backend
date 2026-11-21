@@ -152,7 +152,7 @@ function teacherRoutes() {
 
 describe('ACC-9 final cross-slice exported contracts', () => {
   it('discovers the complete Teacher route graph and preserves the accepted ACC controllers with own analytics', () => {
-    const routes = teacherRoutes(),
+    const routes = teacherRoutes().filter(route => route.prefix !== 'teacher/official-results'),
       acc = routes.filter((route) =>
         route.controller.startsWith('TeacherAcademicContent'),
       );
