@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ValidationPipe, type INestApplication } from '@nestjs/common';
+import { Logger, ValidationPipe, type INestApplication } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -13,6 +13,7 @@ import { parse as parseCsv } from 'csv-parse/sync';
 import { QueueModule } from '../../src/infrastructure/queue/queue.module';
 import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
 import { ResultBulkWorker } from '../../src/modules/official-results/infrastructure/result-bulk.worker';
+import { registerOfficialResultsJson } from '../../src/modules/official-results/infrastructure/result-json-transport';
 import { ResultImportApplyService } from '../../src/modules/official-results/application/result-import-apply.service';
 import { resultsBulkQueue } from '../../src/modules/official-results/domain/result-export.contract';
 import { resultApplyImportJob } from '../../src/modules/official-results/domain/result-import-execution.contract';
@@ -23,6 +24,8 @@ import {
 import { parseResultsXlsx } from '../../src/modules/official-results/domain/result-xlsx-import';
 import { reportOutputs } from '../../src/modules/official-results/dto/result-reports.dto';
 import { ResultNoticeService } from '../../src/modules/official-results/application/result-notice.service';
+import { ResultExportService } from '../../src/modules/official-results/application/result-export.service';
+import { ResultImportWorkService } from '../../src/modules/official-results/application/result-import-work.service';
 import { exportOutputs } from '../../src/modules/official-results/dto/result-export.dto';
 import { importOutputs } from '../../src/modules/official-results/dto/result-import.dto';
 import { csvRecord } from '../../src/modules/official-results/domain/result-csv';
@@ -82,7 +85,7 @@ interface PeriodResponse {
 }
 
 describe('Official Results policy and permission boundaries', () => {
-  jest.setTimeout(25_000);
+  jest.setTimeout(45_000);
   const prisma = new PrismaService();
   let app: INestApplication;
   let school: SchoolFixture;
@@ -212,6 +215,7 @@ describe('Official Results policy and permission boundaries', () => {
       .useValue({})
       .compile();
     app = module.createNestApplication();
+    registerOfficialResultsJson(app);
     app.setGlobalPrefix('api/v1');
     app.use((req: Request, _res: Response, next: NextFunction) => {
       switch (req.header('authorization')) {
@@ -2330,18 +2334,17 @@ describe('Official Results policy and permission boundaries', () => {
       where: { id: learner.id },
       data: { status: 'ACTIVE' },
     });
-    await prisma.resultReadEntitlement.updateMany({
+    const proof = await prisma.resultReadEntitlement.findFirstOrThrow({
       where: {
         schoolId: school.school.id,
         studentId: book.child.id,
         actorId: learner.id,
       },
-      data: {
-        revokedAt: new Date(),
-        revokedById: school.actor.id,
-        revokeReason: 'Test a verified revocation',
-      },
     });
+    await withSchool('post', '/read-entitlements/' + proof.id + '/revoke')
+      .set('Idempotency-Key', randomUUID())
+      .send({ reason: 'Test a verified revocation' })
+      .expect(200);
     await studentResult(other.token).expect(404);
     const stranger = await familyUser('STUDENT');
     const strangerScope = await attachFamilyMembership(stranger, otherSchool);
@@ -3418,8 +3421,8 @@ describe('Official Results policy and permission boundaries', () => {
     ).toBe(1);
   });
 
-  it('T078 preserves a committed sheet when a different sheet fails its final draft check', async () => {
-    const book = await liveGradebook('PARTIAL-COMMIT', true);
+  async function stagedTwoSheetImport(code: string) {
+    const book = await liveGradebook(code, true);
     const second = book.parallelSlot!;
     const auth = 'co-teacher-fixture';
     const api = (method: 'get' | 'post', path: string) =>
@@ -3489,6 +3492,14 @@ describe('Official Results policy and permission boundaries', () => {
       status: 'READY_TO_CONFIRM',
       summary: { selectedSheets: 2, changedCells: 2 },
     });
+    return { book, plan, api, auth };
+  }
+
+  it('T078 preserves a committed sheet when a different sheet fails its final draft check', async () => {
+    const { book, plan, api, auth } =
+      await stagedTwoSheetImport('PARTIAL-COMMIT');
+    const second = book.parallelSlot!;
+    const staged = plan;
     const queue = app.get(BullmqService).getQueue(resultsBulkQueue);
     await queue.pause();
     try {
@@ -3543,6 +3554,101 @@ describe('Official Results policy and permission boundaries', () => {
           where: {
             cell: { slotId: { in: [book.slot.id, second.id] } },
             source: 'IMPORT',
+          },
+        }),
+      ).toBe(1);
+    } finally {
+      await queue.resume();
+    }
+  });
+
+  it('T101 cancels only pending sheets while a claimed sheet transaction finishes', async () => {
+    const { book, plan, api, auth } =
+      await stagedTwoSheetImport('CANCEL-IMPORT');
+    const queue = app.get(BullmqService).getQueue(resultsBulkQueue);
+    const worker = app.get(ResultImportApplyService);
+    await queue.pause();
+    try {
+      const execution = importOutputs.execution.parse(
+        (
+          await api('post', '/imports/' + plan.batchId + '/confirm')
+            .set('Idempotency-Key', randomUUID())
+            .send(confirmation(plan))
+            .expect(202)
+        ).body.data,
+      );
+      const first = [book.source.id, book.destination.id].sort()[0];
+      let acquired!: () => void;
+      let release!: () => void;
+      const ready = new Promise<void>((resolve) => {
+        acquired = resolve;
+      });
+      const unlocked = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const blocker = prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`SELECT id FROM result_sheets WHERE id = ${first}::uuid FOR UPDATE`;
+          acquired();
+          await unlocked;
+        },
+        { timeout: 20_000 },
+      );
+      let applied: Promise<unknown> | undefined;
+      try {
+        await ready;
+        applied = worker.run(execution.operationId, 1);
+        let running = false;
+        for (let attempt = 0; attempt < 40; attempt++) {
+          const unit = await prisma.resultImportExecutionUnit.findFirstOrThrow({
+            where: { executionId: execution.operationId, sheetId: first },
+          });
+          if (unit.status === 'RUNNING') {
+            running = true;
+            break;
+          }
+          await new Promise<void>((resolve) => setTimeout(resolve, 50));
+        }
+        expect(running).toBe(true);
+        const cancelled = importOutputs.batch.parse(
+          (
+            await api('post', '/imports/' + plan.batchId + '/cancel')
+              .set('Idempotency-Key', randomUUID())
+              .send({
+                expectedBatchRevision: plan.batchRevision,
+                reason: 'Stop pending units',
+              })
+              .expect(200)
+          ).body.data,
+        );
+        expect(cancelled).toMatchObject({
+          status: 'APPLYING',
+          terminationReason: 'CANCELLED',
+        });
+      } finally {
+        release();
+        await blocker;
+        await applied;
+      }
+      expect(await waitForOperation(execution.operationId, auth)).toMatchObject(
+        {
+          status: 'PARTIALLY_APPLIED',
+          terminationReason: 'CANCELLED',
+          counts: { completed: 1, skipped: 1 },
+        },
+      );
+      const rows = await prisma.resultImportExecutionUnit.findMany({
+        where: { executionId: execution.operationId },
+      });
+      expect(rows.map((unit) => unit.status).sort()).toEqual([
+        'APPLIED',
+        'CANCELLED',
+      ]);
+      expect(
+        await prisma.resultCellRevision.count({
+          where: {
+            source: 'IMPORT',
+            cell: { slotId: { in: [book.slot.id, book.parallelSlot!.id] } },
           },
         }),
       ).toBe(1);
@@ -3981,7 +4087,7 @@ describe('Official Results policy and permission boundaries', () => {
     );
   });
 
-  it('dispatches a deduplicated publication notice after checking the current family link and audience', async () => {
+  it('T091 preserves publication during a notification failure and deduplicates retry for the current audience', async () => {
     const book = await readyRelease('NOTICE-DELIVERY');
     const [student, parent] = await Promise.all([
       familyUser('STUDENT'),
@@ -4025,6 +4131,39 @@ describe('Official Results policy and permission boundaries', () => {
     expect(before.status).toBe('PENDING');
     await prisma.studentGuardian.delete({ where: { id: link.id } });
     const notices = app.get(ResultNoticeService);
+
+    await prisma.$executeRaw`CREATE FUNCTION test_results_notices_unavailable() RETURNS trigger
+      LANGUAGE plpgsql AS $test$
+      BEGIN
+        IF NEW.source_type = 'OFFICIAL_RESULTS_PUBLICATION' AND EXISTS (
+          SELECT 1 FROM result_reporting_periods
+          WHERE school_id = NEW.school_id AND code = 'NOTICE-DELIVERY'
+            AND id::text = NEW.metadata->>'reportingPeriodId'
+        ) THEN RAISE EXCEPTION 'simulated isolated in-app failure'; END IF;
+        RETURN NEW;
+      END; $test$`;
+    await prisma.$executeRaw`CREATE TRIGGER test_results_notices_unavailable
+      BEFORE INSERT ON communication_notifications
+      FOR EACH ROW EXECUTE FUNCTION test_results_notices_unavailable()`;
+    try {
+      await notices.reconcile();
+      expect(
+        await prisma.resultPublicationNotice.findUniqueOrThrow({
+          where: { id: before.id },
+        }),
+      ).toMatchObject({ status: 'PENDING', attempts: 1 });
+      expect(
+        await prisma.resultPublication.count({ where: { id: publication.id } }),
+      ).toBe(1);
+      expect(
+        await prisma.communicationNotification.count({
+          where: { sourceId: publication.id },
+        }),
+      ).toBe(0);
+    } finally {
+      await prisma.$executeRaw`DROP TRIGGER test_results_notices_unavailable ON communication_notifications`;
+      await prisma.$executeRaw`DROP FUNCTION test_results_notices_unavailable()`;
+    }
     await notices.reconcile();
     await notices.reconcile();
     const result = await prisma.communicationNotification.findMany({
@@ -4048,6 +4187,356 @@ describe('Official Results policy and permission boundaries', () => {
         })
       ).status,
     ).toBe('DELIVERED');
+  });
+
+  it('T096 freezes API and queued grade writes for a disabled school and resumes without losing evidence', async () => {
+    const book = await liveGradebook('PILOT-FREEZE');
+    const { batch } = await stagedGrade(book, '15.00');
+    const queue = app.get(BullmqService).getQueue(resultsBulkQueue);
+    const worker = app.get(ResultImportApplyService);
+    const previous = process.env.OFFICIAL_RESULTS_SCHOOL_ALLOWLIST;
+    await queue.pause();
+    let executionId = '';
+    try {
+      executionId = importOutputs.execution.parse(
+        (await confirmImport(batch.batchId, confirmation(batch)).expect(202))
+          .body.data,
+      ).operationId;
+      process.env.OFFICIAL_RESULTS_SCHOOL_ALLOWLIST = otherSchool.school.id;
+      await withTeacher(book.url + '/grid').expect(404);
+      await worker.run(executionId, 1);
+      expect(
+        await prisma.resultImportExecutionUnit.findFirstOrThrow({
+          where: { executionId },
+        }),
+      ).toMatchObject({ status: 'QUEUED', attempts: 0 });
+      expect(
+        await prisma.resultCell.count({ where: { slotId: book.slot.id } }),
+      ).toBe(0);
+    } finally {
+      if (previous === undefined)
+        delete process.env.OFFICIAL_RESULTS_SCHOOL_ALLOWLIST;
+      else process.env.OFFICIAL_RESULTS_SCHOOL_ALLOWLIST = previous;
+      await queue.resume();
+    }
+    expect(await waitForOperation(executionId)).toMatchObject({
+      status: 'APPLIED',
+    });
+    expect(
+      await prisma.resultCellRevision.count({
+        where: { cell: { slotId: book.slot.id }, source: 'IMPORT' },
+      }),
+    ).toBe(1);
+  });
+
+  it('T100 denies an accepted execution that reaches the worker after manifest reuse expires', async () => {
+    const book = await liveGradebook('EXPIRED-MANIFEST');
+    const { batch, job } = await stagedGrade(book, '16.00');
+    const queue = app.get(BullmqService).getQueue(resultsBulkQueue);
+    await queue.pause();
+    try {
+      const receipt = importOutputs.execution.parse(
+        (await confirmImport(batch.batchId, confirmation(batch)).expect(202))
+          .body.data,
+      );
+      await prisma.resultExport.update({
+        where: { id: job.exportId },
+        data: {
+          createdAt: new Date(Date.now() - 2 * 86_400_000),
+          reuseUntil: new Date(Date.now() - 86_400_000),
+        },
+      });
+      await app.get(ResultImportApplyService).run(receipt.operationId, 1);
+      const item = await prisma.resultImportExecutionUnit.findFirstOrThrow({
+        where: { executionId: receipt.operationId },
+      });
+      expect(item).toMatchObject({
+        status: 'FAILED',
+        failureCode: 'official_results.import.export_expired',
+        changedCells: 0,
+      });
+      expect(
+        await prisma.resultCell.count({ where: { slotId: book.slot.id } }),
+      ).toBe(0);
+    } finally {
+      await queue.resume();
+    }
+  });
+
+  it('T090 and T094 expire private bytes while keeping committed results, reviews and idempotency receipts', async () => {
+    const book = await liveGradebook('PURGE-ARTIFACT');
+    const { batch, job } = await stagedGrade(book, '17.00');
+    const key = randomUUID();
+    const input = confirmation(batch);
+    const operation = importOutputs.execution.parse(
+      (await confirmImport(batch.batchId, input, key).expect(202)).body.data,
+    );
+    expect(await waitForOperation(operation.operationId)).toMatchObject({
+      status: 'APPLIED',
+    });
+    const files = await prisma.resultImportSource.findFirstOrThrow({
+      where: { batchId: batch.batchId },
+    });
+    const original = await exportTeacher(
+      'get',
+      '/files/' + files.id + '/download',
+    ).expect(200);
+    expect(original.headers['content-type']).toBe('application/octet-stream');
+    await exportTeacher(
+      'get',
+      '/files/' + files.id + '/download',
+      'co-teacher-fixture',
+    ).expect(404);
+    await exportTeacher(
+      'get',
+      '/files/' + job.files[0].fileId + '/download',
+    ).expect(200);
+    const past = new Date(Date.now() - 500);
+    await prisma.resultExport.update({
+      where: { id: job.exportId },
+      data: {
+        createdAt: new Date(Date.now() - 2 * 86_400_000),
+        reuseUntil: past,
+        expiresAt: past,
+      },
+    });
+    await app.get(ResultExportService).reconcile();
+    await exportTeacher(
+      'get',
+      '/files/' + job.files[0].fileId + '/download',
+    ).expect(410);
+    await app
+      .get(ResultImportWorkService)
+      .reconcile(new Date(files.expiresAt.getTime() + 1_000));
+    await exportTeacher('get', '/files/' + files.id + '/download').expect(410);
+    expect(
+      (
+        await prisma.resultImportSource.findUniqueOrThrow({
+          where: { id: files.id },
+        })
+      ).deletedAt,
+    ).not.toBeNull();
+    expect(
+      await prisma.resultCellRevision.count({
+        where: { cell: { slotId: book.slot.id }, source: 'IMPORT' },
+      }),
+    ).toBe(1);
+    expect(
+      await prisma.resultImportReview.count({
+        where: { batchId: batch.batchId },
+      }),
+    ).toBe(1);
+    const replay = importOutputs.execution.parse(
+      (await confirmImport(batch.batchId, input, key).expect(202)).body.data,
+    );
+    expect(replay).toMatchObject({
+      operationId: operation.operationId,
+      status: 'APPLIED',
+    });
+  });
+
+  it('T095 rejects an unauthenticated request at each implemented API entry point', async () => {
+    const catalog = JSON.parse(
+      readFileSync(
+        join(
+          process.cwd(),
+          'docs/official-results/contracts/endpoint-catalog.json',
+        ),
+        'utf8',
+      ),
+    ) as {
+      operations: {
+        path: string;
+        method: 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'PUT';
+        operationId: string;
+      }[];
+    };
+    for (const operation of catalog.operations) {
+      const path = operation.path.replace(
+        /:[A-Za-z0-9]+/gu,
+        '44ed43fb-542e-4ad3-b734-ff77b6301dc6',
+      );
+      const method = operation.method.toLowerCase() as
+        | 'get'
+        | 'post'
+        | 'patch'
+        | 'delete'
+        | 'put';
+      const response = await schoolApi()[method](path);
+      expect({
+        operation: operation.operationId,
+        code: response.status,
+      }).toEqual({ operation: operation.operationId, code: 401 });
+    }
+  });
+
+  it('T092 measures a populated 9,999-edit sheet at the atomic import budget with a second school active', async () => {
+    const seedSize = 3333;
+    const now = performance.now();
+    const students = await prisma.student.createManyAndReturn({
+      data: Array.from({ length: seedSize }, (_, index) => ({
+        schoolId: school.school.id,
+        organizationId: school.school.organizationId,
+        firstName: 'Synthetic ' + index,
+        lastName: 'Load',
+        firstNameAr: 'اختبار تحميل',
+      })),
+      select: { id: true },
+    });
+    await prisma.enrollment.createMany({
+      data: students.map(({ id }) => ({
+        schoolId: school.school.id,
+        academicYearId: school.year.id,
+        termId: school.term.id,
+        studentId: id,
+        classroomId: school.classroom.id,
+        enrolledAt: new Date('2026-09-01T08:00:00Z'),
+      })),
+    });
+    // Materialize a new period from the actual shared academic roster.
+    const book = await liveGradebook('LOAD-RESULTS-REAL');
+    const roster = await prisma.resultSlot.findMany({
+      where: {
+        schoolId: school.school.id,
+        sheetId: book.source.id,
+        studentId: { in: students.map(({ id }) => id) },
+      },
+      select: { id: true },
+    });
+    expect(roster).toHaveLength(seedSize);
+    const [plan, other] = await Promise.all([
+      exportTeacher('post', '/exports/preview')
+        .send({
+          reportingPeriodId: book.reportingPeriodId,
+          academicScope: { level: 'CLASSROOM', ids: [school.classroom.id] },
+          groupIds: [math.id],
+          format: 'CSV',
+          mode: 'EDIT_DRAFT',
+          selectedSlotIds: roster.map(({ id }) => id),
+          selectedFieldIds: book.scores.map(({ id }) => id),
+        })
+        .expect(200),
+      schoolApi()
+        .get(management + '/periods')
+        .set('Authorization', 'Bearer other-school-fixture')
+        .expect(200),
+    ]);
+    expect(other.body.data.items).toEqual([]);
+    const selection = exportOutputs.preview.parse(plan.body.data);
+    expect(selection.summary.rowCount).toBe(seedSize);
+    const receipt = exportOutputs.export.parse(
+      (
+        await exportTeacher('post', '/exports')
+          .set('Idempotency-Key', randomUUID())
+          .send({
+            previewId: selection.previewId,
+            previewDigest: selection.previewDigest,
+          })
+          .expect(202)
+      ).body.data,
+    );
+    const job = await waitForExport(
+      '/exports/' + receipt.exportId,
+      withTeacher,
+    );
+    const previewMs = Math.ceil(performance.now() - now);
+    const downloaded = await exportTeacher(
+      'get',
+      job.files[0].downloadPath.slice(instructor.length),
+    ).expect(200);
+    const rows = parseCsv(downloaded.text, { bom: true });
+    for (const row of rows.slice(1))
+      for (const column of [18, 20, 22]) row[column] = '1.00';
+    const validateStarted = performance.now();
+    const staged = importOutputs.batch.parse(
+      (
+        await stageImport(
+          job.exportId,
+          sourceBytes([rows[0], ...rows.slice(1).reverse()]),
+        ).expect(202)
+      ).body.data,
+    );
+    const ready = await waitForImport('/' + staged.batchId);
+    expect(ready.summary.changedCells).toBe(9999);
+    const validateMs = Math.ceil(performance.now() - validateStarted);
+    const applyStarted = performance.now();
+    const applied = importOutputs.execution.parse(
+      (await confirmImport(ready.batchId, confirmation(ready)).expect(202)).body
+        .data,
+    );
+    expect(await waitForOperation(applied.operationId)).toMatchObject({
+      status: 'APPLIED',
+    });
+    const applyMs = Math.ceil(performance.now() - applyStarted);
+    expect(
+      await prisma.resultCell.count({
+        where: {
+          schoolId: school.school.id,
+          slot: { sheetId: book.source.id },
+        },
+      }),
+    ).toBe(9999);
+    expect(
+      await prisma.resultCell.count({
+        where: {
+          schoolId: otherSchool.school.id,
+          slot: { sheetId: book.source.id },
+        },
+      }),
+    ).toBe(0);
+    if (process.env.OFFICIAL_RESULTS_LOAD_EVIDENCE) {
+      writeFileSync(
+        process.env.OFFICIAL_RESULTS_LOAD_EVIDENCE,
+        JSON.stringify(
+          {
+            rows: seedSize,
+            changes: 9999,
+            csvBytes: job.files[0].sizeBytes,
+            exportAndFixtureMs: previewMs,
+            validationMs: validateMs,
+            confirmationAndCommitMs: applyMs,
+            processHeapUsedBytes: process.memoryUsage().heapUsed,
+            processResidentBytes: process.memoryUsage().rss,
+          },
+          null,
+          2,
+        ) + '\n',
+      );
+    }
+  }, 120_000);
+
+  it('T093 keeps invalid source content, foreign identities and object details out of errors and logs', async () => {
+    const book = await liveGradebook('SAFE-IMPORT-ERROR');
+    const { job } = await editableExport(book);
+    const rawInput = 'private-fixture-grade-body-' + randomUUID();
+    const badBytes = Buffer.from('export_ref,input\n1,"' + rawInput);
+    const logs = ['log', 'warn', 'error', 'debug'].map((level) =>
+      jest
+        .spyOn(Logger.prototype, level as 'log' | 'warn' | 'error' | 'debug')
+        .mockImplementation(() => undefined),
+    );
+    try {
+      const source = importOutputs.batch.parse(
+        (await stageImport(job.exportId, badBytes).expect(202)).body.data,
+      );
+      await waitForImport('/' + source.batchId);
+      const response = await importTeacher(
+        'get',
+        '/' + source.batchId + '/issues',
+      ).expect(200);
+      expect(
+        importOutputs.issues.parse(response.body.data).items[0],
+      ).toMatchObject({ code: 'official_results.import.malformed_csv' });
+      expect(response.text).not.toContain(rawInput);
+      expect(
+        JSON.stringify(logs.flatMap((entry) => entry.mock.calls)),
+      ).not.toContain(rawInput);
+      expect(response.text).not.toContain(
+        'official-results/' + school.school.id,
+      );
+    } finally {
+      for (const log of logs) log.mockRestore();
+    }
   });
 
   it('T013 denies an edit waiting on a concurrent allocation revocation', async () => {

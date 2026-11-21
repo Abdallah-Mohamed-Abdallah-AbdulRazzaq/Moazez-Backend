@@ -4,6 +4,7 @@ import { PrismaService } from '../../../infrastructure/database/prisma.service';
 import { ResultCommandRepository } from '../infrastructure/repositories/result-command.repository';
 import { familyReleaseFields } from './result-family.presenter';
 import { releaseSnapshot } from '../domain/result-release.contract';
+import { officialResultsPilotWhere } from '../domain/result-exposure';
 
 type Recipient = { id: string; userType: 'STUDENT' | 'PARENT' };
 
@@ -18,7 +19,7 @@ export class ResultNoticeService {
 
   async reconcile() {
     const pending = await this.prisma.resultPublicationNotice.findMany({
-      where: { status: 'PENDING' },
+      where: { status: 'PENDING', ...officialResultsPilotWhere() },
       select: { id: true, schoolId: true },
       take: 100,
       orderBy: { createdAt: 'asc' },

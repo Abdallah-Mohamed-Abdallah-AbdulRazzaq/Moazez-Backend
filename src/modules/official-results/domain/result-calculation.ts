@@ -43,7 +43,7 @@ const missing = {
   status: 'INCOMPLETE',
   reason: 'REQUIRED_INPUT_MISSING',
 } as const;
-const fraction = ResultFraction.decimal;
+const fraction = (value: string) => ResultFraction.decimal(value);
 
 const sum = (items: ResultFraction[]) =>
   items.reduce((total, item) => total.add(item), zero);

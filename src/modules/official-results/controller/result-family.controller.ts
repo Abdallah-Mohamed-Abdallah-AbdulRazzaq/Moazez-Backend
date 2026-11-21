@@ -1,3 +1,5 @@
+import { UseGuards } from '@nestjs/common';
+import { ResultExposureGuard } from '../domain/result-exposure';
 import {
   Controller,
   Get,
@@ -21,6 +23,7 @@ import { ResultErrorFilter } from './result-error.filter';
 const emptyQuery = new ResultBodyPipe(z.strictObject({}));
 
 @ApiTags('student-official-results')
+@UseGuards(ResultExposureGuard)
 @ApiBearerAuth()
 @UseFilters(ResultErrorFilter)
 @Controller('student/official-results')
@@ -47,6 +50,7 @@ export class StudentOfficialResultsController {
     @Param('reportingPeriodId', ParseUUIDPipe) periodId: string,
     @Query(emptyQuery) _query: unknown,
   ) {
+    void _query;
     return {
       data: await this.results.result('STUDENT', undefined, { periodId }),
     };
@@ -63,6 +67,7 @@ export class StudentOfficialResultsController {
     @Param('groupId', ParseUUIDPipe) groupId: string,
     @Query(emptyQuery) _query: unknown,
   ) {
+    void _query;
     return {
       data: await this.results.result('STUDENT', undefined, {
         periodId,
@@ -96,6 +101,7 @@ export class StudentOfficialResultsController {
     @Param('publicationId', ParseUUIDPipe) publicationId: string,
     @Query(emptyQuery) _query: unknown,
   ) {
+    void _query;
     return {
       data: await this.results.result('STUDENT', undefined, {
         publicationId,
@@ -106,6 +112,7 @@ export class StudentOfficialResultsController {
 }
 
 @ApiTags('parent-official-results')
+@UseGuards(ResultExposureGuard)
 @ApiBearerAuth()
 @UseFilters(ResultErrorFilter)
 @Controller('parent/children/:studentId/official-results')
@@ -136,6 +143,7 @@ export class ParentOfficialResultsController {
     @Param('reportingPeriodId', ParseUUIDPipe) periodId: string,
     @Query(emptyQuery) _query: unknown,
   ) {
+    void _query;
     return {
       data: await this.results.result('PARENT', studentId, { periodId }),
     };
@@ -153,6 +161,7 @@ export class ParentOfficialResultsController {
     @Param('groupId', ParseUUIDPipe) groupId: string,
     @Query(emptyQuery) _query: unknown,
   ) {
+    void _query;
     return {
       data: await this.results.result('PARENT', studentId, {
         periodId,
@@ -188,6 +197,7 @@ export class ParentOfficialResultsController {
     @Param('publicationId', ParseUUIDPipe) publicationId: string,
     @Query(emptyQuery) _query: unknown,
   ) {
+    void _query;
     return {
       data: await this.results.result('PARENT', studentId, {
         publicationId,

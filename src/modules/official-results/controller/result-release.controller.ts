@@ -1,3 +1,5 @@
+import { UseGuards } from '@nestjs/common';
+import { ResultExposureGuard } from '../domain/result-exposure';
 import {
   Body,
   Controller,
@@ -31,6 +33,7 @@ import { ResultErrorFilter } from './result-error.filter';
 
 @SchoolManagementOnly()
 @ApiTags('official-results')
+@UseGuards(ResultExposureGuard)
 @ApiBearerAuth()
 @UseFilters(ResultErrorFilter)
 @Controller('official-results')
@@ -217,6 +220,7 @@ export class ResultReleaseController {
 }
 
 @ApiTags('teacher-official-results')
+@UseGuards(ResultExposureGuard)
 @ApiBearerAuth()
 @UseFilters(ResultErrorFilter)
 @Controller('teacher/official-results')

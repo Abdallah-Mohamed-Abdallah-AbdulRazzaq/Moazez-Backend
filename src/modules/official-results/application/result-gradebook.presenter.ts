@@ -98,9 +98,12 @@ export function visibleCalculatedOutputs(
   );
   return [...evaluateResultFields(definition, values, allowed).values()].map(
     (calculation) => {
-      const { reason, evaluation, effectiveWeight, ...data } = calculation;
-      return permissions.get(data.fieldId)?.hiddenDependencies
-        ? data
+      return permissions.get(calculation.fieldId)?.hiddenDependencies
+        ? {
+            fieldId: calculation.fieldId,
+            value: calculation.value,
+            calculationStatus: calculation.calculationStatus,
+          }
         : calculation;
     },
   );

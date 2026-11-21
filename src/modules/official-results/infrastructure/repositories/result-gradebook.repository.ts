@@ -3,7 +3,6 @@ import { Prisma } from '@prisma/client';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 import type { ResultActor } from '../../application/result-actor';
 import type { ResultSheetTarget } from '../../application/result-foundation.types';
-import { OfficialResultsError } from '../../domain/official-results.error';
 import type { ResultField } from '../../domain/result-definition';
 import { cellColumns, type ResultValue } from '../../domain/result-value';
 

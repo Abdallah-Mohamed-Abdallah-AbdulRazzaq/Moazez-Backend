@@ -191,7 +191,14 @@ export class ResultReleaseSnapshotService {
           });
         }
         if (output) {
-          const { fieldId: _id, value: _value, ...calculation } = output;
+          const { calculationStatus, evaluation, reason, effectiveWeight } =
+            output;
+          const calculation = {
+            calculationStatus,
+            evaluation,
+            reason,
+            effectiveWeight,
+          };
           return { definition: field, value, calculation };
         }
         return {

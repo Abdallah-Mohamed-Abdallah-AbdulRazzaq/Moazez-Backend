@@ -21,6 +21,7 @@ import {
   resultValidateJob,
   validateImportOptions,
   type ImportCorrection,
+  type ImportChange,
   type ImportFinding,
   type ImportInput,
   type ImportReviewBinding,
@@ -553,15 +554,16 @@ export class ResultImportService {
         where: reviewKey(target.batch),
         select: { rows: true, issues: true, units: true },
       });
-      const values = !report
-        ? []
-        : part === 'issues'
-          ? (report.issues as unknown as ImportFinding[])
-          : part === 'rows'
-            ? (report.rows as unknown as ImportRowSummary[])
-            : (report.units as unknown as ImportUnit[]).flatMap(
-                (unit) => unit.changes,
-              );
+      const values: (ImportFinding | ImportRowSummary | ImportChange)[] =
+        !report
+          ? []
+          : part === 'issues'
+            ? (report.issues as unknown as ImportFinding[])
+            : part === 'rows'
+              ? (report.rows as unknown as ImportRowSummary[])
+              : (report.units as unknown as ImportUnit[]).flatMap(
+                  (unit) => unit.changes,
+                );
       const indexed = values
         .slice(begin, begin + limit + 1)
         .map((value, index) => ({ value, index: begin + index }));

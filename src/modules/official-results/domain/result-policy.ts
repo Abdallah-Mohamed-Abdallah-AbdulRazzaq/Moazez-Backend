@@ -187,7 +187,7 @@ export function parseResultPolicy(input: unknown): ResultPolicy {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     throw new OfficialResultsError('policy.invalid');
   }
-  const mode = Reflect.get(input, 'teacherMode');
+  const mode = (input as Record<string, unknown>).teacherMode;
   const preset =
     mode === 'AUTONOMOUS'
       ? {

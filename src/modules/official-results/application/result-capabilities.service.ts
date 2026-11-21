@@ -162,7 +162,10 @@ export class ResultCapabilitiesService {
           reasonCode ? { allowed: false, reasonCode } : { allowed: true },
         ];
       });
-      const actions = Object.fromEntries(entries);
+      const actions = Object.fromEntries(entries) as Record<
+        string,
+        { allowed: boolean; reasonCode?: string }
+      >;
       return {
         actions,
         capabilities: actions,

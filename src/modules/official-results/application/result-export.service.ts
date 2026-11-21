@@ -13,6 +13,10 @@ import { PrismaService } from '../../../infrastructure/database/prisma.service';
 import { BullmqService } from '../../../infrastructure/queue/bullmq.service';
 import { StorageService } from '../../../infrastructure/storage/storage.service';
 import { OfficialResultsError } from '../domain/official-results.error';
+import {
+  officialResultsExposed,
+  officialResultsPilotWhere,
+} from '../domain/result-exposure';
 import { currentRosterInstant } from '../domain/reporting-dates';
 import { renderResultFiles } from '../domain/result-csv';
 import {
@@ -386,7 +390,7 @@ export class ResultExportService {
 
   async run(id: string): Promise<void> {
     const row = await this.prisma.resultExport.findUnique({ where: { id } });
-    if (!row) return;
+    if (!row || !officialResultsExposed(row.schoolId)) return;
     const actor = row.actorContext as unknown as ResultActor;
     const context = createRequestContext('official-results-export-' + row.id);
     context.actor = { id: actor.actorId, userType: actor.userType };
@@ -404,6 +408,7 @@ export class ResultExportService {
     const now = new Date();
     const stale = await this.prisma.resultExport.findMany({
       where: {
+        ...officialResultsPilotWhere(),
         expiresAt: { gt: now },
         OR: [
           { status: 'QUEUED' },

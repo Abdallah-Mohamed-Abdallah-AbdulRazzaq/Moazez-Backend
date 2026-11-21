@@ -344,11 +344,11 @@ export class ResultFoundationRepository {
       })),
     });
     await client.resultFieldDefinition.createMany({
-      data: seed.fields.map(({ newSemanticPurpose: _, ...field }) => ({
-        ...field,
-        schoolId,
-        definitionVersionId: definition.id,
-      })),
+      data: seed.fields.map(({ newSemanticPurpose, ...field }) => {
+        // The purpose is stored on the stable field identity.
+        void newSemanticPurpose;
+        return { ...field, schoolId, definitionVersionId: definition.id };
+      }),
     });
     return definition.id;
   }

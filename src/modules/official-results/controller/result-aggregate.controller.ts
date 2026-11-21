@@ -1,3 +1,5 @@
+import { UseGuards } from '@nestjs/common';
+import { ResultExposureGuard } from '../domain/result-exposure';
 import { Body, Controller, Headers, Post, UseFilters } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiTags } from '@nestjs/swagger';
 import { SchoolManagementOnly } from '../../../common/decorators/school-management-only.decorator';
@@ -16,6 +18,7 @@ import { ResultErrorFilter } from './result-error.filter';
 
 @SchoolManagementOnly()
 @ApiTags('official-results')
+@UseGuards(ResultExposureGuard)
 @ApiBearerAuth()
 @UseFilters(ResultErrorFilter)
 @Controller('official-results')

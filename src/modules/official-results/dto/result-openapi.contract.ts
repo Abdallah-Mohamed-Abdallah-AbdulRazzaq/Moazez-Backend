@@ -168,10 +168,11 @@ function openApiThree(value: unknown): unknown {
 }
 
 export function resultOpenApiSchema(schema: z.ZodType): SchemaObject {
-  const { $schema: _, ...swagger } = z.toJSONSchema(schema, {
+  const swagger = z.toJSONSchema(schema, {
     target: 'draft-7',
     io: 'input',
   });
+  delete swagger.$schema;
   return openApiThree(swagger) as SchemaObject;
 }
 

@@ -162,10 +162,24 @@ export function assertResultsTestDatabase(): void {
     );
   }
   const target = new URL(process.env.DATABASE_URL);
+  const loopback = ['127.0.0.1', 'localhost', '[::1]'].includes(
+    target.hostname,
+  );
+  const universalFixture =
+    process.env.MOAZEZ_UNIVERSAL_REGRESSION_DISPOSABLE_DB === '1' &&
+    /^g07-[a-z0-9-]+-postgres$/u.test(target.hostname) &&
+    /^\/g07_[a-z0-9_]+$/u.test(target.pathname);
+  const shardFixture =
+    process.env.CI === 'true' &&
+    (loopback || /^ci-[a-z0-9-]+-postgres$/u.test(target.hostname)) &&
+    /^\/ci_[a-f0-9]{14}$/u.test(target.pathname);
   if (
-    !/^\/moazez_official_results_[a-z0-9_]+$/u.test(target.pathname) &&
-    process.env.MOAZEZ_UNIVERSAL_REGRESSION_DISPOSABLE_DB !== '1' &&
-    !(/^\/ci_[a-f0-9]{14}$/u.test(target.pathname) && process.env.CI === 'true')
+    !(
+      loopback &&
+      /^\/moazez_official_results_[a-z0-9_]+$/u.test(target.pathname)
+    ) &&
+    !universalFixture &&
+    !shardFixture
   ) {
     throw new Error(
       'Use an isolated Official Results fixture or the repository CI harness',

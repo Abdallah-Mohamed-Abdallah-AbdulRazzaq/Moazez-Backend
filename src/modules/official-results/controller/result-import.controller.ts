@@ -1,3 +1,5 @@
+import { UseGuards } from '@nestjs/common';
+import { ResultExposureGuard } from '../domain/result-exposure';
 import {
   Body,
   Controller,
@@ -71,7 +73,7 @@ const uploadSchema = (replacement: boolean) => ({
 
 function readUpload(body: Record<string, unknown>): ImportInput<'intake'> {
   try {
-    const validateOptions =
+    const validateOptions: unknown =
       typeof body.validateOptions === 'string'
         ? JSON.parse(body.validateOptions)
         : body.validateOptions;
@@ -96,6 +98,7 @@ function readUpload(body: Record<string, unknown>): ImportInput<'intake'> {
 
 @SchoolManagementOnly()
 @ApiTags('official-results')
+@UseGuards(ResultExposureGuard)
 @ApiBearerAuth()
 @UseFilters(ResultErrorFilter)
 @Controller('official-results')
@@ -312,6 +315,7 @@ export class ResultImportController {
 }
 
 @ApiTags('teacher-official-results')
+@UseGuards(ResultExposureGuard)
 @ApiBearerAuth()
 @UseFilters(ResultErrorFilter)
 @Controller('teacher/official-results')

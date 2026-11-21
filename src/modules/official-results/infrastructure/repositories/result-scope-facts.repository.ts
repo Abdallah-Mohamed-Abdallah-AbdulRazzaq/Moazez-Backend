@@ -231,7 +231,7 @@ export class ResultScopeFactsRepository {
         const key = [allocation.academicYearId, term, allocation.gradeId].join(
           ':',
         );
-        const available = offered.get(key) ?? new Map();
+        const available = offered.get(key) ?? new Map<string, typeof group>();
         available.set(group.id, group);
         offered.set(key, available);
       }

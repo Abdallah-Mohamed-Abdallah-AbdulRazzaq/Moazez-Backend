@@ -18,11 +18,8 @@ const unsafeFirst = new Set(['=', '+', '-', '@', "'"]);
 const maxPhysicalCells = 1_000_000;
 const maxPackageBytes = 100 * 1024 * 1024;
 const packagedInstructions = [
-  'MOAZEZ_RESULTS_CSV_V1',
   'Blank VALUE and STATE keep the saved value. Enter 0 to record zero.',
   'An explicit CLEAR command with a reviewed reason resets a cell.',
-  'Do not change identity values or headers. Keep the file as UTF-8 CSV.',
-  'Sensitive leading text is prefixed with ~mztext:; repeat the prefix to enter it literally.',
   'Upload individual EDIT_DRAFT files. READ_PUBLISHED and the ZIP package are read-only.',
 ];
 
@@ -296,7 +293,14 @@ export async function renderResultFiles(input: {
     zipOptions,
   );
   const instructions = [
+    xlsx ? 'MOAZEZ_RESULTS_XLSX_V1' : 'MOAZEZ_RESULTS_CSV_V1',
     ...packagedInstructions,
+    ...(xlsx
+      ? ['Keep the workbook as XLSX and leave the identity values unchanged.']
+      : [
+          'Do not change identity values or headers. Keep the file as UTF-8 CSV.',
+          'Sensitive leading text is prefixed with ~mztext:; repeat the prefix to enter it literally.',
+        ]),
     ...new Set(
       sheets.flatMap((sheet) =>
         sheet.fields.flatMap((field) =>

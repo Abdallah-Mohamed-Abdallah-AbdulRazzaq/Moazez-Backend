@@ -48,18 +48,18 @@ export function extendResultDefinition(
   for (const field of extension.fields) {
     const existing = fields.get(field.id);
     if (existing) {
-      const {
-        label: _label,
-        helpText: _help,
-        order: _order,
-        ...semantics
-      } = field;
-      const {
-        label: _oldLabel,
-        helpText: _oldHelp,
-        order: _oldOrder,
-        ...oldSemantics
-      } = existing;
+      const semantics = {
+        ...field,
+        label: undefined,
+        helpText: undefined,
+        order: undefined,
+      };
+      const oldSemantics = {
+        ...existing,
+        label: undefined,
+        helpText: undefined,
+        order: undefined,
+      };
       if (
         resultContentDigest(semantics) !== resultContentDigest(oldSemantics)
       ) {
