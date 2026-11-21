@@ -3,6 +3,9 @@ import { QueueModule } from '../../infrastructure/queue/queue.module';
 import { StorageModule } from '../../infrastructure/storage/storage.module';
 import { ResultExportService } from './application/result-export.service';
 import { ResultImportService } from './application/result-import.service';
+import { ResultImportApplyService } from './application/result-import-apply.service';
+import { ResultImportCommitGate } from './application/result-import-commit-gate';
+import { ResultImportExecutionService } from './application/result-import-execution.service';
 import { ResultImportValidationService } from './application/result-import-validation.service';
 import { ResultImportWorkService } from './application/result-import-work.service';
 import {
@@ -81,6 +84,9 @@ import { ResultScopeFactsRepository } from './infrastructure/repositories/result
     ResultExportPlanService,
     ResultExportService,
     ResultImportService,
+    ResultImportApplyService,
+    ResultImportCommitGate,
+    ResultImportExecutionService,
     ResultImportValidationService,
     ResultImportWorkService,
     ResultAggregateRepository,
@@ -116,6 +122,8 @@ import { ResultScopeFactsRepository } from './infrastructure/repositories/result
     ResultTemplateService,
   ],
   exports: [
+    ResultImportApplyService,
+    ResultImportExecutionService,
     ResultAggregateService,
     ResultCapabilitiesService,
     ResultCatalogService,

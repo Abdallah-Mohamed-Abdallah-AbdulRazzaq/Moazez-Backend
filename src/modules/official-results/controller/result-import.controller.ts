@@ -19,6 +19,11 @@ import { SchoolManagementOnly } from '../../../common/decorators/school-manageme
 import { ValidationDomainException } from '../../../common/exceptions/domain-exception';
 import type { UploadedMultipartFile } from '../../files/uploads/domain/uploaded-file';
 import { ResultImportService } from '../application/result-import.service';
+import { ResultImportExecutionService } from '../application/result-import-execution.service';
+import {
+  applyImportInputs,
+  type ApplyImportInput,
+} from '../domain/result-import-execution.contract';
 import {
   importInputs,
   type ImportInput,
@@ -95,7 +100,67 @@ function readUpload(body: Record<string, unknown>): ImportInput<'intake'> {
 @UseFilters(ResultErrorFilter)
 @Controller('official-results')
 export class ResultImportController {
-  constructor(private readonly imports: ResultImportService) {}
+  constructor(
+    private readonly imports: ResultImportService,
+    private readonly executions: ResultImportExecutionService,
+  ) {}
+  @Post('imports/:id/confirm')
+  @HttpCode(202)
+  @ApiBody({ schema: resultOpenApiSchema(applyImportInputs.confirm) })
+  @ResultEndpoint(
+    'confirmOfficialResultsImport',
+    'imports.manage',
+    importOutputs.execution,
+    202,
+    'REQUIRED',
+    ['entries.manage'],
+  )
+  async confirm(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ResultBodyPipe(applyImportInputs.confirm))
+    input: ApplyImportInput<'confirm'>,
+    @Headers('idempotency-key') key?: string,
+  ) {
+    return { data: await this.executions.confirm('SCHOOL', id, input, key) };
+  }
+
+  @Post('imports/:id/cancel')
+  @HttpCode(200)
+  @ApiBody({ schema: resultOpenApiSchema(applyImportInputs.cancel) })
+  @ResultEndpoint(
+    'cancelOfficialResultsImport',
+    'imports.manage',
+    importOutputs.batch,
+    200,
+    'REQUIRED',
+  )
+  async cancel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ResultBodyPipe(applyImportInputs.cancel))
+    input: ApplyImportInput<'cancel'>,
+    @Headers('idempotency-key') key?: string,
+  ) {
+    return { data: await this.executions.cancel('SCHOOL', id, input, key) };
+  }
+
+  @Post('imports/:id/retry')
+  @HttpCode(202)
+  @ApiBody({ schema: resultOpenApiSchema(applyImportInputs.retry) })
+  @ResultEndpoint(
+    'retryOfficialResultsImport',
+    'imports.manage',
+    importOutputs.batch,
+    202,
+    'REQUIRED',
+  )
+  async retry(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ResultBodyPipe(applyImportInputs.retry))
+    input: ApplyImportInput<'retry'>,
+    @Headers('idempotency-key') key?: string,
+  ) {
+    return { data: await this.executions.retry('SCHOOL', id, input, key) };
+  }
 
   @Post('imports')
   @HttpCode(202)
@@ -251,7 +316,67 @@ export class ResultImportController {
 @UseFilters(ResultErrorFilter)
 @Controller('teacher/official-results')
 export class TeacherResultImportController {
-  constructor(private readonly imports: ResultImportService) {}
+  constructor(
+    private readonly imports: ResultImportService,
+    private readonly executions: ResultImportExecutionService,
+  ) {}
+  @Post('imports/:id/confirm')
+  @HttpCode(202)
+  @ApiBody({ schema: resultOpenApiSchema(applyImportInputs.confirm) })
+  @ResultEndpoint(
+    'teacherConfirmOfficialResultsImport',
+    'imports.manage',
+    importOutputs.execution,
+    202,
+    'REQUIRED',
+    ['entries.manage'],
+  )
+  async confirm(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ResultBodyPipe(applyImportInputs.confirm))
+    input: ApplyImportInput<'confirm'>,
+    @Headers('idempotency-key') key?: string,
+  ) {
+    return { data: await this.executions.confirm('TEACHER', id, input, key) };
+  }
+
+  @Post('imports/:id/cancel')
+  @HttpCode(200)
+  @ApiBody({ schema: resultOpenApiSchema(applyImportInputs.cancel) })
+  @ResultEndpoint(
+    'teacherCancelOfficialResultsImport',
+    'imports.manage',
+    importOutputs.batch,
+    200,
+    'REQUIRED',
+  )
+  async cancel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ResultBodyPipe(applyImportInputs.cancel))
+    input: ApplyImportInput<'cancel'>,
+    @Headers('idempotency-key') key?: string,
+  ) {
+    return { data: await this.executions.cancel('TEACHER', id, input, key) };
+  }
+
+  @Post('imports/:id/retry')
+  @HttpCode(202)
+  @ApiBody({ schema: resultOpenApiSchema(applyImportInputs.retry) })
+  @ResultEndpoint(
+    'teacherRetryOfficialResultsImport',
+    'imports.manage',
+    importOutputs.batch,
+    202,
+    'REQUIRED',
+  )
+  async retry(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ResultBodyPipe(applyImportInputs.retry))
+    input: ApplyImportInput<'retry'>,
+    @Headers('idempotency-key') key?: string,
+  ) {
+    return { data: await this.executions.retry('TEACHER', id, input, key) };
+  }
 
   @Post('imports')
   @HttpCode(202)

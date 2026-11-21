@@ -55,12 +55,32 @@ const editable = [
 const editableFilter = Array.from(editable);
 
 type Batch = ResultImportBatch;
+const outcomeSelection = {
+  id: true,
+  terminationReason: true,
+  units: {
+    select: {
+      id: true,
+      sheetId: true,
+      status: true,
+      changedCells: true,
+      failureCode: true,
+    },
+  },
+} satisfies Prisma.ResultImportExecutionSelect;
+type Outcome = Prisma.ResultImportExecutionGetPayload<{
+  select: typeof outcomeSelection;
+}>;
 type Review = Pick<
   ResultImportReview,
   'id' | 'revision' | 'digest' | 'binding' | 'summary' | 'units' | 'expiresAt'
 >;
 
-export function presentImportBatch(batch: Batch, review: Review | null) {
+export function presentImportBatch(
+  batch: Batch,
+  review: Review | null,
+  outcome: Outcome | null,
+) {
   const expired =
     batch.expiresAt <= new Date() &&
     [
@@ -76,6 +96,7 @@ export function presentImportBatch(batch: Batch, review: Review | null) {
   const canConfirm =
     status === 'READY_TO_CONFIRM' &&
     Boolean(review && review.expiresAt > new Date());
+  const executed = new Map(outcome?.units.map((unit) => [unit.sheetId, unit]));
   return {
     batchId: batch.id,
     exportId: batch.exportId,
@@ -86,6 +107,10 @@ export function presentImportBatch(batch: Batch, review: Review | null) {
       ? (review.summary as unknown as ImportSummary)
       : blankImportSummary(),
     canConfirm,
+    ...(outcome ? { operationId: outcome.id } : {}),
+    ...(outcome?.terminationReason
+      ? { terminationReason: outcome.terminationReason }
+      : {}),
     ...(batch.failureCode ? { failureCode: batch.failureCode } : {}),
     ...(review && binding
       ? {
@@ -98,14 +123,18 @@ export function presentImportBatch(batch: Batch, review: Review | null) {
           },
         }
       : {}),
-    sheetUnits: units.map((unit) => ({
-      sheetId: unit.context.sheetId,
-      changedCells: unit.changes.length,
-      status: unit.status,
-      canConfirm: canConfirm && unit.status === 'READY',
-      observedDataGeneration: unit.context.snapshotDataGeneration,
-      expectedSheetRevision: unit.context.sheetRevision,
-    })),
+    sheetUnits: units.map((unit) => {
+      const state = executed.get(unit.context.sheetId);
+      return {
+        sheetId: unit.context.sheetId,
+        changedCells: state?.changedCells ?? unit.changes.length,
+        status: state?.status ?? unit.status,
+        ...(state?.failureCode ? { failureCode: state.failureCode } : {}),
+        canConfirm: canConfirm && unit.status === 'READY',
+        observedDataGeneration: unit.context.snapshotDataGeneration,
+        expectedSheetRevision: unit.context.sheetRevision,
+      };
+    }),
     createdAt: batch.createdAt.toISOString(),
     expiresAt: batch.expiresAt.toISOString(),
   };
@@ -450,7 +479,7 @@ export class ResultImportService {
     return this.commands.readSnapshot(async (client) => {
       const access = await this.auth.permissions(client, actor);
       const target = await this.requireBatch(client, access, id, action);
-      return presentImportBatch(target.batch, target.review);
+      return presentImportBatch(target.batch, target.review, target.outcome);
     });
   }
 
@@ -474,13 +503,13 @@ export class ResultImportService {
         });
         for (const batch of candidates) {
           try {
-            const { review } = await this.authorizeBatch(
+            const { review, outcome } = await this.authorizeBatch(
               client,
               access,
               batch,
               'VIEW',
             );
-            visible.push(presentImportBatch(batch, review));
+            visible.push(presentImportBatch(batch, review, outcome));
             if (visible.length > limit) break;
           } catch (error) {
             if (
@@ -630,7 +659,15 @@ export class ResultImportService {
       (review?.binding ?? null) as unknown as ImportReviewBinding | null,
       action,
     );
-    return { batch, review };
+    const outcome = await client.resultImportExecution.findFirst({
+      where: {
+        batchId: batch.id,
+        schoolId: batch.schoolId,
+        batchRevision: batch.revision,
+      },
+      select: outcomeSelection,
+    });
+    return { batch, review, outcome };
   }
 
   private async nextRevision(

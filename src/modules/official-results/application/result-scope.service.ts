@@ -32,6 +32,10 @@ import {
   type TemplateAssignmentInput,
 } from '../infrastructure/repositories/result-template-scope.repository';
 import { requireResultActor } from './result-actor';
+import {
+  presentImportExecution,
+  ResultImportExecutionService,
+} from './result-import-execution.service';
 import type { FrozenResultDefinitionInput } from './result-foundation.types';
 import {
   presentResultPage,
@@ -58,6 +62,7 @@ export class ResultScopeService {
     private readonly foundation: ResultFoundationRepository,
     private readonly previews: ResultPreviewRepository,
     private readonly operations: ResultOperationRepository,
+    private readonly importExecutions: ResultImportExecutionService,
   ) {}
 
   assign(
@@ -262,40 +267,49 @@ export class ResultScopeService {
   }
 
   operation(surface: Surface, id: string) {
-    return this.withOperation(surface, id, (operation, actor) =>
-      presentResultOperation(operation, actor),
+    return this.withOperation(
+      surface,
+      id,
+      (operation, actor) => presentResultOperation(operation, actor),
+      presentImportExecution,
     );
   }
 
   operationItems(surface: Surface, id: string, query: ResultListQuery) {
-    return this.withOperation(surface, id, (_operation, actor, items) => {
-      const binding = `${actor.schoolId}:${actor.actorId}:${id}`;
-      const { limit, after } = readResultCursor(
-        query,
-        binding,
-        'materialization-items',
-      );
-      if (after && !z.uuid().safeParse(after).success) {
-        throw new ValidationDomainException('Invalid materialization cursor');
-      }
-      const itemKey = (item: (typeof items)[number]) =>
-        'slotId' in item
-          ? (item.candidateId ?? item.publicationId ?? item.slotId)
-          : item.sheetId;
-      const rows = items
-        .sort((a, b) => itemKey(a).localeCompare(itemKey(b)))
-        .filter((item) => !after || itemKey(item) > after);
-      return presentResultPage(
-        rows,
-        limit,
-        itemKey,
-        binding,
-        'materialization-items',
-      );
-    });
+    return this.withOperation(
+      surface,
+      id,
+      (_operation, actor, items) => {
+        const binding = `${actor.schoolId}:${actor.actorId}:${id}`;
+        const { limit, after } = readResultCursor(
+          query,
+          binding,
+          'materialization-items',
+        );
+        if (after && !z.uuid().safeParse(after).success) {
+          throw new ValidationDomainException('Invalid materialization cursor');
+        }
+        const itemKey = (item: (typeof items)[number]) =>
+          'slotId' in item
+            ? (item.candidateId ?? item.publicationId ?? item.slotId)
+            : item.sheetId;
+        const rows = items
+          .sort((a, b) => itemKey(a).localeCompare(itemKey(b)))
+          .filter((item) => !after || itemKey(item) > after);
+        return presentResultPage(
+          rows,
+          limit,
+          itemKey,
+          binding,
+          'materialization-items',
+        );
+      },
+      (execution, actor) =>
+        this.importExecutions.items(execution, actor, query),
+    );
   }
 
-  private withOperation<T>(
+  private withOperation<T, U>(
     surface: Surface,
     id: string,
     present: (
@@ -307,6 +321,12 @@ export class ResultScopeService {
         ReturnType<ResultOperationRepository['materialization']>
       >['items'],
     ) => T,
+    presentImport: (
+      execution: Awaited<
+        ReturnType<ResultImportExecutionService['findForActor']>
+      >,
+      actor: ReturnType<typeof requireResultActor>,
+    ) => U,
   ) {
     const actor = requireResultActor(surface);
     return this.commands.transaction(async (client) => {
@@ -315,6 +335,18 @@ export class ResultScopeService {
         access,
         'official_results.sheets.view',
       );
+      const isImport = await client.resultImportExecution.count({
+        where: {
+          id,
+          schoolId: actor.schoolId,
+          batch: { schoolId: actor.schoolId, creatorId: actor.actorId },
+        },
+      });
+      if (isImport)
+        return presentImport(
+          await this.importExecutions.findForActor(client, access, id, 'VIEW'),
+          actor,
+        );
       const { operation, items } = await this.operations.materialization(
         client,
         actor,

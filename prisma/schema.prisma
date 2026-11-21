@@ -860,6 +860,28 @@ enum ResultImportStatus {
   @@map("result_import_status")
 }
 
+enum ResultImportExecutionStatus {
+  QUEUED
+  APPLYING
+  APPLIED
+  PARTIALLY_APPLIED
+  FAILED
+  CANCELLED
+
+  @@map("result_import_execution_status")
+}
+
+enum ResultImportExecutionUnitStatus {
+  QUEUED
+  RUNNING
+  APPLIED
+  NO_CHANGES
+  FAILED
+  CANCELLED
+
+  @@map("result_import_execution_unit_status")
+}
+
 enum ResultOperationStatus {
   QUEUED
   RUNNING
@@ -1972,6 +1994,7 @@ model School {
   resultExports           ResultExport[]
   resultExportFiles       ResultExportFile[]
   resultImportBatches     ResultImportBatch[]
+  resultImportExecutions  ResultImportExecution[]
   resultCommandReceipts   ResultCommandReceipt[]
 
   resultTemplates             ResultTemplate[]
@@ -6258,16 +6281,17 @@ model ResultSheet {
   createdAt                       DateTime @default(now()) @map("created_at")
   updatedAt                       DateTime @updatedAt @map("updated_at")
 
-  school             School                         @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  reportingPeriod    ResultReportingPeriod          @relation(fields: [reportingPeriodId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
-  classroom          Classroom                      @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
-  group              ResultGroup                    @relation(fields: [groupId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
-  draftDefinition    ResultSheetDefinitionVersion?  @relation("ResultSheetDraftDefinition", fields: [draftDefinitionVersionId, schoolId, id], references: [id, schoolId, sheetId], onDelete: Restrict, onUpdate: Restrict, map: "result_sheet_draft_definition_fk")
-  acceptedDefinition ResultSheetDefinitionVersion?  @relation("ResultSheetAcceptedDefinition", fields: [lastAcceptedDefinitionVersionId, schoolId, id], references: [id, schoolId, sheetId], onDelete: Restrict, onUpdate: Restrict, map: "result_sheet_accepted_definition_fk")
-  definitions        ResultSheetDefinitionVersion[] @relation("ResultSheetOwnedDefinitions")
-  slots              ResultSlot[]
-  placementsFrom     ResultPlacementRevision[]      @relation("ResultPlacementFromSheet")
-  placementsTo       ResultPlacementRevision[]      @relation("ResultPlacementToSheet")
+  school                     School                         @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  reportingPeriod            ResultReportingPeriod          @relation(fields: [reportingPeriodId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  classroom                  Classroom                      @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  group                      ResultGroup                    @relation(fields: [groupId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  draftDefinition            ResultSheetDefinitionVersion?  @relation("ResultSheetDraftDefinition", fields: [draftDefinitionVersionId, schoolId, id], references: [id, schoolId, sheetId], onDelete: Restrict, onUpdate: Restrict, map: "result_sheet_draft_definition_fk")
+  acceptedDefinition         ResultSheetDefinitionVersion?  @relation("ResultSheetAcceptedDefinition", fields: [lastAcceptedDefinitionVersionId, schoolId, id], references: [id, schoolId, sheetId], onDelete: Restrict, onUpdate: Restrict, map: "result_sheet_accepted_definition_fk")
+  definitions                ResultSheetDefinitionVersion[] @relation("ResultSheetOwnedDefinitions")
+  slots                      ResultSlot[]
+  placementsFrom             ResultPlacementRevision[]      @relation("ResultPlacementFromSheet")
+  placementsTo               ResultPlacementRevision[]      @relation("ResultPlacementToSheet")
+  resultImportExecutionUnits ResultImportExecutionUnit[]
 
   @@unique([id, schoolId])
   @@unique([id, schoolId, reportingPeriodId, groupId], map: "result_sheet_context_key")
@@ -9909,11 +9933,12 @@ model ResultImportBatch {
   updatedAt     DateTime           @updatedAt @map("updated_at")
   expiresAt     DateTime           @map("expires_at") @db.Timestamptz(3)
 
-  school  School               @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  creator User                 @relation("ResultImportCreator", fields: [creatorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  export  ResultExport         @relation(fields: [exportId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
-  sources ResultImportSource[]
-  reviews ResultImportReview[]
+  school     School                  @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  creator    User                    @relation("ResultImportCreator", fields: [creatorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  export     ResultExport            @relation(fields: [exportId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  sources    ResultImportSource[]
+  reviews    ResultImportReview[]
+  executions ResultImportExecution[]
 
   @@unique([id, schoolId])
   @@index([schoolId, creatorId, id])
@@ -9965,11 +9990,62 @@ model ResultImportReview {
   createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
   expiresAt     DateTime           @map("expires_at") @db.Timestamptz(3)
 
-  batch  ResultImportBatch  @relation(fields: [batchId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
-  source ResultImportSource @relation(fields: [batchId, schoolId, sourceVersion], references: [batchId, schoolId, version], onDelete: Restrict, onUpdate: Restrict)
+  batch                  ResultImportBatch       @relation(fields: [batchId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  source                 ResultImportSource      @relation(fields: [batchId, schoolId, sourceVersion], references: [batchId, schoolId, version], onDelete: Restrict, onUpdate: Restrict)
+  resultImportExecutions ResultImportExecution[]
 
   @@unique([id, schoolId])
+  @@unique([id, schoolId, batchId, revision], map: "result_import_review_exact_key")
   @@unique([batchId, schoolId, revision])
   @@index([batchId, schoolId, sourceVersion])
   @@map("result_import_reviews")
+}
+
+model ResultImportExecution {
+  id                String                      @id @db.Uuid
+  schoolId          String                      @map("school_id") @db.Uuid
+  batchId           String                      @map("batch_id") @db.Uuid
+  batchRevision     Int                         @map("batch_revision")
+  reviewId          String                      @map("review_id") @db.Uuid
+  status            ResultImportExecutionStatus @default(QUEUED)
+  terminationReason String?                     @map("termination_reason") @db.VarChar(40)
+  cancellationNote  String?                     @map("cancellation_note") @db.VarChar(2000)
+  dispatchRevision  Int                         @default(1) @map("dispatch_revision")
+  createdAt         DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime                    @updatedAt @map("updated_at")
+
+  school School                      @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  batch  ResultImportBatch           @relation(fields: [batchId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  review ResultImportReview          @relation(fields: [reviewId, schoolId, batchId, batchRevision], references: [id, schoolId, batchId, revision], onDelete: Restrict, onUpdate: Restrict)
+  units  ResultImportExecutionUnit[]
+
+  @@unique([id, schoolId])
+  @@unique([batchId, schoolId, batchRevision])
+  @@index([reviewId, schoolId, batchId, batchRevision])
+  @@index([status, updatedAt])
+  @@map("result_import_executions")
+}
+
+model ResultImportExecutionUnit {
+  id           String                          @id @db.Uuid
+  schoolId     String                          @map("school_id") @db.Uuid
+  executionId  String                          @map("execution_id") @db.Uuid
+  sheetId      String                          @map("sheet_id") @db.Uuid
+  status       ResultImportExecutionUnitStatus @default(QUEUED)
+  changedCells Int                             @default(0) @map("changed_cells")
+  failureCode  String?                         @map("failure_code") @db.VarChar(120)
+  retryable    Boolean                         @default(false)
+  attempts     Int                             @default(0)
+  leaseToken   String?                         @map("lease_token") @db.Uuid
+  leaseUntil   DateTime?                       @map("lease_until") @db.Timestamptz(3)
+  committedAt  DateTime?                       @map("committed_at") @db.Timestamptz(3)
+  updatedAt    DateTime                        @updatedAt @map("updated_at")
+
+  execution ResultImportExecution @relation(fields: [executionId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  sheet     ResultSheet           @relation(fields: [sheetId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([executionId, schoolId, sheetId])
+  @@index([sheetId, schoolId])
+  @@index([status, leaseUntil])
+  @@map("result_import_execution_units")
 }

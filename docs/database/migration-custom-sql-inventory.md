@@ -744,3 +744,15 @@ each batch, its export, and its original numbered source versions.
 | result_import_batch_revision_check, result_import_batch_lease_check | Positive batch and source versions. The validating state requires a lease. |
 | result_import_source_size_and_hash_check, result_import_review_status_check | The source has bounded positive byte length and a digest. Reviews store only validation outcomes. |
 | result_import_review_immutable, result_import_source_delete_guard, result_import_source_payload_immutable | A review can neither be edited nor deleted. The original source metadata is immutable, except the timestamps for acknowledging durable bytes and cleanup. |
+
+## OR09 Official Results import execution
+
+Migration `20261121052500_official_results_import_execution` binds durable
+execution to the exact same-school batch and immutable review revision. Every
+unit also has a same-school reference to the target sheet.
+
+| PostgreSQL-specific object | Invariant |
+| --- | --- |
+| result_import_execution_revision_check, result_import_execution_cancellation_check | Positive revision numbers and paired cancellation reason and note. |
+| result_import_execution_unit_lease_check, result_import_execution_unit_commit_check, result_import_execution_unit_failure_check | Running units carry a lease. Applied units record a timestamp and positive number of changes. Failed units carry their outcome code. |
+| result_import_applied_unit_immutable | The existing invoker trigger preserves the successful marker once verified cell changes commit. |

@@ -75,6 +75,8 @@ const batch = z.object({
   summary,
   canConfirm: z.boolean(),
   failureCode: z.string().optional(),
+  operationId: uuid.optional(),
+  terminationReason: z.string().optional(),
   preview: z
     .object({
       id: uuid,
@@ -89,7 +91,18 @@ const batch = z.object({
       sheetId: uuid,
       changedCells: count,
       canConfirm: z.boolean(),
-      status: z.enum(['READY', 'NO_CHANGES', 'BLOCKED', 'EXCLUDED']),
+      status: z.enum([
+        'READY',
+        'NO_CHANGES',
+        'BLOCKED',
+        'EXCLUDED',
+        'QUEUED',
+        'RUNNING',
+        'APPLIED',
+        'FAILED',
+        'CANCELLED',
+      ]),
+      failureCode: z.string().optional(),
       observedDataGeneration: count,
       expectedSheetRevision: count,
     }),
@@ -147,7 +160,47 @@ const row = z.object({
   changedCells: count,
   unchangedCells: count,
 });
+export const importExecutionUnit = z.object({
+  unitId: uuid,
+  sheetId: uuid,
+  changedCells: count,
+  status: z.enum([
+    'QUEUED',
+    'RUNNING',
+    'APPLIED',
+    'NO_CHANGES',
+    'FAILED',
+    'CANCELLED',
+  ]),
+  canRetry: z.boolean(),
+  failureCode: z.string().optional(),
+  committedAt: instant.optional(),
+});
+const execution = z.object({
+  operationId: uuid,
+  operationType: z.literal('IMPORT_COMMIT'),
+  status: z.enum([
+    'QUEUED',
+    'APPLYING',
+    'APPLIED',
+    'PARTIALLY_APPLIED',
+    'FAILED',
+    'CANCELLED',
+  ]),
+  counts: z.object({
+    total: count,
+    completed: count,
+    failed: count,
+    pending: count,
+    skipped: count,
+  }),
+  createdAt: instant,
+  updatedAt: instant,
+  itemsPath: z.string(),
+  terminationReason: z.string().optional(),
+});
 export const importOutputs = {
+  execution,
   batch,
   list: page(batch),
   issues: page(issue),

@@ -2,6 +2,18 @@ import { HttpStatus } from '@nestjs/common';
 import { DomainException } from '../../../common/exceptions/domain-exception';
 
 const errors = {
+  'import.acknowledgment_required': {
+    status: HttpStatus.CONFLICT,
+    message: 'Acknowledge exactly the warnings in this import preview',
+  },
+  'import.no_cancellable_units': {
+    status: HttpStatus.CONFLICT,
+    message: 'There are no unclaimed import units to cancel',
+  },
+  'import.retry_unavailable': {
+    status: HttpStatus.CONFLICT,
+    message: 'There are no eligible failed import units to retry',
+  },
   'import.readonly_export': {
     status: HttpStatus.UNPROCESSABLE_ENTITY,
     message: 'Published result exports cannot be used for draft entry',
