@@ -626,6 +626,16 @@
         "OR03",
         "OR04"
       ]
+    },
+    {
+      "number": 240,
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/240",
+      "branch": "codex/moazez-be-official-results-publication",
+      "base": "codex/moazez-be-official-results-authoring",
+      "baseSha": "b34c2f4eba3ae2ea02e121a79d41409e30ea43b4",
+      "scope": [
+        "OR05"
+      ]
     }
   ]
 }
