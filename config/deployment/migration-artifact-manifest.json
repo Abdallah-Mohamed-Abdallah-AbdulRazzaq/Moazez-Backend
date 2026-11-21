@@ -300,7 +300,7 @@
     {
       "directory": "20261121043500_official_results_exports",
       "path": "prisma/migrations/20261121043500_official_results_exports/migration.sql",
-      "sha256": "ce6224f41b4a880dfa1d5879d1438d5ca30254cb8fe400d4870625e5b5c6bf34"
+      "sha256": "465369437c3b3e068a3f54371516602695e6a132288f64538ab6e9ba70e8b6a3"
     },
     {
       "directory": "20261121050500_official_results_import_validation",
@@ -318,5 +318,5 @@
       "sha256": "d3fc463c5c5de5040dd7aa1240cd748f174346ea9382d1cd95092220166e3842"
     }
   ],
-  "aggregateMigrationChainSha256": "49141de247724a0a84e1abe0e9b34414dd528cd988ba2518ac4908d9a221cbc5"
+  "aggregateMigrationChainSha256": "28f7e42621c30aabf68e080bca480b3d8ceac1ca4f71ad10b0f7a605a582d70e"
 }

@@ -2,7 +2,7 @@
 
 ## Deployment contract
 
-The API, Core Worker, and Maintenance Scheduler use one release image. The API owns the HTTP interfaces and produces durable bulk jobs. The Core Worker uses the official-results-bulk consumer. The scheduler owns the minute-level reconciliation registration for export, validation, apply, issue reports, cleanup, and publication notices. The Media Worker has no Official Results responsibility.
+The API, Core Worker, and Maintenance Scheduler use one release image. The API owns the HTTP interfaces and produces durable bulk jobs. The Core Worker dispatches dedicated Official Results job types on the existing files-imports queue. Its existing five-minute reconciliation trigger also reconciles result exports, validation, apply, issue reports, cleanup, and publication notices. This keeps the approved eight Core consumers and nine repeat registrations and preserves the Queue Redis operating maximum and recovery reserve under ADR-0008. The Media Worker has no Official Results responsibility.
 
 The backend migration chain contains 51 migrations through 20261121061000_official_results_operations. Use the project's governed migration job, then reconcile IAM reference data with the approved bootstrap. The seed currently has 271 permissions and seven canonical system roles, with 27 permissions in the Official Results namespace. The normal release order and readiness dependencies remain in effect. Storage requires readable/writable private objects under the result namespace, PostgreSQL permissions for normal DML, and the configured Redis queue. No external storage URLs are issued for these files.
 

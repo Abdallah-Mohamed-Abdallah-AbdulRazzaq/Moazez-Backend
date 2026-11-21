@@ -12,7 +12,13 @@ import request from 'supertest';
 import { parse as parseCsv } from 'csv-parse/sync';
 import { QueueModule } from '../../src/infrastructure/queue/queue.module';
 import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
-import { ResultBulkWorker } from '../../src/modules/official-results/infrastructure/result-bulk.worker';
+import { ResultBulkProcessor } from '../../src/modules/official-results/infrastructure/result-bulk.processor';
+import { ImportValidationWorker } from '../../src/modules/files/imports/infrastructure/import-validation.worker';
+import { FILES_IMPORT_RECONCILE_JOB_NAME } from '../../src/modules/files/imports/domain/import-job.types';
+import { ImportJobsRepository } from '../../src/modules/files/imports/infrastructure/import-jobs.repository';
+import { ImportValidationReconciliationService } from '../../src/modules/files/imports/application/import-validation-reconciliation.service';
+import { ProcessImportValidationUseCase } from '../../src/modules/files/imports/application/process-import-validation.use-case';
+import { StudentBulkRegistrationExecutionReconciliationService } from '../../src/modules/students/registration/application/student-bulk-registration-execution-reconciliation.service';
 import { registerOfficialResultsJson } from '../../src/modules/official-results/infrastructure/result-json-transport';
 import { ResultImportApplyService } from '../../src/modules/official-results/application/result-import-apply.service';
 import { resultsBulkQueue } from '../../src/modules/official-results/domain/result-export.contract';
@@ -218,7 +224,20 @@ describe('Official Results policy and permission boundaries', () => {
         OfficialResultsServicesModule,
         QueueModule,
       ],
-      providers: [ResultBulkWorker],
+      providers: [
+        ImportValidationWorker,
+        ResultBulkProcessor,
+        { provide: ImportJobsRepository, useValue: {} },
+        { provide: ProcessImportValidationUseCase, useValue: {} },
+        {
+          provide: ImportValidationReconciliationService,
+          useValue: { reconcile: async () => {} },
+        },
+        {
+          provide: StudentBulkRegistrationExecutionReconciliationService,
+          useValue: { reconcile: async () => {} },
+        },
+      ],
     })
       .overrideProvider(PrismaService)
       .useValue(prisma)
@@ -2994,6 +3013,35 @@ describe('Official Results policy and permission boundaries', () => {
     }
     throw new Error('Export did not become ready');
   }
+
+  it('dispatches Official Results reconciliation from the existing files-imports maintenance job', async () => {
+    const processor = app.get(ResultBulkProcessor);
+    const reconcile = jest.spyOn(processor, 'reconcile');
+    const queue = app.get(BullmqService).getQueue(resultsBulkQueue);
+    try {
+      const job = await queue.add(
+        FILES_IMPORT_RECONCILE_JOB_NAME,
+        {},
+        {
+          jobId: 'reconcile-fixture-' + randomUUID(),
+        },
+      );
+      const deadline = Date.now() + 5000;
+      let state = await job.getState();
+      while (
+        state !== 'completed' &&
+        state !== 'failed' &&
+        Date.now() < deadline
+      ) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 100));
+        state = await job.getState();
+      }
+      expect(state).toBe('completed');
+      expect(reconcile).toHaveBeenCalledTimes(1);
+    } finally {
+      reconcile.mockRestore();
+    }
+  });
 
   it('T057, T059, T060 and T061 export a populated exact teacher roster/field subset through Redis and private MinIO', async () => {
     const book = await liveGradebook('TEACHER-EXPORT');

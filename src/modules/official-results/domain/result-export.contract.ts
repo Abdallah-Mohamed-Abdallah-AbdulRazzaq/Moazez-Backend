@@ -1,12 +1,11 @@
 import { z } from 'zod/v4';
+import { FILES_IMPORT_QUEUE_NAME } from '../../files/imports/domain/import-job.types';
 import { academicSelector, resultIdList } from './result-scope';
 import type { ResultDefinition, ResultField } from './result-definition';
 import type { ResultValue } from './result-value';
 
-export const resultsBulkQueue = 'official-results-bulk';
+export const resultsBulkQueue = FILES_IMPORT_QUEUE_NAME;
 export const resultsExportJob = 'official-results-export';
-export const resultsBulkReconcileJob = 'official-results-bulk-reconcile';
-export const resultsReconcileInterval = 60_000;
 
 export const exportRequest = z.strictObject({
   reportingPeriodId: z.uuid(),
