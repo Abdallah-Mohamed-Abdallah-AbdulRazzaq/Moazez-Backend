@@ -1,3 +1,4 @@
+import { officialResultsFamilyPermissions, officialResultsPermissionCatalog, officialResultsTeacherPermissions } from './official-results-contract-expectations';
 import { PERMISSION_CODES } from '../../src/modules/iam/reference-data/permission-catalog';
 import { SYSTEM_ROLES } from '../../src/modules/iam/reference-data/system-role-catalog';
 import { RequestMethod } from '@nestjs/common';
@@ -199,9 +200,23 @@ export function expectSt12TeacherMetadata(
 }
 
 export function expectDefaultPermissionContract() {
+  const officialResults = (codes: readonly string[]) => codes.filter(code => code.startsWith('official_results.')).sort();
+  expect(officialResults(PERMISSION_CODES)).toEqual([...officialResultsPermissionCatalog].sort());
+  const defaultGrants: Record<string, readonly string[]> = {
+    organization_admin: officialResultsPermissionCatalog,
+    school_admin: officialResultsPermissionCatalog,
+    platform_super_admin: officialResultsPermissionCatalog,
+    dismissal_staff: [],
+    teacher: officialResultsTeacherPermissions,
+    parent: officialResultsFamilyPermissions,
+    student: officialResultsFamilyPermissions,
+  };
+  for (const role of SYSTEM_ROLES) {
+    expect(officialResults(role.permissions)).toEqual([...defaultGrants[role.key]].sort());
+  }
   const optIn = 'grades.teacher_authoring.manage';
-  expect(PERMISSION_CODES).toHaveLength(244);
-  expect(new Set(PERMISSION_CODES).size).toBe(244);
+  expect(PERMISSION_CODES).toHaveLength(271);
+  expect(new Set(PERMISSION_CODES).size).toBe(271);
   expect(PERMISSION_CODES.filter((code) => code === optIn)).toHaveLength(1);
   expect(SYSTEM_ROLES).toHaveLength(7);
   expect(SYSTEM_ROLES.map((role) => role.key).sort()).toEqual([
@@ -214,7 +229,7 @@ export function expectDefaultPermissionContract() {
     'teacher',
   ]);
   expect(SYSTEM_ROLES.reduce((sum, r) => sum + r.permissions.length, 0)).toBe(
-    874,
+    969,
   );
   for (const role of SYSTEM_ROLES) {
     expect(role.permissions).not.toContain(optIn);

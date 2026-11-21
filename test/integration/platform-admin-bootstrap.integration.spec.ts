@@ -177,7 +177,7 @@ describe('Stage 20B initial Platform Administrator bootstrap (integration)', () 
           .permissions,
       ].sort(),
     );
-    expect(PERMISSION_CODES).toHaveLength(244);
+    expect(PERMISSION_CODES).toHaveLength(271);
     expect(
       role.rolePermissions.some(
         (entry) => entry.permission.code === 'grades.teacher_authoring.manage',

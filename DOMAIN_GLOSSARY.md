@@ -70,6 +70,15 @@ Canonical definitions for every business term used in Moazez. When terms conflic
 - **Question** — A unit inside a question-based assessment.
 - **Submission** — A student's answers to a question-based assessment.
 
+## Official Results
+
+- **Result Reporting Period** — A school-owned term, subperiod or academic year window for official results.
+- **Result Group** — An academic subject or a distinct school-defined category for official results.
+- **Result Sheet** — The canonical classroom workspace for a reporting period and result group.
+- **Result Slot** — The canonical result identity for one student, reporting period and result group across placements and views.
+- **Release Unit** — A definition's set of results that can be reviewed and published together.
+- **Result Publication** — The immutable result of releasing one slot and release unit with its definition and academic placement.
+
 ## Behavior & Reinforcement
 
 - **Behavior Note** — A positive or negative observation about a student, tied to points.

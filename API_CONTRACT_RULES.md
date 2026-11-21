@@ -56,6 +56,11 @@ Supported failure shape:
 
 * `{ error: string, message?: string }`
 
+Official Results contracts use the current global exception filter output
+with a structured error object containing code, message and optional details
+and traceId. New responses use the data envelope. See the
+[Official Results route and DTO inventory](docs/official-results/or00-repository-reconciliation.md#route-ownership).
+
 ## General Conventions
 
 * use bearer auth

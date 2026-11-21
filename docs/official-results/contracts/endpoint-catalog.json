@@ -1,0 +1,3271 @@
+{
+  "catalogVersion": "1.0",
+  "status": "NORMATIVE_DESIGN_NOT_IMPLEMENTATION",
+  "baseSourceCommit": "a8a8f160e8c85d1dd8364e055ada69cee61cd7e5",
+  "generatedFor": "MOAZEZ Official Results Management Engine",
+  "wireConventions": {
+    "successEnvelope": "{data: ...}",
+    "errorEnvelope": "{error:{code,message,details?,traceId?}}",
+    "jsonIds": "UUID",
+    "decimals": "strings",
+    "timestamps": "ISO8601 UTC",
+    "defaultPageSize": 50,
+    "maxPageSize": 200,
+    "idempotencyHeader": "Idempotency-Key",
+    "tenantContext": "Server-resolved; never trust body schoolId as authorization"
+  },
+  "notes": [
+    "Catalog enumerates feature operations and contract responsibilities; implementation must generate precise DTO/OpenAPI schemas and contract tests.",
+    "Counts include surface aliases; they are specification entries, not claims of implemented endpoints.",
+    "Route paths are new and must be collision-checked at OR00; existing assessment adapters remain unchanged.",
+    "Permission arrays express baseline ALL requirements; operation notes and state contract can add branch-specific requirements.",
+    "Query filters and request patches are allowlisted in DTO_DICTIONARY.md; unknown input properties are rejected.",
+    "Private generated-file access must also be enforced through any generic Files route."
+  ],
+  "contracts": {
+    "Empty": {
+      "kind": "request",
+      "requiredFields": [],
+      "description": "No request body. Path and declared query parameters still validate.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "ListQuery": {
+      "kind": "query",
+      "requiredFields": [],
+      "description": "cursor?, limit 1..200, allowlisted filters/sort; bound to current authorized scope.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "VersionedPatchRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "expectedRevision",
+        "patch"
+      ],
+      "description": "Period/group metadata allowlist only; no state/kind/year/term/subject ownership mutation. Resource revision CAS.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "ReasonedCommandRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "expectedRevision",
+        "reason"
+      ],
+      "description": "Bounded reason, explicit current state/version.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "PeriodReopenPreviewRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "expectedRevision",
+        "reason",
+        "targetStatus"
+      ],
+      "description": "Preview broad archived reopen to OPEN or ENTRY_CLOSED; enumerate affected work, policy/capabilities and publications retained.",
+      "reference": "../07_GRADEBOOK_AND_ACADEMIC_LIFECYCLE.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "PeriodReopenRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "expectedRevision",
+        "reason"
+      ],
+      "description": "ENTRY_CLOSED ordinary reopen; ARCHIVED additionally requires previewId,previewDigest,targetStatus and periods.manage+archives.manage.",
+      "reference": "../07_GRADEBOOK_AND_ACADEMIC_LIFECYCLE.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "PolicyPreviewRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "expectedPolicyVersionId",
+        "policy"
+      ],
+      "description": "Proposed policy and effect preview.",
+      "reference": "../05_SCHOOL_SETTINGS_AND_PERMISSIONS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "PolicyActivateRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "previewId",
+        "previewDigest",
+        "expectedPolicyVersionId"
+      ],
+      "description": "Activate exactly reviewed policy version.",
+      "reference": "../05_SCHOOL_SETTINGS_AND_PERMISSIONS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "ReportingPeriodCreateRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "kind",
+        "academicYearId",
+        "code",
+        "name",
+        "startsOn",
+        "endsOn"
+      ],
+      "description": "School-local date YYYY-MM-DD; termId required for TERM/CUSTOM; period completeness/open rules explicit.",
+      "reference": "../04_DOMAIN_AND_DATA_MODEL.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "CorrectionWindowRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "targets",
+        "expiresAt",
+        "reason",
+        "expectedPeriodRevision"
+      ],
+      "description": "targets are exact slotId+releaseUnitId+authorizedActorIds tuples; time-bounded archive correction; normal action permissions remain required.",
+      "reference": "../07_GRADEBOOK_AND_ACADEMIC_LIFECYCLE.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "GroupCreateRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "kind",
+        "code",
+        "label"
+      ],
+      "description": "SUBJECT requires subjectId; CUSTOM requires school-owned stable code.",
+      "reference": "../04_DOMAIN_AND_DATA_MODEL.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "TemplateCreateRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "label"
+      ],
+      "description": "School-owned template metadata.",
+      "reference": "../06_TEMPLATES_SCOPES_AND_CALCULATIONS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "TemplateCloneRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "sourceTemplateId",
+        "sourceVersionId",
+        "label"
+      ],
+      "description": "Clone into school ownership; platform template never edited.",
+      "reference": "../06_TEMPLATES_SCOPES_AND_CALCULATIONS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "TemplateVersionCreateRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "expectedLatestVersionId",
+        "definition"
+      ],
+      "description": "Full validated immutable definition.",
+      "reference": "../06_TEMPLATES_SCOPES_AND_CALCULATIONS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "TemplateActivateRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "versionId",
+        "previewId",
+        "previewDigest",
+        "expectedTemplateRevision"
+      ],
+      "description": "Activate reviewed immutable version; no automatic migration.",
+      "reference": "../06_TEMPLATES_SCOPES_AND_CALCULATIONS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "TemplateActivationPreviewRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "versionId",
+        "expectedTemplateRevision"
+      ],
+      "description": "Preview template activation for future resolution; existing-sheet adoption remains explicit.",
+      "reference": "../06_TEMPLATES_SCOPES_AND_CALCULATIONS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "ScopeAssignmentRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "expectedScopeRevision",
+        "assignment"
+      ],
+      "description": "Versioned period/group/academic selectors, replace/extend semantics.",
+      "reference": "../06_TEMPLATES_SCOPES_AND_CALCULATIONS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "ScopeResolveRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "reportingPeriodId",
+        "academicScope",
+        "groupIds",
+        "rosterAsOf"
+      ],
+      "description": "Resolve concrete eligible tuples and conflicts at explicit roster-as-of instant.",
+      "reference": "../06_TEMPLATES_SCOPES_AND_CALCULATIONS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "CapabilitiesQuery": {
+      "kind": "query",
+      "requiredFields": [],
+      "description": "Optional sheetId,slotId,reportingPeriodId,groupId; no caller actor/school override.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "RosterPreviewRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "expectedRosterGeneration",
+        "rosterAsOf"
+      ],
+      "description": "Optional selectedSlotIds; preview authoritative enrollment/eligibility changes without mutation.",
+      "reference": "../07_GRADEBOOK_AND_ACADEMIC_LIFECYCLE.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "SheetMaterializeRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "previewId",
+        "previewDigest"
+      ],
+      "description": "Idempotently reuse/create canonical sheets from exact resolution.",
+      "reference": "../07_GRADEBOOK_AND_ACADEMIC_LIFECYCLE.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "DesignCreateRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "sheetId",
+        "expectedDefinitionVersionId",
+        "expectedSheetRevision",
+        "definition",
+        "reason"
+      ],
+      "description": "Versioned personal/school draft design; no independent official duplicate.",
+      "reference": "../06_TEMPLATES_SCOPES_AND_CALCULATIONS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "DesignDecisionRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "definitionVersionId",
+        "contentDigest",
+        "decision"
+      ],
+      "description": "Approve or return immutable design; return requires comment.",
+      "reference": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "DraftDefinitionPreviewRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "targetDefinitionVersionId",
+        "expectedDefinitionVersionId",
+        "expectedSheetRevision",
+        "fieldMapping"
+      ],
+      "description": "Preview adopting a validated personal/school draft schema, retained values, superseded candidates and conflicts.",
+      "reference": "../06_TEMPLATES_SCOPES_AND_CALCULATIONS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "DraftDefinitionAdoptRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "previewId",
+        "previewDigest",
+        "expectedSheetRevision"
+      ],
+      "description": "Adopt exact reviewed draft schema and explicit field mapping; does not grant school official-design acceptance.",
+      "reference": "../06_TEMPLATES_SCOPES_AND_CALCULATIONS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "GrantCreateRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "grantee",
+        "scope",
+        "actions",
+        "reason"
+      ],
+      "description": "Explicit grantee USER/ROLE and ID; exact group/period/classroom scope, allowlisted operations and required reason; optional expiry.",
+      "reference": "../05_SCHOOL_SETTINGS_AND_PERMISSIONS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "RosterReconcileRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "previewId",
+        "previewDigest",
+        "expectedRosterGeneration",
+        "decisions"
+      ],
+      "description": "Explicit transfer/eligibility reconciliation; reasons for changes.",
+      "reference": "../07_GRADEBOOK_AND_ACADEMIC_LIFECYCLE.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "GridPatchRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "expectedDefinitionVersionId",
+        "expectedSheetRevision",
+        "operations"
+      ],
+      "description": "Atomic sheet batch of typed CellOperation with cell CAS; expectedSheetRevision is structural; limit1000.",
+      "reference": "../07_GRADEBOOK_AND_ACADEMIC_LIFECYCLE.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "CandidateCaptureRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "sheetId",
+        "expectedSheetRevision",
+        "units",
+        "intent"
+      ],
+      "description": "units slotId+releaseUnitId+expectedSlotRevision; intent REVIEW or DIRECT_PUBLICATION.",
+      "reference": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "ReviewDecisionRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "candidateId",
+        "contentDigest",
+        "expectedCandidateRevision",
+        "decision",
+        "candidateKind"
+      ],
+      "description": "Required candidateKind RESULT_RELEASE|AGGREGATE dispatches to the matching tenant-owned candidate type. Exact candidate ID/revision/contentDigest; APPROVE or RETURN with required comment for return. Aggregate approval binds immutable profileVersionId, exact sourcePublicationIds and dependency generations; current authority/policy/separation apply. Changed or ineligible dependencies invalidate pending approval; publish rechecks.",
+      "reference": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "PublicationBatchRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "candidateRefs",
+        "mode"
+      ],
+      "description": "Exact candidates,digests,expected predecessor; APPROVED/DIRECT/APPROVE_AND_PUBLISH.",
+      "reference": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "CorrectionRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "publicationId",
+        "expectedRevision",
+        "expectedPublicationGeneration",
+        "reason"
+      ],
+      "description": "Open/reuse correction draft; optional validated operations.",
+      "reference": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "PublicationRevokeRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "expectedPublicationId",
+        "expectedRevision",
+        "expectedPublicationGeneration",
+        "reason"
+      ],
+      "description": "Revoke exact active release, no fallback to older publication.",
+      "reference": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "PublicationTopologyPreviewRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "expectedPublicationGeneration",
+        "expectedActivePublicationIds",
+        "targetDefinitionVersionId",
+        "candidateRefs",
+        "preservedPublicationIds",
+        "reason"
+      ],
+      "description": "Exact school-owned per-slot replacement bundle; no output overlap or unresolved dependency.",
+      "reference": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "PublicationTopologyReplaceRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "previewId",
+        "previewDigest",
+        "expectedPublicationGeneration"
+      ],
+      "description": "Atomic activation of exact reviewed replacement set; keeps unaffected explicit refs.",
+      "reference": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "AggregateProfileRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "expectedProfileRevision",
+        "definition"
+      ],
+      "description": "POST creates a root/first immutable version when expectedProfileRevision=0 and profileId is forbidden. When expectedProfileRevision>0, profileId is required (UUID), must identify a current-school profile, and is compare-and-swapped under current management authority before a new immutable version is created. Definition has published-dependency rules, explicit audience and coverage. Existing published aggregates are never silently changed.",
+      "reference": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "AggregateCandidateRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "studentId",
+        "reportingPeriodId",
+        "profileVersionId",
+        "sourcePublicationIds"
+      ],
+      "description": "Freeze eligible immutable source publication references.",
+      "reference": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "AggregatePublishRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "candidateId",
+        "contentDigest",
+        "expectedCandidateRevision",
+        "expectedCurrentAggregatePublicationId"
+      ],
+      "description": "Exact immutable aggregate candidate/digest/revision; null expected current only for first release. Recheck pinned applicable profile version, exact source publication pointers/dependency generations, matching AGGREGATE review decision when required, current policy and publication authority. Stale or changed inputs cannot reuse approval.",
+      "reference": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "ExportPreviewRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "reportingPeriodId",
+        "academicScope",
+        "groupIds",
+        "format",
+        "mode"
+      ],
+      "description": "CSV/XLSX; EDIT_DRAFT/READ_PUBLISHED; optional selectedFieldIds/selectedSlotIds.",
+      "reference": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "ExportCreateRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "previewId",
+        "previewDigest"
+      ],
+      "description": "Materialize reviewed export manifest and private file.",
+      "reference": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "ImportUploadRequest": {
+      "kind": "multipart",
+      "requiredFields": [
+        "exportId",
+        "file"
+      ],
+      "description": "Optional validateOptions.clearReason; CSV/XLSX actual parsing. Replacing same-batch source additionally requires expectedBatchRevision.",
+      "reference": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "ImportCorrectionRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "expectedBatchRevision",
+        "changes"
+      ],
+      "description": "rowRef+fieldId, typed SET/CLEAR, optional reason; new validation version.",
+      "reference": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "ImportRevalidateRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "expectedBatchRevision"
+      ],
+      "description": "Refresh immutable current-source preview.",
+      "reference": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "ImportCancelRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "expectedBatchRevision",
+        "reason"
+      ],
+      "description": "Cancel only not-yet-claimed units; running atomic unit finishes all-or-none. Mixed committed/cancelled units report PARTIALLY_APPLIED with terminationReason CANCELLED; no eligible cancellable units or terminal APPLIED returns409.",
+      "reference": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "ImportRetryRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "expectedBatchRevision"
+      ],
+      "description": "Retry eligible uncommitted transient-failure units only; current authorization and preview validity rechecked.",
+      "reference": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "ImportConfirmRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "previewId",
+        "previewDigest",
+        "expectedBatchRevision",
+        "selectedSheetIds",
+        "acknowledgedWarningIds"
+      ],
+      "description": "Exact sorted selected sheets; frozen effective clear reason if present.",
+      "reference": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "PreviewRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "audience"
+      ],
+      "description": "STUDENT or PARENT; authorized staff projection of path-selected candidate.",
+      "reference": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "Policy": {
+      "kind": "response-data",
+      "requiredFields": [
+        "policyVersionId",
+        "revision",
+        "policy",
+        "capabilities"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "ImpactPreview": {
+      "kind": "response-data",
+      "requiredFields": [
+        "previewId",
+        "previewDigest",
+        "impacts",
+        "blockers"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "Period": {
+      "kind": "response-data",
+      "requiredFields": [
+        "reportingPeriodId",
+        "revision",
+        "kind",
+        "academicYearId",
+        "status"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "Group": {
+      "kind": "response-data",
+      "requiredFields": [
+        "groupId",
+        "revision",
+        "kind",
+        "label"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "Template": {
+      "kind": "response-data",
+      "requiredFields": [
+        "templateId",
+        "revision",
+        "label",
+        "ownership"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "TemplateVersion": {
+      "kind": "response-data",
+      "requiredFields": [
+        "templateVersionId",
+        "definitionVersionId",
+        "definition"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "ScopeAssignment": {
+      "kind": "response-data",
+      "requiredFields": [
+        "assignmentId",
+        "revision",
+        "assignment"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "ScopeResolution": {
+      "kind": "response-data",
+      "requiredFields": [
+        "previewId",
+        "previewDigest",
+        "tuples",
+        "conflicts"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "Sheet": {
+      "kind": "response-data",
+      "requiredFields": [
+        "sheetId",
+        "sheetRevision",
+        "dataGeneration",
+        "draftDefinitionVersionId",
+        "lastAcceptedDefinitionVersionId",
+        "reportingPeriodId",
+        "groupId"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "Design": {
+      "kind": "response-data",
+      "requiredFields": [
+        "definitionVersionId",
+        "contentDigest",
+        "status"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "Grant": {
+      "kind": "response-data",
+      "requiredFields": [
+        "grantId",
+        "revision",
+        "scope",
+        "actions"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "Gradebook": {
+      "kind": "response-data",
+      "requiredFields": [
+        "sheetId",
+        "sheetRevision",
+        "definitions",
+        "rows",
+        "capabilities"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "GridPatchResult": {
+      "kind": "response-data",
+      "requiredFields": [
+        "sheetId",
+        "sheetRevision",
+        "dataGeneration",
+        "changedCells",
+        "calculatedOutputs"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "Candidate": {
+      "kind": "response-data",
+      "requiredFields": [
+        "candidateId",
+        "candidateRevision",
+        "contentDigest",
+        "status"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "ReviewDecision": {
+      "kind": "response-data",
+      "requiredFields": [
+        "decisionId",
+        "candidateId",
+        "contentDigest",
+        "decision",
+        "candidateKind"
+      ],
+      "description": "Wrapped in {data:...}; required candidateKind RESULT_RELEASE|AGGREGATE records the integrity-checked typed target of this immutable exact-hash decision. Review authority and safe response evidence follow the dictionary.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "BatchOperation": {
+      "kind": "response-data",
+      "requiredFields": [
+        "operationId",
+        "operationType",
+        "status",
+        "counts"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "Publication": {
+      "kind": "response-data",
+      "requiredFields": [
+        "publicationId",
+        "slotId",
+        "releaseUnitId",
+        "revision",
+        "status"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "CorrectionDraft": {
+      "kind": "response-data",
+      "requiredFields": [
+        "sheetId",
+        "slotId",
+        "previousPublicationId",
+        "reason"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "PublicationComposition": {
+      "kind": "response-data",
+      "requiredFields": [
+        "slotId",
+        "publicationGeneration",
+        "activePublications",
+        "replacedPublicationIds",
+        "preservedPublicationIds"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "AggregateProfile": {
+      "kind": "response-data",
+      "requiredFields": [
+        "profileId",
+        "profileVersionId",
+        "definition"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "AggregateCandidate": {
+      "kind": "response-data",
+      "requiredFields": [
+        "candidateId",
+        "contentDigest",
+        "sourcePublicationIds",
+        "status"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "AggregatePublication": {
+      "kind": "response-data",
+      "requiredFields": [
+        "publicationId",
+        "revision",
+        "sourcePublicationIds",
+        "status"
+      ],
+      "description": "Wrapped in {data:...}; status is exactly ACTIVE|SUPERSEDED|REVOKED|STALE. STALE denotes current projection invalidity while historical computed content remains immutable.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "Export": {
+      "kind": "response-data",
+      "requiredFields": [
+        "exportId",
+        "status",
+        "manifestSummary",
+        "files"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "ImportBatch": {
+      "kind": "response-data",
+      "requiredFields": [
+        "batchId",
+        "batchRevision",
+        "status",
+        "summary",
+        "canConfirm"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "ImportPreview": {
+      "kind": "response-data",
+      "requiredFields": [
+        "batchId",
+        "batchRevision",
+        "preview",
+        "summary"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "FileDescriptor": {
+      "kind": "response-data",
+      "requiredFields": [
+        "fileId",
+        "filename",
+        "mediaType",
+        "sizeBytes",
+        "downloadPath"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "FamilyResult": {
+      "kind": "response-data",
+      "requiredFields": [
+        "schemaVersion",
+        "source",
+        "resultSetId",
+        "viewVersion",
+        "academicContext",
+        "groups",
+        "summary"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "FamilyPreview": {
+      "kind": "response-data",
+      "requiredFields": [
+        "mode",
+        "audience",
+        "candidateId",
+        "result"
+      ],
+      "description": "Staff-only {data:{mode:PREVIEW,audience,candidateId,result}}. Shared identity/context/group/typed-field rendering, but result.groups[].releases[] uses PreviewRelease {candidateId,candidateRevision,releaseUnitId,status:PREVIEW,publicationId:null,publishedAt:null,completeness,academicPlacement,fields}. Default selected-candidate-only preview omits official overall summary. Actual FamilyResult remains published-only with real nonnull publication metadata.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "MissingReport": {
+      "kind": "response-data",
+      "requiredFields": [
+        "scope",
+        "counts",
+        "items"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "HistoryPage": {
+      "kind": "response-data",
+      "requiredFields": [
+        "items",
+        "nextCursor",
+        "hasMore"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "Page": {
+      "kind": "response-data",
+      "requiredFields": [
+        "items",
+        "nextCursor",
+        "hasMore"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "Capabilities": {
+      "kind": "response-data",
+      "requiredFields": [
+        "actions",
+        "scope"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "OperationItemPage": {
+      "kind": "response-data",
+      "requiredFields": [
+        "items",
+        "nextCursor",
+        "hasMore"
+      ],
+      "description": "Wrapped in {data:...}; fields are required base members, resource-specific documented extensions allowed.",
+      "reference": "../10_API_CONTRACTS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "PrivateFile": {
+      "kind": "binary",
+      "requiredFields": [],
+      "description": "Authenticated content/proxy for sensitive result artifacts; generic Files routes cannot mint bypassing object URLs. Future signed-URL exception requires explicit ADR.",
+      "reference": "../11_SECURITY_AND_OPERATIONS.md",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    }
+  },
+  "operations": [
+    {
+      "operationId": "getOfficialResultsCapabilities",
+      "method": "GET",
+      "path": "/api/v1/official-results/capabilities",
+      "surface": "SCHOOL",
+      "inputContract": "CapabilitiesQuery",
+      "outputContract": "Capabilities",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "getOfficialResultsPolicy",
+      "method": "GET",
+      "path": "/api/v1/official-results/policy",
+      "surface": "SCHOOL",
+      "inputContract": "Empty",
+      "outputContract": "Policy",
+      "permissions": [
+        "official_results.policies.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "listOfficialResultsPolicyVersions",
+      "method": "GET",
+      "path": "/api/v1/official-results/policy/versions",
+      "surface": "SCHOOL",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.policies.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "previewOfficialResultsPolicy",
+      "method": "POST",
+      "path": "/api/v1/official-results/policy/preview",
+      "surface": "SCHOOL",
+      "inputContract": "PolicyPreviewRequest",
+      "outputContract": "ImpactPreview",
+      "permissions": [
+        "official_results.policies.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "activateOfficialResultsPolicy",
+      "method": "POST",
+      "path": "/api/v1/official-results/policy/activate",
+      "surface": "SCHOOL",
+      "inputContract": "PolicyActivateRequest",
+      "outputContract": "Policy",
+      "permissions": [
+        "official_results.policies.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../05_SCHOOL_SETTINGS_AND_PERMISSIONS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "listOfficialResultsPeriods",
+      "method": "GET",
+      "path": "/api/v1/official-results/periods",
+      "surface": "SCHOOL",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "createOfficialResultsPeriod",
+      "method": "POST",
+      "path": "/api/v1/official-results/periods",
+      "surface": "SCHOOL",
+      "inputContract": "ReportingPeriodCreateRequest",
+      "outputContract": "Period",
+      "permissions": [
+        "official_results.periods.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 201,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "updateOfficialResultsPeriod",
+      "method": "PATCH",
+      "path": "/api/v1/official-results/periods/:id",
+      "surface": "SCHOOL",
+      "inputContract": "VersionedPatchRequest",
+      "outputContract": "Period",
+      "permissions": [
+        "official_results.periods.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "OPTIONAL_WITH_CAS",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "listOfficialResultsGroups",
+      "method": "GET",
+      "path": "/api/v1/official-results/groups",
+      "surface": "SCHOOL",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "createOfficialResultsGroup",
+      "method": "POST",
+      "path": "/api/v1/official-results/groups",
+      "surface": "SCHOOL",
+      "inputContract": "GroupCreateRequest",
+      "outputContract": "Group",
+      "permissions": [
+        "official_results.groups.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 201,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "updateOfficialResultsGroup",
+      "method": "PATCH",
+      "path": "/api/v1/official-results/groups/:id",
+      "surface": "SCHOOL",
+      "inputContract": "VersionedPatchRequest",
+      "outputContract": "Group",
+      "permissions": [
+        "official_results.groups.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "OPTIONAL_WITH_CAS",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "closeOfficialResultsPeriod",
+      "method": "POST",
+      "path": "/api/v1/official-results/periods/:id/close",
+      "surface": "SCHOOL",
+      "inputContract": "ReasonedCommandRequest",
+      "outputContract": "Period",
+      "permissions": [
+        "official_results.periods.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../07_GRADEBOOK_AND_ACADEMIC_LIFECYCLE.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "previewOfficialResultsPeriodReopen",
+      "method": "POST",
+      "path": "/api/v1/official-results/periods/:id/reopen-preview",
+      "surface": "SCHOOL",
+      "inputContract": "PeriodReopenPreviewRequest",
+      "outputContract": "ImpactPreview",
+      "permissions": [
+        "official_results.periods.manage",
+        "official_results.archives.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../07_GRADEBOOK_AND_ACADEMIC_LIFECYCLE.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "reopenOfficialResultsPeriod",
+      "method": "POST",
+      "path": "/api/v1/official-results/periods/:id/reopen",
+      "surface": "SCHOOL",
+      "inputContract": "PeriodReopenRequest",
+      "outputContract": "Period",
+      "permissions": [
+        "official_results.periods.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../07_GRADEBOOK_AND_ACADEMIC_LIFECYCLE.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient.",
+      "notes": "ARCHIVED source also requires archives.manage, exact reviewed impact preview/digest and explicit targetStatus; narrow correction windows remain the default correction flow."
+    },
+    {
+      "operationId": "archiveOfficialResultsPeriod",
+      "method": "POST",
+      "path": "/api/v1/official-results/periods/:id/archive",
+      "surface": "SCHOOL",
+      "inputContract": "ReasonedCommandRequest",
+      "outputContract": "Period",
+      "permissions": [
+        "official_results.archives.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../07_GRADEBOOK_AND_ACADEMIC_LIFECYCLE.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "openOfficialResultsArchiveCorrectionWindow",
+      "method": "POST",
+      "path": "/api/v1/official-results/periods/:id/correction-windows",
+      "surface": "SCHOOL",
+      "inputContract": "CorrectionWindowRequest",
+      "outputContract": "Period",
+      "permissions": [
+        "official_results.archives.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../07_GRADEBOOK_AND_ACADEMIC_LIFECYCLE.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "listOfficialResultsTemplates",
+      "method": "GET",
+      "path": "/api/v1/official-results/templates",
+      "surface": "SCHOOL",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.templates.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "createOfficialResultsTemplate",
+      "method": "POST",
+      "path": "/api/v1/official-results/templates",
+      "surface": "SCHOOL",
+      "inputContract": "TemplateCreateRequest",
+      "outputContract": "Template",
+      "permissions": [
+        "official_results.templates.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 201,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "cloneOfficialResultsTemplate",
+      "method": "POST",
+      "path": "/api/v1/official-results/templates/clone",
+      "surface": "SCHOOL",
+      "inputContract": "TemplateCloneRequest",
+      "outputContract": "Template",
+      "permissions": [
+        "official_results.templates.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 201,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "getOfficialResultsTemplate",
+      "method": "GET",
+      "path": "/api/v1/official-results/templates/:id",
+      "surface": "SCHOOL",
+      "inputContract": "Empty",
+      "outputContract": "Template",
+      "permissions": [
+        "official_results.templates.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "createOfficialResultsTemplateVersion",
+      "method": "POST",
+      "path": "/api/v1/official-results/templates/:id/versions",
+      "surface": "SCHOOL",
+      "inputContract": "TemplateVersionCreateRequest",
+      "outputContract": "TemplateVersion",
+      "permissions": [
+        "official_results.templates.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 201,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "getOfficialResultsTemplateVersion",
+      "method": "GET",
+      "path": "/api/v1/official-results/templates/:id/versions/:versionId",
+      "surface": "SCHOOL",
+      "inputContract": "Empty",
+      "outputContract": "TemplateVersion",
+      "permissions": [
+        "official_results.templates.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "previewOfficialResultsTemplateActivation",
+      "method": "POST",
+      "path": "/api/v1/official-results/templates/:id/activation-preview",
+      "surface": "SCHOOL",
+      "inputContract": "TemplateActivationPreviewRequest",
+      "outputContract": "ImpactPreview",
+      "permissions": [
+        "official_results.templates.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "activateOfficialResultsTemplate",
+      "method": "POST",
+      "path": "/api/v1/official-results/templates/:id/activate",
+      "surface": "SCHOOL",
+      "inputContract": "TemplateActivateRequest",
+      "outputContract": "Template",
+      "permissions": [
+        "official_results.templates.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "archiveOfficialResultsTemplate",
+      "method": "POST",
+      "path": "/api/v1/official-results/templates/:id/archive",
+      "surface": "SCHOOL",
+      "inputContract": "ReasonedCommandRequest",
+      "outputContract": "Template",
+      "permissions": [
+        "official_results.templates.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "listOfficialResultsFieldPresets",
+      "method": "GET",
+      "path": "/api/v1/official-results/field-presets",
+      "surface": "SCHOOL",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.templates.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "assignOfficialResultsTemplate",
+      "method": "POST",
+      "path": "/api/v1/official-results/scope-assignments",
+      "surface": "SCHOOL",
+      "inputContract": "ScopeAssignmentRequest",
+      "outputContract": "ScopeAssignment",
+      "permissions": [
+        "official_results.scopes.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 201,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "listOfficialResultsScopeAssignments",
+      "method": "GET",
+      "path": "/api/v1/official-results/scope-assignments",
+      "surface": "SCHOOL",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.templates.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "resolveOfficialResultsScope",
+      "method": "POST",
+      "path": "/api/v1/official-results/scope-resolutions",
+      "surface": "SCHOOL",
+      "inputContract": "ScopeResolveRequest",
+      "outputContract": "ScopeResolution",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "materializeOfficialResultsSheets",
+      "method": "POST",
+      "path": "/api/v1/official-results/sheets/materialize",
+      "surface": "SCHOOL",
+      "inputContract": "SheetMaterializeRequest",
+      "outputContract": "BatchOperation",
+      "permissions": [
+        "official_results.sheets.create"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 202,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "listOfficialResultsSheets",
+      "method": "GET",
+      "path": "/api/v1/official-results/sheets",
+      "surface": "SCHOOL",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "getOfficialResultsSheet",
+      "method": "GET",
+      "path": "/api/v1/official-results/sheets/:id",
+      "surface": "SCHOOL",
+      "inputContract": "Empty",
+      "outputContract": "Sheet",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "getOfficialResultsGrid",
+      "method": "GET",
+      "path": "/api/v1/official-results/sheets/:id/grid",
+      "surface": "SCHOOL",
+      "inputContract": "ListQuery",
+      "outputContract": "Gradebook",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "patchOfficialResultsCells",
+      "method": "PATCH",
+      "path": "/api/v1/official-results/sheets/:id/cells",
+      "surface": "SCHOOL",
+      "inputContract": "GridPatchRequest",
+      "outputContract": "GridPatchResult",
+      "permissions": [
+        "official_results.entries.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "OPTIONAL_WITH_CAS",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "createOfficialResultsDesign",
+      "method": "POST",
+      "path": "/api/v1/official-results/designs",
+      "surface": "SCHOOL",
+      "inputContract": "DesignCreateRequest",
+      "outputContract": "Design",
+      "permissions": [
+        "official_results.designs.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 201,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "previewOfficialResultsDraftDefinition",
+      "method": "POST",
+      "path": "/api/v1/official-results/sheets/:id/draft-definition-preview",
+      "surface": "SCHOOL",
+      "inputContract": "DraftDefinitionPreviewRequest",
+      "outputContract": "ImpactPreview",
+      "permissions": [
+        "official_results.designs.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../06_TEMPLATES_SCOPES_AND_CALCULATIONS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "adoptOfficialResultsDraftDefinition",
+      "method": "POST",
+      "path": "/api/v1/official-results/sheets/:id/draft-definition-adopt",
+      "surface": "SCHOOL",
+      "inputContract": "DraftDefinitionAdoptRequest",
+      "outputContract": "Sheet",
+      "permissions": [
+        "official_results.designs.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../06_TEMPLATES_SCOPES_AND_CALCULATIONS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "decideOfficialResultsDesign",
+      "method": "POST",
+      "path": "/api/v1/official-results/designs/:id/decisions",
+      "surface": "SCHOOL",
+      "inputContract": "DesignDecisionRequest",
+      "outputContract": "Design",
+      "permissions": [
+        "official_results.designs.approve"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "previewOfficialResultsRosterReconciliation",
+      "method": "POST",
+      "path": "/api/v1/official-results/sheets/:id/roster-preview",
+      "surface": "SCHOOL",
+      "inputContract": "RosterPreviewRequest",
+      "outputContract": "ImpactPreview",
+      "permissions": [
+        "official_results.rosters.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "reconcileOfficialResultsRoster",
+      "method": "POST",
+      "path": "/api/v1/official-results/sheets/:id/roster-reconcile",
+      "surface": "SCHOOL",
+      "inputContract": "RosterReconcileRequest",
+      "outputContract": "Sheet",
+      "permissions": [
+        "official_results.rosters.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "listOfficialResultsGrants",
+      "method": "GET",
+      "path": "/api/v1/official-results/grants",
+      "surface": "SCHOOL",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.grants.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "createOfficialResultsGrant",
+      "method": "POST",
+      "path": "/api/v1/official-results/grants",
+      "surface": "SCHOOL",
+      "inputContract": "GrantCreateRequest",
+      "outputContract": "Grant",
+      "permissions": [
+        "official_results.grants.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 201,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "revokeOfficialResultsGrant",
+      "method": "POST",
+      "path": "/api/v1/official-results/grants/:id/revoke",
+      "surface": "SCHOOL",
+      "inputContract": "ReasonedCommandRequest",
+      "outputContract": "Grant",
+      "permissions": [
+        "official_results.grants.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "captureOfficialResultsCandidates",
+      "method": "POST",
+      "path": "/api/v1/official-results/candidates",
+      "surface": "SCHOOL",
+      "inputContract": "CandidateCaptureRequest",
+      "outputContract": "BatchOperation",
+      "permissions": [
+        "official_results.reviews.submit"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 202,
+      "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient.",
+      "notes": "DIRECT_PUBLICATION additionally requires effective publications.publish and direct policy."
+    },
+    {
+      "operationId": "getOfficialResultsCandidate",
+      "method": "GET",
+      "path": "/api/v1/official-results/candidates/:id",
+      "surface": "SCHOOL",
+      "inputContract": "Empty",
+      "outputContract": "Candidate",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "listOfficialResultsReviews",
+      "method": "GET",
+      "path": "/api/v1/official-results/reviews",
+      "surface": "SCHOOL",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.reviews.approve"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient.",
+      "notes": "Review queue is a typed union: every item includes candidateKind RESULT_RELEASE|AGGREGATE and exact candidate identity/digest/revision. Optional candidateKind filter; sheetId selects release candidates and cannot combine with AGGREGATE. Scope/authorization applies to the resolved candidate type."
+    },
+    {
+      "operationId": "decideOfficialResultsReview",
+      "method": "POST",
+      "path": "/api/v1/official-results/reviews/decisions",
+      "surface": "SCHOOL",
+      "inputContract": "ReviewDecisionRequest",
+      "outputContract": "ReviewDecision",
+      "permissions": [
+        "official_results.reviews.approve"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient.",
+      "notes": "Required candidateKind dispatches explicitly to RESULT_RELEASE or AGGREGATE within the current school; never fall through across candidate types. Aggregate review binds immutable profile version and exact source publication dependencies. Replaced/revoked inputs invalidate pending approval; publication rechecks current authority and dependencies."
+    },
+    {
+      "operationId": "previewOfficialResultsCandidate",
+      "method": "POST",
+      "path": "/api/v1/official-results/candidates/:id/preview",
+      "surface": "SCHOOL",
+      "inputContract": "PreviewRequest",
+      "outputContract": "FamilyPreview",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "publishOfficialResultsBatch",
+      "method": "POST",
+      "path": "/api/v1/official-results/publication-batches",
+      "surface": "SCHOOL",
+      "inputContract": "PublicationBatchRequest",
+      "outputContract": "BatchOperation",
+      "permissions": [
+        "official_results.publications.publish"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 202,
+      "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient.",
+      "notes": "Corrected releases additionally require publications.correct; APPROVE_AND_PUBLISH additionally requires reviews.approve; no implicit review bypass."
+    },
+    {
+      "operationId": "requestOfficialResultsCorrection",
+      "method": "POST",
+      "path": "/api/v1/official-results/corrections",
+      "surface": "SCHOOL",
+      "inputContract": "CorrectionRequest",
+      "outputContract": "CorrectionDraft",
+      "permissions": [
+        "official_results.corrections.request"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 201,
+      "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient.",
+      "notes": "When proposed operations are included, entries.manage and normal field write scope/state are also required."
+    },
+    {
+      "operationId": "getOfficialResultsPublication",
+      "method": "GET",
+      "path": "/api/v1/official-results/publications/:id",
+      "surface": "SCHOOL",
+      "inputContract": "Empty",
+      "outputContract": "Publication",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "revokeOfficialResultsPublication",
+      "method": "POST",
+      "path": "/api/v1/official-results/publications/:id/revoke",
+      "surface": "SCHOOL",
+      "inputContract": "PublicationRevokeRequest",
+      "outputContract": "Publication",
+      "permissions": [
+        "official_results.publications.revoke"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "previewOfficialResultsPublicationTopology",
+      "method": "POST",
+      "path": "/api/v1/official-results/slots/:slotId/publication-topology/preview",
+      "surface": "SCHOOL",
+      "inputContract": "PublicationTopologyPreviewRequest",
+      "outputContract": "ImpactPreview",
+      "permissions": [
+        "official_results.publications.publish",
+        "official_results.publications.correct"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient.",
+      "notes": "School-only; every replacement candidate must carry required design/result approval; missing approvals are blockers."
+    },
+    {
+      "operationId": "replaceOfficialResultsPublicationTopology",
+      "method": "POST",
+      "path": "/api/v1/official-results/slots/:slotId/publication-topology/replace",
+      "surface": "SCHOOL",
+      "inputContract": "PublicationTopologyReplaceRequest",
+      "outputContract": "PublicationComposition",
+      "permissions": [
+        "official_results.publications.publish",
+        "official_results.publications.correct"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient.",
+      "notes": "School-only atomic per-slot replacement; required design/result approvals must be current. Any combined approval requires designs.approve/reviews.approve as applicable."
+    },
+    {
+      "operationId": "createOfficialResultsAggregateProfile",
+      "method": "POST",
+      "path": "/api/v1/official-results/aggregate-profiles",
+      "surface": "SCHOOL",
+      "inputContract": "AggregateProfileRequest",
+      "outputContract": "AggregateProfile",
+      "permissions": [
+        "official_results.aggregates.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 201,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient.",
+      "notes": "One POST supports create and immutable versioning: revision 0 forbids profileId; positive revision requires a same-school profileId and CAS. Prior profile versions and published aggregates remain immutable."
+    },
+    {
+      "operationId": "createOfficialResultsAggregateCandidate",
+      "method": "POST",
+      "path": "/api/v1/official-results/aggregate-candidates",
+      "surface": "SCHOOL",
+      "inputContract": "AggregateCandidateRequest",
+      "outputContract": "AggregateCandidate",
+      "permissions": [
+        "official_results.aggregates.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 201,
+      "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "publishOfficialResultsAggregate",
+      "method": "POST",
+      "path": "/api/v1/official-results/aggregate-publications",
+      "surface": "SCHOOL",
+      "inputContract": "AggregatePublishRequest",
+      "outputContract": "AggregatePublication",
+      "permissions": [
+        "official_results.aggregates.manage",
+        "official_results.publications.publish"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 201,
+      "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient.",
+      "notes": "Apply current review policy and exact AGGREGATE candidate approval when required; recheck profile version, source publication pointers/dependency generations and current authority at commit. Stale approvals cannot authorize changed inputs."
+    },
+    {
+      "operationId": "previewOfficialResultsExport",
+      "method": "POST",
+      "path": "/api/v1/official-results/exports/preview",
+      "surface": "SCHOOL",
+      "inputContract": "ExportPreviewRequest",
+      "outputContract": "ImpactPreview",
+      "permissions": [
+        "official_results.exports.create"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "createOfficialResultsExport",
+      "method": "POST",
+      "path": "/api/v1/official-results/exports",
+      "surface": "SCHOOL",
+      "inputContract": "ExportCreateRequest",
+      "outputContract": "Export",
+      "permissions": [
+        "official_results.exports.create"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 202,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "listOfficialResultsExports",
+      "method": "GET",
+      "path": "/api/v1/official-results/exports",
+      "surface": "SCHOOL",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.exports.create"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "getOfficialResultsExport",
+      "method": "GET",
+      "path": "/api/v1/official-results/exports/:id",
+      "surface": "SCHOOL",
+      "inputContract": "Empty",
+      "outputContract": "Export",
+      "permissions": [
+        "official_results.exports.create"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "downloadOfficialResultsExport",
+      "method": "GET",
+      "path": "/api/v1/official-results/exports/:id/files/:fileId/download",
+      "surface": "SCHOOL",
+      "inputContract": "Empty",
+      "outputContract": "PrivateFile",
+      "permissions": [
+        "official_results.exports.create"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../11_SECURITY_AND_OPERATIONS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "createOfficialResultsImport",
+      "method": "POST",
+      "path": "/api/v1/official-results/imports",
+      "surface": "SCHOOL",
+      "inputContract": "ImportUploadRequest",
+      "outputContract": "ImportBatch",
+      "permissions": [
+        "official_results.imports.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 202,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "replaceOfficialResultsImportSource",
+      "method": "POST",
+      "path": "/api/v1/official-results/imports/:id/source-versions",
+      "surface": "SCHOOL",
+      "inputContract": "ImportUploadRequest",
+      "outputContract": "ImportBatch",
+      "permissions": [
+        "official_results.imports.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 202,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient.",
+      "notes": "Only before any unit applied; afterward create successor batch for uncommitted units."
+    },
+    {
+      "operationId": "listOfficialResultsImports",
+      "method": "GET",
+      "path": "/api/v1/official-results/imports",
+      "surface": "SCHOOL",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.imports.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "getOfficialResultsImport",
+      "method": "GET",
+      "path": "/api/v1/official-results/imports/:id",
+      "surface": "SCHOOL",
+      "inputContract": "Empty",
+      "outputContract": "ImportBatch",
+      "permissions": [
+        "official_results.imports.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "listOfficialResultsImportIssues",
+      "method": "GET",
+      "path": "/api/v1/official-results/imports/:id/issues",
+      "surface": "SCHOOL",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.imports.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "listOfficialResultsImportChanges",
+      "method": "GET",
+      "path": "/api/v1/official-results/imports/:id/changes",
+      "surface": "SCHOOL",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.imports.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "listOfficialResultsImportRows",
+      "method": "GET",
+      "path": "/api/v1/official-results/imports/:id/rows",
+      "surface": "SCHOOL",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.imports.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "correctOfficialResultsImport",
+      "method": "POST",
+      "path": "/api/v1/official-results/imports/:id/corrections",
+      "surface": "SCHOOL",
+      "inputContract": "ImportCorrectionRequest",
+      "outputContract": "ImportBatch",
+      "permissions": [
+        "official_results.imports.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 202,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "revalidateOfficialResultsImport",
+      "method": "POST",
+      "path": "/api/v1/official-results/imports/:id/revalidate",
+      "surface": "SCHOOL",
+      "inputContract": "ImportRevalidateRequest",
+      "outputContract": "ImportBatch",
+      "permissions": [
+        "official_results.imports.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 202,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "confirmOfficialResultsImport",
+      "method": "POST",
+      "path": "/api/v1/official-results/imports/:id/confirm",
+      "surface": "SCHOOL",
+      "inputContract": "ImportConfirmRequest",
+      "outputContract": "BatchOperation",
+      "permissions": [
+        "official_results.imports.manage",
+        "official_results.entries.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 202,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "cancelOfficialResultsImport",
+      "method": "POST",
+      "path": "/api/v1/official-results/imports/:id/cancel",
+      "surface": "SCHOOL",
+      "inputContract": "ImportCancelRequest",
+      "outputContract": "ImportBatch",
+      "permissions": [
+        "official_results.imports.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "retryOfficialResultsImport",
+      "method": "POST",
+      "path": "/api/v1/official-results/imports/:id/retry",
+      "surface": "SCHOOL",
+      "inputContract": "ImportRetryRequest",
+      "outputContract": "ImportBatch",
+      "permissions": [
+        "official_results.imports.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 202,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "exportOfficialResultsImportIssues",
+      "method": "POST",
+      "path": "/api/v1/official-results/imports/:id/issue-report",
+      "surface": "SCHOOL",
+      "inputContract": "Empty",
+      "outputContract": "BatchOperation",
+      "permissions": [
+        "official_results.imports.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 202,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "getOfficialResultsOperation",
+      "method": "GET",
+      "path": "/api/v1/official-results/operations/:id",
+      "surface": "SCHOOL",
+      "inputContract": "Empty",
+      "outputContract": "BatchOperation",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient.",
+      "notes": "Also require the permission/ownership applicable to the operation type: import viewer, export creator, or authorized publication actor."
+    },
+    {
+      "operationId": "listOfficialResultsOperationItems",
+      "method": "GET",
+      "path": "/api/v1/official-results/operations/:id/items",
+      "surface": "SCHOOL",
+      "inputContract": "ListQuery",
+      "outputContract": "OperationItemPage",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient.",
+      "notes": "Inherit exact parent operation permission/ownership: import viewer, export creator or publication actor; never a generic report-access bypass."
+    },
+    {
+      "operationId": "getOfficialResultsHistory",
+      "method": "GET",
+      "path": "/api/v1/official-results/history",
+      "surface": "SCHOOL",
+      "inputContract": "ListQuery",
+      "outputContract": "HistoryPage",
+      "permissions": [
+        "official_results.history.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "getOfficialResultsMissingReport",
+      "method": "GET",
+      "path": "/api/v1/official-results/missing",
+      "surface": "SCHOOL",
+      "inputContract": "ListQuery",
+      "outputContract": "MissingReport",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "downloadOfficialResultsPrivateFile",
+      "method": "GET",
+      "path": "/api/v1/official-results/files/:fileId/download",
+      "surface": "SCHOOL",
+      "inputContract": "Empty",
+      "outputContract": "PrivateFile",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../11_SECURITY_AND_OPERATIONS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient.",
+      "notes": "Resolve parent resource and enforce its specific read/export/import permission; generic files access is not sufficient."
+    },
+    {
+      "operationId": "teacherGetOfficialResultsCapabilities",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/capabilities",
+      "surface": "TEACHER",
+      "inputContract": "CapabilitiesQuery",
+      "outputContract": "Capabilities",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherListOfficialResultsPeriods",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/periods",
+      "surface": "TEACHER",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherListOfficialResultsGroups",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/groups",
+      "surface": "TEACHER",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherListOfficialResultsTemplates",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/templates",
+      "surface": "TEACHER",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.templates.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherGetOfficialResultsTemplate",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/templates/:id",
+      "surface": "TEACHER",
+      "inputContract": "Empty",
+      "outputContract": "Template",
+      "permissions": [
+        "official_results.templates.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherGetOfficialResultsTemplateVersion",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/templates/:id/versions/:versionId",
+      "surface": "TEACHER",
+      "inputContract": "Empty",
+      "outputContract": "TemplateVersion",
+      "permissions": [
+        "official_results.templates.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherListOfficialResultsFieldPresets",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/field-presets",
+      "surface": "TEACHER",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.templates.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherResolveOfficialResultsScope",
+      "method": "POST",
+      "path": "/api/v1/teacher/official-results/scope-resolutions",
+      "surface": "TEACHER",
+      "inputContract": "ScopeResolveRequest",
+      "outputContract": "ScopeResolution",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherMaterializeOfficialResultsSheets",
+      "method": "POST",
+      "path": "/api/v1/teacher/official-results/sheets/materialize",
+      "surface": "TEACHER",
+      "inputContract": "SheetMaterializeRequest",
+      "outputContract": "BatchOperation",
+      "permissions": [
+        "official_results.sheets.create"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 202,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherListOfficialResultsSheets",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/sheets",
+      "surface": "TEACHER",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherGetOfficialResultsSheet",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/sheets/:id",
+      "surface": "TEACHER",
+      "inputContract": "Empty",
+      "outputContract": "Sheet",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherGetOfficialResultsGrid",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/sheets/:id/grid",
+      "surface": "TEACHER",
+      "inputContract": "ListQuery",
+      "outputContract": "Gradebook",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherPatchOfficialResultsCells",
+      "method": "PATCH",
+      "path": "/api/v1/teacher/official-results/sheets/:id/cells",
+      "surface": "TEACHER",
+      "inputContract": "GridPatchRequest",
+      "outputContract": "GridPatchResult",
+      "permissions": [
+        "official_results.entries.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "OPTIONAL_WITH_CAS",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherCreateOfficialResultsDesign",
+      "method": "POST",
+      "path": "/api/v1/teacher/official-results/designs",
+      "surface": "TEACHER",
+      "inputContract": "DesignCreateRequest",
+      "outputContract": "Design",
+      "permissions": [
+        "official_results.designs.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 201,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherPreviewOfficialResultsDraftDefinition",
+      "method": "POST",
+      "path": "/api/v1/teacher/official-results/sheets/:id/draft-definition-preview",
+      "surface": "TEACHER",
+      "inputContract": "DraftDefinitionPreviewRequest",
+      "outputContract": "ImpactPreview",
+      "permissions": [
+        "official_results.designs.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../06_TEMPLATES_SCOPES_AND_CALCULATIONS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherAdoptOfficialResultsDraftDefinition",
+      "method": "POST",
+      "path": "/api/v1/teacher/official-results/sheets/:id/draft-definition-adopt",
+      "surface": "TEACHER",
+      "inputContract": "DraftDefinitionAdoptRequest",
+      "outputContract": "Sheet",
+      "permissions": [
+        "official_results.designs.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../06_TEMPLATES_SCOPES_AND_CALCULATIONS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherCaptureOfficialResultsCandidates",
+      "method": "POST",
+      "path": "/api/v1/teacher/official-results/candidates",
+      "surface": "TEACHER",
+      "inputContract": "CandidateCaptureRequest",
+      "outputContract": "BatchOperation",
+      "permissions": [
+        "official_results.reviews.submit"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 202,
+      "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied.",
+      "notes": "DIRECT_PUBLICATION additionally requires effective publications.publish and direct policy."
+    },
+    {
+      "operationId": "teacherGetOfficialResultsCandidate",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/candidates/:id",
+      "surface": "TEACHER",
+      "inputContract": "Empty",
+      "outputContract": "Candidate",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherPreviewOfficialResultsCandidate",
+      "method": "POST",
+      "path": "/api/v1/teacher/official-results/candidates/:id/preview",
+      "surface": "TEACHER",
+      "inputContract": "PreviewRequest",
+      "outputContract": "FamilyPreview",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherPublishOfficialResultsBatch",
+      "method": "POST",
+      "path": "/api/v1/teacher/official-results/publication-batches",
+      "surface": "TEACHER",
+      "inputContract": "PublicationBatchRequest",
+      "outputContract": "BatchOperation",
+      "permissions": [
+        "official_results.publications.publish"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 202,
+      "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied.",
+      "notes": "Corrected releases additionally require publications.correct; APPROVE_AND_PUBLISH additionally requires reviews.approve; no implicit review bypass. Teacher surface forbids APPROVE_AND_PUBLISH; only an actual school approval or authorized DIRECT mode is accepted."
+    },
+    {
+      "operationId": "teacherRequestOfficialResultsCorrection",
+      "method": "POST",
+      "path": "/api/v1/teacher/official-results/corrections",
+      "surface": "TEACHER",
+      "inputContract": "CorrectionRequest",
+      "outputContract": "CorrectionDraft",
+      "permissions": [
+        "official_results.corrections.request"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 201,
+      "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied.",
+      "notes": "When proposed operations are included, entries.manage and normal field write scope/state are also required."
+    },
+    {
+      "operationId": "teacherGetOfficialResultsPublication",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/publications/:id",
+      "surface": "TEACHER",
+      "inputContract": "Empty",
+      "outputContract": "Publication",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherPreviewOfficialResultsExport",
+      "method": "POST",
+      "path": "/api/v1/teacher/official-results/exports/preview",
+      "surface": "TEACHER",
+      "inputContract": "ExportPreviewRequest",
+      "outputContract": "ImpactPreview",
+      "permissions": [
+        "official_results.exports.create"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherCreateOfficialResultsExport",
+      "method": "POST",
+      "path": "/api/v1/teacher/official-results/exports",
+      "surface": "TEACHER",
+      "inputContract": "ExportCreateRequest",
+      "outputContract": "Export",
+      "permissions": [
+        "official_results.exports.create"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 202,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherListOfficialResultsExports",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/exports",
+      "surface": "TEACHER",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.exports.create"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherGetOfficialResultsExport",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/exports/:id",
+      "surface": "TEACHER",
+      "inputContract": "Empty",
+      "outputContract": "Export",
+      "permissions": [
+        "official_results.exports.create"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherDownloadOfficialResultsExport",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/exports/:id/files/:fileId/download",
+      "surface": "TEACHER",
+      "inputContract": "Empty",
+      "outputContract": "PrivateFile",
+      "permissions": [
+        "official_results.exports.create"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../11_SECURITY_AND_OPERATIONS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherCreateOfficialResultsImport",
+      "method": "POST",
+      "path": "/api/v1/teacher/official-results/imports",
+      "surface": "TEACHER",
+      "inputContract": "ImportUploadRequest",
+      "outputContract": "ImportBatch",
+      "permissions": [
+        "official_results.imports.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 202,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherReplaceOfficialResultsImportSource",
+      "method": "POST",
+      "path": "/api/v1/teacher/official-results/imports/:id/source-versions",
+      "surface": "TEACHER",
+      "inputContract": "ImportUploadRequest",
+      "outputContract": "ImportBatch",
+      "permissions": [
+        "official_results.imports.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 202,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied.",
+      "notes": "Only before any unit applied; afterward create successor batch for uncommitted units."
+    },
+    {
+      "operationId": "teacherListOfficialResultsImports",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/imports",
+      "surface": "TEACHER",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.imports.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherGetOfficialResultsImport",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/imports/:id",
+      "surface": "TEACHER",
+      "inputContract": "Empty",
+      "outputContract": "ImportBatch",
+      "permissions": [
+        "official_results.imports.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherListOfficialResultsImportIssues",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/imports/:id/issues",
+      "surface": "TEACHER",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.imports.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherListOfficialResultsImportChanges",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/imports/:id/changes",
+      "surface": "TEACHER",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.imports.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherListOfficialResultsImportRows",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/imports/:id/rows",
+      "surface": "TEACHER",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.imports.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherCorrectOfficialResultsImport",
+      "method": "POST",
+      "path": "/api/v1/teacher/official-results/imports/:id/corrections",
+      "surface": "TEACHER",
+      "inputContract": "ImportCorrectionRequest",
+      "outputContract": "ImportBatch",
+      "permissions": [
+        "official_results.imports.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 202,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherRevalidateOfficialResultsImport",
+      "method": "POST",
+      "path": "/api/v1/teacher/official-results/imports/:id/revalidate",
+      "surface": "TEACHER",
+      "inputContract": "ImportRevalidateRequest",
+      "outputContract": "ImportBatch",
+      "permissions": [
+        "official_results.imports.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 202,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherConfirmOfficialResultsImport",
+      "method": "POST",
+      "path": "/api/v1/teacher/official-results/imports/:id/confirm",
+      "surface": "TEACHER",
+      "inputContract": "ImportConfirmRequest",
+      "outputContract": "BatchOperation",
+      "permissions": [
+        "official_results.imports.manage",
+        "official_results.entries.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 202,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherCancelOfficialResultsImport",
+      "method": "POST",
+      "path": "/api/v1/teacher/official-results/imports/:id/cancel",
+      "surface": "TEACHER",
+      "inputContract": "ImportCancelRequest",
+      "outputContract": "ImportBatch",
+      "permissions": [
+        "official_results.imports.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherRetryOfficialResultsImport",
+      "method": "POST",
+      "path": "/api/v1/teacher/official-results/imports/:id/retry",
+      "surface": "TEACHER",
+      "inputContract": "ImportRetryRequest",
+      "outputContract": "ImportBatch",
+      "permissions": [
+        "official_results.imports.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 202,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherExportOfficialResultsImportIssues",
+      "method": "POST",
+      "path": "/api/v1/teacher/official-results/imports/:id/issue-report",
+      "surface": "TEACHER",
+      "inputContract": "Empty",
+      "outputContract": "BatchOperation",
+      "permissions": [
+        "official_results.imports.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 202,
+      "stateContract": "../08_BULK_EXPORT_IMPORT_SPEC.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherGetOfficialResultsOperation",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/operations/:id",
+      "surface": "TEACHER",
+      "inputContract": "Empty",
+      "outputContract": "BatchOperation",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied.",
+      "notes": "Also require the permission/ownership applicable to the operation type: import viewer, export creator, or authorized publication actor."
+    },
+    {
+      "operationId": "teacherListOfficialResultsOperationItems",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/operations/:id/items",
+      "surface": "TEACHER",
+      "inputContract": "ListQuery",
+      "outputContract": "OperationItemPage",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied.",
+      "notes": "Inherit exact parent operation permission/ownership: import viewer, export creator or publication actor; never a generic report-access bypass."
+    },
+    {
+      "operationId": "teacherGetOfficialResultsHistory",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/history",
+      "surface": "TEACHER",
+      "inputContract": "ListQuery",
+      "outputContract": "HistoryPage",
+      "permissions": [
+        "official_results.history.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherGetOfficialResultsMissingReport",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/missing",
+      "surface": "TEACHER",
+      "inputContract": "ListQuery",
+      "outputContract": "MissingReport",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../10_API_CONTRACTS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied."
+    },
+    {
+      "operationId": "teacherDownloadOfficialResultsPrivateFile",
+      "method": "GET",
+      "path": "/api/v1/teacher/official-results/files/:fileId/download",
+      "surface": "TEACHER",
+      "inputContract": "Empty",
+      "outputContract": "PrivateFile",
+      "permissions": [
+        "official_results.sheets.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../11_SECURITY_AND_OPERATIONS.md",
+      "authorization": "Current teacher + exact classroom/subject/term allocation or explicit school-owned group grant + permission/policy/state. No review/approval authority implied.",
+      "notes": "Resolve parent resource and enforce its specific read/export/import permission; generic files access is not sufficient."
+    },
+    {
+      "operationId": "studentListOfficialResultPeriods",
+      "method": "GET",
+      "path": "/api/v1/student/official-results/periods",
+      "surface": "STUDENT",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.results.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "studentGetOfficialResult",
+      "method": "GET",
+      "path": "/api/v1/student/official-results/periods/:reportingPeriodId/result",
+      "surface": "STUDENT",
+      "inputContract": "Empty",
+      "outputContract": "FamilyResult",
+      "permissions": [
+        "official_results.results.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "studentGetOfficialResultGroup",
+      "method": "GET",
+      "path": "/api/v1/student/official-results/periods/:reportingPeriodId/groups/:groupId",
+      "surface": "STUDENT",
+      "inputContract": "Empty",
+      "outputContract": "FamilyResult",
+      "permissions": [
+        "official_results.results.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient.",
+      "notes": "Same family schema, restricted to requested authorized published group; never include staff group metadata."
+    },
+    {
+      "operationId": "studentListOfficialResultHistory",
+      "method": "GET",
+      "path": "/api/v1/student/official-results/periods/:reportingPeriodId/history",
+      "surface": "STUDENT",
+      "inputContract": "ListQuery",
+      "outputContract": "HistoryPage",
+      "permissions": [
+        "official_results.results.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient.",
+      "notes": "Published versions only if school enables family history; current entitlement rechecked."
+    },
+    {
+      "operationId": "studentGetOfficialResultPublication",
+      "method": "GET",
+      "path": "/api/v1/student/official-results/publications/:publicationId",
+      "surface": "STUDENT",
+      "inputContract": "Empty",
+      "outputContract": "FamilyResult",
+      "permissions": [
+        "official_results.results.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient.",
+      "notes": "Active or authorized historical published version only; no arbitrary candidate or revoked publication."
+    },
+    {
+      "operationId": "parentListOfficialResultPeriods",
+      "method": "GET",
+      "path": "/api/v1/parent/children/:studentId/official-results/periods",
+      "surface": "PARENT",
+      "inputContract": "ListQuery",
+      "outputContract": "Page",
+      "permissions": [
+        "official_results.results.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "parentGetOfficialResult",
+      "method": "GET",
+      "path": "/api/v1/parent/children/:studentId/official-results/periods/:reportingPeriodId/result",
+      "surface": "PARENT",
+      "inputContract": "Empty",
+      "outputContract": "FamilyResult",
+      "permissions": [
+        "official_results.results.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient."
+    },
+    {
+      "operationId": "parentGetOfficialResultGroup",
+      "method": "GET",
+      "path": "/api/v1/parent/children/:studentId/official-results/periods/:reportingPeriodId/groups/:groupId",
+      "surface": "PARENT",
+      "inputContract": "Empty",
+      "outputContract": "FamilyResult",
+      "permissions": [
+        "official_results.results.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient.",
+      "notes": "Same family schema, restricted to requested authorized published group; never include staff group metadata."
+    },
+    {
+      "operationId": "parentListOfficialResultHistory",
+      "method": "GET",
+      "path": "/api/v1/parent/children/:studentId/official-results/periods/:reportingPeriodId/history",
+      "surface": "PARENT",
+      "inputContract": "ListQuery",
+      "outputContract": "HistoryPage",
+      "permissions": [
+        "official_results.results.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient.",
+      "notes": "Published versions only if school enables family history; current entitlement rechecked."
+    },
+    {
+      "operationId": "parentGetOfficialResultPublication",
+      "method": "GET",
+      "path": "/api/v1/parent/children/:studentId/official-results/publications/:publicationId",
+      "surface": "PARENT",
+      "inputContract": "Empty",
+      "outputContract": "FamilyResult",
+      "permissions": [
+        "official_results.results.view"
+      ],
+      "permissionMode": "ALL",
+      "mutation": false,
+      "idempotency": "NOT_REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
+      "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient.",
+      "notes": "Active or authorized historical published version only; no arbitrary candidate or revoked publication."
+    }
+  ]
+}

@@ -1,0 +1,1160 @@
+{
+  "schemaVersion": "1.0",
+  "kind": "PLANNED_APPLICATION_ACCEPTANCE",
+  "tests": [
+    {
+      "id": "T001",
+      "requirements": [
+        "R01"
+      ],
+      "phase": "OR01",
+      "level": "Integration",
+      "given": "Enter official values with fields named Homework, Behavior and Tests",
+      "expected": "No existing GradeItem, homework, behavior or reinforcement record is created or read as a value source",
+      "status": "NOT_RUN",
+      "persistenceEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-foundation.integration.spec.ts",
+      "remainingEvidence": "Verify independent writes via the gradebook mutation entry point in OR04 and unchanged existing outputs in OR12."
+    },
+    {
+      "id": "T002",
+      "requirements": [
+        "R02",
+        "R05"
+      ],
+      "phase": "OR01",
+      "level": "DB",
+      "given": "Materialize the same school/student/period/group through two views",
+      "expected": "One ResultSlot exists; no duplicate result store by screen/template/class transfer",
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "0467621ab0bbc6519a9d0e1df9d275a1c639e0f3"
+    },
+    {
+      "id": "T003",
+      "requirements": [
+        "R05"
+      ],
+      "phase": "OR01",
+      "level": "DB",
+      "given": "Connect a slot or cell to a foreign-school student/schema/group",
+      "expected": "Composite constraints/application guard reject; neither tenant is mutated",
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "0467621ab0bbc6519a9d0e1df9d275a1c639e0f3"
+    },
+    {
+      "id": "T004",
+      "requirements": [
+        "R05"
+      ],
+      "phase": "OR01",
+      "level": "Integration",
+      "given": "Use year enrollment with null termId in an eligible term",
+      "expected": "Correct temporal overlap accepted; a different explicit term rejected",
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "0467621ab0bbc6519a9d0e1df9d275a1c639e0f3"
+    },
+    {
+      "id": "T005",
+      "requirements": [
+        "R05"
+      ],
+      "phase": "OR01",
+      "level": "Integration",
+      "given": "Two enrollments could satisfy historical attribution",
+      "expected": "Conflict returned; no latest-row guess",
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "0467621ab0bbc6519a9d0e1df9d275a1c639e0f3"
+    },
+    {
+      "id": "T006",
+      "requirements": [
+        "R08"
+      ],
+      "phase": "OR02",
+      "level": "Security",
+      "given": "School A actor supplies School B IDs to every new route family",
+      "expected": "404 or pre-resource auth denial consistent with existing policy; no existence/count/value leakage",
+      "status": "NOT_RUN",
+      "authorizationEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "remainingEvidence": "Exercise all applicable implemented write and publication/import routes in the dependent phases."
+    },
+    {
+      "id": "T007",
+      "requirements": [
+        "R08"
+      ],
+      "phase": "OR02",
+      "level": "Security",
+      "given": "Teacher owns Math-A and Science-B; requests Science-A",
+      "expected": "Denied; no subject/class cross-product authority",
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "30699d68f25045cec56806eca46359b054cbda52"
+    },
+    {
+      "id": "T008",
+      "requirements": [
+        "R09"
+      ],
+      "phase": "OR02",
+      "level": "Integration",
+      "given": "MANAGED teacher creates custom fields then enters/imports draft scores",
+      "expected": "Draft entry works before design approval; family output unchanged",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T009",
+      "requirements": [
+        "R10"
+      ],
+      "phase": "OR02",
+      "level": "Security",
+      "given": "AUTONOMOUS policy enabled but IAM publish absent",
+      "expected": "No direct publish; effective capability explains missing authority",
+      "status": "NOT_RUN",
+      "authorizationEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "remainingEvidence": "Exercise all applicable implemented write and publication/import routes in the dependent phases."
+    },
+    {
+      "id": "T010",
+      "requirements": [
+        "R10"
+      ],
+      "phase": "OR02",
+      "level": "Security",
+      "given": "Teacher has publish permission but school requires review",
+      "expected": "Direct publication denied; submit flow remains available",
+      "status": "NOT_RUN",
+      "authorizationEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "remainingEvidence": "Exercise all applicable implemented write and publication/import routes in the dependent phases."
+    },
+    {
+      "id": "T011",
+      "requirements": [
+        "R08"
+      ],
+      "phase": "OR02",
+      "level": "Integration",
+      "given": "Grant template coverage for a whole stage",
+      "expected": "Availability changes; actor access does not expand",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T012",
+      "requirements": [
+        "R07"
+      ],
+      "phase": "OR02",
+      "level": "Integration",
+      "given": "Change school policy after import preview or candidate approval",
+      "expected": "Recheck current policy; invalid authority or affected semantics cannot be grandfathered",
+      "status": "NOT_RUN",
+      "authorizationEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "remainingEvidence": "Exercise all applicable implemented write and publication/import routes in the dependent phases."
+    },
+    {
+      "id": "T013",
+      "requirements": [
+        "R08"
+      ],
+      "phase": "OR02",
+      "level": "Concurrency",
+      "given": "Remove allocation while teacher write waits at final boundary",
+      "expected": "Deterministic serialized outcome; no write after completed revocation",
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "30699d68f25045cec56806eca46359b054cbda52"
+    },
+    {
+      "id": "T014",
+      "requirements": [
+        "R08"
+      ],
+      "phase": "OR02",
+      "level": "Security",
+      "given": "Teacher writes CUSTOM group without explicit delegation",
+      "expected": "Denied even if teaching the same students",
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "30699d68f25045cec56806eca46359b054cbda52"
+    },
+    {
+      "id": "T015",
+      "requirements": [
+        "R08"
+      ],
+      "phase": "OR02",
+      "level": "Security",
+      "given": "Teacher uses a term allocation to write YEAR result",
+      "expected": "Denied without explicit annual authority",
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "30699d68f25045cec56806eca46359b054cbda52"
+    },
+    {
+      "id": "T016",
+      "requirements": [
+        "R03"
+      ],
+      "phase": "OR03",
+      "level": "Integration",
+      "given": "Clone MOAZEZ template then customize school copy",
+      "expected": "Platform source and other schools remain unchanged; new school-owned version lineage",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T017",
+      "requirements": [
+        "R02"
+      ],
+      "phase": "OR03",
+      "level": "Integration",
+      "given": "Create school reusable and freeform sheet definitions",
+      "expected": "Both use the same typed domain and canonical grade slots",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T018",
+      "requirements": [
+        "R04"
+      ],
+      "phase": "OR03",
+      "level": "Unit",
+      "given": "Resolve school default plus class-specific compatible rule",
+      "expected": "Deterministic winning definition independent of creation order",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T019",
+      "requirements": [
+        "R04"
+      ],
+      "phase": "OR03",
+      "level": "Unit",
+      "given": "Resolve grade-all-subject rule and school-Math rule",
+      "expected": "Incomparable conflict; explicit grade-Math intersection resolves it",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T020",
+      "requirements": [
+        "R04"
+      ],
+      "phase": "OR03",
+      "level": "Unit",
+      "given": "Two equally specific different template assignments",
+      "expected": "Activation/materialization blocked; no first/last-created winner",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T021",
+      "requirements": [
+        "R04"
+      ],
+      "phase": "OR03",
+      "level": "Integration",
+      "given": "Assign multiple classrooms and later create another classroom",
+      "expected": "Fixed list stays fixed; broad future selector semantics remain explicit",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T022",
+      "requirements": [
+        "R02",
+        "R12"
+      ],
+      "phase": "OR03",
+      "level": "Integration",
+      "given": "Publish catalog v2 while sheet remains pinned v1",
+      "expected": "Existing values/publications/export eligibility remain tied to sheet v1",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T023",
+      "requirements": [
+        "R02",
+        "R12"
+      ],
+      "phase": "OR03",
+      "level": "Integration",
+      "given": "Upgrade actual sheet definition max20 to100 with old scores",
+      "expected": "Preview required; no automatic rescale; affected reviews/imports invalidated",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T024",
+      "requirements": [
+        "R06"
+      ],
+      "phase": "OR03",
+      "level": "Unit",
+      "given": "Rename compatible field or reuse title for new type",
+      "expected": "Rename retains ID; incompatible purpose/type requires new ID and explicit mapping",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T025",
+      "requirements": [
+        "R06",
+        "R13"
+      ],
+      "phase": "OR03",
+      "level": "Unit",
+      "given": "Release units share a mutable dependency or form a cycle",
+      "expected": "Schema rejected or requires combined unit/explicit published aggregate",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T026",
+      "requirements": [
+        "R14"
+      ],
+      "phase": "OR04",
+      "level": "Unit",
+      "given": "Calculate18+27+46 with maxima20+30+50",
+      "expected": "91/100 and91 percent; one final rounding",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T027",
+      "requirements": [
+        "R14"
+      ],
+      "phase": "OR04",
+      "level": "Unit",
+      "given": "Compare zero, missing, absent and excused inputs",
+      "expected": "Zero contributes; missing blocks; absence follows explicit policy; exclusion changes numerator and denominator",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T028",
+      "requirements": [
+        "R14"
+      ],
+      "phase": "OR04",
+      "level": "Unit",
+      "given": "Excuse30-point component with18/20 and46/50",
+      "expected": "64/70 effective, nominal100, normalized wire91.428571 percent and two-place display91.43",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T029",
+      "requirements": [
+        "R14"
+      ],
+      "phase": "OR04",
+      "level": "Unit",
+      "given": "All contributing inputs excluded",
+      "expected": "NOT_APPLICABLE/null output; no divide-by-zero or artificial zero",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T030",
+      "requirements": [
+        "R14"
+      ],
+      "phase": "OR04",
+      "level": "Unit",
+      "given": "Weighted inputs have unequal maxima",
+      "expected": "Normalize each score by its maximum; effective weights/denominator follow policy",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T031",
+      "requirements": [
+        "R14"
+      ],
+      "phase": "OR04",
+      "level": "Unit",
+      "given": "Input precision exceeds declared scale or is NaN/exponent",
+      "expected": "Reject ambiguous/unsupported numeric data; no silent rounding",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T032",
+      "requirements": [
+        "R14"
+      ],
+      "phase": "OR04",
+      "level": "Unit",
+      "given": "Unrounded result just below pass threshold rounds upward",
+      "expected": "Pass decision uses configured unrounded basis; display rounding does not change eligibility",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T033",
+      "requirements": [
+        "R14"
+      ],
+      "phase": "OR04",
+      "level": "Unit",
+      "given": "Formula has duplicate operand, cycle or incompatible output type",
+      "expected": "Deterministic schema error; no arbitrary code/eval",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T034",
+      "requirements": [
+        "R06"
+      ],
+      "phase": "OR04",
+      "level": "Unit",
+      "given": "Record boolean false, selected code and text literal0",
+      "expected": "All remain recorded typed data; invalid union or unknown option rejected",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T035",
+      "requirements": [
+        "R20"
+      ],
+      "phase": "OR04",
+      "level": "Concurrency",
+      "given": "Two writers update same missing cell version0",
+      "expected": "One inserts; other conflicts; no duplicate cells or silent overwrite",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T036",
+      "requirements": [
+        "R20"
+      ],
+      "phase": "OR04",
+      "level": "Concurrency",
+      "given": "Two writers edit different cells at same definition",
+      "expected": "Compatible writes survive; no coarse stale-write overwrite",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T037",
+      "requirements": [
+        "R20"
+      ],
+      "phase": "OR04",
+      "level": "Integration",
+      "given": "Bulk patch includes one invalid score among valid values",
+      "expected": "Whole sheet patch rejected with issues; no silent partial mutation",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T038",
+      "requirements": [
+        "R20"
+      ],
+      "phase": "OR04",
+      "level": "Integration",
+      "given": "Undo saved value after another writer changed it",
+      "expected": "Inverse mutation conflicts; history never deleted",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T039",
+      "requirements": [
+        "R10",
+        "R11"
+      ],
+      "phase": "OR05",
+      "level": "E2E",
+      "given": "Managed teacher submits candidate and school approves",
+      "expected": "Still invisible until explicit publish; exact design/value digest enforced",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T040",
+      "requirements": [
+        "R10"
+      ],
+      "phase": "OR05",
+      "level": "E2E",
+      "given": "Authorized autonomous teacher publishes completed candidate",
+      "expected": "New immutable release appears; evidence says direct authority, not fake reviewer approval",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T041",
+      "requirements": [
+        "R12"
+      ],
+      "phase": "OR05",
+      "level": "Concurrency",
+      "given": "Change candidate values/definition/audience after approval",
+      "expected": "Old approval cannot publish changed content; old evidence retained",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T042",
+      "requirements": [
+        "R13"
+      ],
+      "phase": "OR05",
+      "level": "E2E",
+      "given": "Publish Math before Science or one predefined release unit",
+      "expected": "Only selected authorized units visible; completeness partial",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T043",
+      "requirements": [
+        "R12"
+      ],
+      "phase": "OR05",
+      "level": "E2E",
+      "given": "Correct published91 to92 with reason",
+      "expected": "91 stays current until replacement; new immutable revision replaces pointer; history preserved",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T044",
+      "requirements": [
+        "R12"
+      ],
+      "phase": "OR05",
+      "level": "Concurrency",
+      "given": "Two publishers replace same current publication",
+      "expected": "Expected predecessor CAS permits one; other must refresh/review",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T045",
+      "requirements": [
+        "R12"
+      ],
+      "phase": "OR05",
+      "level": "Integration",
+      "given": "School editor modifies already approved marks",
+      "expected": "Required approval superseded; editing is not implicit approval",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T046",
+      "requirements": [
+        "R10"
+      ],
+      "phase": "OR05",
+      "level": "Security",
+      "given": "Enable two-person review then submitter approves own candidate",
+      "expected": "Rejected according to configured separation policy; ordinary single-review school still works",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T047",
+      "requirements": [
+        "R12"
+      ],
+      "phase": "OR05",
+      "level": "Integration",
+      "given": "Revoke current release and retry same command",
+      "expected": "Visibility removed once; dependent summary stale; no duplicate revoke event",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T048",
+      "requirements": [
+        "R23"
+      ],
+      "phase": "OR06",
+      "level": "Contract",
+      "given": "Serialize student/parent dynamic SCORE/TEXT/SELECT/CALCULATED fields",
+      "expected": "Stable IDs/types/order/maxima/decimal strings; no fixed subject keys or formulas needed to render",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T049",
+      "requirements": [
+        "R23"
+      ],
+      "phase": "OR06",
+      "level": "Security",
+      "given": "Insert internal note and pending correction in staff draft",
+      "expected": "Neither content nor hidden field metadata leaks into family JSON/history/export",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T050",
+      "requirements": [
+        "R23"
+      ],
+      "phase": "OR06",
+      "level": "Security",
+      "given": "Parent requests another family's child; student supplies peer ID",
+      "expected": "Denied without identity leakage on list/detail/history/download",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T051",
+      "requirements": [
+        "R22"
+      ],
+      "phase": "OR06",
+      "level": "E2E",
+      "given": "Graduated student or linked guardian reads prior same-school period",
+      "expected": "Works through verified identity without ACTIVE enrollment requirement",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T052",
+      "requirements": [
+        "R22"
+      ],
+      "phase": "OR06",
+      "level": "Security",
+      "given": "Current guardian authority revoked after historical publication",
+      "expected": "Family read denied immediately; old snapshot does not authorize",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T053",
+      "requirements": [
+        "R22"
+      ],
+      "phase": "OR06",
+      "level": "Security",
+      "given": "Cross-school transfer loses direct link but has no verified retained entitlement",
+      "expected": "Fail closed; never name/email matching or global bypass",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T054",
+      "requirements": [
+        "R23",
+        "R14"
+      ],
+      "phase": "OR06",
+      "level": "Concurrency",
+      "given": "Review an aggregate through candidateKind AGGREGATE, then replace a source publication before commit; repeat after publication",
+      "expected": "Review binds the correct tenant-owned candidate/hash, profile version and exact source IDs; wrong kind or changed dependencies cannot reuse approval, commit rechecks current authority, and any existing current aggregate becomes STALE/null atomically or safely validated on read",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T055",
+      "requirements": [
+        "R23",
+        "R14"
+      ],
+      "phase": "OR06",
+      "level": "Unit",
+      "given": "Show total using hidden operands without approved disclosure",
+      "expected": "Schema/publication blocked; explicit same-snapshot disclosure can work without leaking operand details",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T056",
+      "requirements": [
+        "R21"
+      ],
+      "phase": "OR06",
+      "level": "Contract",
+      "given": "Staff previews a candidate as student then publishes same version",
+      "expected": "Audience-filtered fields/values match; staff-only preview has mode/status PREVIEW, real candidate identity and null publicationId/publishedAt; actual family release has genuine nonnull publication metadata and PUBLISHED status",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T057",
+      "requirements": [
+        "R15",
+        "R16"
+      ],
+      "phase": "OR07",
+      "level": "E2E",
+      "given": "Export selected class/period/template",
+      "expected": "File already contains eligible students, hierarchy, stable refs and selected editable headers",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T058",
+      "requirements": [
+        "R15",
+        "R18"
+      ],
+      "phase": "OR07",
+      "level": "Integration",
+      "given": "Export whole grade with heterogeneous definitions",
+      "expected": "Clear ZIP package/index; homogeneous CSV units; no mislabeled universal schema",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T059",
+      "requirements": [
+        "R16"
+      ],
+      "phase": "OR07",
+      "level": "Integration",
+      "given": "Two exports for same scope generated near same instant",
+      "expected": "Distinct filename identity plus server manifests; filename changes do not grant authority",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T060",
+      "requirements": [
+        "R08",
+        "R18"
+      ],
+      "phase": "OR07",
+      "level": "Security",
+      "given": "Teacher requests/downloads artifact containing unassigned sheets",
+      "expected": "Denied for whole mixed artifact; authorized re-export supported",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T061",
+      "requirements": [
+        "R15"
+      ],
+      "phase": "OR07",
+      "level": "Integration",
+      "given": "Export selected field/roster subset",
+      "expected": "Manifest exactly reflects subset; absent rows/cells are not deletion requests",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T062",
+      "requirements": [
+        "R17"
+      ],
+      "phase": "OR08",
+      "level": "Unit",
+      "given": "CSV has Arabic text, comma, quotes and embedded newline",
+      "expected": "Parser/record location correct; Unicode and text round-trip preserved",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T063",
+      "requirements": [
+        "R17"
+      ],
+      "phase": "OR08",
+      "level": "Unit",
+      "given": "CSV has duplicate headers/rows, unknown IDs or added student",
+      "expected": "Block with stable issues; no fuzzy matching or student creation",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T064",
+      "requirements": [
+        "R17"
+      ],
+      "phase": "OR08",
+      "level": "Security",
+      "given": "Upload foreign-school export reference or replace row refs",
+      "expected": "Reject without foreign metadata; current scope still independently checked",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T065",
+      "requirements": [
+        "R17"
+      ],
+      "phase": "OR08",
+      "level": "Unit",
+      "given": "Blank pair, numeric0, CLEAR and RECORDED-with-blank",
+      "expected": "KEEP, record0, explicit clear-with-reason, semantic error respectively",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T066",
+      "requirements": [
+        "R17"
+      ],
+      "phase": "OR08",
+      "level": "Unit",
+      "given": "Input exceeds maximum, unknown option or edits computed total",
+      "expected": "Structured field issue; no silently clamped or accepted score",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T067",
+      "requirements": [
+        "R17"
+      ],
+      "phase": "OR08",
+      "level": "Integration",
+      "given": "Student moves or actual draft definition changes after export",
+      "expected": "Block affected unit/reconcile; merely newer catalog version is not sufficient conflict",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T068",
+      "requirements": [
+        "R17"
+      ],
+      "phase": "OR08",
+      "level": "Unit",
+      "given": "Display name changes in platform but export identity columns unchanged",
+      "expected": "Compare against export baseline; no false identity mismatch from live label alone",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T069",
+      "requirements": [
+        "R17"
+      ],
+      "phase": "OR08",
+      "level": "Unit",
+      "given": "B18,I18,C19; B18,I19,C19; B18,I20,C18; B18,I20,C19",
+      "expected": "KEEP19; converged no-op; safe20; conflict respectively",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T070",
+      "requirements": [
+        "R17"
+      ],
+      "phase": "OR08",
+      "level": "Integration",
+      "given": "Web correction/reupload changes a staged batch",
+      "expected": "New validation revision/preview; original raw file retained; old preview invalid",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T071",
+      "requirements": [
+        "R17"
+      ],
+      "phase": "OR08",
+      "level": "Unit",
+      "given": "Arbitrary row/column reordering with same stable identities",
+      "expected": "Correct matching accepted; omitted exported header fails without silent reinterpretation",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T072",
+      "requirements": [
+        "R17"
+      ],
+      "phase": "OR08",
+      "level": "Security",
+      "given": "Malicious formula-like text appears in names/notes/error report",
+      "expected": "Visible codec/typed string export stays inert; server never evaluates it",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T073",
+      "requirements": [
+        "R17"
+      ],
+      "phase": "OR08",
+      "level": "Unit",
+      "given": "Codec marker/literal apostrophe/fullwidth/control edge cases",
+      "expected": "Versioned escape/decode round-trip follows fixture vectors; no silent text stripping",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T074",
+      "requirements": [
+        "R17"
+      ],
+      "phase": "OR09",
+      "level": "Concurrency",
+      "given": "Change values/policy/roster after preview before confirm/worker",
+      "expected": "Revalidation prevents stale application; reviewed changeset never silently rebased",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T075",
+      "requirements": [
+        "R17"
+      ],
+      "phase": "OR09",
+      "level": "Integration",
+      "given": "Repeat confirmation same key/payload or replay worker",
+      "expected": "One applied mutation/audit revision per intended cell; same durable outcome",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T076",
+      "requirements": [
+        "R17"
+      ],
+      "phase": "OR09",
+      "level": "Integration",
+      "given": "Reuse idempotency key with different selected sheet/payload",
+      "expected": "409 conflict; no new write",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T077",
+      "requirements": [
+        "R17"
+      ],
+      "phase": "OR09",
+      "level": "Recovery",
+      "given": "Crash before/during/after sheet transaction boundary",
+      "expected": "No partial sheet visibility; committed unit marker prevents duplicate write",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T078",
+      "requirements": [
+        "R17",
+        "R18"
+      ],
+      "phase": "OR09",
+      "level": "Recovery",
+      "given": "One unit fails in several-sheet import",
+      "expected": "Explicit PARTIALLY_APPLIED; successful units preserved and not replayed",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T079",
+      "requirements": [
+        "R17"
+      ],
+      "phase": "OR09",
+      "level": "Recovery",
+      "given": "Queue enqueue fails after persisted job or lease owner becomes stale",
+      "expected": "Reconciler recovers; stale worker cannot finalize over new owner",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T080",
+      "requirements": [
+        "R17"
+      ],
+      "phase": "OR09",
+      "level": "Integration",
+      "given": "Reupload unchanged old file after live edits without imported changes",
+      "expected": "NO_CHANGES/KEEP; current values preserved; no unnecessary version bump",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T081",
+      "requirements": [
+        "R19"
+      ],
+      "phase": "OR10",
+      "level": "Contract",
+      "given": "CSV and XLSX encode same typed manual edits",
+      "expected": "Same normalized changeset and domain outcome, independent of transport",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T082",
+      "requirements": [
+        "R19"
+      ],
+      "phase": "OR10",
+      "level": "Security",
+      "given": "XLSX contains formula/cached result/macros/external link/encryption",
+      "expected": "Reject unsupported or unsafe content; no calculated value trusted",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T083",
+      "requirements": [
+        "R19"
+      ],
+      "phase": "OR10",
+      "level": "Security",
+      "given": "Workbook is ZIP bomb, path traversal, excess entries/XML",
+      "expected": "Bounded reject; no worker memory/disk exhaustion or external fetch",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T084",
+      "requirements": [
+        "R19"
+      ],
+      "phase": "OR10",
+      "level": "Integration",
+      "given": "Supported Excel/LibreOffice round-trip of Arabic/student refs/text",
+      "expected": "Identity preserved, supported warnings clear, calculated preview not imported",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T085",
+      "requirements": [
+        "R21"
+      ],
+      "phase": "OR11",
+      "level": "Contract",
+      "given": "Filter missing grades and compare revision history",
+      "expected": "Correct authorized counts/pages and before/after; no hidden fields exposed",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T086",
+      "requirements": [
+        "R22"
+      ],
+      "phase": "OR11",
+      "level": "Integration",
+      "given": "Close entry period then archive and open next year",
+      "expected": "No ordinary writes/imports; existing approved candidates can finish only in ENTRY_CLOSED; archive immutable",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T087",
+      "requirements": [
+        "R22",
+        "R12"
+      ],
+      "phase": "OR11",
+      "level": "Security",
+      "given": "Scoped correction window expires or targets different slot",
+      "expected": "Blocked; cannot turn window into whole-period bypass",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T088",
+      "requirements": [
+        "R24"
+      ],
+      "phase": "OR12",
+      "level": "Integration",
+      "given": "Existing assessment/homework/family reports run after feature integration",
+      "expected": "Backward-compatible responses and data; no feed or unrelated migration regression",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T089",
+      "requirements": [
+        "R24"
+      ],
+      "phase": "OR12",
+      "level": "Migration",
+      "given": "Replay complete migration chain on fresh disposable DB then deploy again",
+      "expected": "Schema valid, tests pass, second deploy no-op; custom SQL inventoried",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T090",
+      "requirements": [
+        "R24"
+      ],
+      "phase": "OR12",
+      "level": "Security",
+      "given": "Reach result files through generic download endpoint",
+      "expected": "Same result-resource access rules enforced; no alternate bypass",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T091",
+      "requirements": [
+        "R24"
+      ],
+      "phase": "OR12",
+      "level": "Recovery",
+      "given": "Notification fails/retries after publication",
+      "expected": "Publication stays committed; recipient/channel dedupe prevents repeated business notices",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T092",
+      "requirements": [
+        "R24"
+      ],
+      "phase": "OR12",
+      "level": "Performance",
+      "given": "Run representative limit-size grids/imports and simultaneous schools",
+      "expected": "Measured bounded memory/query/latency, tenant fairness and no N+1; budgets recorded",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T093",
+      "requirements": [
+        "R24"
+      ],
+      "phase": "OR12",
+      "level": "Security",
+      "given": "Inspect logs, metrics and errors under invalid-file flows",
+      "expected": "No grade bodies, student text, credentials, signed links or foreign identities logged",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T094",
+      "requirements": [
+        "R24"
+      ],
+      "phase": "OR12",
+      "level": "Recovery",
+      "given": "Expire/clean raw files while durable committed outcomes remain",
+      "expected": "No result/history deletion or idempotency loss; cleanup failures retried visibly",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T095",
+      "requirements": [
+        "R24"
+      ],
+      "phase": "OR12",
+      "level": "Contract",
+      "given": "Call every cataloged endpoint with valid/invalid actor and state",
+      "expected": "Implemented DTO/status/permission behavior matches catalog; no placeholder handlers",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T096",
+      "requirements": [
+        "R07",
+        "R24"
+      ],
+      "phase": "OR12",
+      "level": "Integration",
+      "given": "Disable feature exposure during an incident",
+      "expected": "No data loss/down migration; reads/queued writes follow explicit freeze policy",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T097",
+      "requirements": [
+        "R02",
+        "R12",
+        "R13"
+      ],
+      "phase": "OR05",
+      "level": "Concurrency",
+      "given": "Split a published FULL unit into independently approved new units while another publisher writes",
+      "expected": "Atomic expected-set replacement or conflict; no overlapping active field coverage; old set remains until all replacements ready",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T098",
+      "requirements": [
+        "R07",
+        "R22"
+      ],
+      "phase": "OR11",
+      "level": "Security",
+      "given": "Try generic period PATCH or broad archived reopen without impact preview/archives permission",
+      "expected": "No lifecycle bypass; explicit authorized school reopen requires periods.manage and archives.manage plus reason and current versions",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T099",
+      "requirements": [
+        "R08",
+        "R09"
+      ],
+      "phase": "OR03",
+      "level": "Security",
+      "given": "Teacher changes protected field editRule/audience or maps/calculates its value through a personal schema",
+      "expected": "Draft design does not widen accepted data protection; unreadable values stay inaccessible in grid/preview/export/formula and family release",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T100",
+      "requirements": [
+        "R17"
+      ],
+      "phase": "OR09",
+      "level": "Recovery",
+      "given": "An accepted import waits until its export manifest expires before a unit transaction",
+      "expected": "Uncommitted expired unit blocked; no grandfathered authority; fresh export and reviewed preview required",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "T101",
+      "requirements": [
+        "R17"
+      ],
+      "phase": "OR09",
+      "level": "Concurrency",
+      "given": "Cancel with one sheet in an atomic transaction and another not yet claimed",
+      "expected": "Running unit finishes all-or-none; only unclaimed units cancelled; outcome reports true applied/cancelled counts and cannot claim rollback",
+      "status": "NOT_RUN"
+    }
+  ]
+}

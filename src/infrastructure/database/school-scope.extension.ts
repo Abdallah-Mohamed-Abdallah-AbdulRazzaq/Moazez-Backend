@@ -18,6 +18,22 @@ export const EXCLUDED_FROM_SCHOOL_SCOPE = new Set<string>([
 // Keep this list in sync with PRISMA_CONVENTIONS.md section 6. Additions
 // made later must be mirrored here.
 export const SCHOOL_SCOPED_MODELS = new Set<string>([
+  'OfficialResultPolicy',
+  'OfficialResultPolicyVersion',
+  'ResultPolicyPreview',
+  'OfficialResultScopeGrant',
+  'ResultCorrectionWindow',
+  'ResultCommandReceipt',
+  'ResultReportingPeriod',
+  'ResultGroup',
+  'ResultSheet',
+  'ResultSheetDefinitionVersion',
+  'ResultFieldIdentity',
+  'ResultReleaseUnitDefinition',
+  'ResultFieldDefinition',
+  'ResultSlot',
+  'ResultCell',
+  'ResultCellRevision',
   'Membership',
   'Role',
   'File',

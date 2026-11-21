@@ -1,0 +1,440 @@
+{
+  "schemaVersion": "1.0",
+  "feature": "MOAZEZ Official Results Management Engine",
+  "planningBaseline": "a8a8f160e8c85d1dd8364e055ada69cee61cd7e5",
+  "packageVersion": "1.0",
+  "actualImplementationBaseSha": "a8a8f160e8c85d1dd8364e055ada69cee61cd7e5",
+  "implementationStatus": "IN_PROGRESS",
+  "phases": [
+    {
+      "id": "OR00",
+      "title": "Repository reconciliation and contracts",
+      "dependsOn": [],
+      "status": "DONE",
+      "implementationSha": "7f79d51d4adedf412e3b83afd0ab777ae8b73040",
+      "requirements": [
+        "R25"
+      ],
+      "codePaths": [
+        "adr/ADR-0028-official-results-engine.md",
+        "docs/official-results/or00-repository-reconciliation.md",
+        "docs/official-results/contracts",
+        "API_CONTRACT_RULES.md",
+        "MODULES.md",
+        "DOMAIN_GLOSSARY.md"
+      ],
+      "testsExecuted": [
+        {
+          "command": "git fetch origin --prune; git ls-remote origin refs/heads/main; git diff --exit-code <reference> HEAD -- <affected paths>",
+          "outcome": "PASS",
+          "result": "Origin and local main match the attached reference. Affected paths have no diff.",
+          "testedSha": "a8a8f160e8c85d1dd8364e055ada69cee61cd7e5"
+        },
+        {
+          "command": "npm run test:migration-governance",
+          "outcome": "PASS",
+          "result": "39 passed",
+          "testedSha": "a8a8f160e8c85d1dd8364e055ada69cee61cd7e5"
+        },
+        {
+          "command": "npm run db:migrations:check",
+          "outcome": "PASS",
+          "result": "40 active migrations, 0 new, no rebaseline",
+          "testedSha": "a8a8f160e8c85d1dd8364e055ada69cee61cd7e5"
+        },
+        {
+          "command": "prisma migrate deploy; prisma migrate status; prisma migrate deploy",
+          "outcome": "PASS",
+          "result": "PostgreSQL 16 loopback-only Docker fixture or_baseline. 40 applied, schema up to date, second deploy no-op.",
+          "testedSha": "a8a8f160e8c85d1dd8364e055ada69cee61cd7e5"
+        },
+        {
+          "command": "prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code",
+          "outcome": "PASS",
+          "result": "No difference detected on the replayed or_baseline database.",
+          "testedSha": "a8a8f160e8c85d1dd8364e055ada69cee61cd7e5"
+        },
+        {
+          "command": "npm audit --omit=dev (isolated candidate adapter lockfile)",
+          "outcome": "PASS",
+          "result": "Zero advisories for the selected ZIP/XML components. ExcelJS candidate excluded after its audit reported the affected UUID dependency."
+        }
+      ],
+      "evidence": [
+        "docs/official-results/or00-repository-reconciliation.md",
+        "verification/acceptance-matrix.json"
+      ],
+      "blockers": [],
+      "decisions": [
+        "ADR-0028 covers canonical identities, tenant/transaction boundaries, family identity, file ownership and the bounded XLSX transport. OR06 owns verification of retained entitlements."
+      ],
+      "nextAction": "OR01: implement and verify the tenant-safe Prisma foundation and roster selection on disposable PostgreSQL."
+    },
+    {
+      "id": "OR01",
+      "title": "Domain persistence and tenant integrity",
+      "dependsOn": [
+        "OR00"
+      ],
+      "status": "DONE",
+      "implementationSha": "0467621ab0bbc6519a9d0e1df9d275a1c639e0f3",
+      "requirements": [
+        "R01",
+        "R02",
+        "R05",
+        "R24"
+      ],
+      "codePaths": [
+        "prisma/schema.prisma",
+        "prisma/migrations/20261121014102_official_results_foundation/migration.sql",
+        "prisma/migrations/20261121014725_official_results_trigger_privileges/migration.sql",
+        "src/modules/official-results/infrastructure/repositories",
+        "src/infrastructure/database/school-scope.extension.ts",
+        "test/integration/official-results-foundation.integration.spec.ts"
+      ],
+      "testsExecuted": [
+        {
+          "command": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-foundation.integration.spec.ts",
+          "outcome": "PASS",
+          "testedSha": "0467621ab0bbc6519a9d0e1df9d275a1c639e0f3",
+          "result": "5 passed on the loopback-only moazez_official_results_or01 database."
+        },
+        {
+          "command": "prisma validate; prisma generate; npm run db:migrations:check",
+          "outcome": "PASS",
+          "testedSha": "0467621ab0bbc6519a9d0e1df9d275a1c639e0f3",
+          "result": "42 active migrations, 2 new. Prisma 6.19.3."
+        },
+        {
+          "command": "prisma migrate deploy; prisma migrate status; prisma migrate deploy; prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code",
+          "outcome": "PASS",
+          "testedSha": "0467621ab0bbc6519a9d0e1df9d275a1c639e0f3",
+          "result": "42 migrations applied on fresh PostgreSQL 16; status current, second deploy no-op, no drift."
+        },
+        {
+          "command": "npm run seed",
+          "outcome": "PASS",
+          "testedSha": "0467621ab0bbc6519a9d0e1df9d275a1c639e0f3",
+          "result": "244 existing permissions and 7 system roles seeded on the disposable database. Demo data disabled."
+        },
+        {
+          "command": "npm run build",
+          "outcome": "PASS",
+          "testedSha": "0467621ab0bbc6519a9d0e1df9d275a1c639e0f3",
+          "result": "Build and reference-data bootstrap build contract passed with the repository CI process heap setting (4096 MiB). A preliminary bare tsc invocation exhausted the desktop default heap."
+        },
+        {
+          "command": "npm run verify:prd3-g01-c-tests",
+          "outcome": "PASS",
+          "testedSha": "0467621ab0bbc6519a9d0e1df9d275a1c639e0f3",
+          "result": "40 passed."
+        },
+        {
+          "command": "npm run verify:prd3-g01-c-final -- --current-ci",
+          "outcome": "PASS",
+          "testedSha": "0467621ab0bbc6519a9d0e1df9d275a1c639e0f3",
+          "result": "PostgreSQL 16. 18 positive, 57 negative and 9 SET ROLE checks. Fixture cleanup verified."
+        }
+      ],
+      "evidence": [
+        "docs/database/migration-custom-sql-inventory.md",
+        "verification/acceptance-matrix.json"
+      ],
+      "blockers": [],
+      "decisions": [
+        "Prisma migrate dev --create-only declined interactive unique-index confirmation on Windows before applying migration SQL. Prisma generated the reviewed equivalent diff against the verified disposable baseline.",
+        "Roster selection uses enrollment instants and the configured school timezone, falling back to UTC for an unconfigured profile.",
+        "The deferred SQL invariant and exact composite FK require each committed sheet to reference its own frozen draft definition."
+      ],
+      "nextAction": "OR02: versioned policy, checked current actor/assignment, scope grants and independent IAM catalog.",
+      "requirementScope": "Persistence and temporal eligibility. Normal entry routes and whole-feature regression evidence belong to the dependent phases.",
+      "migrations": [
+        "20261121014102_official_results_foundation",
+        "20261121014725_official_results_trigger_privileges"
+      ]
+    },
+    {
+      "id": "OR02",
+      "title": "School policy and effective authorization",
+      "dependsOn": [
+        "OR01"
+      ],
+      "status": "DONE",
+      "implementationSha": "30699d68f25045cec56806eca46359b054cbda52",
+      "requirements": [
+        "R05",
+        "R07",
+        "R08",
+        "R09",
+        "R10",
+        "R24"
+      ],
+      "codePaths": [
+        "src/modules/official-results/application",
+        "src/modules/official-results/infrastructure/repositories/result-authorization.repository.ts",
+        "src/modules/official-results/controller/result-configuration.controller.ts",
+        "src/modules/iam/reference-data/permission-catalog.ts",
+        "src/modules/iam/reference-data/system-role-catalog.ts",
+        "docs/official-results/openapi.json"
+      ],
+      "testsExecuted": [
+        {
+          "command": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+          "outcome": "PASS",
+          "testedSha": "30699d68f25045cec56806eca46359b054cbda52",
+          "result": "14 tests across two suites on disposable PostgreSQL 16. Included HTTP, live IAM and a deterministic allocation-revocation lock race."
+        },
+        {
+          "command": "npm test -- --runInBand --runTestsByPath src/modules/official-results/domain/result-policy.spec.ts",
+          "outcome": "PASS",
+          "testedSha": "30699d68f25045cec56806eca46359b054cbda52",
+          "result": "3 policy/selector tests."
+        },
+        {
+          "command": "npm run build",
+          "outcome": "PASS",
+          "testedSha": "30699d68f25045cec56806eca46359b054cbda52",
+          "result": "Nest build plus reference-data bootstrap build contract. The preceding candidate failed compile-time scope-query inference and was corrected."
+        },
+        {
+          "command": "prisma validate; prisma generate; npm run db:migrations:check; prisma migrate deploy; prisma migrate status; prisma migrate deploy; prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code",
+          "outcome": "PASS",
+          "testedSha": "30699d68f25045cec56806eca46359b054cbda52",
+          "result": "43 incremental migrations applied on the empty moazez_official_results_or02 database; status current; second deploy no-op; zero diff."
+        },
+        {
+          "command": "npm run seed (twice against disposable OR02 database)",
+          "outcome": "PASS",
+          "testedSha": "30699d68f25045cec56806eca46359b054cbda52",
+          "result": "27 Official Results permissions, 271 total permissions and 7 system roles, verified with real database counts after repeat."
+        },
+        {
+          "command": "node --test scripts/tests/prd3-g04-governed-migration-job.test.cjs",
+          "outcome": "PASS",
+          "testedSha": "30699d68f25045cec56806eca46359b054cbda52",
+          "result": "60 passed after generating the candidate migration artifact manifest."
+        },
+        {
+          "command": "node --test scripts/tests/prd3-g01-b3-transaction-pressure.test.cjs",
+          "outcome": "PASS",
+          "testedSha": "30699d68f25045cec56806eca46359b054cbda52",
+          "result": "180 passed; official-results transactions resolve to the API entry point with the existing inventory guard."
+        },
+        {
+          "command": "node scripts/migrations/migration-artifact-manifest.cjs verify",
+          "outcome": "PASS",
+          "testedSha": "30699d68f25045cec56806eca46359b054cbda52",
+          "result": "The 40 original entries match the verified origin/main manifest byte digests. The new candidate contains 43 entries."
+        }
+      ],
+      "evidence": [
+        "docs/official-results/or02-policy-and-authorization.md",
+        "docs/official-results/openapi.json",
+        "verification/acceptance-matrix.json"
+      ],
+      "blockers": [],
+      "decisions": [
+        "Class A source artifact correction. PR 238 candidate 197fec5e failed the governed fixture preflight with migration_manifest_mismatch because the tracked candidate manifest still described the 40-migration base. Prisma was not reached by that runner. The official generator produced a new 43-entry manifest with every original migration digest preserved.",
+        "Policy activation serializes on the live school lock. Teacher writes use the existing Academics allocation write gate at commit time."
+      ],
+      "nextAction": "OR03: starter template, school template versions, scope resolution and draft design adoption.",
+      "requirementScope": "Policy, catalog and scoped authorization. Actual design/grade/import/publication commands and their end-to-end acceptance remain in OR03–OR12.",
+      "migrations": [
+        "20261121015729_official_results_policy"
+      ],
+      "referenceData": {
+        "newPermissionCount": 27,
+        "totalSeededPermissionCount": 271,
+        "seededSystemRoles": 7,
+        "teacherDirectPublicationDefault": false
+      }
+    },
+    {
+      "id": "OR03",
+      "title": "Templates, presets and scope resolution",
+      "dependsOn": [
+        "OR01",
+        "OR02"
+      ],
+      "status": "NOT_STARTED",
+      "implementationSha": null,
+      "requirements": [],
+      "codePaths": [],
+      "testsExecuted": [],
+      "evidence": [],
+      "blockers": [],
+      "decisions": [],
+      "nextAction": null
+    },
+    {
+      "id": "OR04",
+      "title": "Gradebook and calculation",
+      "dependsOn": [
+        "OR03"
+      ],
+      "status": "NOT_STARTED",
+      "implementationSha": null,
+      "requirements": [],
+      "codePaths": [],
+      "testsExecuted": [],
+      "evidence": [],
+      "blockers": [],
+      "decisions": [],
+      "nextAction": null
+    },
+    {
+      "id": "OR05",
+      "title": "Review, publication and correction",
+      "dependsOn": [
+        "OR04"
+      ],
+      "status": "NOT_STARTED",
+      "implementationSha": null,
+      "requirements": [],
+      "codePaths": [],
+      "testsExecuted": [],
+      "evidence": [],
+      "blockers": [],
+      "decisions": [],
+      "nextAction": null
+    },
+    {
+      "id": "OR06",
+      "title": "Student/parent APIs and aggregate preview",
+      "dependsOn": [
+        "OR05"
+      ],
+      "status": "NOT_STARTED",
+      "implementationSha": null,
+      "requirements": [],
+      "codePaths": [],
+      "testsExecuted": [],
+      "evidence": [],
+      "blockers": [],
+      "decisions": [],
+      "nextAction": null
+    },
+    {
+      "id": "OR07",
+      "title": "Populated export",
+      "dependsOn": [
+        "OR04",
+        "OR06"
+      ],
+      "status": "NOT_STARTED",
+      "implementationSha": null,
+      "requirements": [],
+      "codePaths": [],
+      "testsExecuted": [],
+      "evidence": [],
+      "blockers": [],
+      "decisions": [],
+      "nextAction": null
+    },
+    {
+      "id": "OR08",
+      "title": "Import intake and validation",
+      "dependsOn": [
+        "OR07"
+      ],
+      "status": "NOT_STARTED",
+      "implementationSha": null,
+      "requirements": [],
+      "codePaths": [],
+      "testsExecuted": [],
+      "evidence": [],
+      "blockers": [],
+      "decisions": [],
+      "nextAction": null
+    },
+    {
+      "id": "OR09",
+      "title": "Import confirmation and recovery",
+      "dependsOn": [
+        "OR08",
+        "OR05"
+      ],
+      "status": "NOT_STARTED",
+      "implementationSha": null,
+      "requirements": [],
+      "codePaths": [],
+      "testsExecuted": [],
+      "evidence": [],
+      "blockers": [],
+      "decisions": [],
+      "nextAction": null
+    },
+    {
+      "id": "OR10",
+      "title": "XLSX adapter",
+      "dependsOn": [
+        "OR07",
+        "OR08",
+        "OR09"
+      ],
+      "status": "NOT_STARTED",
+      "implementationSha": null,
+      "requirements": [],
+      "codePaths": [],
+      "testsExecuted": [],
+      "evidence": [],
+      "blockers": [],
+      "decisions": [],
+      "nextAction": null
+    },
+    {
+      "id": "OR11",
+      "title": "History, completeness and archive support",
+      "dependsOn": [
+        "OR06",
+        "OR09",
+        "OR10"
+      ],
+      "status": "NOT_STARTED",
+      "implementationSha": null,
+      "requirements": [],
+      "codePaths": [],
+      "testsExecuted": [],
+      "evidence": [],
+      "blockers": [],
+      "decisions": [],
+      "nextAction": null
+    },
+    {
+      "id": "OR12",
+      "title": "Integrated verification and release readiness",
+      "dependsOn": [
+        "OR11"
+      ],
+      "status": "NOT_STARTED",
+      "implementationSha": null,
+      "requirements": [],
+      "codePaths": [],
+      "testsExecuted": [],
+      "evidence": [],
+      "blockers": [],
+      "decisions": [],
+      "nextAction": null
+    }
+  ],
+  "release": {
+    "merged": false,
+    "deployed": false,
+    "productionMutationsAuthorized": false
+  },
+  "branch": "codex/moazez-be-official-results",
+  "draftPullRequests": [
+    {
+      "number": 238,
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/238",
+      "base": "main",
+      "baseSha": "a8a8f160e8c85d1dd8364e055ada69cee61cd7e5",
+      "branch": "codex/moazez-be-official-results",
+      "scope": [
+        "OR00",
+        "OR01",
+        "OR02"
+      ]
+    }
+  ]
+}

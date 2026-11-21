@@ -26,6 +26,18 @@ const NON_PLATFORM = ALL.filter(
 const SCHOOL_LEVEL = NON_PLATFORM;
 
 export const TEACHER_PERMISSIONS = [
+  'official_results.templates.view',
+  'official_results.designs.manage',
+  'official_results.sheets.view',
+  'official_results.sheets.create',
+  'official_results.entries.manage',
+  'official_results.imports.view',
+  'official_results.imports.manage',
+  'official_results.exports.create',
+  'official_results.reviews.submit',
+  'official_results.corrections.request',
+  'official_results.history.view',
+  'official_results.results.view',
   'academics.academic_content.view',
   'academics.academic_content.manage',
   'academics.academic_content.publish',
@@ -89,6 +101,7 @@ export const TEACHER_PERMISSIONS = [
 ];
 
 const PARENT_PERMISSIONS = [
+  'official_results.results.view',
   'app.device_tokens.manage',
   'academics.academic_content.view',
   'academics.calendar.view',
@@ -139,6 +152,7 @@ const PARENT_PERMISSIONS = [
 ];
 
 const STUDENT_PERMISSIONS = [
+  'official_results.results.view',
   'app.device_tokens.manage',
   'academics.academic_content.view',
   'academics.calendar.view',

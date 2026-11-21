@@ -1,5 +1,34 @@
 # Error Catalog
 
+## Official Results
+
+| Code | HTTP | Meaning |
+| --- | --- | --- |
+| `official_results.period.invalid_dates` | 422 | The reporting dates or term association are invalid. |
+| `official_results.period.closed` | 409 | Period state prevents this write. |
+| `official_results.period.duplicate_code` | 409 | The code is already used in this school and academic year. |
+| `official_results.period.used_dates` | 409 | Date changes would affect a materialized roster or a closed period. |
+| `official_results.group.invalid_subject` | 422 | The group kind and subject reference disagree. |
+| `official_results.group.duplicate` | 409 | This school already has a group for the code or subject. |
+| `official_results.scope.subject_unavailable` | 422 | The subject is outside the current grade/term offering. |
+| `official_results.scope.conflict` | 409 | Incomparable matching rules require an explicit intersection. |
+| `official_results.scope.limit_exceeded` | 422 | The requested operation exceeds a bounded scope. |
+| `official_results.roster.ambiguous` | 409 | Multiple placements meet the roster date and need reconciliation. |
+| `official_results.roster.changed` | 409 | A slot belongs to a placement that requires reconciliation. |
+| `official_results.roster.limit_exceeded` | 422 | The roster exceeds the supported size. |
+| `official_results.policy.invalid` | 422 | Proposed settings violate a policy invariant. |
+| `official_results.policy.stale` | 409 | The preview or its pinned version changed. |
+| `official_results.idempotency.conflict` | 409 | The same operation key was used with different content. |
+| `official_results.publication.forbidden` | 403 | Current publication authority is unavailable. |
+| `official_results.review.required` | 409 | Exact school review is required by the current policy. |
+| `official_results.grant.invalid` | 422 | The grant scope, actions or validity interval are invalid. |
+| `official_results.revision.stale` | 409 | The expected resource revision is stale. |
+| `official_results.correction_window.invalid` | 422 | The correction window request is outside the allowed state or bounds. |
+
+Official Results domain errors support Arabic and English through the feature
+filter and use the global structured envelope. Resource existence remains
+guarded by the common `not_found` response.
+
 ## ST12 Grades review
 
 | Code | HTTP | Meaning |
