@@ -11,7 +11,9 @@
       "level": "Integration",
       "given": "Enter official values with fields named Homework, Behavior and Tests",
       "expected": "No existing GradeItem, homework, behavior or reinforcement record is created or read as a value source",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN",
+      "persistenceEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-foundation.integration.spec.ts",
+      "remainingEvidence": "Verify independent writes via the gradebook mutation entry point in OR04 and unchanged existing outputs in OR12."
     },
     {
       "id": "T002",
@@ -23,7 +25,9 @@
       "level": "DB",
       "given": "Materialize the same school/student/period/group through two views",
       "expected": "One ResultSlot exists; no duplicate result store by screen/template/class transfer",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "0467621ab0bbc6519a9d0e1df9d275a1c639e0f3"
     },
     {
       "id": "T003",
@@ -34,7 +38,9 @@
       "level": "DB",
       "given": "Connect a slot or cell to a foreign-school student/schema/group",
       "expected": "Composite constraints/application guard reject; neither tenant is mutated",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "0467621ab0bbc6519a9d0e1df9d275a1c639e0f3"
     },
     {
       "id": "T004",
@@ -45,7 +51,9 @@
       "level": "Integration",
       "given": "Use year enrollment with null termId in an eligible term",
       "expected": "Correct temporal overlap accepted; a different explicit term rejected",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "0467621ab0bbc6519a9d0e1df9d275a1c639e0f3"
     },
     {
       "id": "T005",
@@ -56,7 +64,9 @@
       "level": "Integration",
       "given": "Two enrollments could satisfy historical attribution",
       "expected": "Conflict returned; no latest-row guess",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "0467621ab0bbc6519a9d0e1df9d275a1c639e0f3"
     },
     {
       "id": "T006",

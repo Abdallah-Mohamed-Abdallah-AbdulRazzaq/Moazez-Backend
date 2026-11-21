@@ -76,15 +76,82 @@
       "dependsOn": [
         "OR00"
       ],
-      "status": "NOT_STARTED",
-      "implementationSha": null,
-      "requirements": [],
-      "codePaths": [],
-      "testsExecuted": [],
-      "evidence": [],
+      "status": "DONE",
+      "implementationSha": "0467621ab0bbc6519a9d0e1df9d275a1c639e0f3",
+      "requirements": [
+        "R01",
+        "R02",
+        "R05",
+        "R24"
+      ],
+      "codePaths": [
+        "prisma/schema.prisma",
+        "prisma/migrations/20261121014102_official_results_foundation/migration.sql",
+        "prisma/migrations/20261121014725_official_results_trigger_privileges/migration.sql",
+        "src/modules/official-results/infrastructure/repositories",
+        "src/infrastructure/database/school-scope.extension.ts",
+        "test/integration/official-results-foundation.integration.spec.ts"
+      ],
+      "testsExecuted": [
+        {
+          "command": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-foundation.integration.spec.ts",
+          "outcome": "PASS",
+          "testedSha": "0467621ab0bbc6519a9d0e1df9d275a1c639e0f3",
+          "result": "5 passed on the loopback-only moazez_official_results_or01 database."
+        },
+        {
+          "command": "prisma validate; prisma generate; npm run db:migrations:check",
+          "outcome": "PASS",
+          "testedSha": "0467621ab0bbc6519a9d0e1df9d275a1c639e0f3",
+          "result": "42 active migrations, 2 new. Prisma 6.19.3."
+        },
+        {
+          "command": "prisma migrate deploy; prisma migrate status; prisma migrate deploy; prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code",
+          "outcome": "PASS",
+          "testedSha": "0467621ab0bbc6519a9d0e1df9d275a1c639e0f3",
+          "result": "42 migrations applied on fresh PostgreSQL 16; status current, second deploy no-op, no drift."
+        },
+        {
+          "command": "npm run seed",
+          "outcome": "PASS",
+          "testedSha": "0467621ab0bbc6519a9d0e1df9d275a1c639e0f3",
+          "result": "244 existing permissions and 7 system roles seeded on the disposable database. Demo data disabled."
+        },
+        {
+          "command": "npm run build",
+          "outcome": "PASS",
+          "testedSha": "0467621ab0bbc6519a9d0e1df9d275a1c639e0f3",
+          "result": "Build and reference-data bootstrap build contract passed with the repository CI process heap setting (4096 MiB). A preliminary bare tsc invocation exhausted the desktop default heap."
+        },
+        {
+          "command": "npm run verify:prd3-g01-c-tests",
+          "outcome": "PASS",
+          "testedSha": "0467621ab0bbc6519a9d0e1df9d275a1c639e0f3",
+          "result": "40 passed."
+        },
+        {
+          "command": "npm run verify:prd3-g01-c-final -- --current-ci",
+          "outcome": "PASS",
+          "testedSha": "0467621ab0bbc6519a9d0e1df9d275a1c639e0f3",
+          "result": "PostgreSQL 16. 18 positive, 57 negative and 9 SET ROLE checks. Fixture cleanup verified."
+        }
+      ],
+      "evidence": [
+        "docs/database/migration-custom-sql-inventory.md",
+        "verification/acceptance-matrix.json"
+      ],
       "blockers": [],
-      "decisions": [],
-      "nextAction": null
+      "decisions": [
+        "Prisma migrate dev --create-only declined interactive unique-index confirmation on Windows before applying migration SQL. Prisma generated the reviewed equivalent diff against the verified disposable baseline.",
+        "Roster selection uses enrollment instants and the configured school timezone, falling back to UTC for an unconfigured profile.",
+        "The deferred SQL invariant and exact composite FK require each committed sheet to reference its own frozen draft definition."
+      ],
+      "nextAction": "OR02: versioned policy, checked current actor/assignment, scope grants and independent IAM catalog.",
+      "requirementScope": "Persistence and temporal eligibility. Normal entry routes and whole-feature regression evidence belong to the dependent phases.",
+      "migrations": [
+        "20261121014102_official_results_foundation",
+        "20261121014725_official_results_trigger_privileges"
+      ]
     },
     {
       "id": "OR02",
@@ -275,5 +342,18 @@
     "deployed": false,
     "productionMutationsAuthorized": false
   },
-  "branch": "codex/moazez-be-official-results"
+  "branch": "codex/moazez-be-official-results",
+  "draftPullRequests": [
+    {
+      "number": 238,
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/238",
+      "base": "main",
+      "baseSha": "a8a8f160e8c85d1dd8364e055ada69cee61cd7e5",
+      "branch": "codex/moazez-be-official-results",
+      "scope": [
+        "OR00",
+        "OR01"
+      ]
+    }
+  ]
 }
