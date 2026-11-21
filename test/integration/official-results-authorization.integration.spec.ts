@@ -21,6 +21,8 @@ import {
   resultsXlsxMediaType,
 } from '../../src/modules/official-results/domain/result-xlsx-export';
 import { parseResultsXlsx } from '../../src/modules/official-results/domain/result-xlsx-import';
+import { reportOutputs } from '../../src/modules/official-results/dto/result-reports.dto';
+import { ResultNoticeService } from '../../src/modules/official-results/application/result-notice.service';
 import { exportOutputs } from '../../src/modules/official-results/dto/result-export.dto';
 import { importOutputs } from '../../src/modules/official-results/dto/result-import.dto';
 import { csvRecord } from '../../src/modules/official-results/domain/result-csv';
@@ -444,7 +446,7 @@ describe('Official Results policy and permission boundaries', () => {
         }),
       ),
     );
-    expect(registered).toHaveLength(123);
+    expect(registered).toHaveLength(137);
     for (const endpoint of registered) {
       expect(catalog.operations).toContainEqual(
         expect.objectContaining({
@@ -3736,6 +3738,316 @@ describe('Official Results policy and permission boundaries', () => {
         where: { slotId: book.slot.id, fieldId: book.scores[0].id },
       }),
     ).toMatchObject({ version: 1, status: 'RECORDED' });
+  });
+
+  it('T085 returns authorized missing grades and before/after history without school-only fields', async () => {
+    const book = await liveGradebook('REPORT-HISTORY');
+    const filter = {
+      sheetId: book.source.id,
+      studentId: book.child.id,
+      fieldId: book.scores[0].id,
+    };
+    const missing = reportOutputs.missing.parse(
+      (await withTeacher('/missing').query(filter).expect(200)).body.data,
+    );
+    expect(missing.counts).toEqual({
+      missingFields: 1,
+      reconciliationFields: 0,
+      affectedSlots: 1,
+    });
+    expect(missing.items[0]).toMatchObject({
+      slotId: book.slot.id,
+      fieldId: book.scores[0].id,
+      canEnter: true,
+    });
+    await book
+      .patch([scoreOperation(book.slot.id, book.scores[0].id, '0')])
+      .expect(200);
+    await book
+      .patch([scoreOperation(book.slot.id, book.scores[0].id, '10', 1)])
+      .expect(200);
+    const noLongerMissing = reportOutputs.missing.parse(
+      (await withTeacher('/missing').query(filter).expect(200)).body.data,
+    );
+    expect(noLongerMissing.counts.missingFields).toBe(0);
+    const first = reportOutputs.history.parse(
+      (
+        await withTeacher('/history')
+          .query({ ...filter, limit: 1 })
+          .expect(200)
+      ).body.data,
+    );
+    expect(first.items).toHaveLength(1);
+    expect(first.hasMore).toBe(true);
+    const second = reportOutputs.history.parse(
+      (
+        await withTeacher('/history')
+          .query({ ...filter, limit: 1, cursor: first.nextCursor })
+          .expect(200)
+      ).body.data,
+    );
+    expect([...first.items, ...second.items]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'CELL',
+          before: { status: 'MISSING' },
+          after: { status: 'RECORDED', score: '0.00' },
+        }),
+        expect.objectContaining({
+          type: 'CELL',
+          before: { status: 'RECORDED', score: '0.00' },
+          after: { status: 'RECORDED', score: '10.00' },
+        }),
+      ]),
+    );
+    await withTeacher('/history')
+      .query({ ...filter, fieldId: book.internal.id })
+      .expect(404);
+    await withTeacher('/missing')
+      .query({ sheetId: book.destination.id })
+      .expect(404);
+  });
+
+  it('T086 and T087 freeze ordinary entry, finish an approved candidate in ENTRY_CLOSED and enforce archived correction windows', async () => {
+    const book = await readyRelease('PERIOD-ARCHIVE');
+    const candidate = (await book.capture())!;
+    await decideCandidate(candidate).expect(200);
+    const period = await prisma.resultReportingPeriod.findUniqueOrThrow({
+      where: { id: book.reportingPeriodId },
+    });
+    const route = '/periods/' + period.id;
+    const closeInput = {
+      expectedRevision: period.revision,
+      reason: 'School accepted the closure summary',
+    };
+    const closeKey = randomUUID();
+    const closed = await withSchool('post', route + '/close')
+      .set('Idempotency-Key', closeKey)
+      .send(closeInput)
+      .expect(200);
+    expect(closed.body.data).toMatchObject({
+      status: 'ENTRY_CLOSED',
+      revision: period.revision + 1,
+      closureSummary: { sheets: 2, pendingReviews: 1 },
+    });
+    const repeat = await withSchool('post', route + '/close')
+      .set('Idempotency-Key', closeKey)
+      .send(closeInput)
+      .expect(200);
+    expect(repeat.body.data).toEqual(closed.body.data);
+    await book
+      .patch([scoreOperation(book.slot.id, book.scores[0].id, '19', 1)])
+      .expect(409);
+    await book.capture('REVIEW', 409);
+    await publishCandidate(candidate, 0, null).expect(202);
+    const published = await prisma.resultPublication.findFirstOrThrow({
+      where: { candidateId: candidate.candidateId },
+    });
+    const archived = await withSchool('post', route + '/archive')
+      .set('Idempotency-Key', randomUUID())
+      .send({
+        expectedRevision: period.revision + 1,
+        reason: 'Maintain this period as academic history',
+      })
+      .expect(200);
+    expect(archived.body.data).toMatchObject({
+      status: 'ARCHIVED',
+      revision: period.revision + 2,
+    });
+    const filtered = await withSchool('get', '/periods')
+      .query({ status: 'ARCHIVED' })
+      .expect(200);
+    expect(filtered.body.data.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ reportingPeriodId: period.id }),
+      ]),
+    );
+    const opened = await withSchool('post', route + '/correction-windows')
+      .set('Idempotency-Key', randomUUID())
+      .send({
+        expectedPeriodRevision: period.revision + 2,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        reason: 'Correct one verified grade',
+        targets: [
+          {
+            slotId: book.slot.id,
+            releaseUnitId: book.releaseUnitId,
+            authorizedActorIds: [teacher.actor.id],
+          },
+        ],
+      })
+      .expect(200);
+    const windowId = opened.body.data.correctionWindows[0].windowId as string;
+    const edit = {
+      reportingPeriodId: period.id,
+      academicScope: { level: 'CLASSROOM', ids: [school.classroom.id] },
+      groupIds: [math.id],
+      format: 'CSV',
+      mode: 'EDIT_DRAFT',
+      selectedFieldIds: [book.scores[0].id],
+    };
+    await exportTeacher('post', '/exports/preview').send(edit).expect(409);
+    await exportTeacher('post', '/exports/preview')
+      .send({ ...edit, selectedSlotIds: [book.slot.id] })
+      .expect(200);
+    const revoke = await withSchool(
+      'post',
+      route + '/correction-windows/' + windowId + '/revoke',
+    )
+      .set('Idempotency-Key', randomUUID())
+      .send({ reason: 'End the limited correction' })
+      .expect(200);
+    expect(revoke.body.data.id).toBe(windowId);
+    await exportTeacher('post', '/exports/preview')
+      .send({ ...edit, selectedSlotIds: [book.slot.id] })
+      .expect(409);
+    const target = {
+      expectedRevision: period.revision + 2,
+      targetStatus: 'OPEN',
+      reason: 'School reviewed re-entry scope',
+    };
+    await withSchool('post', route + '/reopen')
+      .set('Idempotency-Key', randomUUID())
+      .send(target)
+      .expect(409);
+    const plan = reportOutputs.reopen.parse(
+      (
+        await withSchool('post', route + '/reopen-preview')
+          .send(target)
+          .expect(200)
+      ).body.data,
+    );
+    const reopened = await withSchool('post', route + '/reopen')
+      .set('Idempotency-Key', randomUUID())
+      .send({
+        ...target,
+        previewId: plan.previewId,
+        previewDigest: plan.previewDigest,
+      })
+      .expect(200);
+    expect(reopened.body.data).toMatchObject({
+      status: 'OPEN',
+      revision: period.revision + 3,
+    });
+    expect(
+      (
+        await prisma.resultPublication.findUniqueOrThrow({
+          where: { id: published.id },
+        })
+      ).revision,
+    ).toBe(published.revision);
+  });
+
+  it('T072 serves an authorized CSV issue report with safe cells and denies unowned file URLs', async () => {
+    const book = await liveGradebook('ISSUE-REPORT');
+    const { job, rows } = await editableExport(book);
+    rows[1][6] = '=1+1';
+    const staged = importOutputs.batch.parse(
+      (await stageImport(job.exportId, sourceBytes(rows)).expect(202)).body
+        .data,
+    );
+    const batch = await waitForImport('/' + staged.batchId);
+    expect(batch.status).toBe('CORRECTIONS_REQUIRED');
+    const created = authoringOutputs.operation.parse(
+      (
+        await importTeacher('post', '/' + batch.batchId + '/issue-report')
+          .set('Idempotency-Key', randomUUID())
+          .expect(202)
+      ).body.data,
+    );
+    let state = created;
+    for (let attempt = 0; attempt < 100 && !state.file; attempt++) {
+      state = authoringOutputs.operation.parse(
+        (
+          await exportTeacher('get', '/operations/' + state.operationId).expect(
+            200,
+          )
+        ).body.data,
+      );
+      if (!state.file)
+        await new Promise<void>((resolve) => setTimeout(resolve, 100));
+    }
+    expect(state.status).toBe('COMPLETED');
+    const path = state.file!.downloadPath.slice(instructor.length);
+    const downloaded = await exportTeacher('get', path)
+      .expect(200)
+      .expect('X-Content-Type-Options', 'nosniff');
+    const csv = parseCsv(downloaded.text, { bom: true });
+    expect(csv[1][0]).toBe('official_results.import.identity_changed');
+    expect(downloaded.text).not.toContain('=1+1');
+    await exportTeacher('get', path, 'co-teacher-fixture').expect(404);
+    expect(await prisma.file.count({ where: { id: state.file!.fileId } })).toBe(
+      0,
+    );
+  });
+
+  it('dispatches a deduplicated publication notice after checking the current family link and audience', async () => {
+    const book = await readyRelease('NOTICE-DELIVERY');
+    const [student, parent] = await Promise.all([
+      familyUser('STUDENT'),
+      familyUser('PARENT'),
+    ]);
+    await Promise.all([
+      attachFamilyMembership(student, school),
+      attachFamilyMembership(parent, school),
+    ]);
+    await prisma.student.update({
+      where: { id: book.child.id },
+      data: { userId: student.id },
+    });
+    const guardian = await prisma.guardian.create({
+      data: {
+        schoolId: school.school.id,
+        organizationId: school.school.organizationId,
+        userId: parent.id,
+        firstName: 'Temporary',
+        lastName: 'Recipient',
+        phone: '+20100000000',
+        relation: 'MOTHER',
+      },
+    });
+    const link = await prisma.studentGuardian.create({
+      data: {
+        schoolId: school.school.id,
+        guardianId: guardian.id,
+        studentId: book.child.id,
+      },
+    });
+    const candidate = (await book.capture())!;
+    await decideCandidate(candidate).expect(200);
+    await publishCandidate(candidate, 0, null).expect(202);
+    const publication = await prisma.resultPublication.findFirstOrThrow({
+      where: { candidateId: candidate.candidateId },
+    });
+    const before = await prisma.resultPublicationNotice.findFirstOrThrow({
+      where: { publicationId: publication.id },
+    });
+    expect(before.status).toBe('PENDING');
+    await prisma.studentGuardian.delete({ where: { id: link.id } });
+    const notices = app.get(ResultNoticeService);
+    await notices.reconcile();
+    await notices.reconcile();
+    const result = await prisma.communicationNotification.findMany({
+      where: { schoolId: school.school.id, sourceId: publication.id },
+      include: { deliveries: true },
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      recipientUserId: student.id,
+      sourceType: 'OFFICIAL_RESULTS_PUBLICATION',
+      deliveries: [{ status: 'DELIVERED', channel: 'IN_APP' }],
+    });
+    expect(result[0].metadata).toEqual({
+      destination: 'OFFICIAL_RESULTS',
+      reportingPeriodId: book.reportingPeriodId,
+    });
+    expect(
+      (
+        await prisma.resultPublicationNotice.findUniqueOrThrow({
+          where: { id: before.id },
+        })
+      ).status,
+    ).toBe('DELIVERED');
   });
 
   it('T013 denies an edit waiting on a concurrent allocation revocation', async () => {

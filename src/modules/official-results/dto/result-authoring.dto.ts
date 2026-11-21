@@ -25,6 +25,7 @@ import {
 } from '../infrastructure/repositories/result-operation.repository';
 import { ResultPageQueryDto } from './result-configuration.dto';
 import { importExecutionUnit } from './result-import.dto';
+import { exportFileDescriptor } from './result-export.dto';
 
 const uuid = z.uuid();
 const instant = z.iso.datetime();
@@ -162,6 +163,7 @@ const operation = z.object({
   updatedAt: instant,
   itemsPath: z.string(),
   terminationReason: z.string().optional(),
+  file: exportFileDescriptor.optional(),
 });
 const schoolTemplateImpact = z.object({
   templateId: uuid,
@@ -250,7 +252,13 @@ export const authoringOutputs = {
     conflicts: z.array(scopeTuple.extend({ code: z.string() })),
   }),
   operation,
-  operationItems: page(z.union([resultOperationItem, importExecutionUnit])),
+  operationItems: page(
+    z.union([
+      resultOperationItem,
+      importExecutionUnit,
+      z.object({ status: z.literal('COMPLETED'), file: exportFileDescriptor }),
+    ]),
+  ),
   design,
   definitionPreview: preview.extend({
     impact: adoptionImpact,

@@ -1,4 +1,12 @@
 import { Module } from '@nestjs/common';
+import { ResultIssueReportService } from './application/result-issue-report.service';
+import { ResultNoticeService } from './application/result-notice.service';
+import { ResultPeriodLifecycleService } from './application/result-period-lifecycle.service';
+import { ResultReportsService } from './application/result-reports.service';
+import {
+  ResultReportsController,
+  TeacherResultReportsController,
+} from './controller/result-reports.controller';
 import { QueueModule } from '../../infrastructure/queue/queue.module';
 import { StorageModule } from '../../infrastructure/storage/storage.module';
 import { ResultExportService } from './application/result-export.service';
@@ -77,6 +85,10 @@ import { ResultScopeFactsRepository } from './infrastructure/repositories/result
 @Module({
   imports: [PrismaModule, QueueModule, StorageModule],
   providers: [
+    ResultIssueReportService,
+    ResultNoticeService,
+    ResultPeriodLifecycleService,
+    ResultReportsService,
     {
       provide: TeacherAllocationOperationalWriteGate,
       useClass: PrismaTeacherAllocationOperationalWriteGate,
@@ -122,6 +134,10 @@ import { ResultScopeFactsRepository } from './infrastructure/repositories/result
     ResultTemplateService,
   ],
   exports: [
+    ResultIssueReportService,
+    ResultNoticeService,
+    ResultPeriodLifecycleService,
+    ResultReportsService,
     ResultImportApplyService,
     ResultImportExecutionService,
     ResultAggregateService,
@@ -146,6 +162,8 @@ export class OfficialResultsServicesModule {}
 @Module({
   imports: [OfficialResultsServicesModule],
   controllers: [
+    ResultReportsController,
+    TeacherResultReportsController,
     ResultExportController,
     TeacherResultExportController,
     ResultImportController,

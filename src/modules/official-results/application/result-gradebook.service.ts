@@ -14,7 +14,10 @@ import {
   type ResultGridPatch,
 } from '../domain/result-cell-operation';
 import { resultContentDigest } from '../domain/result-content-digest';
-import { resultFieldAccess } from '../domain/result-field-access';
+import {
+  resultFieldAccess,
+  type ResultFieldAccess,
+} from '../domain/result-field-access';
 import { storedCellValue, type ResultValue } from '../domain/result-value';
 import { storedResultDefinition } from '../domain/sheet-definition-seed';
 import {
@@ -360,7 +363,7 @@ export class ResultGradebookService {
       },
     };
     const grants = await this.auth.fieldGrants(client, actor, sheet, write);
-    const fields = definition
+    const fields: ResultFieldAccess = definition
       ? resultFieldAccess({ definition, accepted, teacher, grants, canEdit })
       : new Map();
     const loadFields = (definition?.fields ?? [])

@@ -936,6 +936,23 @@
       "description": "Authenticated content/proxy for sensitive result artifacts; generic Files routes cannot mint bypassing object URLs. Future signed-URL exception requires explicit ADR.",
       "reference": "../11_SECURITY_AND_OPERATIONS.md",
       "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "ResultAccessRevocationRequest": {
+      "kind": "request",
+      "requiredFields": [
+        "reason"
+      ],
+      "description": "Reason for ending a previously issued scope-bound result access proof.",
+      "dictionaryReference": "DTO_DICTIONARY.md"
+    },
+    "ResultAccessRevocation": {
+      "kind": "response-data",
+      "requiredFields": [
+        "id",
+        "revokedAt"
+      ],
+      "description": "Audited revocation of the selected same-school access proof.",
+      "dictionaryReference": "DTO_DICTIONARY.md"
     }
   },
   "operations": [
@@ -3266,6 +3283,40 @@
       "stateContract": "../09_PUBLICATION_AND_FAMILY_ACCESS.md",
       "authorization": "Current identity, policy, scope/ownership and resource state; permission alone is insufficient.",
       "notes": "Active or authorized historical published version only; no arbitrary candidate or revoked publication."
+    },
+    {
+      "operationId": "revokeOfficialResultsCorrectionWindow",
+      "method": "POST",
+      "path": "/api/v1/official-results/periods/:id/correction-windows/:windowId/revoke",
+      "surface": "SCHOOL",
+      "inputContract": "ResultAccessRevocationRequest",
+      "outputContract": "ResultAccessRevocation",
+      "permissions": [
+        "official_results.archives.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../11_SECURITY_AND_OPERATIONS.md",
+      "authorization": "Only the issuing school can revoke an active window for the exact named period."
+    },
+    {
+      "operationId": "revokeOfficialResultsReadEntitlement",
+      "method": "POST",
+      "path": "/api/v1/official-results/read-entitlements/:id/revoke",
+      "surface": "SCHOOL",
+      "inputContract": "ResultAccessRevocationRequest",
+      "outputContract": "ResultAccessRevocation",
+      "permissions": [
+        "official_results.archives.manage"
+      ],
+      "permissionMode": "ALL",
+      "mutation": true,
+      "idempotency": "REQUIRED",
+      "successStatus": 200,
+      "stateContract": "../11_SECURITY_AND_OPERATIONS.md",
+      "authorization": "Only the publication-owning school can revoke a retained historical proof."
     }
   ]
 }
