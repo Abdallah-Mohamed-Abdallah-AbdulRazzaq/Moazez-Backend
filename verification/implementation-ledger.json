@@ -3,22 +3,72 @@
   "feature": "MOAZEZ Official Results Management Engine",
   "planningBaseline": "a8a8f160e8c85d1dd8364e055ada69cee61cd7e5",
   "packageVersion": "1.0",
-  "actualImplementationBaseSha": null,
-  "implementationStatus": "NOT_STARTED",
+  "actualImplementationBaseSha": "a8a8f160e8c85d1dd8364e055ada69cee61cd7e5",
+  "implementationStatus": "IN_PROGRESS",
   "phases": [
     {
       "id": "OR00",
       "title": "Repository reconciliation and contracts",
       "dependsOn": [],
-      "status": "NOT_STARTED",
-      "implementationSha": null,
-      "requirements": [],
-      "codePaths": [],
-      "testsExecuted": [],
-      "evidence": [],
+      "status": "DONE",
+      "implementationSha": "7f79d51d4adedf412e3b83afd0ab777ae8b73040",
+      "requirements": [
+        "R25"
+      ],
+      "codePaths": [
+        "adr/ADR-0028-official-results-engine.md",
+        "docs/official-results/or00-repository-reconciliation.md",
+        "docs/official-results/contracts",
+        "API_CONTRACT_RULES.md",
+        "MODULES.md",
+        "DOMAIN_GLOSSARY.md"
+      ],
+      "testsExecuted": [
+        {
+          "command": "git fetch origin --prune; git ls-remote origin refs/heads/main; git diff --exit-code <reference> HEAD -- <affected paths>",
+          "outcome": "PASS",
+          "result": "Origin and local main match the attached reference. Affected paths have no diff.",
+          "testedSha": "a8a8f160e8c85d1dd8364e055ada69cee61cd7e5"
+        },
+        {
+          "command": "npm run test:migration-governance",
+          "outcome": "PASS",
+          "result": "39 passed",
+          "testedSha": "a8a8f160e8c85d1dd8364e055ada69cee61cd7e5"
+        },
+        {
+          "command": "npm run db:migrations:check",
+          "outcome": "PASS",
+          "result": "40 active migrations, 0 new, no rebaseline",
+          "testedSha": "a8a8f160e8c85d1dd8364e055ada69cee61cd7e5"
+        },
+        {
+          "command": "prisma migrate deploy; prisma migrate status; prisma migrate deploy",
+          "outcome": "PASS",
+          "result": "PostgreSQL 16 loopback-only Docker fixture or_baseline. 40 applied, schema up to date, second deploy no-op.",
+          "testedSha": "a8a8f160e8c85d1dd8364e055ada69cee61cd7e5"
+        },
+        {
+          "command": "prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code",
+          "outcome": "PASS",
+          "result": "No difference detected on the replayed or_baseline database.",
+          "testedSha": "a8a8f160e8c85d1dd8364e055ada69cee61cd7e5"
+        },
+        {
+          "command": "npm audit --omit=dev (isolated candidate adapter lockfile)",
+          "outcome": "PASS",
+          "result": "Zero advisories for the selected ZIP/XML components. ExcelJS candidate excluded after its audit reported the affected UUID dependency."
+        }
+      ],
+      "evidence": [
+        "docs/official-results/or00-repository-reconciliation.md",
+        "verification/acceptance-matrix.json"
+      ],
       "blockers": [],
-      "decisions": [],
-      "nextAction": null
+      "decisions": [
+        "ADR-0028 covers canonical identities, tenant/transaction boundaries, family identity, file ownership and the bounded XLSX transport. OR06 owns verification of retained entitlements."
+      ],
+      "nextAction": "OR01: implement and verify the tenant-safe Prisma foundation and roster selection on disposable PostgreSQL."
     },
     {
       "id": "OR01",
@@ -224,5 +274,6 @@
     "merged": false,
     "deployed": false,
     "productionMutationsAuthorized": false
-  }
+  },
+  "branch": "codex/moazez-be-official-results"
 }
