@@ -62,7 +62,10 @@ export class ResultFoundationRepository {
     return this.prisma.scoped as unknown as PrismaService;
   }
 
-  async createReportingPeriod(input: ReportingPeriodInput) {
+  async createReportingPeriod(
+    input: ReportingPeriodInput,
+    transaction?: Prisma.TransactionClient,
+  ) {
     const { schoolId } = currentSchoolContext();
     const startsOn = parseReportingDate(input.startsOn);
     const endsOn = parseReportingDate(input.endsOn);
@@ -71,44 +74,46 @@ export class ResultFoundationRepository {
     }
 
     try {
-      return await this.scoped.$transaction(
-        async (client) => {
-          const year = await client.academicYear.findFirst({
-            where: { id: input.academicYearId, schoolId, deletedAt: null },
-            select: datesSelect,
-          });
-          if (!year) throw new NotFoundDomainException();
-          assertReportingDates(startsOn, endsOn, year);
-          if (input.termId) {
-            const term = await client.term.findFirst({
-              where: {
-                id: input.termId,
-                schoolId,
-                academicYearId: input.academicYearId,
-                deletedAt: null,
-              },
-              select: datesSelect,
-            });
-            if (!term) throw new NotFoundDomainException();
-            assertReportingDates(startsOn, endsOn, term);
-          }
-          return client.resultReportingPeriod.create({
-            data: {
+      const execute = async (client: Prisma.TransactionClient) => {
+        const year = await client.academicYear.findFirst({
+          where: { id: input.academicYearId, schoolId, deletedAt: null },
+          select: datesSelect,
+        });
+        if (!year) throw new NotFoundDomainException();
+        assertReportingDates(startsOn, endsOn, year);
+        if (input.termId) {
+          const term = await client.term.findFirst({
+            where: {
+              id: input.termId,
               schoolId,
               academicYearId: input.academicYearId,
-              termId: input.termId,
-              kind: input.kind,
-              code: input.code,
-              nameAr: input.name.ar,
-              nameEn: input.name.en,
-              startsOn,
-              endsOn,
-              classification: input.classification,
+              deletedAt: null,
             },
+            select: datesSelect,
           });
-        },
-        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-      );
+          if (!term) throw new NotFoundDomainException();
+          assertReportingDates(startsOn, endsOn, term);
+        }
+        return client.resultReportingPeriod.create({
+          data: {
+            schoolId,
+            academicYearId: input.academicYearId,
+            termId: input.termId,
+            kind: input.kind,
+            code: input.code,
+            nameAr: input.name.ar,
+            nameEn: input.name.en,
+            startsOn,
+            endsOn,
+            classification: input.classification,
+          },
+        });
+      };
+      return transaction
+        ? await execute(transaction)
+        : await this.scoped.$transaction(execute, {
+            isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          });
     } catch (error) {
       if (isDatabaseError(error, 'P2002')) {
         throw new OfficialResultsError('period.duplicate_code');
@@ -117,41 +122,46 @@ export class ResultFoundationRepository {
     }
   }
 
-  async createGroup(input: ResultGroupInput) {
+  async createGroup(
+    input: ResultGroupInput,
+    transaction?: Prisma.TransactionClient,
+  ) {
     const { schoolId } = currentSchoolContext();
     if ((input.kind === 'SUBJECT') !== (input.subjectId !== undefined)) {
       throw new OfficialResultsError('group.invalid_subject');
     }
 
     try {
-      return await this.scoped.$transaction(
-        async (client) => {
-          if (input.subjectId) {
-            const subject = await client.subject.findFirst({
-              where: {
-                id: input.subjectId,
-                schoolId,
-                isActive: true,
-                deletedAt: null,
-              },
-              select: { id: true },
-            });
-            if (!subject) throw new NotFoundDomainException();
-          }
-          return client.resultGroup.create({
-            data: {
+      const execute = async (client: Prisma.TransactionClient) => {
+        if (input.subjectId) {
+          const subject = await client.subject.findFirst({
+            where: {
+              id: input.subjectId,
               schoolId,
-              subjectId: input.subjectId,
-              kind: input.kind,
-              code: input.code,
-              labelAr: input.label.ar,
-              labelEn: input.label.en,
-              description: input.description,
+              isActive: true,
+              deletedAt: null,
             },
+            select: { id: true },
           });
-        },
-        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-      );
+          if (!subject) throw new NotFoundDomainException();
+        }
+        return client.resultGroup.create({
+          data: {
+            schoolId,
+            subjectId: input.subjectId,
+            kind: input.kind,
+            code: input.code,
+            labelAr: input.label.ar,
+            labelEn: input.label.en,
+            description: input.description,
+          },
+        });
+      };
+      return transaction
+        ? await execute(transaction)
+        : await this.scoped.$transaction(execute, {
+            isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          });
     } catch (error) {
       if (isDatabaseError(error, 'P2002')) {
         throw new OfficialResultsError('group.duplicate');
@@ -161,9 +171,10 @@ export class ResultFoundationRepository {
   }
 
   async materialize(input: MaterializeResultSheetInput) {
+    const contentDigest = resultContentDigest(input.definition);
     for (let attempt = 0; ; attempt++) {
       try {
-        return await this.materializeWithinTransaction(input);
+        return await this.materializeWithinTransaction(input, contentDigest);
       } catch (error) {
         if (
           (!isDatabaseError(error, 'P2034') &&
@@ -176,7 +187,10 @@ export class ResultFoundationRepository {
     }
   }
 
-  private materializeWithinTransaction(input: MaterializeResultSheetInput) {
+  private materializeWithinTransaction(
+    input: MaterializeResultSheetInput,
+    contentDigest: string,
+  ) {
     const { schoolId, actorId } = currentSchoolContext();
     return this.scoped.$transaction(
       async (client) => {
@@ -221,6 +235,7 @@ export class ResultFoundationRepository {
           actorId,
           sheet.id,
           input.definition,
+          contentDigest,
         );
         await client.resultSlot.createMany({
           data: enrollments.map((enrollment) => ({
@@ -254,6 +269,7 @@ export class ResultFoundationRepository {
     actorId: string,
     sheetId: string,
     seed: FrozenResultDefinitionInput,
+    contentDigest: string,
   ): Promise<string> {
     await client.resultFieldIdentity.createMany({
       data: seed.fields.flatMap((field) =>
@@ -274,7 +290,7 @@ export class ResultFoundationRepository {
         schoolId,
         sheetId,
         version: 1,
-        contentDigest: resultContentDigest(seed),
+        contentDigest,
         labelAr: seed.label.ar,
         labelEn: seed.label.en,
         configuration: seed.configuration,

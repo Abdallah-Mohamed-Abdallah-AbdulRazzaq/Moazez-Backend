@@ -744,6 +744,20 @@ enum ResultAudience {
   @@map("result_audience")
 }
 
+enum ResultGrantAction {
+  VIEW
+  DESIGN
+  EDIT
+  IMPORT
+  EXPORT
+  SUBMIT
+  PUBLISH
+  REQUEST_CORRECTION
+  PUBLISH_CORRECTION
+
+  @@map("result_grant_action")
+}
+
 enum ResultRosterState {
   ELIGIBLE
   RECONCILIATION_REQUIRED
@@ -1809,6 +1823,12 @@ model School {
   resultFieldIdentities ResultFieldIdentity[]
   resultSlots           ResultSlot[]
 
+  officialResultPolicy    OfficialResultPolicy?
+  resultPolicyPreviews    ResultPolicyPreview[]
+  resultScopeGrants       OfficialResultScopeGrant[]
+  resultCorrectionWindows ResultCorrectionWindow[]
+  resultCommandReceipts   ResultCommandReceipt[]
+
   @@unique([organizationId, slug])
   @@unique([id, organizationId], map: "answer_intent_school_organization_key")
   @@index([organizationId])
@@ -2059,6 +2079,15 @@ model User {
   resultCellsEdited        ResultCell[]                   @relation("ResultCellEditor")
   resultCellRevisions      ResultCellRevision[]           @relation("ResultCellRevisionAuthor")
 
+  resultPoliciesAuthored  OfficialResultPolicyVersion[] @relation("ResultPolicyAuthor")
+  resultPolicyPreviews    ResultPolicyPreview[] @relation("ResultPolicyPreviewAuthor")
+  resultScopeGrants       OfficialResultScopeGrant[] @relation("ResultScopeGrantUser")
+  resultGrantsIssued      OfficialResultScopeGrant[] @relation("ResultScopeGrantIssuer")
+  resultGrantsRevoked     OfficialResultScopeGrant[] @relation("ResultScopeGrantRevoker")
+  resultCorrectionWindows ResultCorrectionWindow[] @relation("ResultCorrectionWindowActor")
+  resultWindowsIssued     ResultCorrectionWindow[] @relation("ResultCorrectionWindowIssuer")
+  resultCommandReceipts   ResultCommandReceipt[] @relation("ResultCommandActor")
+
   @@index([userType])
   @@index([status])
   @@index([username])
@@ -2165,6 +2194,8 @@ model Role {
   school          School?          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   memberships     Membership[]
   rolePermissions RolePermission[]
+
+  officialResultScopeGrants OfficialResultScopeGrant[]
 
   @@unique([schoolId, key])
   @@index([schoolId])
@@ -6198,6 +6229,10 @@ model ResultSlot {
   enrollment      Enrollment            @relation(fields: [enrollmentId, schoolId, studentId], references: [id, schoolId, studentId], onDelete: Restrict, onUpdate: Restrict, map: "result_slot_enrollment_student_fk")
   cells           ResultCell[]
 
+  correctionWindows ResultCorrectionWindow[]
+
+  @@unique([id, schoolId, reportingPeriodId], map: "result_slot_period_key")
+
   @@unique([id, schoolId])
   @@unique([schoolId, studentId, reportingPeriodId, groupId], map: "result_slot_canonical_key")
   @@index([schoolId, reportingPeriodId, groupId])
@@ -6262,6 +6297,149 @@ model ResultCellRevision {
   @@index([schoolId, definitionVersionId])
   @@index([authorId])
   @@map("result_cell_revisions")
+}
+
+model OfficialResultPolicy {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String   @unique @map("school_id") @db.Uuid
+  activeVersionId String?  @map("active_version_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  school        School                        @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  activeVersion OfficialResultPolicyVersion?   @relation("ResultPolicyActiveVersion", fields: [activeVersionId, schoolId, id], references: [id, schoolId, policyId], onDelete: Restrict, onUpdate: Restrict, map: "result_policy_active_version_fk")
+  versions      OfficialResultPolicyVersion[]  @relation("ResultPolicyOwnedVersions")
+
+  @@unique([id, schoolId])
+  @@index([schoolId, activeVersionId])
+  @@map("official_result_policies")
+}
+
+model OfficialResultPolicyVersion {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId      String   @map("school_id") @db.Uuid
+  policyId      String   @map("policy_id") @db.Uuid
+  revision      Int
+  configuration Json
+  contentDigest String   @map("content_digest") @db.Char(64)
+  authorId      String   @map("author_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  policy    OfficialResultPolicy    @relation("ResultPolicyOwnedVersions", fields: [policyId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  activeFor OfficialResultPolicy[]  @relation("ResultPolicyActiveVersion")
+  author    User                    @relation("ResultPolicyAuthor", fields: [authorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  previews  ResultPolicyPreview[]
+
+  @@unique([id, schoolId])
+  @@unique([id, schoolId, policyId], map: "result_policy_owned_version_key")
+  @@unique([schoolId, policyId, revision], map: "result_policy_revision_key")
+  @@index([authorId])
+  @@map("official_result_policy_versions")
+}
+
+model ResultPolicyPreview {
+  id                      String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                String   @map("school_id") @db.Uuid
+  authorId                String   @map("author_id") @db.Uuid
+  expectedPolicyVersionId String?  @map("expected_policy_version_id") @db.Uuid
+  proposal                Json
+  impact                  Json
+  digest                  String   @db.Char(64)
+  expiresAt               DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  school          School                       @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  author          User                         @relation("ResultPolicyPreviewAuthor", fields: [authorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  expectedVersion OfficialResultPolicyVersion? @relation(fields: [expectedPolicyVersionId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "result_policy_preview_version_fk")
+
+  @@index([schoolId, authorId, expiresAt])
+  @@index([schoolId, expectedPolicyVersionId])
+  @@index([authorId])
+  @@map("result_policy_previews")
+}
+
+model OfficialResultScopeGrant {
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId           String              @map("school_id") @db.Uuid
+  granteeUserId      String?             @map("grantee_user_id") @db.Uuid
+  granteeRoleId      String?             @map("grantee_role_id") @db.Uuid
+  reportingPeriodIds String[]            @map("reporting_period_ids") @db.Uuid
+  groupIds           String[]            @map("group_ids") @db.Uuid
+  classroomIds       String[]            @map("classroom_ids") @db.Uuid
+  fieldIds           String[]            @map("field_ids") @db.Uuid
+  actions            ResultGrantAction[]
+  issuerId           String              @map("issuer_id") @db.Uuid
+  reason             String              @db.VarChar(2000)
+  startsAt           DateTime            @map("starts_at") @db.Timestamptz(3)
+  expiresAt          DateTime?           @map("expires_at") @db.Timestamptz(3)
+  revokedAt          DateTime?           @map("revoked_at") @db.Timestamptz(3)
+  revokedById        String?             @map("revoked_by_id") @db.Uuid
+  revocationReason   String?             @map("revocation_reason") @db.VarChar(2000)
+  revision           Int                 @default(1)
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+
+  school      School @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  granteeUser User?  @relation("ResultScopeGrantUser", fields: [granteeUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  granteeRole Role?  @relation(fields: [granteeRoleId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  issuer      User   @relation("ResultScopeGrantIssuer", fields: [issuerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  revokedBy   User?  @relation("ResultScopeGrantRevoker", fields: [revokedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([schoolId, granteeUserId, revokedAt], map: "result_scope_grant_user_idx")
+  @@index([schoolId, granteeRoleId, revokedAt], map: "result_scope_grant_role_idx")
+  @@index([schoolId, createdAt, id])
+  @@index([granteeUserId])
+  @@index([granteeRoleId])
+  @@index([issuerId])
+  @@index([revokedById])
+  @@map("official_result_scope_grants")
+}
+
+model ResultCorrectionWindow {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String   @map("school_id") @db.Uuid
+  reportingPeriodId String   @map("reporting_period_id") @db.Uuid
+  slotId            String   @map("slot_id") @db.Uuid
+  releaseUnitId     String   @map("release_unit_id") @db.Uuid
+  actorId           String   @map("actor_id") @db.Uuid
+  issuerId          String   @map("issuer_id") @db.Uuid
+  reason            String   @db.VarChar(2000)
+  expiresAt         DateTime @map("expires_at") @db.Timestamptz(3)
+  revokedAt         DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  slot   ResultSlot @relation(fields: [slotId, schoolId, reportingPeriodId], references: [id, schoolId, reportingPeriodId], onDelete: Restrict, onUpdate: Restrict, map: "result_correction_window_slot_fk")
+  actor  User @relation("ResultCorrectionWindowActor", fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  issuer User @relation("ResultCorrectionWindowIssuer", fields: [issuerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([schoolId, slotId, reportingPeriodId])
+  @@index([schoolId, actorId, slotId, releaseUnitId, expiresAt], map: "result_correction_window_active_idx")
+  @@index([actorId])
+  @@index([issuerId])
+  @@map("result_correction_windows")
+}
+
+model ResultCommandReceipt {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId      String   @map("school_id") @db.Uuid
+  actorId       String   @map("actor_id") @db.Uuid
+  operation     String   @db.VarChar(128)
+  key           String   @db.VarChar(128)
+  requestDigest String   @map("request_digest") @db.Char(64)
+  outcome       Json
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actor  User   @relation("ResultCommandActor", fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([schoolId, actorId, operation, key], map: "result_command_scope_key")
+  @@index([actorId])
+  @@map("result_command_receipts")
 }
 
 // ============================================================

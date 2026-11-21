@@ -38,6 +38,7 @@ export class ResultRosterRepository {
         id: true,
         schoolId: true,
         academicYearId: true,
+        kind: true,
         termId: true,
         startsOn: true,
         endsOn: true,

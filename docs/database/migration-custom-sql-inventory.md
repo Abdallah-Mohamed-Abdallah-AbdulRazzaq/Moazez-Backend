@@ -658,3 +658,18 @@ G01-C includes both function contracts in its runtime privilege inventory.
 See the [PostgreSQL suite](../../test/integration/official-results-foundation.integration.spec.ts)
 and [implementation ledger](../../verification/implementation-ledger.json)
 for actual verification.
+
+## OR02 Official Results policy and authority
+
+Migration `20261121015729_official_results_policy` adds versioned policy and
+activation previews, time-bounded scope grants and correction windows, and
+durable command receipts. The slot gains an additive unique period-bound key
+used by correction windows.
+
+| PostgreSQL-specific object | Invariant |
+| --- | --- |
+| result_policy_payload_check | Positive policy revision and object configuration. |
+| result_scope_grant_shape_check | Exactly one recipient, bounded nonempty selectors and actions, correctly ordered validity and complete revocation evidence. |
+| result_policy_version_immutable, result_command_receipt_immutable | Existing invoker trigger guards immutable decisions and retries. |
+
+Reference-data reconciliation uses IAM catalogs and the existing bootstrap.

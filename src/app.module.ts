@@ -25,6 +25,7 @@ import { CommunicationModule } from './modules/communication/communication.modul
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { DismissalModule } from './modules/dismissal/dismissal.module';
 import { FilesModule } from './modules/files/files.module';
+import { OfficialResultsModule } from './modules/official-results/official-results.module';
 import { GradesModule } from './modules/grades/grades.module';
 import { HealthModule } from './modules/health/health.module';
 import { HomeworkModule } from './modules/homework/homework.module';
@@ -64,6 +65,7 @@ import { OrganizationAdminModule } from './modules/organization-admin/organizati
     StudentsModule,
     AttendanceModule,
     GradesModule,
+    OfficialResultsModule,
     HomeworkModule,
     ReinforcementModule,
     BehaviorModule,
