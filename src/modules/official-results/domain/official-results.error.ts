@@ -2,6 +2,23 @@ import { HttpStatus } from '@nestjs/common';
 import { DomainException } from '../../../common/exceptions/domain-exception';
 
 const errors = {
+  'candidate.stale': {
+    status: HttpStatus.CONFLICT,
+    message: 'The current work no longer matches this exact result candidate',
+  },
+  'publication.stale': {
+    status: HttpStatus.CONFLICT,
+    message: 'The current publication composition has changed',
+  },
+  'publication.incomplete': {
+    status: HttpStatus.UNPROCESSABLE_ENTITY,
+    message: 'The selected release has unresolved required values',
+  },
+  'publication.topology': {
+    status: HttpStatus.CONFLICT,
+    message:
+      'A reviewed replacement bundle is required for these release units',
+  },
   'calculation.invalid': {
     status: HttpStatus.UNPROCESSABLE_ENTITY,
     message: 'The calculated result is invalid',

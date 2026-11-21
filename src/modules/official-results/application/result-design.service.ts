@@ -17,6 +17,7 @@ import {
   type DraftFieldMapping,
 } from '../infrastructure/repositories/result-design.repository';
 import { ResultPreviewRepository } from '../infrastructure/repositories/result-preview.repository';
+import { ResultReleaseRepository } from '../infrastructure/repositories/result-release.repository';
 import { ResultTemplateRepository } from '../infrastructure/repositories/result-template.repository';
 import { requireResultActor } from './result-actor';
 
@@ -63,6 +64,7 @@ export class ResultDesignService {
     private readonly designs: ResultDesignRepository,
     private readonly previews: ResultPreviewRepository,
     private readonly templates: ResultTemplateRepository,
+    private readonly releases: ResultReleaseRepository,
   ) {}
 
   create(surface: Surface, input: DesignInput, key?: string) {
@@ -252,6 +254,7 @@ export class ResultDesignService {
               binding.targetDefinitionVersionId,
               plan,
             );
+            await this.releases.invalidateSheet(client, actor.schoolId, [id]);
             await this.commands.audit(
               client,
               actor,

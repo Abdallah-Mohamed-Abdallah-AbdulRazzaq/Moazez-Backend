@@ -29,6 +29,7 @@ import {
   type ResultDraftChange,
 } from '../infrastructure/repositories/result-gradebook.repository';
 import { ResultRosterRepository } from '../infrastructure/repositories/result-roster.repository';
+import { ResultReleaseRepository } from '../infrastructure/repositories/result-release.repository';
 import { requireResultActor } from './result-actor';
 import {
   presentGradebookRow,
@@ -64,6 +65,7 @@ export class ResultGradebookService {
     private readonly auth: ResultAuthorizationRepository,
     private readonly repository: ResultGradebookRepository,
     private readonly roster: ResultRosterRepository,
+    private readonly releases: ResultReleaseRepository,
   ) {}
 
   list(surface: Surface, query: GradebookSheetFilters & ResultListQuery) {
@@ -570,6 +572,7 @@ export class ResultGradebookService {
       sheet.id,
       changedSlotIds,
     );
+    await this.releases.invalidateValues(client, actor.schoolId, stored);
     const revisions = new Map(
       updated.updatedSlots.map((slot) => [slot.id, slot.revision]),
     );

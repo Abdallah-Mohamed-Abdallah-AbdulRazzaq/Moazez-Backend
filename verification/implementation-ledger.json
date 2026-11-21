@@ -422,15 +422,61 @@
       "dependsOn": [
         "OR04"
       ],
-      "status": "NOT_STARTED",
-      "implementationSha": null,
-      "requirements": [],
-      "codePaths": [],
-      "testsExecuted": [],
-      "evidence": [],
+      "status": "DONE",
+      "implementationSha": "ffe611f1f1ff3c2bda3eb249eda51562a24d26f0",
+      "requirements": [
+        "R10",
+        "R11",
+        "R12",
+        "R13",
+        "R20",
+        "R22",
+        "R23"
+      ],
+      "codePaths": [
+        "src/modules/official-results/application/result-release.service.ts",
+        "src/modules/official-results/application/result-release-snapshot.service.ts",
+        "src/modules/official-results/infrastructure/repositories/result-release.repository.ts",
+        "src/modules/official-results/controller/result-release.controller.ts",
+        "src/modules/official-results/application/result-family.presenter.ts",
+        "prisma/migrations/20261121040350_official_results_publication/migration.sql"
+      ],
+      "testsExecuted": [
+        {
+          "command": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+          "outcome": "PASS",
+          "result": "25 passed on isolated PostgreSQL 16. Four release scenarios include exact review, held correction publication, real races, one successful topology change and competing generation rejection, and direct authority.",
+          "testedSha": "ffe611f1f1ff3c2bda3eb249eda51562a24d26f0"
+        },
+        {
+          "command": "prisma validate; prisma generate; prisma migrate deploy; prisma migrate status; prisma migrate deploy; prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code; npm run seed",
+          "outcome": "PASS",
+          "result": "46 migration replay/current/no-op/no-drift on disposable fixture. Prisma Client generation completed after the existing Windows engine handle cleared.",
+          "testedSha": "ffe611f1f1ff3c2bda3eb249eda51562a24d26f0"
+        },
+        {
+          "command": "Nest OpenAPI contract check integrated in the PostgreSQL suite",
+          "outcome": "PASS",
+          "result": "76 registered operations verified against the catalog, with generated OpenAPI saved.",
+          "testedSha": "ffe611f1f1ff3c2bda3eb249eda51562a24d26f0"
+        }
+      ],
+      "evidence": [
+        "docs/official-results/or05-review-and-publication.md",
+        "docs/official-results/openapi.json",
+        "verification/acceptance-matrix.json"
+      ],
       "blockers": [],
-      "decisions": [],
-      "nextAction": null
+      "decisions": [
+        "Frozen snapshots and independently CAS-checked mutable pointer state.",
+        "Atomic batch selection and per-slot generation check; synchronous commits retain durable polling results.",
+        "A release transaction creates notification intent. Current-recipient dispatch and aggregate invalidation depend on subsequent phases."
+      ],
+      "nextAction": "OR06: family read authorization, retained entitlement, published aggregates and projections.",
+      "migrations": [
+        "20261121040350_official_results_publication"
+      ],
+      "requirementScope": "Release workflow and immutable composition verified. Family authorization and aggregate dependency invalidation remain OR06; delivery integration remains pending."
     },
     {
       "id": "OR06",
@@ -556,7 +602,7 @@
     "deployed": false,
     "productionMutationsAuthorized": false
   },
-  "branch": "codex/moazez-be-official-results-authoring",
+  "branch": "codex/moazez-be-official-results-publication",
   "draftPullRequests": [
     {
       "number": 238,
@@ -579,6 +625,16 @@
       "scope": [
         "OR03",
         "OR04"
+      ]
+    },
+    {
+      "number": 240,
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/240",
+      "branch": "codex/moazez-be-official-results-publication",
+      "base": "codex/moazez-be-official-results-authoring",
+      "baseSha": "b34c2f4eba3ae2ea02e121a79d41409e30ea43b4",
+      "scope": [
+        "OR05"
       ]
     }
   ]
