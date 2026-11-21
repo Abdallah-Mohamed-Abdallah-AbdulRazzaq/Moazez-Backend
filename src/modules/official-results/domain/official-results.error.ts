@@ -2,6 +2,14 @@ import { HttpStatus } from '@nestjs/common';
 import { DomainException } from '../../../common/exceptions/domain-exception';
 
 const errors = {
+  'import.readonly_export': {
+    status: HttpStatus.UNPROCESSABLE_ENTITY,
+    message: 'Published result exports cannot be used for draft entry',
+  },
+  'import.export_expired': {
+    status: HttpStatus.GONE,
+    message: 'This Official Results export has expired for draft entry',
+  },
   'export.expired': {
     status: HttpStatus.GONE,
     message: 'This Official Results export has expired',

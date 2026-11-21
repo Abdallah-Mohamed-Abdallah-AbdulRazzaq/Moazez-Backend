@@ -732,3 +732,15 @@ bound with same-school foreign keys.
 | --- | --- |
 | result_export_lease_consistent, result_export_valid_lifetime, result_export_positive_attempts | Generating jobs have both lease fields. Attempts and ordered retention times are bounded. |
 | result_export_file_metadata, result_export_file_manifest | Artifact payloads have positive length and a SHA-256 digest. A downloadable package has typed manifests on its individual spreadsheet members. |
+
+## OR08 Official Results import validation
+
+Migration `20261121050500_official_results_import_validation` creates
+batch, source, and review records with same-school references between
+each batch, its export, and its original numbered source versions.
+
+| PostgreSQL-specific object | Invariant |
+| --- | --- |
+| result_import_batch_revision_check, result_import_batch_lease_check | Positive batch and source versions. The validating state requires a lease. |
+| result_import_source_size_and_hash_check, result_import_review_status_check | The source has bounded positive byte length and a digest. Reviews store only validation outcomes. |
+| result_import_review_immutable, result_import_source_delete_guard, result_import_source_payload_immutable | A review can neither be edited nor deleted. The original source metadata is immutable, except the timestamps for acknowledging durable bytes and cleanup. |

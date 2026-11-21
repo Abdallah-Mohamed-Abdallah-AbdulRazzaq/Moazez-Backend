@@ -844,6 +844,22 @@ enum ResultExportStatus {
   @@map("result_export_status")
 }
 
+enum ResultImportStatus {
+  UPLOADED
+  VALIDATING
+  CORRECTIONS_REQUIRED
+  READY_TO_CONFIRM
+  NO_CHANGES
+  APPLYING
+  APPLIED
+  PARTIALLY_APPLIED
+  FAILED
+  CANCELLED
+  EXPIRED
+
+  @@map("result_import_status")
+}
+
 enum ResultOperationStatus {
   QUEUED
   RUNNING
@@ -1955,6 +1971,7 @@ model School {
   resultCorrectionWindows ResultCorrectionWindow[]
   resultExports           ResultExport[]
   resultExportFiles       ResultExportFile[]
+  resultImportBatches     ResultImportBatch[]
   resultCommandReceipts   ResultCommandReceipt[]
 
   resultTemplates             ResultTemplate[]
@@ -2227,6 +2244,7 @@ model User {
   resultDesignCandidates      ResultDesignCandidate[]      @relation("ResultDesignCandidateAuthor")
   resultDesignReviews         ResultDesignCandidate[]      @relation("ResultDesignCandidateReviewer")
   resultExports               ResultExport[]               @relation("ResultExportCreator")
+  resultImportBatches         ResultImportBatch[]          @relation("ResultImportCreator")
   resultConfigurationPreviews ResultConfigurationPreview[] @relation("ResultConfigurationPreviewAuthor")
   resultCandidatesSubmitted   ResultReleaseCandidate[]     @relation("ResultReleaseCandidateSubmitter")
   resultReviewDecisions       ResultReviewDecision[]       @relation("ResultReviewDecisionActor")
@@ -9837,6 +9855,7 @@ model ResultExport {
   period  ResultReportingPeriod @relation(fields: [reportingPeriodId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
   creator User                  @relation("ResultExportCreator", fields: [creatorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   files   ResultExportFile[]
+  imports ResultImportBatch[]
 
   @@unique([id, schoolId])
   @@index([schoolId, creatorId, id])
@@ -9869,4 +9888,88 @@ model ResultExportFile {
   @@unique([exportId, position])
   @@index([schoolId, exportId])
   @@map("result_export_files")
+}
+
+model ResultImportBatch {
+  id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId      String             @map("school_id") @db.Uuid
+  creatorId     String             @map("creator_id") @db.Uuid
+  exportId      String             @map("export_id") @db.Uuid
+  actorContext  Json               @map("actor_context")
+  status        ResultImportStatus @default(UPLOADED)
+  revision      Int                @default(1)
+  sourceVersion Int                @default(1) @map("source_version")
+  options       Json
+  corrections   Json
+  attempts      Int                @default(0)
+  leaseToken    String?            @map("lease_token") @db.Uuid
+  leaseUntil    DateTime?          @map("lease_until") @db.Timestamptz(3)
+  failureCode   String?            @map("failure_code") @db.VarChar(120)
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+  expiresAt     DateTime           @map("expires_at") @db.Timestamptz(3)
+
+  school  School               @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  creator User                 @relation("ResultImportCreator", fields: [creatorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  export  ResultExport         @relation(fields: [exportId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  sources ResultImportSource[]
+  reviews ResultImportReview[]
+
+  @@unique([id, schoolId])
+  @@index([schoolId, creatorId, id])
+  @@index([exportId, schoolId])
+  @@index([status, leaseUntil])
+  @@index([expiresAt])
+  @@map("result_import_batches")
+}
+
+model ResultImportSource {
+  id        String           @id @db.Uuid
+  schoolId  String           @map("school_id") @db.Uuid
+  batchId   String           @map("batch_id") @db.Uuid
+  version   Int
+  format    ResultBulkFormat
+  bucket    String           @db.VarChar(255)
+  objectKey String           @unique @map("object_key") @db.VarChar(512)
+  checksum  String           @db.Char(64)
+  sizeBytes Int              @map("size_bytes")
+  options   Json
+  storedAt  DateTime?        @map("stored_at") @db.Timestamptz(3)
+  deletedAt DateTime?        @map("deleted_at") @db.Timestamptz(3)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt DateTime         @map("expires_at") @db.Timestamptz(3)
+
+  batch   ResultImportBatch    @relation(fields: [batchId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  reviews ResultImportReview[]
+
+  @@unique([batchId, schoolId, version])
+  @@index([schoolId, batchId])
+  @@index([expiresAt, deletedAt])
+  @@map("result_import_sources")
+}
+
+model ResultImportReview {
+  id            String             @id @db.Uuid
+  schoolId      String             @map("school_id") @db.Uuid
+  batchId       String             @map("batch_id") @db.Uuid
+  revision      Int
+  sourceVersion Int                @map("source_version")
+  digest        String             @db.Char(64)
+  binding       Json
+  summary       Json
+  units         Json
+  rows          Json
+  issues        Json
+  corrections   Json
+  status        ResultImportStatus
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt     DateTime           @map("expires_at") @db.Timestamptz(3)
+
+  batch  ResultImportBatch  @relation(fields: [batchId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  source ResultImportSource @relation(fields: [batchId, schoolId, sourceVersion], references: [batchId, schoolId, version], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([id, schoolId])
+  @@unique([batchId, schoolId, revision])
+  @@index([batchId, schoolId, sourceVersion])
+  @@map("result_import_reviews")
 }

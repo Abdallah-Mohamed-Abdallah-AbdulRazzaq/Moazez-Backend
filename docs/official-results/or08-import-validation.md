@@ -1,0 +1,11 @@
+# OR08 import validation integration
+
+Staff and instructors upload an export member using the parent export ID and multipart bytes. The application accepts a bounded source from the authorized school and records its checksum, owner, revision, and private object key before queue admission. A successful 202 means the source bytes and work are durable. The worker rechecks rights and proves the object length and checksum before parsing. Source replacement and web correction create new numbered reviews and retain the preceding source and review.
+
+CSV is parsed as UTF-8 with a strict record delimiter and exact column count. Each protected column and each stable field column is matched by heading, and protected row data is compared to the original export evidence. Row order, column order, and the uploaded filename do not affect identity. The current enrollment is checked against the canonical slot separately from the exported display name.
+
+Validation uses normalized typed values and distinguishes KEEP, converged no-op, a safe write proposal, and an unresolved conflict. An explicit correction selects a new candidate against the version observed in the prior review. Proposals, dependent calculated fields, exact expected versions, policy and roster context, clear reasons and acknowledged warnings are bound to the preview digest. Non-readable dependency values remain in private unit evidence. Reports recheck scope and field read rights. The worker persists only validation evidence and does not write grade cells.
+
+A revalidation can optionally name the set of selected sheet IDs. Findings from deselected sheets remain visible. A global format/identity failure cannot be waived by choosing sheets. The command reuses the source version and creates a new preview, which has a 30-minute lifetime bounded by the export reuse deadline and raw-source retention.
+
+The API and Core Worker use the existing Official Results bulk queue. Its scheduled reconciliation recovers a source with durable bytes whose staging acknowledgment was interrupted and requeues eligible versions after a lost enqueue or expired lease. Storage cleanup expires source bytes independently of immutable checksums and review history.

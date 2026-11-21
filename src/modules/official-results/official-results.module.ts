@@ -2,6 +2,13 @@ import { Module } from '@nestjs/common';
 import { QueueModule } from '../../infrastructure/queue/queue.module';
 import { StorageModule } from '../../infrastructure/storage/storage.module';
 import { ResultExportService } from './application/result-export.service';
+import { ResultImportService } from './application/result-import.service';
+import { ResultImportValidationService } from './application/result-import-validation.service';
+import { ResultImportWorkService } from './application/result-import-work.service';
+import {
+  ResultImportController,
+  TeacherResultImportController,
+} from './controller/result-import.controller';
 import { ResultExportPlanService } from './application/result-export-plan.service';
 import {
   ResultExportController,
@@ -73,6 +80,9 @@ import { ResultScopeFactsRepository } from './infrastructure/repositories/result
     },
     ResultExportPlanService,
     ResultExportService,
+    ResultImportService,
+    ResultImportValidationService,
+    ResultImportWorkService,
     ResultAggregateRepository,
     ResultAggregateService,
     ResultFamilyRepository,
@@ -111,6 +121,8 @@ import { ResultScopeFactsRepository } from './infrastructure/repositories/result
     ResultCatalogService,
     ResultDesignService,
     ResultExportService,
+    ResultImportService,
+    ResultImportWorkService,
     ResultFamilyService,
     ResultGradebookService,
     ResultGrantService,
@@ -128,6 +140,8 @@ export class OfficialResultsServicesModule {}
   controllers: [
     ResultExportController,
     TeacherResultExportController,
+    ResultImportController,
+    TeacherResultImportController,
     ResultAggregateController,
     ParentOfficialResultsController,
     StudentOfficialResultsController,

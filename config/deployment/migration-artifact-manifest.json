@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "prismaSchema": {
     "path": "prisma/schema.prisma",
-    "sha256": "e6312d15339cf8f5b53daf351623480bdc0d93df2eaa5383f06f9f4834869bcc"
+    "sha256": "b6b20980a2a5f67ad0bd94eccc4b5cb0233bfc1f8509b1d8a33a0e9523a16517"
   },
   "prismaConfig": {
     "path": "prisma.config.ts",
@@ -56,7 +56,8 @@
     "20261121031742_official_results_roster_revisions",
     "20261121040350_official_results_publication",
     "20261121042421_official_results_family_aggregates",
-    "20261121043500_official_results_exports"
+    "20261121043500_official_results_exports",
+    "20261121050500_official_results_import_validation"
   ],
   "migrations": [
     {
@@ -298,7 +299,12 @@
       "directory": "20261121043500_official_results_exports",
       "path": "prisma/migrations/20261121043500_official_results_exports/migration.sql",
       "sha256": "ce6224f41b4a880dfa1d5879d1438d5ca30254cb8fe400d4870625e5b5c6bf34"
+    },
+    {
+      "directory": "20261121050500_official_results_import_validation",
+      "path": "prisma/migrations/20261121050500_official_results_import_validation/migration.sql",
+      "sha256": "5b39e89613ffb8356e0fc5b2a5ee1022143d05d24cb2b00908f9aa79477fc58d"
     }
   ],
-  "aggregateMigrationChainSha256": "1a40b6bd3fd4e7345e779f58265c49377c489c51a8ee3a59dc17732119d61792"
+  "aggregateMigrationChainSha256": "aa5192a7d785faec0afaa76685e6e9e069dcc19b46f74e9955920b3232b28c52"
 }
