@@ -6,6 +6,8 @@ import {
 } from '@prisma/client';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 import type { ResultActor } from '../../application/result-actor';
+import { ResultAggregateRepository } from './result-aggregate.repository';
+import { ResultFamilyRepository } from './result-family.repository';
 import { OfficialResultsError } from '../../domain/official-results.error';
 import {
   releaseSnapshot,
@@ -37,6 +39,11 @@ const includePublication = {
 
 @Injectable()
 export class ResultReleaseRepository {
+  constructor(
+    private readonly aggregates: ResultAggregateRepository,
+    private readonly families: ResultFamilyRepository,
+  ) {}
+
   invalidateSheet(
     client: Prisma.TransactionClient,
     schoolId: string,
@@ -361,6 +368,11 @@ export class ResultReleaseRepository {
       'PUBLISHED',
       options.generation,
     );
+    await this.families.issueReadEntitlements(
+      client,
+      actor.schoolId,
+      publication.id,
+    );
     if (options.notify)
       await client.resultPublicationNotice.create({
         data: {
@@ -388,6 +400,7 @@ export class ResultReleaseRepository {
     });
     if (deleted.count !== 1)
       throw new OfficialResultsError('publication.stale');
+    await this.aggregates.staleSources(client, actor.schoolId, publication.id);
     await this.event(client, actor, publication, event, generation, reason);
   }
 

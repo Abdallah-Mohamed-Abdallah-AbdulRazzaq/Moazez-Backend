@@ -28,6 +28,7 @@ import {
   type ReleaseCandidate,
 } from '../infrastructure/repositories/result-release.repository';
 import { requireResultActor } from './result-actor';
+import { ResultAggregateService } from './result-aggregate.service';
 import { ResultGradebookService } from './result-gradebook.service';
 import {
   familyGroup,
@@ -122,6 +123,7 @@ export class ResultReleaseService {
     private readonly operations: ResultOperationRepository,
     private readonly gradebook: ResultGradebookService,
     private readonly previews: ResultPreviewRepository,
+    private readonly aggregates: ResultAggregateService,
   ) {}
 
   capture(surface: Surface, input: ReleaseInput<'capture'>, key?: string) {
@@ -361,8 +363,22 @@ export class ResultReleaseService {
           ? [describeCandidate({ ...candidate, state: candidate.state }, true)]
           : [],
       );
+      const summaries =
+        filters.candidateKind === 'RESULT_RELEASE' || filters.sheetId
+          ? []
+          : (
+              await this.aggregates.list(
+                client,
+                access,
+                filters,
+                after,
+                limit + 1,
+              )
+            ).map((candidate) => this.aggregates.presentCandidate(candidate));
       return presentResultPage(
-        candidates,
+        [...candidates, ...summaries].sort((a, b) =>
+          a.candidateId.localeCompare(b.candidateId),
+        ),
         limit,
         (item) => item.candidateId,
         actor.schoolId,
@@ -380,8 +396,8 @@ export class ResultReleaseService {
       key,
       input,
       async (client, access) => {
-        if (input.candidateKind !== 'RESULT_RELEASE')
-          throw new NotFoundDomainException();
+        if (input.candidateKind === 'AGGREGATE')
+          return this.aggregates.decide(client, access, input);
         const prior = await this.release.candidate(
           client,
           access.actor.schoolId,

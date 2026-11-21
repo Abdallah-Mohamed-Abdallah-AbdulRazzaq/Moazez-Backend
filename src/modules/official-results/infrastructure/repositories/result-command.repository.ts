@@ -28,6 +28,15 @@ export class ResultCommandRepository {
     });
   }
 
+  readSnapshot<T>(
+    read: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    const scoped = this.prisma.scoped as unknown as PrismaService;
+    return scoped.$transaction(read, {
+      isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+    });
+  }
+
   async idempotent<T extends Prisma.InputJsonObject>(
     transaction: Prisma.TransactionClient,
     actor: ResultActor,

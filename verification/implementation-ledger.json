@@ -459,6 +459,12 @@
           "outcome": "PASS",
           "result": "76 registered operations verified against the catalog, with generated OpenAPI saved.",
           "testedSha": "ffe611f1f1ff3c2bda3eb249eda51562a24d26f0"
+        },
+        {
+          "command": "npm run build",
+          "outcome": "PASS",
+          "testedSha": "ffe611f1f1ff3c2bda3eb249eda51562a24d26f0",
+          "result": "Nest build and reference-data bootstrap passed with the CI heap."
         }
       ],
       "evidence": [
@@ -484,15 +490,67 @@
       "dependsOn": [
         "OR05"
       ],
-      "status": "NOT_STARTED",
-      "implementationSha": null,
-      "requirements": [],
-      "codePaths": [],
-      "testsExecuted": [],
-      "evidence": [],
+      "status": "DONE",
+      "implementationSha": "c0eeb72e696ef2ee07417e626fbcb6ab3d4f7aa5",
+      "requirements": [
+        "R12",
+        "R14",
+        "R21",
+        "R22",
+        "R23"
+      ],
+      "codePaths": [
+        "src/modules/official-results/application/result-family.service.ts",
+        "src/modules/official-results/application/result-family.presenter.ts",
+        "src/modules/official-results/application/result-aggregate.service.ts",
+        "src/modules/official-results/infrastructure/repositories/result-family.repository.ts",
+        "src/modules/official-results/infrastructure/repositories/result-aggregate.repository.ts",
+        "src/modules/official-results/controller/result-family.controller.ts",
+        "src/modules/official-results/controller/result-aggregate.controller.ts",
+        "prisma/migrations/20261121042421_official_results_family_aggregates/migration.sql"
+      ],
+      "testsExecuted": [
+        {
+          "command": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+          "outcome": "PASS",
+          "result": "27 passed on isolated PostgreSQL. Family preview equality, absent unpublished data, cross-school retained proof, guardian revocation, disabled account, no active-enrollment dependency, and stale aggregate evidence were observed.",
+          "testedSha": "c0eeb72e696ef2ee07417e626fbcb6ab3d4f7aa5"
+        },
+        {
+          "command": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-authoring.spec.ts",
+          "outcome": "PASS",
+          "result": "6 passed, including exact school-authorized disclosure and invalid private dependency cases.",
+          "testedSha": "c0eeb72e696ef2ee07417e626fbcb6ab3d4f7aa5"
+        },
+        {
+          "command": "Generated Nest OpenAPI contract and checked-in artifact comparison",
+          "outcome": "PASS",
+          "result": "89 operations checked.",
+          "testedSha": "c0eeb72e696ef2ee07417e626fbcb6ab3d4f7aa5"
+        },
+        {
+          "command": "prisma validate; prisma generate; prisma migrate deploy; prisma migrate status; prisma migrate deploy; prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code; npm run seed",
+          "outcome": "PASS",
+          "result": "47 migration replay, second deployment no-op, no drift, and 271 permissions and seven canonical roles on a disposable database.",
+          "testedSha": "c0eeb72e696ef2ee07417e626fbcb6ab3d4f7aa5"
+        }
+      ],
+      "evidence": [
+        "docs/official-results/or06-family-and-aggregates.md",
+        "docs/official-results/openapi.json",
+        "verification/acceptance-matrix.json"
+      ],
       "blockers": [],
-      "decisions": [],
-      "nextAction": null
+      "decisions": [
+        "Read entitlements derive from verified identities at publication and require a live current account/relationship for each read.",
+        "Aggregate reads are repeatable-read projections of otherwise authorized current releases. A replaced source atomically marks the active aggregate stale.",
+        "The family summary requires a single matching family-visible profile. Staff can maintain other profiles."
+      ],
+      "nextAction": "OR07: populated private CSV export and stable manifest.",
+      "migrations": [
+        "20261121042421_official_results_family_aggregates"
+      ],
+      "requirementScope": "Family runtime and published-source aggregate workflow. Exact interleaved aggregate/release test, full family field vectors, retained entitlement administration, and notification delivery still require acceptance evidence."
     },
     {
       "id": "OR07",
@@ -602,7 +660,7 @@
     "deployed": false,
     "productionMutationsAuthorized": false
   },
-  "branch": "codex/moazez-be-official-results-publication",
+  "branch": "codex/moazez-be-official-results-family",
   "draftPullRequests": [
     {
       "number": 238,
@@ -635,6 +693,16 @@
       "baseSha": "b34c2f4eba3ae2ea02e121a79d41409e30ea43b4",
       "scope": [
         "OR05"
+      ]
+    },
+    {
+      "number": 241,
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/241",
+      "branch": "codex/moazez-be-official-results-family",
+      "base": "codex/moazez-be-official-results-publication",
+      "baseSha": "05e1e9183fe72dae1c01aaa81bb201c7087f8981",
+      "scope": [
+        "OR06"
       ]
     }
   ]

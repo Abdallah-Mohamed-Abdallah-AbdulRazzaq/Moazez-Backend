@@ -8,6 +8,7 @@ import {
 import { releaseSnapshot } from '../domain/result-release.contract';
 import { resultValue } from '../domain/result-value';
 import { authoringOutputs } from './result-authoring.dto';
+import { aggregateOutputs } from './result-aggregate.dto';
 import { ResultPageQueryDto } from './result-configuration.dto';
 
 const uuid = z.uuid();
@@ -125,7 +126,7 @@ export const releaseOutputs = {
   publication,
   operation: authoringOutputs.operation,
   reviews: z.object({
-    items: z.array(candidate),
+    items: z.array(z.union([candidate, aggregateOutputs.candidate])),
     nextCursor: z.string().nullable(),
     hasMore: z.boolean(),
   }),
