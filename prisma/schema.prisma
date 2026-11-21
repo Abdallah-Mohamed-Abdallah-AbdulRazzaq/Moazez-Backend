@@ -1864,11 +1864,11 @@ model School {
   answerUploadIntents           AssessmentAnswerUploadIntent[]
   answerMediaClaims             AssessmentAnswerMediaClaim[]
 
-  resultReportingPeriods ResultReportingPeriod[]
-  resultGroups          ResultGroup[]
-  resultSheets          ResultSheet[]
-  resultFieldIdentities ResultFieldIdentity[]
-  resultSlots           ResultSlot[]
+  resultReportingPeriods   ResultReportingPeriod[]
+  resultGroups             ResultGroup[]
+  resultSheets             ResultSheet[]
+  resultFieldIdentities    ResultFieldIdentity[]
+  resultSlots              ResultSlot[]
   resultPlacementRevisions ResultPlacementRevision[]
 
   officialResultPolicy    OfficialResultPolicy?
@@ -1877,11 +1877,11 @@ model School {
   resultCorrectionWindows ResultCorrectionWindow[]
   resultCommandReceipts   ResultCommandReceipt[]
 
-  resultTemplates ResultTemplate[]
-  resultScopeRevision ResultScopeRevision?
-  resultTemplateAssignments ResultTemplateAssignment[]
+  resultTemplates             ResultTemplate[]
+  resultScopeRevision         ResultScopeRevision?
+  resultTemplateAssignments   ResultTemplateAssignment[]
   resultConfigurationPreviews ResultConfigurationPreview[]
-  resultOperations ResultOperation[]
+  resultOperations            ResultOperation[]
 
   @@unique([organizationId, slug])
   @@unique([id, organizationId], map: "answer_intent_school_organization_key")
@@ -2130,24 +2130,24 @@ model User {
   answerUploadIntents                  AssessmentAnswerUploadIntent[] @relation("AssessmentAnswerUploadActor")
 
   resultDefinitionVersions ResultSheetDefinitionVersion[] @relation("ResultDefinitionAuthor")
-  resultPlacementRevisions ResultPlacementRevision[] @relation("ResultPlacementAuthor")
+  resultPlacementRevisions ResultPlacementRevision[]      @relation("ResultPlacementAuthor")
   resultCellsEdited        ResultCell[]                   @relation("ResultCellEditor")
   resultCellRevisions      ResultCellRevision[]           @relation("ResultCellRevisionAuthor")
 
   resultPoliciesAuthored  OfficialResultPolicyVersion[] @relation("ResultPolicyAuthor")
-  resultPolicyPreviews    ResultPolicyPreview[] @relation("ResultPolicyPreviewAuthor")
-  resultScopeGrants       OfficialResultScopeGrant[] @relation("ResultScopeGrantUser")
-  resultGrantsIssued      OfficialResultScopeGrant[] @relation("ResultScopeGrantIssuer")
-  resultGrantsRevoked     OfficialResultScopeGrant[] @relation("ResultScopeGrantRevoker")
-  resultCorrectionWindows ResultCorrectionWindow[] @relation("ResultCorrectionWindowActor")
-  resultWindowsIssued     ResultCorrectionWindow[] @relation("ResultCorrectionWindowIssuer")
-  resultCommandReceipts   ResultCommandReceipt[] @relation("ResultCommandActor")
+  resultPolicyPreviews    ResultPolicyPreview[]         @relation("ResultPolicyPreviewAuthor")
+  resultScopeGrants       OfficialResultScopeGrant[]    @relation("ResultScopeGrantUser")
+  resultGrantsIssued      OfficialResultScopeGrant[]    @relation("ResultScopeGrantIssuer")
+  resultGrantsRevoked     OfficialResultScopeGrant[]    @relation("ResultScopeGrantRevoker")
+  resultCorrectionWindows ResultCorrectionWindow[]      @relation("ResultCorrectionWindowActor")
+  resultWindowsIssued     ResultCorrectionWindow[]      @relation("ResultCorrectionWindowIssuer")
+  resultCommandReceipts   ResultCommandReceipt[]        @relation("ResultCommandActor")
 
-  resultTemplateVersions ResultTemplateVersion[] @relation("ResultTemplateVersionAuthor")
-  resultDesignCandidates ResultDesignCandidate[] @relation("ResultDesignCandidateAuthor")
-  resultDesignReviews ResultDesignCandidate[] @relation("ResultDesignCandidateReviewer")
+  resultTemplateVersions      ResultTemplateVersion[]      @relation("ResultTemplateVersionAuthor")
+  resultDesignCandidates      ResultDesignCandidate[]      @relation("ResultDesignCandidateAuthor")
+  resultDesignReviews         ResultDesignCandidate[]      @relation("ResultDesignCandidateReviewer")
   resultConfigurationPreviews ResultConfigurationPreview[] @relation("ResultConfigurationPreviewAuthor")
-  resultOperations ResultOperation[] @relation("ResultOperationActor")
+  resultOperations            ResultOperation[]            @relation("ResultOperationActor")
 
   @@index([userType])
   @@index([status])
@@ -4058,7 +4058,6 @@ model Term {
   resultReportingPeriods ResultReportingPeriod[]
 
   @@unique([id, schoolId, academicYearId], map: "term_year_school_identity_key")
-
   @@unique([id, schoolId])
   @@unique([academicYearId, nameAr])
   @@unique([academicYearId, nameEn])
@@ -5136,9 +5135,9 @@ model Enrollment {
   academicContentEngagementEvents   AcademicContentEngagementEvent[]
   academicContentAcknowledgements   AcademicContentAcknowledgement[]
 
-  resultSlots ResultSlot[]
+  resultSlots          ResultSlot[]
   resultPlacementsFrom ResultPlacementRevision[] @relation("ResultPlacementFromEnrollment")
-  resultPlacementsTo ResultPlacementRevision[] @relation("ResultPlacementToEnrollment")
+  resultPlacementsTo   ResultPlacementRevision[] @relation("ResultPlacementToEnrollment")
 
   @@unique([id, schoolId])
   @@unique([id, schoolId, studentId], map: "acc_enrollment_student_identity_key")
@@ -6094,9 +6093,9 @@ model ResultReportingPeriod {
   createdAt      DateTime                    @default(now()) @map("created_at")
   updatedAt      DateTime                    @updatedAt @map("updated_at")
 
-  school       School       @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  academicYear AcademicYear @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
-  term         Term?        @relation(fields: [termId, schoolId, academicYearId], references: [id, schoolId, academicYearId], onDelete: Restrict, onUpdate: Restrict)
+  school       School        @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  academicYear AcademicYear  @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  term         Term?         @relation(fields: [termId, schoolId, academicYearId], references: [id, schoolId, academicYearId], onDelete: Restrict, onUpdate: Restrict)
   sheets       ResultSheet[]
   slots        ResultSlot[]
 
@@ -6121,8 +6120,8 @@ model ResultGroup {
   createdAt   DateTime        @default(now()) @map("created_at")
   updatedAt   DateTime        @updatedAt @map("updated_at")
 
-  school  School  @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  subject Subject? @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  school  School        @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  subject Subject?      @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
   sheets  ResultSheet[]
   slots   ResultSlot[]
 
@@ -6147,16 +6146,16 @@ model ResultSheet {
   createdAt                       DateTime @default(now()) @map("created_at")
   updatedAt                       DateTime @updatedAt @map("updated_at")
 
-  school                School                       @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  reportingPeriod       ResultReportingPeriod         @relation(fields: [reportingPeriodId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
-  classroom             Classroom                    @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
-  group                 ResultGroup                  @relation(fields: [groupId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
-  draftDefinition       ResultSheetDefinitionVersion? @relation("ResultSheetDraftDefinition", fields: [draftDefinitionVersionId, schoolId, id], references: [id, schoolId, sheetId], onDelete: Restrict, onUpdate: Restrict, map: "result_sheet_draft_definition_fk")
-  acceptedDefinition    ResultSheetDefinitionVersion? @relation("ResultSheetAcceptedDefinition", fields: [lastAcceptedDefinitionVersionId, schoolId, id], references: [id, schoolId, sheetId], onDelete: Restrict, onUpdate: Restrict, map: "result_sheet_accepted_definition_fk")
-  definitions           ResultSheetDefinitionVersion[] @relation("ResultSheetOwnedDefinitions")
-  slots                 ResultSlot[]
-  placementsFrom        ResultPlacementRevision[] @relation("ResultPlacementFromSheet")
-  placementsTo          ResultPlacementRevision[] @relation("ResultPlacementToSheet")
+  school             School                         @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  reportingPeriod    ResultReportingPeriod          @relation(fields: [reportingPeriodId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  classroom          Classroom                      @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  group              ResultGroup                    @relation(fields: [groupId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  draftDefinition    ResultSheetDefinitionVersion?  @relation("ResultSheetDraftDefinition", fields: [draftDefinitionVersionId, schoolId, id], references: [id, schoolId, sheetId], onDelete: Restrict, onUpdate: Restrict, map: "result_sheet_draft_definition_fk")
+  acceptedDefinition ResultSheetDefinitionVersion?  @relation("ResultSheetAcceptedDefinition", fields: [lastAcceptedDefinitionVersionId, schoolId, id], references: [id, schoolId, sheetId], onDelete: Restrict, onUpdate: Restrict, map: "result_sheet_accepted_definition_fk")
+  definitions        ResultSheetDefinitionVersion[] @relation("ResultSheetOwnedDefinitions")
+  slots              ResultSlot[]
+  placementsFrom     ResultPlacementRevision[]      @relation("ResultPlacementFromSheet")
+  placementsTo       ResultPlacementRevision[]      @relation("ResultPlacementToSheet")
 
   @@unique([id, schoolId])
   @@unique([id, schoolId, reportingPeriodId, groupId], map: "result_sheet_context_key")
@@ -6169,22 +6168,22 @@ model ResultSheet {
 }
 
 model ResultSheetDefinitionVersion {
-  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schoolId         String   @map("school_id") @db.Uuid
-  sheetId          String   @map("sheet_id") @db.Uuid
-  version          Int
-  contentDigest    String   @map("content_digest") @db.Char(64)
-  labelAr          String   @map("label_ar") @db.VarChar(200)
-  labelEn          String   @map("label_en") @db.VarChar(200)
-  configuration    Json
-  createdById      String   @map("created_by_id") @db.Uuid
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId      String   @map("school_id") @db.Uuid
+  sheetId       String   @map("sheet_id") @db.Uuid
+  version       Int
+  contentDigest String   @map("content_digest") @db.Char(64)
+  labelAr       String   @map("label_ar") @db.VarChar(200)
+  labelEn       String   @map("label_en") @db.VarChar(200)
+  configuration Json
+  createdById   String   @map("created_by_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
-  sheet         ResultSheet                    @relation("ResultSheetOwnedDefinitions", fields: [sheetId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
-  draftFor      ResultSheet[]                  @relation("ResultSheetDraftDefinition")
-  acceptedFor   ResultSheet[]                  @relation("ResultSheetAcceptedDefinition")
-  createdBy     User                           @relation("ResultDefinitionAuthor", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sheet         ResultSheet                   @relation("ResultSheetOwnedDefinitions", fields: [sheetId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  draftFor      ResultSheet[]                 @relation("ResultSheetDraftDefinition")
+  acceptedFor   ResultSheet[]                 @relation("ResultSheetAcceptedDefinition")
+  createdBy     User                          @relation("ResultDefinitionAuthor", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Restrict)
   fields        ResultFieldDefinition[]
   releaseUnits  ResultReleaseUnitDefinition[]
   cellRevisions ResultCellRevision[]
@@ -6216,18 +6215,18 @@ model ResultFieldIdentity {
 }
 
 model ResultReleaseUnitDefinition {
-  id                  String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schoolId            String                   @map("school_id") @db.Uuid
-  definitionVersionId String                   @map("definition_version_id") @db.Uuid
-  unitId              String                   @map("unit_id") @db.Uuid
-  code                String                   @db.VarChar(64)
-  labelAr             String                   @map("label_ar") @db.VarChar(200)
-  labelEn             String                   @map("label_en") @db.VarChar(200)
+  id                  String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId            String                     @map("school_id") @db.Uuid
+  definitionVersionId String                     @map("definition_version_id") @db.Uuid
+  unitId              String                     @map("unit_id") @db.Uuid
+  code                String                     @db.VarChar(64)
+  labelAr             String                     @map("label_ar") @db.VarChar(200)
+  labelEn             String                     @map("label_en") @db.VarChar(200)
   classification      ResultReportingPeriodClass @default(FINAL)
   audiences           ResultAudience[]
-  sortOrder           Int                      @map("sort_order")
-  createdAt           DateTime                 @default(now()) @map("created_at")
-  updatedAt           DateTime                 @updatedAt @map("updated_at")
+  sortOrder           Int                        @map("sort_order")
+  createdAt           DateTime                   @default(now()) @map("created_at")
+  updatedAt           DateTime                   @updatedAt @map("updated_at")
 
   definition ResultSheetDefinitionVersion @relation(fields: [definitionVersionId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "result_unit_definition_fk")
   fields     ResultFieldDefinition[]
@@ -6300,10 +6299,9 @@ model ResultSlot {
   cells           ResultCell[]
 
   correctionWindows ResultCorrectionWindow[]
-  placementHistory ResultPlacementRevision[]
+  placementHistory  ResultPlacementRevision[]
 
   @@unique([id, schoolId, reportingPeriodId], map: "result_slot_period_key")
-
   @@unique([id, schoolId])
   @@unique([schoolId, studentId, reportingPeriodId, groupId], map: "result_slot_canonical_key")
   @@unique([id, schoolId, studentId, reportingPeriodId, groupId], map: "result_slot_placement_context_key")
@@ -6334,13 +6332,13 @@ model ResultPlacementRevision {
   createdAt         DateTime              @default(now()) @map("created_at")
   updatedAt         DateTime              @updatedAt @map("updated_at")
 
-  school School @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  author User @relation("ResultPlacementAuthor", fields: [authorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  slot ResultSlot @relation(fields: [slotId, schoolId, studentId, reportingPeriodId, groupId], references: [id, schoolId, studentId, reportingPeriodId, groupId], onDelete: Restrict, onUpdate: Restrict, map: "result_placement_slot_fk")
-  fromSheet ResultSheet? @relation("ResultPlacementFromSheet", fields: [fromSheetId, schoolId, reportingPeriodId, groupId], references: [id, schoolId, reportingPeriodId, groupId], onDelete: Restrict, onUpdate: Restrict, map: "result_placement_from_sheet_fk")
-  toSheet ResultSheet @relation("ResultPlacementToSheet", fields: [toSheetId, schoolId, reportingPeriodId, groupId], references: [id, schoolId, reportingPeriodId, groupId], onDelete: Restrict, onUpdate: Restrict, map: "result_placement_to_sheet_fk")
-  fromEnrollment Enrollment? @relation("ResultPlacementFromEnrollment", fields: [fromEnrollmentId, schoolId, studentId], references: [id, schoolId, studentId], onDelete: Restrict, onUpdate: Restrict, map: "result_placement_from_enrollment_fk")
-  toEnrollment Enrollment @relation("ResultPlacementToEnrollment", fields: [toEnrollmentId, schoolId, studentId], references: [id, schoolId, studentId], onDelete: Restrict, onUpdate: Restrict, map: "result_placement_to_enrollment_fk")
+  school         School       @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  author         User         @relation("ResultPlacementAuthor", fields: [authorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  slot           ResultSlot   @relation(fields: [slotId, schoolId, studentId, reportingPeriodId, groupId], references: [id, schoolId, studentId, reportingPeriodId, groupId], onDelete: Restrict, onUpdate: Restrict, map: "result_placement_slot_fk")
+  fromSheet      ResultSheet? @relation("ResultPlacementFromSheet", fields: [fromSheetId, schoolId, reportingPeriodId, groupId], references: [id, schoolId, reportingPeriodId, groupId], onDelete: Restrict, onUpdate: Restrict, map: "result_placement_from_sheet_fk")
+  toSheet        ResultSheet  @relation("ResultPlacementToSheet", fields: [toSheetId, schoolId, reportingPeriodId, groupId], references: [id, schoolId, reportingPeriodId, groupId], onDelete: Restrict, onUpdate: Restrict, map: "result_placement_to_sheet_fk")
+  fromEnrollment Enrollment?  @relation("ResultPlacementFromEnrollment", fields: [fromEnrollmentId, schoolId, studentId], references: [id, schoolId, studentId], onDelete: Restrict, onUpdate: Restrict, map: "result_placement_from_enrollment_fk")
+  toEnrollment   Enrollment   @relation("ResultPlacementToEnrollment", fields: [toEnrollmentId, schoolId, studentId], references: [id, schoolId, studentId], onDelete: Restrict, onUpdate: Restrict, map: "result_placement_to_enrollment_fk")
 
   @@unique([schoolId, slotId, version])
   @@index([schoolId, fromSheetId, reportingPeriodId, groupId])
@@ -6370,9 +6368,9 @@ model ResultCell {
   createdAt           DateTime          @default(now()) @map("created_at")
   updatedAt           DateTime          @updatedAt @map("updated_at")
 
-  slot            ResultSlot             @relation(fields: [slotId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
-  fieldDefinition ResultFieldDefinition  @relation(fields: [definitionVersionId, schoolId, fieldId, fieldKind], references: [definitionVersionId, schoolId, fieldId, kind], onDelete: Restrict, onUpdate: Restrict, map: "result_cell_typed_definition_fk")
-  updatedBy       User                   @relation("ResultCellEditor", fields: [updatedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  slot            ResultSlot            @relation(fields: [slotId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  fieldDefinition ResultFieldDefinition @relation(fields: [definitionVersionId, schoolId, fieldId, fieldKind], references: [definitionVersionId, schoolId, fieldId, kind], onDelete: Restrict, onUpdate: Restrict, map: "result_cell_typed_definition_fk")
+  updatedBy       User                  @relation("ResultCellEditor", fields: [updatedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
   revisions       ResultCellRevision[]
 
   @@unique([id, schoolId])
@@ -6417,8 +6415,8 @@ model OfficialResultPolicy {
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   school        School                        @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  activeVersion OfficialResultPolicyVersion?   @relation("ResultPolicyActiveVersion", fields: [activeVersionId, schoolId, id], references: [id, schoolId, policyId], onDelete: Restrict, onUpdate: Restrict, map: "result_policy_active_version_fk")
-  versions      OfficialResultPolicyVersion[]  @relation("ResultPolicyOwnedVersions")
+  activeVersion OfficialResultPolicyVersion?  @relation("ResultPolicyActiveVersion", fields: [activeVersionId, schoolId, id], references: [id, schoolId, policyId], onDelete: Restrict, onUpdate: Restrict, map: "result_policy_active_version_fk")
+  versions      OfficialResultPolicyVersion[] @relation("ResultPolicyOwnedVersions")
 
   @@unique([id, schoolId])
   @@index([schoolId, activeVersionId])
@@ -6436,9 +6434,9 @@ model OfficialResultPolicyVersion {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  policy    OfficialResultPolicy    @relation("ResultPolicyOwnedVersions", fields: [policyId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
-  activeFor OfficialResultPolicy[]  @relation("ResultPolicyActiveVersion")
-  author    User                    @relation("ResultPolicyAuthor", fields: [authorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  policy    OfficialResultPolicy   @relation("ResultPolicyOwnedVersions", fields: [policyId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  activeFor OfficialResultPolicy[] @relation("ResultPolicyActiveVersion")
+  author    User                   @relation("ResultPolicyAuthor", fields: [authorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   previews  ResultPolicyPreview[]
 
   @@unique([id, schoolId])
@@ -6508,23 +6506,23 @@ model OfficialResultScopeGrant {
 }
 
 model ResultCorrectionWindow {
-  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schoolId          String   @map("school_id") @db.Uuid
-  reportingPeriodId String   @map("reporting_period_id") @db.Uuid
-  slotId            String   @map("slot_id") @db.Uuid
-  releaseUnitId     String   @map("release_unit_id") @db.Uuid
-  actorId           String   @map("actor_id") @db.Uuid
-  issuerId          String   @map("issuer_id") @db.Uuid
-  reason            String   @db.VarChar(2000)
-  expiresAt         DateTime @map("expires_at") @db.Timestamptz(3)
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String    @map("school_id") @db.Uuid
+  reportingPeriodId String    @map("reporting_period_id") @db.Uuid
+  slotId            String    @map("slot_id") @db.Uuid
+  releaseUnitId     String    @map("release_unit_id") @db.Uuid
+  actorId           String    @map("actor_id") @db.Uuid
+  issuerId          String    @map("issuer_id") @db.Uuid
+  reason            String    @db.VarChar(2000)
+  expiresAt         DateTime  @map("expires_at") @db.Timestamptz(3)
   revokedAt         DateTime? @map("revoked_at") @db.Timestamptz(3)
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
-  school School @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  school School     @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   slot   ResultSlot @relation(fields: [slotId, schoolId, reportingPeriodId], references: [id, schoolId, reportingPeriodId], onDelete: Restrict, onUpdate: Restrict, map: "result_correction_window_slot_fk")
-  actor  User @relation("ResultCorrectionWindowActor", fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  issuer User @relation("ResultCorrectionWindowIssuer", fields: [issuerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actor  User       @relation("ResultCorrectionWindowActor", fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  issuer User       @relation("ResultCorrectionWindowIssuer", fields: [issuerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([schoolId, slotId, reportingPeriodId])
   @@index([schoolId, actorId, slotId, releaseUnitId, expiresAt], map: "result_correction_window_active_idx")
@@ -6553,22 +6551,22 @@ model ResultCommandReceipt {
 }
 
 model ResultTemplate {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schoolId        String   @map("school_id") @db.Uuid
-  labelAr         String   @map("label_ar") @db.VarChar(200)
-  labelEn         String   @map("label_en") @db.VarChar(200)
-  description     String?  @db.VarChar(2000)
-  latestVersionId String?  @map("latest_version_id") @db.Uuid
-  activeVersionId String?  @map("active_version_id") @db.Uuid
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String    @map("school_id") @db.Uuid
+  labelAr         String    @map("label_ar") @db.VarChar(200)
+  labelEn         String    @map("label_en") @db.VarChar(200)
+  description     String?   @db.VarChar(2000)
+  latestVersionId String?   @map("latest_version_id") @db.Uuid
+  activeVersionId String?   @map("active_version_id") @db.Uuid
   archivedAt      DateTime? @map("archived_at")
-  revision        Int      @default(1)
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  revision        Int       @default(1)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  school School @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  versions ResultTemplateVersion[] @relation("ResultTemplateVersions")
-  latestVersion ResultTemplateVersion? @relation("ResultTemplateLatest", fields: [latestVersionId, schoolId, id], references: [id, schoolId, templateId], onDelete: Restrict, onUpdate: Restrict, map: "result_template_latest_fk")
-  activeVersion ResultTemplateVersion? @relation("ResultTemplateActive", fields: [activeVersionId, schoolId, id], references: [id, schoolId, templateId], onDelete: Restrict, onUpdate: Restrict, map: "result_template_active_fk")
+  school        School                  @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  versions      ResultTemplateVersion[] @relation("ResultTemplateVersions")
+  latestVersion ResultTemplateVersion?  @relation("ResultTemplateLatest", fields: [latestVersionId, schoolId, id], references: [id, schoolId, templateId], onDelete: Restrict, onUpdate: Restrict, map: "result_template_latest_fk")
+  activeVersion ResultTemplateVersion?  @relation("ResultTemplateActive", fields: [activeVersionId, schoolId, id], references: [id, schoolId, templateId], onDelete: Restrict, onUpdate: Restrict, map: "result_template_active_fk")
 
   @@unique([id, schoolId])
   @@index([schoolId, archivedAt, id])
@@ -6589,11 +6587,11 @@ model ResultTemplateVersion {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  template ResultTemplate @relation("ResultTemplateVersions", fields: [templateId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
-  latestFor ResultTemplate[] @relation("ResultTemplateLatest")
-  activeFor ResultTemplate[] @relation("ResultTemplateActive")
-  createdBy User @relation("ResultTemplateVersionAuthor", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  assignments ResultTemplateAssignment[] @relation("ResultAssignmentVersion")
+  template        ResultTemplate             @relation("ResultTemplateVersions", fields: [templateId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  latestFor       ResultTemplate[]           @relation("ResultTemplateLatest")
+  activeFor       ResultTemplate[]           @relation("ResultTemplateActive")
+  createdBy       User                       @relation("ResultTemplateVersionAuthor", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  assignments     ResultTemplateAssignment[] @relation("ResultAssignmentVersion")
   baseAssignments ResultTemplateAssignment[] @relation("ResultAssignmentBase")
 
   @@unique([id, schoolId])
@@ -6627,8 +6625,8 @@ model ResultTemplateAssignment {
   createdAt             DateTime                     @default(now()) @map("created_at")
   updatedAt             DateTime                     @updatedAt @map("updated_at")
 
-  school School @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  templateVersion ResultTemplateVersion @relation("ResultAssignmentVersion", fields: [templateVersionId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "result_assignment_version_fk")
+  school              School                 @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  templateVersion     ResultTemplateVersion  @relation("ResultAssignmentVersion", fields: [templateVersionId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "result_assignment_version_fk")
   baseTemplateVersion ResultTemplateVersion? @relation("ResultAssignmentBase", fields: [baseTemplateVersionId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "result_assignment_base_version_fk")
 
   @@index([schoolId, enabled, id])
@@ -6652,8 +6650,8 @@ model ResultDesignCandidate {
   updatedAt           DateTime           @updatedAt @map("updated_at")
 
   definitionVersion ResultSheetDefinitionVersion @relation(fields: [definitionVersionId, schoolId, sheetId], references: [id, schoolId, sheetId], onDelete: Restrict, onUpdate: Restrict, map: "result_design_candidate_definition_fk")
-  author User @relation("ResultDesignCandidateAuthor",fields:[authorId],references:[id],onDelete:Restrict,onUpdate:Restrict)
-  decisionActor User? @relation("ResultDesignCandidateReviewer",fields:[decisionActorId],references:[id],onDelete:Restrict,onUpdate:Restrict)
+  author            User                         @relation("ResultDesignCandidateAuthor", fields: [authorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  decisionActor     User?                        @relation("ResultDesignCandidateReviewer", fields: [decisionActorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([schoolId, definitionVersionId])
   @@index([schoolId, sheetId, status])
@@ -6663,19 +6661,19 @@ model ResultDesignCandidate {
 }
 
 model ResultConfigurationPreview {
-  id        String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schoolId  String                         @map("school_id") @db.Uuid
-  authorId  String                         @map("author_id") @db.Uuid
-  kind      ResultConfigurationPreviewKind
-  resourceId String?                       @map("resource_id") @db.Uuid
-  binding   Json
-  digest    String                         @db.Char(64)
-  expiresAt DateTime                       @map("expires_at") @db.Timestamptz(3)
-  createdAt DateTime                       @default(now()) @map("created_at")
-  updatedAt DateTime                       @updatedAt @map("updated_at")
+  id         String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId   String                         @map("school_id") @db.Uuid
+  authorId   String                         @map("author_id") @db.Uuid
+  kind       ResultConfigurationPreviewKind
+  resourceId String?                        @map("resource_id") @db.Uuid
+  binding    Json
+  digest     String                         @db.Char(64)
+  expiresAt  DateTime                       @map("expires_at") @db.Timestamptz(3)
+  createdAt  DateTime                       @default(now()) @map("created_at")
+  updatedAt  DateTime                       @updatedAt @map("updated_at")
 
   school School @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  author User @relation("ResultConfigurationPreviewAuthor",fields:[authorId],references:[id],onDelete:Restrict,onUpdate:Restrict)
+  author User   @relation("ResultConfigurationPreviewAuthor", fields: [authorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([schoolId, authorId, kind, expiresAt])
   @@index([authorId])
@@ -6683,18 +6681,18 @@ model ResultConfigurationPreview {
 }
 
 model ResultOperation {
-  id         String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schoolId   String                @map("school_id") @db.Uuid
-  actorId    String                @map("actor_id") @db.Uuid
-  operationType String             @map("operation_type") @db.VarChar(64)
-  status     ResultOperationStatus
-  counts     Json
-  items      Json
-  createdAt  DateTime              @default(now()) @map("created_at")
-  updatedAt  DateTime              @updatedAt @map("updated_at")
+  id            String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId      String                @map("school_id") @db.Uuid
+  actorId       String                @map("actor_id") @db.Uuid
+  operationType String                @map("operation_type") @db.VarChar(64)
+  status        ResultOperationStatus
+  counts        Json
+  items         Json
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
 
   school School @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  actor User @relation("ResultOperationActor",fields:[actorId],references:[id],onDelete:Restrict,onUpdate:Restrict)
+  actor  User   @relation("ResultOperationActor", fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([id, schoolId])
   @@index([schoolId, actorId, createdAt])

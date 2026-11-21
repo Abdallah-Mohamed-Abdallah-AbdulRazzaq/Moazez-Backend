@@ -391,6 +391,12 @@
           "outcome": "PASS",
           "result": "45 migrated in the fresh loopback-only OR04 fixture, second deploy no-op, zero schema differences, 271 permissions and seven canonical roles.",
           "testedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
+        },
+        {
+          "command": "npm run build",
+          "outcome": "PASS",
+          "result": "Nest and reference-data bootstrap build contract passed with the CI heap.",
+          "testedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
         }
       ],
       "evidence": [
@@ -569,7 +575,7 @@
       "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/239",
       "branch": "codex/moazez-be-official-results-authoring",
       "base": "codex/moazez-be-official-results",
-      "baseSha": "6abdb72674c5e2c8c208f2d5bf21e1dbf59bb837",
+      "baseSha": "f7ad34273e7bc7131b90e1af77b1cff0e14c7b0b",
       "scope": [
         "OR03",
         "OR04"
