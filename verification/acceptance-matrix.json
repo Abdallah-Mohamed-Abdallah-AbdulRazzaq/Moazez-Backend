@@ -831,7 +831,10 @@
       "level": "Unit",
       "given": "CSV has Arabic text, comma, quotes and embedded newline",
       "expected": "Parser/record location correct; Unicode and text round-trip preserved",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-import-csv.spec.ts",
+      "testedSha": "4e5c659baa538ed5f8244da462ec1c9e1c831020",
+      "observed": "Actual UTF-8 parser preserved Arabic, quotes, commas and embedded line numbers."
     },
     {
       "id": "T063",
@@ -842,7 +845,10 @@
       "level": "Unit",
       "given": "CSV has duplicate headers/rows, unknown IDs or added student",
       "expected": "Block with stable issues; no fuzzy matching or student creation",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "4e5c659baa538ed5f8244da462ec1c9e1c831020",
+      "observed": "Duplicate and invented rows blocked, and the fabricated ID was absent from the response. Unit coverage also rejected duplicate/unknown/missing headers."
     },
     {
       "id": "T064",
@@ -853,7 +859,10 @@
       "level": "Security",
       "given": "Upload foreign-school export reference or replace row refs",
       "expected": "Reject without foreign metadata; current scope still independently checked",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "4e5c659baa538ed5f8244da462ec1c9e1c831020",
+      "observed": "Foreign-school admission returned 404. Unknown row references produced only a safe issue."
     },
     {
       "id": "T065",
@@ -864,7 +873,10 @@
       "level": "Unit",
       "given": "Blank pair, numeric0, CLEAR and RECORDED-with-blank",
       "expected": "KEEP, record0, explicit clear-with-reason, semantic error respectively",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-import-csv.spec.ts",
+      "testedSha": "4e5c659baa538ed5f8244da462ec1c9e1c831020",
+      "observed": "KEEP, zero, clear and missing value distinguished. HTTP passed for actual CLEAR reason and acknowledgment without a grade mutation."
     },
     {
       "id": "T066",
@@ -875,7 +887,10 @@
       "level": "Unit",
       "given": "Input exceeds maximum, unknown option or edits computed total",
       "expected": "Structured field issue; no silently clamped or accepted score",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-import-csv.spec.ts",
+      "testedSha": "4e5c659baa538ed5f8244da462ec1c9e1c831020",
+      "observed": "Exact scale and max bounds, an unrecognized option and calculated field writes rejected."
     },
     {
       "id": "T067",
@@ -886,7 +901,10 @@
       "level": "Integration",
       "given": "Student moves or actual draft definition changes after export",
       "expected": "Block affected unit/reconcile; merely newer catalog version is not sufficient conflict",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "4e5c659baa538ed5f8244da462ec1c9e1c831020",
+      "observed": "A real enrollment transfer and an altered pinned sheet version blocked validation with distinct issues."
     },
     {
       "id": "T068",
@@ -897,7 +915,10 @@
       "level": "Unit",
       "given": "Display name changes in platform but export identity columns unchanged",
       "expected": "Compare against export baseline; no false identity mismatch from live label alone",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "4e5c659baa538ed5f8244da462ec1c9e1c831020",
+      "observed": "SIS display-name correction left original protected columns valid."
     },
     {
       "id": "T069",
@@ -908,7 +929,10 @@
       "level": "Unit",
       "given": "B18,I18,C19; B18,I19,C19; B18,I20,C18; B18,I20,C19",
       "expected": "KEEP19; converged no-op; safe20; conflict respectively",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-import-csv.spec.ts",
+      "testedSha": "4e5c659baa538ed5f8244da462ec1c9e1c831020",
+      "observed": "All four baseline/current/incoming vectors passed. The HTTP path preserved the live 19, then produced a 20 proposal with expected version 2."
     },
     {
       "id": "T070",
@@ -919,7 +943,10 @@
       "level": "Integration",
       "given": "Web correction/reupload changes a staged batch",
       "expected": "New validation revision/preview; original raw file retained; old preview invalid",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "4e5c659baa538ed5f8244da462ec1c9e1c831020",
+      "observed": "Two original upload versions and three immutable review results retained. Hashes and current cell version verified."
     },
     {
       "id": "T071",
@@ -930,7 +957,8 @@
       "level": "Unit",
       "given": "Arbitrary row/column reordering with same stable identities",
       "expected": "Correct matching accepted; omitted exported header fails without silent reinterpretation",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN",
+      "remainingEvidence": "Current CSV integration verifies column reorder and omitted rows. Exercise multi-row editor reorder during OR10."
     },
     {
       "id": "T072",
@@ -941,7 +969,8 @@
       "level": "Security",
       "given": "Malicious formula-like text appears in names/notes/error report",
       "expected": "Visible codec/typed string export stays inert; server never evaluates it",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN",
+      "remainingEvidence": "Codec and inert textual value cases passed. Exercise the downloaded issue-report artifact during OR11."
     },
     {
       "id": "T073",
@@ -952,7 +981,10 @@
       "level": "Unit",
       "given": "Codec marker/literal apostrophe/fullwidth/control edge cases",
       "expected": "Versioned escape/decode round-trip follows fixture vectors; no silent text stripping",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-import-csv.spec.ts",
+      "testedSha": "4e5c659baa538ed5f8244da462ec1c9e1c831020",
+      "observed": "Codec prefix and fullwidth patterns stayed literal. The dedicated OR07 corpus verifies reversible control and apostrophe edge cases."
     },
     {
       "id": "T074",
@@ -963,7 +995,9 @@
       "level": "Concurrency",
       "given": "Change values/policy/roster after preview before confirm/worker",
       "expected": "Revalidation prevents stale application; reviewed changeset never silently rebased",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "a8968523bc8f7cc69c09da06a3c71beb3d2d23c7"
     },
     {
       "id": "T075",
@@ -974,7 +1008,9 @@
       "level": "Integration",
       "given": "Repeat confirmation same key/payload or replay worker",
       "expected": "One applied mutation/audit revision per intended cell; same durable outcome",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "a8968523bc8f7cc69c09da06a3c71beb3d2d23c7"
     },
     {
       "id": "T076",
@@ -985,7 +1021,9 @@
       "level": "Integration",
       "given": "Reuse idempotency key with different selected sheet/payload",
       "expected": "409 conflict; no new write",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "a8968523bc8f7cc69c09da06a3c71beb3d2d23c7"
     },
     {
       "id": "T077",
@@ -996,7 +1034,9 @@
       "level": "Recovery",
       "given": "Crash before/during/after sheet transaction boundary",
       "expected": "No partial sheet visibility; committed unit marker prevents duplicate write",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "a8968523bc8f7cc69c09da06a3c71beb3d2d23c7"
     },
     {
       "id": "T078",
@@ -1008,7 +1048,9 @@
       "level": "Recovery",
       "given": "One unit fails in several-sheet import",
       "expected": "Explicit PARTIALLY_APPLIED; successful units preserved and not replayed",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "a8968523bc8f7cc69c09da06a3c71beb3d2d23c7"
     },
     {
       "id": "T079",
@@ -1019,7 +1061,9 @@
       "level": "Recovery",
       "given": "Queue enqueue fails after persisted job or lease owner becomes stale",
       "expected": "Reconciler recovers; stale worker cannot finalize over new owner",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "a8968523bc8f7cc69c09da06a3c71beb3d2d23c7"
     },
     {
       "id": "T080",
@@ -1030,7 +1074,9 @@
       "level": "Integration",
       "given": "Reupload unchanged old file after live edits without imported changes",
       "expected": "NO_CHANGES/KEEP; current values preserved; no unnecessary version bump",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "a8968523bc8f7cc69c09da06a3c71beb3d2d23c7"
     },
     {
       "id": "T081",

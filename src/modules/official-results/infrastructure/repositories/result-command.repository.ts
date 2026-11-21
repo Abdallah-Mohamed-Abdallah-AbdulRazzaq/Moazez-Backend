@@ -21,19 +21,23 @@ export class ResultCommandRepository {
 
   transaction<T>(
     run: (tx: Prisma.TransactionClient) => Promise<T>,
+    bounds?: { timeout: number },
   ): Promise<T> {
     const scoped = this.prisma.scoped as unknown as PrismaService;
     return scoped.$transaction(run, {
       isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+      ...bounds,
     });
   }
 
   readSnapshot<T>(
     read: (tx: Prisma.TransactionClient) => Promise<T>,
+    bounds?: { timeout: number },
   ): Promise<T> {
     const scoped = this.prisma.scoped as unknown as PrismaService;
     return scoped.$transaction(read, {
       isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+      ...bounds,
     });
   }
 

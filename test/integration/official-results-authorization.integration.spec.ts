@@ -11,8 +11,15 @@ import type { Request, Response, NextFunction } from 'express';
 import request from 'supertest';
 import { parse as parseCsv } from 'csv-parse/sync';
 import { QueueModule } from '../../src/infrastructure/queue/queue.module';
+import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
 import { ResultBulkWorker } from '../../src/modules/official-results/infrastructure/result-bulk.worker';
+import { ResultImportApplyService } from '../../src/modules/official-results/application/result-import-apply.service';
+import { resultsBulkQueue } from '../../src/modules/official-results/domain/result-export.contract';
+import { resultApplyImportJob } from '../../src/modules/official-results/domain/result-import-execution.contract';
 import { exportOutputs } from '../../src/modules/official-results/dto/result-export.dto';
+import { importOutputs } from '../../src/modules/official-results/dto/result-import.dto';
+import { csvRecord } from '../../src/modules/official-results/domain/result-csv';
+import { resultContentDigest } from '../../src/modules/official-results/domain/result-content-digest';
 import type { ExportManifest } from '../../src/modules/official-results/domain/result-export.contract';
 import {
   createRequestContext,
@@ -432,7 +439,7 @@ describe('Official Results policy and permission boundaries', () => {
         }),
       ),
     );
-    expect(registered).toHaveLength(99);
+    expect(registered).toHaveLength(123);
     for (const endpoint of registered) {
       expect(catalog.operations).toContainEqual(
         expect.objectContaining({
@@ -1152,7 +1159,7 @@ describe('Official Results policy and permission boundaries', () => {
     };
   }
 
-  async function liveGradebook(code: string) {
+  async function liveGradebook(code: string, parallelClass = false) {
     const reportingPeriodId = await authoringPeriod(code);
     const child = await school.addStudent(code);
     const enrollment = await prisma.enrollment.create({
@@ -1165,6 +1172,20 @@ describe('Official Results policy and permission boundaries', () => {
         enrolledAt: new Date('2026-09-01T08:00:00Z'),
       },
     });
+    const parallel = parallelClass
+      ? await school.addStudent(code + '-peer')
+      : null;
+    if (parallel)
+      await prisma.enrollment.create({
+        data: {
+          schoolId: school.school.id,
+          academicYearId: school.year.id,
+          termId: school.term.id,
+          studentId: parallel.id,
+          classroomId: school.otherClassroom.id,
+          enrolledAt: new Date('2026-09-01T08:00:00Z'),
+        },
+      });
     const definition = cloneResultDefinition(moazezStarterDefinition(), {
       ar: 'كشف',
       en: code,
@@ -1192,6 +1213,11 @@ describe('Official Results policy and permission boundaries', () => {
     const slot = await prisma.resultSlot.findFirstOrThrow({
       where: { sheetId: source.id, studentId: child.id },
     });
+    const parallelSlot = parallel
+      ? await prisma.resultSlot.findFirstOrThrow({
+          where: { sheetId: destination.id, studentId: parallel.id },
+        })
+      : null;
     const url = '/sheets/' + source.id;
     const patch = (
       operations: object[],
@@ -1217,6 +1243,7 @@ describe('Official Results policy and permission boundaries', () => {
       source,
       destination,
       slot,
+      parallelSlot,
       patch,
       url,
     };
@@ -2771,6 +2798,857 @@ describe('Official Results policy and permission boundaries', () => {
     const manifest = artifact.manifest as unknown as ExportManifest;
     expect(manifest.request.mode).toBe('READ_PUBLISHED');
     expect(manifest.rows[0].publicationIds).toHaveLength(1);
+  });
+
+  const importTeacher = (method: 'get' | 'post', path: string) =>
+    exportTeacher(method, '/imports' + path);
+  const sourceBytes = (records: string[][]) =>
+    Buffer.from('\ufeff' + records.map(csvRecord).join(''));
+
+  async function editableExport(
+    book: Awaited<ReturnType<typeof liveGradebook>>,
+    selectedFieldIds = [book.scores[0].id],
+  ) {
+    const plan = exportOutputs.preview.parse(
+      (
+        await exportTeacher('post', '/exports/preview')
+          .send({
+            reportingPeriodId: book.reportingPeriodId,
+            academicScope: { level: 'CLASSROOM', ids: [school.classroom.id] },
+            groupIds: [math.id],
+            format: 'CSV',
+            mode: 'EDIT_DRAFT',
+            selectedFieldIds,
+            selectedSlotIds: [book.slot.id],
+          })
+          .expect(200)
+      ).body.data,
+    );
+    const queued = exportOutputs.export.parse(
+      (
+        await exportTeacher('post', '/exports')
+          .set('Idempotency-Key', randomUUID())
+          .send({
+            previewId: plan.previewId,
+            previewDigest: plan.previewDigest,
+          })
+          .expect(202)
+      ).body.data,
+    );
+    const job = await waitForExport('/exports/' + queued.exportId, withTeacher);
+    const download = await exportTeacher(
+      'get',
+      job.files[0].downloadPath.slice(instructor.length),
+    ).expect(200);
+    return { job, rows: parseCsv(download.text, { bom: true }) };
+  }
+
+  async function waitForImport(path: string) {
+    for (let attempts = 0; attempts < 120; attempts++) {
+      const result = importOutputs.batch.parse(
+        (await importTeacher('get', path).expect(200)).body.data,
+      );
+      if (!['UPLOADED', 'VALIDATING'].includes(result.status)) return result;
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error('Import validation did not complete');
+  }
+
+  const stageImport = (
+    exportId: string,
+    records: Buffer,
+    validateOptions?: object,
+    key = randomUUID(),
+  ) => {
+    const upload = importTeacher('post', '')
+      .set('Idempotency-Key', key)
+      .field('exportId', exportId);
+    if (validateOptions)
+      upload.field('validateOptions', JSON.stringify(validateOptions));
+    return upload.attach('file', records, 'renamed-user-file.csv');
+  };
+
+  it('T068, T069 and T070 stage immutable sources and corrected previews, preserving concurrent draft values', async () => {
+    const book = await liveGradebook('STAGED-IMPORT');
+    await book
+      .patch([scoreOperation(book.slot.id, book.scores[0].id, '18.00')])
+      .expect(200);
+    const { job, rows } = await editableExport(book);
+    await prisma.student.update({
+      where: { id: book.child.id },
+      data: { firstName: 'Corrected display name' },
+    });
+    await book
+      .patch([scoreOperation(book.slot.id, book.scores[0].id, '19.00', 1)])
+      .expect(200);
+    const same = importOutputs.batch.parse(
+      (await stageImport(job.exportId, sourceBytes(rows)).expect(202)).body
+        .data,
+    );
+    const noChanges = await waitForImport('/' + same.batchId);
+    expect(noChanges).toMatchObject({
+      status: 'NO_CHANGES',
+      canConfirm: false,
+      summary: { changedCells: 0, unchangedCells: 1, validRows: 1 },
+    });
+
+    const conflictFile = rows.map((row) => row.slice());
+    conflictFile[1][18] = '20.00';
+    const key = randomUUID();
+    const [created, replay] = await Promise.all([
+      stageImport(
+        job.exportId,
+        sourceBytes(conflictFile),
+        undefined,
+        key,
+      ).expect(202),
+      stageImport(
+        job.exportId,
+        sourceBytes(conflictFile),
+        undefined,
+        key,
+      ).expect(202),
+    ]);
+    const batchId = importOutputs.batch.parse(created.body.data).batchId;
+    expect(importOutputs.batch.parse(replay.body.data).batchId).toBe(batchId);
+    const initial = await waitForImport('/' + batchId);
+    expect(initial).toMatchObject({
+      status: 'CORRECTIONS_REQUIRED',
+      canConfirm: false,
+      summary: { conflictingCells: 1 },
+    });
+    const conflicts = importOutputs.issues.parse(
+      (await importTeacher('get', '/' + batchId + '/issues').expect(200)).body
+        .data,
+    );
+    const conflict = conflicts.items.find(
+      (entry) => entry.code === 'official_results.import.cell_conflict',
+    )!;
+    expect(conflict.comparison).toEqual({
+      baseline: { status: 'RECORDED', score: '18.00' },
+      current: { status: 'RECORDED', score: '19.00' },
+      incoming: { status: 'RECORDED', score: '20.00' },
+      currentVersion: 2,
+    });
+    await importTeacher('post', '/' + batchId + '/corrections')
+      .set('Idempotency-Key', randomUUID())
+      .send({
+        expectedBatchRevision: initial.batchRevision,
+        changes: [
+          {
+            rowRef: conflict.rowRef,
+            fieldId: conflict.fieldId,
+            expectedCellVersion: 2,
+            operation: 'SET',
+            value: { status: 'RECORDED', score: '20.00' },
+          },
+        ],
+      })
+      .expect(202);
+    const corrected = await waitForImport('/' + batchId);
+    expect(corrected).toMatchObject({
+      status: 'READY_TO_CONFIRM',
+      canConfirm: true,
+      batchRevision: 2,
+      sourceVersion: 1,
+    });
+    expect(corrected.preview?.digest).not.toBe(initial.preview?.digest);
+    expect(resultContentDigest(corrected.preview?.binding)).toBe(
+      corrected.preview?.digest,
+    );
+    const changes = importOutputs.changes.parse(
+      (
+        await importTeacher('get', '/' + batchId + '/changes')
+          .query({ limit: 1 })
+          .expect(200)
+      ).body.data,
+    );
+    expect(changes.items).toEqual([
+      expect.objectContaining({
+        expectedCellVersion: 2,
+        before: { status: 'RECORDED', score: '19.00' },
+        after: { status: 'RECORDED', score: '20.00' },
+      }),
+    ]);
+    await importTeacher('post', '/' + batchId + '/source-versions')
+      .set('Idempotency-Key', randomUUID())
+      .field('exportId', job.exportId)
+      .field('expectedBatchRevision', String(corrected.batchRevision))
+      .attach('file', sourceBytes(rows), 'replace.csv')
+      .expect(202);
+    const replaced = await waitForImport('/' + batchId);
+    expect(replaced).toMatchObject({
+      status: 'NO_CHANGES',
+      batchRevision: 3,
+      sourceVersion: 2,
+    });
+    expect(replaced.preview?.digest).not.toBe(corrected.preview?.digest);
+    const sources = await prisma.resultImportSource.findMany({
+      where: { batchId },
+      orderBy: { version: 'asc' },
+    });
+    expect(sources.map((row) => row.version)).toEqual([1, 2]);
+    expect(sources.every((row) => row.storedAt && !row.deletedAt)).toBe(true);
+    expect(sources[0].checksum).not.toBe(sources[1].checksum);
+    expect(await prisma.resultImportReview.count({ where: { batchId } })).toBe(
+      3,
+    );
+    expect(
+      await prisma.resultCell.findFirstOrThrow({
+        where: { slotId: book.slot.id, fieldId: book.scores[0].id },
+      }),
+    ).toMatchObject({ version: 2 });
+    expect(
+      await prisma.resultCellRevision.count({
+        where: { cell: { slotId: book.slot.id } },
+      }),
+    ).toBe(2);
+  });
+
+  it('T063, T064 and T071 block foreign scope, invented rows and duplicates while matching reordered row values', async () => {
+    const book = await liveGradebook('IDENTITY-IMPORT');
+    const { job, rows } = await editableExport(book);
+    await schoolApi()
+      .post(management + '/imports')
+      .set('Authorization', 'Bearer other-school-fixture')
+      .set('Idempotency-Key', randomUUID())
+      .field('exportId', job.exportId)
+      .attach('file', sourceBytes(rows), 'foreign.csv')
+      .expect(404);
+    const altered = rows.map((row) => row.slice());
+    altered.push(altered[1].slice(), altered[1].slice());
+    const foreignRow = randomUUID();
+    altered[3][1] = foreignRow;
+    const queued = importOutputs.batch.parse(
+      (await stageImport(job.exportId, sourceBytes(altered)).expect(202)).body
+        .data,
+    );
+    const report = await waitForImport('/' + queued.batchId);
+    const issues = importOutputs.issues.parse(
+      (await importTeacher('get', '/' + queued.batchId + '/issues').expect(200))
+        .body.data,
+    );
+    expect(report).toMatchObject({
+      status: 'CORRECTIONS_REQUIRED',
+      summary: { parsedDataRows: 3, validRows: 1, invalidRows: 2 },
+    });
+    expect(issues.items.map((item) => item.code)).toEqual([
+      'official_results.import.duplicate_row',
+      'official_results.import.unknown_row',
+    ]);
+    expect(JSON.stringify(issues)).not.toContain(foreignRow);
+    const reshuffled = rows.map((row) => row.slice().reverse());
+    const valid = importOutputs.batch.parse(
+      (await stageImport(job.exportId, sourceBytes(reshuffled)).expect(202))
+        .body.data,
+    );
+    expect((await waitForImport('/' + valid.batchId)).status).toBe(
+      'NO_CHANGES',
+    );
+    const blank = importOutputs.batch.parse(
+      (await stageImport(job.exportId, sourceBytes([rows[0]])).expect(202)).body
+        .data,
+    );
+    expect(await waitForImport('/' + blank.batchId)).toMatchObject({
+      status: 'NO_CHANGES',
+      summary: { omittedRows: 1 },
+    });
+  });
+
+  it('T067 suspends validation after live placement movement or an actual pinned draft change', async () => {
+    const book = await liveGradebook('MOVED-IMPORT');
+    const { job, rows } = await editableExport(book);
+    const at = new Date('2026-11-20T09:00:00Z');
+    await prisma.enrollment.update({
+      where: { id: book.enrollment.id },
+      data: { endedAt: at },
+    });
+    await prisma.enrollment.create({
+      data: {
+        schoolId: school.school.id,
+        academicYearId: school.year.id,
+        termId: school.term.id,
+        studentId: book.child.id,
+        classroomId: school.otherClassroom.id,
+        enrolledAt: at,
+      },
+    });
+    const moved = importOutputs.batch.parse(
+      (await stageImport(job.exportId, sourceBytes(rows)).expect(202)).body
+        .data,
+    );
+    const movedReport = await waitForImport('/' + moved.batchId);
+    expect(movedReport.status).toBe('CORRECTIONS_REQUIRED');
+    const issues = importOutputs.issues.parse(
+      (await importTeacher('get', '/' + moved.batchId + '/issues').expect(200))
+        .body.data,
+    );
+    expect(issues.items.map((item) => item.code)).toContain(
+      'official_results.import.roster_changed',
+    );
+
+    const another = await liveGradebook('PINNED-IMPORT');
+    const pinned = await editableExport(another);
+    await prisma.$transaction(async (client) => {
+      const old = await client.resultSheetDefinitionVersion.findUniqueOrThrow({
+        where: { id: another.source.draftDefinitionVersionId! },
+      });
+      const version = await client.resultSheetDefinitionVersion.create({
+        data: {
+          schoolId: old.schoolId,
+          sheetId: old.sheetId,
+          version: old.version + 1,
+          contentDigest: old.contentDigest,
+          labelAr: old.labelAr,
+          labelEn: old.labelEn,
+          configuration: old.configuration!,
+          createdById: old.createdById,
+        },
+      });
+      await client.resultSheet.update({
+        where: { id: another.source.id },
+        data: {
+          draftDefinitionVersionId: version.id,
+          sheetRevision: { increment: 1 },
+        },
+      });
+    });
+    const stale = importOutputs.batch.parse(
+      (
+        await stageImport(pinned.job.exportId, sourceBytes(pinned.rows)).expect(
+          202,
+        )
+      ).body.data,
+    );
+    expect((await waitForImport('/' + stale.batchId)).status).toBe(
+      'CORRECTIONS_REQUIRED',
+    );
+    const staleIssues = importOutputs.issues.parse(
+      (await importTeacher('get', '/' + stale.batchId + '/issues').expect(200))
+        .body.data,
+    );
+    expect(staleIssues.items.map((item) => item.code)).toContain(
+      'official_results.schema.stale',
+    );
+  });
+
+  it('stages an explicit clear with its reason and acknowledgment while omission preserves the saved value', async () => {
+    const book = await liveGradebook('CLEAR-IMPORT');
+    await book
+      .patch([scoreOperation(book.slot.id, book.scores[0].id, '18.00')])
+      .expect(200);
+    const { job, rows } = await editableExport(book);
+    rows[1][18] = '';
+    const blank = importOutputs.batch.parse(
+      (await stageImport(job.exportId, sourceBytes(rows)).expect(202)).body
+        .data,
+    );
+    expect((await waitForImport('/' + blank.batchId)).status).toBe(
+      'NO_CHANGES',
+    );
+    rows[1][19] = 'CLEAR';
+    const withoutReason = importOutputs.batch.parse(
+      (await stageImport(job.exportId, sourceBytes(rows)).expect(202)).body
+        .data,
+    );
+    expect((await waitForImport('/' + withoutReason.batchId)).status).toBe(
+      'CORRECTIONS_REQUIRED',
+    );
+    const noReason = importOutputs.issues.parse(
+      (
+        await importTeacher(
+          'get',
+          '/' + withoutReason.batchId + '/issues',
+        ).expect(200)
+      ).body.data,
+    );
+    expect(noReason.items.map((item) => item.code)).toContain(
+      'official_results.import.clear_reason_required',
+    );
+    const reason = 'Verified source grade needs correction';
+    const withReason = importOutputs.batch.parse(
+      (
+        await stageImport(job.exportId, sourceBytes(rows), {
+          clearReason: reason,
+        }).expect(202)
+      ).body.data,
+    );
+    const ready = await waitForImport('/' + withReason.batchId);
+    expect(ready.status).toBe('READY_TO_CONFIRM');
+    const review = importOutputs.issues.parse(
+      (
+        await importTeacher('get', '/' + withReason.batchId + '/issues').expect(
+          200,
+        )
+      ).body.data,
+    );
+    const ack = review.items.find(
+      (item) => item.code === 'official_results.import.clear_acknowledgment',
+    );
+    expect(ready.preview?.binding.requiredWarningIds).toContain(ack?.id);
+    const proposals = importOutputs.changes.parse(
+      (
+        await importTeacher(
+          'get',
+          '/' + withReason.batchId + '/changes',
+        ).expect(200)
+      ).body.data,
+    );
+    expect(proposals.items[0]).toMatchObject({
+      operation: 'CLEAR',
+      reason,
+      after: { status: 'MISSING' },
+      expectedCellVersion: 1,
+    });
+    expect(
+      await prisma.resultCell.findFirstOrThrow({
+        where: { slotId: book.slot.id, fieldId: book.scores[0].id },
+      }),
+    ).toMatchObject({ version: 1, status: 'RECORDED' });
+  });
+
+  const confirmation = (
+    batch: ReturnType<typeof importOutputs.batch.parse>,
+  ) => ({
+    previewId: batch.preview!.id,
+    previewDigest: batch.preview!.digest,
+    expectedBatchRevision: batch.batchRevision,
+    selectedSheetIds: batch.preview!.binding.selectedSheetIds,
+    acknowledgedWarningIds: batch.preview!.binding.requiredWarningIds,
+  });
+
+  async function stagedGrade(
+    book: Awaited<ReturnType<typeof liveGradebook>>,
+    value: string,
+  ) {
+    const { job, rows } = await editableExport(book);
+    const changed = rows.map((row) => row.slice());
+    changed[1][18] = value;
+    const receipt = importOutputs.batch.parse(
+      (await stageImport(job.exportId, sourceBytes(changed)).expect(202)).body
+        .data,
+    );
+    const batch = await waitForImport('/' + receipt.batchId);
+    expect(batch.status).toBe('READY_TO_CONFIRM');
+    return { batch, job, rows };
+  }
+
+  const confirmImport = (batchId: string, input: object, key = randomUUID()) =>
+    importTeacher('post', '/' + batchId + '/confirm')
+      .set('Idempotency-Key', key)
+      .send(input);
+
+  async function waitForOperation(id: string, actor = 'teacher-fixture') {
+    for (let index = 0; index < 100; index++) {
+      const response = await exportTeacher(
+        'get',
+        '/operations/' + id,
+        actor,
+      ).expect(200);
+      const result = importOutputs.execution.parse(response.body.data);
+      if (result.status !== 'QUEUED' && result.status !== 'APPLYING')
+        return result;
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error('Import execution did not reach a terminal state');
+  }
+
+  it('T075, T076 and T080 confirm an exact preview once and preserve the applied grade on replay or unchanged reupload', async () => {
+    const book = await liveGradebook('CONFIRM-IMPORT');
+    const { batch, job, rows } = await stagedGrade(book, '10.00');
+    const key = randomUUID();
+    const input = confirmation(batch);
+    const results = await Promise.all([
+      confirmImport(batch.batchId, input, key).expect(202),
+      confirmImport(batch.batchId, input, key).expect(202),
+    ]);
+    const [first, replay] = results.map((result) =>
+      importOutputs.execution.parse(result.body.data),
+    );
+    expect(first.operationId).toBe(replay.operationId);
+    await confirmImport(
+      batch.batchId,
+      { ...input, selectedSheetIds: [randomUUID()] },
+      key,
+    ).expect(409);
+    const complete = await waitForOperation(first.operationId);
+    expect(complete).toMatchObject({
+      status: 'APPLIED',
+      counts: { total: 1, completed: 1 },
+    });
+    const items = await exportTeacher(
+      'get',
+      '/operations/' + first.operationId + '/items',
+    ).expect(200);
+    expect(items.body.data.items[0]).toMatchObject({
+      status: 'APPLIED',
+      changedCells: 1,
+    });
+    const worker = app.get(ResultImportApplyService);
+    await worker.run(first.operationId, 1);
+    expect(
+      await prisma.resultCellRevision.count({
+        where: { cell: { slotId: book.slot.id }, source: 'IMPORT' },
+      }),
+    ).toBe(1);
+    expect(
+      await prisma.resultPublication.count({ where: { slotId: book.slot.id } }),
+    ).toBe(0);
+    const receipt = importOutputs.batch.parse(
+      (await stageImport(job.exportId, sourceBytes(rows)).expect(202)).body
+        .data,
+    );
+    const unchanged = await waitForImport('/' + receipt.batchId);
+    expect(unchanged).toMatchObject({
+      status: 'NO_CHANGES',
+      summary: { changedCells: 0 },
+    });
+    expect(
+      await prisma.resultCell.findFirstOrThrow({
+        where: { slotId: book.slot.id, fieldId: book.scores[0].id },
+      }),
+    ).toMatchObject({ version: 1, status: 'RECORDED' });
+    await importTeacher('post', '/' + batch.batchId + '/cancel')
+      .set('Idempotency-Key', randomUUID())
+      .send({
+        expectedBatchRevision: batch.batchRevision,
+        reason: 'Too late to cancel',
+      })
+      .expect(409);
+  });
+
+  it('T074 checks calculated input dependencies at HTTP confirmation and again in the actual worker', async () => {
+    const book = await liveGradebook('STALE-COMMIT');
+    const { batch } = await stagedGrade(book, '10.00');
+    await book
+      .patch([scoreOperation(book.slot.id, book.scores[1].id, '8.00')])
+      .expect(200);
+    await confirmImport(batch.batchId, confirmation(batch)).expect(409);
+    await importTeacher('post', '/' + batch.batchId + '/revalidate')
+      .set('Idempotency-Key', randomUUID())
+      .send({ expectedBatchRevision: batch.batchRevision })
+      .expect(202);
+    const refreshed = await waitForImport('/' + batch.batchId);
+    const queue = app.get(BullmqService).getQueue(resultsBulkQueue);
+    await queue.pause();
+    try {
+      const response = await confirmImport(
+        batch.batchId,
+        confirmation(refreshed),
+      ).expect(202);
+      const operation = importOutputs.execution.parse(response.body.data);
+      await book
+        .patch([scoreOperation(book.slot.id, book.scores[1].id, '9.00', 1)])
+        .expect(200);
+      await app.get(ResultImportApplyService).run(operation.operationId, 1);
+      expect(await waitForOperation(operation.operationId)).toMatchObject({
+        status: 'FAILED',
+        counts: { completed: 0, failed: 1 },
+      });
+      expect(
+        await prisma.resultCell.count({
+          where: { slotId: book.slot.id, fieldId: book.scores[0].id },
+        }),
+      ).toBe(0);
+    } finally {
+      await queue.resume();
+    }
+  });
+
+  it('T079 restores lost dispatch and reclaims an expired worker lease without reapplying a committed unit', async () => {
+    const book = await liveGradebook('IMPORT-LEASE');
+    const { batch } = await stagedGrade(book, '12.00');
+    const worker = app.get(ResultImportApplyService);
+    const queue = app.get(BullmqService).getQueue(resultsBulkQueue);
+    await queue.pause();
+    let executionId = '';
+    try {
+      const receipt = await confirmImport(
+        batch.batchId,
+        confirmation(batch),
+      ).expect(202);
+      executionId = importOutputs.execution.parse(
+        receipt.body.data,
+      ).operationId;
+      const scheduledId = resultApplyImportJob + '-' + executionId + '-1';
+      const job = await queue.getJob(scheduledId);
+      expect(job).toBeDefined();
+      await job!.remove();
+      const staleToken = randomUUID();
+      const reclaimed = await prisma.resultImportExecutionUnit.updateMany({
+        where: { executionId, status: 'QUEUED' },
+        data: {
+          status: 'RUNNING',
+          attempts: 1,
+          leaseToken: staleToken,
+          leaseUntil: new Date(Date.now() - 1_000),
+        },
+      });
+      expect(reclaimed.count).toBe(1);
+      await worker.reconcile();
+      expect(await queue.getJob(scheduledId)).toBeDefined();
+    } finally {
+      await queue.resume();
+    }
+    expect(await waitForOperation(executionId)).toMatchObject({
+      status: 'APPLIED',
+    });
+    expect(
+      await prisma.resultImportExecutionUnit.findFirstOrThrow({
+        where: { executionId },
+      }),
+    ).toMatchObject({
+      status: 'APPLIED',
+      attempts: 2,
+      leaseToken: null,
+      leaseUntil: null,
+      changedCells: 1,
+    });
+    expect(
+      await prisma.resultCellRevision.count({
+        where: { cell: { slotId: book.slot.id }, source: 'IMPORT' },
+      }),
+    ).toBe(1);
+  });
+
+  it('T078 preserves a committed sheet when a different sheet fails its final draft check', async () => {
+    const book = await liveGradebook('PARTIAL-COMMIT', true);
+    const second = book.parallelSlot!;
+    const auth = 'co-teacher-fixture';
+    const api = (method: 'get' | 'post', path: string) =>
+      exportTeacher(method, path, auth);
+    const preview = exportOutputs.preview.parse(
+      (
+        await api('post', '/exports/preview')
+          .send({
+            reportingPeriodId: book.reportingPeriodId,
+            academicScope: {
+              level: 'CLASSROOM',
+              ids: [school.classroom.id, school.otherClassroom.id],
+            },
+            groupIds: [math.id],
+            format: 'CSV',
+            mode: 'EDIT_DRAFT',
+            selectedSlotIds: [book.slot.id, second.id],
+            selectedFieldIds: [book.scores[0].id],
+          })
+          .expect(200)
+      ).body.data,
+    );
+    const created = exportOutputs.export.parse(
+      (
+        await api('post', '/exports')
+          .set('Idempotency-Key', randomUUID())
+          .send({
+            previewId: preview.previewId,
+            previewDigest: preview.previewDigest,
+          })
+          .expect(202)
+      ).body.data,
+    );
+    const ready = await waitForExport('/exports/' + created.exportId, (path) =>
+      api('get', path),
+    );
+    expect(ready.files).toHaveLength(1);
+    const csv = await api(
+      'get',
+      ready.files[0].downloadPath.slice(instructor.length),
+    ).expect(200);
+    const rows = parseCsv(csv.text, { bom: true });
+    expect(rows).toHaveLength(3);
+    for (const row of rows.slice(1)) row[18] = '12.00';
+    const staged = importOutputs.batch.parse(
+      (
+        await api('post', '/imports')
+          .set('Idempotency-Key', randomUUID())
+          .field('exportId', ready.exportId)
+          .attach('file', sourceBytes(rows), 'two-class.csv')
+          .expect(202)
+      ).body.data,
+    );
+    let plan = staged;
+    for (
+      let attempt = 0;
+      attempt < 100 && ['UPLOADED', 'VALIDATING'].includes(plan.status);
+      attempt++
+    ) {
+      plan = importOutputs.batch.parse(
+        (await api('get', '/imports/' + staged.batchId).expect(200)).body.data,
+      );
+      if (['UPLOADED', 'VALIDATING'].includes(plan.status))
+        await new Promise<void>((resolve) => setTimeout(resolve, 100));
+    }
+    expect(plan).toMatchObject({
+      status: 'READY_TO_CONFIRM',
+      summary: { selectedSheets: 2, changedCells: 2 },
+    });
+    const queue = app.get(BullmqService).getQueue(resultsBulkQueue);
+    await queue.pause();
+    try {
+      const execution = importOutputs.execution.parse(
+        (
+          await api('post', '/imports/' + staged.batchId + '/confirm')
+            .set('Idempotency-Key', randomUUID())
+            .send(confirmation(plan))
+            .expect(202)
+        ).body.data,
+      );
+      await schoolApi()
+        .patch(instructor + '/sheets/' + book.destination.id + '/cells')
+        .set('Authorization', 'Bearer ' + auth)
+        .send({
+          expectedDefinitionVersionId:
+            book.destination.draftDefinitionVersionId,
+          expectedSheetRevision: book.destination.sheetRevision,
+          operations: [scoreOperation(second.id, book.scores[0].id, '9.00')],
+        })
+        .expect(200);
+      const worker = app.get(ResultImportApplyService);
+      await worker.run(execution.operationId, 1);
+      const summary = await waitForOperation(execution.operationId, auth);
+      expect(summary).toMatchObject({
+        status: 'PARTIALLY_APPLIED',
+        counts: { total: 2, completed: 1, failed: 1 },
+      });
+      const outcomes = (
+        await api(
+          'get',
+          '/operations/' + execution.operationId + '/items',
+        ).expect(200)
+      ).body.data.items;
+      expect(outcomes).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            sheetId: book.source.id,
+            status: 'APPLIED',
+            changedCells: 1,
+          }),
+          expect.objectContaining({
+            sheetId: book.destination.id,
+            status: 'FAILED',
+            failureCode: 'official_results.cell.conflict',
+          }),
+        ]),
+      );
+      await worker.run(execution.operationId, 1);
+      expect(
+        await prisma.resultCellRevision.count({
+          where: {
+            cell: { slotId: { in: [book.slot.id, second.id] } },
+            source: 'IMPORT',
+          },
+        }),
+      ).toBe(1);
+    } finally {
+      await queue.resume();
+    }
+  });
+
+  it('T077 rolls back the real sheet transaction when the database worker session ends mid-write', async () => {
+    const book = await liveGradebook('ATOMIC-DISCONNECT');
+    await book
+      .patch([
+        scoreOperation(book.slot.id, book.scores[0].id, '7.00'),
+        scoreOperation(book.slot.id, book.scores[1].id, '8.00'),
+      ])
+      .expect(200);
+    const { job, rows } = await editableExport(book, [
+      book.scores[0].id,
+      book.scores[1].id,
+    ]);
+    rows[1][18] = '10.00';
+    rows[1][20] = '11.00';
+    const staged = importOutputs.batch.parse(
+      (await stageImport(job.exportId, sourceBytes(rows)).expect(202)).body
+        .data,
+    );
+    const plan = await waitForImport('/' + staged.batchId);
+    expect(plan.summary.changedCells).toBe(2);
+    const queue = app.get(BullmqService).getQueue(resultsBulkQueue);
+    const worker = app.get(ResultImportApplyService);
+    await queue.pause();
+    try {
+      const receipt = importOutputs.execution.parse(
+        (await confirmImport(plan.batchId, confirmation(plan)).expect(202)).body
+          .data,
+      );
+      let lockReady!: (pid: number) => void;
+      let release!: () => void;
+      const held = new Promise<number>((resolve) => {
+        lockReady = resolve;
+      });
+      const unlocked = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const blocker = prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`SELECT id FROM result_cells
+          WHERE slot_id = ${book.slot.id}::uuid AND field_id = ${book.scores[1].id}::uuid FOR UPDATE`;
+          const [session] = await tx.$queryRaw<
+            { pid: number }[]
+          >`SELECT pg_backend_pid() AS pid`;
+          lockReady(session.pid);
+          await unlocked;
+        },
+        { timeout: 20_000 },
+      );
+      let running: Promise<unknown> | undefined;
+      try {
+        const lockPid = await held;
+        running = worker
+          .run(receipt.operationId, 1)
+          .catch((error: unknown) => error);
+        let blockedPid: number | undefined;
+        for (let attempt = 0; attempt < 60 && !blockedPid; attempt++) {
+          const sessions = await prisma.$queryRaw<{ pid: number }[]>`
+            SELECT pid FROM pg_stat_activity WHERE datname = current_database()
+              AND ${lockPid}::int = ANY(pg_blocking_pids(pid))
+              AND query LIKE '%WITH rows AS%' AND query LIKE '%UPDATE result_cells%'
+          `;
+          if (sessions.length === 1) blockedPid = sessions[0].pid;
+          else await new Promise<void>((resolve) => setTimeout(resolve, 50));
+        }
+        expect(blockedPid).toBeDefined();
+        const [terminated] = await prisma.$queryRaw<{ ok: boolean }[]>`
+          SELECT pg_terminate_backend(${blockedPid!}::int) AS ok
+          WHERE EXISTS (
+            SELECT 1 FROM pg_stat_activity WHERE datname = current_database()
+              AND pid = ${blockedPid!}::int AND ${lockPid}::int = ANY(pg_blocking_pids(pid))
+          )
+        `;
+        expect(terminated?.ok).toBe(true);
+      } finally {
+        release();
+        await blocker;
+        await running;
+      }
+      expect(
+        await prisma.resultCellRevision.count({
+          where: { cell: { slotId: book.slot.id }, source: 'IMPORT' },
+        }),
+      ).toBe(0);
+      expect(
+        (
+          await prisma.resultCell.findMany({ where: { slotId: book.slot.id } })
+        ).map((cell) => cell.version),
+      ).toEqual([1, 1]);
+      await worker.run(receipt.operationId, 1);
+      const finished = await waitForOperation(receipt.operationId);
+      expect(finished.status).toBe('APPLIED');
+      expect(
+        await prisma.resultCellRevision.count({
+          where: { cell: { slotId: book.slot.id }, source: 'IMPORT' },
+        }),
+      ).toBe(2);
+      await worker.run(receipt.operationId, 1);
+      expect(
+        await prisma.resultCellRevision.count({
+          where: { cell: { slotId: book.slot.id }, source: 'IMPORT' },
+        }),
+      ).toBe(2);
+    } finally {
+      await queue.resume();
+    }
   });
 
   it('T013 denies an edit waiting on a concurrent allocation revocation', async () => {

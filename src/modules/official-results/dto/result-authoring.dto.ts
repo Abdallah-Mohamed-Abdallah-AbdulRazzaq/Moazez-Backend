@@ -24,6 +24,7 @@ import {
   resultOperationCounts,
 } from '../infrastructure/repositories/result-operation.repository';
 import { ResultPageQueryDto } from './result-configuration.dto';
+import { importExecutionUnit } from './result-import.dto';
 
 const uuid = z.uuid();
 const instant = z.iso.datetime();
@@ -150,6 +151,9 @@ const operation = z.object({
     'RUNNING',
     'COMPLETED',
     'PARTIALLY_COMPLETED',
+    'APPLYING',
+    'APPLIED',
+    'PARTIALLY_APPLIED',
     'FAILED',
     'CANCELLED',
   ]),
@@ -157,6 +161,7 @@ const operation = z.object({
   createdAt: instant,
   updatedAt: instant,
   itemsPath: z.string(),
+  terminationReason: z.string().optional(),
 });
 const schoolTemplateImpact = z.object({
   templateId: uuid,
@@ -245,7 +250,7 @@ export const authoringOutputs = {
     conflicts: z.array(scopeTuple.extend({ code: z.string() })),
   }),
   operation,
-  operationItems: page(resultOperationItem),
+  operationItems: page(z.union([resultOperationItem, importExecutionUnit])),
   design,
   definitionPreview: preview.extend({
     impact: adoptionImpact,
