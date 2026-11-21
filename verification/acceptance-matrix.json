@@ -995,7 +995,9 @@
       "level": "Concurrency",
       "given": "Change values/policy/roster after preview before confirm/worker",
       "expected": "Revalidation prevents stale application; reviewed changeset never silently rebased",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "a8968523bc8f7cc69c09da06a3c71beb3d2d23c7"
     },
     {
       "id": "T075",
@@ -1006,7 +1008,9 @@
       "level": "Integration",
       "given": "Repeat confirmation same key/payload or replay worker",
       "expected": "One applied mutation/audit revision per intended cell; same durable outcome",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "a8968523bc8f7cc69c09da06a3c71beb3d2d23c7"
     },
     {
       "id": "T076",
@@ -1017,7 +1021,9 @@
       "level": "Integration",
       "given": "Reuse idempotency key with different selected sheet/payload",
       "expected": "409 conflict; no new write",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "a8968523bc8f7cc69c09da06a3c71beb3d2d23c7"
     },
     {
       "id": "T077",
@@ -1028,7 +1034,9 @@
       "level": "Recovery",
       "given": "Crash before/during/after sheet transaction boundary",
       "expected": "No partial sheet visibility; committed unit marker prevents duplicate write",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "a8968523bc8f7cc69c09da06a3c71beb3d2d23c7"
     },
     {
       "id": "T078",
@@ -1040,7 +1048,9 @@
       "level": "Recovery",
       "given": "One unit fails in several-sheet import",
       "expected": "Explicit PARTIALLY_APPLIED; successful units preserved and not replayed",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "a8968523bc8f7cc69c09da06a3c71beb3d2d23c7"
     },
     {
       "id": "T079",
@@ -1051,7 +1061,9 @@
       "level": "Recovery",
       "given": "Queue enqueue fails after persisted job or lease owner becomes stale",
       "expected": "Reconciler recovers; stale worker cannot finalize over new owner",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "a8968523bc8f7cc69c09da06a3c71beb3d2d23c7"
     },
     {
       "id": "T080",
@@ -1062,7 +1074,9 @@
       "level": "Integration",
       "given": "Reupload unchanged old file after live edits without imported changes",
       "expected": "NO_CHANGES/KEEP; current values preserved; no unnecessary version bump",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "a8968523bc8f7cc69c09da06a3c71beb3d2d23c7"
     },
     {
       "id": "T081",

@@ -737,15 +737,56 @@
         "OR08",
         "OR05"
       ],
-      "status": "NOT_STARTED",
-      "implementationSha": null,
-      "requirements": [],
-      "codePaths": [],
-      "testsExecuted": [],
-      "evidence": [],
+      "status": "DONE",
+      "implementationSha": "a8968523bc8f7cc69c09da06a3c71beb3d2d23c7",
+      "requirements": [
+        "R17",
+        "R18",
+        "R24",
+        "R25"
+      ],
+      "codePaths": [
+        "src/modules/official-results/application/result-import-execution.service.ts",
+        "src/modules/official-results/application/result-import-apply.service.ts",
+        "src/modules/official-results/application/result-import-commit-gate.ts",
+        "src/modules/official-results/controller/result-import.controller.ts",
+        "prisma/migrations/20261121052500_official_results_import_execution/migration.sql"
+      ],
+      "testsExecuted": [
+        {
+          "command": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+          "result": "39 passed with PostgreSQL, Redis and MinIO. Actual worker termination during a blocked write proved rollback, recovery and no extra versions after replay.",
+          "outcome": "PASS",
+          "testedSha": "a8968523bc8f7cc69c09da06a3c71beb3d2d23c7"
+        },
+        {
+          "command": "Generated Nest OpenAPI contract and checked-in artifact comparison",
+          "result": "123 operations checked in the same run.",
+          "outcome": "PASS",
+          "testedSha": "a8968523bc8f7cc69c09da06a3c71beb3d2d23c7"
+        },
+        {
+          "command": "prisma validate; prisma generate; migrate deploy; migrate status; migrate deploy; migrate diff --exit-code; npm run seed",
+          "result": "50 migrations replayed on a new isolated PostgreSQL database. Second deployment was a no-op, zero schema diff and 271 permissions / 7 roles seeded.",
+          "outcome": "PASS",
+          "testedSha": "a8968523bc8f7cc69c09da06a3c71beb3d2d23c7"
+        }
+      ],
+      "evidence": [
+        "docs/official-results/or09-import-execution.md",
+        "docs/official-results/openapi.json",
+        "verification/acceptance-matrix.json"
+      ],
       "blockers": [],
-      "decisions": [],
-      "nextAction": null
+      "decisions": [
+        "The unit commit marker and grade revisions commit in the same transaction.",
+        "The worker preserves independent success and validates read-set cell revisions rather than requiring the whole data generation to remain unchanged.",
+        "A real PostgreSQL interruption exposed a wrapped SQLSTATE. The worker classifies recognized disconnection and lock states for retry."
+      ],
+      "nextAction": "OR10: XLSX transport, safety and round-trip parity.",
+      "migrations": [
+        "20261121052500_official_results_import_execution"
+      ]
     },
     {
       "id": "OR10",
@@ -867,7 +908,8 @@
       "base": "codex/moazez-be-official-results-bulk",
       "baseSha": "d7a44d72da1fcd954296f582499a9845b25ba2bb",
       "scope": [
-        "OR08"
+        "OR08",
+        "OR09"
       ]
     }
   ]
