@@ -815,8 +815,33 @@ enum ResultConfigurationPreviewKind {
   DEFINITION_ADOPTION
   ROSTER_RECONCILIATION
   PUBLICATION_TOPOLOGY
+  EXPORT
 
   @@map("result_configuration_preview_kind")
+}
+
+enum ResultBulkFormat {
+  CSV
+  XLSX
+
+  @@map("result_bulk_format")
+}
+
+enum ResultExportMode {
+  EDIT_DRAFT
+  READ_PUBLISHED
+
+  @@map("result_export_mode")
+}
+
+enum ResultExportStatus {
+  QUEUED
+  GENERATING
+  READY
+  FAILED
+  EXPIRED
+
+  @@map("result_export_status")
 }
 
 enum ResultOperationStatus {
@@ -1928,6 +1953,8 @@ model School {
   resultPolicyPreviews    ResultPolicyPreview[]
   resultScopeGrants       OfficialResultScopeGrant[]
   resultCorrectionWindows ResultCorrectionWindow[]
+  resultExports           ResultExport[]
+  resultExportFiles       ResultExportFile[]
   resultCommandReceipts   ResultCommandReceipt[]
 
   resultTemplates             ResultTemplate[]
@@ -2199,6 +2226,7 @@ model User {
   resultTemplateVersions      ResultTemplateVersion[]      @relation("ResultTemplateVersionAuthor")
   resultDesignCandidates      ResultDesignCandidate[]      @relation("ResultDesignCandidateAuthor")
   resultDesignReviews         ResultDesignCandidate[]      @relation("ResultDesignCandidateReviewer")
+  resultExports               ResultExport[]               @relation("ResultExportCreator")
   resultConfigurationPreviews ResultConfigurationPreview[] @relation("ResultConfigurationPreviewAuthor")
   resultCandidatesSubmitted   ResultReleaseCandidate[]     @relation("ResultReleaseCandidateSubmitter")
   resultReviewDecisions       ResultReviewDecision[]       @relation("ResultReviewDecisionActor")
@@ -6161,6 +6189,7 @@ model ResultReportingPeriod {
   academicYear        AcademicYear               @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
   term                Term?                      @relation(fields: [termId, schoolId, academicYearId], references: [id, schoolId, academicYearId], onDelete: Restrict, onUpdate: Restrict)
   sheets              ResultSheet[]
+  resultExports       ResultExport[]
   slots               ResultSlot[]
   aggregateCandidates ResultAggregateCandidate[]
 
@@ -9781,4 +9810,63 @@ model GradeScoringSuggestion {
   @@index([evaluatedById])
   @@index([appliedById])
   @@map("grade_scoring_suggestions")
+}
+
+model ResultExport {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String             @map("school_id") @db.Uuid
+  reportingPeriodId String             @map("reporting_period_id") @db.Uuid
+  creatorId         String             @map("creator_id") @db.Uuid
+  actorContext      Json               @map("actor_context")
+  request           Json
+  selectionDigest   String             @map("selection_digest") @db.Char(64)
+  summary           Json
+  format            ResultBulkFormat
+  mode              ResultExportMode
+  status            ResultExportStatus @default(QUEUED)
+  attempts          Int                @default(0)
+  leaseToken        String?            @map("lease_token") @db.Uuid
+  leaseUntil        DateTime?          @map("lease_until") @db.Timestamptz(3)
+  failureCode       String?            @map("failure_code") @db.VarChar(120)
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  reuseUntil        DateTime           @map("reuse_until") @db.Timestamptz(3)
+  expiresAt         DateTime           @map("expires_at") @db.Timestamptz(3)
+
+  school  School                @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  period  ResultReportingPeriod @relation(fields: [reportingPeriodId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  creator User                  @relation("ResultExportCreator", fields: [creatorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  files   ResultExportFile[]
+
+  @@unique([id, schoolId])
+  @@index([schoolId, creatorId, id])
+  @@index([reportingPeriodId, schoolId])
+  @@index([status, leaseUntil])
+  @@index([expiresAt])
+  @@map("result_exports")
+}
+
+model ResultExportFile {
+  id        String    @id @db.Uuid
+  schoolId  String    @map("school_id") @db.Uuid
+  exportId  String    @map("export_id") @db.Uuid
+  position  Int
+  filename  String    @db.VarChar(180)
+  mediaType String    @map("media_type") @db.VarChar(140)
+  bucket    String    @db.VarChar(255)
+  objectKey String    @unique @map("object_key") @db.VarChar(512)
+  sizeBytes Int       @map("size_bytes")
+  checksum  String    @db.Char(64)
+  manifest  Json?
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  school School       @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  export ResultExport @relation(fields: [exportId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([id, schoolId])
+  @@unique([exportId, position])
+  @@index([schoolId, exportId])
+  @@map("result_export_files")
 }

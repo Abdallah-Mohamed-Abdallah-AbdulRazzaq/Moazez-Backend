@@ -1,6 +1,15 @@
 import { Module } from '@nestjs/common';
+import { QueueModule } from '../../infrastructure/queue/queue.module';
+import { StorageModule } from '../../infrastructure/storage/storage.module';
+import { ResultExportService } from './application/result-export.service';
+import { ResultExportPlanService } from './application/result-export-plan.service';
+import {
+  ResultExportController,
+  TeacherResultExportController,
+} from './controller/result-export.controller';
 import { PrismaModule } from '../../infrastructure/database/prisma.module';
-import { TeacherAllocationModule } from '../academics/teacher-allocation/teacher-allocation.module';
+import { TeacherAllocationOperationalWriteGate } from '../academics/teacher-allocation/application/teacher-allocation-operational-write-gate';
+import { PrismaTeacherAllocationOperationalWriteGate } from '../academics/teacher-allocation/infrastructure/prisma-teacher-allocation-operational-write-gate';
 import { ResultCapabilitiesService } from './application/result-capabilities.service';
 import { ResultCatalogService } from './application/result-catalog.service';
 import { ResultDesignService } from './application/result-design.service';
@@ -56,21 +65,14 @@ import { ResultRosterRepository } from './infrastructure/repositories/result-ros
 import { ResultScopeFactsRepository } from './infrastructure/repositories/result-scope-facts.repository';
 
 @Module({
-  imports: [PrismaModule, TeacherAllocationModule],
-  controllers: [
-    ResultAggregateController,
-    ParentOfficialResultsController,
-    StudentOfficialResultsController,
-    ResultReleaseController,
-    TeacherResultReleaseController,
-    ResultGradebookController,
-    TeacherResultGradebookController,
-    ResultAuthoringController,
-    TeacherResultAuthoringController,
-    ResultConfigurationController,
-    TeacherResultConfigurationController,
-  ],
+  imports: [PrismaModule, QueueModule, StorageModule],
   providers: [
+    {
+      provide: TeacherAllocationOperationalWriteGate,
+      useClass: PrismaTeacherAllocationOperationalWriteGate,
+    },
+    ResultExportPlanService,
+    ResultExportService,
     ResultAggregateRepository,
     ResultAggregateService,
     ResultFamilyRepository,
@@ -102,7 +104,42 @@ import { ResultScopeFactsRepository } from './infrastructure/repositories/result
     ResultPolicyService,
     ResultScopeService,
     ResultTemplateService,
-    ResultErrorFilter,
   ],
+  exports: [
+    ResultAggregateService,
+    ResultCapabilitiesService,
+    ResultCatalogService,
+    ResultDesignService,
+    ResultExportService,
+    ResultFamilyService,
+    ResultGradebookService,
+    ResultGrantService,
+    ResultPolicyService,
+    ResultReleaseService,
+    ResultRosterReconcileService,
+    ResultScopeService,
+    ResultTemplateService,
+  ],
+})
+export class OfficialResultsServicesModule {}
+
+@Module({
+  imports: [OfficialResultsServicesModule],
+  controllers: [
+    ResultExportController,
+    TeacherResultExportController,
+    ResultAggregateController,
+    ParentOfficialResultsController,
+    StudentOfficialResultsController,
+    ResultReleaseController,
+    TeacherResultReleaseController,
+    ResultGradebookController,
+    TeacherResultGradebookController,
+    ResultAuthoringController,
+    TeacherResultAuthoringController,
+    ResultConfigurationController,
+    TeacherResultConfigurationController,
+  ],
+  providers: [ResultErrorFilter],
 })
 export class OfficialResultsModule {}

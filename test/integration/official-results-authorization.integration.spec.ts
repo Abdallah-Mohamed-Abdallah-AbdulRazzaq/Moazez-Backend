@@ -9,6 +9,11 @@ import { Test } from '@nestjs/testing';
 import { UserType } from '@prisma/client';
 import type { Request, Response, NextFunction } from 'express';
 import request from 'supertest';
+import { parse as parseCsv } from 'csv-parse/sync';
+import { QueueModule } from '../../src/infrastructure/queue/queue.module';
+import { ResultBulkWorker } from '../../src/modules/official-results/infrastructure/result-bulk.worker';
+import { exportOutputs } from '../../src/modules/official-results/dto/result-export.dto';
+import type { ExportManifest } from '../../src/modules/official-results/domain/result-export.contract';
 import {
   createRequestContext,
   getRequestContext,
@@ -38,7 +43,10 @@ import { resultContracts } from '../../src/modules/official-results/dto/result-o
 import { ResultAuthorizationRepository } from '../../src/modules/official-results/infrastructure/repositories/result-authorization.repository';
 import { ResultCommandRepository } from '../../src/modules/official-results/infrastructure/repositories/result-command.repository';
 import { ResultFoundationRepository } from '../../src/modules/official-results/infrastructure/repositories/result-foundation.repository';
-import { OfficialResultsModule } from '../../src/modules/official-results/official-results.module';
+import {
+  OfficialResultsModule,
+  OfficialResultsServicesModule,
+} from '../../src/modules/official-results/official-results.module';
 import {
   assertResultsTestDatabase,
   createResultsSchool,
@@ -179,7 +187,10 @@ describe('Official Results policy and permission boundaries', () => {
       imports: [
         ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
         OfficialResultsModule,
+        OfficialResultsServicesModule,
+        QueueModule,
       ],
+      providers: [ResultBulkWorker],
     })
       .overrideProvider(PrismaService)
       .useValue(prisma)
@@ -380,7 +391,7 @@ describe('Official Results policy and permission boundaries', () => {
         'utf8',
       ),
     ) as {
-      contracts: Record<string, { requiredFields: string[] }>;
+      contracts: Record<string, { kind: string; requiredFields: string[] }>;
       operations: {
         path: string;
         method: string;
@@ -404,6 +415,7 @@ describe('Official Results policy and permission boundaries', () => {
                   string,
                   {
                     schema?: {
+                      format?: string;
                       properties?: { data?: { required?: string[] } };
                     };
                   }
@@ -420,7 +432,7 @@ describe('Official Results policy and permission boundaries', () => {
         }),
       ),
     );
-    expect(registered).toHaveLength(89);
+    expect(registered).toHaveLength(99);
     for (const endpoint of registered) {
       expect(catalog.operations).toContainEqual(
         expect.objectContaining({
@@ -435,15 +447,19 @@ describe('Official Results policy and permission boundaries', () => {
       expect(endpoint.responses).toHaveProperty(
         String(operation.successStatus),
       );
-      expect(
-        endpoint.responses[operation.successStatus].content?.[
-          'application/json'
-        ].schema?.properties?.data?.required,
-      ).toEqual(
-        expect.arrayContaining(
-          catalog.contracts[operation.outputContract].requiredFields,
-        ),
-      );
+      const content = endpoint.responses[operation.successStatus].content;
+      const contract = catalog.contracts[operation.outputContract];
+      if (contract.kind === 'binary') {
+        const schemas = Object.values(content ?? {});
+        expect(schemas.length).toBeGreaterThan(0);
+        expect(schemas.every(({ schema }) => schema?.format === 'binary')).toBe(
+          true,
+        );
+      } else {
+        expect(
+          content?.['application/json'].schema?.properties?.data?.required,
+        ).toEqual(expect.arrayContaining(contract.requiredFields));
+      }
       const header = endpoint.parameters.find(
         (parameter) =>
           parameter.in === 'header' && parameter.name === 'Idempotency-Key',
@@ -2447,6 +2463,314 @@ describe('Official Results policy and permission boundaries', () => {
       overallScore: null,
       overallMaxScore: null,
     });
+  });
+
+  const exportTeacher = (
+    method: 'post' | 'get',
+    path: string,
+    actor = 'teacher-fixture',
+  ) =>
+    schoolApi()
+      [method](instructor + path)
+      .set('Authorization', 'Bearer ' + actor);
+
+  async function waitForExport(
+    path: string,
+    fetch: (path: string) => ReturnType<typeof withTeacher>,
+  ) {
+    for (let attempts = 0; attempts < 100; attempts++) {
+      const response = await fetch(path).expect(200);
+      const job = exportOutputs.export.parse(response.body.data);
+      if (job.status === 'READY') return job;
+      if (job.status === 'FAILED')
+        throw new Error(job.failureCode ?? job.status);
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error('Export did not become ready');
+  }
+
+  it('T057, T059, T060 and T061 export a populated exact teacher roster/field subset through Redis and private MinIO', async () => {
+    const book = await liveGradebook('TEACHER-EXPORT');
+    await book
+      .patch([scoreOperation(book.slot.id, book.scores[0].id, '0')])
+      .expect(200);
+    const input = {
+      reportingPeriodId: book.reportingPeriodId,
+      academicScope: { level: 'CLASSROOM', ids: [school.classroom.id] },
+      groupIds: [math.id],
+      format: 'CSV',
+      mode: 'EDIT_DRAFT',
+      selectedFieldIds: [book.scores[0].id],
+      selectedSlotIds: [book.slot.id],
+    };
+    await exportTeacher('post', '/exports/preview')
+      .send({
+        ...input,
+        academicScope: { level: 'CLASSROOM', ids: [school.otherClassroom.id] },
+        selectedSlotIds: undefined,
+      })
+      .expect(404);
+    await exportTeacher('post', '/exports/preview')
+      .send({ ...input, selectedFieldIds: [book.internal.id] })
+      .expect(404);
+    const preview = exportOutputs.preview.parse(
+      (await exportTeacher('post', '/exports/preview').send(input).expect(200))
+        .body.data,
+    );
+    expect(preview.blockers).toEqual([]);
+    expect(preview.summary).toMatchObject({
+      sheetCount: 1,
+      rowCount: 1,
+      sheets: [{ fields: [{ fieldId: book.scores[0].id }] }],
+    });
+    const key = randomUUID();
+    const create = (requestKey: string) =>
+      exportTeacher('post', '/exports')
+        .set('Idempotency-Key', requestKey)
+        .send({
+          previewId: preview.previewId,
+          previewDigest: preview.previewDigest,
+        })
+        .expect(202)
+        .then((response) => exportOutputs.export.parse(response.body.data));
+    const [first, retry, second] = await Promise.all([
+      create(key),
+      create(key),
+      create(randomUUID()),
+    ]);
+    expect(retry.exportId).toBe(first.exportId);
+    expect(second.exportId).not.toBe(first.exportId);
+    const jobs = await Promise.all(
+      [first, second].map(({ exportId }) =>
+        waitForExport('/exports/' + exportId, withTeacher),
+      ),
+    );
+    expect(jobs[0].files[0].filename).not.toBe(jobs[1].files[0].filename);
+    for (const job of jobs) {
+      const file = job.files[0];
+      const downloadPath = file.downloadPath.slice(instructor.length);
+      const download = await exportTeacher('get', downloadPath)
+        .expect(200)
+        .expect('Cache-Control', 'private, no-store')
+        .expect('X-Content-Type-Options', 'nosniff');
+      expect(download.headers['content-disposition']).toBe(
+        'attachment; filename="' + file.filename + '"',
+      );
+      expect(download.text.startsWith('\ufeff')).toBe(true);
+      const rows = parseCsv(download.text, { bom: true });
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toHaveLength(20);
+      expect(rows[0][18]).toContain('[f:' + book.scores[0].id + ':value]');
+      expect(rows[1][0]).toBe(file.fileId);
+      expect(rows[1][4]).toBe(book.enrollment.id);
+      expect(rows[1][6]).toBe('TEACHER-EXPORT Fixture');
+      expect(rows[1][7]).toBe(
+        (
+          await prisma.school.findUniqueOrThrow({
+            where: { id: school.school.id },
+          })
+        ).name,
+      );
+      expect(rows[1][14]).toBe('فصل 1');
+      expect(rows[1][18]).toBe('0.00');
+      const fileRow = await prisma.resultExportFile.findUniqueOrThrow({
+        where: { id: file.fileId },
+      });
+      const manifest = fileRow.manifest as unknown as ExportManifest;
+      expect(manifest.rows[0]).toMatchObject({
+        rowRef: rows[1][1],
+        base: [
+          {
+            fieldId: book.scores[0].id,
+            version: 1,
+            value: { status: 'RECORDED', score: '0.00' },
+          },
+        ],
+      });
+      expect(await prisma.file.count({ where: { id: file.fileId } })).toBe(0);
+      await exportTeacher('get', downloadPath, 'co-teacher-fixture').expect(
+        404,
+      );
+    }
+  });
+
+  it('T058 and T060 package heterogeneous real classroom rosters and revoke the whole download after allocation loss', async () => {
+    const book = await liveGradebook('GRADE-EXPORT');
+    const other = await school.addStudent('Other class export');
+    await prisma.enrollment.create({
+      data: {
+        schoolId: school.school.id,
+        academicYearId: school.year.id,
+        termId: school.term.id,
+        studentId: other.id,
+        classroomId: school.otherClassroom.id,
+        enrolledAt: new Date('2026-09-01T08:00:00Z'),
+      },
+    });
+    // A second group pins its own schema in the other classroom.
+    const extraDefinition = cloneResultDefinition(moazezStarterDefinition(), {
+      ar: 'ملف ثان',
+      en: 'Second schema',
+    }).definition;
+    const group = await school.run(() =>
+      foundation.createGroup({
+        kind: 'CUSTOM',
+        code: 'EXPTWO',
+        label: { ar: 'مجموعة ثانية', en: 'Second export group' },
+      }),
+    );
+    const otherSheet = (
+      await school.run(() =>
+        foundation.materialize({
+          reportingPeriodId: book.reportingPeriodId,
+          groupId: group.id,
+          classroomId: school.otherClassroom.id,
+          rosterAsOf: new Date('2026-11-21T10:00:00Z'),
+          definition: sheetDefinitionSeed({
+            ...extraDefinition,
+            groupKind: 'CUSTOM',
+          }),
+          acceptsDefinition: true,
+        }),
+      )
+    ).sheet;
+    const otherSlot = await prisma.resultSlot.findFirstOrThrow({
+      where: { sheetId: otherSheet.id, studentId: other.id },
+    });
+    const grant = await prisma.officialResultScopeGrant.create({
+      data: {
+        schoolId: school.school.id,
+        granteeUserId: coTeacher.actor.id,
+        issuerId: school.actor.id,
+        reportingPeriodIds: [book.reportingPeriodId],
+        groupIds: [group.id],
+        classroomIds: [school.otherClassroom.id],
+        fieldIds: [],
+        actions: ['VIEW', 'EDIT', 'EXPORT', 'IMPORT'],
+        reason: 'Two-class export fixture',
+        startsAt: new Date(Date.now() - 1_000),
+      },
+    });
+    const preview = exportOutputs.preview.parse(
+      (
+        await exportTeacher('post', '/exports/preview', 'co-teacher-fixture')
+          .send({
+            reportingPeriodId: book.reportingPeriodId,
+            academicScope: { level: 'GRADE', ids: [school.grade.id] },
+            groupIds: [math.id, group.id],
+            format: 'CSV',
+            mode: 'EDIT_DRAFT',
+            selectedSlotIds: [book.slot.id, otherSlot.id],
+          })
+          .expect(200)
+      ).body.data,
+    );
+    expect(preview.summary.sheetCount).toBe(2);
+    const receipt = exportOutputs.export.parse(
+      (
+        await exportTeacher('post', '/exports', 'co-teacher-fixture')
+          .set('Idempotency-Key', randomUUID())
+          .send({
+            previewId: preview.previewId,
+            previewDigest: preview.previewDigest,
+          })
+          .expect(202)
+      ).body.data,
+    );
+    const job = await waitForExport('/exports/' + receipt.exportId, (path) =>
+      exportTeacher('get', path, 'co-teacher-fixture'),
+    );
+    expect(job.files.map((file) => file.mediaType)).toEqual([
+      'text/csv; charset=utf-8',
+      'text/csv; charset=utf-8',
+      'application/zip',
+    ]);
+    const zip = job.files[2];
+    const url = zip.downloadPath.slice(instructor.length);
+    const downloaded = await exportTeacher('get', url, 'co-teacher-fixture')
+      .buffer(true)
+      .parse((response, callback) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => chunks.push(chunk));
+        response.on('end', () => callback(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
+    const bytes = downloaded.body as Buffer;
+    expect(bytes.subarray(0, 4).toString('hex')).toBe('504b0304');
+    expect(bytes.includes('index.csv')).toBe(true);
+    expect(bytes.includes('instructions.txt')).toBe(true);
+    expect(
+      job.files.slice(0, 2).every((file) => bytes.includes(file.filename)),
+    ).toBe(true);
+    await prisma.officialResultScopeGrant.update({
+      where: { id: grant.id },
+      data: {
+        revokedAt: new Date(),
+        revokedById: school.actor.id,
+        revocationReason: 'Reassigned',
+      },
+    });
+    await exportTeacher('get', url, 'co-teacher-fixture').expect(404);
+    await exportTeacher(
+      'get',
+      '/exports/' + receipt.exportId,
+      'co-teacher-fixture',
+    ).expect(404);
+  });
+
+  it('rejects stale editable export selections and emits only published values in read-only exports', async () => {
+    const book = await readyRelease('PUBLISHED-EXPORT');
+    const candidate = (await book.capture())!;
+    await decideCandidate(candidate).expect(200);
+    await publishCandidate(candidate, 0, null).expect(202);
+    const input = {
+      reportingPeriodId: book.reportingPeriodId,
+      academicScope: { level: 'CLASSROOM', ids: [school.classroom.id] },
+      groupIds: [math.id],
+      format: 'CSV',
+      mode: 'EDIT_DRAFT',
+      selectedFieldIds: [book.scores[0].id],
+      selectedSlotIds: [book.slot.id],
+    };
+    const preview = (mode: string) =>
+      exportTeacher('post', '/exports/preview')
+        .send({ ...input, mode })
+        .expect(200)
+        .then((response) => exportOutputs.preview.parse(response.body.data));
+    const start = (plan: Awaited<ReturnType<typeof preview>>, status: number) =>
+      exportTeacher('post', '/exports')
+        .set('Idempotency-Key', randomUUID())
+        .send({
+          previewId: plan.previewId,
+          previewDigest: plan.previewDigest,
+        })
+        .expect(status);
+    const editable = await preview('EDIT_DRAFT');
+    await book
+      .patch([scoreOperation(book.slot.id, book.scores[0].id, '19.00', 1)])
+      .expect(200);
+    await start(editable, 409);
+    const released = await preview('READ_PUBLISHED');
+    const receipt = exportOutputs.export.parse(
+      (await start(released, 202)).body.data,
+    );
+    const job = await waitForExport(
+      '/exports/' + receipt.exportId,
+      withTeacher,
+    );
+    const downloaded = await exportTeacher(
+      'get',
+      job.files[0].downloadPath.slice(instructor.length),
+    ).expect(200);
+    const rows = parseCsv(downloaded.text, { bom: true });
+    expect(rows[0][18]).toContain('[r:' + book.scores[0].id + ':value]');
+    expect(rows[1][18]).toBe('18.00');
+    const artifact = await prisma.resultExportFile.findUniqueOrThrow({
+      where: { id: job.files[0].fileId },
+    });
+    const manifest = artifact.manifest as unknown as ExportManifest;
+    expect(manifest.request.mode).toBe('READ_PUBLISHED');
+    expect(manifest.rows[0].publicationIds).toHaveLength(1);
   });
 
   it('T013 denies an edit waiting on a concurrent allocation revocation', async () => {

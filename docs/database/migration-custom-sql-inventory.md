@@ -721,3 +721,14 @@ entitlements and versioned, published-only aggregate evidence.
 | result_entitlement_revocation_check | Revocation records actor, time, and reason together. |
 | result_aggregate_candidate_payload_check | Candidate payloads carry a positive revision, object result and exact digest. |
 | result_aggregate_profile_version_immutable, result_aggregate_decision_immutable, result_aggregate_publication_immutable, result_aggregate_dependency_immutable | The existing invoker trigger protects frozen aggregate evidence. |
+
+## OR07 Official Results export
+
+Migration `20261121043500_official_results_exports` adds durable export jobs
+and privately owned artifact manifests. The export period and file owner are
+bound with same-school foreign keys.
+
+| PostgreSQL-specific object | Invariant |
+| --- | --- |
+| result_export_lease_consistent, result_export_valid_lifetime, result_export_positive_attempts | Generating jobs have both lease fields. Attempts and ordered retention times are bounded. |
+| result_export_file_metadata, result_export_file_manifest | Artifact payloads have positive length and a SHA-256 digest. A downloadable package has typed manifests on its individual spreadsheet members. |
