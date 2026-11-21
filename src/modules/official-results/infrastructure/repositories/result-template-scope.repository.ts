@@ -27,6 +27,23 @@ export interface TemplateAssignmentInput extends ResultSelector {
 
 @Injectable()
 export class ResultTemplateScopeRepository {
+  async operationSheetTarget(
+    client: Prisma.TransactionClient,
+    schoolId: string,
+    sheetId: string,
+    slotId: string,
+  ) {
+    const row = await client.resultSheet.findFirst({
+      where: {
+        schoolId,
+        id: sheetId,
+        slots: { some: { schoolId, id: slotId } },
+      },
+      select: { classroomId: true, reportingPeriodId: true, groupId: true },
+    });
+    if (!row) throw new NotFoundDomainException();
+    return row;
+  }
   constructor(private readonly facts: ResultScopeFactsRepository) {}
 
   async activeRules(

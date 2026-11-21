@@ -26,6 +26,7 @@ import {
 import { ResultPreviewRepository } from '../infrastructure/repositories/result-preview.repository';
 import { ResultRosterReconcileRepository } from '../infrastructure/repositories/result-roster-reconcile.repository';
 import { ResultRosterRepository } from '../infrastructure/repositories/result-roster.repository';
+import { ResultReleaseRepository } from '../infrastructure/repositories/result-release.repository';
 import { requireResultActor } from './result-actor';
 import { presentResultSheet } from './result-gradebook.presenter';
 
@@ -60,6 +61,7 @@ export class ResultRosterReconcileService {
     private readonly roster: ResultRosterRepository,
     private readonly edits: ResultRosterReconcileRepository,
     private readonly previews: ResultPreviewRepository,
+    private readonly releases: ResultReleaseRepository,
   ) {}
 
   preview(sheetId: string, input: RosterPreviewInput) {
@@ -287,6 +289,7 @@ export class ResultRosterReconcileService {
           }
           if (decisions.size || additions.length) {
             await this.edits.bump(client, actor.schoolId, sheets, asOf);
+            await this.releases.invalidateSheet(client, actor.schoolId, sheets);
             await this.commands.audit(
               client,
               actor,

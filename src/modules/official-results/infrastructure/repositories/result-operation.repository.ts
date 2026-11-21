@@ -15,6 +15,20 @@ export const materializationItem = z.object({
 });
 export type MaterializationItem = z.infer<typeof materializationItem>;
 
+export const releaseOperationItem = z.object({
+  sheetId: z.uuid(),
+  slotId: z.uuid(),
+  releaseUnitId: z.uuid(),
+  status: z.literal('COMPLETED'),
+  candidateId: z.uuid().optional(),
+  publicationId: z.uuid().optional(),
+});
+export const resultOperationItem = z.union([
+  materializationItem,
+  releaseOperationItem,
+]);
+type OperationItem = z.infer<typeof resultOperationItem>;
+
 export const resultOperationCounts = z.object({
   total: z.number().int().min(0),
   completed: z.number().int().min(0),
@@ -49,6 +63,15 @@ export class ResultOperationRepository {
     actor: ResultActor,
     items: MaterializationItem[],
   ) {
+    return this.createBatch(client, actor, 'SHEET_MATERIALIZATION', items);
+  }
+
+  createBatch(
+    client: Prisma.TransactionClient,
+    actor: ResultActor,
+    type: string,
+    items: OperationItem[],
+  ) {
     const counts = {
       total: items.length,
       completed: items.length,
@@ -60,7 +83,7 @@ export class ResultOperationRepository {
       data: {
         schoolId: actor.schoolId,
         actorId: actor.actorId,
-        operationType: 'SHEET_MATERIALIZATION',
+        operationType: type,
         status: 'COMPLETED',
         counts,
         items,
@@ -78,13 +101,12 @@ export class ResultOperationRepository {
         id,
         schoolId: actor.schoolId,
         actorId: actor.actorId,
-        operationType: 'SHEET_MATERIALIZATION',
       },
     });
     if (!operation) throw new NotFoundDomainException();
     return {
       operation,
-      items: z.array(materializationItem).parse(operation.items),
+      items: z.array(resultOperationItem).parse(operation.items),
     };
   }
 }

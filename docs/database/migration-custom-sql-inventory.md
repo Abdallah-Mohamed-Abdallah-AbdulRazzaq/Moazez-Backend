@@ -697,3 +697,16 @@ and enrollments.
 | --- | --- |
 | result_placement_revision_shape_check | An addition has no prior placement. A move records explicit mapping if applicable. All revisions have a nonblank reason and positive version. |
 | result_placement_revision_immutable | The existing invoker trigger prevents editing or removing placement history. |
+
+## OR05 Official Results review and publication
+
+`20261121040350_official_results_publication` adds frozen candidate snapshots,
+separate candidate state and review decisions, immutable publication revisions,
+current release pointers, correction drafts, event history, and notification intent.
+
+| PostgreSQL-specific object | Invariant |
+| --- | --- |
+| result_candidate_frozen_payload_check | Candidate snapshots have valid revision and content digests. |
+| result_publication_review_check | Direct authorization has no reviewer decision. Reviewed authorization records one. |
+| result_review_comment_check, result_release_event_check | Returns and revocations require reasons. |
+| result_release_candidate_immutable, result_review_decision_immutable, result_publication_immutable, result_release_event_immutable, result_correction_draft_immutable | The existing invoker trigger rejects changes to frozen release evidence. |

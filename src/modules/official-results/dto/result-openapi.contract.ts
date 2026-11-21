@@ -181,10 +181,15 @@ export function ResultEndpoint(
   response: z.ZodType,
   status = 200,
   idempotency?: 'REQUIRED' | 'OPTIONAL',
+  additionalPermissions: string[] = [],
 ): MethodDecorator {
   return applyDecorators(
     ApiOperation({ operationId }),
-    RequiredPermissions(`official_results.${permission}`),
+    RequiredPermissions(
+      ...[permission, ...additionalPermissions].map(
+        (code) => `official_results.${code}`,
+      ),
+    ),
     ApiResponse({
       status,
       schema: resultOpenApiSchema(z.object({ data: response })),

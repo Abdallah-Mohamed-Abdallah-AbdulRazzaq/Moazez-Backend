@@ -760,11 +760,61 @@ enum ResultTemplateAssignmentMode {
   @@map("result_template_assignment_mode")
 }
 
+enum ResultReleaseIntent {
+  REVIEW
+  DIRECT_PUBLICATION
+
+  @@map("result_release_intent")
+}
+
+enum ResultReleaseCandidateStatus {
+  SUBMITTED
+  READY_FOR_DIRECT
+  APPROVED
+  RETURNED
+  SUPERSEDED
+
+  @@map("result_release_candidate_status")
+}
+
+enum ResultReviewChoice {
+  APPROVE
+  RETURN
+
+  @@map("result_review_choice")
+}
+
+enum ResultReleaseAuthorization {
+  APPROVED
+  DIRECT
+  APPROVE_AND_PUBLISH
+
+  @@map("result_release_authorization")
+}
+
+enum ResultReleaseEventType {
+  PUBLISHED
+  SUPERSEDED
+  REVOKED
+
+  @@map("result_release_event_type")
+}
+
+enum ResultNoticeStatus {
+  PENDING
+  DELIVERED
+  SKIPPED
+  FAILED
+
+  @@map("result_notice_status")
+}
+
 enum ResultConfigurationPreviewKind {
   TEMPLATE_ACTIVATION
   SCOPE_RESOLUTION
   DEFINITION_ADOPTION
   ROSTER_RECONCILIATION
+  PUBLICATION_TOPOLOGY
 
   @@map("result_configuration_preview_kind")
 }
@@ -1870,6 +1920,7 @@ model School {
   resultFieldIdentities    ResultFieldIdentity[]
   resultSlots              ResultSlot[]
   resultPlacementRevisions ResultPlacementRevision[]
+  resultReleaseCandidates  ResultReleaseCandidate[]
 
   officialResultPolicy    OfficialResultPolicy?
   resultPolicyPreviews    ResultPolicyPreview[]
@@ -2147,6 +2198,11 @@ model User {
   resultDesignCandidates      ResultDesignCandidate[]      @relation("ResultDesignCandidateAuthor")
   resultDesignReviews         ResultDesignCandidate[]      @relation("ResultDesignCandidateReviewer")
   resultConfigurationPreviews ResultConfigurationPreview[] @relation("ResultConfigurationPreviewAuthor")
+  resultCandidatesSubmitted   ResultReleaseCandidate[]     @relation("ResultReleaseCandidateSubmitter")
+  resultReviewDecisions       ResultReviewDecision[]       @relation("ResultReviewDecisionActor")
+  resultPublicationsIssued    ResultPublication[]          @relation("ResultPublicationIssuer")
+  resultReleaseEvents         ResultReleaseEvent[]         @relation("ResultReleaseEventActor")
+  resultCorrectionDrafts      ResultCorrectionDraft[]      @relation("ResultCorrectionDraftAuthor")
   resultOperations            ResultOperation[]            @relation("ResultOperationActor")
 
   @@index([userType])
@@ -6188,7 +6244,8 @@ model ResultSheetDefinitionVersion {
   releaseUnits  ResultReleaseUnitDefinition[]
   cellRevisions ResultCellRevision[]
 
-  designCandidates ResultDesignCandidate[]
+  designCandidates  ResultDesignCandidate[]
+  releaseCandidates ResultReleaseCandidate[]
 
   @@unique([id, schoolId])
   @@unique([id, schoolId, sheetId], map: "result_definition_sheet_key")
@@ -6230,6 +6287,8 @@ model ResultReleaseUnitDefinition {
 
   definition ResultSheetDefinitionVersion @relation(fields: [definitionVersionId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "result_unit_definition_fk")
   fields     ResultFieldDefinition[]
+
+  releaseCandidates ResultReleaseCandidate[]
 
   @@unique([definitionVersionId, schoolId, unitId], map: "result_unit_definition_identity_key")
   @@unique([definitionVersionId, code], map: "result_unit_definition_code_key")
@@ -6298,8 +6357,10 @@ model ResultSlot {
   enrollment      Enrollment            @relation(fields: [enrollmentId, schoolId, studentId], references: [id, schoolId, studentId], onDelete: Restrict, onUpdate: Restrict, map: "result_slot_enrollment_student_fk")
   cells           ResultCell[]
 
-  correctionWindows ResultCorrectionWindow[]
-  placementHistory  ResultPlacementRevision[]
+  correctionWindows  ResultCorrectionWindow[]
+  placementHistory   ResultPlacementRevision[]
+  releaseCandidates  ResultReleaseCandidate[]
+  resultPublications ResultPublication[]
 
   @@unique([id, schoolId, reportingPeriodId], map: "result_slot_period_key")
   @@unique([id, schoolId])
@@ -6434,10 +6495,13 @@ model OfficialResultPolicyVersion {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  policy    OfficialResultPolicy   @relation("ResultPolicyOwnedVersions", fields: [policyId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
-  activeFor OfficialResultPolicy[] @relation("ResultPolicyActiveVersion")
-  author    User                   @relation("ResultPolicyAuthor", fields: [authorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  previews  ResultPolicyPreview[]
+  policy            OfficialResultPolicy     @relation("ResultPolicyOwnedVersions", fields: [policyId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  activeFor         OfficialResultPolicy[]   @relation("ResultPolicyActiveVersion")
+  author            User                     @relation("ResultPolicyAuthor", fields: [authorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  previews          ResultPolicyPreview[]
+  releaseCandidates ResultReleaseCandidate[]
+  reviewDecisions   ResultReviewDecision[]
+  publications      ResultPublication[]
 
   @@unique([id, schoolId])
   @@unique([id, schoolId, policyId], map: "result_policy_owned_version_key")
@@ -6678,6 +6742,204 @@ model ResultConfigurationPreview {
   @@index([schoolId, authorId, kind, expiresAt])
   @@index([authorId])
   @@map("result_configuration_previews")
+}
+
+model ResultReleaseCandidate {
+  id                   String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId             String              @map("school_id") @db.Uuid
+  sheetId              String              @map("sheet_id") @db.Uuid
+  slotId               String              @map("slot_id") @db.Uuid
+  definitionVersionId  String              @map("definition_version_id") @db.Uuid
+  releaseUnitId        String              @map("release_unit_id") @db.Uuid
+  policyVersionId      String?             @map("policy_version_id") @db.Uuid
+  correctionDraftId    String?             @map("correction_draft_id") @db.Uuid
+  submittedById        String              @map("submitted_by_id") @db.Uuid
+  intent               ResultReleaseIntent
+  contentDigest        String              @map("content_digest") @db.Char(64)
+  sourceFingerprint    String              @map("source_fingerprint") @db.Char(64)
+  capturedSlotRevision Int                 @map("captured_slot_revision")
+  snapshot             Json
+  submittedAt          DateTime            @default(now()) @map("submitted_at") @db.Timestamptz(3)
+  updatedAt            DateTime            @updatedAt @map("updated_at")
+
+  school      School                       @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  slot        ResultSlot                   @relation(fields: [slotId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  definition  ResultSheetDefinitionVersion @relation(fields: [definitionVersionId, schoolId, sheetId], references: [id, schoolId, sheetId], onDelete: Restrict, onUpdate: Restrict, map: "result_candidate_schema_fk")
+  releaseUnit ResultReleaseUnitDefinition  @relation(fields: [definitionVersionId, schoolId, releaseUnitId], references: [definitionVersionId, schoolId, unitId], onDelete: Restrict, onUpdate: Restrict, map: "result_candidate_release_unit_fk")
+  policy      OfficialResultPolicyVersion? @relation(fields: [policyVersionId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  correction  ResultCorrectionDraft?       @relation(fields: [correctionDraftId, schoolId, slotId], references: [id, schoolId, slotId], onDelete: Restrict, onUpdate: Restrict)
+  submittedBy User                         @relation("ResultReleaseCandidateSubmitter", fields: [submittedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  state       ResultReleaseCandidateState?
+  decision    ResultReviewDecision?
+  publication ResultPublication?
+
+  @@unique([id, schoolId])
+  @@unique([id, schoolId, slotId, releaseUnitId, definitionVersionId], map: "result_candidate_frozen_target_key")
+  @@index([schoolId, slotId, releaseUnitId, submittedAt])
+  @@index([schoolId, sheetId, submittedAt])
+  @@index([definitionVersionId, schoolId, sheetId])
+  @@index([definitionVersionId, schoolId, releaseUnitId])
+  @@index([policyVersionId, schoolId])
+  @@index([correctionDraftId, schoolId, slotId])
+  @@index([submittedById])
+  @@map("result_release_candidates")
+}
+
+model ResultReleaseCandidateState {
+  id          String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId    String                       @map("school_id") @db.Uuid
+  candidateId String                       @map("candidate_id") @db.Uuid
+  status      ResultReleaseCandidateStatus
+  revision    Int                          @default(1)
+  updatedAt   DateTime                     @updatedAt @map("updated_at")
+
+  candidate ResultReleaseCandidate @relation(fields: [candidateId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([candidateId, schoolId])
+  @@index([schoolId, status, updatedAt])
+  @@map("result_release_candidate_states")
+}
+
+model ResultReviewDecision {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String             @map("school_id") @db.Uuid
+  candidateId       String             @map("candidate_id") @db.Uuid
+  candidateRevision Int                @map("candidate_revision")
+  reviewerId        String             @map("reviewer_id") @db.Uuid
+  policyVersionId   String?            @map("policy_version_id") @db.Uuid
+  contentDigest     String             @map("content_digest") @db.Char(64)
+  decision          ResultReviewChoice
+  comment           String?            @db.VarChar(2000)
+  decidedAt         DateTime           @default(now()) @map("decided_at") @db.Timestamptz(3)
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  candidate   ResultReleaseCandidate       @relation(fields: [candidateId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  reviewer    User                         @relation("ResultReviewDecisionActor", fields: [reviewerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  policy      OfficialResultPolicyVersion? @relation(fields: [policyVersionId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  publication ResultPublication?
+
+  @@unique([candidateId, schoolId])
+  @@unique([id, schoolId, candidateId])
+  @@index([schoolId, decidedAt, id])
+  @@index([reviewerId])
+  @@index([policyVersionId, schoolId])
+  @@map("result_review_decisions")
+}
+
+model ResultPublication {
+  id                    String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId              String                     @map("school_id") @db.Uuid
+  candidateId           String                     @map("candidate_id") @db.Uuid
+  slotId                String                     @map("slot_id") @db.Uuid
+  releaseUnitId         String                     @map("release_unit_id") @db.Uuid
+  definitionVersionId   String                     @map("definition_version_id") @db.Uuid
+  predecessorId         String?                    @map("predecessor_id") @db.Uuid
+  reviewDecisionId      String?                    @map("review_decision_id") @db.Uuid
+  policyVersionId       String?                    @map("policy_version_id") @db.Uuid
+  publishedById         String                     @map("published_by_id") @db.Uuid
+  revision              Int
+  publicationGeneration Int                        @map("publication_generation")
+  authorizationMode     ResultReleaseAuthorization @map("authorization_mode")
+  publishedAt           DateTime                   @default(now()) @map("published_at") @db.Timestamptz(3)
+  updatedAt             DateTime                   @updatedAt @map("updated_at")
+
+  candidate       ResultReleaseCandidate       @relation(fields: [candidateId, schoolId, slotId, releaseUnitId, definitionVersionId], references: [id, schoolId, slotId, releaseUnitId, definitionVersionId], onDelete: Restrict, onUpdate: Restrict, map: "result_publication_candidate_fk")
+  slot            ResultSlot                   @relation(fields: [slotId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  predecessor     ResultPublication?           @relation("ResultPublicationPredecessor", fields: [predecessorId, schoolId, slotId, releaseUnitId], references: [id, schoolId, slotId, releaseUnitId], onDelete: Restrict, onUpdate: Restrict, map: "result_publication_predecessor_fk")
+  successors      ResultPublication[]          @relation("ResultPublicationPredecessor")
+  reviewDecision  ResultReviewDecision?        @relation(fields: [reviewDecisionId, schoolId, candidateId], references: [id, schoolId, candidateId], onDelete: Restrict, onUpdate: Restrict, map: "result_publication_decision_fk")
+  policy          OfficialResultPolicyVersion? @relation(fields: [policyVersionId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  publishedBy     User                         @relation("ResultPublicationIssuer", fields: [publishedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  activePointer   ResultCurrentRelease?
+  events          ResultReleaseEvent[]
+  correctionDraft ResultCorrectionDraft?
+  notice          ResultPublicationNotice?
+
+  @@unique([id, schoolId])
+  @@unique([id, schoolId, slotId], map: "result_publication_slot_key")
+  @@unique([id, schoolId, slotId, releaseUnitId], map: "result_publication_unit_key")
+  @@unique([candidateId, schoolId, slotId, releaseUnitId, definitionVersionId], map: "result_publication_candidate_key")
+  @@unique([reviewDecisionId, schoolId, candidateId], map: "result_publication_decision_key")
+  @@unique([schoolId, slotId, releaseUnitId, revision], map: "result_publication_slot_revision_key")
+  @@index([schoolId, slotId, publishedAt])
+  @@index([predecessorId, schoolId, slotId, releaseUnitId])
+  @@index([policyVersionId, schoolId])
+  @@index([publishedById])
+  @@map("result_publications")
+}
+
+model ResultCurrentRelease {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId      String   @map("school_id") @db.Uuid
+  slotId        String   @map("slot_id") @db.Uuid
+  releaseUnitId String   @map("release_unit_id") @db.Uuid
+  publicationId String   @map("publication_id") @db.Uuid
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  publication ResultPublication @relation(fields: [publicationId, schoolId, slotId, releaseUnitId], references: [id, schoolId, slotId, releaseUnitId], onDelete: Restrict, onUpdate: Restrict, map: "result_current_release_publication_fk")
+
+  @@unique([schoolId, slotId, releaseUnitId])
+  @@unique([publicationId, schoolId, slotId, releaseUnitId])
+  @@map("result_current_releases")
+}
+
+model ResultReleaseEvent {
+  id                    String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId              String                 @map("school_id") @db.Uuid
+  slotId                String                 @map("slot_id") @db.Uuid
+  publicationId         String                 @map("publication_id") @db.Uuid
+  actorId               String                 @map("actor_id") @db.Uuid
+  publicationGeneration Int                    @map("publication_generation")
+  event                 ResultReleaseEventType
+  reason                String?                @db.VarChar(2000)
+  replacementIds        String[]               @default([]) @map("replacement_ids") @db.Uuid
+  recordedAt            DateTime               @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  updatedAt             DateTime               @updatedAt @map("updated_at")
+
+  publication ResultPublication @relation(fields: [publicationId, schoolId, slotId], references: [id, schoolId, slotId], onDelete: Restrict, onUpdate: Restrict)
+  actor       User              @relation("ResultReleaseEventActor", fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([schoolId, publicationId, event])
+  @@index([schoolId, slotId, recordedAt])
+  @@index([actorId])
+  @@map("result_release_events")
+}
+
+model ResultCorrectionDraft {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId              String   @map("school_id") @db.Uuid
+  slotId                String   @map("slot_id") @db.Uuid
+  previousPublicationId String   @map("previous_publication_id") @db.Uuid
+  openedById            String   @map("opened_by_id") @db.Uuid
+  reason                String   @db.VarChar(2000)
+  openedAt              DateTime @default(now()) @map("opened_at") @db.Timestamptz(3)
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  previousPublication ResultPublication        @relation(fields: [previousPublicationId, schoolId, slotId], references: [id, schoolId, slotId], onDelete: Restrict, onUpdate: Restrict)
+  openedBy            User                     @relation("ResultCorrectionDraftAuthor", fields: [openedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  candidates          ResultReleaseCandidate[]
+
+  @@unique([id, schoolId, slotId])
+  @@unique([previousPublicationId, schoolId, slotId])
+  @@index([schoolId, slotId, openedAt])
+  @@index([openedById])
+  @@map("result_correction_drafts")
+}
+
+model ResultPublicationNotice {
+  id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId      String             @map("school_id") @db.Uuid
+  publicationId String             @map("publication_id") @db.Uuid
+  status        ResultNoticeStatus @default(PENDING)
+  attempts      Int                @default(0)
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+
+  publication ResultPublication @relation(fields: [publicationId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([publicationId, schoolId])
+  @@index([schoolId, status, createdAt])
+  @@map("result_publication_notices")
 }
 
 model ResultOperation {

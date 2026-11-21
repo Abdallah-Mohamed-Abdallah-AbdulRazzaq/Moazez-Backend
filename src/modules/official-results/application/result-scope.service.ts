@@ -278,13 +278,17 @@ export class ResultScopeService {
       if (after && !z.uuid().safeParse(after).success) {
         throw new ValidationDomainException('Invalid materialization cursor');
       }
+      const itemKey = (item: (typeof items)[number]) =>
+        'slotId' in item
+          ? (item.candidateId ?? item.publicationId ?? item.slotId)
+          : item.sheetId;
       const rows = items
-        .sort((a, b) => a.sheetId.localeCompare(b.sheetId))
-        .filter((item) => !after || item.sheetId > after);
+        .sort((a, b) => itemKey(a).localeCompare(itemKey(b)))
+        .filter((item) => !after || itemKey(item) > after);
       return presentResultPage(
         rows,
         limit,
-        (item) => item.sheetId,
+        itemKey,
         binding,
         'materialization-items',
       );
@@ -316,8 +320,23 @@ export class ResultScopeService {
         actor,
         id,
       );
-      for (const item of items)
-        await this.authorization.authorizedTarget(client, access, item, 'VIEW');
+      for (const item of items) {
+        const target =
+          'slotId' in item
+            ? await this.scopes.operationSheetTarget(
+                client,
+                actor.schoolId,
+                item.sheetId,
+                item.slotId,
+              )
+            : item;
+        await this.authorization.authorizedTarget(
+          client,
+          access,
+          target,
+          'VIEW',
+        );
+      }
       return present(operation, actor, items);
     });
   }

@@ -20,7 +20,7 @@ import {
 import { templateScopeSelector } from '../domain/result-template-rules';
 import { fieldMappingSchema } from '../domain/result-mapping';
 import {
-  materializationItem,
+  resultOperationItem,
   resultOperationCounts,
 } from '../infrastructure/repositories/result-operation.repository';
 import { ResultPageQueryDto } from './result-configuration.dto';
@@ -245,7 +245,7 @@ export const authoringOutputs = {
     conflicts: z.array(scopeTuple.extend({ code: z.string() })),
   }),
   operation,
-  operationItems: page(materializationItem),
+  operationItems: page(resultOperationItem),
   design,
   definitionPreview: preview.extend({
     impact: adoptionImpact,
