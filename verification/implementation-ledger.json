@@ -925,15 +925,111 @@
       "dependsOn": [
         "OR11"
       ],
-      "status": "NOT_STARTED",
-      "implementationSha": null,
-      "requirements": [],
-      "codePaths": [],
-      "testsExecuted": [],
-      "evidence": [],
+      "status": "IN_PROGRESS",
+      "implementationSha": "966c4290bec8e76db76f77c606f6c053865599a9",
+      "requirements": [
+        "R07",
+        "R08",
+        "R23",
+        "R24",
+        "R25"
+      ],
+      "codePaths": [
+        "src/modules/official-results/domain/result-exposure.ts",
+        "src/modules/official-results/infrastructure/result-json-transport.ts",
+        "src/modules/official-results/application/result-scope.service.ts",
+        "src/modules/official-results/infrastructure/repositories/result-foundation.repository.ts",
+        "test/integration/official-results-authorization.integration.spec.ts",
+        "test/integration/official-results-foundation.integration.spec.ts",
+        "docs/official-results/operations-and-client-handoff.md",
+        "docs/official-results/requirement-verification.md"
+      ],
+      "testsExecuted": [
+        {
+          "command": "node node_modules/jest/bin/jest.js --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+          "outcome": "PASS",
+          "testedSha": "9004e3f8f841fcaa8a477872115f96386e6daafc",
+          "result": "51 tests passed using the isolated PostgreSQL, Redis and MinIO fixture. The suite compared the actual generated Nest OpenAPI to the tracked artifact and exercised 137 cataloged operations."
+        },
+        {
+          "command": "npm run build",
+          "outcome": "PASS",
+          "testedSha": "9004e3f8f841fcaa8a477872115f96386e6daafc",
+          "result": "Nest build and the postbuild IAM reference-data bootstrap contract passed."
+        },
+        {
+          "command": "node node_modules/jest/bin/jest.js --runInBand --runTestsByPath <six official results domain suites>",
+          "outcome": "PASS",
+          "testedSha": "3461af23577af3274c0e4ed5c821a4fc2c71088f",
+          "result": "67 unit tests passed, including calculation vectors, schema authorization, policy, CSV, and XLSX."
+        },
+        {
+          "command": "prisma validate; migrate deploy; migrate status; migrate deploy; migrate diff --exit-code; npm run seed",
+          "outcome": "PASS",
+          "testedSha": "21d0f7a80a423a3e067d67958eb58ff23363ef64",
+          "result": "51 migrations applied to a fresh disposable PostgreSQL database. The schema was current, a second deploy was a no-op, and Prisma detected no schema difference. IAM seed reconciled 271 permissions and seven canonical roles."
+        },
+        {
+          "command": "git diff --check <planning baseline> HEAD; migration-artifact-manifest.cjs verify",
+          "outcome": "PASS",
+          "testedSha": "7355416b93e5675c21bbf2f3c4fccf717ebe4de3",
+          "result": "Whole-stack whitespace check passed. The migration artifact hash is 49141de247724a0a84e1abe0e9b34414dd528cd988ba2518ac4908d9a221cbc5."
+        },
+        {
+          "command": "Jest isolated legacy grades, homework-grade-sync, behavior, student app and parent app suites",
+          "outcome": "PASS",
+          "testedSha": "7355416b93e5675c21bbf2f3c4fccf717ebe4de3",
+          "result": "97 passed across five existing suites, with the engine enabled and the governed fixtures migrated and seeded."
+        },
+        {
+          "command": "Jest Official Results authorization and foundation suites",
+          "outcome": "FAIL",
+          "testedSha": "7355416b93e5675c21bbf2f3c4fccf717ebe4de3",
+          "result": "54 passed, one failed. T092 was sequenced after a deliberate allocation revocation in T013. The final test commit restores correct fixture order and removes repeated HTTP polling from the processing query budget."
+        },
+        {
+          "command": "Jest Official Results authorization and foundation suites",
+          "outcome": "PASS",
+          "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9",
+          "result": "55 integration tests passed with real PostgreSQL, Redis and MinIO. Verified 137 actual generated OpenAPI operations and authorization at all registered entry points."
+        },
+        {
+          "command": "Jest Official Results domain suites",
+          "outcome": "PASS",
+          "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9",
+          "result": "67 tests passed across six domain suites."
+        },
+        {
+          "command": "T092 representative concurrent load",
+          "outcome": "PASS",
+          "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9",
+          "result": "The official grid paged on a 3,333-student roster. Actual CSV export and validated atomic import wrote 9,999 cells while a second school read independently. Each processing phase stayed below 600 SQL statements. See the metrics evidence."
+        }
+      ],
+      "evidence": [
+        "docs/official-results/openapi.json",
+        "docs/official-results/contracts/endpoint-catalog.json",
+        "docs/official-results/operations-and-client-handoff.md",
+        "docs/official-results/requirement-verification.md",
+        "verification/acceptance-matrix.json",
+        "verification/official-results-load.json"
+      ],
       "blockers": [],
-      "decisions": [],
-      "nextAction": null
+      "decisions": [
+        "Use an explicit allowlist in shared environments. Suspension stops new authorized work claims and retains completed work. Maintenance can still expire temporary storage.",
+        "Use a 4 MiB JSON parser solely on school and teacher Official Results routes so explicit selections fit under a bounded request size.",
+        "Keep the shared application transaction defaults. Official Results scope preview and materialization have a 30-second bound for valid large rosters.",
+        "Keep certificate, PDF, signing and public QR deferred."
+      ],
+      "nextAction": "Record the canonical CI outcome and the final Nest build evidence before closing OR12.",
+      "migrations": [],
+      "permissionChanges": "None in OR12. The feature adds 27 Official Results permission codes in earlier phases.",
+      "canonicalCi": {
+        "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9",
+        "runId": 44878078529,
+        "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/actions/runs/44878078529",
+        "status": "IN_PROGRESS"
+      }
     }
   ],
   "release": {
@@ -941,7 +1037,7 @@
     "deployed": false,
     "productionMutationsAuthorized": false
   },
-  "branch": "codex/moazez-be-official-results-operations",
+  "branch": "codex/moazez-be-official-results-verification",
   "draftPullRequests": [
     {
       "number": 238,
@@ -991,7 +1087,7 @@
       "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/242",
       "branch": "codex/moazez-be-official-results-bulk",
       "base": "codex/moazez-be-official-results-family",
-      "baseSha": "80759ece",
+      "baseSha": "80759ece6bf0eedaa44115877a4e6c645cf8245c",
       "scope": [
         "OR07"
       ]
@@ -1022,9 +1118,19 @@
       "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/245",
       "branch": "codex/moazez-be-official-results-operations",
       "base": "codex/moazez-be-official-results-xlsx",
-      "baseSha": "9308511d",
+      "baseSha": "9308511da3b5598c21d756e53421c4176ca69ff4",
       "scope": [
         "OR11"
+      ]
+    },
+    {
+      "number": 246,
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/246",
+      "branch": "codex/moazez-be-official-results-verification",
+      "base": "codex/moazez-be-official-results-operations",
+      "baseSha": "04a748a5cbb14079da47268dfa237be9eac392e6",
+      "scope": [
+        "OR12"
       ]
     }
   ]

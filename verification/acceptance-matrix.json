@@ -11,11 +11,12 @@
       "level": "Integration",
       "given": "Enter official values with fields named Homework, Behavior and Tests",
       "expected": "No existing GradeItem, homework, behavior or reinforcement record is created or read as a value source",
-      "status": "NOT_RUN",
+      "status": "PASS",
       "persistenceEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-foundation.integration.spec.ts",
-      "remainingEvidence": "The normal grid mutation left assessment grades, homework, behavior and reinforcement counts unchanged. Review the final application regression in OR12.",
       "gradebookEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
-      "gradebookTestedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
+      "gradebookTestedSha": "dd937e2bdfe259d58f46a996d0d5116619164305",
+      "evidence": "Real HTTP writes to the Homework, Behavior and Tests official columns leave the legacy assessment, homework, behavior and reinforcement stores unchanged.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T002",
@@ -79,9 +80,10 @@
       "level": "Security",
       "given": "School A actor supplies School B IDs to every new route family",
       "expected": "404 or pre-resource auth denial consistent with existing policy; no existence/count/value leakage",
-      "status": "NOT_RUN",
+      "status": "PASS",
       "authorizationEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
-      "remainingEvidence": "Exercise all applicable implemented write and publication/import routes in the dependent phases."
+      "evidence": "Two authenticated tenant fixtures exercised resource and mutation isolation across the Official Results route families, including templates, sheets, reviews, published releases and bulk artifacts. Foreign reads and writes returned concealed errors and left the current release and execution state unchanged.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T007",
@@ -105,12 +107,13 @@
       "level": "Integration",
       "given": "MANAGED teacher creates custom fields then enters/imports draft scores",
       "expected": "Draft entry works before design approval; family output unchanged",
-      "status": "NOT_RUN",
+      "status": "PASS",
       "authoringEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
       "authoringTestedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f",
-      "remainingEvidence": "The teacher authored, adopted and wrote a valid grade to the unaccepted field through the real grid route. Import and published-family checks remain OR06 and OR09.",
       "gradebookEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
-      "gradebookTestedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
+      "gradebookTestedSha": "dd937e2bdfe259d58f46a996d0d5116619164305",
+      "evidence": "A MANAGED teacher designed, adopted, entered and confirmed a CSV import into a custom draft before design approval. The result remained absent from published storage.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T009",
@@ -121,9 +124,10 @@
       "level": "Security",
       "given": "AUTONOMOUS policy enabled but IAM publish absent",
       "expected": "No direct publish; effective capability explains missing authority",
-      "status": "NOT_RUN",
+      "status": "PASS",
       "authorizationEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
-      "remainingEvidence": "Exercise all applicable implemented write and publication/import routes in the dependent phases."
+      "evidence": "AUTONOMOUS settings left the no-publish role unchanged. Its live capabilities reported MISSING_PERMISSION and the direct publish HTTP request returned 403.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T010",
@@ -134,9 +138,10 @@
       "level": "Security",
       "given": "Teacher has publish permission but school requires review",
       "expected": "Direct publication denied; submit flow remains available",
-      "status": "NOT_RUN",
+      "status": "PASS",
       "authorizationEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
-      "remainingEvidence": "Exercise all applicable implemented write and publication/import routes in the dependent phases."
+      "evidence": "A teacher with the actual publication grant retained canSubmit, while managed policy rejected direct capture in the real HTTP review-and-publish flow.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T011",
@@ -147,7 +152,9 @@
       "level": "Integration",
       "given": "Grant template coverage for a whole stage",
       "expected": "Availability changes; actor access does not expand",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "A stage-wide template selected a later classroom in the school resolution. The same selector returned only the teacher's allocated classroom.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T012",
@@ -158,9 +165,10 @@
       "level": "Integration",
       "given": "Change school policy after import preview or candidate approval",
       "expected": "Recheck current policy; invalid authority or affected semantics cannot be grandfathered",
-      "status": "NOT_RUN",
+      "status": "PASS",
       "authorizationEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
-      "remainingEvidence": "Exercise all applicable implemented write and publication/import routes in the dependent phases."
+      "evidence": "Changing the live policy invalidated both an import preview and an approved release candidate. No grade or published pointer was written.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T013",
@@ -289,10 +297,11 @@
       "level": "Integration",
       "given": "Publish catalog v2 while sheet remains pinned v1",
       "expected": "Existing values/publications/export eligibility remain tied to sheet v1",
-      "status": "NOT_RUN",
+      "status": "PASS",
       "authoringEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
       "authoringTestedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f",
-      "remainingEvidence": "Catalog v2 activation leaves the existing sheet pinned to v1. Published snapshots and export reference behavior remain OR05 and OR07."
+      "evidence": "After catalog v2 activation the app read existing scores, exported the original bound field and sheet definition, and published the v1 snapshot.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T023",
@@ -304,10 +313,11 @@
       "level": "Integration",
       "given": "Upgrade actual sheet definition max20 to100 with old scores",
       "expected": "Preview required; no automatic rescale; affected reviews/imports invalidated",
-      "status": "NOT_RUN",
+      "status": "PASS",
       "authoringEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
       "authoringTestedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f",
-      "remainingEvidence": "Existing score 18 persists as 18 after the explicit maximum upgrade and receives a cell revision. Review and import invalidation remain OR05 and OR08."
+      "evidence": "Changing max20 to max100 required a reviewed field mapping. The PostgreSQL cell remained 18, and confirmation of the earlier import preview was denied.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T024",
@@ -556,10 +566,11 @@
       "level": "E2E",
       "given": "Publish Math before Science or one predefined release unit",
       "expected": "Only selected authorized units visible; completeness partial",
-      "status": "NOT_RUN",
+      "status": "PASS",
       "releaseEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
       "releaseTestedSha": "ffe611f1f1ff3c2bda3eb249eda51562a24d26f0",
-      "remainingEvidence": "Topology and disjoint explicit release selection verified. Family result partial projection follows in OR06."
+      "evidence": "The family endpoint returned one selected formative unit with PARTIAL completeness and a MISSING field. The other configured unit was absent.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T043",
@@ -570,10 +581,11 @@
       "level": "E2E",
       "given": "Correct published91 to92 with reason",
       "expected": "91 stays current until replacement; new immutable revision replaces pointer; history preserved",
-      "status": "NOT_RUN",
+      "status": "PASS",
       "releaseEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
       "releaseTestedSha": "ffe611f1f1ff3c2bda3eb249eda51562a24d26f0",
-      "remainingEvidence": "Original pointer and frozen result 91 observed until corrected release 92 commits. Family HTTP history follows in OR06."
+      "evidence": "The published 91 remained active until the concurrent CAS replacement by 92. Authorized family history exposed both exact distinct revisions.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T044",
@@ -623,10 +635,11 @@
       "level": "Integration",
       "given": "Revoke current release and retry same command",
       "expected": "Visibility removed once; dependent summary stale; no duplicate revoke event",
-      "status": "NOT_RUN",
+      "status": "PASS",
       "releaseEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
       "releaseTestedSha": "ffe611f1f1ff3c2bda3eb249eda51562a24d26f0",
-      "remainingEvidence": "One idempotent revocation and removal of the pointer verified. Aggregate dependency invalidation follows in OR06."
+      "evidence": "One revocation removed the active pointer, and replay preserved the result without another event. Active aggregate dependencies were independently verified to become stale on source replacement.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T048",
@@ -637,10 +650,11 @@
       "level": "Contract",
       "given": "Serialize student/parent dynamic SCORE/TEXT/SELECT/CALCULATED fields",
       "expected": "Stable IDs/types/order/maxima/decimal strings; no fixed subject keys or formulas needed to render",
-      "status": "NOT_RUN",
+      "status": "PASS",
       "familyEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
       "familyTestedSha": "c0eeb72e696ef2ee07417e626fbcb6ab3d4f7aa5",
-      "remainingEvidence": "Family HTTP response verifies immutable score/calculated structure and source schemas. Publish the explicit family TEXT/SELECT fixture through the app before closing."
+      "evidence": "Real published student/parent data contained typed SCORE, TEXT, SELECT and CALCULATED fields, stable identities, options and decimal values, without an exposed formula.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T049",
@@ -651,10 +665,11 @@
       "level": "Security",
       "given": "Insert internal note and pending correction in staff draft",
       "expected": "Neither content nor hidden field metadata leaks into family JSON/history/export",
-      "status": "NOT_RUN",
+      "status": "PASS",
       "familyEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
       "familyTestedSha": "c0eeb72e696ef2ee07417e626fbcb6ab3d4f7aa5",
-      "remainingEvidence": "Family read after staff note and pending correction verified. Exercise history and private artifact paths in OR07/OR11."
+      "evidence": "Family detail and history excluded a staff note and unpublished correction. A family export request and direct private artifact access were denied.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T050",
@@ -665,7 +680,9 @@
       "level": "Security",
       "given": "Parent requests another family's child; student supplies peer ID",
       "expected": "Denied without identity leakage on list/detail/history/download",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "A parent of another child could not access list, detail, history or publication by ID. The student endpoint rejected a peer ID supplied in the query.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T051",
@@ -716,10 +733,11 @@
       "level": "Concurrency",
       "given": "Review an aggregate through candidateKind AGGREGATE, then replace a source publication before commit; repeat after publication",
       "expected": "Review binds the correct tenant-owned candidate/hash, profile version and exact source IDs; wrong kind or changed dependencies cannot reuse approval, commit rechecks current authority, and any existing current aggregate becomes STALE/null atomically or safely validated on read",
-      "status": "NOT_RUN",
+      "status": "PASS",
       "familyEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
       "familyTestedSha": "c0eeb72e696ef2ee07417e626fbcb6ab3d4f7aa5",
-      "remainingEvidence": "Exact typed aggregate approval, published summary and stale reads after a controlled replacement verified. Add a deterministic interleaving test in OR12."
+      "evidence": "Actual aggregate approval verified candidate kind, immutable digest and exact source. A source correction raced aggregate publication, and the family read never returned a summary from a stale source after replacement.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T055",
@@ -731,10 +749,11 @@
       "level": "Unit",
       "given": "Show total using hidden operands without approved disclosure",
       "expected": "Schema/publication blocked; explicit same-snapshot disclosure can work without leaking operand details",
-      "status": "NOT_RUN",
+      "status": "PASS",
       "familyEvidence": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-authoring.spec.ts",
       "familyTestedSha": "c0eeb72e696ef2ee07417e626fbcb6ab3d4f7aa5",
-      "remainingEvidence": "Unit suite proves exact authorized hidden-input rule, but extend real family projection with a hidden numeric operand fixture."
+      "evidence": "The schema unit requires exact approved private-operand disclosure. A real reviewed release showed the approved total without the private field ID or operand metadata.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T056",
@@ -957,8 +976,9 @@
       "level": "Unit",
       "given": "Arbitrary row/column reordering with same stable identities",
       "expected": "Correct matching accepted; omitted exported header fails without silent reinterpretation",
-      "status": "NOT_RUN",
-      "remainingEvidence": "Current CSV integration verifies column reorder and omitted rows. Exercise multi-row editor reorder during OR10."
+      "status": "PASS",
+      "evidence": "Real CSV import accepted reordered columns, omitted rows and reverse-ordered data rows by their stable identities.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T072",
@@ -1181,7 +1201,9 @@
       "level": "Integration",
       "given": "Existing assessment/homework/family reports run after feature integration",
       "expected": "Backward-compatible responses and data; no feed or unrelated migration regression",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "97 tests passed across existing grades, homework grade sync, behavior, student and parent API suites on disposable PostgreSQL with the Official Results feature enabled.",
+      "testedSha": "7355416b93e5675c21bbf2f3c4fccf717ebe4de3"
     },
     {
       "id": "T089",
@@ -1192,7 +1214,9 @@
       "level": "Migration",
       "given": "Replay complete migration chain on fresh disposable DB then deploy again",
       "expected": "Schema valid, tests pass, second deploy no-op; custom SQL inventoried",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "Prisma validated and applied 51 migrations on a new PostgreSQL database. Status was current, the second deployment was a no-op, and the schema diff was empty.",
+      "testedSha": "21d0f7a80a423a3e067d67958eb58ff23363ef64"
     },
     {
       "id": "T090",
@@ -1203,7 +1227,9 @@
       "level": "Security",
       "given": "Reach result files through generic download endpoint",
       "expected": "Same result-resource access rules enforced; no alternate bypass",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "Generic and result-specific HTTP downloads respected result permission, school and opaque private artifact ownership.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T091",
@@ -1214,7 +1240,9 @@
       "level": "Recovery",
       "given": "Notification fails/retries after publication",
       "expected": "Publication stays committed; recipient/channel dedupe prevents repeated business notices",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "An isolated PostgreSQL trigger failed in-app notice insertion after publication. Recovery delivered exactly once to the still-authorized recipient.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T092",
@@ -1225,7 +1253,9 @@
       "level": "Performance",
       "given": "Run representative limit-size grids/imports and simultaneous schools",
       "expected": "Measured bounded memory/query/latency, tenant fairness and no N+1; budgets recorded",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "A real export/import round trip for 3,333 students and 9,999 cell changes ran concurrently with a separate school read. Measured export, validation, apply and memory are in the phase ledger.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T093",
@@ -1236,7 +1266,9 @@
       "level": "Security",
       "given": "Inspect logs, metrics and errors under invalid-file flows",
       "expected": "No grade bodies, student text, credentials, signed links or foreign identities logged",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "An invalid source returned localized stable issue codes and withheld raw values, foreign identity and storage details from responses and logs.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T094",
@@ -1247,7 +1279,9 @@
       "level": "Recovery",
       "given": "Expire/clean raw files while durable committed outcomes remain",
       "expected": "No result/history deletion or idempotency loss; cleanup failures retried visibly",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "A transient MinIO deletion failure preserved the cleanup record and emitted an audit-safe warning. Retry removed the bytes and preserved the current approved publication, exact review, result history and import idempotency.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T095",
@@ -1258,7 +1292,9 @@
       "level": "Contract",
       "given": "Call every cataloged endpoint with valid/invalid actor and state",
       "expected": "Implemented DTO/status/permission behavior matches catalog; no placeholder handlers",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "Generated Nest OpenAPI matches 137 operations. All 137 routes rejected missing authentication and handled valid principals with empty/unknown state. Feature tests exercised typed success responses and meaningful transitions.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T096",
@@ -1270,7 +1306,9 @@
       "level": "Integration",
       "given": "Disable feature exposure during an incident",
       "expected": "No data loss/down migration; reads/queued writes follow explicit freeze policy",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "An off-list school rejected API reads and the worker withheld queued writes. Re-enabling the school resumed the pending action from durable state.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T097",
@@ -1311,12 +1349,13 @@
       "level": "Security",
       "given": "Teacher changes protected field editRule/audience or maps/calculates its value through a personal schema",
       "expected": "Draft design does not widen accepted data protection; unreadable values stay inaccessible in grid/preview/export/formula and family release",
-      "status": "NOT_RUN",
+      "status": "PASS",
       "authoringEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
       "authoringTestedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f",
-      "remainingEvidence": "Teacher grid reads and writes now enforce the protected-field boundary. Artifact and family projection evidence remains OR06 and OR07.",
       "gradebookEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
-      "gradebookTestedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
+      "gradebookTestedSha": "dd937e2bdfe259d58f46a996d0d5116619164305",
+      "evidence": "The protected accepted definition rejected an attempted teacher redesign and refused the protected field in exports. Grid checks and the family publication unit verified no value is disclosed.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T100",
@@ -1327,7 +1366,9 @@
       "level": "Recovery",
       "given": "An accepted import waits until its export manifest expires before a unit transaction",
       "expected": "Uncommitted expired unit blocked; no grandfathered authority; fresh export and reviewed preview required",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "A queued operation reaching the worker after manifest reuse expiry did not mutate the draft.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     },
     {
       "id": "T101",
@@ -1338,7 +1379,9 @@
       "level": "Concurrency",
       "given": "Cancel with one sheet in an atomic transaction and another not yet claimed",
       "expected": "Running unit finishes all-or-none; only unclaimed units cancelled; outcome reports true applied/cancelled counts and cannot claim rollback",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "A PostgreSQL-held row lock forced a claimed sheet transaction to wait. Cancellation removed the pending sheet while the claimed transaction finished once.",
+      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
     }
   ]
 }

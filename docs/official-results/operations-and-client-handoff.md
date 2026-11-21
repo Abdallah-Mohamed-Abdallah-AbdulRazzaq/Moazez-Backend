@@ -29,4 +29,6 @@ School and teacher Official Results JSON requests accept up to 4 MiB for explici
 | Family apps | Render dynamic groups and release units, current and authorized past published revisions, and a possibly missing or stale overall aggregate. Use the secure in-app notification destination and request the current result after authentication. |
 | Archive and recovery | Provide missing records, exact review and revision comparison, private issue exports, correction window actions, and the reviewed broad reopen flow. |
 
+Use reporting-period identifiers obtained from Official Results. The client can group several reporting periods in one selection and submit an independent resolution and bulk job for each concrete period. School template assignments can target multiple exact periods or an academic-year rule.
+
 These screens belong in the existing frontend repositories and are outside this backend code change. Client integration uses the checked-in generated OpenAPI artifact and DTO dictionary. Certificates, PDF generation, signatures and public QR verification require their own scope.
