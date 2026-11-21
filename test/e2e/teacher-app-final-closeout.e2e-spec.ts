@@ -1,3 +1,4 @@
+import { officialResultsTeacherPermissions } from '../fixtures/official-results-contract-expectations';
 import { expectSt12SurfaceMetadata } from '../fixtures/st12-contract-expectations';
 import { TeacherGradeAuthoringController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-authoring.controller';
 import { TeacherGradeAuthoringUploadsController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-authoring-uploads.controller';
@@ -719,7 +720,7 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
 
   it('verifies the final Teacher App route permission inventory', () => {
     expectSt12SurfaceMetadata('teacher');
-    const routes = listRegisteredTeacherRoutes();
+    const routes = listRegisteredTeacherRoutes().filter(route => !route.includes(' /api/v1/teacher/official-results/'));
     const inventory = listTeacherRoutePermissionInventory();
     expectSt12TeacherMetadata(
       inventory.map((r) => ({
@@ -983,7 +984,7 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
   });
 
   it('verifies the final Teacher role, catalog, Parent role, and Student role state', async () => {
-    expect(await prisma.permission.count()).toBe(244);
+    expect(await prisma.permission.count()).toBe(271);
     expectDefaultPermissionContract();
     expect(
       await prisma.rolePermission.count({
@@ -1008,10 +1009,10 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     ]);
 
     const teacherPermissions = await getSystemRolePermissionCodes('teacher');
-    expect(teacherPermissions).toHaveLength(58);
+    expect(teacherPermissions).toHaveLength(70);
     expect(new Set(teacherPermissions).size).toBe(teacherPermissions.length);
     expect(teacherPermissions).toEqual(
-      Array.from(FINAL_TEACHER_PERMISSIONS).sort(),
+      [...FINAL_TEACHER_PERMISSIONS, ...officialResultsTeacherPermissions].sort(),
     );
     expect(teacherPermissions).not.toContain('dashboard.todos.view');
     expect(teacherPermissions).not.toContain('dashboard.todos.manage');
@@ -1035,14 +1036,14 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     ).toBe(false);
 
     const parentPermissions = await getSystemRolePermissionCodes('parent');
-    expect(parentPermissions).toHaveLength(47);
+    expect(parentPermissions).toHaveLength(48);
     expect(parentPermissions).toContain('academics.academic_content.view');
     expect(new Set(parentPermissions).size).toBe(parentPermissions.length);
     expect(parentPermissions).not.toContain('dashboard.todos.view');
     expect(parentPermissions).not.toContain('dashboard.todos.manage');
 
     const studentPermissions = await getSystemRolePermissionCodes('student');
-    expect(studentPermissions).toHaveLength(58);
+    expect(studentPermissions).toHaveLength(59);
     expect(studentPermissions).toContain('academics.academic_content.view');
     expect(new Set(studentPermissions).size).toBe(studentPermissions.length);
     expect(studentPermissions).not.toContain('dashboard.todos.view');

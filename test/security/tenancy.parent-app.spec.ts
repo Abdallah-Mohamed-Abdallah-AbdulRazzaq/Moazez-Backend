@@ -1,3 +1,4 @@
+import { officialResultsFamilyPermissions } from '../fixtures/official-results-contract-expectations';
 import { assertParentAcademicContentHttpContract } from '../../src/modules/parent-app/academic-content/tests/parent-academic-content-http.fixture';
 import { ParentAcademicContentController } from '../../src/modules/parent-app/academic-content/controller/parent-academic-content.controller';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
@@ -884,9 +885,9 @@ describe('Parent role seed integrity (security)', () => {
       'STUDENT_PERMISSIONS',
     );
 
-    expect(parentPermissions).toHaveLength(47);
+    expect(parentPermissions).toHaveLength(48);
     expect(new Set(parentPermissions).size).toBe(parentPermissions.length);
-    expect(parentPermissions).toEqual(Array.from(FINAL_PARENT_PERMISSIONS));
+    expect(parentPermissions).toEqual([...officialResultsFamilyPermissions, ...FINAL_PARENT_PERMISSIONS]);
     expect(catalogCodes).toEqual(
       expect.arrayContaining(Array.from(FINAL_PARENT_PERMISSIONS)),
     );
@@ -901,7 +902,7 @@ describe('Parent role seed integrity (security)', () => {
       false,
     );
 
-    expect(studentPermissions).toHaveLength(58);
+    expect(studentPermissions).toHaveLength(59);
     expect(studentPermissions).toContain('academics.academic_content.view');
     expect(roleApplySource).toContain('foundPermissionIdsByCode');
     expect(roleApplySource).toContain(
@@ -2137,9 +2138,9 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
         organizationId: organizationAId,
       }),
     );
-    expect(permissions).toHaveLength(47);
+    expect(permissions).toHaveLength(48);
     expect(sortedStrings(permissions)).toEqual(
-      sortedStrings(FINAL_PARENT_PERMISSIONS),
+      sortedStrings([...officialResultsFamilyPermissions, ...FINAL_PARENT_PERMISSIONS]),
     );
     expect(permissions).toEqual(
       expect.arrayContaining([

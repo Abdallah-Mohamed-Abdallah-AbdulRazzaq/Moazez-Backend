@@ -1,3 +1,4 @@
+import { officialResultsTeacherPermissions } from '../fixtures/official-results-contract-expectations';
 import { expectDefaultPermissionContract } from '../fixtures/st12-contract-expectations';
 import { TeacherGradeQuestionGroupsController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-grade-question-groups.controller';
 import { TeacherHomeworkQuestionGroupsController } from '../../src/modules/teacher-app/homeworks/controller/teacher-homework-question-groups.controller';
@@ -1565,7 +1566,7 @@ describe('Teacher role seed integrity (security)', () => {
       'STUDENT_PERMISSIONS',
     );
 
-    expect(catalogCodes).toHaveLength(244);
+    expect(catalogCodes).toHaveLength(271);
     expectDefaultPermissionContract();
     expect(catalogCodeSet.size).toBe(catalogCodes.length);
     expect(catalogCodes).toEqual(
@@ -1576,9 +1577,9 @@ describe('Teacher role seed integrity (security)', () => {
     expect(catalogCodeSet.has('teachers.records.view')).toBe(true);
     expect(catalogCodeSet.has('teachers.records.manage')).toBe(true);
 
-    expect(teacherPermissions).toHaveLength(58);
+    expect(teacherPermissions).toHaveLength(70);
     expect(new Set(teacherPermissions).size).toBe(teacherPermissions.length);
-    expect(teacherPermissions).toEqual(Array.from(FINAL_TEACHER_PERMISSIONS));
+    expect(teacherPermissions).toEqual([...officialResultsTeacherPermissions, ...FINAL_TEACHER_PERMISSIONS]);
     expect(teacherPermissions).not.toContain('dashboard.todos.view');
     expect(teacherPermissions).not.toContain('dashboard.todos.manage');
     expect(teacherPermissions).not.toContain('teachers.records.view');
@@ -1600,9 +1601,9 @@ describe('Teacher role seed integrity (security)', () => {
       teacherPermissions.some((code) => code.startsWith('admissions.')),
     ).toBe(false);
 
-    expect(parentPermissions).toHaveLength(47);
+    expect(parentPermissions).toHaveLength(48);
     expect(parentPermissions).toContain('academics.academic_content.view');
-    expect(studentPermissions).toHaveLength(58);
+    expect(studentPermissions).toHaveLength(59);
     expect(studentPermissions).toContain('academics.academic_content.view');
     for (const permission of [
       'dashboard.todos.view',
@@ -2452,10 +2453,10 @@ describe('Teacher App tenancy isolation (security)', () => {
         organizationId: organizationAId,
       }),
     );
-    expect(permissions).toHaveLength(58);
+    expect(permissions).toHaveLength(70);
     expect(new Set(permissions).size).toBe(permissions.length);
     expect(sortedStrings(permissions)).toEqual(
-      sortedStrings(FINAL_TEACHER_PERMISSIONS),
+      sortedStrings([...officialResultsTeacherPermissions, ...FINAL_TEACHER_PERMISSIONS]),
     );
     expect(permissions).toEqual(
       expect.arrayContaining([

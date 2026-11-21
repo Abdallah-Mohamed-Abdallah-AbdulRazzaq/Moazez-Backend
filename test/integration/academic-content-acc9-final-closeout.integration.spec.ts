@@ -297,9 +297,9 @@ describe('ACC-9 final cross-slice exported contracts', () => {
     );
   });
   it('discovers permission catalogs and withholds Management approval/settings/analytics', () => {
-    expect(PERMISSIONS).toHaveLength(244);
+    expect(PERMISSIONS).toHaveLength(271);
     expectDefaultPermissionContract();
-    expect(TEACHER_PERMISSIONS).toHaveLength(58);
+    expect(TEACHER_PERMISSIONS).toHaveLength(70);
     expect(
       TEACHER_PERMISSIONS.filter((code) =>
         code.startsWith('academics.academic_content.'),

@@ -96,7 +96,7 @@ describe('PARENT-DISMISSAL-1C route metadata and seed boundaries', () => {
     expect(permissionsSeed).toContain(
       'Cancel Parent App smart pickup requests before school-side processing starts',
     );
-    expect(parentPermissions).toHaveLength(47);
+    expect(parentPermissions).toHaveLength(48);
     expect(parentPermissions).toContain('academics.academic_content.view');
     expect(parentPermissions).toContain('parent.smart_pickup.view');
     expect(parentPermissions).toContain('parent.smart_pickup.request');

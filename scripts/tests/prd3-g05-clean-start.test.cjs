@@ -805,11 +805,11 @@ test('ST12 seed inventory matches every canonical permission and exact default g
   } = require('../ci/prd3-g05-clean-start.cjs');
   const { loadProductionContracts } = require('../ci/ci-fixture-contract.cjs');
   const production = loadProductionContracts(REPOSITORY_ROOT);
-  assert.equal(production.permissionCodes.length, 244);
+  assert.equal(production.permissionCodes.length, 271);
   assert.equal(production.systemRoles.length, 7);
   assert.equal(
     production.systemRoles.reduce((sum, r) => sum + r.permissions.length, 0),
-    874,
+    969,
   );
   assert.doesNotThrow(() =>
     assertCanonicalSeedPermissions(
