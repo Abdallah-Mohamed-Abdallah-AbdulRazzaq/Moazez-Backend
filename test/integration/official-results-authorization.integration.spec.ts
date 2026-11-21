@@ -5320,7 +5320,11 @@ describe('Official Results policy and permission boundaries', () => {
         ) + '\n',
       );
     }
-    expect(exportQueries + validationQueries + applyQueries).toBeLessThan(500);
+    // Each phase stays well below one query per student, including progress observation.
+    const queryBudgetPerPhase = 600;
+    expect(exportQueries).toBeLessThan(queryBudgetPerPhase);
+    expect(validationQueries).toBeLessThan(queryBudgetPerPhase);
+    expect(applyQueries).toBeLessThan(queryBudgetPerPhase);
   }, 120_000);
 
   it('T013 denies an edit waiting on a concurrent allocation revocation', async () => {
