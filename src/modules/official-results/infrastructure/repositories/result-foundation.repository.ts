@@ -15,6 +15,7 @@ import {
   parseReportingDate,
 } from '../../domain/reporting-dates';
 import { resultContentDigest } from '../../domain/result-content-digest';
+import { resultScopeTransactionTimeoutMs } from '../../domain/result-scope';
 import { ResultRosterRepository } from './result-roster.repository';
 
 const datesSelect = { startDate: true, endDate: true };
@@ -193,7 +194,10 @@ export class ResultFoundationRepository {
   ) {
     return this.scoped.$transaction(
       (client) => this.materializeInTransaction(client, input, contentDigest),
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        timeout: resultScopeTransactionTimeoutMs,
+      },
     );
   }
 

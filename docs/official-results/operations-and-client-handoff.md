@@ -14,6 +14,8 @@ A false flag disables API access and prevents new work claims for those schools.
 
 Monitor queue lag by job type, age of pending/expired leased jobs, validation and commit failure codes, storage cleanup failures, and pending publication notices. Use identifiers only in the protected audit trail. Logs and operational counters exclude marks, names, source contents, object URLs and credentials. Treat migration drift, an unresolved failed migration, reset requests and P3009 as stopping conditions under MIGRATION_GOVERNANCE.md.
 
+Scope preview and materialization transactions have a 30-second budget for large rosters. The feature retains exact scope ceilings and one transactional materialization result.
+
 School and teacher Official Results JSON requests accept up to 4 MiB for explicit selections and corrections. Multipart source limits are separate. Other API routes use their existing body-parser limits.
 
 ## Frontend handoff

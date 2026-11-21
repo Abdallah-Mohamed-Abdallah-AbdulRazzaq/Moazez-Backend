@@ -40,6 +40,7 @@ import { GlobalExceptionFilter } from '../../src/common/exceptions/global-except
 import { PermissionsGuard } from '../../src/common/guards/permissions.guard';
 import { PRISMA_CLIENT_OPTIONS } from '../../src/infrastructure/database/prisma-client-options.provider';
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
+import { StorageService } from '../../src/infrastructure/storage/storage.service';
 import { PERMISSION_CODES } from '../../src/modules/iam/reference-data/permission-catalog';
 import { TEACHER_PERMISSIONS } from '../../src/modules/iam/reference-data/system-role-catalog';
 import { requireResultActor } from '../../src/modules/official-results/application/result-actor';
@@ -86,7 +87,17 @@ interface PeriodResponse {
 
 describe('Official Results policy and permission boundaries', () => {
   jest.setTimeout(45_000);
-  const prisma = new PrismaService();
+  const prisma = new PrismaService({
+    log: [{ emit: 'event', level: 'query' }],
+  });
+  let observedQueries = 0;
+  const listenToQueries = prisma.$on.bind(prisma) as (
+    event: 'query',
+    listener: () => void,
+  ) => void;
+  listenToQueries('query', () => {
+    observedQueries += 1;
+  });
   let app: INestApplication;
   let school: SchoolFixture;
   let otherSchool: SchoolFixture;
@@ -4791,7 +4802,7 @@ describe('Official Results policy and permission boundaries', () => {
   });
 
   it('T090 and T094 expire private bytes while keeping committed results, reviews and idempotency receipts', async () => {
-    const book = await liveGradebook('PURGE-ARTIFACT');
+    const book = await readyRelease('PURGE-ARTIFACT');
     const { batch, job } = await stagedGrade(book, '17.00');
     const key = randomUUID();
     const input = confirmation(batch);
@@ -4800,6 +4811,13 @@ describe('Official Results policy and permission boundaries', () => {
     );
     expect(await waitForOperation(operation.operationId)).toMatchObject({
       status: 'APPLIED',
+    });
+    const candidate = (await book.capture())!;
+    await decideCandidate(candidate).expect(200);
+    await publishCandidate(candidate, 0, null).expect(202);
+    const publication = await prisma.resultPublication.findFirstOrThrow({
+      where: { candidateId: candidate.candidateId },
+      include: { candidate: true, reviewDecision: true },
     });
     const files = await prisma.resultImportSource.findFirstOrThrow({
       where: { batchId: batch.batchId },
@@ -4827,7 +4845,42 @@ describe('Official Results policy and permission boundaries', () => {
         expiresAt: past,
       },
     });
+    const logs = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    const deleted = jest
+      .spyOn(app.get(StorageService), 'deleteObjectAndConfirmAbsent')
+      .mockRejectedValueOnce(
+        new Error('Synthetic transient storage deletion failure'),
+      );
+    try {
+      await app.get(ResultExportService).reconcile();
+      expect(deleted).toHaveBeenCalledWith(
+        expect.objectContaining({ id: job.files[0].fileId }),
+      );
+      expect(logs).toHaveBeenCalledWith({
+        event: 'official_results.export.cleanup_deferred',
+        fileId: job.files[0].fileId,
+      });
+      expect(
+        (
+          await prisma.resultExportFile.findUniqueOrThrow({
+            where: { id: job.files[0].fileId },
+          })
+        ).deletedAt,
+      ).toBeNull();
+    } finally {
+      deleted.mockRestore();
+      logs.mockRestore();
+    }
     await app.get(ResultExportService).reconcile();
+    expect(
+      (
+        await prisma.resultExportFile.findUniqueOrThrow({
+          where: { id: job.files[0].fileId },
+        })
+      ).deletedAt,
+    ).not.toBeNull();
     await exportTeacher(
       'get',
       '/files/' + job.files[0].fileId + '/download',
@@ -4860,6 +4913,17 @@ describe('Official Results policy and permission boundaries', () => {
       operationId: operation.operationId,
       status: 'APPLIED',
     });
+    expect(
+      await prisma.resultPublication.findUniqueOrThrow({
+        where: { id: publication.id },
+        include: { candidate: true, reviewDecision: true },
+      }),
+    ).toEqual(publication);
+    expect(
+      await prisma.resultCurrentRelease.count({
+        where: { publicationId: publication.id },
+      }),
+    ).toBe(1);
   });
 
   it('T006 isolates all Official Results route families for an authenticated administrator in another school', async () => {
@@ -4937,7 +5001,7 @@ describe('Official Results policy and permission boundaries', () => {
     ).toBe(0);
   });
 
-  it('T095 rejects an unauthenticated request at each implemented API entry point', async () => {
+  it('T095 exercises every cataloged route with absent authentication and a valid actor sending empty or unknown state', async () => {
     const catalog = JSON.parse(
       readFileSync(
         join(
@@ -4953,6 +5017,15 @@ describe('Official Results policy and permission boundaries', () => {
         operationId: string;
       }[];
     };
+    const student = await attachFamilyMembership(
+      await familyUser('STUDENT'),
+      school,
+    );
+    const parent = await attachFamilyMembership(
+      await familyUser('PARENT'),
+      school,
+    );
+    let authorizedReads = 0;
     for (const operation of catalog.operations) {
       const path = operation.path.replace(
         /:[A-Za-z0-9]+/gu,
@@ -4969,143 +5042,27 @@ describe('Official Results policy and permission boundaries', () => {
         operation: operation.operationId,
         code: response.status,
       }).toEqual({ operation: operation.operationId, code: 401 });
+      const token = path.startsWith(instructor + '/')
+        ? 'Bearer teacher-fixture'
+        : path.startsWith(api + '/student/')
+          ? student.token
+          : path.startsWith(api + '/parent/')
+            ? parent.token
+            : 'Bearer school-fixture';
+      const authenticated = schoolApi()
+        [method](path)
+        .set('Authorization', token)
+        .set('Idempotency-Key', randomUUID());
+      if (operation.method !== 'GET') authenticated.send({});
+      const actual = await authenticated;
+      expect({ operation: operation.operationId, expected: true }).toEqual({
+        operation: operation.operationId,
+        expected: [200, 400, 403, 404, 409].includes(actual.status),
+      });
+      if (actual.status === 200) authorizedReads += 1;
     }
+    expect(authorizedReads).toBeGreaterThan(10);
   });
-
-  it('T092 measures a populated 9,999-edit sheet at the atomic import budget with a second school active', async () => {
-    const seedSize = 3333;
-    const now = performance.now();
-    const students = await prisma.student.createManyAndReturn({
-      data: Array.from({ length: seedSize }, (_, index) => ({
-        schoolId: school.school.id,
-        organizationId: school.school.organizationId,
-        firstName: 'Synthetic ' + index,
-        lastName: 'Load',
-        firstNameAr: 'اختبار تحميل',
-      })),
-      select: { id: true },
-    });
-    await prisma.enrollment.createMany({
-      data: students.map(({ id }) => ({
-        schoolId: school.school.id,
-        academicYearId: school.year.id,
-        termId: school.term.id,
-        studentId: id,
-        classroomId: school.classroom.id,
-        enrolledAt: new Date('2026-09-01T08:00:00Z'),
-      })),
-    });
-    // Materialize a new period from the actual shared academic roster.
-    const book = await liveGradebook('LOAD-RESULTS-REAL');
-    const roster = await prisma.resultSlot.findMany({
-      where: {
-        schoolId: school.school.id,
-        sheetId: book.source.id,
-        studentId: { in: students.map(({ id }) => id) },
-      },
-      select: { id: true },
-    });
-    expect(roster).toHaveLength(seedSize);
-    const [plan, other] = await Promise.all([
-      exportTeacher('post', '/exports/preview')
-        .send({
-          reportingPeriodId: book.reportingPeriodId,
-          academicScope: { level: 'CLASSROOM', ids: [school.classroom.id] },
-          groupIds: [math.id],
-          format: 'CSV',
-          mode: 'EDIT_DRAFT',
-          selectedSlotIds: roster.map(({ id }) => id),
-          selectedFieldIds: book.scores.map(({ id }) => id),
-        })
-        .expect(200),
-      schoolApi()
-        .get(management + '/periods')
-        .set('Authorization', 'Bearer other-school-fixture')
-        .expect(200),
-    ]);
-    expect(other.body.data.items).toEqual([]);
-    const selection = exportOutputs.preview.parse(plan.body.data);
-    expect(selection.summary.rowCount).toBe(seedSize);
-    const receipt = exportOutputs.export.parse(
-      (
-        await exportTeacher('post', '/exports')
-          .set('Idempotency-Key', randomUUID())
-          .send({
-            previewId: selection.previewId,
-            previewDigest: selection.previewDigest,
-          })
-          .expect(202)
-      ).body.data,
-    );
-    const job = await waitForExport(
-      '/exports/' + receipt.exportId,
-      withTeacher,
-    );
-    const previewMs = Math.ceil(performance.now() - now);
-    const downloaded = await exportTeacher(
-      'get',
-      job.files[0].downloadPath.slice(instructor.length),
-    ).expect(200);
-    const rows = parseCsv(downloaded.text, { bom: true });
-    for (const row of rows.slice(1))
-      for (const column of [18, 20, 22]) row[column] = '1.00';
-    const validateStarted = performance.now();
-    const staged = importOutputs.batch.parse(
-      (
-        await stageImport(
-          job.exportId,
-          sourceBytes([rows[0], ...rows.slice(1).reverse()]),
-        ).expect(202)
-      ).body.data,
-    );
-    const ready = await waitForImport('/' + staged.batchId);
-    expect(ready.summary.changedCells).toBe(9999);
-    const validateMs = Math.ceil(performance.now() - validateStarted);
-    const applyStarted = performance.now();
-    const applied = importOutputs.execution.parse(
-      (await confirmImport(ready.batchId, confirmation(ready)).expect(202)).body
-        .data,
-    );
-    expect(await waitForOperation(applied.operationId)).toMatchObject({
-      status: 'APPLIED',
-    });
-    const applyMs = Math.ceil(performance.now() - applyStarted);
-    expect(
-      await prisma.resultCell.count({
-        where: {
-          schoolId: school.school.id,
-          slot: { sheetId: book.source.id },
-        },
-      }),
-    ).toBe(9999);
-    expect(
-      await prisma.resultCell.count({
-        where: {
-          schoolId: otherSchool.school.id,
-          slot: { sheetId: book.source.id },
-        },
-      }),
-    ).toBe(0);
-    if (process.env.OFFICIAL_RESULTS_LOAD_EVIDENCE) {
-      writeFileSync(
-        process.env.OFFICIAL_RESULTS_LOAD_EVIDENCE,
-        JSON.stringify(
-          {
-            rows: seedSize,
-            changes: 9999,
-            csvBytes: job.files[0].sizeBytes,
-            exportAndFixtureMs: previewMs,
-            validationMs: validateMs,
-            confirmationAndCommitMs: applyMs,
-            processHeapUsedBytes: process.memoryUsage().heapUsed,
-            processResidentBytes: process.memoryUsage().rss,
-          },
-          null,
-          2,
-        ) + '\n',
-      );
-    }
-  }, 120_000);
 
   it('T093 keeps invalid source content, foreign identities and object details out of errors and logs', async () => {
     const book = await liveGradebook('SAFE-IMPORT-ERROR');
@@ -5220,4 +5177,177 @@ describe('Official Results policy and permission boundaries', () => {
       }),
     ).toEqual({ dataGeneration: 0 });
   });
+
+  it('T092 measures a populated 9,999-edit sheet at the atomic import budget with a second school active', async () => {
+    const seedSize = 3333;
+    const now = performance.now();
+    const students = await prisma.student.createManyAndReturn({
+      data: Array.from({ length: seedSize }, (_, index) => ({
+        schoolId: school.school.id,
+        organizationId: school.school.organizationId,
+        firstName: 'Synthetic ' + index,
+        lastName: 'Load',
+        firstNameAr: 'اختبار تحميل',
+      })),
+      select: { id: true },
+    });
+    await prisma.enrollment.createMany({
+      data: students.map(({ id }) => ({
+        schoolId: school.school.id,
+        academicYearId: school.year.id,
+        termId: school.term.id,
+        studentId: id,
+        classroomId: school.classroom.id,
+        enrolledAt: new Date('2026-09-01T08:00:00Z'),
+      })),
+    });
+    // Materialize a new period from the actual shared academic roster.
+    const book = await liveGradebook('LOAD-RESULTS-REAL');
+    const roster = await prisma.resultSlot.findMany({
+      where: {
+        schoolId: school.school.id,
+        sheetId: book.source.id,
+        studentId: { in: students.map(({ id }) => id) },
+      },
+      select: { id: true },
+    });
+    expect(roster).toHaveLength(seedSize);
+    const scope = authoringOutputs.resolution.parse(
+      (
+        await withSchool('post', '/scope-resolutions')
+          .send({
+            reportingPeriodId: book.reportingPeriodId,
+            academicScope: { level: 'CLASSROOM', ids: [school.classroom.id] },
+            groupIds: [math.id],
+            rosterAsOf: '2026-11-21T10:00:00.000Z',
+          })
+          .expect(200)
+      ).body.data,
+    );
+    expect(scope.tuples[0].rosterCount).toBeGreaterThanOrEqual(seedSize);
+    const grid = gradebookOutputs.grid.parse(
+      (await withTeacher(book.url + '/grid?limit=200').expect(200)).body.data,
+    );
+    expect(grid.rows.items).toHaveLength(200);
+    expect(grid.rows.nextCursor).toBeTruthy();
+    const exportStarted = performance.now();
+    const exportQueryBaseline = observedQueries;
+    let otherReadMs = 0;
+    const [plan, other] = await Promise.all([
+      exportTeacher('post', '/exports/preview')
+        .send({
+          reportingPeriodId: book.reportingPeriodId,
+          academicScope: { level: 'CLASSROOM', ids: [school.classroom.id] },
+          groupIds: [math.id],
+          format: 'CSV',
+          mode: 'EDIT_DRAFT',
+          selectedSlotIds: roster.map(({ id }) => id),
+          selectedFieldIds: book.scores.map(({ id }) => id),
+        })
+        .expect(200),
+      schoolApi()
+        .get(management + '/periods')
+        .set('Authorization', 'Bearer other-school-fixture')
+        .expect(200)
+        .then((response) => {
+          otherReadMs = Math.ceil(performance.now() - exportStarted);
+          return response;
+        }),
+    ]);
+    expect(other.body.data.items).toEqual([]);
+    const selection = exportOutputs.preview.parse(plan.body.data);
+    expect(selection.summary.rowCount).toBe(seedSize);
+    const receipt = exportOutputs.export.parse(
+      (
+        await exportTeacher('post', '/exports')
+          .set('Idempotency-Key', randomUUID())
+          .send({
+            previewId: selection.previewId,
+            previewDigest: selection.previewDigest,
+          })
+          .expect(202)
+      ).body.data,
+    );
+    const job = await waitForExport(
+      '/exports/' + receipt.exportId,
+      withTeacher,
+    );
+    const previewMs = Math.ceil(performance.now() - now);
+    const downloaded = await exportTeacher(
+      'get',
+      job.files[0].downloadPath.slice(instructor.length),
+    ).expect(200);
+    const rows = parseCsv(downloaded.text, { bom: true });
+    for (const row of rows.slice(1))
+      for (const column of [18, 20, 22]) row[column] = '1.00';
+    const exportQueries = observedQueries - exportQueryBaseline;
+    const validationQueryBaseline = observedQueries;
+    const validateStarted = performance.now();
+    const staged = importOutputs.batch.parse(
+      (
+        await stageImport(
+          job.exportId,
+          sourceBytes([rows[0], ...rows.slice(1).reverse()]),
+        ).expect(202)
+      ).body.data,
+    );
+    const ready = await waitForImport('/' + staged.batchId);
+    expect(ready.summary.changedCells).toBe(9999);
+    const validateMs = Math.ceil(performance.now() - validateStarted);
+    const validationQueries = observedQueries - validationQueryBaseline;
+    const applyQueryBaseline = observedQueries;
+    const applyStarted = performance.now();
+    const applied = importOutputs.execution.parse(
+      (await confirmImport(ready.batchId, confirmation(ready)).expect(202)).body
+        .data,
+    );
+    expect(await waitForOperation(applied.operationId)).toMatchObject({
+      status: 'APPLIED',
+    });
+    const applyMs = Math.ceil(performance.now() - applyStarted);
+    const applyQueries = observedQueries - applyQueryBaseline;
+    expect(exportQueries).toBeGreaterThan(0);
+    expect(validationQueries).toBeGreaterThan(0);
+    expect(applyQueries).toBeGreaterThan(0);
+    expect(exportQueries + validationQueries + applyQueries).toBeLessThan(500);
+    expect(
+      await prisma.resultCell.count({
+        where: {
+          schoolId: school.school.id,
+          slot: { sheetId: book.source.id },
+        },
+      }),
+    ).toBe(9999);
+    expect(
+      await prisma.resultCell.count({
+        where: {
+          schoolId: otherSchool.school.id,
+          slot: { sheetId: book.source.id },
+        },
+      }),
+    ).toBe(0);
+    if (process.env.OFFICIAL_RESULTS_LOAD_EVIDENCE) {
+      writeFileSync(
+        process.env.OFFICIAL_RESULTS_LOAD_EVIDENCE,
+        JSON.stringify(
+          {
+            rows: seedSize,
+            changes: 9999,
+            csvBytes: job.files[0].sizeBytes,
+            exportAndFixtureMs: previewMs,
+            validationMs: validateMs,
+            confirmationAndCommitMs: applyMs,
+            concurrentSchoolReadMs: otherReadMs,
+            exportQueries,
+            validationQueries,
+            applyQueries,
+            processHeapUsedBytes: process.memoryUsage().heapUsed,
+            processResidentBytes: process.memoryUsage().rss,
+          },
+          null,
+          2,
+        ) + '\n',
+      );
+    }
+  }, 120_000);
 });
