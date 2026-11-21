@@ -5098,86 +5098,6 @@ describe('Official Results policy and permission boundaries', () => {
     }
   });
 
-  it('T013 denies an edit waiting on a concurrent allocation revocation', async () => {
-    const writerName = `or-writer-${randomUUID()}`;
-    let releaseDelete!: () => void;
-    const allowCommit = new Promise<void>((resolve) => {
-      releaseDelete = resolve;
-    });
-    let deleted!: () => void;
-    const deletionPending = new Promise<void>((resolve) => {
-      deleted = resolve;
-    });
-    const revocation = prisma.$transaction(
-      async (tx) => {
-        await tx.teacherSubjectAllocation.delete({
-          where: { id: allocationId },
-        });
-        deleted();
-        await allowCommit;
-      },
-      { timeout: 15_000 },
-    );
-    await deletionPending;
-
-    const edit = teacher.run(async () =>
-      commands.transaction(async (tx) => {
-        await tx.$queryRaw`SELECT set_config('application_name', ${writerName}, true)`;
-        const scope = requireResultActor('TEACHER');
-        const access = await authorization.permissions(tx, scope, {
-          write: true,
-        });
-        authorization.requirePermission(
-          access,
-          'official_results.entries.manage',
-        );
-        await authorization.authorizedTarget(
-          tx,
-          access,
-          {
-            classroomId: school.classroom.id,
-            groupId: math.id,
-            reportingPeriodId: period.id,
-          },
-          'EDIT',
-          { write: true },
-        );
-        await tx.resultSheet.updateMany({
-          where: { schoolId: school.school.id, id: mathSheet.id },
-          data: { dataGeneration: { increment: 1 } },
-        });
-      }),
-    );
-    const outcome = edit.then(
-      () => null,
-      (error: unknown) => error,
-    );
-    let blocked = false;
-    try {
-      const observeUntil = Date.now() + 3000;
-      while (!blocked && Date.now() < observeUntil) {
-        const [row] = await prisma.$queryRaw<Array<{ pending: boolean }>>`
-          SELECT EXISTS(
-            SELECT 1 FROM pg_stat_activity
-            WHERE application_name = ${writerName} AND cardinality(pg_blocking_pids(pid)) > 0
-          ) AS pending
-        `;
-        blocked = row.pending;
-      }
-    } finally {
-      releaseDelete();
-      await revocation;
-    }
-    expect(blocked).toBe(true);
-    expect(await outcome).toMatchObject({ code: 'not_found' });
-    expect(
-      await prisma.resultSheet.findUnique({
-        where: { id: mathSheet.id },
-        select: { dataGeneration: true },
-      }),
-    ).toEqual({ dataGeneration: 0 });
-  });
-
   it('T092 measures a populated 9,999-edit sheet at the atomic import budget with a second school active', async () => {
     // Observe worker completion without counting repeated authenticated polling requests as processing queries.
     const waitForBulk = async (
@@ -5402,4 +5322,84 @@ describe('Official Results policy and permission boundaries', () => {
     }
     expect(exportQueries + validationQueries + applyQueries).toBeLessThan(500);
   }, 120_000);
+
+  it('T013 denies an edit waiting on a concurrent allocation revocation', async () => {
+    const writerName = `or-writer-${randomUUID()}`;
+    let releaseDelete!: () => void;
+    const allowCommit = new Promise<void>((resolve) => {
+      releaseDelete = resolve;
+    });
+    let deleted!: () => void;
+    const deletionPending = new Promise<void>((resolve) => {
+      deleted = resolve;
+    });
+    const revocation = prisma.$transaction(
+      async (tx) => {
+        await tx.teacherSubjectAllocation.delete({
+          where: { id: allocationId },
+        });
+        deleted();
+        await allowCommit;
+      },
+      { timeout: 15_000 },
+    );
+    await deletionPending;
+
+    const edit = teacher.run(async () =>
+      commands.transaction(async (tx) => {
+        await tx.$queryRaw`SELECT set_config('application_name', ${writerName}, true)`;
+        const scope = requireResultActor('TEACHER');
+        const access = await authorization.permissions(tx, scope, {
+          write: true,
+        });
+        authorization.requirePermission(
+          access,
+          'official_results.entries.manage',
+        );
+        await authorization.authorizedTarget(
+          tx,
+          access,
+          {
+            classroomId: school.classroom.id,
+            groupId: math.id,
+            reportingPeriodId: period.id,
+          },
+          'EDIT',
+          { write: true },
+        );
+        await tx.resultSheet.updateMany({
+          where: { schoolId: school.school.id, id: mathSheet.id },
+          data: { dataGeneration: { increment: 1 } },
+        });
+      }),
+    );
+    const outcome = edit.then(
+      () => null,
+      (error: unknown) => error,
+    );
+    let blocked = false;
+    try {
+      const observeUntil = Date.now() + 3000;
+      while (!blocked && Date.now() < observeUntil) {
+        const [row] = await prisma.$queryRaw<Array<{ pending: boolean }>>`
+          SELECT EXISTS(
+            SELECT 1 FROM pg_stat_activity
+            WHERE application_name = ${writerName} AND cardinality(pg_blocking_pids(pid)) > 0
+          ) AS pending
+        `;
+        blocked = row.pending;
+      }
+    } finally {
+      releaseDelete();
+      await revocation;
+    }
+    expect(blocked).toBe(true);
+    expect(await outcome).toMatchObject({ code: 'not_found' });
+    expect(
+      await prisma.resultSheet.findUnique({
+        where: { id: mathSheet.id },
+        select: { dataGeneration: true },
+      }),
+    ).toEqual({ dataGeneration: 0 });
+  });
 });
