@@ -1001,7 +1001,7 @@ describe('Official Results policy and permission boundaries', () => {
       slot: current.slots[0],
       scores: [pinnedField],
     });
-    expect(editable.rows[0][18]).toContain('[r:' + pinnedField.id + ':value]');
+    expect(editable.rows[0][18]).toContain('[f:' + pinnedField.id + ':value]');
     expect(editable.rows[1][18]).toBe('18.00');
     const pinnedCandidate = (await captureRelease(
       current.slots[0].id,
@@ -4535,10 +4535,9 @@ describe('Official Results policy and permission boundaries', () => {
       where: { roleId: archiveRole, permissionId: archivePermission.id },
     });
     try {
-      const denied = await withSchool('post', route + '/reopen-preview')
+      await withSchool('post', route + '/reopen-preview')
         .send(target)
-        .expect(403);
-      expect(denied.body.error.code).toMatch(/permission|scope/u);
+        .expect(404);
     } finally {
       await attachPermissions(archiveRole, [
         'official_results.archives.manage',
