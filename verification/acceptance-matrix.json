@@ -515,10 +515,11 @@
       "level": "E2E",
       "given": "Managed teacher submits candidate and school approves",
       "expected": "Still invisible until explicit publish; exact design/value digest enforced",
-      "status": "NOT_RUN",
+      "status": "PASS",
       "releaseEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
       "releaseTestedSha": "ffe611f1f1ff3c2bda3eb249eda51562a24d26f0",
-      "remainingEvidence": "Exact review and absence of an active release verified. Family HTTP visibility follows in OR06."
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "c0eeb72e696ef2ee07417e626fbcb6ab3d4f7aa5"
     },
     {
       "id": "T040",
@@ -636,7 +637,10 @@
       "level": "Contract",
       "given": "Serialize student/parent dynamic SCORE/TEXT/SELECT/CALCULATED fields",
       "expected": "Stable IDs/types/order/maxima/decimal strings; no fixed subject keys or formulas needed to render",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN",
+      "familyEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "familyTestedSha": "c0eeb72e696ef2ee07417e626fbcb6ab3d4f7aa5",
+      "remainingEvidence": "Family HTTP response verifies immutable score/calculated structure and source schemas. Publish the explicit family TEXT/SELECT fixture through the app before closing."
     },
     {
       "id": "T049",
@@ -647,7 +651,10 @@
       "level": "Security",
       "given": "Insert internal note and pending correction in staff draft",
       "expected": "Neither content nor hidden field metadata leaks into family JSON/history/export",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN",
+      "familyEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "familyTestedSha": "c0eeb72e696ef2ee07417e626fbcb6ab3d4f7aa5",
+      "remainingEvidence": "Family read after staff note and pending correction verified. Exercise history and private artifact paths in OR07/OR11."
     },
     {
       "id": "T050",
@@ -669,7 +676,9 @@
       "level": "E2E",
       "given": "Graduated student or linked guardian reads prior same-school period",
       "expected": "Works through verified identity without ACTIVE enrollment requirement",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "c0eeb72e696ef2ee07417e626fbcb6ab3d4f7aa5"
     },
     {
       "id": "T052",
@@ -680,7 +689,9 @@
       "level": "Security",
       "given": "Current guardian authority revoked after historical publication",
       "expected": "Family read denied immediately; old snapshot does not authorize",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "c0eeb72e696ef2ee07417e626fbcb6ab3d4f7aa5"
     },
     {
       "id": "T053",
@@ -691,7 +702,9 @@
       "level": "Security",
       "given": "Cross-school transfer loses direct link but has no verified retained entitlement",
       "expected": "Fail closed; never name/email matching or global bypass",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "c0eeb72e696ef2ee07417e626fbcb6ab3d4f7aa5"
     },
     {
       "id": "T054",
@@ -703,7 +716,10 @@
       "level": "Concurrency",
       "given": "Review an aggregate through candidateKind AGGREGATE, then replace a source publication before commit; repeat after publication",
       "expected": "Review binds the correct tenant-owned candidate/hash, profile version and exact source IDs; wrong kind or changed dependencies cannot reuse approval, commit rechecks current authority, and any existing current aggregate becomes STALE/null atomically or safely validated on read",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN",
+      "familyEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "familyTestedSha": "c0eeb72e696ef2ee07417e626fbcb6ab3d4f7aa5",
+      "remainingEvidence": "Exact typed aggregate approval, published summary and stale reads after a controlled replacement verified. Add a deterministic interleaving test in OR12."
     },
     {
       "id": "T055",
@@ -715,7 +731,10 @@
       "level": "Unit",
       "given": "Show total using hidden operands without approved disclosure",
       "expected": "Schema/publication blocked; explicit same-snapshot disclosure can work without leaking operand details",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN",
+      "familyEvidence": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-authoring.spec.ts",
+      "familyTestedSha": "c0eeb72e696ef2ee07417e626fbcb6ab3d4f7aa5",
+      "remainingEvidence": "Unit suite proves exact authorized hidden-input rule, but extend real family projection with a hidden numeric operand fixture."
     },
     {
       "id": "T056",
@@ -726,7 +745,9 @@
       "level": "Contract",
       "given": "Staff previews a candidate as student then publishes same version",
       "expected": "Audience-filtered fields/values match; staff-only preview has mode/status PREVIEW, real candidate identity and null publicationId/publishedAt; actual family release has genuine nonnull publication metadata and PUBLISHED status",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "c0eeb72e696ef2ee07417e626fbcb6ab3d4f7aa5"
     },
     {
       "id": "T057",
