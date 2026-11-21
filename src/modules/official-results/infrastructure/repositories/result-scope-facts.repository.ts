@@ -88,76 +88,58 @@ export class ResultScopeFactsRepository {
       groupScope.kind === 'CUSTOM_GROUPS' ? groupScope.groupIds : [],
     );
 
-    const [
-      stages,
-      grades,
-      sections,
-      classrooms,
-      periods,
-      years,
-      subjects,
-      groups,
-    ] = await Promise.all([
-      stageIds.length
-        ? client.stage.findMany({
-            where: { schoolId, id: { in: stageIds }, deletedAt: null },
-            select: { id: true },
-          })
-        : [],
-      gradeIds.length
-        ? client.grade.findMany({
-            where: { schoolId, id: { in: gradeIds }, ...validGrade },
-            select: { id: true, stageId: true },
-          })
-        : [],
-      sectionIds.length
-        ? client.section.findMany({
-            where: { schoolId, id: { in: sectionIds }, ...validSection },
-            select: {
-              id: true,
-              gradeId: true,
-              grade: { select: { stageId: true } },
-            },
-          })
-        : [],
-      classroomIds.length
-        ? client.classroom.findMany({
-            where: { schoolId, id: { in: classroomIds }, ...validClass },
-            select: classSelect,
-          })
-        : [],
-      periodIds.length
-        ? client.resultReportingPeriod.findMany({
-            where: { schoolId, id: { in: periodIds } },
-            select: topicSelect,
-          })
-        : [],
-      requireLiveReferences && yearIds.length
-        ? client.academicYear.count({
+    if (!selectors.length) return { paths, periods: new Map() };
+
+    const stageRows = client.stage.findMany({
+      where: { schoolId, id: { in: stageIds }, deletedAt: null },
+      select: { id: true },
+    });
+    const gradeRows = client.grade.findMany({
+      where: { schoolId, id: { in: gradeIds }, ...validGrade },
+      select: { id: true, stageId: true },
+    });
+    const sectionRows = client.section.findMany({
+      where: { schoolId, id: { in: sectionIds }, ...validSection },
+      select: { id: true, gradeId: true, grade: { select: { stageId: true } } },
+    });
+    const classroomRows = client.classroom.findMany({
+      where: { schoolId, id: { in: classroomIds }, ...validClass },
+      select: classSelect,
+    });
+    const periodRows = client.resultReportingPeriod.findMany({
+      where: { schoolId, id: { in: periodIds } },
+      select: topicSelect,
+    });
+    const [stages, grades, sections, classrooms, periods] = await Promise.all([
+      stageRows,
+      gradeRows,
+      sectionRows,
+      classroomRows,
+      periodRows,
+    ]);
+    const [years, subjects, groups] = requireLiveReferences
+      ? await Promise.all([
+          client.academicYear.count({
             where: { schoolId, id: { in: yearIds }, deletedAt: null },
-          })
-        : yearIds.length,
-      requireLiveReferences && subjectIds.length
-        ? client.subject.count({
+          }),
+          client.subject.count({
             where: {
               schoolId,
               id: { in: subjectIds },
               isActive: true,
               deletedAt: null,
             },
-          })
-        : subjectIds.length,
-      requireLiveReferences && groupIds.length
-        ? client.resultGroup.count({
+          }),
+          client.resultGroup.count({
             where: {
               schoolId,
               id: { in: groupIds },
               kind: 'CUSTOM',
               archivedAt: null,
             },
-          })
-        : groupIds.length,
-    ] as const);
+          }),
+        ])
+      : [yearIds.length, subjectIds.length, groupIds.length];
     if (
       requireLiveReferences &&
       (stages.length !== stageIds.length ||
