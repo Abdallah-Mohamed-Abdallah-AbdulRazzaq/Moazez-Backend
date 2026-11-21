@@ -770,6 +770,12 @@
           "result": "50 migrations replayed on a new isolated PostgreSQL database. Second deployment was a no-op, zero schema diff and 271 permissions / 7 roles seeded.",
           "outcome": "PASS",
           "testedSha": "a8968523bc8f7cc69c09da06a3c71beb3d2d23c7"
+        },
+        {
+          "command": "npm run build",
+          "outcome": "PASS",
+          "result": "Compiled the backend and checked the reference-data bootstrap.",
+          "testedSha": "a8968523bc8f7cc69c09da06a3c71beb3d2d23c7"
         }
       ],
       "evidence": [
@@ -796,15 +802,57 @@
         "OR08",
         "OR09"
       ],
-      "status": "NOT_STARTED",
-      "implementationSha": null,
-      "requirements": [],
-      "codePaths": [],
-      "testsExecuted": [],
-      "evidence": [],
+      "status": "DONE",
+      "implementationSha": "60b7f6fe0773c9316a308e178ae07044896334cc",
+      "requirements": [
+        "R19",
+        "R15",
+        "R17",
+        "R24"
+      ],
+      "codePaths": [
+        "src/modules/official-results/domain/result-xlsx-archive.ts",
+        "src/modules/official-results/domain/result-xlsx-export.ts",
+        "src/modules/official-results/domain/result-xlsx-import.ts",
+        "src/modules/official-results/domain/result-xlsx.spec.ts",
+        "src/modules/official-results/application/result-import-validation.service.ts"
+      ],
+      "testsExecuted": [
+        {
+          "command": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-xlsx.spec.ts src/modules/official-results/domain/result-csv.spec.ts src/modules/official-results/domain/result-import-csv.spec.ts",
+          "result": "38 cases passed around XLSX, CSV and import semantics; current workbook safety and format corpus has 10 cases.",
+          "outcome": "PASS",
+          "testedSha": "60b7f6fe0773c9316a308e178ae07044896334cc"
+        },
+        {
+          "command": "Excel 16.0.20527.20196 and LibreOffice Calc 7.4.7.2 re-save, then Jest XLSX parser",
+          "result": "The final synthetic workbook resaved in both editors was admitted. Arabic identity, leading-zero code, literal text, line break and false were preserved.",
+          "outcome": "PASS",
+          "testedSha": "60b7f6fe0773c9316a308e178ae07044896334cc"
+        },
+        {
+          "command": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+          "result": "40 passed with actual PostgreSQL, Redis and MinIO; the native workbook was exported, staged, previewed, confirmed and applied to a draft.",
+          "outcome": "PASS",
+          "testedSha": "60b7f6fe0773c9316a308e178ae07044896334cc"
+        },
+        {
+          "command": "npm run build",
+          "result": "Nest production compilation and reference-data bootstrap passed.",
+          "outcome": "PASS",
+          "testedSha": "60b7f6fe0773c9316a308e178ae07044896334cc"
+        }
+      ],
+      "evidence": [
+        "docs/official-results/or10-xlsx-transport.md",
+        "verification/acceptance-matrix.json"
+      ],
       "blockers": [],
-      "decisions": [],
-      "nextAction": null
+      "decisions": [
+        "Use pinned yazl, yauzl and saxes under ADR-0028.",
+        "Boolean VALUE is exported as explicit typed text so LibreOffice preserves false without inserting a cell formula. Native nonformula Boolean input is supported."
+      ],
+      "nextAction": "OR11: reporting, issue-file downloads, period lifecycle and notice dispatch."
     },
     {
       "id": "OR11",
@@ -846,7 +894,7 @@
     "deployed": false,
     "productionMutationsAuthorized": false
   },
-  "branch": "codex/moazez-be-official-results-import",
+  "branch": "codex/moazez-be-official-results-xlsx",
   "draftPullRequests": [
     {
       "number": 238,
@@ -910,6 +958,16 @@
       "scope": [
         "OR08",
         "OR09"
+      ]
+    },
+    {
+      "number": 244,
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/244",
+      "branch": "codex/moazez-be-official-results-xlsx",
+      "base": "codex/moazez-be-official-results-import",
+      "baseSha": "98b357590fc953ceaa41decf4e0553c2d5e5086c",
+      "scope": [
+        "OR10"
       ]
     }
   ]
