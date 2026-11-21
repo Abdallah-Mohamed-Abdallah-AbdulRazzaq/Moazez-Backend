@@ -13,7 +13,9 @@
       "expected": "No existing GradeItem, homework, behavior or reinforcement record is created or read as a value source",
       "status": "NOT_RUN",
       "persistenceEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-foundation.integration.spec.ts",
-      "remainingEvidence": "Verify independent writes via the gradebook mutation entry point in OR04 and unchanged existing outputs in OR12."
+      "remainingEvidence": "The normal grid mutation left assessment grades, homework, behavior and reinforcement counts unchanged. Review the final application regression in OR12.",
+      "gradebookEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "gradebookTestedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
     },
     {
       "id": "T002",
@@ -106,7 +108,9 @@
       "status": "NOT_RUN",
       "authoringEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
       "authoringTestedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f",
-      "remainingEvidence": "MANAGED teacher authors and selects a personal draft using normal HTTP routes. Grade entry through the same selected definition remains OR04."
+      "remainingEvidence": "The teacher authored, adopted and wrote a valid grade to the unaccepted field through the real grid route. Import and published-family checks remain OR06 and OR09.",
+      "gradebookEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "gradebookTestedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
     },
     {
       "id": "T009",
@@ -341,7 +345,9 @@
       "level": "Unit",
       "given": "Calculate18+27+46 with maxima20+30+50",
       "expected": "91/100 and91 percent; one final rounding",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-calculation.spec.ts",
+      "testedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
     },
     {
       "id": "T027",
@@ -352,7 +358,9 @@
       "level": "Unit",
       "given": "Compare zero, missing, absent and excused inputs",
       "expected": "Zero contributes; missing blocks; absence follows explicit policy; exclusion changes numerator and denominator",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-calculation.spec.ts",
+      "testedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
     },
     {
       "id": "T028",
@@ -363,7 +371,9 @@
       "level": "Unit",
       "given": "Excuse30-point component with18/20 and46/50",
       "expected": "64/70 effective, nominal100, normalized wire91.428571 percent and two-place display91.43",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-calculation.spec.ts",
+      "testedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
     },
     {
       "id": "T029",
@@ -374,7 +384,9 @@
       "level": "Unit",
       "given": "All contributing inputs excluded",
       "expected": "NOT_APPLICABLE/null output; no divide-by-zero or artificial zero",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-calculation.spec.ts",
+      "testedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
     },
     {
       "id": "T030",
@@ -385,7 +397,9 @@
       "level": "Unit",
       "given": "Weighted inputs have unequal maxima",
       "expected": "Normalize each score by its maximum; effective weights/denominator follow policy",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-calculation.spec.ts",
+      "testedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
     },
     {
       "id": "T031",
@@ -396,7 +410,9 @@
       "level": "Unit",
       "given": "Input precision exceeds declared scale or is NaN/exponent",
       "expected": "Reject ambiguous/unsupported numeric data; no silent rounding",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-calculation.spec.ts",
+      "testedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
     },
     {
       "id": "T032",
@@ -407,7 +423,9 @@
       "level": "Unit",
       "given": "Unrounded result just below pass threshold rounds upward",
       "expected": "Pass decision uses configured unrounded basis; display rounding does not change eligibility",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-calculation.spec.ts",
+      "testedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
     },
     {
       "id": "T033",
@@ -418,7 +436,9 @@
       "level": "Unit",
       "given": "Formula has duplicate operand, cycle or incompatible output type",
       "expected": "Deterministic schema error; no arbitrary code/eval",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-calculation.spec.ts",
+      "testedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
     },
     {
       "id": "T034",
@@ -429,7 +449,9 @@
       "level": "Unit",
       "given": "Record boolean false, selected code and text literal0",
       "expected": "All remain recorded typed data; invalid union or unknown option rejected",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-calculation.spec.ts",
+      "testedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
     },
     {
       "id": "T035",
@@ -440,7 +462,9 @@
       "level": "Concurrency",
       "given": "Two writers update same missing cell version0",
       "expected": "One inserts; other conflicts; no duplicate cells or silent overwrite",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
     },
     {
       "id": "T036",
@@ -451,7 +475,9 @@
       "level": "Concurrency",
       "given": "Two writers edit different cells at same definition",
       "expected": "Compatible writes survive; no coarse stale-write overwrite",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
     },
     {
       "id": "T037",
@@ -462,7 +488,9 @@
       "level": "Integration",
       "given": "Bulk patch includes one invalid score among valid values",
       "expected": "Whole sheet patch rejected with issues; no silent partial mutation",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
     },
     {
       "id": "T038",
@@ -473,7 +501,9 @@
       "level": "Integration",
       "given": "Undo saved value after another writer changed it",
       "expected": "Inverse mutation conflicts; history never deleted",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
     },
     {
       "id": "T039",
@@ -1160,7 +1190,9 @@
       "status": "NOT_RUN",
       "authoringEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
       "authoringTestedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f",
-      "remainingEvidence": "Exact accepted protection is checked during authoring and mapping. Grid, calculation, export and family projection proof remains OR04, OR06 and OR07."
+      "remainingEvidence": "Teacher grid reads and writes now enforce the protected-field boundary. Artifact and family projection evidence remains OR06 and OR07.",
+      "gradebookEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "gradebookTestedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
     },
     {
       "id": "T100",
