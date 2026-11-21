@@ -515,7 +515,10 @@
       "level": "E2E",
       "given": "Managed teacher submits candidate and school approves",
       "expected": "Still invisible until explicit publish; exact design/value digest enforced",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN",
+      "releaseEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "releaseTestedSha": "ffe611f1f1ff3c2bda3eb249eda51562a24d26f0",
+      "remainingEvidence": "Exact review and absence of an active release verified. Family HTTP visibility follows in OR06."
     },
     {
       "id": "T040",
@@ -526,7 +529,9 @@
       "level": "E2E",
       "given": "Authorized autonomous teacher publishes completed candidate",
       "expected": "New immutable release appears; evidence says direct authority, not fake reviewer approval",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "ffe611f1f1ff3c2bda3eb249eda51562a24d26f0"
     },
     {
       "id": "T041",
@@ -537,7 +542,9 @@
       "level": "Concurrency",
       "given": "Change candidate values/definition/audience after approval",
       "expected": "Old approval cannot publish changed content; old evidence retained",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "ffe611f1f1ff3c2bda3eb249eda51562a24d26f0"
     },
     {
       "id": "T042",
@@ -548,7 +555,10 @@
       "level": "E2E",
       "given": "Publish Math before Science or one predefined release unit",
       "expected": "Only selected authorized units visible; completeness partial",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN",
+      "releaseEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "releaseTestedSha": "ffe611f1f1ff3c2bda3eb249eda51562a24d26f0",
+      "remainingEvidence": "Topology and disjoint explicit release selection verified. Family result partial projection follows in OR06."
     },
     {
       "id": "T043",
@@ -559,7 +569,10 @@
       "level": "E2E",
       "given": "Correct published91 to92 with reason",
       "expected": "91 stays current until replacement; new immutable revision replaces pointer; history preserved",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN",
+      "releaseEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "releaseTestedSha": "ffe611f1f1ff3c2bda3eb249eda51562a24d26f0",
+      "remainingEvidence": "Original pointer and frozen result 91 observed until corrected release 92 commits. Family HTTP history follows in OR06."
     },
     {
       "id": "T044",
@@ -570,7 +583,9 @@
       "level": "Concurrency",
       "given": "Two publishers replace same current publication",
       "expected": "Expected predecessor CAS permits one; other must refresh/review",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "ffe611f1f1ff3c2bda3eb249eda51562a24d26f0"
     },
     {
       "id": "T045",
@@ -581,7 +596,9 @@
       "level": "Integration",
       "given": "School editor modifies already approved marks",
       "expected": "Required approval superseded; editing is not implicit approval",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "ffe611f1f1ff3c2bda3eb249eda51562a24d26f0"
     },
     {
       "id": "T046",
@@ -592,7 +609,9 @@
       "level": "Security",
       "given": "Enable two-person review then submitter approves own candidate",
       "expected": "Rejected according to configured separation policy; ordinary single-review school still works",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "ffe611f1f1ff3c2bda3eb249eda51562a24d26f0"
     },
     {
       "id": "T047",
@@ -603,7 +622,10 @@
       "level": "Integration",
       "given": "Revoke current release and retry same command",
       "expected": "Visibility removed once; dependent summary stale; no duplicate revoke event",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN",
+      "releaseEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "releaseTestedSha": "ffe611f1f1ff3c2bda3eb249eda51562a24d26f0",
+      "remainingEvidence": "One idempotent revocation and removal of the pointer verified. Aggregate dependency invalidation follows in OR06."
     },
     {
       "id": "T048",
@@ -1163,7 +1185,9 @@
       "level": "Concurrency",
       "given": "Split a published FULL unit into independently approved new units while another publisher writes",
       "expected": "Atomic expected-set replacement or conflict; no overlapping active field coverage; old set remains until all replacements ready",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "ffe611f1f1ff3c2bda3eb249eda51562a24d26f0"
     },
     {
       "id": "T098",
