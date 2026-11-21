@@ -14,7 +14,7 @@ import { BullmqService } from '../../../infrastructure/queue/bullmq.service';
 import { StorageService } from '../../../infrastructure/storage/storage.service';
 import { OfficialResultsError } from '../domain/official-results.error';
 import { currentRosterInstant } from '../domain/reporting-dates';
-import { renderCsvFiles } from '../domain/result-csv';
+import { renderResultFiles } from '../domain/result-csv';
 import {
   exportRequest,
   resultsBulkQueue,
@@ -582,7 +582,7 @@ export class ResultExportService {
         where: { schoolId: row.schoolId, exportId: row.id },
         orderBy: { position: 'asc' },
       });
-      const generated = await renderCsvFiles({
+      const generated = await renderResultFiles({
         exportId: row.id,
         creatorId: actor.actorId,
         schoolId: actor.schoolId,

@@ -168,8 +168,6 @@ export class ResultExportPlanService {
       this.auth.requirePermission(access, 'official_results.entries.manage');
       this.auth.requirePermission(access, 'official_results.imports.manage');
     }
-    if (request.format !== 'CSV')
-      throw new OfficialResultsError('export.format_disabled');
     const targets = await this.scopes.targets(
       client,
       schoolId,
