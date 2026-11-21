@@ -759,7 +759,10 @@
       "level": "E2E",
       "given": "Export selected class/period/template",
       "expected": "File already contains eligible students, hierarchy, stable refs and selected editable headers",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "348df7bb07ad44bcf5bd6835e5d013ab5f3f4b19",
+      "observed": "Download via the staffed HTTP route contains actual student, placement, selected field and 0.00 in pinned form."
     },
     {
       "id": "T058",
@@ -771,7 +774,10 @@
       "level": "Integration",
       "given": "Export whole grade with heterogeneous definitions",
       "expected": "Clear ZIP package/index; homogeneous CSV units; no mislabeled universal schema",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "348df7bb07ad44bcf5bd6835e5d013ab5f3f4b19",
+      "observed": "Two classroom/group manifests and two CSV parts appear in an indexed ZIP with instructions."
     },
     {
       "id": "T059",
@@ -782,7 +788,10 @@
       "level": "Integration",
       "given": "Two exports for same scope generated near same instant",
       "expected": "Distinct filename identity plus server manifests; filename changes do not grant authority",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "348df7bb07ad44bcf5bd6835e5d013ab5f3f4b19",
+      "observed": "Two nearly simultaneous creates use distinct file identifiers. An identical retry uses the same export. Another allocation holder receives 404 for the file."
     },
     {
       "id": "T060",
@@ -794,7 +803,10 @@
       "level": "Security",
       "given": "Teacher requests/downloads artifact containing unassigned sheets",
       "expected": "Denied for whole mixed artifact; authorized re-export supported",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "348df7bb07ad44bcf5bd6835e5d013ab5f3f4b19",
+      "observed": "Unauthorized explicit selection and mixed ZIP download after grant revocation both return 404. A narrower allocated export succeeds."
     },
     {
       "id": "T061",
@@ -805,7 +817,10 @@
       "level": "Integration",
       "given": "Export selected field/roster subset",
       "expected": "Manifest exactly reflects subset; absent rows/cells are not deletion requests",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "348df7bb07ad44bcf5bd6835e5d013ab5f3f4b19",
+      "observed": "Downloaded manifest and CSV exactly include the selected slot and field. No-deletion import behavior is verified in OR08 and OR09."
     },
     {
       "id": "T062",

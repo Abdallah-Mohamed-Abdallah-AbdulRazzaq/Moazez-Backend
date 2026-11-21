@@ -2,6 +2,19 @@ import { HttpStatus } from '@nestjs/common';
 import { DomainException } from '../../../common/exceptions/domain-exception';
 
 const errors = {
+  'export.expired': {
+    status: HttpStatus.GONE,
+    message: 'This Official Results export has expired',
+  },
+  'export.not_ready': {
+    status: HttpStatus.CONFLICT,
+    message: 'This Official Results file is not ready for download',
+  },
+  'export.format_disabled': {
+    status: HttpStatus.UNPROCESSABLE_ENTITY,
+    message:
+      'This Official Results format is unavailable for the selected scope',
+  },
   'candidate.stale': {
     status: HttpStatus.CONFLICT,
     message: 'The current work no longer matches this exact result candidate',

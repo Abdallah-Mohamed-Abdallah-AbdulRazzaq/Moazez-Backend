@@ -533,6 +533,12 @@
           "outcome": "PASS",
           "result": "47 migration replay, second deployment no-op, no drift, and 271 permissions and seven canonical roles on a disposable database.",
           "testedSha": "c0eeb72e696ef2ee07417e626fbcb6ab3d4f7aa5"
+        },
+        {
+          "command": "npm run build",
+          "outcome": "PASS",
+          "result": "Nest production compilation and reference-data bootstrap checked successfully.",
+          "testedSha": "c0eeb72e696ef2ee07417e626fbcb6ab3d4f7aa5"
         }
       ],
       "evidence": [
@@ -559,15 +565,82 @@
         "OR04",
         "OR06"
       ],
-      "status": "NOT_STARTED",
-      "implementationSha": null,
-      "requirements": [],
-      "codePaths": [],
-      "testsExecuted": [],
-      "evidence": [],
+      "status": "DONE",
+      "implementationSha": "348df7bb07ad44bcf5bd6835e5d013ab5f3f4b19",
+      "requirements": [
+        "R08",
+        "R15",
+        "R16",
+        "R18",
+        "R24",
+        "R25"
+      ],
+      "codePaths": [
+        "src/modules/official-results/application/result-export-plan.service.ts",
+        "src/modules/official-results/application/result-export.service.ts",
+        "src/modules/official-results/domain/result-csv.ts",
+        "src/modules/official-results/domain/result-export.contract.ts",
+        "src/modules/official-results/controller/result-export.controller.ts",
+        "src/modules/official-results/dto/result-export.dto.ts",
+        "src/modules/official-results/infrastructure/result-bulk.worker.ts",
+        "src/runtime/maintenance-scheduler/result-bulk-reconciliation.schedule.ts",
+        "prisma/migrations/20261121043500_official_results_exports/migration.sql"
+      ],
+      "testsExecuted": [
+        {
+          "command": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+          "outcome": "PASS",
+          "result": "30 passed. Real Nest HTTP, disposable PostgreSQL 16, Redis BullMQ and private MinIO. Covered actual student and selected score, zero, distinct files and idempotent create, published values, private revocation and heterogeneous ZIP listing.",
+          "testedSha": "348df7bb07ad44bcf5bd6835e5d013ab5f3f4b19"
+        },
+        {
+          "command": "Generated Nest OpenAPI contract and checked-in artifact comparison",
+          "outcome": "PASS",
+          "result": "99 operations checked. Two authenticated download operations describe actual binary content.",
+          "testedSha": "348df7bb07ad44bcf5bd6835e5d013ab5f3f4b19"
+        },
+        {
+          "command": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-csv.spec.ts src/runtime/runtime-role.module-contract.spec.ts src/modules/health/operational-probe.manifests.spec.ts",
+          "outcome": "PASS",
+          "result": "30 passed. Reversible codec and CSV quoting, NUL rejection, filename, worker and scheduler ownership.",
+          "testedSha": "348df7bb07ad44bcf5bd6835e5d013ab5f3f4b19"
+        },
+        {
+          "command": "node --test scripts/tests/prd3-g03-critical-queue-recovery.test.cjs",
+          "outcome": "PASS",
+          "result": "12 passed.",
+          "testedSha": "348df7bb07ad44bcf5bd6835e5d013ab5f3f4b19"
+        },
+        {
+          "command": "npm run verify:prd3-g04-tests; node scripts/migrations/migration-artifact-manifest.cjs verify",
+          "outcome": "PASS",
+          "result": "60 passed. Manifest verified at 48 migrations.",
+          "testedSha": "348df7bb07ad44bcf5bd6835e5d013ab5f3f4b19"
+        },
+        {
+          "command": "prisma validate; prisma generate; prisma migrate deploy; prisma migrate status; prisma migrate deploy; prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code; npm run seed",
+          "outcome": "PASS",
+          "result": "48 migrations replayed. Second deploy no-op, no schema drift, 271 permissions and seven roles seeded.",
+          "testedSha": "348df7bb07ad44bcf5bd6835e5d013ab5f3f4b19"
+        }
+      ],
+      "evidence": [
+        "docs/official-results/or07-bulk-export.md",
+        "docs/official-results/openapi.json",
+        "verification/acceptance-matrix.json"
+      ],
       "blockers": [],
-      "decisions": [],
-      "nextAction": null
+      "decisions": [
+        "A private export member reference identifies its exact server manifest; the API export ID identifies its parent job.",
+        "Official Results artifacts have their own registry and private object namespace. Generic Files has no record it can use to mint a signed download.",
+        "SIS Student has no code column. The supplemental display code is derived from the stable SIS UUID and is never used to match a grade.",
+        "Review evidence retains exact cell versions while planning and use remain subject to current effective policy and allocations."
+      ],
+      "nextAction": "OR08: CSV intake, typed validation, append-only source/correction versions and reviewed differences.",
+      "migrations": [
+        "20261121043500_official_results_exports"
+      ],
+      "requirementScope": "CSV and ZIP export. XLSX remains mandatory in OR10. Import effects and editor interoperability are verified in later phases."
     },
     {
       "id": "OR08",
@@ -660,7 +733,7 @@
     "deployed": false,
     "productionMutationsAuthorized": false
   },
-  "branch": "codex/moazez-be-official-results-family",
+  "branch": "codex/moazez-be-official-results-bulk",
   "draftPullRequests": [
     {
       "number": 238,
@@ -703,6 +776,16 @@
       "baseSha": "05e1e9183fe72dae1c01aaa81bb201c7087f8981",
       "scope": [
         "OR06"
+      ]
+    },
+    {
+      "number": 242,
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/242",
+      "branch": "codex/moazez-be-official-results-bulk",
+      "base": "codex/moazez-be-official-results-family",
+      "baseSha": "80759ece",
+      "scope": [
+        "OR07"
       ]
     }
   ]

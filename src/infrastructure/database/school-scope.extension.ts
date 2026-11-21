@@ -24,6 +24,8 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
   'ResultTemplateAssignment',
   'ResultDesignCandidate',
   'ResultConfigurationPreview',
+  'ResultExport',
+  'ResultExportFile',
   'ResultOperation',
   'OfficialResultPolicy',
   'OfficialResultPolicyVersion',

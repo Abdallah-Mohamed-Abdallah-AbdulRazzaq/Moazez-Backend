@@ -27,6 +27,7 @@ import { AcademicContentCleanupSchedule } from './maintenance-scheduler/academic
 import { CommunicationNotificationReconciliationSchedule } from './maintenance-scheduler/communication-notification-reconciliation.schedule';
 import { CommunicationPushReconciliationSchedule } from './maintenance-scheduler/communication-push-reconciliation.schedule';
 import { ImportValidationReconciliationSchedule } from './maintenance-scheduler/import-validation-reconciliation.schedule';
+import { ResultBulkReconciliationSchedule } from './maintenance-scheduler/result-bulk-reconciliation.schedule';
 import { SchoolEmailDeliveryReconciliationSchedule } from './maintenance-scheduler/school-email-delivery-reconciliation.schedule';
 import { DATABASE_RUNTIME_ENVIRONMENT_FIELDS } from '../infrastructure/database/database-runtime-env.validation';
 import {
@@ -44,6 +45,7 @@ const CONSUMER_PROVIDER_NAMES = [
   'DismissalRequestExpiryWorker',
   'BrandingLogoCleanupWorker',
   'LearningMediaCleanupService',
+  'ResultBulkWorker',
 ];
 
 const SCHEDULE_PROVIDER_NAMES = [
@@ -56,6 +58,7 @@ const SCHEDULE_PROVIDER_NAMES = [
   CommunicationPushReconciliationSchedule.name,
   SchoolEmailDeliveryReconciliationSchedule.name,
   ImportValidationReconciliationSchedule.name,
+  ResultBulkReconciliationSchedule.name,
 ];
 
 describe('runtime role module graphs', () => {
@@ -121,7 +124,7 @@ describe('runtime role module graphs', () => {
     );
   });
 
-  it('owns exactly the eight Core consumers without HTTP or local Socket.IO', () => {
+  it('owns exactly the nine Core consumers without HTTP or local Socket.IO', () => {
     setDatabaseRuntimeEnvironment('core-worker');
     const { CoreWorkerRuntimeModule } = jest.requireActual<
       typeof import('./core-worker/core-worker-runtime.module')
@@ -136,11 +139,12 @@ describe('runtime role module graphs', () => {
       'CommunicationNotificationPushWorker',
       'DismissalRequestExpiryWorker',
       'ImportValidationWorker',
+      'ResultBulkWorker',
       'SchoolEmailDeliveryWorker',
     ]);
-    expect(CORE_WORKER_ASSIGNED_CONSUMERS).toHaveLength(8);
+    expect(CORE_WORKER_ASSIGNED_CONSUMERS).toHaveLength(9);
     expect(intersection(graph.providers, CONSUMER_PROVIDER_NAMES)).toHaveLength(
-      8,
+      9,
     );
     expect(intersection(graph.providers, SCHEDULE_PROVIDER_NAMES)).toEqual([]);
     expect(graph.controllers).toEqual([]);
@@ -169,7 +173,7 @@ describe('runtime role module graphs', () => {
     expect(graph.providers).not.toContain('TemporaryDiskProbe');
   });
 
-  it('owns exactly nine registrations and no consumer, controller, Gateway, or storage provider', async () => {
+  it('owns exactly ten registrations and no consumer, controller, Gateway, or storage provider', async () => {
     for (const field of DATABASE_RUNTIME_ENVIRONMENT_FIELDS) {
       delete process.env[field];
     }
@@ -207,6 +211,9 @@ describe('runtime role module graphs', () => {
     await new ImportValidationReconciliationSchedule({
       registerRepeatJob,
     } as never).onModuleInit();
+    await new ResultBulkReconciliationSchedule({
+      registerRepeatJob,
+    } as never).onModuleInit();
 
     expect(intersection(graph.providers, CONSUMER_PROVIDER_NAMES)).toEqual([]);
     expect(
@@ -215,7 +222,7 @@ describe('runtime role module graphs', () => {
     expect(graph.controllers).toEqual([]);
     expect(graph.providers).not.toContain(RealtimeGateway.name);
     expect(graph.providers).not.toContain(StorageService.name);
-    expect(registerRepeatJob).toHaveBeenCalledTimes(9);
+    expect(registerRepeatJob).toHaveBeenCalledTimes(10);
     const registrations = registerRepeatJob.mock.calls as unknown as Array<
       [
         string,

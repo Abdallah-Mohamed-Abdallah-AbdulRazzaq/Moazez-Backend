@@ -1,0 +1,128 @@
+{
+  "codec": "MOAZEZ_TEXT_ESCAPE_V1",
+  "exampleOnly": true,
+  "detection": "Preserve original text. For detection only skip leading Unicode whitespace and general-category Cc/Cf; NFKC-normalize only the first meaningful character and compare it with =,+,-,@,apostrophe. Prefix also when original starts the literal marker. NUL is rejected before the codec. Decoder strips exactly one leading marker.",
+  "marker": "~mztext:",
+  "cases": [
+    {
+      "text": "نص عربي طبيعي",
+      "encoded": "نص عربي طبيعي",
+      "decoded": "نص عربي طبيعي",
+      "requiresPrefix": false
+    },
+    {
+      "text": "=1+1",
+      "encoded": "~mztext:=1+1",
+      "decoded": "=1+1",
+      "requiresPrefix": true
+    },
+    {
+      "text": " +SUM(A1:A2)",
+      "encoded": "~mztext: +SUM(A1:A2)",
+      "decoded": " +SUM(A1:A2)",
+      "requiresPrefix": true
+    },
+    {
+      "text": "-12",
+      "encoded": "~mztext:-12",
+      "decoded": "-12",
+      "requiresPrefix": true
+    },
+    {
+      "text": "@SUM(A1:A2)",
+      "encoded": "~mztext:@SUM(A1:A2)",
+      "decoded": "@SUM(A1:A2)",
+      "requiresPrefix": true
+    },
+    {
+      "text": "\t=1+1",
+      "encoded": "~mztext:\t=1+1",
+      "decoded": "\t=1+1",
+      "requiresPrefix": true
+    },
+    {
+      "text": "\r\n+1",
+      "encoded": "~mztext:\r\n+1",
+      "decoded": "\r\n+1",
+      "requiresPrefix": true
+    },
+    {
+      "text": "'literal",
+      "encoded": "~mztext:'literal",
+      "decoded": "'literal",
+      "requiresPrefix": true
+    },
+    {
+      "text": "'=1+1",
+      "encoded": "~mztext:'=1+1",
+      "decoded": "'=1+1",
+      "requiresPrefix": true
+    },
+    {
+      "text": "＝1+1",
+      "encoded": "~mztext:＝1+1",
+      "decoded": "＝1+1",
+      "requiresPrefix": true
+    },
+    {
+      "text": "＋1",
+      "encoded": "~mztext:＋1",
+      "decoded": "＋1",
+      "requiresPrefix": true
+    },
+    {
+      "text": "－1",
+      "encoded": "~mztext:－1",
+      "decoded": "－1",
+      "requiresPrefix": true
+    },
+    {
+      "text": "＠SUM(A1:A2)",
+      "encoded": "~mztext:＠SUM(A1:A2)",
+      "decoded": "＠SUM(A1:A2)",
+      "requiresPrefix": true
+    },
+    {
+      "text": "＇literal",
+      "encoded": "~mztext:＇literal",
+      "decoded": "＇literal",
+      "requiresPrefix": true
+    },
+    {
+      "text": "​=2",
+      "encoded": "~mztext:​=2",
+      "decoded": "​=2",
+      "requiresPrefix": true
+    },
+    {
+      "text": "~mztext:literal",
+      "encoded": "~mztext:~mztext:literal",
+      "decoded": "~mztext:literal",
+      "requiresPrefix": true
+    },
+    {
+      "text": "~mztext:~mztext:literal",
+      "encoded": "~mztext:~mztext:~mztext:literal",
+      "decoded": "~mztext:~mztext:literal",
+      "requiresPrefix": true
+    },
+    {
+      "text": "He said \"yes\", then left\nسطر ثان",
+      "encoded": "He said \"yes\", then left\nسطر ثان",
+      "decoded": "He said \"yes\", then left\nسطر ثان",
+      "requiresPrefix": false
+    },
+    {
+      "text": "0000123",
+      "encoded": "0000123",
+      "decoded": "0000123",
+      "requiresPrefix": false
+    },
+    {
+      "text": "",
+      "encoded": "",
+      "decoded": "",
+      "requiresPrefix": false
+    }
+  ]
+}

@@ -5,6 +5,9 @@ import { GlobalExceptionFilter } from '../../../common/exceptions/global-excepti
 import { OfficialResultsError } from '../domain/official-results.error';
 
 const ar: Record<string, string> = {
+  'export.not_ready': 'ملف النتائج غير جاهز للتنزيل',
+  'export.expired': 'انتهت صلاحية تصدير النتائج',
+  'export.format_disabled': 'صيغة تصدير النتائج غير متاحة لهذا النطاق',
   'cell.invalid_value': 'القيمة غير صالحة لحقل النتيجة',
   'schema.invalid': 'تعريف كشف النتائج المقترح غير صالح',
   'schema.stale': 'تغيّر تعريف كشف النتائج',

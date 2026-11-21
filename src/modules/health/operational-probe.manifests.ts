@@ -30,6 +30,11 @@ import {
 } from '../settings/branding/domain/branding-logo.constants';
 import { RUNTIME_ROLES, type RuntimeRole } from '../../runtime/runtime-role';
 import {
+  resultsBulkQueue,
+  resultsBulkReconcileJob,
+  resultsReconcileInterval,
+} from '../official-results/domain/result-export.contract';
+import {
   COMMUNICATION_ANNOUNCEMENT_NOTIFICATIONS_RECONCILE_JOB_NAME,
   COMMUNICATION_NOTIFICATION_PUSH_QUEUE_NAME,
   COMMUNICATION_NOTIFICATION_PUSH_RECONCILE_JOB_NAME,
@@ -100,6 +105,7 @@ export const CORE_WORKER_ASSIGNED_CONSUMERS = Object.freeze([
   'files-imports',
   'dismissal-request-expiry',
   'settings-branding-logo-cleanup',
+  resultsBulkQueue,
 ]);
 
 export const MEDIA_WORKER_ASSIGNED_CONSUMERS = Object.freeze([
@@ -160,6 +166,12 @@ export const MAINTENANCE_SCHEDULE_REGISTRATIONS = Object.freeze([
     jobName: FILES_IMPORT_RECONCILE_JOB_NAME,
     jobId: FILES_IMPORT_RECONCILE_JOB_NAME,
     every: FILES_IMPORT_RECONCILE_INTERVAL_MS,
+  }),
+  Object.freeze({
+    queueName: resultsBulkQueue,
+    jobName: resultsBulkReconcileJob,
+    jobId: resultsBulkReconcileJob,
+    every: resultsReconcileInterval,
   }),
 ] satisfies BullmqRepeatRegistration[]);
 

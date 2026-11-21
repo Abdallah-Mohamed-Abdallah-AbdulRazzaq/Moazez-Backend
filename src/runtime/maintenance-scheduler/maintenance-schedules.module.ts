@@ -9,6 +9,7 @@ import { CommunicationNotificationReconciliationSchedule } from './communication
 import { CommunicationPushReconciliationSchedule } from './communication-push-reconciliation.schedule';
 import { ImportValidationReconciliationSchedule } from './import-validation-reconciliation.schedule';
 import { SchoolEmailDeliveryReconciliationSchedule } from './school-email-delivery-reconciliation.schedule';
+import { ResultBulkReconciliationSchedule } from './result-bulk-reconciliation.schedule';
 
 export const MAINTENANCE_SCHEDULE_PROVIDERS = Object.freeze([
   AcademicContentPublicationReconciliationSchedule,
@@ -20,6 +21,7 @@ export const MAINTENANCE_SCHEDULE_PROVIDERS = Object.freeze([
   CommunicationPushReconciliationSchedule,
   SchoolEmailDeliveryReconciliationSchedule,
   ImportValidationReconciliationSchedule,
+  ResultBulkReconciliationSchedule,
 ] satisfies Provider[]);
 
 @Module({
