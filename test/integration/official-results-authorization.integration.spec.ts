@@ -543,6 +543,12 @@ describe('Official Results policy and permission boundaries', () => {
       resultContracts.capabilities.parse(response.body.data).capabilities
         .canPublish,
     ).toEqual({ allowed: false, reasonCode: 'MISSING_PERMISSION' });
+    await schoolApi()
+      .post(instructor + '/publication-batches')
+      .set('Authorization', 'Bearer teacher-fixture')
+      .set('Idempotency-Key', randomUUID())
+      .send({ mode: 'DIRECT', candidateRefs: [] })
+      .expect(403);
     const replay = await withSchool('post', '/policy/activate')
       .set('Idempotency-Key', 'activate-autonomous')
       .send(input)
@@ -906,6 +912,54 @@ describe('Official Results policy and permission boundaries', () => {
     expect(current.draftDefinition?.configuration).toMatchObject({
       templateVersionId: v1.templateVersionId,
     });
+    const stagePeriodId = await authoringPeriod('STAGE-COVERAGE');
+    await withSchool('post', '/scope-assignments')
+      .set('Idempotency-Key', 'stage-coverage')
+      .send({
+        expectedScopeRevision: 1,
+        assignment: {
+          academicScope: { level: 'STAGE', ids: [school.stage.id] },
+          groupScope: { kind: 'SUBJECTS', subjectIds: [school.subject.id] },
+          periodSelector: {
+            kind: 'EXACT_PERIODS',
+            periodIds: [stagePeriodId],
+          },
+          mode: 'REPLACE',
+          templateVersionId: v1.templateVersionId,
+          enabled: true,
+        },
+      })
+      .expect(201);
+    const resolve = (actor: 'school' | 'teacher') =>
+      schoolApi()
+        .post(
+          (actor === 'school' ? management : instructor) + '/scope-resolutions',
+        )
+        .set('Authorization', 'Bearer ' + actor + '-fixture')
+        .send({
+          reportingPeriodId: stagePeriodId,
+          academicScope: { level: 'SCHOOL', ids: [] },
+          groupIds: [math.id],
+          rosterAsOf: '2026-11-21T10:00:00.000Z',
+        })
+        .expect(200);
+    const stage = authoringOutputs.resolution.parse(
+      (await resolve('school')).body.data,
+    );
+    expect(stage.tuples).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          classroomId: added.id,
+          templateVersionId: v1.templateVersionId,
+        }),
+      ]),
+    );
+    const visible = authoringOutputs.resolution.parse(
+      (await resolve('teacher')).body.data,
+    );
+    expect(visible.tuples.map(({ classroomId }) => classroomId)).toEqual([
+      school.classroom.id,
+    ]);
     const v2 = authoringOutputs.templateVersion.parse(
       (
         await withSchool('post', templatePath + '/versions')
@@ -925,6 +979,20 @@ describe('Official Results policy and permission boundaries', () => {
       (await prisma.resultSheet.findUniqueOrThrow({ where: { id: sheetId } }))
         .draftDefinitionVersionId,
     ).toBe(current.draftDefinitionVersionId);
+    const pinnedField = v1.definition.fields[0];
+    const editable = await editableExport({
+      reportingPeriodId,
+      slot: current.slots[0],
+      scores: [pinnedField],
+    });
+    expect(editable.rows[0][18]).toContain('[r:' + pinnedField.id + ':value]');
+    const pinnedManifest = await prisma.resultExportFile.findUniqueOrThrow({
+      where: { id: editable.job.files[0].fileId },
+    });
+    const manifest = pinnedManifest.manifest as unknown as ExportManifest;
+    expect(manifest.sheets[0].definitionVersionId).toBe(
+      current.draftDefinitionVersionId,
+    );
     expect(
       (await withSchool('get', starterPath).expect(200)).body.data,
     ).toEqual(starter);
@@ -1092,6 +1160,10 @@ describe('Official Results policy and permission boundaries', () => {
         operations: [scoreOperation(slot.id, fieldId, '18.00')],
       })
       .expect(200);
+    const beforeUpgrade = await stagedGrade(
+      { reportingPeriodId, slot, scores: [{ id: fieldId }] },
+      '19.00',
+    );
     const higherLimit = {
       ...draft.definition,
       fields: draft.definition.fields.map((field) => ({
@@ -1117,6 +1189,30 @@ describe('Official Results policy and permission boundaries', () => {
     });
     expect(cell.numericValue?.toString()).toBe('18');
     expect(cell.version).toBe(2);
+    await confirmImport(
+      beforeUpgrade.batch.batchId,
+      confirmation(beforeUpgrade.batch),
+    ).expect(409);
+    const { batch } = await stagedGrade(
+      { reportingPeriodId, slot, scores: [{ id: fieldId }] },
+      '19.00',
+    );
+    const applied = importOutputs.execution.parse(
+      (await confirmImport(batch.batchId, confirmation(batch)).expect(202)).body
+        .data,
+    );
+    expect((await waitForOperation(applied.operationId)).status).toBe(
+      'APPLIED',
+    );
+    expect((await loadSheet()).lastAcceptedDefinitionVersionId).toBeNull();
+    expect(
+      (
+        await prisma.resultCell.findUniqueOrThrow({ where: { id: cell.id } })
+      ).numericValue?.toString(),
+    ).toBe('19');
+    expect(
+      await prisma.resultCurrentRelease.count({ where: { slotId: slot.id } }),
+    ).toBe(0);
     const restricted = {
       ...widened.definition,
       fields: widened.definition.fields.map((field) => ({
@@ -1170,7 +1266,13 @@ describe('Official Results policy and permission boundaries', () => {
     };
   }
 
-  async function liveGradebook(code: string, parallelClass = false) {
+  async function liveGradebook(
+    code: string,
+    parallelClass = false,
+    customize?: (
+      definition: ReturnType<typeof moazezStarterDefinition>,
+    ) => void,
+  ) {
     const reportingPeriodId = await authoringPeriod(code);
     const child = await school.addStudent(code);
     const enrollment = await prisma.enrollment.create({
@@ -1208,6 +1310,7 @@ describe('Official Results policy and permission boundaries', () => {
     scores.forEach((item, index) => {
       item.label.en = ['Homework', 'Behavior', 'Tests'][index];
     });
+    customize?.(definition);
     const materialize = (classroomId: string) =>
       school.run(() =>
         foundation.materialize({
@@ -1250,6 +1353,7 @@ describe('Official Results policy and permission boundaries', () => {
       enrollment,
       scores,
       internal,
+      definition,
       reportingPeriodId,
       source,
       destination,
@@ -1628,8 +1732,11 @@ describe('Official Results policy and permission boundaries', () => {
     ).toEqual(book.enrollment);
   });
 
-  async function readyRelease(code: string) {
-    const book = await liveGradebook(code);
+  async function readyRelease(
+    code: string,
+    customize?: Parameters<typeof liveGradebook>[2],
+  ) {
+    const book = await liveGradebook(code, false, customize);
     await book
       .patch(
         book.scores.map((field, index) =>
@@ -1747,6 +1854,22 @@ describe('Official Results policy and permission boundaries', () => {
 
   it('T039, T043, T044 and T047 publish exact approved values, preserve the active revision during a correction, and CAS the replacement', async () => {
     const book = await readyRelease('MANAGED-RELEASE');
+    const learner = await familyUser('STUDENT');
+    const access = await attachFamilyMembership(learner, school);
+    await prisma.student.update({
+      where: { id: book.child.id },
+      data: { userId: learner.id },
+    });
+    const learnerResults = api + '/student/official-results';
+    const viewed = (path: string) =>
+      schoolApi()
+        .get(learnerResults + path)
+        .set('Authorization', access.token);
+    const readPublication = async (id: string) =>
+      familyOutputs.result
+        .parse((await viewed('/publications/' + id).expect(200)).body.data)
+        .groups[0].releases[0].fields.find(({ code }) => code === 'total')
+        ?.value;
     await book.capture('DIRECT_PUBLICATION', 409);
     const candidate = (await book.capture())!;
     expect(candidate.status).toBe('SUBMITTED');
@@ -1824,6 +1947,27 @@ describe('Official Results policy and permission boundaries', () => {
       score: '92.00',
       status: 'RECORDED',
     });
+    expect(await readPublication(current.publicationId)).toMatchObject({
+      score: '92.00',
+    });
+    expect(await readPublication(original.publicationId)).toMatchObject({
+      score: '91.00',
+    });
+    const history = await viewed(
+      '/periods/' + book.reportingPeriodId + '/history',
+    ).expect(200);
+    expect(history.body.data.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          publicationId: original.publicationId,
+          revision: 1,
+        }),
+        expect.objectContaining({
+          publicationId: current.publicationId,
+          revision: 2,
+        }),
+      ]),
+    );
     expect(
       resultValue(
         (
@@ -2184,7 +2328,62 @@ describe('Official Results policy and permission boundaries', () => {
   }
 
   it('T048–T053 and T056 project only released fields and verify live historical identity', async () => {
-    const book = await readyRelease('FAMILY-SAFE');
+    const book = await readyRelease('FAMILY-SAFE', (definition) => {
+      const unit = definition.releaseUnits[0];
+      const optionField = {
+        id: randomUUID(),
+        code: 'family_progress',
+        label: { ar: 'التقدم', en: 'Progress' },
+        kind: 'SELECT' as const,
+        order: 7,
+        requiredForFinal: false,
+        constraints: {},
+        options: [
+          {
+            code: 'excellent',
+            label: { ar: 'ممتاز', en: 'Excellent' },
+            order: 0,
+            active: true,
+          },
+        ],
+        allowedStates: ['RECORDED', 'MISSING'] as ('RECORDED' | 'MISSING')[],
+        stateReasonRequired: [],
+        audiences: ['STUDENT', 'PARENT', 'STAFF'] as (
+          | 'STUDENT'
+          | 'PARENT'
+          | 'STAFF'
+        )[],
+        readRule: 'INHERIT_SHEET' as const,
+        editRule: 'INHERIT_SHEET' as const,
+        releaseUnitId: unit.id,
+      };
+      definition.fields.push(optionField);
+      unit.outputFieldIds.push(optionField.id);
+    });
+    const familyNote = book.definition.fields.find(
+      ({ code }) => code === 'family_note',
+    )!;
+    const familyChoice = book.definition.fields.find(
+      ({ code }) => code === 'family_progress',
+    )!;
+    await book
+      .patch([
+        {
+          slotId: book.slot.id,
+          fieldId: familyNote.id,
+          expectedCellVersion: 0,
+          operation: 'SET',
+          value: { status: 'RECORDED', text: 'Great work' },
+        },
+        {
+          slotId: book.slot.id,
+          fieldId: familyChoice.id,
+          expectedCellVersion: 0,
+          operation: 'SET',
+          value: { status: 'RECORDED', optionCode: 'excellent' },
+        },
+      ])
+      .expect(200);
     const learner = await familyUser('STUDENT');
     const parent = await familyUser('PARENT');
     const [access, parentAccess] = await Promise.all([
@@ -2254,6 +2453,20 @@ describe('Official Results policy and permission boundaries', () => {
         where: { studentId: book.child.id, schoolId: school.school.id },
       }),
     ).toBe(2);
+    expect(published.fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fieldId: familyNote.id,
+          kind: 'TEXT',
+          value: expect.objectContaining({ text: 'Great work' }),
+        }),
+        expect.objectContaining({
+          fieldId: familyChoice.id,
+          kind: 'SELECT',
+          value: expect.objectContaining({ optionCode: 'excellent' }),
+        }),
+      ]),
+    );
     expect(JSON.stringify(verified)).not.toContain(book.internal.id);
     expect(JSON.stringify(verified)).not.toContain('formula');
     await withSchool('patch', book.url + '/cells')
@@ -2289,6 +2502,30 @@ describe('Official Results policy and permission boundaries', () => {
     ).toEqual(verified.groups[0].releases[0].fields);
     const peer = await school.addStudent('Unlinked peer');
     await parentResult(peer.id).expect(404);
+    const parentPeer =
+      api + '/parent/children/' + peer.id + '/official-results';
+    for (const path of [
+      '/periods',
+      '/periods/' + book.reportingPeriodId + '/history',
+      '/publications/' + published.publicationId,
+    ]) {
+      const response = await schoolApi()
+        .get(parentPeer + path)
+        .set('Authorization', parentAccess.token)
+        .expect(404);
+      expect(response.text).not.toContain(book.child.id);
+    }
+    const history = await schoolApi()
+      .get(api + '/student' + periodPath + '/history')
+      .set('Authorization', access.token)
+      .expect(200);
+    expect(history.text).not.toContain('Restricted unpublished note');
+    expect(history.text).not.toContain('Restricted correction reason');
+    expect(history.text).not.toContain(book.internal.id);
+    await schoolApi()
+      .get(api + '/student' + periodPath + '/export')
+      .set('Authorization', access.token)
+      .expect(404);
     await schoolApi()
       .get(api + '/student' + periodPath + '/result?studentId=' + peer.id)
       .set('Authorization', access.token)
@@ -2349,6 +2586,99 @@ describe('Official Results policy and permission boundaries', () => {
     const stranger = await familyUser('STUDENT');
     const strangerScope = await attachFamilyMembership(stranger, otherSchool);
     await studentResult(strangerScope.token).expect(404);
+  });
+
+  it('T055 projects an explicitly approved total without the private numeric operand', async () => {
+    const book = await liveGradebook(
+      'FAMILY-PRIVATE-OPERAND',
+      false,
+      (definition) => {
+        const privateInput = definition.fields[0];
+        const total = definition.fields.find(({ code }) => code === 'total')!;
+        privateInput.audiences = ['STAFF'];
+        privateInput.readRule = 'SCHOOL_ONLY';
+        definition.releaseUnits[0].derivedDisclosure = [
+          {
+            outputFieldId: total.id,
+            privateOperandFieldIds: [privateInput.id],
+            audiences: ['PARENT', 'STUDENT'],
+            reason: 'Release the total without the protected operand',
+          },
+        ];
+      },
+    );
+    await withSchool('patch', book.url + '/cells')
+      .send({
+        expectedDefinitionVersionId: book.source.draftDefinitionVersionId,
+        expectedSheetRevision: book.source.sheetRevision,
+        operations: book.scores.map((field, index) =>
+          scoreOperation(book.slot.id, field.id, ['18', '27', '46'][index]),
+        ),
+      })
+      .expect(200);
+    const learner = await familyUser('STUDENT');
+    const access = await attachFamilyMembership(learner, school);
+    await prisma.student.update({
+      where: { id: book.child.id },
+      data: { userId: learner.id },
+    });
+    const slot = await prisma.resultSlot.findUniqueOrThrow({
+      where: { id: book.slot.id },
+    });
+    const sheet = await prisma.resultSheet.findUniqueOrThrow({
+      where: { id: book.source.id },
+    });
+    const response = await withSchool('post', '/candidates')
+      .set('Idempotency-Key', randomUUID())
+      .send({
+        sheetId: sheet.id,
+        expectedSheetRevision: sheet.sheetRevision,
+        intent: 'REVIEW',
+        units: [
+          {
+            slotId: slot.id,
+            releaseUnitId: book.definition.releaseUnits[0].id,
+            expectedSlotRevision: slot.revision,
+          },
+        ],
+      })
+      .expect(202);
+    const operation = releaseOutputs.operation.parse(response.body.data);
+    const items = await schoolApi()
+      .get(operation.itemsPath)
+      .set('Authorization', 'Bearer school-fixture')
+      .expect(200);
+    const candidate = releaseOutputs.candidate.parse(
+      (
+        await withSchool(
+          'get',
+          '/candidates/' + items.body.data.items[0].candidateId,
+        ).expect(200)
+      ).body.data,
+    );
+    await decideCandidate(candidate).expect(200);
+    await publishCandidate(candidate, 0, null).expect(202);
+    const result = await schoolApi()
+      .get(
+        api +
+          '/student/official-results/periods/' +
+          book.reportingPeriodId +
+          '/result',
+      )
+      .set('Authorization', access.token)
+      .expect(200);
+    expect(result.text).not.toContain(book.scores[0].id);
+    expect(result.text).not.toContain('privateOperandFieldIds');
+    expect(
+      familyOutputs.result.parse(result.body.data).groups[0].releases[0].fields,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'total',
+          value: { status: 'RECORDED', score: '91.00' },
+        }),
+      ]),
+    );
   });
 
   it('T054 binds aggregate review to published sources and stales an active summary on source revocation', async () => {
@@ -2815,8 +3145,14 @@ describe('Official Results policy and permission boundaries', () => {
   const sourceBytes = (records: string[][]) =>
     Buffer.from('\ufeff' + records.map(csvRecord).join(''));
 
+  type EditableResult = {
+    reportingPeriodId: string;
+    slot: { id: string };
+    scores: { id: string }[];
+  };
+
   async function editableExport(
-    book: Awaited<ReturnType<typeof liveGradebook>>,
+    book: EditableResult,
     selectedFieldIds = [book.scores[0].id],
   ) {
     const plan = exportOutputs.preview.parse(
@@ -3227,10 +3563,7 @@ describe('Official Results policy and permission boundaries', () => {
     acknowledgedWarningIds: batch.preview!.binding.requiredWarningIds,
   });
 
-  async function stagedGrade(
-    book: Awaited<ReturnType<typeof liveGradebook>>,
-    value: string,
-  ) {
+  async function stagedGrade(book: EditableResult, value: string) {
     const { job, rows } = await editableExport(book);
     const changed = rows.map((row) => row.slice());
     changed[1][18] = value;
@@ -3362,6 +3695,39 @@ describe('Official Results policy and permission boundaries', () => {
       ).toBe(0);
     } finally {
       await queue.resume();
+    }
+  });
+
+  it('T012 invalidates a staged preview after the school changes policy', async () => {
+    const book = await liveGradebook('CHANGED-IMPORT-POLICY');
+    const { batch } = await stagedGrade(book, '10');
+    const previous = resultContracts.policy.parse(
+      (await withSchool('get', '/policy').expect(200)).body.data,
+    );
+    const { result } = await activatePolicy(
+      {
+        familyHistoryEnabled: !previous.policy.familyHistoryEnabled,
+      },
+      previous.policyVersionId,
+      randomUUID(),
+    );
+    try {
+      const stale = await confirmImport(
+        batch.batchId,
+        confirmation(batch),
+      ).expect(409);
+      expect(stale.body.error.code).toBe('official_results.policy.stale');
+      expect(
+        await prisma.resultCell.count({ where: { slotId: book.slot.id } }),
+      ).toBe(0);
+    } finally {
+      await activatePolicy(
+        {
+          familyHistoryEnabled: previous.policy.familyHistoryEnabled,
+        },
+        result.policyVersionId,
+        randomUUID(),
+      );
     }
   });
 
@@ -4016,6 +4382,31 @@ describe('Official Results policy and permission boundaries', () => {
       .set('Idempotency-Key', randomUUID())
       .send(target)
       .expect(409);
+    await withSchool('patch', route)
+      .send({
+        expectedRevision: period.revision + 2,
+        patch: { status: 'OPEN' },
+      })
+      .expect(400);
+    const archiveRole = school.run(
+      () => getRequestContext()!.activeMembership!.roleId,
+    );
+    const archivePermission = await prisma.permission.findUniqueOrThrow({
+      where: { code: 'official_results.archives.manage' },
+    });
+    await prisma.rolePermission.deleteMany({
+      where: { roleId: archiveRole, permissionId: archivePermission.id },
+    });
+    try {
+      const denied = await withSchool('post', route + '/reopen-preview')
+        .send(target)
+        .expect(403);
+      expect(denied.body.error.code).toMatch(/permission|scope/u);
+    } finally {
+      await attachPermissions(archiveRole, [
+        'official_results.archives.manage',
+      ]);
+    }
     const plan = reportOutputs.reopen.parse(
       (
         await withSchool('post', route + '/reopen-preview')
@@ -4333,6 +4724,81 @@ describe('Official Results policy and permission boundaries', () => {
       operationId: operation.operationId,
       status: 'APPLIED',
     });
+  });
+
+  it('T006 isolates all Official Results route families for an authenticated administrator in another school', async () => {
+    const book = await readyRelease('CROSS-TENANT-ROUTES');
+    const { batch, job } = await stagedGrade(book, '19');
+    const candidate = (await book.capture())!;
+    await decideCandidate(candidate).expect(200);
+    await publishCandidate(candidate, 0, null).expect(202);
+    const publication = await prisma.resultPublication.findFirstOrThrow({
+      where: { candidateId: candidate.candidateId },
+    });
+    const file = job.files[0];
+    const foreign = (method: 'get' | 'post' | 'patch', path: string) =>
+      schoolApi()
+        [method](management + path)
+        .set('Authorization', 'Bearer other-school-fixture')
+        .set('Idempotency-Key', randomUUID());
+    const routes = [
+      '/capabilities?sheetId=' + book.source.id,
+      '/sheets/' + book.source.id,
+      '/sheets/' + book.source.id + '/grid',
+      '/candidates/' + candidate.candidateId,
+      '/publications/' + publication.id,
+      '/exports/' + job.exportId,
+      '/exports/' + job.exportId + '/files/' + file.fileId + '/download',
+      '/files/' + file.fileId + '/download',
+      '/imports/' + batch.batchId,
+      '/imports/' + batch.batchId + '/issues',
+      '/imports/' + batch.batchId + '/changes',
+      '/imports/' + batch.batchId + '/rows',
+    ];
+    for (const path of routes) {
+      const response = await foreign('get', path).expect(404);
+      expect(response.text).not.toContain(book.child.id);
+      expect(response.text).not.toContain(book.source.id);
+    }
+    const writes = await Promise.all([
+      foreign('patch', '/periods/' + book.reportingPeriodId).send({
+        expectedRevision: 1,
+        patch: { name: { ar: 'فترة', en: 'Foreign' } },
+      }),
+      foreign('patch', '/sheets/' + book.source.id + '/cells').send({
+        expectedDefinitionVersionId: book.source.draftDefinitionVersionId,
+        expectedSheetRevision: book.source.sheetRevision,
+        operations: [scoreOperation(book.slot.id, book.scores[0].id, '19', 1)],
+      }),
+      foreign('post', '/reviews/decisions').send({
+        candidateKind: 'RESULT_RELEASE',
+        ...candidateRef(candidate),
+        decision: 'APPROVE',
+      }),
+      foreign('post', '/publications/' + publication.id + '/revoke').send({
+        expectedPublicationId: publication.id,
+        expectedRevision: publication.revision,
+        expectedPublicationGeneration: 1,
+        reason: 'Cross-tenant attempt',
+      }),
+      foreign('post', '/imports/' + batch.batchId + '/confirm').send(
+        confirmation(batch),
+      ),
+    ]);
+    for (const { status, text: body } of writes) {
+      expect(status).toBe(404);
+      expect(body).not.toContain(book.child.id);
+    }
+    expect(
+      await prisma.resultCurrentRelease.count({
+        where: { publicationId: publication.id },
+      }),
+    ).toBe(1);
+    expect(
+      await prisma.resultImportExecution.count({
+        where: { batchId: batch.batchId },
+      }),
+    ).toBe(0);
   });
 
   it('T095 rejects an unauthenticated request at each implemented API entry point', async () => {

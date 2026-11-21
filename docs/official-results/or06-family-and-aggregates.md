@@ -32,4 +32,3 @@ family query also validates source-current eligibility.
 See the [implementation ledger](../../verification/implementation-ledger.json)
 and [acceptance matrix](../../verification/acceptance-matrix.json) for the
 executed contract and isolation checks.
-
