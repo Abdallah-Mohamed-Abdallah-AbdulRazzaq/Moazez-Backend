@@ -669,6 +669,98 @@ enum GradeAnswerCorrectionStatus {
   @@map("grade_answer_correction_status")
 }
 
+enum ResultReportingPeriodKind {
+  TERM
+  CUSTOM
+  YEAR
+
+  @@map("result_reporting_period_kind")
+}
+
+enum ResultReportingPeriodClass {
+  PROGRESS
+  FINAL
+
+  @@map("result_reporting_period_class")
+}
+
+enum ResultReportingPeriodStatus {
+  OPEN
+  ENTRY_CLOSED
+  ARCHIVED
+
+  @@map("result_reporting_period_status")
+}
+
+enum ResultGroupKind {
+  SUBJECT
+  CUSTOM
+
+  @@map("result_group_kind")
+}
+
+enum ResultFieldKind {
+  SCORE
+  PERCENTAGE
+  TEXT
+  SELECT
+  PASS_FAIL
+  BOOLEAN
+  CALCULATED
+
+  @@map("result_field_kind")
+}
+
+enum ResultFieldAccess {
+  INHERIT_SHEET
+  SCHOOL_ONLY
+  EXPLICIT_GRANT
+
+  @@map("result_field_access")
+}
+
+enum ResultValueStatus {
+  RECORDED
+  MISSING
+  ABSENT
+  EXCUSED
+  NOT_APPLICABLE
+
+  @@map("result_value_status")
+}
+
+enum ResultPassFail {
+  PASS
+  FAIL
+
+  @@map("result_pass_fail")
+}
+
+enum ResultAudience {
+  STAFF
+  STUDENT
+  PARENT
+
+  @@map("result_audience")
+}
+
+enum ResultRosterState {
+  ELIGIBLE
+  RECONCILIATION_REQUIRED
+  CLOSED
+
+  @@map("result_roster_state")
+}
+
+enum ResultDraftChangeSource {
+  GRID
+  IMPORT
+  DEFINITION_UPGRADE
+  ROSTER_RECONCILIATION
+
+  @@map("result_draft_change_source")
+}
+
 enum GradeItemStatus {
   ENTERED
   MISSING
@@ -1711,6 +1803,12 @@ model School {
   answerUploadIntents           AssessmentAnswerUploadIntent[]
   answerMediaClaims             AssessmentAnswerMediaClaim[]
 
+  resultReportingPeriods ResultReportingPeriod[]
+  resultGroups          ResultGroup[]
+  resultSheets          ResultSheet[]
+  resultFieldIdentities ResultFieldIdentity[]
+  resultSlots           ResultSlot[]
+
   @@unique([organizationId, slug])
   @@unique([id, organizationId], map: "answer_intent_school_organization_key")
   @@index([organizationId])
@@ -1956,6 +2054,10 @@ model User {
   homeworkAnswerAssetsCreated          HomeworkAnswerAsset[]          @relation("HomeworkAnswerAssetCreatedBy")
   gradeSubmissionAnswerAssetsCreated   GradeSubmissionAnswerAsset[]   @relation("GradeSubmissionAnswerAssetCreatedBy")
   answerUploadIntents                  AssessmentAnswerUploadIntent[] @relation("AssessmentAnswerUploadActor")
+
+  resultDefinitionVersions ResultSheetDefinitionVersion[] @relation("ResultDefinitionAuthor")
+  resultCellsEdited        ResultCell[]                   @relation("ResultCellEditor")
+  resultCellRevisions      ResultCellRevision[]           @relation("ResultCellRevisionAuthor")
 
   @@index([userType])
   @@index([status])
@@ -3800,6 +3902,8 @@ model AcademicYear {
   timetablePublications          TimetablePublication[]
   timetableConflicts             TimetableConflict[]
 
+  resultReportingPeriods ResultReportingPeriod[]
+
   @@unique([id, schoolId])
   @@unique([schoolId, nameAr])
   @@unique([schoolId, nameEn])
@@ -3858,6 +3962,10 @@ model Term {
   timetableEntries               TimetableEntry[]
   timetablePublications          TimetablePublication[]
   timetableConflicts             TimetableConflict[]
+
+  resultReportingPeriods ResultReportingPeriod[]
+
+  @@unique([id, schoolId, academicYearId], map: "term_year_school_identity_key")
 
   @@unique([id, schoolId])
   @@unique([academicYearId, nameAr])
@@ -4021,6 +4129,8 @@ model Classroom {
   timetableEntries                   TimetableEntry[]
   dismissalStaffAssignments          DismissalStaffAssignment[]
 
+  resultSheets ResultSheet[]
+
   @@unique([id, schoolId])
   @@unique([sectionId, nameAr])
   @@unique([sectionId, nameEn])
@@ -4058,6 +4168,8 @@ model Subject {
   timetableEntries                    TimetableEntry[]
   academicContentTargets              AcademicContentTarget[]
   academicContentPreparationTemplates AcademicContentPreparationTemplate[]
+
+  resultGroups ResultGroup[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, code])
@@ -4812,6 +4924,8 @@ model Student {
   academicContentAcknowledgements   AcademicContentAcknowledgement[]
   answerUploadIntents               AssessmentAnswerUploadIntent[]
 
+  resultSlots ResultSlot[]
+
   @@unique([id, schoolId])
   @@unique([applicationId, schoolId])
   @@unique([id, schoolId, userId], map: "answer_intent_student_actor_key")
@@ -4929,6 +5043,8 @@ model Enrollment {
   academicContentAudienceRecipients AcademicContentAudienceRecipient[]
   academicContentEngagementEvents   AcademicContentEngagementEvent[]
   academicContentAcknowledgements   AcademicContentAcknowledgement[]
+
+  resultSlots ResultSlot[]
 
   @@unique([id, schoolId])
   @@unique([id, schoolId, studentId], map: "acc_enrollment_student_identity_key")
@@ -5860,6 +5976,292 @@ model GradeRule {
   @@index([schoolId, termId, scopeType, scopeKey])
   @@index([gradeId])
   @@map("grade_rules")
+}
+
+// ============================================================
+// OFFICIAL RESULTS — canonical sheets, slots and typed drafts
+// ============================================================
+
+model ResultReportingPeriod {
+  id             String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String                      @map("school_id") @db.Uuid
+  academicYearId String                      @map("academic_year_id") @db.Uuid
+  termId         String?                     @map("term_id") @db.Uuid
+  kind           ResultReportingPeriodKind
+  code           String                      @db.VarChar(64)
+  nameAr         String                      @map("name_ar") @db.VarChar(200)
+  nameEn         String                      @map("name_en") @db.VarChar(200)
+  description    String?                     @db.VarChar(2000)
+  startsOn       DateTime                    @map("starts_on") @db.Date
+  endsOn         DateTime                    @map("ends_on") @db.Date
+  classification ResultReportingPeriodClass  @default(FINAL)
+  status         ResultReportingPeriodStatus @default(OPEN)
+  revision       Int                         @default(1)
+  createdAt      DateTime                    @default(now()) @map("created_at")
+  updatedAt      DateTime                    @updatedAt @map("updated_at")
+
+  school       School       @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  academicYear AcademicYear @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  term         Term?        @relation(fields: [termId, schoolId, academicYearId], references: [id, schoolId, academicYearId], onDelete: Restrict, onUpdate: Restrict)
+  sheets       ResultSheet[]
+  slots        ResultSlot[]
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, academicYearId, code])
+  @@index([schoolId, termId, academicYearId])
+  @@index([schoolId, status, startsOn, id])
+  @@map("result_reporting_periods")
+}
+
+model ResultGroup {
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId    String          @map("school_id") @db.Uuid
+  subjectId   String?         @map("subject_id") @db.Uuid
+  kind        ResultGroupKind
+  code        String          @db.VarChar(64)
+  labelAr     String          @map("label_ar") @db.VarChar(200)
+  labelEn     String          @map("label_en") @db.VarChar(200)
+  description String?         @db.VarChar(2000)
+  archivedAt  DateTime?       @map("archived_at")
+  revision    Int             @default(1)
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  school  School  @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  subject Subject? @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  sheets  ResultSheet[]
+  slots   ResultSlot[]
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, code])
+  @@unique([schoolId, subjectId])
+  @@map("result_groups")
+}
+
+model ResultSheet {
+  id                              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                        String   @map("school_id") @db.Uuid
+  reportingPeriodId               String   @map("reporting_period_id") @db.Uuid
+  classroomId                     String   @map("classroom_id") @db.Uuid
+  groupId                         String   @map("group_id") @db.Uuid
+  draftDefinitionVersionId        String?  @map("draft_definition_version_id") @db.Uuid
+  lastAcceptedDefinitionVersionId String?  @map("last_accepted_definition_version_id") @db.Uuid
+  sheetRevision                   Int      @default(1) @map("sheet_revision")
+  dataGeneration                  Int      @default(0) @map("data_generation")
+  rosterGeneration                Int      @default(1) @map("roster_generation")
+  rosterAsOf                      DateTime @map("roster_as_of") @db.Timestamptz(3)
+  createdAt                       DateTime @default(now()) @map("created_at")
+  updatedAt                       DateTime @updatedAt @map("updated_at")
+
+  school                School                       @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  reportingPeriod       ResultReportingPeriod         @relation(fields: [reportingPeriodId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  classroom             Classroom                    @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  group                 ResultGroup                  @relation(fields: [groupId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  draftDefinition       ResultSheetDefinitionVersion? @relation("ResultSheetDraftDefinition", fields: [draftDefinitionVersionId, schoolId, id], references: [id, schoolId, sheetId], onDelete: Restrict, onUpdate: Restrict, map: "result_sheet_draft_definition_fk")
+  acceptedDefinition    ResultSheetDefinitionVersion? @relation("ResultSheetAcceptedDefinition", fields: [lastAcceptedDefinitionVersionId, schoolId, id], references: [id, schoolId, sheetId], onDelete: Restrict, onUpdate: Restrict, map: "result_sheet_accepted_definition_fk")
+  definitions           ResultSheetDefinitionVersion[] @relation("ResultSheetOwnedDefinitions")
+  slots                 ResultSlot[]
+
+  @@unique([id, schoolId])
+  @@unique([id, schoolId, reportingPeriodId, groupId], map: "result_sheet_context_key")
+  @@unique([schoolId, reportingPeriodId, classroomId, groupId], map: "result_sheet_canonical_key")
+  @@index([schoolId, groupId])
+  @@index([schoolId, classroomId])
+  @@index([schoolId, draftDefinitionVersionId])
+  @@index([schoolId, lastAcceptedDefinitionVersionId], map: "result_sheet_accepted_definition_idx")
+  @@map("result_sheets")
+}
+
+model ResultSheetDefinitionVersion {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId         String   @map("school_id") @db.Uuid
+  sheetId          String   @map("sheet_id") @db.Uuid
+  version          Int
+  contentDigest    String   @map("content_digest") @db.Char(64)
+  labelAr          String   @map("label_ar") @db.VarChar(200)
+  labelEn          String   @map("label_en") @db.VarChar(200)
+  configuration    Json
+  createdById      String   @map("created_by_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  sheet         ResultSheet                    @relation("ResultSheetOwnedDefinitions", fields: [sheetId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  draftFor      ResultSheet[]                  @relation("ResultSheetDraftDefinition")
+  acceptedFor   ResultSheet[]                  @relation("ResultSheetAcceptedDefinition")
+  createdBy     User                           @relation("ResultDefinitionAuthor", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  fields        ResultFieldDefinition[]
+  releaseUnits  ResultReleaseUnitDefinition[]
+  cellRevisions ResultCellRevision[]
+
+  @@unique([id, schoolId])
+  @@unique([id, schoolId, sheetId], map: "result_definition_sheet_key")
+  @@unique([schoolId, sheetId, version], map: "result_definition_sheet_version_key")
+  @@index([createdById])
+  @@map("result_sheet_definition_versions")
+}
+
+model ResultFieldIdentity {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String          @map("school_id") @db.Uuid
+  kind            ResultFieldKind
+  semanticPurpose String          @map("semantic_purpose") @db.VarChar(128)
+  retiredAt       DateTime?       @map("retired_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  school      School                  @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  definitions ResultFieldDefinition[]
+
+  @@unique([id, schoolId, kind])
+  @@index([schoolId])
+  @@map("result_field_identities")
+}
+
+model ResultReleaseUnitDefinition {
+  id                  String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId            String                   @map("school_id") @db.Uuid
+  definitionVersionId String                   @map("definition_version_id") @db.Uuid
+  unitId              String                   @map("unit_id") @db.Uuid
+  code                String                   @db.VarChar(64)
+  labelAr             String                   @map("label_ar") @db.VarChar(200)
+  labelEn             String                   @map("label_en") @db.VarChar(200)
+  classification      ResultReportingPeriodClass @default(FINAL)
+  audiences           ResultAudience[]
+  sortOrder           Int                      @map("sort_order")
+  createdAt           DateTime                 @default(now()) @map("created_at")
+  updatedAt           DateTime                 @updatedAt @map("updated_at")
+
+  definition ResultSheetDefinitionVersion @relation(fields: [definitionVersionId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "result_unit_definition_fk")
+  fields     ResultFieldDefinition[]
+
+  @@unique([definitionVersionId, schoolId, unitId], map: "result_unit_definition_identity_key")
+  @@unique([definitionVersionId, code], map: "result_unit_definition_code_key")
+  @@index([schoolId, definitionVersionId, sortOrder], map: "result_unit_definition_order_idx")
+  @@map("result_release_unit_definitions")
+}
+
+model ResultFieldDefinition {
+  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId            String            @map("school_id") @db.Uuid
+  definitionVersionId String            @map("definition_version_id") @db.Uuid
+  fieldId             String            @map("field_id") @db.Uuid
+  releaseUnitId       String?           @map("release_unit_id") @db.Uuid
+  kind                ResultFieldKind
+  outputKind          ResultFieldKind?  @map("output_kind")
+  code                String            @db.VarChar(64)
+  labelAr             String            @map("label_ar") @db.VarChar(200)
+  labelEn             String            @map("label_en") @db.VarChar(200)
+  sortOrder           Int               @map("sort_order")
+  required            Boolean           @default(false)
+  audiences           ResultAudience[]
+  readRule            ResultFieldAccess @default(INHERIT_SHEET) @map("read_rule")
+  editRule            ResultFieldAccess @default(INHERIT_SHEET) @map("edit_rule")
+  constraints         Json
+  formula             Json?
+  derivedDisclosure   Json?             @map("derived_disclosure")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+
+  definition  ResultSheetDefinitionVersion @relation(fields: [definitionVersionId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "result_field_definition_fk")
+  identity    ResultFieldIdentity          @relation(fields: [fieldId, schoolId, kind], references: [id, schoolId, kind], onDelete: Restrict, onUpdate: Restrict)
+  releaseUnit ResultReleaseUnitDefinition? @relation(fields: [definitionVersionId, schoolId, releaseUnitId], references: [definitionVersionId, schoolId, unitId], onDelete: Restrict, onUpdate: Restrict, map: "result_field_release_unit_fk")
+  cells       ResultCell[]
+
+  @@unique([definitionVersionId, fieldId])
+  @@unique([definitionVersionId, code])
+  @@unique([definitionVersionId, schoolId, fieldId, kind], map: "result_field_definition_typed_key")
+  @@index([schoolId, definitionVersionId, sortOrder], map: "result_field_definition_order_idx")
+  @@index([schoolId, fieldId, kind])
+  @@index([schoolId, definitionVersionId, releaseUnitId], map: "result_field_definition_release_idx")
+  @@map("result_field_definitions")
+}
+
+model ResultSlot {
+  id                    String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId              String            @map("school_id") @db.Uuid
+  studentId             String            @map("student_id") @db.Uuid
+  reportingPeriodId     String            @map("reporting_period_id") @db.Uuid
+  groupId               String            @map("group_id") @db.Uuid
+  sheetId               String            @map("sheet_id") @db.Uuid
+  enrollmentId          String            @map("enrollment_id") @db.Uuid
+  rosterState           ResultRosterState @default(ELIGIBLE) @map("roster_state")
+  revision              Int               @default(1)
+  publicationGeneration Int               @default(0) @map("publication_generation")
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  school          School                @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  student         Student               @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  reportingPeriod ResultReportingPeriod @relation(fields: [reportingPeriodId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  group           ResultGroup           @relation(fields: [groupId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  sheet           ResultSheet           @relation(fields: [sheetId, schoolId, reportingPeriodId, groupId], references: [id, schoolId, reportingPeriodId, groupId], onDelete: Restrict, onUpdate: Restrict, map: "result_slot_sheet_context_fk")
+  enrollment      Enrollment            @relation(fields: [enrollmentId, schoolId, studentId], references: [id, schoolId, studentId], onDelete: Restrict, onUpdate: Restrict, map: "result_slot_enrollment_student_fk")
+  cells           ResultCell[]
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, studentId, reportingPeriodId, groupId], map: "result_slot_canonical_key")
+  @@index([schoolId, reportingPeriodId, groupId])
+  @@index([schoolId, groupId])
+  @@index([schoolId, sheetId, id])
+  @@index([schoolId, enrollmentId, studentId])
+  @@map("result_slots")
+}
+
+model ResultCell {
+  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId            String            @map("school_id") @db.Uuid
+  slotId              String            @map("slot_id") @db.Uuid
+  definitionVersionId String            @map("definition_version_id") @db.Uuid
+  fieldId             String            @map("field_id") @db.Uuid
+  fieldKind           ResultFieldKind   @map("field_kind")
+  status              ResultValueStatus
+  numericValue        Decimal?          @map("numeric_value") @db.Decimal(18, 6)
+  textValue           String?           @map("text_value") @db.VarChar(5000)
+  optionCode          String?           @map("option_code") @db.VarChar(64)
+  outcome             ResultPassFail?
+  booleanValue        Boolean?          @map("boolean_value")
+  version             Int               @default(1)
+  updatedById         String            @map("updated_by_id") @db.Uuid
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+
+  slot            ResultSlot             @relation(fields: [slotId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  fieldDefinition ResultFieldDefinition  @relation(fields: [definitionVersionId, schoolId, fieldId, fieldKind], references: [definitionVersionId, schoolId, fieldId, kind], onDelete: Restrict, onUpdate: Restrict, map: "result_cell_typed_definition_fk")
+  updatedBy       User                   @relation("ResultCellEditor", fields: [updatedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  revisions       ResultCellRevision[]
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, slotId, fieldId], map: "result_cell_identity_key")
+  @@index([schoolId, definitionVersionId, fieldId, fieldKind], map: "result_cell_definition_idx")
+  @@index([schoolId, updatedAt, id])
+  @@index([updatedById])
+  @@map("result_cells")
+}
+
+model ResultCellRevision {
+  id                  String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId            String                  @map("school_id") @db.Uuid
+  cellId              String                  @map("cell_id") @db.Uuid
+  definitionVersionId String                  @map("definition_version_id") @db.Uuid
+  version             Int
+  authorId            String                  @map("author_id") @db.Uuid
+  operationId         String                  @map("operation_id") @db.Uuid
+  source              ResultDraftChangeSource
+  reason              String?                 @db.VarChar(2000)
+  before              Json
+  after               Json
+  createdAt           DateTime                @default(now()) @map("created_at")
+  updatedAt           DateTime                @updatedAt @map("updated_at")
+
+  cell       ResultCell                   @relation(fields: [cellId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict)
+  definition ResultSheetDefinitionVersion @relation(fields: [definitionVersionId, schoolId], references: [id, schoolId], onDelete: Restrict, onUpdate: Restrict, map: "result_revision_definition_fk")
+  author     User                         @relation("ResultCellRevisionAuthor", fields: [authorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([schoolId, cellId, version])
+  @@index([schoolId, operationId])
+  @@index([schoolId, definitionVersionId])
+  @@index([authorId])
+  @@map("result_cell_revisions")
 }
 
 // ============================================================

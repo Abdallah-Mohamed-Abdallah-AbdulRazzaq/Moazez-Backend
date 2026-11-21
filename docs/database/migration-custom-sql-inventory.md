@@ -634,3 +634,27 @@ and permits existing soft retirement. No new grants or schema model changes.
 This raises the G01-C public-schema function inventory from nine to ten.
 Lifecycle, asset binding and answer claim integration suites exercise these
 constraints on disposable PostgreSQL.
+
+## OR01 Official Results foundation
+
+Prisma generated the tables, restrictive composite relations and indexes in
+`20261121014102_official_results_foundation` from the reviewed schema diff.
+The existing term identity gains an additive (id, school_id, academic_year_id)
+unique key for the exact reporting-period relation. The chain reuses the
+existing enrollment (id, school_id, student_id) key.
+
+| PostgreSQL-specific object | Invariant |
+| --- | --- |
+| result_period_dates_check, result_period_term_kind_check | Valid date order and required term relation for TERM/CUSTOM; YEAR carries no term. |
+| result_group_subject_kind_check | A SUBJECT group has a subject. CUSTOM groups use school/code uniqueness; null in the separate school/subject unique key intentionally permits multiple custom groups. |
+| result_field_formula_kind_check | A calculated field has an object formula and supported output kind; a manual field has neither. |
+| result_cell_version_check, result_cell_typed_value_check | Positive versions; exactly one scalar of the appropriate kind for RECORDED; no scalar for other states; calculated fields are read-only. |
+| result_sheet_requires_draft_definition | Deferred check permits transactional creation of a sheet and its initial version, and requires the definition to be bound before commit. |
+| result_sheet_definition_immutable, result_release_unit_definition_immutable, result_field_definition_immutable, result_cell_revision_immutable | Update and delete are rejected on frozen records. |
+
+The two trigger functions are security invokers with restricted search path
+and no PUBLIC execute via the subsequent trigger-privilege migration.
+G01-C includes both function contracts in its runtime privilege inventory.
+See the [PostgreSQL suite](../../test/integration/official-results-foundation.integration.spec.ts)
+and [implementation ledger](../../verification/implementation-ledger.json)
+for actual verification.
