@@ -10,7 +10,6 @@ import {
 } from 'class-validator';
 import { z } from 'zod/v4';
 import { ValidationDomainException } from '../../../common/exceptions/domain-exception';
-import { fieldMappingSchema } from '../application/result-design.service';
 import { resultResolutionInput } from '../application/result-scope.service';
 import {
   resultAuthoringLabel,
@@ -19,6 +18,7 @@ import {
   resultLabel,
 } from '../domain/result-definition';
 import { templateScopeSelector } from '../domain/result-template-rules';
+import { fieldMappingSchema } from '../domain/result-mapping';
 import {
   materializationItem,
   resultOperationCounts,
@@ -233,6 +233,7 @@ export const authoringOutputs = {
     tuples: z.array(
       scopeTuple.extend({
         rosterCount: generation,
+        pendingPlacementCount: generation,
         existingSheetId: uuid.nullable(),
         draftDefinitionVersionId: uuid.nullable(),
         templateVersionId: uuid.nullable(),

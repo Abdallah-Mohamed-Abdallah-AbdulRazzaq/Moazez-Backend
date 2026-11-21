@@ -16,7 +16,10 @@ import {
   storedCellValue,
   type ResultValue,
 } from '../../domain/result-value';
-import { sheetDefinitionSeed } from '../../domain/sheet-definition-seed';
+import {
+  sheetDefinitionSeed,
+  storedResultDefinition,
+} from '../../domain/sheet-definition-seed';
 import { ResultFoundationRepository } from './result-foundation.repository';
 
 export type DraftFieldMapping = {
@@ -35,19 +38,6 @@ type DraftCellMigration = {
   value: ResultValue;
 };
 
-function resolvedDefinition(
-  configuration: Prisma.JsonValue,
-): ResultDefinition | null {
-  if (
-    !configuration ||
-    typeof configuration !== 'object' ||
-    Array.isArray(configuration)
-  )
-    return null;
-  return (
-    (configuration.resolvedDefinition as unknown as ResultDefinition) ?? null
-  );
-}
 const sameDefinition = (a: ResultField, b: ResultField) =>
   resultContentDigest(a) === resultContentDigest(b);
 const protectedField = (field: ResultField) =>
@@ -82,10 +72,10 @@ export class ResultDesignRepository {
     return {
       ...sheet,
       draft: sheet.draftDefinition
-        ? resolvedDefinition(sheet.draftDefinition.configuration)
+        ? storedResultDefinition(sheet.draftDefinition.configuration)
         : null,
       accepted: sheet.acceptedDefinition
-        ? resolvedDefinition(sheet.acceptedDefinition.configuration)
+        ? storedResultDefinition(sheet.acceptedDefinition.configuration)
         : null,
     };
   }
@@ -220,7 +210,9 @@ export class ResultDesignRepository {
       definitionVersionId: candidate.definitionVersionId,
       contentDigest: input.contentDigest,
       status,
-      definition: resolvedDefinition(candidate.definitionVersion.configuration),
+      definition: storedResultDefinition(
+        candidate.definitionVersion.configuration,
+      ),
       ...(input.comment ? { comment: input.comment } : {}),
     };
   }
@@ -255,7 +247,7 @@ export class ResultDesignRepository {
     if (candidate.status !== 'IN_REVIEW' && candidate.status !== 'ACCEPTED') {
       throw new OfficialResultsError('schema.stale');
     }
-    const definition = resolvedDefinition(version.configuration);
+    const definition = storedResultDefinition(version.configuration);
     if (!definition) throw new OfficialResultsError('schema.invalid');
     const next = new Map(definition.fields.map((item) => [item.id, item]));
     const old = new Map(

@@ -1,5 +1,20 @@
+import type { Prisma } from '@prisma/client';
 import type { FrozenResultDefinitionInput } from '../application/result-foundation.types';
 import type { ResultDefinition } from './result-definition';
+
+export function storedResultDefinition(
+  configuration: Prisma.JsonValue | undefined,
+): ResultDefinition | null {
+  if (
+    !configuration ||
+    typeof configuration !== 'object' ||
+    Array.isArray(configuration)
+  )
+    return null;
+  return (
+    (configuration.resolvedDefinition as unknown as ResultDefinition) ?? null
+  );
+}
 
 export function sheetDefinitionSeed(
   definition: ResultDefinition,

@@ -225,9 +225,11 @@ export class ResultScopeService {
                 rosterAsOf: new Date(parsed.input.rosterAsOf),
                 definition,
                 acceptsDefinition: tuple.templateVersionId !== null,
+                deferExistingPlacements: true,
               },
               resultContentDigest(definition),
               plan.rosterFingerprints[index],
+              plan.placementFingerprints[index],
             );
             items.push({
               sheetId: result.sheet.id,
@@ -236,6 +238,7 @@ export class ResultScopeService {
               groupId: tuple.groupId,
               status: 'COMPLETED' as const,
               created: result.created,
+              pendingPlacementCount: tuple.pendingPlacementCount,
             });
           }
           const operation = await this.operations.createMaterialization(
@@ -342,6 +345,7 @@ export class ResultScopeService {
       classroomId: string;
       groupId: string;
       rosterCount: number;
+      pendingPlacementCount: number;
       existingSheetId: string | null;
       templateVersionId: string | null;
       sourceRuleIds: string[];
@@ -357,6 +361,7 @@ export class ResultScopeService {
     }[] = [];
     const definitions: FrozenResultDefinitionInput[] = [];
     const rosterFingerprints: string[] = [];
+    const placementFingerprints: string[] = [];
     const authorizedGroups = new Set<string>();
     const authorizedScopes = new Set<string>();
     for (const target of targets) {
@@ -389,9 +394,18 @@ export class ResultScopeService {
           context,
           rosterDate,
         );
+        const knownPlacements = await this.roster.existingPlacements(
+          client,
+          actor.schoolId,
+          ids,
+          enrollments.map((row) => row.studentId),
+        );
         tuples.push({
           ...ids,
           rosterCount: enrollments.length,
+          pendingPlacementCount: knownPlacements.filter(
+            (placement) => placement.sheetId !== existing?.id,
+          ).length,
           existingSheetId: existing?.id ?? null,
           draftDefinitionVersionId: existing?.draftDefinitionVersionId ?? null,
           templateVersionId: winner?.versionId ?? null,
@@ -413,6 +427,7 @@ export class ResultScopeService {
               },
         );
         rosterFingerprints.push(JSON.stringify(enrollments));
+        placementFingerprints.push(JSON.stringify(knownPlacements));
       } catch (error) {
         if (
           error instanceof NotFoundDomainException &&
@@ -447,11 +462,13 @@ export class ResultScopeService {
       conflicts,
       definitions,
       rosterFingerprints,
+      placementFingerprints,
       fingerprint: resultContentDigest({
         tuples,
         conflicts,
         definitions,
         rosterFingerprints,
+        placementFingerprints,
       }),
     };
   }

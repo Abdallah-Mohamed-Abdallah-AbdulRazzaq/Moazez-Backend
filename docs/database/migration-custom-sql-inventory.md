@@ -685,3 +685,15 @@ configuration previews, and materialization operation records.
 | result_assignment_mode_check | EXTEND requires a distinct base version in the same school. |
 | result_one_open_design_per_sheet | At most one in-review design per canonical sheet. |
 | result_template_version_immutable | The existing invoker trigger prevents edits or removal of a frozen version. |
+
+## OR04 Official Results gradebook and roster revisions
+
+`20261121031742_official_results_roster_revisions` adds placement/applicability
+state on the canonical slot, reason attribution on the draft cell, and a
+same-school placement history bound to the slot, student, period, group, sheets,
+and enrollments.
+
+| PostgreSQL-specific object | Invariant |
+| --- | --- |
+| result_placement_revision_shape_check | An addition has no prior placement. A move records explicit mapping if applicable. All revisions have a nonblank reason and positive version. |
+| result_placement_revision_immutable | The existing invoker trigger prevents editing or removing placement history. |

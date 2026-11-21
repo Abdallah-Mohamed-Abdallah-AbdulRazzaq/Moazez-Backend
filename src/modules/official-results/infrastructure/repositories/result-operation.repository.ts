@@ -11,6 +11,7 @@ export const materializationItem = z.object({
   groupId: z.uuid(),
   status: z.literal('COMPLETED'),
   created: z.boolean(),
+  pendingPlacementCount: z.number().int().min(0).optional(),
 });
 export type MaterializationItem = z.infer<typeof materializationItem>;
 

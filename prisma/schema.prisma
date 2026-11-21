@@ -764,6 +764,7 @@ enum ResultConfigurationPreviewKind {
   TEMPLATE_ACTIVATION
   SCOPE_RESOLUTION
   DEFINITION_ADOPTION
+  ROSTER_RECONCILIATION
 
   @@map("result_configuration_preview_kind")
 }
@@ -799,6 +800,17 @@ enum ResultRosterState {
   CLOSED
 
   @@map("result_roster_state")
+}
+
+enum ResultPlacementAction {
+  ADD
+  KEEP_HISTORICAL
+  MOVE_DRAFT
+  CLOSE_DRAFT
+  EXEMPT_GROUP
+  REINSTATE_GROUP
+
+  @@map("result_placement_action")
 }
 
 enum ResultDraftChangeSource {
@@ -1857,6 +1869,7 @@ model School {
   resultSheets          ResultSheet[]
   resultFieldIdentities ResultFieldIdentity[]
   resultSlots           ResultSlot[]
+  resultPlacementRevisions ResultPlacementRevision[]
 
   officialResultPolicy    OfficialResultPolicy?
   resultPolicyPreviews    ResultPolicyPreview[]
@@ -2117,6 +2130,7 @@ model User {
   answerUploadIntents                  AssessmentAnswerUploadIntent[] @relation("AssessmentAnswerUploadActor")
 
   resultDefinitionVersions ResultSheetDefinitionVersion[] @relation("ResultDefinitionAuthor")
+  resultPlacementRevisions ResultPlacementRevision[] @relation("ResultPlacementAuthor")
   resultCellsEdited        ResultCell[]                   @relation("ResultCellEditor")
   resultCellRevisions      ResultCellRevision[]           @relation("ResultCellRevisionAuthor")
 
@@ -5123,6 +5137,8 @@ model Enrollment {
   academicContentAcknowledgements   AcademicContentAcknowledgement[]
 
   resultSlots ResultSlot[]
+  resultPlacementsFrom ResultPlacementRevision[] @relation("ResultPlacementFromEnrollment")
+  resultPlacementsTo ResultPlacementRevision[] @relation("ResultPlacementToEnrollment")
 
   @@unique([id, schoolId])
   @@unique([id, schoolId, studentId], map: "acc_enrollment_student_identity_key")
@@ -6139,6 +6155,8 @@ model ResultSheet {
   acceptedDefinition    ResultSheetDefinitionVersion? @relation("ResultSheetAcceptedDefinition", fields: [lastAcceptedDefinitionVersionId, schoolId, id], references: [id, schoolId, sheetId], onDelete: Restrict, onUpdate: Restrict, map: "result_sheet_accepted_definition_fk")
   definitions           ResultSheetDefinitionVersion[] @relation("ResultSheetOwnedDefinitions")
   slots                 ResultSlot[]
+  placementsFrom        ResultPlacementRevision[] @relation("ResultPlacementFromSheet")
+  placementsTo          ResultPlacementRevision[] @relation("ResultPlacementToSheet")
 
   @@unique([id, schoolId])
   @@unique([id, schoolId, reportingPeriodId, groupId], map: "result_sheet_context_key")
@@ -6265,6 +6283,9 @@ model ResultSlot {
   sheetId               String            @map("sheet_id") @db.Uuid
   enrollmentId          String            @map("enrollment_id") @db.Uuid
   rosterState           ResultRosterState @default(ELIGIBLE) @map("roster_state")
+  placementRevision     Int               @default(1) @map("placement_revision")
+  historicalPlacement   Boolean           @default(false) @map("historical_placement")
+  groupExempt           Boolean           @default(false) @map("group_exempt")
   revision              Int               @default(1)
   publicationGeneration Int               @default(0) @map("publication_generation")
   createdAt             DateTime          @default(now()) @map("created_at")
@@ -6279,16 +6300,55 @@ model ResultSlot {
   cells           ResultCell[]
 
   correctionWindows ResultCorrectionWindow[]
+  placementHistory ResultPlacementRevision[]
 
   @@unique([id, schoolId, reportingPeriodId], map: "result_slot_period_key")
 
   @@unique([id, schoolId])
   @@unique([schoolId, studentId, reportingPeriodId, groupId], map: "result_slot_canonical_key")
+  @@unique([id, schoolId, studentId, reportingPeriodId, groupId], map: "result_slot_placement_context_key")
   @@index([schoolId, reportingPeriodId, groupId])
   @@index([schoolId, groupId])
   @@index([schoolId, sheetId, id])
   @@index([schoolId, enrollmentId, studentId])
   @@map("result_slots")
+}
+
+model ResultPlacementRevision {
+  id                String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String                @map("school_id") @db.Uuid
+  slotId            String                @map("slot_id") @db.Uuid
+  studentId         String                @map("student_id") @db.Uuid
+  reportingPeriodId String                @map("reporting_period_id") @db.Uuid
+  groupId           String                @map("group_id") @db.Uuid
+  version           Int
+  action            ResultPlacementAction
+  fromSheetId       String?               @map("from_sheet_id") @db.Uuid
+  toSheetId         String                @map("to_sheet_id") @db.Uuid
+  fromEnrollmentId  String?               @map("from_enrollment_id") @db.Uuid
+  toEnrollmentId    String                @map("to_enrollment_id") @db.Uuid
+  authorId          String                @map("author_id") @db.Uuid
+  rosterAsOf        DateTime              @map("roster_as_of") @db.Timestamptz(3)
+  reason            String                @db.VarChar(2000)
+  fieldMapping      Json?                 @map("field_mapping")
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  author User @relation("ResultPlacementAuthor", fields: [authorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  slot ResultSlot @relation(fields: [slotId, schoolId, studentId, reportingPeriodId, groupId], references: [id, schoolId, studentId, reportingPeriodId, groupId], onDelete: Restrict, onUpdate: Restrict, map: "result_placement_slot_fk")
+  fromSheet ResultSheet? @relation("ResultPlacementFromSheet", fields: [fromSheetId, schoolId, reportingPeriodId, groupId], references: [id, schoolId, reportingPeriodId, groupId], onDelete: Restrict, onUpdate: Restrict, map: "result_placement_from_sheet_fk")
+  toSheet ResultSheet @relation("ResultPlacementToSheet", fields: [toSheetId, schoolId, reportingPeriodId, groupId], references: [id, schoolId, reportingPeriodId, groupId], onDelete: Restrict, onUpdate: Restrict, map: "result_placement_to_sheet_fk")
+  fromEnrollment Enrollment? @relation("ResultPlacementFromEnrollment", fields: [fromEnrollmentId, schoolId, studentId], references: [id, schoolId, studentId], onDelete: Restrict, onUpdate: Restrict, map: "result_placement_from_enrollment_fk")
+  toEnrollment Enrollment @relation("ResultPlacementToEnrollment", fields: [toEnrollmentId, schoolId, studentId], references: [id, schoolId, studentId], onDelete: Restrict, onUpdate: Restrict, map: "result_placement_to_enrollment_fk")
+
+  @@unique([schoolId, slotId, version])
+  @@index([schoolId, fromSheetId, reportingPeriodId, groupId])
+  @@index([schoolId, toSheetId, reportingPeriodId, groupId])
+  @@index([schoolId, fromEnrollmentId, studentId])
+  @@index([schoolId, toEnrollmentId, studentId])
+  @@index([schoolId, authorId])
+  @@map("result_placement_revisions")
 }
 
 model ResultCell {
@@ -6304,6 +6364,7 @@ model ResultCell {
   optionCode          String?           @map("option_code") @db.VarChar(64)
   outcome             ResultPassFail?
   booleanValue        Boolean?          @map("boolean_value")
+  stateReason         String?           @map("state_reason") @db.VarChar(2000)
   version             Int               @default(1)
   updatedById         String            @map("updated_by_id") @db.Uuid
   createdAt           DateTime          @default(now()) @map("created_at")

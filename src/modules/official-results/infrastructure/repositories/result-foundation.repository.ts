@@ -202,6 +202,7 @@ export class ResultFoundationRepository {
     input: MaterializeResultSheetInput,
     contentDigest: string,
     expectedRoster?: string,
+    expectedPlacements?: string,
   ) {
     const { schoolId, actorId } = currentSchoolContext();
     const target = await this.roster.resolveTarget(client, schoolId, input);
@@ -241,15 +242,25 @@ export class ResultFoundationRepository {
     ) {
       throw new OfficialResultsError('preview.stale');
     }
-    const placed = await client.resultSlot.count({
+    const placed = await client.resultSlot.findMany({
       where: {
         schoolId,
         reportingPeriodId: target.period.id,
         groupId: target.group.id,
         studentId: { in: enrollments.map(({ studentId }) => studentId) },
       },
+      select: { studentId: true, sheetId: true },
+      orderBy: { studentId: 'asc' },
     });
-    if (placed) throw new OfficialResultsError('roster.changed');
+    if (
+      expectedPlacements !== undefined &&
+      JSON.stringify(placed) !== expectedPlacements
+    ) {
+      throw new OfficialResultsError('preview.stale');
+    }
+    if (placed.length && !input.deferExistingPlacements)
+      throw new OfficialResultsError('roster.changed');
+    const existingStudents = new Set(placed.map((item) => item.studentId));
 
     const sheet = await client.resultSheet.create({
       data: { ...naturalKey, rosterAsOf: input.rosterAsOf },
@@ -264,14 +275,16 @@ export class ResultFoundationRepository {
       contentDigest,
     );
     await client.resultSlot.createMany({
-      data: enrollments.map((enrollment) => ({
-        schoolId,
-        sheetId: sheet.id,
-        reportingPeriodId: target.period.id,
-        groupId: target.group.id,
-        studentId: enrollment.studentId,
-        enrollmentId: enrollment.id,
-      })),
+      data: enrollments
+        .filter((enrollment) => !existingStudents.has(enrollment.studentId))
+        .map((enrollment) => ({
+          schoolId,
+          sheetId: sheet.id,
+          reportingPeriodId: target.period.id,
+          groupId: target.group.id,
+          studentId: enrollment.studentId,
+          enrollmentId: enrollment.id,
+        })),
     });
     const initialized = await client.resultSheet.update({
       where: { id_schoolId: { id: sheet.id, schoolId } },

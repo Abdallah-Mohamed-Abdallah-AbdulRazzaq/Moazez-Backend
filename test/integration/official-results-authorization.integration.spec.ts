@@ -21,6 +21,9 @@ import { PrismaService } from '../../src/infrastructure/database/prisma.service'
 import { PERMISSION_CODES } from '../../src/modules/iam/reference-data/permission-catalog';
 import { TEACHER_PERMISSIONS } from '../../src/modules/iam/reference-data/system-role-catalog';
 import { requireResultActor } from '../../src/modules/official-results/application/result-actor';
+import { cloneResultDefinition } from '../../src/modules/official-results/domain/result-definition';
+import { sheetDefinitionSeed } from '../../src/modules/official-results/domain/sheet-definition-seed';
+import { gradebookOutputs } from '../../src/modules/official-results/dto/result-gradebook.dto';
 import {
   moazezStarterDefinition,
   starterTemplateId,
@@ -59,6 +62,7 @@ describe('Official Results policy and permission boundaries', () => {
   let school: SchoolFixture;
   let otherSchool: SchoolFixture;
   let teacher: Awaited<ReturnType<typeof createTeacher>>;
+  let coTeacher: Awaited<ReturnType<typeof createTeacher>>;
   let authorization: ResultAuthorizationRepository;
   let commands: ResultCommandRepository;
   let foundation: ResultFoundationRepository;
@@ -103,7 +107,7 @@ describe('Official Results policy and permission boundaries', () => {
     const role = await prisma.role.create({
       data: {
         schoolId: fixture.school.id,
-        key: 'results-instructor',
+        key: 'results-instructor-' + actor.id,
         name: 'Results Instructor',
       },
     });
@@ -162,6 +166,7 @@ describe('Official Results policy and permission boundaries', () => {
       attachPermissions(otherRole, schoolPermissions),
     ]);
     teacher = await createTeacher(school);
+    coTeacher = await createTeacher(school);
     const module = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
@@ -183,6 +188,8 @@ describe('Official Results policy and permission boundaries', () => {
           return schoolContext(otherSchool, next);
         case 'Bearer teacher-fixture':
           return teacher.run(next);
+        case 'Bearer co-teacher-fixture':
+          return coTeacher.run(next);
         default:
           return next();
       }
@@ -248,6 +255,17 @@ describe('Official Results policy and permission boundaries', () => {
       select: { id: true },
     });
     allocationId = allocation.id;
+    await prisma.teacherSubjectAllocation.createMany({
+      data: [school.classroom.id, school.otherClassroom.id].map(
+        (classroomId) => ({
+          schoolId: school.school.id,
+          teacherUserId: coTeacher.actor.id,
+          termId: school.term.id,
+          subjectId: school.subject.id,
+          classroomId,
+        }),
+      ),
+    });
     const science = await prisma.subject.create({
       data: { schoolId: school.school.id, nameAr: 'العلوم', nameEn: 'Science' },
     });
@@ -387,7 +405,7 @@ describe('Official Results policy and permission boundaries', () => {
         }),
       ),
     );
-    expect(registered).toHaveLength(49);
+    expect(registered).toHaveLength(59);
     for (const endpoint of registered) {
       expect(catalog.operations).toContainEqual(
         expect.objectContaining({
@@ -1016,18 +1034,15 @@ describe('Official Results policy and permission boundaries', () => {
     const slot = (await loadSheet()).slots.find(
       (row) => row.studentId === enrolled.id,
     )!;
-    await prisma.resultCell.create({
-      data: {
-        schoolId: school.school.id,
-        slotId: slot.id,
-        definitionVersionId: draft.definitionVersionId,
-        fieldId,
-        fieldKind: 'SCORE',
-        status: 'RECORDED',
-        numericValue: '18.00',
-        updatedById: teacher.actor.id,
-      },
-    });
+    await schoolApi()
+      .patch(instructor + '/sheets/' + sheetId + '/cells')
+      .set('Authorization', 'Bearer teacher-fixture')
+      .send({
+        expectedDefinitionVersionId: draft.definitionVersionId,
+        expectedSheetRevision: selected.sheetRevision,
+        operations: [scoreOperation(slot.id, fieldId, '18.00')],
+      })
+      .expect(200);
     const higherLimit = {
       ...draft.definition,
       fields: draft.definition.fields.map((field) => ({
@@ -1089,6 +1104,459 @@ describe('Official Results policy and permission boundaries', () => {
     expect((await loadSheet()).draftDefinitionVersionId).toBe(
       widened.definitionVersionId,
     );
+  });
+
+  function scoreOperation(
+    slotId: string,
+    fieldId: string,
+    score: string,
+    expectedCellVersion = 0,
+  ) {
+    return {
+      slotId,
+      fieldId,
+      expectedCellVersion,
+      operation: 'SET',
+      value: { status: 'RECORDED', score },
+    };
+  }
+
+  async function liveGradebook(code: string) {
+    const reportingPeriodId = await authoringPeriod(code);
+    const child = await school.addStudent(code);
+    const enrollment = await prisma.enrollment.create({
+      data: {
+        schoolId: school.school.id,
+        academicYearId: school.year.id,
+        termId: school.term.id,
+        studentId: child.id,
+        classroomId: school.classroom.id,
+        enrolledAt: new Date('2026-09-01T08:00:00Z'),
+      },
+    });
+    const definition = cloneResultDefinition(moazezStarterDefinition(), {
+      ar: 'كشف',
+      en: code,
+    }).definition;
+    const internal = definition.fields.find(
+      (field) => field.code === 'internal_note',
+    )!;
+    const scores = definition.fields.filter((field) => field.kind === 'SCORE');
+    scores.forEach((item, index) => {
+      item.label.en = ['Homework', 'Behavior', 'Tests'][index];
+    });
+    const materialize = (classroomId: string) =>
+      school.run(() =>
+        foundation.materialize({
+          reportingPeriodId,
+          groupId: math.id,
+          classroomId,
+          rosterAsOf: new Date('2026-11-21T10:00:00.000Z'),
+          definition: sheetDefinitionSeed(definition),
+          acceptsDefinition: true,
+        }),
+      );
+    const source = (await materialize(school.classroom.id)).sheet;
+    const destination = (await materialize(school.otherClassroom.id)).sheet;
+    const slot = await prisma.resultSlot.findFirstOrThrow({
+      where: { sheetId: source.id, studentId: child.id },
+    });
+    const url = '/sheets/' + source.id;
+    const patch = (
+      operations: object[],
+      auth = 'teacher-fixture',
+      key?: string,
+    ) => {
+      const mutation = schoolApi()
+        .patch(instructor + url + '/cells')
+        .set('Authorization', 'Bearer ' + auth);
+      if (key) mutation.set('Idempotency-Key', key);
+      return mutation.send({
+        expectedDefinitionVersionId: source.draftDefinitionVersionId,
+        expectedSheetRevision: source.sheetRevision,
+        operations,
+      });
+    };
+    return {
+      child,
+      enrollment,
+      scores,
+      internal,
+      reportingPeriodId,
+      source,
+      destination,
+      slot,
+      patch,
+      url,
+    };
+  }
+
+  it('T001 and T026 run the 20/30/50 grid through the canonical draft store and hide protected notes', async () => {
+    const book = await liveGradebook('FULL-GRID');
+    const schoolId = school.school.id;
+    const legacy = () =>
+      Promise.all([
+        prisma.gradeItem.count({ where: { schoolId } }),
+        prisma.homeworkSubmission.count({ where: { schoolId } }),
+        prisma.behaviorRecord.count({ where: { schoolId } }),
+        prisma.xpLedger.count({ where: { schoolId } }),
+      ]);
+    const before = await legacy();
+    const commands = book.scores.map((field, index) =>
+      scoreOperation(
+        book.slot.id,
+        field.id,
+        ['18.00', '27.00', '46.00'][index],
+      ),
+    );
+    const saved = gradebookOutputs.patch.parse(
+      (
+        await book
+          .patch(commands, 'teacher-fixture', 'exact-grid-scores')
+          .expect(200)
+      ).body.data,
+    );
+    expect(saved.changedCells).toHaveLength(3);
+    expect(saved.calculatedOutputs).toContainEqual(
+      expect.objectContaining({
+        value: { status: 'RECORDED', score: '91.00' },
+        evaluation: {
+          nominalMaxScore: '100.00',
+          effectiveMaxScore: '100.00',
+          normalizedPercentage: '91.000000',
+        },
+      }),
+    );
+    expect(
+      (
+        await book
+          .patch(commands, 'teacher-fixture', 'exact-grid-scores')
+          .expect(200)
+      ).body.data,
+    ).toEqual(saved);
+    expect(await legacy()).toEqual(before);
+    const privateText = 'Sensitive administrator-only note';
+    const note = {
+      slotId: book.slot.id,
+      fieldId: book.internal.id,
+      expectedCellVersion: 0,
+      operation: 'SET',
+      value: { status: 'RECORDED', text: privateText },
+    };
+    await withSchool('patch', book.url + '/cells')
+      .send({
+        expectedDefinitionVersionId: book.source.draftDefinitionVersionId,
+        expectedSheetRevision: book.source.sheetRevision,
+        operations: [note],
+      })
+      .expect(200);
+    const staff = gradebookOutputs.grid.parse(
+      (
+        await withSchool(
+          'get',
+          book.url + '/grid?studentIds=' + book.child.id,
+        ).expect(200)
+      ).body.data,
+    );
+    expect(staff.rows.items[0].cells).toContainEqual(
+      expect.objectContaining({ fieldId: book.internal.id, value: note.value }),
+    );
+    const teacherView = (
+      await withTeacher(book.url + '/grid?studentIds=' + book.child.id).expect(
+        200,
+      )
+    ).body.data;
+    expect(gradebookOutputs.grid.parse(teacherView).rows.items[0].slotId).toBe(
+      book.slot.id,
+    );
+    expect(JSON.stringify(teacherView)).not.toContain(privateText);
+    expect(JSON.stringify(teacherView)).not.toContain(book.internal.id);
+    await withTeacher(
+      book.url + '/grid?selectedFieldIds=' + book.internal.id,
+    ).expect(404);
+    await book.patch([note]).expect(403);
+  });
+
+  it('T035 and T036 enforce missing-cell CAS and merge distinct cells for two allocated teachers', async () => {
+    const book = await liveGradebook('CONCURRENT-GRID');
+    const [first, second, third] = book.scores.map((item) => item.id);
+    const same = await Promise.all([
+      book.patch([scoreOperation(book.slot.id, first, '18.00')]),
+      book.patch(
+        [scoreOperation(book.slot.id, first, '17.00')],
+        'co-teacher-fixture',
+      ),
+    ]);
+    expect(same.map((response) => response.status).sort()).toEqual([200, 409]);
+    expect(
+      same.find((response) => response.status === 409)?.body.error.code,
+    ).toBe('official_results.cell.conflict');
+    const others = await Promise.all([
+      book.patch([scoreOperation(book.slot.id, second, '27.00')]),
+      book.patch(
+        [scoreOperation(book.slot.id, third, '46.00')],
+        'co-teacher-fixture',
+      ),
+    ]);
+    expect(others.map((response) => response.status)).toEqual([200, 200]);
+    const rows = await prisma.resultCell.findMany({
+      where: { slotId: book.slot.id },
+      include: { revisions: true },
+    });
+    expect(rows).toHaveLength(3);
+    expect(rows.map((row) => row.revisions.length)).toEqual([1, 1, 1]);
+    const sheet = await prisma.resultSheet.findUniqueOrThrow({
+      where: { id: book.source.id },
+    });
+    expect(sheet.dataGeneration).toBe(book.source.dataGeneration + 3);
+    expect(sheet.sheetRevision).toBe(book.source.sheetRevision);
+  });
+
+  it('T037 and T038 reject an atomic invalid paste, retain recorded zero and refuse a stale undo', async () => {
+    const book = await liveGradebook('ATOMIC-GRID');
+    const [first, second] = book.scores.map((field) => field.id);
+    const failed = await book
+      .patch([
+        scoreOperation(book.slot.id, first, '0'),
+        scoreOperation(book.slot.id, second, '99.00'),
+      ])
+      .expect(422);
+    expect(failed.body.error.details.issues).toEqual([
+      expect.objectContaining({
+        fieldId: second,
+        code: 'official_results.cell.invalid_value',
+      }),
+    ]);
+    expect(
+      await prisma.resultCell.count({ where: { slotId: book.slot.id } }),
+    ).toBe(0);
+    const data = gradebookOutputs.patch.parse(
+      (await book.patch([scoreOperation(book.slot.id, first, '0')]).expect(200))
+        .body.data,
+    );
+    expect(data.changedCells[0].value).toEqual({
+      status: 'RECORDED',
+      score: '0.00',
+    });
+    await book
+      .patch(
+        [scoreOperation(book.slot.id, first, '18.00', 1)],
+        'co-teacher-fixture',
+      )
+      .expect(200);
+    const clear = {
+      slotId: book.slot.id,
+      fieldId: first,
+      expectedCellVersion: 1,
+      operation: 'CLEAR',
+      reason: 'Undo original edit',
+    };
+    await book.patch([clear]).expect(409);
+    const latest = gradebookOutputs.patch.parse(
+      (await book.patch([{ ...clear, expectedCellVersion: 2 }]).expect(200))
+        .body.data,
+    );
+    expect(latest.changedCells[0]).toMatchObject({
+      value: { status: 'MISSING' },
+      cellVersion: 3,
+    });
+    const record = await prisma.resultCell.findFirstOrThrow({
+      where: { slotId: book.slot.id, fieldId: first },
+      include: { revisions: { orderBy: { version: 'asc' } } },
+    });
+    expect(record.revisions.map((row) => row.version)).toEqual([1, 2, 3]);
+    expect(record.revisions[2].reason).toBe('Undo original edit');
+  });
+
+  it('reconciles a transfer on the same canonical slot with exact schema mapping and append-only placement history', async () => {
+    const book = await liveGradebook('TRANSFER-GRID');
+    const fieldId = book.scores[0].id;
+    await book
+      .patch([scoreOperation(book.slot.id, fieldId, '18.00')])
+      .expect(200);
+    const movedAt = new Date('2026-11-21T09:59:00.000Z');
+    await prisma.enrollment.update({
+      where: { id: book.enrollment.id },
+      data: { endedAt: movedAt, status: 'COMPLETED' },
+    });
+    const enrollment = await prisma.enrollment.create({
+      data: {
+        schoolId: school.school.id,
+        academicYearId: school.year.id,
+        termId: school.term.id,
+        classroomId: school.otherClassroom.id,
+        studentId: book.child.id,
+        enrolledAt: movedAt,
+      },
+    });
+    const reconcileAsOf = '2026-11-21T10:02:00.000Z';
+    const staleWrite = await book
+      .patch([scoreOperation(book.slot.id, fieldId, '19.00', 1)])
+      .expect(409);
+    expect(staleWrite.body.error.code).toBe('official_results.roster.changed');
+    const staleGrid = gradebookOutputs.grid.parse(
+      (
+        await withTeacher(
+          book.url + '/grid?studentIds=' + book.child.id,
+        ).expect(200)
+      ).body.data,
+    );
+    expect(staleGrid.rows.items[0].placementStatus).toBe(
+      'RECONCILIATION_REQUIRED',
+    );
+    const preview = gradebookOutputs.rosterPreview.parse(
+      (
+        await withSchool('post', book.url + '/roster-preview')
+          .send({
+            expectedRosterGeneration: book.source.rosterGeneration,
+            rosterAsOf: reconcileAsOf,
+            selectedSlotIds: [book.slot.id],
+          })
+          .expect(200)
+      ).body.data,
+    );
+    expect(preview.changes).toEqual([
+      expect.objectContaining({
+        kind: 'MOVED',
+        destinationSheetId: book.destination.id,
+        destinationEnrollmentId: enrollment.id,
+      }),
+    ]);
+    const change = {
+      action: 'MOVE_DRAFT',
+      slotId: book.slot.id,
+      expectedPlacementRevision: book.slot.placementRevision,
+      reason: 'Enrollment reassignment reviewed',
+      destinationSheetId: book.destination.id,
+      destinationEnrollmentId: enrollment.id,
+      fieldMapping: [
+        { fromFieldId: fieldId, toFieldId: fieldId, action: 'PRESERVE' },
+      ],
+    };
+    const apply = () =>
+      withSchool('post', book.url + '/roster-reconcile')
+        .set('Idempotency-Key', 'reviewed-transfer')
+        .send({
+          previewId: preview.previewId,
+          previewDigest: preview.previewDigest,
+          expectedRosterGeneration: book.source.rosterGeneration,
+          decisions: [change],
+        });
+    const result = gradebookOutputs.roster.parse(
+      (await apply().expect(200)).body.data,
+    );
+    expect((await apply().expect(200)).body.data).toEqual(result);
+    expect(
+      await prisma.resultSlot.count({
+        where: {
+          studentId: book.child.id,
+          reportingPeriodId: book.reportingPeriodId,
+          groupId: math.id,
+        },
+      }),
+    ).toBe(1);
+    const transferred = await prisma.resultSlot.findUniqueOrThrow({
+      where: { id: book.slot.id },
+      include: { placementHistory: true, cells: true },
+    });
+    expect(transferred.sheetId).toBe(book.destination.id);
+    expect(transferred.enrollmentId).toBe(enrollment.id);
+    expect(transferred.cells[0].numericValue?.toString()).toBe('18');
+    expect(transferred.cells[0].definitionVersionId).toBe(
+      book.destination.draftDefinitionVersionId,
+    );
+    expect(transferred.placementHistory).toEqual([
+      expect.objectContaining({
+        version: 2,
+        action: 'MOVE_DRAFT',
+        fromSheetId: book.source.id,
+        toSheetId: book.destination.id,
+      }),
+    ]);
+    await withTeacher('/sheets/' + book.destination.id + '/grid').expect(404);
+    const teacherView = await schoolApi()
+      .get(
+        instructor +
+          '/sheets/' +
+          book.destination.id +
+          '/grid?studentIds=' +
+          book.child.id,
+      )
+      .set('Authorization', 'Bearer co-teacher-fixture')
+      .expect(200);
+    expect(
+      gradebookOutputs.grid.parse(teacherView.body.data).rows.items[0].slotId,
+    ).toBe(book.slot.id);
+  });
+
+  it('records a school-only subject exemption and reinstatement without changing enrollment', async () => {
+    const book = await liveGradebook('EXEMPTION-GRID');
+    const change = async (action: 'EXEMPT_GROUP' | 'REINSTATE_GROUP') => {
+      const sheet = await prisma.resultSheet.findUniqueOrThrow({
+        where: { id: book.source.id },
+      });
+      const slot = await prisma.resultSlot.findUniqueOrThrow({
+        where: { id: book.slot.id },
+      });
+      const preview = gradebookOutputs.rosterPreview.parse(
+        (
+          await withSchool('post', book.url + '/roster-preview')
+            .send({
+              expectedRosterGeneration: sheet.rosterGeneration,
+              rosterAsOf: '2026-11-21T10:00:00.000Z',
+              selectedSlotIds: [slot.id],
+            })
+            .expect(200)
+        ).body.data,
+      );
+      expect(preview.changes[0].kind).toBe('APPLICABILITY');
+      const input = {
+        expectedRosterGeneration: sheet.rosterGeneration,
+        previewId: preview.previewId,
+        previewDigest: preview.previewDigest,
+        decisions: [
+          {
+            slotId: slot.id,
+            expectedPlacementRevision: slot.placementRevision,
+            action,
+            reason: 'Reviewed subject applicability',
+          },
+        ],
+      };
+      await schoolApi()
+        .post(instructor + book.url + '/roster-reconcile')
+        .set('Authorization', 'Bearer teacher-fixture')
+        .set('Idempotency-Key', action)
+        .send(input)
+        .expect(404);
+      await withSchool('post', book.url + '/roster-reconcile')
+        .set('Idempotency-Key', action)
+        .send(input)
+        .expect(200);
+    };
+    await change('EXEMPT_GROUP');
+    expect(
+      (
+        await prisma.resultSlot.findUniqueOrThrow({
+          where: { id: book.slot.id },
+        })
+      ).groupExempt,
+    ).toBe(true);
+    await change('REINSTATE_GROUP');
+    const current = await prisma.resultSlot.findUniqueOrThrow({
+      where: { id: book.slot.id },
+      include: { placementHistory: { orderBy: { version: 'asc' } } },
+    });
+    expect(current.groupExempt).toBe(false);
+    expect(current.placementHistory.map((event) => event.action)).toEqual([
+      'EXEMPT_GROUP',
+      'REINSTATE_GROUP',
+    ]);
+    expect(
+      await prisma.enrollment.findUniqueOrThrow({
+        where: { id: book.enrollment.id },
+      }),
+    ).toEqual(book.enrollment);
   });
 
   it('T013 denies an edit waiting on a concurrent allocation revocation', async () => {

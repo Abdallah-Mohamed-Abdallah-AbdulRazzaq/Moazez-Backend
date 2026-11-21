@@ -5,6 +5,7 @@ import { NotFoundDomainException } from '../../../common/exceptions/domain-excep
 import { starterVersionId } from '../domain/moazez-starter';
 import { OfficialResultsError } from '../domain/official-results.error';
 import { resultContentDigest } from '../domain/result-content-digest';
+import { fieldMappingSchema } from '../domain/result-mapping';
 import {
   normalizeResultDefinition,
   type ResultDefinition,
@@ -44,12 +45,6 @@ interface DesignDecision {
   decision: 'APPROVE' | 'RETURN';
   comment?: string;
 }
-
-export const fieldMappingSchema = z.strictObject({
-  fromFieldId: z.uuid(),
-  toFieldId: z.uuid().optional(),
-  action: z.enum(['PRESERVE', 'COPY', 'RETIRE']),
-});
 
 const adoptionBinding = z.strictObject({
   expectedDefinitionVersionId: z.uuid(),

@@ -39,6 +39,7 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
   'ResultReleaseUnitDefinition',
   'ResultFieldDefinition',
   'ResultSlot',
+  'ResultPlacementRevision',
   'ResultCell',
   'ResultCellRevision',
   'Membership',
