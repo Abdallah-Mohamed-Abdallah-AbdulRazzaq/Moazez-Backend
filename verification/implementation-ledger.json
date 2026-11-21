@@ -862,15 +862,62 @@
         "OR09",
         "OR10"
       ],
-      "status": "NOT_STARTED",
-      "implementationSha": null,
-      "requirements": [],
-      "codePaths": [],
-      "testsExecuted": [],
-      "evidence": [],
+      "status": "DONE",
+      "implementationSha": "e1919555617ce0bbac08c4282b679a93b5960917",
+      "requirements": [
+        "R07",
+        "R08",
+        "R12",
+        "R20",
+        "R21",
+        "R22",
+        "R24",
+        "R25"
+      ],
+      "codePaths": [
+        "src/modules/official-results/application/result-reports.service.ts",
+        "src/modules/official-results/application/result-period-lifecycle.service.ts",
+        "src/modules/official-results/application/result-notice.service.ts",
+        "src/modules/official-results/application/result-issue-report.service.ts",
+        "src/modules/official-results/controller/result-reports.controller.ts",
+        "prisma/migrations/20261121061000_official_results_operations/migration.sql"
+      ],
+      "testsExecuted": [
+        {
+          "command": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+          "result": "44 tests with PostgreSQL, Redis and MinIO. Included visible before/after values, scoped missing counts, approved publication at close, archive/window checks, authenticated reports, and notification deduplication.",
+          "outcome": "PASS",
+          "testedSha": "e1919555617ce0bbac08c4282b679a93b5960917"
+        },
+        {
+          "command": "Generated Nest OpenAPI against endpoint catalog",
+          "result": "137 operations checked, including 135 approved package routes and two documented revoke routes.",
+          "outcome": "PASS",
+          "testedSha": "e1919555617ce0bbac08c4282b679a93b5960917"
+        },
+        {
+          "command": "prisma validate; prisma generate; migrate deploy; migrate status; migrate deploy; migrate diff --exit-code; npm run seed",
+          "result": "51 migrations replayed on fresh disposable PostgreSQL, then no-op with zero schema differences. 271 permissions and 7 system roles.",
+          "outcome": "PASS",
+          "testedSha": "e1919555617ce0bbac08c4282b679a93b5960917"
+        }
+      ],
+      "evidence": [
+        "docs/official-results/or11-operations.md",
+        "docs/official-results/openapi.json",
+        "verification/acceptance-matrix.json"
+      ],
       "blockers": [],
-      "decisions": [],
-      "nextAction": null
+      "decisions": [
+        "School closure records unresolved reviews, imports and coverage. A reason acknowledges the closure report.",
+        "Outbox dispatch uses the supported in-app notification channel with current same-school relationship/permission checks.",
+        "Added scoped revoke commands for archived correction windows and retained historical entitlement. Reuses archive authority without widening family read scope.",
+        "View-only layout preferences remain client-side. Reusable official presets are versioned school templates."
+      ],
+      "nextAction": "OR12: feature exposure controls, full verification, requirement map and operator/client handoff.",
+      "migrations": [
+        "20261121061000_official_results_operations"
+      ]
     },
     {
       "id": "OR12",
@@ -894,7 +941,7 @@
     "deployed": false,
     "productionMutationsAuthorized": false
   },
-  "branch": "codex/moazez-be-official-results-xlsx",
+  "branch": "codex/moazez-be-official-results-operations",
   "draftPullRequests": [
     {
       "number": 238,
@@ -968,6 +1015,16 @@
       "baseSha": "98b357590fc953ceaa41decf4e0553c2d5e5086c",
       "scope": [
         "OR10"
+      ]
+    },
+    {
+      "number": 245,
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/245",
+      "branch": "codex/moazez-be-official-results-operations",
+      "base": "codex/moazez-be-official-results-xlsx",
+      "baseSha": "9308511d",
+      "scope": [
+        "OR11"
       ]
     }
   ]

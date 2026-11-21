@@ -969,8 +969,10 @@
       "level": "Security",
       "given": "Malicious formula-like text appears in names/notes/error report",
       "expected": "Visible codec/typed string export stays inert; server never evaluates it",
-      "status": "NOT_RUN",
-      "remainingEvidence": "Codec and inert textual value cases passed. Exercise the downloaded issue-report artifact during OR11."
+      "status": "PASS",
+      "remainingEvidence": "Codec and inert textual value cases passed. Exercise the downloaded issue-report artifact during OR11.",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "e1919555617ce0bbac08c4282b679a93b5960917"
     },
     {
       "id": "T073",
@@ -1139,7 +1141,9 @@
       "level": "Contract",
       "given": "Filter missing grades and compare revision history",
       "expected": "Correct authorized counts/pages and before/after; no hidden fields exposed",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "e1919555617ce0bbac08c4282b679a93b5960917"
     },
     {
       "id": "T086",
@@ -1150,7 +1154,9 @@
       "level": "Integration",
       "given": "Close entry period then archive and open next year",
       "expected": "No ordinary writes/imports; existing approved candidates can finish only in ENTRY_CLOSED; archive immutable",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "e1919555617ce0bbac08c4282b679a93b5960917"
     },
     {
       "id": "T087",
@@ -1162,7 +1168,9 @@
       "level": "Security",
       "given": "Scoped correction window expires or targets different slot",
       "expected": "Blocked; cannot turn window into whole-period bypass",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "e1919555617ce0bbac08c4282b679a93b5960917"
     },
     {
       "id": "T088",
@@ -1289,7 +1297,9 @@
       "level": "Security",
       "given": "Try generic period PATCH or broad archived reopen without impact preview/archives permission",
       "expected": "No lifecycle bypass; explicit authorized school reopen requires periods.manage and archives.manage plus reason and current versions",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "e1919555617ce0bbac08c4282b679a93b5960917"
     },
     {
       "id": "T099",
