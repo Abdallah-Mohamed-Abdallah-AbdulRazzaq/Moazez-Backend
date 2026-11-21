@@ -225,6 +225,12 @@
           "outcome": "PASS",
           "testedSha": "30699d68f25045cec56806eca46359b054cbda52",
           "result": "The 40 original entries match the verified origin/main manifest byte digests. The new candidate contains 43 entries."
+        },
+        {
+          "command": "Teacher App final closeout and Dismissal IAM selected regression cases; parent and teacher role seed and auth/me selected cases; G05 seed inventory contract",
+          "outcome": "PASS",
+          "result": "3 closeout/role-count cases and 4 exact teacher/parent seed and authentication cases passed on disposable PostgreSQL, Redis and MinIO. G05 exact seed inventory unit case passed. Full rerun remains separate.",
+          "testedSha": "6abdb72674c5e2c8c208f2d5bf21e1dbf59bb837"
         }
       ],
       "evidence": [
@@ -247,7 +253,8 @@
         "totalSeededPermissionCount": 271,
         "seededSystemRoles": 7,
         "teacherDirectPublicationDefault": false
-      }
+      },
+      "regressionFixSha": "6abdb72674c5e2c8c208f2d5bf21e1dbf59bb837"
     },
     {
       "id": "OR03",
@@ -256,15 +263,76 @@
         "OR01",
         "OR02"
       ],
-      "status": "NOT_STARTED",
-      "implementationSha": null,
-      "requirements": [],
-      "codePaths": [],
-      "testsExecuted": [],
-      "evidence": [],
+      "status": "DONE",
+      "implementationSha": "fbc24b1b16017faaee3317270f4d301e71d2565f",
+      "requirements": [
+        "R02",
+        "R03",
+        "R04",
+        "R06",
+        "R07",
+        "R08",
+        "R09",
+        "R12",
+        "R13"
+      ],
+      "codePaths": [
+        "src/modules/official-results/controller/result-authoring.controller.ts",
+        "src/modules/official-results/application/result-template.service.ts",
+        "src/modules/official-results/application/result-scope.service.ts",
+        "src/modules/official-results/application/result-design.service.ts",
+        "src/modules/official-results/domain/result-definition.ts",
+        "src/modules/official-results/domain/result-template-rules.ts",
+        "prisma/migrations/20261121023752_official_results_authoring/migration.sql"
+      ],
+      "testsExecuted": [
+        {
+          "command": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+          "outcome": "PASS",
+          "result": "16 passed on isolated PostgreSQL 16, including actual Nest authoring requests, draft adoption, exact authority, SQL canonical slots and locking.",
+          "testedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f"
+        },
+        {
+          "command": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-authoring.spec.ts src/modules/official-results/domain/result-policy.spec.ts",
+          "outcome": "PASS",
+          "result": "8 passed, including 5 OR03 schema/containment tests.",
+          "testedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f"
+        },
+        {
+          "command": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts -t \"generated Nest\"",
+          "outcome": "PASS",
+          "result": "49 generated operations verified against the catalog and checked-in artifact. Response members, status and idempotency annotations are checked.",
+          "testedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f"
+        },
+        {
+          "command": "prisma migrate deploy; prisma migrate status; prisma migrate deploy; prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code",
+          "outcome": "PASS",
+          "result": "44 applied on fresh moazez_official_results_or03; status current, second deploy no-op and zero schema differences.",
+          "testedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f"
+        },
+        {
+          "command": "prisma validate; prisma generate; node scripts/migrations/migration-artifact-manifest.cjs verify; npm run seed",
+          "outcome": "PASS",
+          "result": "44-entry reviewed manifest verified; Prisma 6.19.3 generated and canonical IAM seeded on disposable PostgreSQL.",
+          "testedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f"
+        }
+      ],
+      "evidence": [
+        "docs/official-results/or03-templates-and-designs.md",
+        "docs/official-results/openapi.json",
+        "verification/acceptance-matrix.json"
+      ],
       "blockers": [],
-      "decisions": [],
-      "nextAction": null
+      "decisions": [
+        "Keep authorized draft selection and school acceptance separate. Persist exact preview mappings and freeze school template/definition revisions.",
+        "Restrict teacher template reads to current effective assignments and pinned versions in current real tuples.",
+        "Keep the legacy route inventory and test the exact additions under the Official Results namespace. Adjusted IAM count baselines preserve the original allowed permissions and verify every new grant as well."
+      ],
+      "nextAction": "OR04: grid, exact typed cells, calculations, applicability and roster reconciliation.",
+      "requirementScope": "Authoring and canonical scope behavior verified. Publication/export binding, approval/import invalidation and protected runtime projections require dependent phases.",
+      "migrations": [
+        "20261121023752_official_results_authoring"
+      ]
     },
     {
       "id": "OR04",
@@ -422,7 +490,7 @@
     "deployed": false,
     "productionMutationsAuthorized": false
   },
-  "branch": "codex/moazez-be-official-results",
+  "branch": "codex/moazez-be-official-results-authoring",
   "draftPullRequests": [
     {
       "number": 238,

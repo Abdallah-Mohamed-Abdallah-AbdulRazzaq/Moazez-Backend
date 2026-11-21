@@ -103,7 +103,10 @@
       "level": "Integration",
       "given": "MANAGED teacher creates custom fields then enters/imports draft scores",
       "expected": "Draft entry works before design approval; family output unchanged",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN",
+      "authoringEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "authoringTestedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f",
+      "remainingEvidence": "MANAGED teacher authors and selects a personal draft using normal HTTP routes. Grade entry through the same selected definition remains OR04."
     },
     {
       "id": "T009",
@@ -203,7 +206,9 @@
       "level": "Integration",
       "given": "Clone MOAZEZ template then customize school copy",
       "expected": "Platform source and other schools remain unchanged; new school-owned version lineage",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f"
     },
     {
       "id": "T017",
@@ -214,7 +219,9 @@
       "level": "Integration",
       "given": "Create school reusable and freeform sheet definitions",
       "expected": "Both use the same typed domain and canonical grade slots",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f"
     },
     {
       "id": "T018",
@@ -225,7 +232,9 @@
       "level": "Unit",
       "given": "Resolve school default plus class-specific compatible rule",
       "expected": "Deterministic winning definition independent of creation order",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-authoring.spec.ts src/modules/official-results/domain/result-policy.spec.ts",
+      "testedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f"
     },
     {
       "id": "T019",
@@ -236,7 +245,9 @@
       "level": "Unit",
       "given": "Resolve grade-all-subject rule and school-Math rule",
       "expected": "Incomparable conflict; explicit grade-Math intersection resolves it",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-authoring.spec.ts src/modules/official-results/domain/result-policy.spec.ts",
+      "testedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f"
     },
     {
       "id": "T020",
@@ -247,7 +258,9 @@
       "level": "Unit",
       "given": "Two equally specific different template assignments",
       "expected": "Activation/materialization blocked; no first/last-created winner",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-authoring.spec.ts src/modules/official-results/domain/result-policy.spec.ts",
+      "testedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f"
     },
     {
       "id": "T021",
@@ -258,7 +271,9 @@
       "level": "Integration",
       "given": "Assign multiple classrooms and later create another classroom",
       "expected": "Fixed list stays fixed; broad future selector semantics remain explicit",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f"
     },
     {
       "id": "T022",
@@ -270,7 +285,10 @@
       "level": "Integration",
       "given": "Publish catalog v2 while sheet remains pinned v1",
       "expected": "Existing values/publications/export eligibility remain tied to sheet v1",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN",
+      "authoringEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "authoringTestedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f",
+      "remainingEvidence": "Catalog v2 activation leaves the existing sheet pinned to v1. Published snapshots and export reference behavior remain OR05 and OR07."
     },
     {
       "id": "T023",
@@ -282,7 +300,10 @@
       "level": "Integration",
       "given": "Upgrade actual sheet definition max20 to100 with old scores",
       "expected": "Preview required; no automatic rescale; affected reviews/imports invalidated",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN",
+      "authoringEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "authoringTestedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f",
+      "remainingEvidence": "Existing score 18 persists as 18 after the explicit maximum upgrade and receives a cell revision. Review and import invalidation remain OR05 and OR08."
     },
     {
       "id": "T024",
@@ -293,7 +314,9 @@
       "level": "Unit",
       "given": "Rename compatible field or reuse title for new type",
       "expected": "Rename retains ID; incompatible purpose/type requires new ID and explicit mapping",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-authoring.spec.ts src/modules/official-results/domain/result-policy.spec.ts",
+      "testedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f"
     },
     {
       "id": "T025",
@@ -305,7 +328,9 @@
       "level": "Unit",
       "given": "Release units share a mutable dependency or form a cycle",
       "expected": "Schema rejected or requires combined unit/explicit published aggregate",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-authoring.spec.ts src/modules/official-results/domain/result-policy.spec.ts",
+      "testedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f"
     },
     {
       "id": "T026",
@@ -1132,7 +1157,10 @@
       "level": "Security",
       "given": "Teacher changes protected field editRule/audience or maps/calculates its value through a personal schema",
       "expected": "Draft design does not widen accepted data protection; unreadable values stay inaccessible in grid/preview/export/formula and family release",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN",
+      "authoringEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "authoringTestedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f",
+      "remainingEvidence": "Exact accepted protection is checked during authoring and mapping. Grid, calculation, export and family projection proof remains OR04, OR06 and OR07."
     },
     {
       "id": "T100",
