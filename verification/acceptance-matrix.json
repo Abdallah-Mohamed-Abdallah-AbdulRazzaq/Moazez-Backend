@@ -1202,7 +1202,7 @@
       "given": "Existing assessment/homework/family reports run after feature integration",
       "expected": "Backward-compatible responses and data; no feed or unrelated migration regression",
       "status": "PASS",
-      "evidence": "97 tests passed across existing grades, homework grade sync, behavior, student and parent API suites on disposable PostgreSQL with the Official Results feature enabled.",
+      "evidence": "97 tests passed across existing grades, homework grade sync, behavior, student and parent API suites on disposable PostgreSQL with the Official Results feature enabled. Both exact family API inventories and closeout behaviors also passed 35 tests on fd64bf836b678126934f556fae6321498757d805.",
       "testedSha": "7355416b93e5675c21bbf2f3c4fccf717ebe4de3"
     },
     {
@@ -1215,8 +1215,8 @@
       "given": "Replay complete migration chain on fresh disposable DB then deploy again",
       "expected": "Schema valid, tests pass, second deploy no-op; custom SQL inventoried",
       "status": "PASS",
-      "evidence": "Prisma validated and applied 51 migrations on a new PostgreSQL database. Status was current, the second deployment was a no-op, and the schema diff was empty.",
-      "testedSha": "21d0f7a80a423a3e067d67958eb58ff23363ef64"
+      "evidence": "Exact committed SQL bytes verified against the rebuilt governed manifest. On a new PostgreSQL fixture, all 51 migrations applied, migration status was current, the second deploy was a no-op, and schema diff was empty.",
+      "testedSha": "988301792fa25d72244f298b5b8617afefc606d4"
     },
     {
       "id": "T090",
@@ -1254,8 +1254,8 @@
       "given": "Run representative limit-size grids/imports and simultaneous schools",
       "expected": "Measured bounded memory/query/latency, tenant fairness and no N+1; budgets recorded",
       "status": "PASS",
-      "evidence": "A real export/import round trip for 3,333 students and 9,999 cell changes ran concurrently with a separate school read. Measured export, validation, apply and memory are in the phase ledger.",
-      "testedSha": "966c4290bec8e76db76f77c606f6c053865599a9"
+      "evidence": "Shared worker processed 3,333 students and 9,999 draft cell changes in the actual grid and CSV workflow. Another school read in 23 ms. Each stage stayed below 600 SQL statements. Measurements are in verification/official-results-load.json.",
+      "testedSha": "988301792fa25d72244f298b5b8617afefc606d4"
     },
     {
       "id": "T093",
