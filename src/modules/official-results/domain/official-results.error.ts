@@ -2,6 +2,10 @@ import { HttpStatus } from '@nestjs/common';
 import { DomainException } from '../../../common/exceptions/domain-exception';
 
 const errors = {
+  'period.transition_invalid': {
+    status: HttpStatus.CONFLICT,
+    message: 'The reporting period cannot move to the selected state',
+  },
   'import.acknowledgment_required': {
     status: HttpStatus.CONFLICT,
     message: 'Acknowledge exactly the warnings in this import preview',

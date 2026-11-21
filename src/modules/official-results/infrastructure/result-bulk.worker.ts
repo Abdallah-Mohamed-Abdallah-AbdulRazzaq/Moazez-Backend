@@ -4,6 +4,11 @@ import { BullmqService } from '../../../infrastructure/queue/bullmq.service';
 import { ResultExportService } from '../application/result-export.service';
 import { ResultImportWorkService } from '../application/result-import-work.service';
 import { ResultImportApplyService } from '../application/result-import-apply.service';
+import {
+  ResultIssueReportService,
+  resultIssueReportJob,
+} from '../application/result-issue-report.service';
+import { ResultNoticeService } from '../application/result-notice.service';
 import { resultApplyImportJob } from '../domain/result-import-execution.contract';
 import { resultValidateJob } from '../domain/result-import.contract';
 import {
@@ -19,6 +24,8 @@ export class ResultBulkWorker implements OnModuleInit {
     private readonly exports: ResultExportService,
     private readonly imports: ResultImportWorkService,
     private readonly apply: ResultImportApplyService,
+    private readonly issues: ResultIssueReportService,
+    private readonly notices: ResultNoticeService,
   ) {}
 
   onModuleInit(): void {
@@ -31,10 +38,14 @@ export class ResultBulkWorker implements OnModuleInit {
           this.exports.reconcile(),
           this.imports.reconcile(),
           this.apply.reconcile(),
+          this.issues.reconcile(),
+          this.notices.reconcile(),
         ]);
         return;
       }
       const id = z.uuid().safeParse(job.data.id);
+      if (job.name === resultIssueReportJob && id.success)
+        return this.issues.run(id.data);
       if (job.name === resultApplyImportJob && id.success) {
         const version = z
           .number()

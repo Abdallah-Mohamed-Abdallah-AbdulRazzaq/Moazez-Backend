@@ -31,6 +31,7 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
   'ResultImportReview',
   'ResultImportExecution',
   'ResultImportExecutionUnit',
+  'ResultIssueReport',
   'ResultOperation',
   'OfficialResultPolicy',
   'OfficialResultPolicyVersion',

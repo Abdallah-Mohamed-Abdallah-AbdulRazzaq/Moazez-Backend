@@ -32,7 +32,7 @@ const summary = z.object({
   sheetCount: count,
   rowCount: count,
 });
-const file = z.object({
+export const exportFileDescriptor = z.object({
   fileId: uuid,
   filename: z.string(),
   mediaType: z.string(),
@@ -49,7 +49,7 @@ const saved = z.object({
   reuseUntil: dates,
   expiresAt: dates,
   manifestSummary: summary,
-  files: z.array(file),
+  files: z.array(exportFileDescriptor),
   failureCode: z.string().optional(),
 });
 export const exportOutputs = {

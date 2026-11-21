@@ -756,3 +756,14 @@ unit also has a same-school reference to the target sheet.
 | result_import_execution_revision_check, result_import_execution_cancellation_check | Positive revision numbers and paired cancellation reason and note. |
 | result_import_execution_unit_lease_check, result_import_execution_unit_commit_check, result_import_execution_unit_failure_check | Running units carry a lease. Applied units record a timestamp and positive number of changes. Failed units carry their outcome code. |
 | result_import_applied_unit_immutable | The existing invoker trigger preserves the successful marker once verified cell changes commit. |
+
+## OR11 Official Results operations
+
+Migration `20261121061000_official_results_operations` adds the archived
+reopen preview kind and private issue artifacts tied to the exact input
+review under the owning school.
+
+| PostgreSQL-specific object | Invariant |
+| --- | --- |
+| result_issue_report_lease_check, result_issue_report_ready_check | Generating reports carry a lease. READY requires bounded private content metadata. |
+| result_notice_pending_scan_idx | Bounded worker scans use pending publication notice order. |

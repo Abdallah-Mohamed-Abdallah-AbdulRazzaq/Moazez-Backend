@@ -336,6 +336,14 @@ export class ResultExportService {
         const manifest = member.manifest as unknown as ExportManifest;
         await this.authorizeRows(client, actor, manifest);
       }
+      await this.commands.audit(
+        client,
+        actor,
+        'exports.download',
+        'ResultExportFile',
+        selected.id,
+        { exportId: id },
+      );
       return selected;
     });
     const stream = await this.storage.getObject({

@@ -24,7 +24,6 @@ import {
   type ImportFinding,
   type ImportIssueSuffix,
   type ImportOptions,
-  type ImportReadCell,
   type ImportRowSummary,
   type ImportSheetBinding,
   type ImportUnit,

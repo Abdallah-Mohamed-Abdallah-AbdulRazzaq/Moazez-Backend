@@ -816,6 +816,7 @@ enum ResultConfigurationPreviewKind {
   ROSTER_RECONCILIATION
   PUBLICATION_TOPOLOGY
   EXPORT
+  PERIOD_REOPEN
 
   @@map("result_configuration_preview_kind")
 }
@@ -1995,6 +1996,7 @@ model School {
   resultExportFiles       ResultExportFile[]
   resultImportBatches     ResultImportBatch[]
   resultImportExecutions  ResultImportExecution[]
+  resultIssueReports      ResultIssueReport[]
   resultCommandReceipts   ResultCommandReceipt[]
 
   resultTemplates             ResultTemplate[]
@@ -9994,6 +9996,8 @@ model ResultImportReview {
   source                 ResultImportSource      @relation(fields: [batchId, schoolId, sourceVersion], references: [batchId, schoolId, version], onDelete: Restrict, onUpdate: Restrict)
   resultImportExecutions ResultImportExecution[]
 
+  issueReports ResultIssueReport[]
+
   @@unique([id, schoolId])
   @@unique([id, schoolId, batchId, revision], map: "result_import_review_exact_key")
   @@unique([batchId, schoolId, revision])
@@ -10048,4 +10052,33 @@ model ResultImportExecutionUnit {
   @@index([sheetId, schoolId])
   @@index([status, leaseUntil])
   @@map("result_import_execution_units")
+}
+
+model ResultIssueReport {
+  id         String             @id @db.Uuid
+  fileId     String             @unique @map("file_id") @db.Uuid
+  schoolId   String             @map("school_id") @db.Uuid
+  batchId    String             @map("batch_id") @db.Uuid
+  reviewId   String             @map("review_id") @db.Uuid
+  revision   Int
+  status     ResultExportStatus @default(QUEUED)
+  bucket     String             @db.VarChar(255)
+  objectKey  String             @unique @map("object_key") @db.VarChar(512)
+  sizeBytes  Int?               @map("size_bytes")
+  attempts   Int                @default(0)
+  createdAt  DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime           @updatedAt @map("updated_at")
+  expiresAt  DateTime           @map("expires_at") @db.Timestamptz(3)
+  deletedAt  DateTime?          @map("deleted_at") @db.Timestamptz(3)
+  leaseUntil DateTime?          @map("lease_until") @db.Timestamptz(3)
+  leaseToken String?            @map("lease_token") @db.Uuid
+
+  school School             @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  review ResultImportReview @relation(fields: [reviewId, schoolId, batchId, revision], references: [id, schoolId, batchId, revision], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([schoolId, batchId])
+  @@index([reviewId, schoolId, batchId, revision])
+  @@index([status, leaseUntil])
+  @@index([expiresAt, deletedAt])
+  @@map("result_issue_reports")
 }

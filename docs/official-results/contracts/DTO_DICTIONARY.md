@@ -83,6 +83,10 @@ An archived-period impact preview requires expectedRevision, reason and targetSt
 
 Required expectedPeriodRevision, expiresAt, reason, and `targets` with 1–200 `{slotId, releaseUnitId, authorizedActorIds}` entries. Actor arrays are nonempty, duplicate-free and within the school. Expiry must be after now and within the platform's configured bounded correction-window maximum; the initial maximum is 24 hours. Each slot must belong to the period and each unit to its selected definition. Create only under archives.manage and current delegation authority. This window permits the named correction work; it does not add IAM permissions, erase review requirements or unlock other slots. Store issuer/revocation evidence; expiry/revocation checked at actual commit.
 
+### ResultAccessRevocationRequest / ResultAccessRevocation
+
+School archive administrators can revoke a named correction window in its exact period or a named retained entitlement issued by that school. The only input is a nonblank reason. The idempotent response carries the selected ID and server revocation time. A retained-entitlement revocation affects that historical proof; live current-school relationship authorization is evaluated separately. Both actions append attributable audit evidence.
+
 ## 4. Templates, schema authoring and scope requests
 
 ### TemplateCreateRequest / TemplateCloneRequest

@@ -33,6 +33,10 @@ import {
 } from '../infrastructure/repositories/result-template-scope.repository';
 import { requireResultActor } from './result-actor';
 import {
+  presentResultIssueReport,
+  ResultIssueReportService,
+} from './result-issue-report.service';
+import {
   presentImportExecution,
   ResultImportExecutionService,
 } from './result-import-execution.service';
@@ -63,6 +67,7 @@ export class ResultScopeService {
     private readonly previews: ResultPreviewRepository,
     private readonly operations: ResultOperationRepository,
     private readonly importExecutions: ResultImportExecutionService,
+    private readonly issueReports: ResultIssueReportService,
   ) {}
 
   assign(
@@ -272,6 +277,7 @@ export class ResultScopeService {
       id,
       (operation, actor) => presentResultOperation(operation, actor),
       presentImportExecution,
+      presentResultIssueReport,
     );
   }
 
@@ -306,10 +312,24 @@ export class ResultScopeService {
       },
       (execution, actor) =>
         this.importExecutions.items(execution, actor, query),
+      (report, actor) => {
+        const scope = actor.schoolId + ':' + actor.actorId + ':' + id;
+        const page = readResultCursor(query, scope, 'result-issue-report');
+        const summary = presentResultIssueReport(report, actor);
+        return presentResultPage(
+          summary.file && !page.after
+            ? [{ status: 'COMPLETED' as const, file: summary.file }]
+            : [],
+          page.limit,
+          (item) => item.file.fileId,
+          scope,
+          'result-issue-report',
+        );
+      },
     );
   }
 
-  private withOperation<T, U>(
+  private withOperation<T, U, V>(
     surface: Surface,
     id: string,
     present: (
@@ -327,6 +347,10 @@ export class ResultScopeService {
       >,
       actor: ReturnType<typeof requireResultActor>,
     ) => U,
+    presentIssueReport: (
+      report: Awaited<ReturnType<ResultIssueReportService['read']>>,
+      actor: ReturnType<typeof requireResultActor>,
+    ) => V,
   ) {
     const actor = requireResultActor(surface);
     return this.commands.transaction(async (client) => {
@@ -345,6 +369,18 @@ export class ResultScopeService {
       if (isImport)
         return presentImport(
           await this.importExecutions.findForActor(client, access, id, 'VIEW'),
+          actor,
+        );
+      const isReport = await client.resultIssueReport.count({
+        where: {
+          id,
+          schoolId: actor.schoolId,
+          review: { batch: { creatorId: actor.actorId } },
+        },
+      });
+      if (isReport)
+        return presentIssueReport(
+          await this.issueReports.read(client, access, { id }),
           actor,
         );
       const { operation, items } = await this.operations.materialization(

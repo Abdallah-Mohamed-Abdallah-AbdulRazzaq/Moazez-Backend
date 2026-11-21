@@ -10,7 +10,6 @@ import {
   DomainException,
   NotFoundDomainException,
 } from '../../../common/exceptions/domain-exception';
-import { OfficialResultsError } from '../domain/official-results.error';
 import { currentRosterInstant } from '../domain/reporting-dates';
 import type {
   ExportManifest,
