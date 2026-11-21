@@ -1,0 +1,228 @@
+{
+  "schemaVersion": "1.0",
+  "feature": "MOAZEZ Official Results Management Engine",
+  "planningBaseline": "a8a8f160e8c85d1dd8364e055ada69cee61cd7e5",
+  "packageVersion": "1.0",
+  "actualImplementationBaseSha": null,
+  "implementationStatus": "NOT_STARTED",
+  "phases": [
+    {
+      "id": "OR00",
+      "title": "Repository reconciliation and contracts",
+      "dependsOn": [],
+      "status": "NOT_STARTED",
+      "implementationSha": null,
+      "requirements": [],
+      "codePaths": [],
+      "testsExecuted": [],
+      "evidence": [],
+      "blockers": [],
+      "decisions": [],
+      "nextAction": null
+    },
+    {
+      "id": "OR01",
+      "title": "Domain persistence and tenant integrity",
+      "dependsOn": [
+        "OR00"
+      ],
+      "status": "NOT_STARTED",
+      "implementationSha": null,
+      "requirements": [],
+      "codePaths": [],
+      "testsExecuted": [],
+      "evidence": [],
+      "blockers": [],
+      "decisions": [],
+      "nextAction": null
+    },
+    {
+      "id": "OR02",
+      "title": "School policy and effective authorization",
+      "dependsOn": [
+        "OR01"
+      ],
+      "status": "NOT_STARTED",
+      "implementationSha": null,
+      "requirements": [],
+      "codePaths": [],
+      "testsExecuted": [],
+      "evidence": [],
+      "blockers": [],
+      "decisions": [],
+      "nextAction": null
+    },
+    {
+      "id": "OR03",
+      "title": "Templates, presets and scope resolution",
+      "dependsOn": [
+        "OR01",
+        "OR02"
+      ],
+      "status": "NOT_STARTED",
+      "implementationSha": null,
+      "requirements": [],
+      "codePaths": [],
+      "testsExecuted": [],
+      "evidence": [],
+      "blockers": [],
+      "decisions": [],
+      "nextAction": null
+    },
+    {
+      "id": "OR04",
+      "title": "Gradebook and calculation",
+      "dependsOn": [
+        "OR03"
+      ],
+      "status": "NOT_STARTED",
+      "implementationSha": null,
+      "requirements": [],
+      "codePaths": [],
+      "testsExecuted": [],
+      "evidence": [],
+      "blockers": [],
+      "decisions": [],
+      "nextAction": null
+    },
+    {
+      "id": "OR05",
+      "title": "Review, publication and correction",
+      "dependsOn": [
+        "OR04"
+      ],
+      "status": "NOT_STARTED",
+      "implementationSha": null,
+      "requirements": [],
+      "codePaths": [],
+      "testsExecuted": [],
+      "evidence": [],
+      "blockers": [],
+      "decisions": [],
+      "nextAction": null
+    },
+    {
+      "id": "OR06",
+      "title": "Student/parent APIs and aggregate preview",
+      "dependsOn": [
+        "OR05"
+      ],
+      "status": "NOT_STARTED",
+      "implementationSha": null,
+      "requirements": [],
+      "codePaths": [],
+      "testsExecuted": [],
+      "evidence": [],
+      "blockers": [],
+      "decisions": [],
+      "nextAction": null
+    },
+    {
+      "id": "OR07",
+      "title": "Populated export",
+      "dependsOn": [
+        "OR04",
+        "OR06"
+      ],
+      "status": "NOT_STARTED",
+      "implementationSha": null,
+      "requirements": [],
+      "codePaths": [],
+      "testsExecuted": [],
+      "evidence": [],
+      "blockers": [],
+      "decisions": [],
+      "nextAction": null
+    },
+    {
+      "id": "OR08",
+      "title": "Import intake and validation",
+      "dependsOn": [
+        "OR07"
+      ],
+      "status": "NOT_STARTED",
+      "implementationSha": null,
+      "requirements": [],
+      "codePaths": [],
+      "testsExecuted": [],
+      "evidence": [],
+      "blockers": [],
+      "decisions": [],
+      "nextAction": null
+    },
+    {
+      "id": "OR09",
+      "title": "Import confirmation and recovery",
+      "dependsOn": [
+        "OR08",
+        "OR05"
+      ],
+      "status": "NOT_STARTED",
+      "implementationSha": null,
+      "requirements": [],
+      "codePaths": [],
+      "testsExecuted": [],
+      "evidence": [],
+      "blockers": [],
+      "decisions": [],
+      "nextAction": null
+    },
+    {
+      "id": "OR10",
+      "title": "XLSX adapter",
+      "dependsOn": [
+        "OR07",
+        "OR08",
+        "OR09"
+      ],
+      "status": "NOT_STARTED",
+      "implementationSha": null,
+      "requirements": [],
+      "codePaths": [],
+      "testsExecuted": [],
+      "evidence": [],
+      "blockers": [],
+      "decisions": [],
+      "nextAction": null
+    },
+    {
+      "id": "OR11",
+      "title": "History, completeness and archive support",
+      "dependsOn": [
+        "OR06",
+        "OR09",
+        "OR10"
+      ],
+      "status": "NOT_STARTED",
+      "implementationSha": null,
+      "requirements": [],
+      "codePaths": [],
+      "testsExecuted": [],
+      "evidence": [],
+      "blockers": [],
+      "decisions": [],
+      "nextAction": null
+    },
+    {
+      "id": "OR12",
+      "title": "Integrated verification and release readiness",
+      "dependsOn": [
+        "OR11"
+      ],
+      "status": "NOT_STARTED",
+      "implementationSha": null,
+      "requirements": [],
+      "codePaths": [],
+      "testsExecuted": [],
+      "evidence": [],
+      "blockers": [],
+      "decisions": [],
+      "nextAction": null
+    }
+  ],
+  "release": {
+    "merged": false,
+    "deployed": false,
+    "productionMutationsAuthorized": false
+  }
+}

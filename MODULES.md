@@ -105,6 +105,17 @@ credential secret artifacts.
 - rules
 - submissions
 
+## Official Results
+
+- policies, reporting periods, groups and academic eligibility
+- reusable templates, freeform definitions and scope resolution
+- typed gradebook drafts, calculations and roster reconciliation
+- exact review, immutable publication and published-only summaries
+- populated CSV/XLSX exchange, history and archive
+
+The [Official Results ADR](adr/ADR-0028-official-results-engine.md) defines the
+core storage boundary and the Teacher, Student and Parent App adapters.
+
 ## Homework
 
 - assignments
@@ -201,6 +212,7 @@ Core business truth belongs to:
 - students
 - attendance
 - grades
+- official-results
 - homework
 - reinforcement
 - behavior
