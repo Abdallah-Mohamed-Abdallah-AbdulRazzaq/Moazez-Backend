@@ -159,15 +159,95 @@
       "dependsOn": [
         "OR01"
       ],
-      "status": "NOT_STARTED",
-      "implementationSha": null,
-      "requirements": [],
-      "codePaths": [],
-      "testsExecuted": [],
-      "evidence": [],
+      "status": "DONE",
+      "implementationSha": "30699d68f25045cec56806eca46359b054cbda52",
+      "requirements": [
+        "R05",
+        "R07",
+        "R08",
+        "R09",
+        "R10",
+        "R24"
+      ],
+      "codePaths": [
+        "src/modules/official-results/application",
+        "src/modules/official-results/infrastructure/repositories/result-authorization.repository.ts",
+        "src/modules/official-results/controller/result-configuration.controller.ts",
+        "src/modules/iam/reference-data/permission-catalog.ts",
+        "src/modules/iam/reference-data/system-role-catalog.ts",
+        "docs/official-results/openapi.json"
+      ],
+      "testsExecuted": [
+        {
+          "command": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+          "outcome": "PASS",
+          "testedSha": "30699d68f25045cec56806eca46359b054cbda52",
+          "result": "14 tests across two suites on disposable PostgreSQL 16. Included HTTP, live IAM and a deterministic allocation-revocation lock race."
+        },
+        {
+          "command": "npm test -- --runInBand --runTestsByPath src/modules/official-results/domain/result-policy.spec.ts",
+          "outcome": "PASS",
+          "testedSha": "30699d68f25045cec56806eca46359b054cbda52",
+          "result": "3 policy/selector tests."
+        },
+        {
+          "command": "npm run build",
+          "outcome": "PASS",
+          "testedSha": "30699d68f25045cec56806eca46359b054cbda52",
+          "result": "Nest build plus reference-data bootstrap build contract. The preceding candidate failed compile-time scope-query inference and was corrected."
+        },
+        {
+          "command": "prisma validate; prisma generate; npm run db:migrations:check; prisma migrate deploy; prisma migrate status; prisma migrate deploy; prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code",
+          "outcome": "PASS",
+          "testedSha": "30699d68f25045cec56806eca46359b054cbda52",
+          "result": "43 incremental migrations applied on the empty moazez_official_results_or02 database; status current; second deploy no-op; zero diff."
+        },
+        {
+          "command": "npm run seed (twice against disposable OR02 database)",
+          "outcome": "PASS",
+          "testedSha": "30699d68f25045cec56806eca46359b054cbda52",
+          "result": "27 Official Results permissions, 271 total permissions and 7 system roles, verified with real database counts after repeat."
+        },
+        {
+          "command": "node --test scripts/tests/prd3-g04-governed-migration-job.test.cjs",
+          "outcome": "PASS",
+          "testedSha": "30699d68f25045cec56806eca46359b054cbda52",
+          "result": "60 passed after generating the candidate migration artifact manifest."
+        },
+        {
+          "command": "node --test scripts/tests/prd3-g01-b3-transaction-pressure.test.cjs",
+          "outcome": "PASS",
+          "testedSha": "30699d68f25045cec56806eca46359b054cbda52",
+          "result": "180 passed; official-results transactions resolve to the API entry point with the existing inventory guard."
+        },
+        {
+          "command": "node scripts/migrations/migration-artifact-manifest.cjs verify",
+          "outcome": "PASS",
+          "testedSha": "30699d68f25045cec56806eca46359b054cbda52",
+          "result": "The 40 original entries match the verified origin/main manifest byte digests. The new candidate contains 43 entries."
+        }
+      ],
+      "evidence": [
+        "docs/official-results/or02-policy-and-authorization.md",
+        "docs/official-results/openapi.json",
+        "verification/acceptance-matrix.json"
+      ],
       "blockers": [],
-      "decisions": [],
-      "nextAction": null
+      "decisions": [
+        "Class A source artifact correction. PR 238 candidate 197fec5e failed the governed fixture preflight with migration_manifest_mismatch because the tracked candidate manifest still described the 40-migration base. Prisma was not reached by that runner. The official generator produced a new 43-entry manifest with every original migration digest preserved.",
+        "Policy activation serializes on the live school lock. Teacher writes use the existing Academics allocation write gate at commit time."
+      ],
+      "nextAction": "OR03: starter template, school template versions, scope resolution and draft design adoption.",
+      "requirementScope": "Policy, catalog and scoped authorization. Actual design/grade/import/publication commands and their end-to-end acceptance remain in OR03–OR12.",
+      "migrations": [
+        "20261121015729_official_results_policy"
+      ],
+      "referenceData": {
+        "newPermissionCount": 27,
+        "totalSeededPermissionCount": 271,
+        "seededSystemRoles": 7,
+        "teacherDirectPublicationDefault": false
+      }
     },
     {
       "id": "OR03",
@@ -352,7 +432,8 @@
       "branch": "codex/moazez-be-official-results",
       "scope": [
         "OR00",
-        "OR01"
+        "OR01",
+        "OR02"
       ]
     }
   ]

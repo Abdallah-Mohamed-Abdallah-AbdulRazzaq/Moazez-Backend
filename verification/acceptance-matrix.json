@@ -77,7 +77,9 @@
       "level": "Security",
       "given": "School A actor supplies School B IDs to every new route family",
       "expected": "404 or pre-resource auth denial consistent with existing policy; no existence/count/value leakage",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN",
+      "authorizationEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "remainingEvidence": "Exercise all applicable implemented write and publication/import routes in the dependent phases."
     },
     {
       "id": "T007",
@@ -88,7 +90,9 @@
       "level": "Security",
       "given": "Teacher owns Math-A and Science-B; requests Science-A",
       "expected": "Denied; no subject/class cross-product authority",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "30699d68f25045cec56806eca46359b054cbda52"
     },
     {
       "id": "T008",
@@ -110,7 +114,9 @@
       "level": "Security",
       "given": "AUTONOMOUS policy enabled but IAM publish absent",
       "expected": "No direct publish; effective capability explains missing authority",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN",
+      "authorizationEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "remainingEvidence": "Exercise all applicable implemented write and publication/import routes in the dependent phases."
     },
     {
       "id": "T010",
@@ -121,7 +127,9 @@
       "level": "Security",
       "given": "Teacher has publish permission but school requires review",
       "expected": "Direct publication denied; submit flow remains available",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN",
+      "authorizationEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "remainingEvidence": "Exercise all applicable implemented write and publication/import routes in the dependent phases."
     },
     {
       "id": "T011",
@@ -143,7 +151,9 @@
       "level": "Integration",
       "given": "Change school policy after import preview or candidate approval",
       "expected": "Recheck current policy; invalid authority or affected semantics cannot be grandfathered",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN",
+      "authorizationEvidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "remainingEvidence": "Exercise all applicable implemented write and publication/import routes in the dependent phases."
     },
     {
       "id": "T013",
@@ -154,7 +164,9 @@
       "level": "Concurrency",
       "given": "Remove allocation while teacher write waits at final boundary",
       "expected": "Deterministic serialized outcome; no write after completed revocation",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "30699d68f25045cec56806eca46359b054cbda52"
     },
     {
       "id": "T014",
@@ -165,7 +177,9 @@
       "level": "Security",
       "given": "Teacher writes CUSTOM group without explicit delegation",
       "expected": "Denied even if teaching the same students",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "30699d68f25045cec56806eca46359b054cbda52"
     },
     {
       "id": "T015",
@@ -176,7 +190,9 @@
       "level": "Security",
       "given": "Teacher uses a term allocation to write YEAR result",
       "expected": "Denied without explicit annual authority",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "30699d68f25045cec56806eca46359b054cbda52"
     },
     {
       "id": "T016",
