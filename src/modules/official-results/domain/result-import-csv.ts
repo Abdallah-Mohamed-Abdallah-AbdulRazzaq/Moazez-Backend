@@ -4,7 +4,12 @@ import { identityHeaders, type ExportManifest } from './result-export.contract';
 import { ResultImportFileError } from './result-import.contract';
 import { platformResultLimits } from './result-policy';
 
-export type ImportRecord = { cells: string[]; line: number; record: number };
+export type ImportRecord = {
+  cells: string[];
+  line: number;
+  record: number;
+  types?: ('text' | 'number' | 'boolean')[];
+};
 export type TabularImport = {
   header: string[];
   records: ImportRecord[];
@@ -117,7 +122,8 @@ export function protectedRowMatches(
 ): boolean {
   return identityHeaders.every(
     (header, index) =>
+      (!record.types || record.types[locations.get(header)!] === 'text') &&
       parsed.decodeText(record.cells[locations.get(header)!]) ===
-      protectedValues[index],
+        protectedValues[index],
   );
 }

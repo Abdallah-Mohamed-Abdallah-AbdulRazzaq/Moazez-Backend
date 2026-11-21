@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { Readable } from 'node:stream';
 import { buffer } from 'node:stream/consumers';
+import { ZipFile } from 'yazl';
 import { OfficialResultsError } from './official-results.error';
 import type { ResultField } from './result-definition';
 import type { ResultValue } from './result-value';
@@ -11,6 +11,7 @@ import {
   type ExportSheetPlan,
 } from './result-export.contract';
 import { resultContentDigest } from './result-content-digest';
+import { renderResultsXlsx, resultsXlsxMediaType } from './result-xlsx-export';
 
 const prefix = '~mztext:';
 const unsafeFirst = new Set(['=', '+', '-', '@', "'"]);
@@ -24,13 +25,6 @@ const packagedInstructions = [
   'Sensitive leading text is prefixed with ~mztext:; repeat the prefix to enter it literally.',
   'Upload individual EDIT_DRAFT files. READ_PUBLISHED and the ZIP package are read-only.',
 ];
-
-type ZipArchive = {
-  outputStream: Readable;
-  addBuffer(bytes: Buffer, path: string, options: { mtime: Date }): void;
-  end(): void;
-};
-const { ZipFile } = require('yazl') as { ZipFile: new () => ZipArchive };
 
 export function encodeSpreadsheetText(value: string): string {
   if (value.includes('\u0000'))
@@ -123,7 +117,7 @@ export function compatibleExportGroups(sheets: readonly ExportSheetPlan[]) {
   return groups.values();
 }
 
-export async function renderCsvFiles(input: {
+export async function renderResultFiles(input: {
   exportId: string;
   creatorId: string;
   schoolId: string;
@@ -135,6 +129,7 @@ export async function renderCsvFiles(input: {
 }): Promise<RenderedExportFile[]> {
   const { sheets, priorFiles, ...binding } = input;
   const files: RenderedExportFile[] = [];
+  const xlsx = input.request.format === 'XLSX';
   let totalBytes = 0;
 
   for (const group of compatibleExportGroups(sheets)) {
@@ -155,17 +150,31 @@ export async function renderCsvFiles(input: {
     let id = nextId();
     let usedBytes = Buffer.byteLength(header);
     let records = [header];
+    let worksheet: string[][] = [];
     let rows: ExportManifest['rows'] = [];
     let units = new Map<string, ExportSheetPlan['context']>();
 
-    const finish = () => {
+    const finish = async () => {
+      const manifest: ExportManifest = {
+        ...binding,
+        version: xlsx ? 'MOAZEZ_RESULTS_XLSX_V1' : 'MOAZEZ_RESULTS_CSV_V1',
+        codec: xlsx ? 'XLSX_TYPED' : 'MOAZEZ_TEXT_ESCAPE_V1',
+        exportRef: id,
+        headers,
+        fields,
+        sheets: [...units.values()],
+        rows,
+      };
+      const bytes = xlsx
+        ? await renderResultsXlsx(manifest, worksheet)
+        : Buffer.from(records.join(''));
       if (
         files.length >= 497 ||
-        usedBytes > maxBytes ||
-        totalBytes + usedBytes > maxPackageBytes
+        bytes.length > maxBytes ||
+        totalBytes + bytes.length > maxPackageBytes
       )
         throw new OfficialResultsError('scope.limit_exceeded');
-      totalBytes += usedBytes;
+      totalBytes += bytes.length;
       files.push({
         id,
         filename: resultFilename(
@@ -176,24 +185,16 @@ export async function renderCsvFiles(input: {
           ],
           input.exportId,
           input.exportedAt,
-          'csv',
+          xlsx ? 'xlsx' : 'csv',
         ),
-        mediaType: 'text/csv; charset=utf-8',
-        bytes: Buffer.from(records.join('')),
-        manifest: {
-          ...binding,
-          version: 'MOAZEZ_RESULTS_CSV_V1',
-          codec: 'MOAZEZ_TEXT_ESCAPE_V1',
-          exportRef: id,
-          headers,
-          fields,
-          sheets: [...units.values()],
-          rows,
-        },
+        mediaType: xlsx ? resultsXlsxMediaType : 'text/csv; charset=utf-8',
+        bytes,
+        manifest,
       });
       id = nextId();
       usedBytes = Buffer.byteLength(header);
       records = [header];
+      worksheet = [];
       rows = [];
       units = new Map();
     };
@@ -220,21 +221,23 @@ export async function renderCsvFiles(input: {
             }
           });
         const base = row.base.flatMap((cell) =>
-          resultValuePair(cell.value, true),
+          resultValuePair(cell.value, !xlsx),
         );
         let protectedValues = values();
         let record = csvRecord([
           ...protectedValues.map(encodeSpreadsheetText),
           ...base,
         ]);
-        const size = Buffer.byteLength(record);
+        const size =
+          Buffer.byteLength(record) + (xlsx ? headers.length * 100 : 0);
         if (size > 1024 * 1024)
           throw new OfficialResultsError('scope.limit_exceeded');
         if (
           rows.length &&
-          (rows.length >= maxRows || usedBytes + size > maxBytes)
+          (rows.length >= maxRows ||
+            usedBytes + size + (xlsx ? 32_000 : 0) > maxBytes)
         ) {
-          finish();
+          await finish();
           rowRef = nextRowRef();
           protectedValues = values();
           record = csvRecord([
@@ -244,11 +247,12 @@ export async function renderCsvFiles(input: {
         }
         units.set(sheet.context.id, sheet.context);
         rows.push({ ...row, rowRef, protectedValues });
-        records.push(record);
+        if (xlsx) worksheet.push([...protectedValues, ...base]);
+        else records.push(record);
         usedBytes += size;
       }
     }
-    if (rows.length) finish();
+    if (rows.length) await finish();
   }
 
   if (files.length <= 1) return files;

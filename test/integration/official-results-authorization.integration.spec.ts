@@ -16,6 +16,11 @@ import { ResultBulkWorker } from '../../src/modules/official-results/infrastruct
 import { ResultImportApplyService } from '../../src/modules/official-results/application/result-import-apply.service';
 import { resultsBulkQueue } from '../../src/modules/official-results/domain/result-export.contract';
 import { resultApplyImportJob } from '../../src/modules/official-results/domain/result-import-execution.contract';
+import {
+  renderResultsXlsx,
+  resultsXlsxMediaType,
+} from '../../src/modules/official-results/domain/result-xlsx-export';
+import { parseResultsXlsx } from '../../src/modules/official-results/domain/result-xlsx-import';
 import { exportOutputs } from '../../src/modules/official-results/dto/result-export.dto';
 import { importOutputs } from '../../src/modules/official-results/dto/result-import.dto';
 import { csvRecord } from '../../src/modules/official-results/domain/result-csv';
@@ -3649,6 +3654,88 @@ describe('Official Results policy and permission boundaries', () => {
     } finally {
       await queue.resume();
     }
+  });
+
+  it('T081 executes a native workbook through the same staged authorization and atomic draft pipeline', async () => {
+    const book = await liveGradebook('NATIVE-XLSX');
+    const preview = exportOutputs.preview.parse(
+      (
+        await exportTeacher('post', '/exports/preview')
+          .send({
+            reportingPeriodId: book.reportingPeriodId,
+            academicScope: { level: 'CLASSROOM', ids: [school.classroom.id] },
+            groupIds: [math.id],
+            format: 'XLSX',
+            mode: 'EDIT_DRAFT',
+            selectedSlotIds: [book.slot.id],
+            selectedFieldIds: [book.scores[0].id],
+          })
+          .expect(200)
+      ).body.data,
+    );
+    const created = exportOutputs.export.parse(
+      (
+        await exportTeacher('post', '/exports')
+          .set('Idempotency-Key', randomUUID())
+          .send({
+            previewId: preview.previewId,
+            previewDigest: preview.previewDigest,
+          })
+          .expect(202)
+      ).body.data,
+    );
+    const job = await waitForExport(
+      '/exports/' + created.exportId,
+      withTeacher,
+    );
+    const file = job.files[0];
+    expect(file.mediaType).toBe(resultsXlsxMediaType);
+    const download = await exportTeacher(
+      'get',
+      file.downloadPath.slice(instructor.length),
+    )
+      .buffer(true)
+      .parse((response, callback) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => chunks.push(chunk));
+        response.on('end', () => callback(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
+    const workbook = await parseResultsXlsx(download.body as Buffer);
+    expect(workbook.records[0].cells.slice(0, 5)).toEqual([
+      file.fileId,
+      expect.any(String),
+      book.source.id,
+      book.slot.id,
+      book.enrollment.id,
+    ]);
+    const persisted = await prisma.resultExportFile.findUniqueOrThrow({
+      where: { id: file.fileId },
+    });
+    const manifest = persisted.manifest as unknown as ExportManifest;
+    const values = workbook.records.map((item) => item.cells.slice());
+    values[0][18] = '0.00';
+    const updated = await renderResultsXlsx(manifest, values);
+    const initial = importOutputs.batch.parse(
+      (await stageImport(job.exportId, updated).expect(202)).body.data,
+    );
+    const batch = await waitForImport('/' + initial.batchId);
+    expect(batch).toMatchObject({
+      status: 'READY_TO_CONFIRM',
+      summary: { changedCells: 1, selectedSlots: 1 },
+    });
+    const operation = importOutputs.execution.parse(
+      (await confirmImport(batch.batchId, confirmation(batch)).expect(202)).body
+        .data,
+    );
+    expect(await waitForOperation(operation.operationId)).toMatchObject({
+      status: 'APPLIED',
+    });
+    expect(
+      await prisma.resultCell.findFirstOrThrow({
+        where: { slotId: book.slot.id, fieldId: book.scores[0].id },
+      }),
+    ).toMatchObject({ version: 1, status: 'RECORDED' });
   });
 
   it('T013 denies an edit waiting on a concurrent allocation revocation', async () => {

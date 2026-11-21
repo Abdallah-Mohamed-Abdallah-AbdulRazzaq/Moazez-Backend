@@ -34,6 +34,7 @@ import {
   type ImportReviewBinding,
 } from '../domain/result-import.contract';
 import { platformResultLimits } from '../domain/result-policy';
+import { parseResultsXlsx } from '../domain/result-xlsx-import';
 import { storedCellValue } from '../domain/result-value';
 import {
   ResultAuthorizationRepository,
@@ -188,7 +189,7 @@ export class ResultImportValidationService {
       return invalidValidation('export_expired');
     if (parent.row.mode !== 'EDIT_DRAFT')
       return invalidValidation('readonly_export');
-    const parsed = this.parseSource(source, bytes, parent.maxFileSize);
+    const parsed = await this.parseSource(source, bytes, parent.maxFileSize);
     if ('status' in parsed) return parsed;
     const manifest = await this.resolveManifest(
       client,
@@ -270,17 +271,19 @@ export class ResultImportValidationService {
     };
   }
 
-  private parseSource(
+  private async parseSource(
     source: ResultImportSource,
     bytes: Buffer,
     maxUploadBytes: number,
-  ): TabularImport | Validation {
+  ): Promise<TabularImport | Validation> {
     try {
-      if (source.format !== 'CSV') return invalidValidation('workbook_invalid');
-      return parseResultCsv(bytes, {
+      const limits = {
         maxUploadBytes,
         maxRows: platformResultLimits.maxRows,
-      });
+      };
+      return source.format === 'XLSX'
+        ? await parseResultsXlsx(bytes, limits)
+        : parseResultCsv(bytes, limits);
     } catch (error) {
       if (error instanceof ResultImportFileError)
         return invalidValidation(error.issue);

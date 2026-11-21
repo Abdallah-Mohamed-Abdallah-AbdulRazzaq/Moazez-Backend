@@ -274,16 +274,27 @@ export function compareImport(input: CompareInput) {
       const correction = byCorrection.get(correctionKey);
       pendingCorrection.delete(correctionKey);
       pendingReason.delete(correctionKey);
-      const requested: RequestedValue = !correction
-        ? parseImportCommand(
-            field,
-            record.cells[valueColumn],
-            record.cells[stateColumn],
-            parsed.decodeText,
-          )
-        : correction.operation === 'CLEAR'
-          ? { kind: 'CLEAR', value: missing }
-          : normalizeImportValue(field, correction.value);
+      const valueType = record.types?.[valueColumn] ?? 'text';
+      const stateType = record.types?.[stateColumn] ?? 'text';
+      const invalidType =
+        stateType !== 'text' ||
+        (valueType === 'number' &&
+          field.kind !== 'SCORE' &&
+          field.kind !== 'PERCENTAGE') ||
+        (valueType === 'boolean' && field.kind !== 'BOOLEAN');
+      const requested: RequestedValue =
+        !correction && invalidType
+          ? { kind: 'ISSUE', issue: 'invalid_state' }
+          : !correction
+            ? parseImportCommand(
+                field,
+                record.cells[valueColumn],
+                record.cells[stateColumn],
+                parsed.decodeText,
+              )
+            : correction.operation === 'CLEAR'
+              ? { kind: 'CLEAR', value: missing }
+              : normalizeImportValue(field, correction.value);
       const target = {
         ...located,
         fieldId: field.id,

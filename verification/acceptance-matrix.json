@@ -1087,7 +1087,9 @@
       "level": "Contract",
       "given": "CSV and XLSX encode same typed manual edits",
       "expected": "Same normalized changeset and domain outcome, independent of transport",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+      "testedSha": "60b7f6fe0773c9316a308e178ae07044896334cc"
     },
     {
       "id": "T082",
@@ -1098,7 +1100,9 @@
       "level": "Security",
       "given": "XLSX contains formula/cached result/macros/external link/encryption",
       "expected": "Reject unsupported or unsafe content; no calculated value trusted",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-xlsx.spec.ts src/modules/official-results/domain/result-csv.spec.ts src/modules/official-results/domain/result-import-csv.spec.ts",
+      "testedSha": "60b7f6fe0773c9316a308e178ae07044896334cc"
     },
     {
       "id": "T083",
@@ -1109,7 +1113,9 @@
       "level": "Security",
       "given": "Workbook is ZIP bomb, path traversal, excess entries/XML",
       "expected": "Bounded reject; no worker memory/disk exhaustion or external fetch",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-xlsx.spec.ts src/modules/official-results/domain/result-csv.spec.ts src/modules/official-results/domain/result-import-csv.spec.ts",
+      "testedSha": "60b7f6fe0773c9316a308e178ae07044896334cc"
     },
     {
       "id": "T084",
@@ -1120,7 +1126,9 @@
       "level": "Integration",
       "given": "Supported Excel/LibreOffice round-trip of Arabic/student refs/text",
       "expected": "Identity preserved, supported warnings clear, calculated preview not imported",
-      "status": "NOT_RUN"
+      "status": "PASS",
+      "evidence": "Excel 16.0.20527.20196 and LibreOffice Calc 7.4.7.2 re-save, then Jest XLSX parser",
+      "testedSha": "60b7f6fe0773c9316a308e178ae07044896334cc"
     },
     {
       "id": "T085",
