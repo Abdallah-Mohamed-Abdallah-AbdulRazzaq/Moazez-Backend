@@ -1,3 +1,4 @@
+import { officialResultsParentRoutes } from '../fixtures/official-results-contract-expectations';
 import { expectSt12SurfaceMetadata } from '../fixtures/st12-contract-expectations';
 import { ST12_PARENT_ROUTES } from '../fixtures/st12-contract-expectations';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
@@ -850,9 +851,13 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
     expectSt12SurfaceMetadata('parent');
     const routes = listRegisteredParentRoutes();
 
-    expect(routes).toHaveLength(86 + ST12_PARENT_ROUTES.length);
+    expect(routes).toHaveLength(
+      86 + ST12_PARENT_ROUTES.length + officialResultsParentRoutes.length,
+    );
     expect(routes.filter((route) => route.startsWith('GET '))).toHaveLength(
-      72 + ST12_PARENT_ROUTES.filter((r) => r.startsWith('GET ')).length,
+      72 +
+        ST12_PARENT_ROUTES.filter((r) => r.startsWith('GET ')).length +
+        officialResultsParentRoutes.length,
     );
     expect(routes.filter((route) => !route.startsWith('GET '))).toHaveLength(
       14 + ST12_PARENT_ROUTES.filter((r) => !r.startsWith('GET ')).length,
@@ -860,6 +865,7 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
     expect(routes).toEqual(
       [
         ...ST12_PARENT_ROUTES,
+        ...officialResultsParentRoutes,
         'DELETE /api/v1/parent/notifications/device-tokens/current',
         'GET /api/v1/parent/academic-content/:contentId/accessible-children',
         'GET /api/v1/parent/announcements',

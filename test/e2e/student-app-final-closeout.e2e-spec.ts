@@ -1,3 +1,4 @@
+import { officialResultsStudentRoutes } from '../fixtures/official-results-contract-expectations';
 import type { Server } from 'node:http';
 import { expectSt12SurfaceMetadata } from '../fixtures/st12-contract-expectations';
 import {
@@ -908,6 +909,7 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
         ...ST11_STUDENT_ANSWER_MEDIA_ROUTES,
         ...ST11B_STUDENT_GROUP_ROUTES,
         ...ST12_STUDENT_ROUTES,
+        ...officialResultsStudentRoutes,
       ].sort(),
     );
 
