@@ -36,18 +36,52 @@ export function assertRosterDate(
   if (!Number.isFinite(rosterAsOf.valueOf())) {
     throw new OfficialResultsError('period.invalid_dates');
   }
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(rosterAsOf);
-  const year = parts.find((part) => part.type === 'year')?.value;
-  const month = parts.find((part) => part.type === 'month')?.value;
-  const day = parts.find((part) => part.type === 'day')?.value;
-  const date = parseReportingDate(`${year}-${month}-${day}`);
+  const date = parseReportingDate(
+    formattedSchoolDate(schoolDateFormatter(timezone), rosterAsOf),
+  );
   assertReportingDates(date, date, {
     startDate: period.startsOn,
     endDate: period.endsOn,
   });
+}
+
+function schoolDateFormatter(timezone: string) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+}
+
+function formattedSchoolDate(
+  formatter: Intl.DateTimeFormat,
+  instant: Date | number,
+) {
+  const parts = Object.fromEntries(
+    formatter.formatToParts(instant).map((part) => [part.type, part.value]),
+  );
+  return parts.year + '-' + parts.month + '-' + parts.day;
+}
+
+export function currentRosterInstant(
+  snapshot: Date,
+  endDate: Date,
+  timezone: string,
+  now = new Date(),
+): Date {
+  const formatter = schoolDateFormatter(timezone);
+  const date = (instant: Date | number) =>
+    formattedSchoolDate(formatter, instant);
+  const end = endDate.toISOString().slice(0, 10);
+  if (date(now) <= end) return now < snapshot ? snapshot : now;
+  const day = 86_400_000;
+  let first = endDate.valueOf() - 2 * day;
+  let last = endDate.valueOf() + 2 * day;
+  while (last - first > 1) {
+    const middle = Math.floor((first + last) / 2);
+    if (date(middle) <= end) first = middle;
+    else last = middle;
+  }
+  return new Date(first);
 }

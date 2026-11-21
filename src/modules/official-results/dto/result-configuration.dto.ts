@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type, Transform } from 'class-transformer';
+import { Expose, Type, Transform } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -51,7 +51,9 @@ export class ResultLabelDto {
   @MaxLength(200)
   ar!: string;
 
-  @ApiProperty({ maxLength: 200 })
+  @ApiPropertyOptional({ maxLength: 200 })
+  @Expose()
+  @Transform(({ value, obj }) => (value === undefined ? obj.ar : value))
   @IsString()
   @Matches(nonBlank)
   @MaxLength(200)

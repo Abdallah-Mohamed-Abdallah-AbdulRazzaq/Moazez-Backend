@@ -225,6 +225,12 @@
           "outcome": "PASS",
           "testedSha": "30699d68f25045cec56806eca46359b054cbda52",
           "result": "The 40 original entries match the verified origin/main manifest byte digests. The new candidate contains 43 entries."
+        },
+        {
+          "command": "Teacher App final closeout and Dismissal IAM selected regression cases; parent and teacher role seed and auth/me selected cases; G05 seed inventory contract",
+          "outcome": "PASS",
+          "result": "3 closeout/role-count cases and 4 exact teacher/parent seed and authentication cases passed on disposable PostgreSQL, Redis and MinIO. G05 exact seed inventory unit case passed. Full rerun remains separate.",
+          "testedSha": "6abdb72674c5e2c8c208f2d5bf21e1dbf59bb837"
         }
       ],
       "evidence": [
@@ -247,7 +253,8 @@
         "totalSeededPermissionCount": 271,
         "seededSystemRoles": 7,
         "teacherDirectPublicationDefault": false
-      }
+      },
+      "regressionFixSha": "6abdb72674c5e2c8c208f2d5bf21e1dbf59bb837"
     },
     {
       "id": "OR03",
@@ -256,15 +263,82 @@
         "OR01",
         "OR02"
       ],
-      "status": "NOT_STARTED",
-      "implementationSha": null,
-      "requirements": [],
-      "codePaths": [],
-      "testsExecuted": [],
-      "evidence": [],
+      "status": "DONE",
+      "implementationSha": "fbc24b1b16017faaee3317270f4d301e71d2565f",
+      "requirements": [
+        "R02",
+        "R03",
+        "R04",
+        "R06",
+        "R07",
+        "R08",
+        "R09",
+        "R12",
+        "R13"
+      ],
+      "codePaths": [
+        "src/modules/official-results/controller/result-authoring.controller.ts",
+        "src/modules/official-results/application/result-template.service.ts",
+        "src/modules/official-results/application/result-scope.service.ts",
+        "src/modules/official-results/application/result-design.service.ts",
+        "src/modules/official-results/domain/result-definition.ts",
+        "src/modules/official-results/domain/result-template-rules.ts",
+        "prisma/migrations/20261121023752_official_results_authoring/migration.sql"
+      ],
+      "testsExecuted": [
+        {
+          "command": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+          "outcome": "PASS",
+          "result": "16 passed on isolated PostgreSQL 16, including actual Nest authoring requests, draft adoption, exact authority, SQL canonical slots and locking.",
+          "testedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f"
+        },
+        {
+          "command": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-authoring.spec.ts src/modules/official-results/domain/result-policy.spec.ts",
+          "outcome": "PASS",
+          "result": "8 passed, including 5 OR03 schema/containment tests.",
+          "testedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f"
+        },
+        {
+          "command": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts -t \"generated Nest\"",
+          "outcome": "PASS",
+          "result": "49 generated operations verified against the catalog and checked-in artifact. Response members, status and idempotency annotations are checked.",
+          "testedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f"
+        },
+        {
+          "command": "prisma migrate deploy; prisma migrate status; prisma migrate deploy; prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code",
+          "outcome": "PASS",
+          "result": "44 applied on fresh moazez_official_results_or03; status current, second deploy no-op and zero schema differences.",
+          "testedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f"
+        },
+        {
+          "command": "prisma validate; prisma generate; node scripts/migrations/migration-artifact-manifest.cjs verify; npm run seed",
+          "outcome": "PASS",
+          "result": "44-entry reviewed manifest verified; Prisma 6.19.3 generated and canonical IAM seeded on disposable PostgreSQL.",
+          "testedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f"
+        },
+        {
+          "command": "node --test scripts/tests/prd3-g01-b3-transaction-pressure.test.cjs; npm run build",
+          "outcome": "PASS",
+          "testedSha": "fbc24b1b16017faaee3317270f4d301e71d2565f",
+          "result": "180 source inventory checks passed. The Nest and reference-data bootstrap build passed with the CI heap."
+        }
+      ],
+      "evidence": [
+        "docs/official-results/or03-templates-and-designs.md",
+        "docs/official-results/openapi.json",
+        "verification/acceptance-matrix.json"
+      ],
       "blockers": [],
-      "decisions": [],
-      "nextAction": null
+      "decisions": [
+        "Keep authorized draft selection and school acceptance separate. Persist exact preview mappings and freeze school template/definition revisions.",
+        "Restrict teacher template reads to current effective assignments and pinned versions in current real tuples.",
+        "Keep the legacy route inventory and test the exact additions under the Official Results namespace. Adjusted IAM count baselines preserve the original allowed permissions and verify every new grant as well."
+      ],
+      "nextAction": "OR04: grid, exact typed cells, calculations, applicability and roster reconciliation.",
+      "requirementScope": "Authoring and canonical scope behavior verified. Publication/export binding, approval/import invalidation and protected runtime projections require dependent phases.",
+      "migrations": [
+        "20261121023752_official_results_authoring"
+      ]
     },
     {
       "id": "OR04",
@@ -272,15 +346,75 @@
       "dependsOn": [
         "OR03"
       ],
-      "status": "NOT_STARTED",
-      "implementationSha": null,
-      "requirements": [],
-      "codePaths": [],
-      "testsExecuted": [],
-      "evidence": [],
+      "status": "DONE",
+      "implementationSha": "dd937e2bdfe259d58f46a996d0d5116619164305",
+      "requirements": [
+        "R01",
+        "R02",
+        "R05",
+        "R06",
+        "R08",
+        "R09",
+        "R14",
+        "R20"
+      ],
+      "codePaths": [
+        "src/modules/official-results/controller/result-gradebook.controller.ts",
+        "src/modules/official-results/application/result-gradebook.service.ts",
+        "src/modules/official-results/infrastructure/repositories/result-gradebook.repository.ts",
+        "src/modules/official-results/application/result-roster-reconcile.service.ts",
+        "src/modules/official-results/domain/result-calculation.ts",
+        "src/modules/official-results/domain/result-fraction.ts",
+        "prisma/migrations/20261121031742_official_results_roster_revisions/migration.sql"
+      ],
+      "testsExecuted": [
+        {
+          "command": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts test/integration/official-results-foundation.integration.spec.ts",
+          "outcome": "PASS",
+          "result": "21 tests passed on PostgreSQL 16. Actual scoped manual editing, same-cell conflict, compatible co-teacher writes, atomic bulk validation, clear/undo, transfer, guardianship of staff-only fields, and school exemption.",
+          "testedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
+        },
+        {
+          "command": "npx jest --runInBand --runTestsByPath src/modules/official-results/domain/result-calculation.spec.ts",
+          "outcome": "PASS",
+          "result": "20 tests passed, including all 18 normative calculation vectors applied to actual definition validation, typed value validation and exact evaluator.",
+          "testedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
+        },
+        {
+          "command": "npx jest --config test/jest-e2e.json --runInBand --runTestsByPath test/integration/official-results-authorization.integration.spec.ts -t \"generated Nest\"",
+          "outcome": "PASS",
+          "result": "59 concrete Nest operations and the checked-in OpenAPI artifact verified.",
+          "testedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
+        },
+        {
+          "command": "prisma validate; prisma generate; prisma migrate deploy; prisma migrate status; prisma migrate deploy; prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code; npm run seed",
+          "outcome": "PASS",
+          "result": "45 migrated in the fresh loopback-only OR04 fixture, second deploy no-op, zero schema differences, 271 permissions and seven canonical roles.",
+          "testedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
+        },
+        {
+          "command": "npm run build",
+          "outcome": "PASS",
+          "result": "Nest and reference-data bootstrap build contract passed with the CI heap.",
+          "testedSha": "dd937e2bdfe259d58f46a996d0d5116619164305"
+        }
+      ],
+      "evidence": [
+        "docs/official-results/or04-gradebook.md",
+        "docs/official-results/openapi.json",
+        "verification/acceptance-matrix.json"
+      ],
       "blockers": [],
-      "decisions": [],
-      "nextAction": null
+      "decisions": [
+        "Exact BigInt fractions and pinned rounding replace floating point for grade arithmetic.",
+        "Only touched cell versions and structural revision gate grid writes. Data generation tracks successful compatible edits and never acts as a coarse cell CAS.",
+        "Roster reconciliation uses an exact preview and preserves canonical slot identity with append-only placement and applicability evidence."
+      ],
+      "nextAction": "OR05: immutable candidate capture, exact decisions, publication, corrections and release topology.",
+      "migrations": [
+        "20261121031742_official_results_roster_revisions"
+      ],
+      "requirementScope": "Current draft grid, real roster, transfer/applicability and calculation workflows. Review/import/export/family effects require the dependent phases."
     },
     {
       "id": "OR05",
@@ -422,7 +556,7 @@
     "deployed": false,
     "productionMutationsAuthorized": false
   },
-  "branch": "codex/moazez-be-official-results",
+  "branch": "codex/moazez-be-official-results-authoring",
   "draftPullRequests": [
     {
       "number": 238,
@@ -434,6 +568,17 @@
         "OR00",
         "OR01",
         "OR02"
+      ]
+    },
+    {
+      "number": 239,
+      "url": "https://github.com/Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend/pull/239",
+      "branch": "codex/moazez-be-official-results-authoring",
+      "base": "codex/moazez-be-official-results",
+      "baseSha": "f7ad34273e7bc7131b90e1af77b1cff0e14c7b0b",
+      "scope": [
+        "OR03",
+        "OR04"
       ]
     }
   ]

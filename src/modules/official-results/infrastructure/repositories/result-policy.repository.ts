@@ -146,6 +146,15 @@ export class ResultPolicyRepository {
       expectedPolicyVersionId: versionId,
       expiresAt: expiresAt.toISOString(),
       impact,
+      impacts: [
+        {
+          kind: 'POLICY_ACTIVATION' as const,
+          resourceId: actor.schoolId,
+          before: { policyVersionId: versionId },
+          after: { affectedScopes: impact.affectedScopes },
+        },
+      ],
+      blockers: [],
       policy,
     };
   }

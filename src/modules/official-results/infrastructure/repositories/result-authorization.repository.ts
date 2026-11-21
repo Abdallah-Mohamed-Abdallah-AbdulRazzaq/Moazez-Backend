@@ -107,6 +107,7 @@ export class ResultAuthorizationRepository {
     action: ResultGrantAction,
     options: {
       write?: boolean;
+      review?: boolean;
       slotId?: string;
       releaseUnitId?: string;
     } = {},
@@ -123,6 +124,7 @@ export class ResultAuthorizationRepository {
       client,
       actor.schoolId,
       target,
+      Boolean(options.write),
     );
     if (actor.userType === UserType.TEACHER) {
       const { period, group } = context;
@@ -154,7 +156,8 @@ export class ResultAuthorizationRepository {
       const releaseAction =
         action === 'PUBLISH' || action === 'PUBLISH_CORRECTION';
       const entryClosedRelease =
-        context.period.status === 'ENTRY_CLOSED' && releaseAction;
+        context.period.status === 'ENTRY_CLOSED' &&
+        (releaseAction || options.review);
       const correctionAllowed =
         options.slotId &&
         options.releaseUnitId &&
@@ -213,6 +216,48 @@ export class ResultAuthorizationRepository {
       select: { actions: true },
     });
     return new Set(grants.flatMap(({ actions }) => actions));
+  }
+
+  async fieldGrants(
+    client: Prisma.TransactionClient,
+    actor: ResultActor,
+    target: ResultSheetTarget,
+    write: boolean,
+  ) {
+    const rows = await client.$queryRaw<
+      Array<{ fieldIds: string[]; actions: ResultGrantAction[] }>
+    >(Prisma.sql`
+      SELECT field_ids AS "fieldIds", actions
+      FROM official_result_scope_grants
+      WHERE school_id = ${actor.schoolId}::uuid
+        AND (grantee_user_id = ${actor.actorId}::uuid OR grantee_role_id = ${actor.roleId}::uuid)
+        AND starts_at <= clock_timestamp() AND revoked_at IS NULL
+        AND (expires_at IS NULL OR expires_at > clock_timestamp())
+        AND ${target.reportingPeriodId}::uuid = ANY(reporting_period_ids)
+        AND ${target.classroomId}::uuid = ANY(classroom_ids)
+        AND ${target.groupId}::uuid = ANY(group_ids)
+        AND cardinality(field_ids) > 0
+      ORDER BY id
+      ${write ? Prisma.sql`FOR SHARE` : Prisma.empty}
+    `);
+    const scopes = new Map<string, Set<ResultGrantAction>>();
+    for (const row of rows) {
+      for (const fieldId of row.fieldIds) {
+        const actions = scopes.get(fieldId) ?? new Set<ResultGrantAction>();
+        row.actions.forEach((action) => actions.add(action));
+        scopes.set(fieldId, actions);
+      }
+    }
+    return scopes;
+  }
+
+  hasHistoricalEditGrant(
+    client: Prisma.TransactionClient,
+    actor: ResultActor,
+    target: ResultSheetTarget,
+    write: boolean,
+  ) {
+    return this.hasGrant(client, actor, target, 'EDIT', write);
   }
 
   assertDirectPublication(

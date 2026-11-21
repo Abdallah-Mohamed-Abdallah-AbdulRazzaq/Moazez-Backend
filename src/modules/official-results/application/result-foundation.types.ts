@@ -52,4 +52,5 @@ export interface MaterializeResultSheetInput extends ResultSheetTarget {
   rosterAsOf: Date;
   definition: FrozenResultDefinitionInput;
   acceptsDefinition: boolean;
+  deferExistingPlacements?: boolean;
 }

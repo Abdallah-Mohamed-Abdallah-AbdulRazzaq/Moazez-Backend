@@ -1,0 +1,470 @@
+{
+  "schemaVersion": "1.0",
+  "fixtureNotice": "Normative expected examples. These vectors have not executed the Moazez application; implementing agent must turn them into domain tests. Short expectedError names are domain reasons to map into the package error catalog.",
+  "definitionVersionId": "60000000-0000-4000-8000-000000000001",
+  "fieldIds": {
+    "coursework": "61000000-0000-4000-8000-000000000001",
+    "tests": "61000000-0000-4000-8000-000000000002",
+    "term_exam": "61000000-0000-4000-8000-000000000003",
+    "total": "61000000-0000-4000-8000-000000000004",
+    "family_note": "61000000-0000-4000-8000-000000000005",
+    "internal_note": "61000000-0000-4000-8000-000000000006"
+  },
+  "maxima": {
+    "coursework": "20.00",
+    "tests": "30.00",
+    "term_exam": "50.00"
+  },
+  "rounding": {
+    "mode": "HALF_UP",
+    "scale": 2
+  },
+  "vectors": [
+    {
+      "id": "CALC-001",
+      "description": "Starter complete sum, independent of assessment engine",
+      "operation": "SUM_POINTS",
+      "inputs": {
+        "coursework": {
+          "status": "RECORDED",
+          "score": "18.00"
+        },
+        "tests": {
+          "status": "RECORDED",
+          "score": "27.00"
+        },
+        "term_exam": {
+          "status": "RECORDED",
+          "score": "46.00"
+        }
+      },
+      "expected": {
+        "calculationStatus": "READY",
+        "value": {
+          "status": "RECORDED",
+          "score": "91.00"
+        },
+        "evaluation": {
+          "nominalMaxScore": "100.00",
+          "effectiveMaxScore": "100.00",
+          "normalizedPercentage": "91.000000"
+        }
+      }
+    },
+    {
+      "id": "CALC-002",
+      "description": "Missing required score prevents a final total",
+      "operation": "SUM_POINTS",
+      "inputs": {
+        "coursework": {
+          "status": "RECORDED",
+          "score": "18.00"
+        },
+        "tests": {
+          "status": "MISSING"
+        },
+        "term_exam": {
+          "status": "RECORDED",
+          "score": "46.00"
+        }
+      },
+      "expected": {
+        "calculationStatus": "INCOMPLETE",
+        "value": {
+          "status": "MISSING"
+        },
+        "reason": "REQUIRED_INPUT_MISSING"
+      }
+    },
+    {
+      "id": "CALC-003",
+      "description": "Zero is recorded and contributes its full denominator",
+      "operation": "SUM_POINTS",
+      "inputs": {
+        "coursework": {
+          "status": "RECORDED",
+          "score": "18.00"
+        },
+        "tests": {
+          "status": "RECORDED",
+          "score": "0.00"
+        },
+        "term_exam": {
+          "status": "RECORDED",
+          "score": "46.00"
+        }
+      },
+      "expected": {
+        "calculationStatus": "READY",
+        "value": {
+          "status": "RECORDED",
+          "score": "64.00"
+        },
+        "evaluation": {
+          "nominalMaxScore": "100.00",
+          "effectiveMaxScore": "100.00",
+          "normalizedPercentage": "64.000000"
+        }
+      }
+    },
+    {
+      "id": "CALC-004",
+      "description": "Excused score excludes both numerator and denominator",
+      "operation": "SUM_POINTS",
+      "inputs": {
+        "coursework": {
+          "status": "RECORDED",
+          "score": "18.00"
+        },
+        "tests": {
+          "status": "EXCUSED"
+        },
+        "term_exam": {
+          "status": "RECORDED",
+          "score": "46.00"
+        }
+      },
+      "expected": {
+        "calculationStatus": "READY",
+        "value": {
+          "status": "RECORDED",
+          "score": "64.00"
+        },
+        "evaluation": {
+          "nominalMaxScore": "100.00",
+          "effectiveMaxScore": "70.00",
+          "normalizedPercentage": "91.428571"
+        }
+      }
+    },
+    {
+      "id": "CALC-005",
+      "description": "Absent score is incomplete by starter policy",
+      "operation": "SUM_POINTS",
+      "inputs": {
+        "coursework": {
+          "status": "RECORDED",
+          "score": "18.00"
+        },
+        "tests": {
+          "status": "ABSENT"
+        },
+        "term_exam": {
+          "status": "RECORDED",
+          "score": "46.00"
+        }
+      },
+      "expected": {
+        "calculationStatus": "INCOMPLETE",
+        "value": {
+          "status": "MISSING"
+        },
+        "reason": "ABSENT_INPUT_BLOCKS_CALCULATION"
+      }
+    },
+    {
+      "id": "CALC-006",
+      "description": "Explicit absence-zero numerical treatment preserves absent stored state",
+      "operation": "SUM_POINTS",
+      "policyOverride": {
+        "absent": "ZERO"
+      },
+      "inputs": {
+        "coursework": {
+          "status": "RECORDED",
+          "score": "18.00"
+        },
+        "tests": {
+          "status": "ABSENT"
+        },
+        "term_exam": {
+          "status": "RECORDED",
+          "score": "46.00"
+        }
+      },
+      "expected": {
+        "calculationStatus": "READY",
+        "value": {
+          "status": "RECORDED",
+          "score": "64.00"
+        },
+        "evaluation": {
+          "nominalMaxScore": "100.00",
+          "effectiveMaxScore": "100.00",
+          "normalizedPercentage": "64.000000"
+        },
+        "storedInputStatus": "ABSENT"
+      }
+    },
+    {
+      "id": "CALC-007",
+      "description": "All excluded is not applicable, never zero divided by zero",
+      "operation": "SUM_POINTS",
+      "inputs": {
+        "coursework": {
+          "status": "NOT_APPLICABLE"
+        },
+        "tests": {
+          "status": "NOT_APPLICABLE"
+        },
+        "term_exam": {
+          "status": "NOT_APPLICABLE"
+        }
+      },
+      "expected": {
+        "calculationStatus": "NOT_APPLICABLE",
+        "value": {
+          "status": "NOT_APPLICABLE"
+        }
+      }
+    },
+    {
+      "id": "CALC-008",
+      "description": "Weights use normalized fractions, not raw point values",
+      "operation": "WEIGHTED_PERCENTAGE",
+      "inputs": {
+        "coursework": {
+          "status": "RECORDED",
+          "score": "18.00"
+        },
+        "tests": {
+          "status": "RECORDED",
+          "score": "27.00"
+        },
+        "term_exam": {
+          "status": "RECORDED",
+          "score": "46.00"
+        }
+      },
+      "weights": {
+        "coursework": "20.00",
+        "tests": "30.00",
+        "term_exam": "50.00"
+      },
+      "expected": {
+        "calculationStatus": "READY",
+        "value": {
+          "status": "RECORDED",
+          "percentage": "91.00"
+        }
+      }
+    },
+    {
+      "id": "CALC-009",
+      "description": "Exclusion renormalizes effective weights",
+      "operation": "WEIGHTED_PERCENTAGE",
+      "inputs": {
+        "coursework": {
+          "status": "RECORDED",
+          "score": "18.00"
+        },
+        "tests": {
+          "status": "EXCUSED"
+        },
+        "term_exam": {
+          "status": "RECORDED",
+          "score": "46.00"
+        }
+      },
+      "weights": {
+        "coursework": "20.00",
+        "tests": "30.00",
+        "term_exam": "50.00"
+      },
+      "expected": {
+        "calculationStatus": "READY",
+        "value": {
+          "status": "RECORDED",
+          "percentage": "91.43"
+        },
+        "effectiveWeight": "70.00"
+      }
+    },
+    {
+      "id": "CALC-010",
+      "description": "Equal normalized average differs from raw point average",
+      "operation": "NORMALIZED_AVERAGE",
+      "inputs": {
+        "coursework": {
+          "status": "RECORDED",
+          "score": "18.00"
+        },
+        "tests": {
+          "status": "RECORDED",
+          "score": "27.00"
+        },
+        "term_exam": {
+          "status": "RECORDED",
+          "score": "46.00"
+        }
+      },
+      "expected": {
+        "calculationStatus": "READY",
+        "value": {
+          "status": "RECORDED",
+          "percentage": "90.67"
+        }
+      }
+    },
+    {
+      "id": "CALC-011",
+      "description": "Bad nominal weight sum is a definition error",
+      "operation": "WEIGHTED_PERCENTAGE",
+      "inputs": {
+        "coursework": {
+          "status": "RECORDED",
+          "score": "18.00"
+        },
+        "tests": {
+          "status": "RECORDED",
+          "score": "27.00"
+        },
+        "term_exam": {
+          "status": "RECORDED",
+          "score": "46.00"
+        }
+      },
+      "weights": {
+        "coursework": "20.00",
+        "tests": "30.00",
+        "term_exam": "40.00"
+      },
+      "expectedError": "WEIGHT_SUM_INVALID"
+    },
+    {
+      "id": "CALC-012",
+      "description": "Out-of-range manual value cannot enter calculation",
+      "operation": "SUM_POINTS",
+      "inputs": {
+        "coursework": {
+          "status": "RECORDED",
+          "score": "25.00"
+        },
+        "tests": {
+          "status": "RECORDED",
+          "score": "27.00"
+        },
+        "term_exam": {
+          "status": "RECORDED",
+          "score": "46.00"
+        }
+      },
+      "expectedError": "SCORE_OUT_OF_RANGE"
+    },
+    {
+      "id": "CALC-013",
+      "description": "Excess significant input scale is rejected instead of rounded",
+      "operation": "SUM_POINTS",
+      "inputs": {
+        "coursework": {
+          "status": "RECORDED",
+          "score": "18.125"
+        },
+        "tests": {
+          "status": "RECORDED",
+          "score": "27.00"
+        },
+        "term_exam": {
+          "status": "RECORDED",
+          "score": "46.00"
+        }
+      },
+      "expectedError": "INPUT_SCALE_EXCEEDED"
+    },
+    {
+      "id": "CALC-014",
+      "description": "Pre-display threshold comparison; displayed50.00 does not imply passing",
+      "operation": "PASS_THRESHOLD",
+      "independentInput": {
+        "kind": "PERCENTAGE",
+        "value": {
+          "status": "RECORDED",
+          "percentage": "49.9950"
+        },
+        "inputScale": 4
+      },
+      "threshold": "50.00",
+      "expected": {
+        "displayPercentage": "50.00",
+        "value": {
+          "status": "RECORDED",
+          "outcome": "FAIL"
+        }
+      }
+    },
+    {
+      "id": "CALC-015",
+      "description": "Exact threshold is inclusive",
+      "operation": "PASS_THRESHOLD",
+      "independentInput": {
+        "kind": "PERCENTAGE",
+        "value": {
+          "status": "RECORDED",
+          "percentage": "50.0000"
+        },
+        "inputScale": 4
+      },
+      "threshold": "50.00",
+      "expected": {
+        "displayPercentage": "50.00",
+        "value": {
+          "status": "RECORDED",
+          "outcome": "PASS"
+        }
+      }
+    },
+    {
+      "id": "CALC-016",
+      "description": "Scale an excluded-denominator result to an intentional100-point output",
+      "operation": "SCALE_TO",
+      "sourceFraction": {
+        "numerator": "64.00",
+        "denominator": "70.00"
+      },
+      "targetMaximum": "100.00",
+      "expected": {
+        "calculationStatus": "READY",
+        "value": {
+          "status": "RECORDED",
+          "score": "91.43"
+        },
+        "evaluation": {
+          "nominalMaxScore": "100.00",
+          "effectiveMaxScore": "100.00",
+          "normalizedPercentage": "91.428571"
+        }
+      }
+    },
+    {
+      "id": "CALC-017",
+      "description": "Dependency cycle is a schema activation error",
+      "operation": "GRAPH_VALIDATION",
+      "graph": [
+        {
+          "id": "a",
+          "dependsOn": [
+            "b"
+          ]
+        },
+        {
+          "id": "b",
+          "dependsOn": [
+            "a"
+          ]
+        }
+      ],
+      "expectedError": "FORMULA_CYCLE"
+    },
+    {
+      "id": "CALC-018",
+      "description": "A field cannot be counted twice in an ordinary sum",
+      "operation": "GRAPH_VALIDATION",
+      "operands": [
+        "61000000-0000-4000-8000-000000000001",
+        "61000000-0000-4000-8000-000000000001"
+      ],
+      "expectedError": "DUPLICATE_OPERAND"
+    }
+  ],
+  "wireEvaluationScale": 6
+}

@@ -2,6 +2,42 @@ import { HttpStatus } from '@nestjs/common';
 import { DomainException } from '../../../common/exceptions/domain-exception';
 
 const errors = {
+  'calculation.invalid': {
+    status: HttpStatus.UNPROCESSABLE_ENTITY,
+    message: 'The calculated result is invalid',
+  },
+  'cell.conflict': {
+    status: HttpStatus.CONFLICT,
+    message: 'The result cell has changed',
+  },
+  'cell.reason_required': {
+    status: HttpStatus.UNPROCESSABLE_ENTITY,
+    message: 'A reason is required for this result change',
+  },
+  'cell.invalid_value': {
+    status: HttpStatus.UNPROCESSABLE_ENTITY,
+    message: 'The value does not fit the result field',
+  },
+  'schema.invalid': {
+    status: HttpStatus.UNPROCESSABLE_ENTITY,
+    message: 'The proposed result definition is invalid',
+  },
+  'schema.stale': {
+    status: HttpStatus.CONFLICT,
+    message: 'The result sheet definition has changed',
+  },
+  'schema.protected': {
+    status: HttpStatus.FORBIDDEN,
+    message: 'The proposed action would change protected data',
+  },
+  'template.archived': {
+    status: HttpStatus.CONFLICT,
+    message: 'This template is archived',
+  },
+  'preview.stale': {
+    status: HttpStatus.CONFLICT,
+    message: 'The reviewed result preview no longer matches the current state',
+  },
   'period.used_dates': {
     status: HttpStatus.CONFLICT,
     message:

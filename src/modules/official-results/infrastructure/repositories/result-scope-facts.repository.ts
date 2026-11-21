@@ -223,14 +223,18 @@ export class ResultScopeFactsRepository {
       ),
     );
     const customGroups = groups.filter(({ subjectId }) => !subjectId);
-    const offered = new Map<string, typeof groups>();
+    const offered = new Map<string, Map<string, (typeof groups)[number]>>();
     for (const allocation of offerings) {
       const group = groupBySubject.get(allocation.subjectId);
       if (!group) continue;
-      const key = `${allocation.academicYearId}:${allocation.termId}:${allocation.gradeId}`;
-      const list = offered.get(key) ?? [];
-      list.push(group);
-      offered.set(key, list);
+      for (const term of [allocation.termId, null]) {
+        const key = [allocation.academicYearId, term, allocation.gradeId].join(
+          ':',
+        );
+        const available = offered.get(key) ?? new Map();
+        available.set(group.id, group);
+        offered.set(key, available);
+      }
     }
     const targets: ConcreteResultsScope[] = [];
     let inspected = 0;
@@ -239,11 +243,10 @@ export class ResultScopeFactsRepository {
         if (++inspected > targetLimit)
           throw new OfficialResultsError('scope.limit_exceeded');
         const academic = resultClassroomPath(classroom);
-        const available =
-          offered.get(
-            `${period.academicYearId}:${period.termId}:${academic.GRADE}`,
-          ) ?? [];
-        for (const group of [...customGroups, ...available]) {
+        const available = offered.get(
+          [period.academicYearId, period.termId, academic.GRADE].join(':'),
+        );
+        for (const group of [...customGroups, ...(available?.values() ?? [])]) {
           if (targets.length >= targetLimit)
             throw new OfficialResultsError('scope.limit_exceeded');
           targets.push({

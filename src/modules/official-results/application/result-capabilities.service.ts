@@ -44,6 +44,14 @@ const capabilityRules = {
   { permission: string; action: ResultGrantAction; entry: boolean }
 >;
 
+const allowedScopeSelectors = [
+  'SCHOOL',
+  'STAGE',
+  'GRADE',
+  'SECTION',
+  'CLASSROOM',
+];
+
 export interface ResultCapabilitiesQuery {
   sheetId?: string;
   slotId?: string;
@@ -88,22 +96,23 @@ export class ResultCapabilitiesService {
         throw new NotFoundDomainException();
       }
       if (!target) {
+        const actions = Object.fromEntries(
+          Object.entries(capabilityRules).map(([name, rule]) => [
+            name,
+            access.permissions.has(`official_results.${rule.permission}`)
+              ? { allowed: true }
+              : { allowed: false, reasonCode: 'MISSING_PERMISSION' },
+          ]),
+        );
         return {
-          capabilities: Object.fromEntries(
-            Object.entries(capabilityRules).map(([name, rule]) => [
-              name,
-              access.permissions.has(`official_results.${rule.permission}`)
-                ? { allowed: true }
-                : { allowed: false, reasonCode: 'MISSING_PERMISSION' },
-            ]),
-          ),
-          allowedScopeSelectors: [
-            'SCHOOL',
-            'STAGE',
-            'GRADE',
-            'SECTION',
-            'CLASSROOM',
-          ],
+          actions,
+          capabilities: actions,
+          allowedScopeSelectors,
+          scope: {
+            allowedScopeSelectors,
+            reportingPeriodId: query.reportingPeriodId,
+            groupId: query.groupId,
+          },
         };
       }
       const context = await this.authorization.authorizedTarget(
@@ -153,21 +162,24 @@ export class ResultCapabilitiesService {
           reasonCode ? { allowed: false, reasonCode } : { allowed: true },
         ];
       });
+      const actions = Object.fromEntries(entries);
       return {
-        capabilities: Object.fromEntries(entries),
+        actions,
+        capabilities: actions,
+        scope: {
+          sheetId: target.id,
+          reportingPeriodId: target.reportingPeriodId,
+          groupId: target.groupId,
+          classroomId: target.classroomId,
+          allowedScopeSelectors,
+        },
         policyVersionId: context.policyVersionId,
         policyRevision: context.policyRevision,
         teacherMode: context.settings.teacherMode,
         sheetId: target.id,
         reportingPeriodId: target.reportingPeriodId,
         groupId: target.groupId,
-        allowedScopeSelectors: [
-          'SCHOOL',
-          'STAGE',
-          'GRADE',
-          'SECTION',
-          'CLASSROOM',
-        ],
+        allowedScopeSelectors,
         matchedPolicyRules: context.origins,
       };
     });
